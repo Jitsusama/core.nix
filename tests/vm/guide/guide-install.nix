@@ -177,6 +177,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           keygen = "${pkgs.ssh-tpm-agent}/bin/ssh-tpm-keygen";
           payload = "${payload}";
           guide = "${guide}/bin/guide";
+          # A USB drive the reinstall packs alice's home folder onto.
+          drive = "${import ./drive.nix { inherit pkgs; }}";
           inherit
             image
             pin

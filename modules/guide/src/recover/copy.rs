@@ -24,17 +24,25 @@ pub const COPIED: &str = "/run/guide/copied";
 const WRITABLE: &[&str] = &["exfat", "vfat", "ext4", "btrfs", "xfs"];
 
 /// What a cache folder is called, which no copy takes.
-const CACHE: &str = ".cache";
+pub const CACHE: &str = ".cache";
 
 /// A partition a copy can go onto, with how the person knows it.
-struct Drive {
-    partition: String,
-    said: String,
+pub struct Drive {
+    pub partition: String,
+    /// Its filesystem's UUID, by which it's found once it's plugged in
+    /// again.
+    pub uuid: Option<String>,
+    pub said: String,
 }
 
-/// Every partition on a plugged-in drive the stick can write onto, never
-/// the stick's own, whose vault holds the machine's keys.
-fn drives(machine: &mut dyn Machine) -> Result<Vec<Drive>, Fault> {
+/// Every partition on a plugged-in drive the stick can write onto, with
+/// one of these filesystems, free or mounted only at `onto`: never the
+/// stick's own, whose vault holds the machine's keys.
+pub fn drives(
+    machine: &mut dyn Machine,
+    onto: &str,
+    writable: &[&str],
+) -> Result<Vec<Drive>, Fault> {
     let mut found = vec![];
     for disk in disks::observe(machine)? {
         let stick = disk
@@ -48,10 +56,11 @@ fn drives(machine: &mut dyn Machine) -> Result<Vec<Drive>, Fault> {
             let Some(filesystem) = partition.filesystem.as_deref() else {
                 continue;
             };
-            let free = partition.mounted.is_empty() || partition.mounted == [ONTO];
-            if WRITABLE.contains(&filesystem) && free {
+            let free = partition.mounted.is_empty() || partition.mounted == [onto];
+            if writable.contains(&filesystem) && free {
                 found.push(Drive {
                     partition: partition.path.clone(),
+                    uuid: partition.uuid.clone(),
                     said: format!("{}, its {filesystem} partition", described(&disk)),
                 });
             }
@@ -77,13 +86,13 @@ fn folder(machine: &mut dyn Machine) -> Result<String, Fault> {
 }
 
 /// Bytes as a person reads them, in whole gigabytes but never none.
-fn gigabytes(bytes: u64) -> String {
+pub fn gigabytes(bytes: u64) -> String {
     format!("{} GB", bytes.div_ceil(1_000_000_000).max(1))
 }
 
 /// The number on the last line a measuring tool printed, whatever it
 /// said of what it couldn't read.
-fn measured(printed: &str) -> Option<u64> {
+pub fn measured(printed: &str) -> Option<u64> {
     printed
         .lines()
         .rev()
@@ -112,7 +121,7 @@ impl Step for CopyHome {
                 evidence: String::from_utf8_lossy(&kept).into_owned(),
             });
         }
-        let found = drives(machine)?;
+        let found = drives(machine, ONTO, WRITABLE)?;
         if found.is_empty() {
             return Ok(Standing::Blocked {
                 why: "no drive the home folders can be copied onto is plugged in".into(),
@@ -138,7 +147,7 @@ impl Step for CopyHome {
                 ask: "drive",
             });
         };
-        let drive = drives(machine)?
+        let drive = drives(machine, ONTO, WRITABLE)?
             .into_iter()
             .nth(*at)
             .ok_or(Fault::Blocked {

@@ -201,6 +201,16 @@ impl Journal {
         self.facts.contains(&(step.to_string(), fact.to_string()))
     }
 
+    /// Every fact a step recorded, in order, for a step whose fact is a
+    /// value a later step reads, such as where something was kept.
+    pub fn said(&self, step: &str) -> Vec<&str> {
+        self.facts
+            .iter()
+            .filter(|(by, _)| by == step)
+            .map(|(_, fact)| fact.as_str())
+            .collect()
+    }
+
     /// Records a fact, on the disk before this returns.
     pub fn record(&mut self, step: &str, fact: &str) -> Result<(), Fault> {
         if self.knows(step, fact) {

@@ -238,6 +238,23 @@ impl VaultKey {
         Ok(sealed)
     }
 
+    /// A writer whose bytes only this key opens, for what's too big to
+    /// hold, such as a machine's home folders packed. What's written can't
+    /// be opened until `finish` ends it.
+    pub fn sealing<W: Write>(&self, out: W) -> Result<age::stream::StreamWriter<W>, Fault> {
+        let recipient = self.recipient();
+        age::Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
+            .map_err(|why| unsealable("what the key seals", why))?
+            .wrap_output(out)
+            .map_err(|why| unsealable("what the key seals", why))
+    }
+
+    /// What `sealing` wrote, opened as it's read. A read fails on any byte
+    /// changed, and on an end cut off.
+    pub fn unsealing<R: Read>(&self, sealed: R) -> Result<age::stream::StreamReader<R>, Fault> {
+        decrypt(sealed, &self.0, "what the key seals")
+    }
+
     /// What `encrypt` sealed.
     pub fn decrypt(&self, sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>, Fault> {
         let mut bytes = Zeroizing::new(vec![]);

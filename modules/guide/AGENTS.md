@@ -129,6 +129,24 @@ driven on; the installed machine's steps come later.
   names, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
+- **Carrying the home folders** (`src/install/carry.rs`). Installing a
+  machine again asks first whether to carry its home folders across. If
+  so, before anything is wiped it opens the old disk as Recover does and
+  packs `/home` onto a USB drive the person picks: one tar archive, so
+  modes, numeric owners, links, ACLs and extended attributes are kept,
+  compressed by zstd and sealed by the guide's own age, never a shell
+  pipeline. It leaves out caches and the machine's
+  `jitsusama.guide.carry.leaveOut`. The drive must be exFAT, ext4, btrfs
+  or XFS, since FAT holds no file of 4 GB, and have room for the home
+  folders. The archive's key is sealed to each YubiKey and to the stick's
+  vault key, so it opens after a restart with nothing more asked. The
+  archive is read back whole before the wipe, since the wipe takes the
+  only other copy. Then the old system is unmounted and its volume
+  closed before the pack counts as done, since a volume left open at
+  `/mnt` is what a laid-out disk looks like, and the wipe would take it
+  for its own and skip itself. Right after the system is installed it's put back, and
+  each account numbered otherwise on the new system has its files
+  `chown --from` to its new numbers.
 - **Recovering.** Any stick recovers a machine with its data left in
   place, since the disk says what it is: core's layout on an internal
   disk, an encrypted partition beside its `<name>-boot`. The disk is shown

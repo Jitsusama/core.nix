@@ -140,6 +140,34 @@ accounts the YubiKey signs in to.
    repository, put the new one's in, and switch, so everything is sealed
    again without it.
 
+## Installing a Machine Again
+
+Booted on the machine it was written for, with the machine still on its
+disk, the stick asks whether to recover it or install it again, wiping the
+disk. Installing again first asks whether to carry the home folders across.
+Carrying them, it opens the disk with a YubiKey and its PIN or the recovery
+key, checks its filesystem, and packs every home folder onto a USB drive
+with an exFAT, ext4, btrfs or XFS partition. FAT won't do, since it holds no
+file of 4 GB or more. Nothing on the drive is removed.
+
+They go into a folder named for the machine, such as "laptop carried home",
+as one file that keeps each file's owner, permissions, links, ACLs and
+extended attributes. Every folder named .cache is left behind, and so is
+what the machine repository's `jitsusama.guide.carry.leaveOut` names, such
+as a key store bound to the old install. The guide reads the whole file
+back before it wipes anything, so a drive that didn't keep it is found while
+the home folders are still there. A file that couldn't be read is skipped,
+and what tar said of it is kept beside the folder's file, in "not
+carried.txt".
+
+Once the new system is installed, before it ever starts, the guide puts the
+home folders back; plug the drive in again if it came out. The file opens
+with the stick that packed it, even after a restart, and its key is sealed
+to each YubiKey beside it, in "key.age". The TPM's SSH and signing keys are
+in the home folders, and installing again leaves the TPM as it was, so they
+come back and still work: GitHub and `allowedSigners` need nothing new.
+Left behind, the first boot makes new ones, as when the disk dies.
+
 ## The Disk Dies, or Is Wiped
 
 Fit the new disk and boot the machine's own stick. It installs the system it

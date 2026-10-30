@@ -1609,7 +1609,9 @@
     writer writes a stick from the rescue bundle the install sealed to the recovery key, which the
     firmware boots while enforcing; then the install's own stick, which it made the machine's by
     carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
-    machine with the same keys, whose guide frees the first install's policy; and a firmware cleared
+    machine with the same keys, packing the account's home folder onto a USB drive plugged in
+    mid-way and putting it back with its modes, owner, link and TPM keys, which still load, and
+    its cache left behind, whose guide frees the first install's policy; and a firmware cleared
     of its keys gets them back from the machine's next boot, not while a program it would start is
     unsigned, and the TPM alone opens the disk with its own PIN once they're enrolled, a YubiKey
     with its PIN when the TPM refuses

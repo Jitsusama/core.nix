@@ -47,6 +47,19 @@ let
       );
 in
 {
+  options.jitsusama.guide.carry.leaveOut = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    example = [ ".config/gh/config.yml" ];
+    description = ''
+      What's left behind when the stick carries the home folders across a
+      reinstall, each a path inside a home folder, left out of every
+      account's. Caches are always left. Name what the new install makes
+      afresh and an old copy would break, such as a key store bound to the
+      old install, or a file home-manager writes.
+    '';
+  };
+
   options.jitsusama.guide.spares = lib.mkOption {
     type = lib.types.listOf (
       lib.types.submodule {

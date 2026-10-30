@@ -65,6 +65,7 @@ tools! {
     SshTpmKeygen => "ssh-tpm-keygen", "GUIDE_SSH_TPM_KEYGEN";
     SystemdCryptenroll => "systemd-cryptenroll", "GUIDE_SYSTEMD_CRYPTENROLL";
     Systemctl => "systemctl", "GUIDE_SYSTEMCTL";
+    Tar => "tar", "GUIDE_TAR";
     Tpm2Createprimary => "tpm2_createprimary", "GUIDE_TPM2_CREATEPRIMARY";
     Tpm2Getcap => "tpm2_getcap", "GUIDE_TPM2_GETCAP";
     Tpm2Load => "tpm2_load", "GUIDE_TPM2_LOAD";
@@ -74,6 +75,7 @@ tools! {
     Umount => "umount", "GUIDE_UMOUNT";
     Veritysetup => "veritysetup", "GUIDE_VERITYSETUP";
     Wipefs => "wipefs", "GUIDE_WIPEFS";
+    Zstd => "zstd", "GUIDE_ZSTD";
 }
 
 /// A PATH this build of the guide gives a program written to find its

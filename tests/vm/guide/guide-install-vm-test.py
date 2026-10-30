@@ -7,7 +7,8 @@ machine one stage further than the fixture it asks for, in the order a person me
 stick booted, its vault opened, the disk confirmed, each key enrolled, the recovery key kept,
 the install stopped and carried on, the system installed, the machine's first boots, the TPM
 sealed, the account's keys and spares made, the TPM cleared, a stick written by a writer, the
-reinstall from the machine's own stick, and the firmware cleared of its keys. A fixture's work
+reinstall from the machine's own stick carrying alice's home folder across on a USB drive, and
+the firmware cleared of its keys. A fixture's work
 is done once a run, so any test runs alone with `-k`, walking only as far as it needs. What a
 screen shows only in passing is checked where it shows, in the fixture that reaches it; what
 stays is checked by the tests. What the tests need from Nix, the keys' state, the sticks'
@@ -49,6 +50,10 @@ UNASSIGNED = range(0x01800000, 0x01BFFFFF + 1)
 VOLUME = "/dev/disk/by-partlabel/system"
 # The priority LUKS gives a slot tried before the others.
 PREFERRED = 2
+# How far apart keys are typed. QEMU's keyboard holds only a few keys and drops what
+# comes while it's full, and at the driver's 10 ms a key, a guest starved on a loaded
+# builder lost keys from the TPM's PIN typed twice (2026-10-30). 50 ms holds that.
+KEY_PACE = timedelta(milliseconds=50)
 
 # Before its keyboard screen, the stick copies its whole system into memory through QEMU's
 # USB stick, which on a machine busy with other machines' disks took past five minutes. The test
@@ -114,7 +119,7 @@ def on_screen(
 
 def enter(machine: QemuMachine, text: str) -> None:
     """Type the text at the guide and press Return."""
-    machine.send_chars(text + "\n")
+    machine.send_chars(text + "\n", delay=KEY_PACE)
 
 
 def plug(machine: QemuMachine, rig: Rig, name: str) -> None:
@@ -622,7 +627,7 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     # The TPM refuses the keys it sealed before, so the guide makes them
     # again, saying why.
     on_screen(machine, "a PIN for alice's new SSH keys", timeout=STEP)
-    assert "the tpm was cleared" in " ".join(screen(machine).split()).lower(), screen(machine)
+    on_screen(machine, "the tpm was cleared")
     enter(machine, key_pin)
     on_screen(machine, "the same PIN again")
     enter(machine, key_pin)
@@ -646,6 +651,20 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     return Cleared(nano, before, machine.get_console_log()[since:])
 
 
+@pytest.fixture(scope="module")
+def planted(signed_in: QemuMachine, cleared: Cleared) -> dict[str, str]:
+    """Leave alice files a reinstall carries and a cache it leaves; give her TPM keys' sums."""
+    del cleared
+    machine = signed_in
+    home = "/home/alice"
+    machine.succeed(
+        f"runuser -u alice -- sh -c 'umask 077 && mkdir -p {home}/notes {home}/.cache"
+        f" && echo kept > {home}/notes/secret && ln -s secret {home}/notes/link"
+        f" && echo thrown > {home}/.cache/thrown'"
+    )
+    return {file: machine.succeed(f"sha256sum {file}.tpm").split()[0] for file in TPM_KEYS}
+
+
 @dataclass(frozen=True)
 class WriterStick:
     """The rescue bundle the install sealed, as a writer carried it onto a stick, and its owner."""
@@ -659,11 +678,12 @@ class WriterStick:
 def writer_stick(
     signed_in: QemuMachine,
     cleared: Cleared,
+    planted: dict[str, str],
     recovery_key: str,
     values: dict[str, Any],
 ) -> Generator[WriterStick]:
     """Write a stick on the writer from the install's bundle, boot it, then shut down."""
-    del cleared
+    del cleared, planted
     machine, payload = signed_in, values["payload"]
     # The bundle the install made, taken off as alice can, sealed.
     sealed = base64.b64decode(
@@ -711,18 +731,43 @@ def writer_stick(
         yield WriterStick(owner, installed, own)
 
 
+@dataclass(frozen=True)
+class Reinstalled:
+    """The bundle the reinstall sealed, and alice's home folder as the reinstall put it back."""
+
+    bundle: dict[str, Any]
+    # Each path under her home folder, as `stat` reads its mode, owner and kind, or what's
+    # missing; then what her secret holds and her link names.
+    home: dict[str, str]
+    # Her account's number on the new system.
+    uid: str
+    # Her TPM keys' sums, as the new system holds them.
+    keys: dict[str, str]
+
+
+def plug_drive(machine: QemuMachine, drive: str) -> None:
+    """Plug a USB drive in, its image the file named, as a person would mid-way."""
+    machine.send_monitor_command(f"drive_add 0 if=none,id=carry,format=qcow2,file={drive}")
+    machine.send_monitor_command("device_add usb-storage,bus=xhci.0,drive=carry,id=carrydev")
+
+
 @pytest.fixture(scope="module")
 def reinstalled(
-    signed_in: QemuMachine, writer_stick: WriterStick, rig: Rig, values: dict[str, Any]
-) -> dict[str, Any]:
-    """Reinstall from the install's own stick, and give the bundle the reinstall sealed."""
+    signed_in: QemuMachine,
+    writer_stick: WriterStick,
+    recovery_key: str,
+    rig: Rig,
+    values: dict[str, Any],
+) -> Generator[Reinstalled]:
+    """Reinstall from the install's own stick, carrying alice's home folder across."""
     machine, pin, password = signed_in, values["pin"], values["password"]
     # The stick the machine was installed from, which it made its own.
     os.environ["STICK_IMAGE"] = rig.stick
     machine.start(allow_reboot=True)
-    # The disk holds the machine, so its stick asks first.
+    # The disk holds the machine, so its stick asks first. Waited for whole,
+    # since a loaded host can catch the screen half drawn.
     on_screen(machine, "A machine is already here")
-    assert "install machine on it again" in " ".join(screen(machine).split()), screen(machine)
+    on_screen(machine, "install machine on it again")
     machine.send_key("down")
     enter(machine, "")
     # The stick copies its system into memory first, as on the first boot.
@@ -730,7 +775,42 @@ def reinstalled(
     enter(machine, "keyboard")
     on_screen(machine, "the stick's passphrase")
     enter(machine, values["passphrase"])
-    on_screen(machine, "Confirm the disk to wipe")
+    # Carried, the home folders are packed while the old disk still opens,
+    # with the first install's recovery key.
+    on_screen(machine, "Carry them across")
+    enter(machine, "")
+    on_screen(machine, "the disk's recovery key")
+    enter(machine, recovery_key)
+    # Asking for a drive is the step waiting, with "look again" its key,
+    # not the guide stopping.
+    on_screen(
+        machine,
+        "no drive the home folders can be packed onto",
+        timeout=STEP,
+        stopped=r"try again",
+    )
+    with tempfile.NamedTemporaryFile(suffix=".qcow2") as drive:
+        overlay(values["qemuImg"], drive.name, "-b", values["drive"], "-F", "raw")
+        plug_drive(machine, drive.name)
+        # The guide may still be asking for one until it looks again.
+        on_screen(
+            machine,
+            "Which drive should they be packed onto",
+            timeout=PLUGGED,
+            stopped=r"try again",
+        )
+        enter(machine, "")
+        # The drive stays in until the machine is off, as the guide puts
+        # the home folders back from it after the install.
+        yield carried_across(machine, writer_stick, rig, (pin, password))
+
+
+def carried_across(
+    machine: QemuMachine, writer_stick: WriterStick, rig: Rig, secrets: tuple[str, str]
+) -> Reinstalled:
+    """Wipe and install once the home folders are packed, and read what came back."""
+    pin, password = secrets
+    on_screen(machine, "Confirm the disk to wipe", timeout=STEP)
     enter(machine, "machine")
     for name, state in [("the Nano", "nano"), ("the 5C", "fivec")]:
         on_screen(machine, f"Plug in {name}", timeout=STEP)
@@ -754,14 +834,24 @@ def reinstalled(
         "cmp /run/vault/machine-rescue-bundle.json /mnt/var/lib/guide/rescue-bundle.json"
     )
     machine.succeed("umount /run/vault")
+    # Alice's home folder, put back before the new system ever starts.
+    home = "/mnt/home/alice"
+    read = {
+        path: machine.execute(f"stat -c '%a %u %F' {home}/{path}")[1].strip() or "missing"
+        for path in ["notes/secret", "notes/link", ".cache/thrown"]
+    }
+    read["holds"] = machine.succeed(f"cat {home}/notes/secret").strip()
+    read["names"] = machine.succeed(f"readlink {home}/notes/link").strip()
+    uid = machine.succeed("awk -F: '$1 == \"alice\" {print $3}' /mnt/etc/passwd").strip()
+    keys = {file: machine.succeed(f"sha256sum /mnt{file}.tpm").split()[0] for file in TPM_KEYS}
     enter(machine, "")
     machine.wait_for_shutdown()
-    return remade
+    return Reinstalled(remade, read, uid, keys)
 
 
 @pytest.fixture(scope="module")
 def reinstalled_boot(
-    signed_in: QemuMachine, reinstalled: dict[str, Any], rig: Rig, values: dict[str, Any]
+    signed_in: QemuMachine, reinstalled: Reinstalled, rig: Rig, values: dict[str, Any]
 ) -> QemuMachine:
     """Boot the reinstalled machine, leaving the TPM's seal for another boot with Ctrl+C."""
     del reinstalled
@@ -791,8 +881,9 @@ def policy_freed(reinstalled_boot: QemuMachine, values: dict[str, Any]) -> list[
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
     seal_tpm(machine, values)
-    # Sealed, and freed before the guide asks for the account's keys.
-    on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
+    # Sealed and freed, and alice's keys, carried across, are found in the
+    # TPM rather than made again.
+    on_screen(machine, "the TPM holds the SSH keys", timeout=STEP)
     return before
 
 
@@ -1146,12 +1237,38 @@ def test_a_writer_writes_a_stick_carrying_the_machines_keys(writer_stick: Writer
 
 
 def test_machines_own_stick_reinstalls_with_the_keys_put_back(
-    writer_stick: WriterStick, reinstalled: dict[str, Any]
+    writer_stick: WriterStick, reinstalled: Reinstalled
 ) -> None:
     """The install's own stick boots, enforcing, and reinstalls with the keys put back."""
     # A new bundle for the same keys, sealed to the new recovery key.
-    assert reinstalled["db"] == writer_stick.installed["db"]
-    assert reinstalled["to_passphrase"] != writer_stick.installed["to_passphrase"]
+    assert reinstalled.bundle["db"] == writer_stick.installed["db"]
+    assert reinstalled.bundle["to_passphrase"] != writer_stick.installed["to_passphrase"]
+
+
+def test_reinstall_carries_alices_home_folder_as_it_was(
+    reinstalled: Reinstalled, planted: dict[str, str]
+) -> None:
+    """Alice's files come back as she left them, owned by her, her cache left behind."""
+    home, uid = reinstalled.home, reinstalled.uid
+    assert home["notes/secret"] == f"600 {uid} regular file", home
+    assert home["notes/link"] == f"777 {uid} symbolic link", home
+    assert (home["holds"], home["names"]) == ("kept", "secret"), home
+    assert home[".cache/thrown"] == "missing", home
+    # The TPM's keys come back as they were, which the TPM, left as it
+    # was, still loads.
+    assert reinstalled.keys == planted
+
+
+def test_reinstalled_machine_loads_alices_carried_tpm_keys(
+    reinstalled_boot: QemuMachine, planted: dict[str, str], values: dict[str, Any]
+) -> None:
+    """The TPM opens alice's carried login key with her PIN, so nothing was made again."""
+    machine, keygen = reinstalled_boot, values["keygen"]
+    for file, summed in planted.items():
+        assert machine.succeed(f"sha256sum {file}.tpm").split()[0] == summed, file
+    quoted = shlex.quote(values["keyPin"])
+    login = "/home/alice/.ssh/id_ecdsa.tpm"
+    machine.succeed(f"runuser -u alice -- {keygen} -p -f {login} -P {quoted} -N {quoted}")
 
 
 def test_reinstalled_machine_enforces_with_the_same_keys(
@@ -1197,8 +1314,16 @@ def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     assert log[enrolled:].count("Linux version") == 1
     # Refusing for the boot, not the PIN, cost the TPM no tries.
     assert lockouts(machine, values) == firmware_cleared.lockouts
-    # The guide finds the TPM still sealed, and goes on to the keys.
-    on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
+    # The guide finds the TPM still sealed, and alice's keys and spares,
+    # carried across, still there, so it finishes asking nothing.
+    # Inactive alone would hold before it starts, so it's waited for as run.
+    machine.wait_until_succeeds(
+        'test "$(systemctl show -P ConditionResult guide-installed)" = yes'
+        ' && test "$(systemctl show -P ActiveState guide-installed)" = inactive',
+        timeout=STEP,
+    )
+    assert machine.succeed("systemctl show -P Result guide-installed").strip() == "success"
+    assert "Finish machine" not in screen(machine), screen(machine)
     assert "Secure Boot: enabled (user)" in machine.succeed("bootctl status")
     assert writer_stick.owner in machine.succeed("sbctl status")
     # And the files it enrolled from go, so a later clearing can't have

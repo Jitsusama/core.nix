@@ -32,6 +32,9 @@ pub struct Partition {
     /// Its GPT name, which core's disk layout gives every partition.
     pub label: Option<String>,
     pub filesystem: Option<String>,
+    /// Its filesystem's UUID, which stays the same however the drive is
+    /// plugged in again.
+    pub uuid: Option<String>,
     /// Where it's mounted now, if anywhere.
     pub mounted: Vec<String>,
 }
@@ -80,6 +83,7 @@ struct Device {
     partn: Option<u32>,
     partlabel: Option<String>,
     fstype: Option<String>,
+    uuid: Option<String>,
     #[serde(default)]
     mountpoints: Vec<Option<String>>,
     #[serde(default)]
@@ -112,6 +116,7 @@ pub fn parse(json: &str) -> Result<Vec<Disk>, Fault> {
                     number: child.partn,
                     label: child.partlabel,
                     filesystem: child.fstype,
+                    uuid: child.uuid,
                 })
                 .collect(),
             path: device.path,
