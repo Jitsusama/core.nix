@@ -73,7 +73,6 @@ in
     ../../modules/processor-telemetry/nixos.nix
     ../../modules/touchpad/nixos.nix
     ./camera/camera.nix
-    ./kernel/backports.nix
     ./kernel/local.nix
     ./kernel/next.nix
     ./sound/microphones.nix
@@ -82,6 +81,20 @@ in
 
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
+
+  # The Silicon Security Engine at 00:18.0 had no driver until 7.3's, which
+  # only this laptop's parts need, so it's built here rather than in core's
+  # kernel.
+  boot.kernelPatches = [
+    {
+      name = "security-engine";
+      patch = null;
+      structuredExtraConfig = {
+        INTEL_SSEI = lib.kernel.module;
+        INTEL_SSEI_HW_HECI = lib.kernel.module;
+      };
+    }
+  ];
 
   # Bluetooth's driver refused a hibernation's power-off on 2026-10-28, and
   # the laptop stayed on in a bag; the script says why, and when it goes.

@@ -7,11 +7,13 @@ upside down for anything that trusts it. Report 180 for its OVTI08F4
 sensor, as linux-next's 010009ac5ad3 does for the Dell Pro 14 Premium
 PA14260, which has the same sensor.
 
+diff --git a/drivers/media/pci/intel/ipu-bridge.c b/drivers/media/pci/intel/ipu-bridge.c
+index bd64c0400c0d..4fd20b55971c 100644
 --- a/drivers/media/pci/intel/ipu-bridge.c
 +++ b/drivers/media/pci/intel/ipu-bridge.c
-@@ -136,6 +136,13 @@
+@@ -192,6 +192,13 @@ static const struct dmi_system_id upside_down_sensor_dmi_ids[] = {
  		},
- 		.driver_data = "OVTI02C1",
+ 		.driver_data = "OVTI02E1",
  	},
 +	{
 +		.matches = {

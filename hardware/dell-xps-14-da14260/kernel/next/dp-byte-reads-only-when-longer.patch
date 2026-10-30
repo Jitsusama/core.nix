@@ -3,7 +3,7 @@ drm/dp: retry a failed read byte by byte only when it's longer than a byte (post
 From Chia-Lin Kao (AceLan)'s posting to intel-gfx of 2026-06-16, "drm/dp:
 Move byte-by-byte AUX read fallback to drm_dp_dpcd_read()", which fixes
 a8f49a004301 ("drm/dp: Add byte-by-byte fallback for broken USB-C
-adapters"). 7.2 and linux-next of 2026-10-20 lack it.
+adapters"). 7.3 and linux-next of 2026-10-20 lack it.
 
 The fallback in drm_dp_dpcd_read_data() retried a failed read one byte at
 a time even when the read was one byte, so a read the sink never answers

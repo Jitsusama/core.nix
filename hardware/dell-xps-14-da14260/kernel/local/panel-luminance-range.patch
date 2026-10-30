@@ -9,12 +9,16 @@ screen in that block, which is Windows' ceiling for it too, so the top
 fifth of the slider asks for light the panel isn't rated to give. When
 no CTA block gives a range, it's read from Display Parameters instead.
 Cristian La Spina posted the same idea for 7.3's parser in August
-2026, unmerged; this is written for 7.2, which lacks that parser.
+2026, unmerged. 7.3's drm_displayid_parse_display_params() reads only
+the panel's technology; this reads the block on its own, as it was
+first written for 7.2, and moves into that parser when it's sent.
 
+diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
+index 725ec19f1eae..8ecde321d4c4 100644
 --- a/drivers/gpu/drm/drm_edid.c
 +++ b/drivers/gpu/drm/drm_edid.c
-@@ -6755,6 +6755,64 @@
- 	memset(&info->amd_vsdb, 0, sizeof(info->amd_vsdb));
+@@ -6812,6 +6812,64 @@ drm_displayid_parse_display_params(struct drm_connector *connector,
+ 	}
  }
  
 +/*
@@ -78,7 +82,7 @@ Cristian La Spina posted the same idea for 7.3's parser in August
  static void update_displayid_info(struct drm_connector *connector,
  				  const struct drm_edid *drm_edid)
  {
-@@ -6813,6 +6871,10 @@
+@@ -6863,6 +6921,10 @@ static void update_display_info(struct drm_connector *connector,
  	info->color_formats |= BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444);
  	drm_parse_cea_ext(connector, drm_edid);
  

@@ -19,19 +19,12 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.2, at whichever point release nixpkgs pins, or a newer
-  one `package.nix` names in `stable` while nixpkgs catches up. Taking a new
-  nixpkgs takes the latest 7.2 release with its fixes, and `stable` stops
-  applying once nixpkgs's release is as new. It names 7.2.12, newer than the
-  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs. 7.2.12 adds
-  the speaker amplifiers' OT25 DAI, without which 7.2.11's sound card never
-  binds. 7.2.11 brought these: the Intel
-  Bluetooth driver resetting the chip for a clean start and bounding its
-  transmit ring, races in Bluetooth's RFCOMM, SCO and ISO sockets, the Xe
-  graphics driver's register waits and shrinker, device-mapper reading freed
-  memory on resume, Btrfs's extended attributes, and locked-memory leaks in
-  mremap and io_uring. 7.2.10 brought fixes to Bluetooth's core, the SDCA
-  codec's power management, the TPM driver and the slab allocator.
+- **The series:** 7.3, at 7.3.1, the release `package.nix` names in
+  `stable`, while the pinned nixpkgs has only 7.2. nixpkgs's 7.2 package
+  builds it, since the two build the same way, and `stable` stops applying
+  once nixpkgs's release is as new. 7.3 holds every fix the XPS 14 took
+  onto 7.2 ahead of it, which [the hardware guide][hw] lists, so the laptop
+  carries 23 fewer patches than it did on 7.2.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
@@ -320,8 +313,9 @@ if less; record a new one after moving to a new series.
 - **A patch one model needs:** add it to that model's `boot.kernelPatches`,
   under the same bar; [the hardware guide][hw] has one.
 - **A new series:** change `linux_7_2` in `package.nix` to the new series,
-  point BORE at its patch for that series, and update the hash and this
-  document. The configuration check fails until the patch applies and every
+  or set `stable` to it as for a point release while nixpkgs has no package
+  for it, as 7.3 is. Point BORE at its patch for that series, and update the
+  hash and this document. The configuration check fails until the patch applies and every
   setting holds.
 
 ## What's Left Out, and Why

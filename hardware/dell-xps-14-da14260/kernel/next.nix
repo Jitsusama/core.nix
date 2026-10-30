@@ -1,7 +1,7 @@
 # What linux-next has for the XPS 14's parts and no release does yet, taken
-# onto 7.2 so the laptop has it before 7.4. Each patch in ./next names the
-# commits it holds and the series they were posted as, and applies after the
-# backports from 7.3. Moving the kernel to 7.4 fails here, and the way
+# onto 7.3 so the laptop has it before 7.4. Each patch in ./next names the
+# commits it holds and the series they were posted as, and applies to 7.3
+# with no offset or fuzz. Moving the kernel to 7.4 fails here, and the way
 # through is to drop each patch that kernel has, then this file.
 { config, lib, ... }:
 let
@@ -41,12 +41,6 @@ in
       # a PWM signal this OLED ignores. The driver wakes the panel before
       # reading it.
       "edp-wakes-the-panel"
-      # Each draw kept a program's own buffers fresh for reclaim, but never
-      # those it shares with another, such as the windows a compositor
-      # imports from its clients, so reclaim took those first, and the
-      # next draw brought them back with their lock held. The compositor's
-      # own draws were seen waiting on such a lock for up to 250 ms.
-      "xe-shared-buffers-keep-their-place"
       # A hibernate's thaw reset Bluetooth's controller and probed it again,
       # and the probe waited on its firmware while user space was frozen, so
       # the power-off asked a controller still in its bootloader for D3. It

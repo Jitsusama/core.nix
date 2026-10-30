@@ -13,6 +13,8 @@ every 10 ms for up to 2 s after the first 100 ms, say when it answered
 late, and report a firmware that never answers as -EBUSY, with a
 warning, so the next wake tries again.
 
+diff --git a/drivers/media/i2c/cvs/core.c b/drivers/media/i2c/cvs/core.c
+index 3520325717dd..2798a5a43e9e 100644
 --- a/drivers/media/i2c/cvs/core.c
 +++ b/drivers/media/i2c/cvs/core.c
 @@ -11,7 +11,9 @@
@@ -38,8 +40,8 @@ warning, so the next wake tries again.
 +
  #define PCI_DEVICE_ID_INTEL_IPU7		0x645d	/* MTL / LNL */
  #define PCI_DEVICE_ID_INTEL_IPU7P5		0xb05d	/* ARL / PTL */
- 
-@@ -506,13 +515,44 @@
+ #define PCI_DEVICE_ID_INTEL_IPU8		0xd719	/* NVL */
+@@ -507,13 +516,44 @@ int cvs_send(struct icvs *ctx, struct icvs_cmd *cmd, size_t len)
  		status = ctx->wq_resp.resp.state &
  			  ICVS_DEV_STATE_ERROR ? -EINVAL : 0;
  		break;

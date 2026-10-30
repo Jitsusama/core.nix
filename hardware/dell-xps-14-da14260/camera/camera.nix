@@ -242,16 +242,6 @@ in
       name = "cvs-link-owner-wait";
       patch = ../kernel/local/cvs-link-owner-wait.patch;
     }
-    # The IR camera, made for signing in by face: an HM1092 on one of the IPU7's
-    # CSI-2 ports, powered by its own INT3472. The four patches below, three
-    # from the media list and one written here, take it from unknown to
-    # streaming greyscale frames.
-    {
-      # Gives the sensor its link frequencies, without which it never binds.
-      # From mainline.
-      name = "ipu-bridge-hm1092";
-      patch = ../kernel/local/ipu-bridge-hm1092.patch;
-    }
     {
       # The colour sensor is mounted upside down, but the firmware says 0,
       # so its rotation control said so too. Written here, after the quirk
@@ -259,6 +249,10 @@ in
       name = "ipu-bridge-da14260-upside-down";
       patch = ../kernel/local/ipu-bridge-da14260-upside-down.patch;
     }
+    # The IR camera, made for signing in by face: an HM1092 on one of the IPU7's
+    # CSI-2 ports, powered by its own INT3472. 7.3 gives it its link
+    # frequencies, and the three patches below, two from the media list and
+    # one written here, take it from there to streaming greyscale frames.
     {
       # The sensor's driver, which no release has yet.
       name = "hm1092-ir-sensor";
