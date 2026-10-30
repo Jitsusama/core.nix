@@ -99,7 +99,6 @@ Provider {
             hue: "person",
             side: stood.said,
             note: person.name === person.email ? "" : person.email,
-            drawer: Person.details(person, zone => provider.there(zone)),
             nested: true,
             later: true,
             verb: "more",
@@ -109,11 +108,23 @@ Provider {
             targets: () => provider.inside(person)
         });
         // Their addresses, made ready to match when first searched, as the
-        // name is.
+        // name is, and kept while they read the same (Fuzzy.kept): everyone
+        // is made again whenever a source knows anyone anew, as each mail
+        // and meeting does, and making every address ready again was most
+        // of a first search's time, 408 ms of "ma" (2026-10-30), since
+        // nearly every address holds both letters.
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.prepare(person.emails.join(" ")))
+            get: () => also ?? (also = Fuzzy.kept(person.emails.join(" ")))
+        });
+        // Their details, made when first shown rather than for everyone each
+        // time everyone is made. A source's answer that comes later makes
+        // everyone again, and so this row, which reads it then.
+        let details = null;
+        Object.defineProperty(row, "drawer", {
+            enumerable: true,
+            get: () => details ?? (details = Person.details(person, zone => provider.there(zone)))
         });
         return Object.assign(row, {
             named: Fuzzy.letters([person.name.toLowerCase()]),
