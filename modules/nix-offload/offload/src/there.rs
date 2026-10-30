@@ -353,10 +353,12 @@ impl Source {
                     "git+file://{into}?rev={commit}{}",
                     dir.map(|dir| format!("&dir={dir}")).unwrap_or_default()
                 );
-                // The builder has no git of its own, so Nix gives it one.
+                // A builder's start-up installs git, and one whose
+                // install failed borrows it from Nix.
                 let command = format!(
                     "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
                      cd {into}; cat > there.bundle; \
+                     command -v git >/dev/null || \
                      git() {{ nix shell nixpkgs#git -c git \"$@\"; }}; \
                      git init -q; git fetch -q https://github.com/{github} {base}; \
                      git fetch -q there.bundle {BUNDLED}:refs/heads/there; {}",
