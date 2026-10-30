@@ -1031,19 +1031,23 @@ fn a_failed_run_is_journaled_and_not_tried_again_at_once() {
 }
 
 #[test]
-fn a_healthy_disk_keeps_no_garbage_for_a_rebuild() {
+fn a_healthy_disk_keeps_only_the_last_hours_garbage() {
     // Kept as a cache, garbage under three days old held 34 GiB of the
-    // 43 nothing held on a laptop whose disk its owner expected far emptier.
+    // 43 nothing held on a laptop whose disk its owner expected far
+    // emptier. Kept not at all, a payload went ten minutes after it was
+    // built, while the program that built it was still writing it.
     let store = Store::new();
     let young = store.dead("aaa-young", 60.0, 4096);
+    let old = store.dead("bbb-old", 2.0 * 3600.0, 4096);
     let mut guard = store.guard(store.config_as_given("0%", "0%"));
-    store.step_until(&mut guard, |_| !young.exists());
+    store.step_until(&mut guard, |_| !old.exists());
+    assert!(young.exists(), "the last hour's garbage stays");
 }
 
 #[test]
 fn garbage_goes_once_the_process_holding_it_ends() {
     let store = Store::new();
-    let built = store.dead("aaa-built", 60.0, 4096);
+    let built = store.dead("aaa-built", 2.0 * 3600.0, 4096);
     let holding = store.root.join("temproots/4242");
     fs::write(&holding, format!("{}\0", built.display())).unwrap();
     let mut guard = store.guard(store.config_as_given("0%", "0%"));
@@ -1058,7 +1062,7 @@ fn garbage_goes_once_the_process_holding_it_ends() {
 #[test]
 fn garbage_a_root_left_goes_within_a_minute() {
     let store = Store::new();
-    let kept = store.dead("aaa-kept", 60.0, 4096);
+    let kept = store.dead("aaa-kept", 2.0 * 3600.0, 4096);
     fs::write(kept.join("alive"), "").unwrap();
     let result = store.root.join("result");
     fs::write(&result, "").unwrap();

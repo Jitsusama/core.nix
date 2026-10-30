@@ -424,6 +424,46 @@ fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
 }
 
 #[test]
+fn a_process_holds_the_store_paths_its_command_line_and_environment_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("store");
+    let proc = dir.path().join("proc");
+    fs::create_dir_all(proc.join("202")).unwrap();
+    // A stick writer copying a payload it was handed by path, one file at
+    // a time, so no file of it need be open between two.
+    fs::write(
+        proc.join("202/cmdline"),
+        format!(
+            "writer\0--payload={}/fff-payload/boot\0{}/ggg-image.raw\0",
+            store.display(),
+            store.display()
+        ),
+    )
+    .unwrap();
+    fs::write(
+        proc.join("202/environ"),
+        format!(
+            "HOME=/home/someone\0PAYLOAD=:{}/hhh-keys:\0",
+            store.display()
+        ),
+    )
+    .unwrap();
+    let mut roots: Vec<String> = disk_guard::garbage::runtime_roots(&proc, &store)
+        .into_iter()
+        .collect();
+    roots.sort_unstable();
+    let named = |name: &str| store.join(name).to_string_lossy().into_owned();
+    assert_eq!(
+        roots,
+        [
+            named("fff-payload"),
+            named("ggg-image.raw"),
+            named("hhh-keys")
+        ]
+    );
+}
+
+#[test]
 fn what_is_gone_is_left_out_and_holds_nothing_back() {
     // A new app's referrer went since the listing, so the old library is
     // dated by itself again.

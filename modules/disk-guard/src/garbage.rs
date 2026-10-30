@@ -133,11 +133,18 @@ pub fn temp_roots(dir: &Path) -> HashSet<String> {
 /// VM's `virtiofsd` shares the whole store and keeps a descriptor open on
 /// each path its machine has looked at, which can be tens of thousands. A
 /// process gone between listing and reading holds nothing.
+///
+/// A store path its command line or its environment names is held too,
+/// which Nix doesn't count: a program handed a path copies it a file at a
+/// time, and between two files it has none open. On 30 October a stick
+/// writer's payload, built ten minutes before, was collected under it
+/// that way, mid-write.
 pub fn runtime_roots(processes: &Path, store: &Path) -> HashSet<String> {
     let Ok(entries) = std::fs::read_dir(processes) else {
         return HashSet::new();
     };
     let mut held = HashSet::new();
+    let mut named_by_text = Vec::new();
     let mut note = |file: &Path| {
         if let Ok(within) = file.strip_prefix(store)
             && let Some(std::path::Component::Normal(name)) = within.components().next()
@@ -167,6 +174,11 @@ pub fn runtime_roots(processes: &Path, store: &Path) -> HashSet<String> {
                 }
             }
         }
+        for text in ["cmdline", "environ"] {
+            if let Ok(bytes) = std::fs::read(process.join(text)) {
+                named_by_text.extend(named_in(&bytes, store));
+            }
+        }
         // A mapping's file is the line's last field, after five others.
         if let Ok(maps) = std::fs::read_to_string(process.join("maps")) {
             for line in maps.lines() {
@@ -176,7 +188,32 @@ pub fn runtime_roots(processes: &Path, store: &Path) -> HashSet<String> {
             }
         }
     }
+    held.extend(named_by_text);
     held
+}
+
+/// The store paths `text` names, each as `store`, a slash and a name in
+/// the characters Nix allows one, wherever it starts: after an `=`, a `:`
+/// or nothing.
+fn named_in(text: &[u8], store: &Path) -> Vec<String> {
+    let prefix = format!("{}/", store.display());
+    let prefix = prefix.as_bytes();
+    let allowed = |byte: &u8| byte.is_ascii_alphanumeric() || b"+-._?=".contains(byte);
+    let mut named = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest
+        .windows(prefix.len())
+        .position(|window| window == prefix)
+    {
+        let after = &rest[at + prefix.len()..];
+        let length = after.iter().take_while(|byte| allowed(byte)).count();
+        if length > 0 {
+            let name = String::from_utf8_lossy(&after[..length]);
+            named.push(store.join(name.as_ref()).to_string_lossy().into_owned());
+        }
+        rest = &after[length..];
+    }
+    named
 }
 
 /// How long one step of `nix store gc --max` may take, when there is no

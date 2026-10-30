@@ -413,9 +413,12 @@ fn plain_absolute(path: &Path) -> bool {
 }
 
 /// Nix's garbage, which a machine may keep as a rebuild cache with a
-/// budget. By default none is kept: kept for three days, up to a tenth of
-/// the disk, it held 34 GiB of the 43 nothing held on a laptop whose owner
-/// expected the disk far emptier, and garbage now goes once it exists.
+/// budget. Kept for three days, up to a tenth of the disk, it held 34 GiB
+/// of the 43 nothing held on a laptop whose owner expected the disk far
+/// emptier. Kept not at all, a stick writer's payload went ten minutes
+/// after it was built, while the program that built it was still writing
+/// it. So by default what was built in the last hour stays while the disk
+/// is healthy, up to a twentieth of it, and everything older goes.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Garbage {
@@ -429,10 +432,10 @@ pub struct Garbage {
 
 impl Garbage {
     fn keep() -> Span {
-        Span(Duration::ZERO)
+        Span(Duration::from_hours(1))
     }
     fn budget() -> Size {
-        Size::Percent(0.0)
+        Size::Percent(5.0)
     }
 }
 
