@@ -1409,6 +1409,10 @@
     an account in wheel switches to another system and back with no password; one outside wheel, and
     what isn't a NixOS system in the store, is refused
   '';
+  vm-admins-tune-memory = ''
+    an account in wheel sets the watermarks' spacing, transparent huge pages and the multi-gen LRU
+    to a listed value with no password; one outside wheel can't, and an unlisted value needs one
+  '';
   vm-admins-tune-the-work-slices = ''
     an account in wheel sets build.slice's and machine.slice's weight and cores for the boot with no
     password; one outside wheel can't, and no other unit is opened

@@ -5,6 +5,20 @@
 # documentation gives each value's reasoning: Documentation/admin-guide/
 # sysctl/vm.rst and mm/multigen_lru.rst.
 { pkgs, ... }:
+let
+  # A unit that sets one of the kernel's memory settings to its instance.
+  tune = what: command: {
+    description = "Set the kernel's ${what} to %i";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = command;
+    };
+  };
+  write = file: "${pkgs.bash}/bin/bash -c 'echo %i > ${file}'";
+  space = "${pkgs.procps}/bin/sysctl -w vm.watermark_scale_factor=%i";
+  hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
+  lruGen = "/sys/kernel/mm/lru_gen/enabled";
+in
 {
   # Swap to zstd-compressed RAM, as much as memory holds. At NixOS's half,
   # a 62 GiB laptop's builds filled zram's 31 GiB and sent 0.42 of 2.02 TiB
@@ -78,6 +92,25 @@
   # runaway group is stopped by systemd-oomd below instead. Written rather
   # than left out, so a running kernel that kept a second learns it too.
   systemd.tmpfiles.rules = [ "w /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 0" ];
+
+  # The machine's administrators, agents included since they work as Joel's
+  # account, may change three of the kernel's memory settings for as long as
+  # the machine runs without a password (memory-tune.rules), so an A/B of
+  # them under load waits for no one. On 30 October kswapd gave up on the
+  # whole machine under builds, and the settings that might have caused it,
+  # the watermarks' spacing, transparent huge pages and the multi-gen LRU,
+  # could each be tried only by a switch. Each unit writes its instance and
+  # only a value the rules list: `systemctl start memory-watermarks@50`,
+  # `memory-hugepages@madvise` or `memory-lru-gen@n`. The most one can do is
+  # make reclaim worse until it's put back, never reach another setting. A
+  # switch that changes the sysctls writes them back; otherwise start the
+  # unit again with the value this file sets, and huge pages and the LRU
+  # return to the kernel's own at boot.
+  security.polkit.enable = true;
+  security.polkit.extraConfig = builtins.readFile ./memory-tune.rules;
+  systemd.services."memory-watermarks@" = tune "watermark spacing" space;
+  systemd.services."memory-hugepages@" = tune "transparent huge pages" (write hugepages);
+  systemd.services."memory-lru-gen@" = tune "multi-gen LRU" (write lruGen);
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.
