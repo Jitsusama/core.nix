@@ -627,7 +627,7 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     # The TPM refuses the keys it sealed before, so the guide makes them
     # again, saying why.
     on_screen(machine, "a PIN for alice's new SSH keys", timeout=STEP)
-    assert "the tpm was cleared" in " ".join(screen(machine).split()).lower(), screen(machine)
+    on_screen(machine, "the tpm was cleared")
     enter(machine, key_pin)
     on_screen(machine, "the same PIN again")
     enter(machine, key_pin)
@@ -764,9 +764,10 @@ def reinstalled(
     # The stick the machine was installed from, which it made its own.
     os.environ["STICK_IMAGE"] = rig.stick
     machine.start(allow_reboot=True)
-    # The disk holds the machine, so its stick asks first.
+    # The disk holds the machine, so its stick asks first. Waited for whole,
+    # since a loaded host can catch the screen half drawn.
     on_screen(machine, "A machine is already here")
-    assert "install machine on it again" in " ".join(screen(machine).split()), screen(machine)
+    on_screen(machine, "install machine on it again")
     machine.send_key("down")
     enter(machine, "")
     # The stick copies its system into memory first, as on the first boot.
