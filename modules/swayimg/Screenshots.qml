@@ -6,17 +6,15 @@
 // folder would open nothing.
 import qs
 import QtQuick
-import Qt.labs.folderlistmodel
 
 Provider {
     id: provider
 
-    FolderListModel {
-        id: shots
-        folder: "file://" + provider.settings.folder
-        nameFilters: ["*.png"]
-        showDirs: false
-    }
+    // How many pictures the folder holds, as the one reader of what was
+    // taken says (Taken.qml), which is read as the launcher opens.
+    readonly property int count: Taken.countIn(settings.folder, /\.png$/i)
+
+    Component.onCompleted: Taken.want(settings.folder)
 
     readonly property var looking: thing({
         key: "swayimg:screenshots",
@@ -25,7 +23,7 @@ Provider {
         keywords: "pictures images gallery screenshot",
         glyph: programGlyph("swayimg"),
         hue: "action",
-        note: shots.count === 1 ? "1 picture" : `${shots.count} pictures`,
+        note: provider.count === 1 ? "1 picture" : `${provider.count} pictures`,
         later: true,
         // Newest first, as the folder's names may not sort that way: niri's
         // and the shell's region pictures are named differently.
@@ -34,7 +32,7 @@ Provider {
             settings.folder])
     })
 
-    things: shots.status === FolderListModel.Ready && shots.count > 0 ? [looking] : []
+    things: provider.count > 0 ? [looking] : []
 
     // The picture viewer's own acts in Programs: the screenshots' gallery.
     function programActs(program) {

@@ -16,14 +16,14 @@
 // (Cameras.qml). After its own rows comes its Recent: what was taken
 // lately, screenshots, recordings and the camera's pictures and videos in
 // one list, newest first, nine at most, each the file it is wherever it
-// shows (Files.qml), a picture shown in the drawer, read each time Capture
-// is stepped into and never otherwise (VKCF3Z and Y2YBTS, 2026-10-29).
+// shows (Files.qml), a picture shown in the drawer, from the one reader of
+// those folders (Taken.qml), read as the launcher opens and never
+// otherwise (VKCF3Z and Y2YBTS, 2026-10-29).
 // It holds nothing another program lodges: editing the newest screenshot
 // and looking through them all are GIMP's and the picture viewer's own, in
 // their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
 // program that edits it gives (`fileActs`), as Edit in GIMP.
 import Quickshell
-import Quickshell.Io
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -227,34 +227,26 @@ Provider {
     readonly property string home: Quickshell.env("HOME")
     readonly property var takenIn: [`${home}/Pictures/Screenshots`, `${home}/Videos/Recordings`]
         .concat(settings.camera ? [`${home}/Pictures/Camera`, `${home}/Videos/Camera`] : [])
-    // What was taken lately, newest first.
-    property var taken: []
+    // What was taken lately, newest first, nine at most, from the one
+    // reader of these folders (Taken.qml): read as the shell starts, so
+    // the first step-in draws Recent where it stays, and as the launcher
+    // opens, which is asked here.
+    readonly property var taken: Taken.files.filter(file => provider.takenIn.includes(file.folder))
+        .slice(0, 9).map(file => file.path)
 
-    // Stepped into, so what was taken is read again. It's read once as the
-    // shell starts too, so the first step-in draws Recent where it stays
-    // rather than pushing the rows below it down once find answers.
-    function opened() {
-        taking.running = true;
+    onTakenChanged: changed()
+
+    Component.onCompleted: {
+        for (const folder of provider.takenIn)
+            Taken.want(folder);
     }
 
-    Component.onCompleted: taking.running = true
+    Connections {
+        target: provider.launcher
 
-    // find's lines, a file's time and its path each, newest kept.
-    function tookAll(lines) {
-        taken = lines.split("\n").filter(line => line.includes("\t"))
-            .map(line => ({ at: Number(line.slice(0, line.indexOf("\t"))),
-                path: line.slice(line.indexOf("\t") + 1) }))
-            .sort((a, b) => b.at - a.at).slice(0, 9).map(each => each.path);
-        changed();
-    }
-
-    Process {
-        id: taking
-
-        command: ["find"].concat(provider.takenIn, ["-maxdepth", "1", "-type", "f", "-not",
-            "-name", ".*", "-printf", "%T@\\t%p\\n"])
-        stdout: StdioCollector {
-            onStreamFinished: provider.tookAll(text)
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                Taken.read();
         }
     }
 

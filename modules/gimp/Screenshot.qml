@@ -2,29 +2,20 @@
 // or among GIMP's own acts in Programs (`programActs`), and Edit in GIMP
 // on every picture Capture's Recent holds (`fileActs`). Every
 // screenshot lands in one folder, niri's own and the region ones the shell
-// takes with grim alike, so the folder is watched rather than niri, which
-// tells the shell only of its own. One that was only copied has no file, so
-// there's nothing to open.
+// takes with grim alike, so the folder is read rather than niri asked,
+// which tells the shell only of its own. One that was only copied has no
+// file, so there's nothing to open.
 import qs
 import QtQuick
-import Qt.labs.folderlistmodel
 
 Provider {
     id: provider
 
-    readonly property url folder: "file://" + settings.folder
+    // The newest picture in the folder, as the one reader of what was
+    // taken says it (Taken.qml), which is read as the launcher opens.
+    readonly property var newest: Taken.newestIn(settings.folder, /\.png$/i)
 
-    // Newest first, so the first is the one to edit.
-    FolderListModel {
-        id: shots
-        folder: provider.folder
-        nameFilters: ["*.png"]
-        showDirs: false
-        sortField: FolderListModel.Time
-    }
-
-    readonly property var newest: shots.status === FolderListModel.Ready && shots.count > 0
-        ? { path: shots.get(0, "filePath"), at: shots.get(0, "fileModified") } : null
+    Component.onCompleted: Taken.want(settings.folder)
 
     readonly property var editing: newest === null ? null : thing({
         key: "gimp:screenshot",
@@ -33,12 +24,12 @@ Provider {
         keywords: "picture image mark up draw",
         glyph: String.fromCodePoint(0xf338),
         hue: "action",
-        note: `taken at ${Qt.formatTime(newest.at, "HH:mm")}`,
+        note: `taken at ${Qt.formatTime(new Date(newest.at), "HH:mm")}`,
         later: true,
         run: () => Niri.spawn(["gimp", newest.path])
     })
 
-    // The folder is there from login (home.nix), so it's watched from the
+    // The folder is there from login (home.nix), so it's read from the
     // start.
     things: editing ? [editing] : []
 

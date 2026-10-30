@@ -94,6 +94,7 @@ let
     "Trials.qml"
     "Words.qml"
     "Files.qml"
+    "Taken.qml"
     "Pasting.qml"
     "Notices.qml"
     "Forward.js"
