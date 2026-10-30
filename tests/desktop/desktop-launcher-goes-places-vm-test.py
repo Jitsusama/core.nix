@@ -1709,11 +1709,14 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     assert today["selected"]["verb"] == "join", today
     # Inside Now, its details slide out in the drawer beside the card, as
     # the meeting's one component gives them, each a name and a figure.
+    # It draws them too, though the search before handed it the very same
+    # details, which it let go of as it faded: it once came out empty.
     desktop.launcher_until(
         lambda shown: (
             (shown.get("drawer") or {}).get("title") == "Design Review"
             and shown["drawer"]["out"] is True
             and shown["drawer"]["facts"][:1] == ["When"]
+            and shown["drawer"]["drawn"] == "Design Review"
         )
     )
     desktop.photograph("launcher-meeting-drawer")

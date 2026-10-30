@@ -28,6 +28,13 @@ Floating {
     }
     // Whether it's out, which it fades only for, never for what it shows.
     property bool out: false
+    // Out again, it shows what it was last given, which a row coming back
+    // hands it unchanged: what it showed was let go as it faded, and the
+    // same drawer given again changes nothing to show it by.
+    onOutChanged: {
+        if (out && given)
+            shown = given;
+    }
     // How tall it is, the card's height.
     property real tall: 0
 
