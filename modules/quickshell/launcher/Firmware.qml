@@ -13,10 +13,18 @@
 // of the launcher to the next, so it never shows a version that was. Its
 // three answers, the devices, what LVFS offers them and what's been
 // installed, are worked into rows by Firmware.js. A machine without fwupd
-// has no fwupdmgr, and so no answer. Nothing here installs anything.
+// has no fwupdmgr, and so no answer.
+//
+// A device with an update offered holds Install first (VKCF3Z,
+// 2026-10-30), which asks once, saying what it ends, since firmware can't
+// be taken back; a second Return installs that device's update alone and
+// never restarts, the restart being Joel's, through Power. fwupd's own
+// polkit rules say whether a password is asked: a signed release from
+// LVFS goes in without one. Nothing installs by itself.
 import qs
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.UPower
 import QtQuick
 import "Firmware.js" as Fwupd
 
@@ -39,6 +47,13 @@ Provider {
     property bool failed: false
     // How many of the three commands are still to answer.
     property int waiting: 0
+    // The device whose update is going in, or "": fwupd installs one at a
+    // time, so a second Return can't start a second.
+    property string installing: ""
+    // How each install since the launcher opened ended, by device:
+    // { outcome, reason }, outcome "installed" or "failed", so its row
+    // stays to say so until Firmware is opened again, by the Lists rule.
+    property var installs: ({})
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
     // Whether anyone can see what it says: fwupd is asked only then, so a
@@ -94,16 +109,111 @@ Provider {
         }, () => provider.inside(device));
     }
 
-    // What a device holds a step in: its Version, which Return copies.
+    // What a device holds a step in: Install while an update is offered,
+    // or since one went in while shown, then its Version, which Return
+    // copies.
     function inside(device) {
-        return [copyRow({
+        const rows = device.offered !== null || installs[device.id] !== undefined
+            || installing === device.id ? [installRow(device)] : [];
+        return rows.concat([copyRow({
             key: `firmware:${device.id}:version`,
             name: Words.name("firmware:version"),
             side: device.version,
             copy: device.version,
             hue: "machine",
             glyph: ""
+        })]);
+    }
+
+    // Install, as it stands: ready, asking once; installing, when Return
+    // does nothing more; or dimmed in place once there's nothing to do, as
+    // it waits for the restart, has gone in, or needs the charger while on
+    // battery. One that didn't install says so and can be tried again.
+    function installRow(device) {
+        const id = "verb:firmware:install";
+        const notes = Words.of(id).said ?? {};
+        const ended = installs[device.id] ?? null;
+        const version = device.offered ?? device.version;
+        const row = {
+            key: `${id}:${device.id}`,
+            name: Words.name(id, "", { version: version }),
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            stays: true
+        };
+        // The foot says the row's note, unless an install going in or one
+        // that didn't says more.
+        const noted = (fields, note) => thing(Object.assign(row, fields, {
+            note: note,
+            state: () => provider.standingOf(device, note)
+        }));
+        if (installing === device.id)
+            return noted({ run: () => {} }, notes.installing);
+        if (device.waits !== null)
+            return noted({ gone: true }, notes.waits);
+        if (device.offered === null || ended?.outcome === "installed")
+            return noted({ gone: true }, notes.installed);
+        if (device.charger && UPower.onBattery)
+            return noted({ gone: true }, notes.charger);
+        const final = device.restarts ? notes["final-at-restart"] : notes.final;
+        const sure = () => [thing({
+            key: `${id}:sure:${device.id}`,
+            name: sureOf(device),
+            note: final,
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "alert",
+            stays: true,
+            state: () => provider.standingOf(device, final),
+            run: () => provider.install(device)
         })];
+        const failed = ended?.outcome === "failed";
+        return noted({ verbs: sure, targets: sure }, failed ? notes.failed : "");
+    }
+
+    // What Install asks, as every act that can't be taken back does:
+    // "Install 1.13.0 on System Firmware Now", noted that it can't be
+    // undone, and that it finishes at a restart where it does.
+    function sureOf(device) {
+        return String(Words.of("verb:firmware:install").sure ?? "").replace("{version}", device.offered)
+            .replace("{device}", device.name);
+    }
+
+    // What the foot says of an install: "installing" while it goes in,
+    // "didn't install" after one that didn't, or else the row's own note,
+    // as the warning that it can't be undone or "restart to finish".
+    function standingOf(device, note) {
+        const notes = Words.of("verb:firmware:install").said ?? {};
+        if (installing === device.id)
+            return notes.installing;
+        return installs[device.id]?.outcome === "failed" ? notes.failed : note;
+    }
+
+    // Puts in the update offered to this device alone, without fwupd's
+    // asking about a restart, unless another is going in.
+    function install(device) {
+        if (installing !== "" || device.offered === null)
+            return;
+        installing = device.id;
+        installer.command = [fwupdmgr, "update", device.id, "--assume-yes", "--no-reboot-check"];
+        installer.running = true;
+        answered();
+    }
+
+    // An install ended: what fwupd says now is asked again while shown,
+    // so the row says whether it waits for the restart or has gone in.
+    function installEnded(code) {
+        const ended = Object.assign({}, installs);
+        ended[installing] = code === 0 ? { outcome: "installed", reason: "" }
+            : { outcome: "failed", reason: Fwupd.reason(installerErr.text) };
+        installs = ended;
+        installing = "";
+        if (shown) {
+            said = null;
+            look();
+        }
+        answered();
     }
 
     // What the drawer shows of a device: what it is and where it stands,
@@ -118,7 +228,11 @@ Provider {
             facts.push({ label: Words.name("firmware:last-updated"), value: dated(device.updated) });
         if (device.offered !== null)
             facts.push({ label: Words.name("firmware:offered"), value: device.offered });
-        return { title: device.name, facts: facts, body: device.notes };
+        const ended = installs[device.id] ?? null;
+        const failed = ended?.outcome === "failed" && ended.reason !== ""
+            ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";
+        return { title: device.name, facts: facts,
+            body: [failed, device.notes].filter(part => part !== "").join("\n\n") };
     }
 
     // A day, as Quests says one: "29 Oct", or "29 Oct 2025" in another year.
@@ -177,9 +291,30 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.said = null;
+                provider.installs = ({});
+            }
         }
+    }
+
+    // Plugged in or out while shown, an Install that needs the charger
+    // lights or dims in place.
+    Connections {
+        target: UPower
+
+        function onOnBatteryChanged() {
+            if (provider.shown && provider.said !== null)
+                provider.answered();
+        }
+    }
+
+    Process {
+        id: installer
+        stderr: StdioCollector {
+            id: installerErr
+        }
+        onExited: code => provider.installEnded(code)
     }
 
     Process {
