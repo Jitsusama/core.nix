@@ -22,6 +22,10 @@ Singleton {
     readonly property var running: jobs.filter(job => job.state === "running")
     readonly property var waiting: jobs.filter(job => job.state === "waiting")
 
+    // What the test waits on before opening the launcher, so a write heard
+    // late isn't counted as one the closed launcher made something of.
+    onSaidChanged: Report.say(`heard jobs ${said?.machine?.availableGib ?? "nothing"}`)
+
     // A pi session's jobs, by its whole id.
     function of(session) {
         return jobs.filter(job => job.owner?.session === session);
