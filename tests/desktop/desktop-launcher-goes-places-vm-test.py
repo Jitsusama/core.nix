@@ -878,6 +878,11 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
         )
     )
     desktop.photograph("launcher-runs")
+    # A fleet at work draws nothing while it's only looked at: what it says
+    # changes as its files do, not every frame.
+    assert (drawn := drawn_held_still(desktop)) <= 1, (
+        f"Subagents drew {drawn} frames in three seconds left still on a fleet at work"
+    )
     # Stepped into, its members after the way to its session.
     desktop.step_in()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
@@ -896,6 +901,9 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
         )
     )
     desktop.photograph("launcher-run-members")
+    assert (drawn := drawn_held_still(desktop)) <= 1, (
+        f"a fleet drew {drawn} frames in three seconds left still on its member at work"
+    )
     # Its answer, read in a terminal named for the run and the member.
     machine.send_key("ret")
     reading = "paint-crew \u00b7 roller"
@@ -4483,6 +4491,18 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
 
 
+def drawn_held_still(desktop: Desktop) -> int:
+    """Count the frames the open launcher draws in three seconds left still.
+
+    The last key's frame lands first. The foot's clock may turn its minute in them, once.
+    """
+    desktop.as_account("qs ipc call launcher frames")
+    time.sleep(1)
+    began = int(desktop.as_account("qs ipc call launcher frames"))
+    time.sleep(3)
+    return int(desktop.as_account("qs ipc call launcher frames")) - began
+
+
 def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
     """The launcher left open and still draws nothing, its caret steady rather than blinking."""
     machine = desktop.machine
@@ -4490,19 +4510,14 @@ def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
     desktop.launcher_ready()
     machine.send_chars("sou")
     desktop.launcher_until(lambda shown: shown["typed"] == "sou")
-    # Let the last letter's frame land, then count three seconds of
-    # stillness, in which a blinking caret draws six times. The foot's
-    # clock may turn its minute in them, once.
-    desktop.as_account("qs ipc call launcher frames")
-    time.sleep(1)
-    began = int(desktop.as_account("qs ipc call launcher frames"))
-    time.sleep(3)
-    drawn = int(desktop.as_account("qs ipc call launcher frames")) - began
+    # A blinking caret would draw six times in the three seconds.
+    drawn = drawn_held_still(desktop)
+    still = int(desktop.as_account("qs ipc call launcher frames"))
     # A letter draws, so the count sees frames at all.
     machine.send_chars("n")
     desktop.launcher_until(lambda shown: shown["typed"] == "soun")
     retry(
-        lambda _: int(desktop.as_account("qs ipc call launcher frames")) > began + drawn,
+        lambda _: int(desktop.as_account("qs ipc call launcher frames")) > still,
         timeout=dt.timedelta(seconds=10),
     )
     machine.send_key("esc")
