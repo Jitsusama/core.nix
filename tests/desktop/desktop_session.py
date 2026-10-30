@@ -503,7 +503,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_until(holds)
 
     def answer(self, typed: str) -> None:
-        """Open the launcher, and ask it what's typed."""
+        """Open the launcher, and ask it what's typed.
+
+        It waits for the launcher to be closed first, since opening is a toggle: an Escape
+        sent just before that a loaded guest hears late would otherwise land after the toggle
+        had closed the launcher it was meant to close, and nothing would open.
+        """
+        self.launcher_until(lambda shown: not shown["open"])
         self.as_account("qs ipc call launcher toggle")
         self.launcher_ready()
         self.type_in(typed)
