@@ -284,7 +284,10 @@ mod tests {
         assert_eq!(read(&every), "");
         assert_eq!(read(&asked), "ssh-ng://home\n");
         assert_eq!(read(&store), "");
+        // Gone: nothing listens on port 0, while a port a dropped listener
+        // freed can be taken at once by another test binding one.
         drop(listening);
+        machines.standing[0].address = "127.0.0.1:0".to_owned();
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&asked), "");
