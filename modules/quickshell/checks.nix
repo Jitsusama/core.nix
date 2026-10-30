@@ -331,6 +331,24 @@ onLinux {
     touch $out
   '';
 
+  # The launcher makes a text ready to match without growing the shell's
+  # memory by more than a few kilobytes a text, kept as it keeps them
+  # (tests/fuzzy-light.qml), in a fresh process of Qt's own JavaScript
+  # engine reading its own memory.
+  the-launcher-makes-texts-ready-lightly =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-makes-texts-ready-lightly" { } ''
+      cp ${../../tests/fuzzy-light.qml} fuzzy-light.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml fuzzy-light.qml
+      touch $out
+    '';
+
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place

@@ -121,6 +121,37 @@ function begins(mask, ws) {
 
 // A letter or a digit, either side of a hyphen that joins a word.
 const JOINED = /[a-z0-9\u00c0-\u024f]/i;
+const HYPHEN = 45;
+
+// What kindOf and lower case say of each ASCII character, worked out once,
+// so making a text ready makes no string for each of its letters. Those,
+// and the folded text grown a letter at a time, which the engine keeps as
+// a chain of every piece it grew from, were most of what making a text
+// ready allocated: 20,000 texts peaked the engine's heap at 263 MB, against
+// 65 MB without them (Qt 6.11, QV4_MM_STATS).
+const ASCII = 128;
+const asciiKinds = new Int8Array(ASCII);
+const asciiLower = new Uint16Array(ASCII);
+for (let code = 0; code < ASCII; code++) {
+    asciiKinds[code] = kindOf(String.fromCharCode(code));
+    asciiLower[code] = lowerOf(String.fromCharCode(code));
+}
+
+// A character's code in lower case, where lower case is one character.
+function lowerOf(c) {
+    const l = c.toLowerCase();
+    return (l.length === 1 ? l : c).charCodeAt(0);
+}
+
+// Character codes as one string, made at once rather than a letter at a
+// time, in pieces short enough to pass as a call's arguments.
+const PIECE = 4096;
+function textOf(codes) {
+    let text = "";
+    for (let at = 0; at < codes.length; at += PIECE)
+        text += String.fromCharCode(...codes.slice(at, at + PIECE));
+    return text;
+}
 
 // An item ready to be matched: its text, its letters in lower case (one
 // for one, so positions line up) as a string and as character codes, each
@@ -132,24 +163,20 @@ function prepare(text) {
     const n = source.length;
     const bonus = new Int8Array(n);
     const codes = new Uint16Array(n);
-    let folded = "";
     let mask = 0;
     let first = 0;
     let before = white;
     for (let j = 0; j < n; j++) {
-        const c = source[j];
-        const kind = kindOf(c);
+        const code = source.charCodeAt(j);
+        const kind = code < ASCII ? asciiKinds[code] : kindOf(source[j]);
         bonus[j] = bonusFor(before, kind);
         before = kind;
-        const l = c.toLowerCase();
-        const f = l.length === 1 ? l : c;
-        folded += f;
-        codes[j] = f.charCodeAt(0);
+        codes[j] = code < ASCII ? asciiLower[code] : lowerOf(source[j]);
         mask |= bitOf(codes[j]);
         if (bonus[j] > 0) first |= bitOf(codes[j]);
     }
-    return Object.assign({ text: source, folded: folded, codes: codes, bonus: bonus, mask: mask,
-        starts: first }, closedUp(source, folded, bonus));
+    return Object.assign({ text: source, folded: textOf(codes), codes: codes, bonus: bonus,
+        mask: mask, starts: first }, closedUp(source, codes, bonus));
 }
 
 // Texts already made ready, by their text, so a row made again as its list
@@ -183,15 +210,15 @@ function kept(text) {
 // The text with each hyphen inside a word taken out, its letters' places in
 // the text, and their bonuses as the closed-up word has them, or nothing
 // for a text without such a hyphen.
-function closedUp(source, folded, bonus) {
+function closedUp(source, codes, bonus) {
     const n = source.length;
-    let closed = "";
+    const left = [];
     const at = [];
     for (let j = 0; j < n; j++) {
-        const inside = source[j] === "-" && j > 0 && j < n - 1
+        const inside = codes[j] === HYPHEN && j > 0 && j < n - 1
             && JOINED.test(source[j - 1]) && JOINED.test(source[j + 1]);
         if (!inside) {
-            closed += folded[j];
+            left.push(codes[j]);
             at.push(j);
         }
     }
@@ -199,7 +226,7 @@ function closedUp(source, folded, bonus) {
     const closedBonus = new Int8Array(at.length);
     for (let k = 0; k < at.length; k++)
         closedBonus[k] = k > 0 && at[k] !== at[k - 1] + 1 ? 0 : bonus[at[k]];
-    return { closed: closed, closedAt: at, closedBonus: closedBonus };
+    return { closed: textOf(left), closedAt: at, closedBonus: closedBonus };
 }
 
 // What a word is worth landing at `at`: fzf's score for a run of letters,

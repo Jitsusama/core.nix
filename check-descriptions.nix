@@ -1146,6 +1146,10 @@
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';
+  the-launcher-makes-texts-ready-lightly = ''
+    making a text ready to match and keeping it grows the launcher's memory by at most 10 KB a
+    text, where one grown a letter at a time took 14
+  '';
   the-launcher-means-one-thing-a-word = ''
     no name, word or question in the launcher's vocabulary finds two things at once unless it's
     listed as meant to, and each clash, unknown name, missing glyph and thing with no place is
