@@ -1,7 +1,7 @@
 // Drives Quickshell's desktop entries
 // (modules/quickshell/desktop-entries-heard-only-when-theirs.patch) through
 // three changes: a file written beside the folders that hold the entries,
-// as the home folder's dotfiles and the recent files' list are; an entry
+// as the home folder's hidden files and the recent files' list are; an entry
 // added to one; and a link on the way to one pointed elsewhere, as a switch
 // points the system's profile. The last two are heard, each bringing its
 // entry. It exits 0 once every case holds, and otherwise 1, saying which
@@ -38,7 +38,7 @@ ShellRoot {
         // four times over before it's taken as holding.
         what: "nothing read again for a file written beside the entries",
         does: () => `echo x > ${root.data}/.list.new && mv ${root.data}/.list.new ${root.data}/list`
-            + ` && echo x > ${root.home}/.dotfile`,
+            + ` && echo x > ${root.home}/.settings`,
         quiet: true,
         holds: () => root.has("first") && !root.has("added")
     }, {

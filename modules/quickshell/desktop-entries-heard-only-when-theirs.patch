@@ -5,7 +5,7 @@ The desktop entry monitor watched each folder holding desktop entries and
 every folder above it, up to the root, so a folder replaced or a link
 pointed elsewhere was heard. But a watch on a folder hears every entry in
 it, so any file made, renamed or removed beside the way down read every
-desktop entry again: a dotfile written in the home folder, the recent
+desktop entry again: a hidden file written in the home folder, the recent
 files' list renamed over in ~/.local/share, anything in /run or /etc.
 
 Each folder above is now watched only for the entry in it that leads down
@@ -59,7 +59,7 @@ index bed6ef1..a64203b 100644
 +
 +// Each folder above a desktop path is watched only for the one entry in it
 +// that leads down to the path, so a file written beside it (the home
-+// folder's dotfiles, the recent files' list in ~/.local/share, anything in
++// folder's hidden files, the recent files' list in ~/.local/share, anything in
 +// /run) doesn't read every desktop entry again.
 +void DesktopEntryMonitor::watchParents(const QString& path) {
 +	auto child = QFileInfo(path).absoluteFilePath();

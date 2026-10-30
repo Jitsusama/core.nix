@@ -239,7 +239,7 @@
   '';
   desktop-entries-are-read-only-when-theirs-change = ''
     the shell reads the desktop entries again when an entry is added or a link on the way to them
-    moves, and not for a file written beside them, as the home folder's dotfiles are
+    moves, and not for a file written beside them, as the home folder's hidden files are
   '';
   device-check-passes-clippy = ''
     clippy finds nothing in device-check, device-check-disk or their tests

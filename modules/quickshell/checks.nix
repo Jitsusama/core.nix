@@ -1963,7 +1963,7 @@ onLinux {
   # The desktop entries are read again only when a folder holding them
   # changes, as tests/desktop-entries.qml drives them in the Quickshell the
   # machine runs (desktop-entries-heard-only-when-theirs.patch): a file
-  # written beside them, as a dotfile in the home folder is, reads nothing,
+  # written beside them, as a hidden file in the home folder is, reads nothing,
   # while an entry added and a link on the way pointed elsewhere each read
   # them once, counted from Quickshell's log of each scan.
   desktop-entries-are-read-only-when-theirs-change =
