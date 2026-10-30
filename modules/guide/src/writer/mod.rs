@@ -7,6 +7,7 @@
 //! writer keeps (carried).
 
 pub mod carried;
+pub mod roots;
 
 use crate::progress::Meter;
 use std::fmt::Write as _;
