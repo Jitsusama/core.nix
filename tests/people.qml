@@ -327,6 +327,19 @@ ShellRoot {
                     root.fail(`addresses made ready again: ${root.names(anew)}`);
                     return;
                 }
+                // Nor is anyone's drawer made with them: it's made when it's
+                // first shown, and once.
+                const eager = people.everyone.filter(row => {
+                    const drawer = Object.getOwnPropertyDescriptor(row, "drawer");
+                    if (!drawer || !drawer.get)
+                        return true;
+                    const shown = row.drawer;
+                    return row.drawer !== shown;
+                });
+                if (eager.length > 0) {
+                    root.fail(`drawers made with everyone: ${root.names(eager)}`);
+                    return;
+                }
                 root.waiting = "the follow ended";
                 stopping.running = true;
             }
