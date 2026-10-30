@@ -182,6 +182,7 @@ onLinux {
           "time"
           "network"
           "battery"
+          "devices"
           "volume"
           "spend"
           "pi"
@@ -2069,6 +2070,8 @@ onLinux {
         ]}
         EOF
         cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./Devices.js} Devices.js
+        cp ${./Crossing.js} Crossing.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
@@ -2229,9 +2232,10 @@ onLinux {
       touch $out
     '';
 
-  # Every mark the margin can show is the theme's drawing of it, standing the
-  # grid's full height and centred across it as Qt draws it, so a row of
-  # them is level and each has the same room either side (tests/drawings.qml).
+  # Every mark the margin can show, each kind a device running low is drawn
+  # as among them, is the theme's drawing of it, standing the grid's full
+  # height and centred across it as Qt draws it, so a row of them is level
+  # and each has the same room either side (tests/drawings.qml).
   the-margins-marks-are-drawn-level =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2251,6 +2255,8 @@ onLinux {
     pkgs.runCommandLocal "the-margins-marks-are-drawn-level" { } ''
       cp ${../../tests/drawings.qml} drawings.qml
       cp ${drawings} Drawings.js
+      cp ${./Devices.js} Devices.js
+      cp ${./Crossing.js} Crossing.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -2272,6 +2278,57 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml stack.qml
+      touch $out
+    '';
+
+  # A piece standing for several things is a fact for each, known by its
+  # own mark, as tests/facts.qml holds Facts.js to.
+  a-piece-may-stand-for-several =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-piece-may-stand-for-several" { } ''
+      cp ${../../tests/facts.qml} facts.qml
+      cp ${./Facts.js} Facts.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml facts.qml
+      touch $out
+    '';
+
+  # A battery that reports only its charge, as a Bluetooth device's does,
+  # is low and then critical once each, as tests/crossing.qml holds.
+  a-low-charge-is-said-once =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-low-charge-is-said-once" { } ''
+      cp ${../../tests/crossing.qml} crossing.qml
+      cp ${./Crossing.js} Crossing.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml crossing.qml
+      touch $out
+    '';
+
+  # Each Bluetooth device running low is a thing of its own, by its own
+  # charge, name and kind, as tests/devices.qml holds Devices.js to with
+  # plain objects standing in for BlueZ's devices, since the desktop VM has
+  # no Bluetooth.
+  a-low-device-is-its-own-notice =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-low-device-is-its-own-notice" { } ''
+      cp ${../../tests/devices.qml} devices.qml
+      cp ${./Devices.js} Devices.js
+      cp ${./Crossing.js} Crossing.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml devices.qml
       touch $out
     '';
 

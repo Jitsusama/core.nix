@@ -2,9 +2,11 @@
 // `the-margins-marks-are-drawn-level` check writes Drawings.js beside this
 // file, with every mark an overview piece of the graphical account shows
 // (`marks`) and the theme's drawing of each mark (`drawn`, empty for none),
-// then runs `qml -platform offscreen drawings.qml`.
+// copies Devices.js beside it for the kinds a device is drawn as, then runs
+// `qml -platform offscreen drawings.qml`.
 import QtQuick
 import QtQuick.Shapes
+import "Devices.js" as Devices
 import "Drawings.js" as Drawings
 
 Item {
@@ -56,6 +58,13 @@ Item {
         for (const mark of Drawings.marks) {
             if (!Drawings.drawn[mark])
                 failures.push(`${mark} has no drawing`);
+        }
+
+        // So has every kind a device running low is drawn as in its place
+        // (pieces/Devices.qml), which no overview piece names.
+        for (const kind of Devices.kinds()) {
+            if (!Drawings.drawn[kind])
+                failures.push(`${kind}, a device's kind, has no drawing`);
         }
 
         // Each touches the grid's top and bottom, so all stand the same
