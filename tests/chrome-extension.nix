@@ -38,6 +38,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       "/etc/opt/chrome/native-messaging-hosts/jitsusama.chrome_open_tabs.json";
     environment.systemPackages = [
       pkgs.chromium
+      pkgs.curl
       pkgs.xvfb-run
       (pkgs.callPackage ../modules/chrome/recent-sites/package.nix { })
       (pkgs.runCommandLocal "chromium-takes-the-open-tabs-extension" { } ''
