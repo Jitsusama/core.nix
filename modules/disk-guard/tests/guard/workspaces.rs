@@ -285,6 +285,68 @@ fn a_parked_quests_tree_is_over_once_its_holders_have_ended() {
     );
 }
 
+#[test]
+fn a_quests_trees_are_over_once_none_of_its_sessions_lives() {
+    // A quest no session works on leaves its trees' builds a cache nobody
+    // uses, so they go with its last session, unless a quest with a live
+    // session lists the same tree.
+    let root = tempfile::tempdir().unwrap();
+    let (sessions, quests) = (root.path().join("sessions"), root.path().join("quests"));
+    fs::create_dir_all(&sessions).unwrap();
+    let session = |name: &str, quest: &str, process: &str| {
+        let body = format!(r#"{{"quest":"{quest}","process":{{{process}}}}}"#);
+        fs::write(sessions.join(format!("{name}.json")), body).unwrap();
+    };
+    let worked = r#""pid":100,"bootToken":"this","startTicks":500"#;
+    let ended = r#""pid":200,"bootToken":"this","startTicks":500"#;
+    let reused = r#""pid":100,"bootToken":"this","startTicks":900"#;
+    let before = r#""pid":100,"bootToken":"last","startTicks":500"#;
+    let untimed = r#""pid":300,"bootToken":"this""#;
+    session("a", "QEST-20261002-AAA111", worked);
+    session("b", "QEST-20261002-BBB222", ended);
+    session("c", "QEST-20261002-CCC333", reused);
+    session("d", "QEST-20261002-DDD444", before);
+    session("e", "QEST-20261002-EEE555", untimed);
+    fs::write(sessions.join("torn.json"), "{\"quest\":").unwrap();
+    let listing = |id: &str, status: &str, trees: &[&str]| {
+        let listed: String = trees
+            .iter()
+            .map(|tree| format!("  - path: /t/{tree}\n"))
+            .collect();
+        quest(&quests, id, &format!("status: {status}\ntrees:\n{listed}"));
+    };
+    listing("QEST-20261002-AAA111", "active", &["worked", "shared"]);
+    listing("QEST-20261002-BBB222", "active", &["ended", "shared"]);
+    listing("QEST-20261002-CCC333", "active", &["reused"]);
+    listing("QEST-20261002-DDD444", "active", &["before"]);
+    listing("QEST-20261002-EEE555", "active", &["untimed"]);
+    listing("QEST-20261002-FFF666", "active", &["unworked"]);
+    // 100 runs as the process that started at tick 500; 200 is gone.
+    let alive = |pid: u32, ticks: u64| pid == 100 && ticks == 500;
+    let over = disk_guard::workspaces::idle_trees(&quests, &sessions, "this", alive);
+    assert_eq!(
+        over,
+        ["/t/before", "/t/ended", "/t/reused", "/t/unworked"].map(PathBuf::from),
+        "a quest keeps its trees while a session of this boot runs as it started"
+    );
+}
+
+#[test]
+fn with_no_session_records_no_quest_is_idle() {
+    let root = tempfile::tempdir().unwrap();
+    let quests = root.path().join("quests");
+    quest(
+        &quests,
+        "QEST-20261002-AAA111",
+        "status: active\ntrees:\n  - path: /t/a\n",
+    );
+    let over =
+        disk_guard::workspaces::idle_trees(&quests, &root.path().join("absent"), "this", |_, _| {
+            false
+        });
+    assert!(over.is_empty(), "{over:?}");
+}
+
 /// A repository outside the workspace with a worktree linked into it, a
 /// clone of its own inside, and a repository whose worktree is also inside.
 pub(crate) fn linked_fixture(root: &Path) -> (PathBuf, PathBuf) {

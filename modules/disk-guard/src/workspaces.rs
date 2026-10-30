@@ -4,6 +4,7 @@ use crate::clock::{Awake, local};
 use crate::plan::{Candidate, Class};
 use regex_lite::Regex;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -271,6 +272,78 @@ pub fn unheld_trees(
             found.push(record.path);
         }
     }
+    found
+}
+
+/// A coding session the harness records as working on a quest, and its
+/// process as the kernel started it.
+#[derive(Deserialize)]
+struct Session {
+    quest: Option<String>,
+    process: Option<Started>,
+}
+
+/// A session's process: its pid, the boot it ran in, and when it started,
+/// in clock ticks since boot, as `/proc/<pid>/stat` gives it. Records from
+/// before the harness kept the ticks have none.
+#[derive(Deserialize)]
+struct Started {
+    pid: u32,
+    #[serde(rename = "bootToken")]
+    boot: Option<String>,
+    #[serde(rename = "startTicks")]
+    ticks: Option<u64>,
+}
+
+/// The trees quests still going list while none of their sessions lives,
+/// read from the harness's session records in `sessions`, one JSON file per
+/// session naming its `quest` and its `process`. A quest no session works
+/// on leaves its trees' builds a cache nobody uses until one picks it up
+/// again, so they go with the last session, as a tree's go with its
+/// holders. A tree a quest with a live session lists too is kept. A
+/// session lives while its process runs in this boot, `boot`, as the one
+/// that started at its ticks, which `alive` says; one of this boot whose
+/// ticks weren't kept can't be ruled out, so lives. With no records to
+/// read, every quest may be worked on, so none is idle.
+pub fn idle_trees(
+    quests: &Path,
+    sessions: &Path,
+    boot: &str,
+    alive: impl Fn(u32, u64) -> bool,
+) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(sessions) else {
+        return Vec::new();
+    };
+    let live: HashSet<String> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| serde_json::from_slice::<Session>(&fs::read(entry.path()).ok()?).ok())
+        .filter(|session| {
+            session.process.as_ref().is_some_and(|process| {
+                process.boot.as_deref() == Some(boot)
+                    && process.ticks.is_none_or(|ticks| alive(process.pid, ticks))
+            })
+        })
+        .filter_map(|session| session.quest)
+        .collect();
+    let going: Vec<(bool, Vec<PathBuf>)> = quest_frontmatters(quests)
+        .into_iter()
+        .filter(|(_, _, over)| !over)
+        .map(|(id, frontmatter, _)| (live.contains(&id), listed(&frontmatter)))
+        .collect();
+    let kept: HashSet<&PathBuf> = going
+        .iter()
+        .filter(|(live, _)| *live)
+        .flat_map(|(_, trees)| trees)
+        .collect();
+    let mut found: Vec<PathBuf> = going
+        .iter()
+        .filter(|(live, _)| !live)
+        .flat_map(|(_, trees)| trees)
+        .filter(|tree| !kept.contains(tree))
+        .cloned()
+        .collect();
+    found.sort();
+    found.dedup();
     found
 }
 

@@ -39,6 +39,8 @@ let
     trees = "${stateHome}/pi/agentic-harness.pi/work/trees";
     # The broker's record of each tree it cut, and the sessions holding it.
     records = "${stateHome}/pi/agentic-harness.pi/work/cut";
+    # Its record of each coding session and the quest it works on.
+    sessions = "${stateHome}/pi/agentic-harness.pi/quest-workflow/sessions";
     workspaces = "${cacheHome}/pi/agentic-harness.pi/quest-workspace";
     quests = "${dataHome}/pi/agentic-harness.pi/quest-workflow/quests";
   };
@@ -157,7 +159,10 @@ in
           path = harness.workspaces;
           inherit (harness) quests;
           trees = harness.records;
-        };
+        }
+        # A session's record names its process by the kernel's boot id and
+        # start ticks only on Linux, so a Mac's sessions can't be told live.
+        // lib.optionalAttrs isLinux { inherit (harness) sessions; };
         # A Mac's /tmp and /var/tmp are links into /private.
         tmp = lib.mkDefault {
           kind = "temp";
