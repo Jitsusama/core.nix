@@ -19,8 +19,12 @@
 # nearest directory that is. An IPC call's connection was deleted as soon
 # as its reply was handed over, cutting off a reply longer than the
 # socket's buffer, so ipc-replies-whole.patch closes it only once the reply
-# is written. All four are laid over the machine's packages, so the shell,
-# the greeter and the lock all run them.
+# is written. The desktop entries were read again whenever anything changed
+# in a folder above the ones holding them, as the home folder does with
+# every dotfile written, so desktop-entries-heard-only-when-theirs.patch
+# hears a folder above only for the entry leading down to them. All five
+# are laid over the machine's packages, so the shell, the greeter and the
+# lock all run them.
 #
 # The launcher works out sums and measures with libqalculate, in the shell's
 # own process rather than a calculator program started for each key, as a
@@ -77,6 +81,7 @@ in
       quickshell = prev.quickshell.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
           ./activation-token.patch
+          ./desktop-entries-heard-only-when-theirs.patch
           ./fileview-quiet.patch
           ./fileview-watch-nearest.patch
           ./ipc-replies-whole.patch

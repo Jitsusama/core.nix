@@ -237,6 +237,10 @@
     Bluetooth input device's link and inputs, and a wired keyboard's or mouse's polling rate and
     inputs as the devices' own report them, and writes the launcher's JSON in order
   '';
+  desktop-entries-are-read-only-when-theirs-change = ''
+    the shell reads the desktop entries again when an entry is added or a link on the way to them
+    moves, and not for a file written beside them, as the home folder's dotfiles are
+  '';
   device-check-passes-clippy = ''
     clippy finds nothing in device-check, device-check-disk or their tests
   '';

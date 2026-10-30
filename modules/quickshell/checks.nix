@@ -1960,6 +1960,40 @@ onLinux {
     touch $out
   '';
 
+  # The desktop entries are read again only when a folder holding them
+  # changes, as tests/desktop-entries.qml drives them in the Quickshell the
+  # machine runs (desktop-entries-heard-only-when-theirs.patch): a file
+  # written beside them, as a dotfile in the home folder is, reads nothing,
+  # while an entry added and a link on the way pointed elsewhere each read
+  # them once, counted from Quickshell's log of each scan.
+  desktop-entries-are-read-only-when-theirs-change =
+    pkgs.runCommandLocal "desktop-entries-are-read-only-when-theirs-change" { }
+      ''
+        entry() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=true\n' "$1"; }
+        mkdir -m 700 runtime
+        mkdir -p home data/applications entries-first/share/applications \
+          entries-next/share/applications
+        entry First > data/applications/first.desktop
+        entry System > entries-first/share/applications/system.desktop
+        entry Next > entries-next/share/applications/next.desktop
+        ln -s "$PWD/entries-first" entries
+        cp ${../../tests/desktop-entries.qml} shell.qml
+        export HOME=$PWD/home XDG_DATA_HOME=$PWD/data XDG_DATA_DIRS=$PWD/entries/share
+        export ENTRIES_LINK=$PWD/entries XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8
+        export QT_QPA_PLATFORM=offscreen FONTCONFIG_FILE=${noFonts}
+        export PATH=${pkgs.coreutils}/bin:$PATH
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml --log-rules 'quickshell.desktopentry.debug=true' \
+          > said 2>&1 || { cat said; exit 1; }
+        cat said
+        scans=$(grep -c 'Directory change detected, performing full rescan' said || true)
+        [ "$scans" = 2 ] || {
+          echo "the desktop entries were read $scans times for 2 changes of their own"
+          exit 1
+        }
+        touch $out
+      '';
+
   # A row's graph is ten braille characters over a dim track of every dot,
   # a bar filling from the left, a spark from the right with the newest last
   # and a strip a reading for each member, in the warning colour at 95% or
