@@ -28,7 +28,9 @@
 # from the same list, handed over in nix.lua.
 #
 # The launcher finds the screenshots folder's gallery by typing, and holds
-# it among the picture viewer's own acts (Screenshots.qml).
+# it among the picture viewer's own acts (Screenshots.qml). Its Recent
+# there is led by the picture each swayimg shows now, which init.lua keeps
+# and Return goes to.
 { niri, quickshell }:
 {
   config,
@@ -47,6 +49,9 @@ let
 
   # A colour as swayimg's number, 0xAARRGGBB, written as a number rather
   # than a string, opaque unless the theme or the caller gives it an alpha.
+  # Where each swayimg keeps the picture it shows now (init.lua).
+  viewing = "${config.xdg.stateHome}/swayimg/viewing";
+
   argb =
     alpha: colour:
     let
@@ -250,6 +255,7 @@ let
     keys = map (key: key // { face = drawn key.chord; }) keys;
     # A gallery cell, about ten across a window the width of the screen.
     thumbnail = 160;
+    inherit viewing;
     wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
     gio = lib.getExe' pkgs.glib "gio";
     gimp = {
@@ -264,9 +270,23 @@ let
 in
 {
   imports = [
+    ../quickshell/recents.nix
     ../theme/home.nix
     niri
     quickshell
+  ];
+
+  # The picture each swayimg shows now, for its Recent in the launcher to
+  # lead with, kept as mpv keeps what it plays (../mpv/home.nix says why
+  # in the state home); its other pictures stay the desktop's list of
+  # files opened lately.
+  systemd.user.tmpfiles.rules = [ "d ${viewing} 0700 - - -" ];
+  jitsusama.quickshell.launcher.recents = [
+    {
+      app = "swayimg";
+      kind = "file";
+      opened = import ../quickshell/kept-in.nix { inherit lib pkgs; } viewing;
+    }
   ];
 
   programs.swayimg = {

@@ -192,19 +192,7 @@ in
     {
       app = "mpv";
       kind = "file";
-      opened = [
-        (lib.getExe' pkgs.findutils "find")
-        playing
-        "-name"
-        "[0-9]*"
-        "-type"
-        "f"
-        "-exec"
-        (lib.getExe' pkgs.coreutils "cat")
-        "--"
-        "{}"
-        "+"
-      ];
+      opened = import ../quickshell/kept-in.nix { inherit lib pkgs; } playing;
     }
   ];
 

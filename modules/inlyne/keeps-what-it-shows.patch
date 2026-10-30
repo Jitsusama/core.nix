@@ -1,0 +1,126 @@
+Keep the file shown for the desktop to read
+
+Nothing outside inlyne could tell which file it shows: its command line
+goes stale once a link opens another file in place, and its title names
+the file from its repository. It now keeps the file it shows, with its
+process, in inlyne/showing/<pid> under the state home, from the start
+and on each new page but its keys page, and removes it as it quits.
+
+diff -ru b/src/main.rs c/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -24,6 +24,7 @@
+ pub mod positioner;
+ pub mod renderer;
+ pub mod selection;
++mod showing;
+ pub mod table;
+ #[cfg(test)]
+ pub mod test_utils;
+@@ -157,6 +158,8 @@
+         let keycombos = KeyCombos::new(opts.keybindings.clone())?;
+ 
+         let file_path = opts.history.get_path().to_owned();
++        showing::clear_gone();
++        showing::keep(&file_path);
+ 
+         let event_loop = EventLoopBuilder::<InlyneEvent>::with_user_event().build();
+ 
+@@ -269,6 +272,12 @@
+     }
+ 
+     fn update_file(&mut self, path: &Path, contents: String) {
++        // The keys page is inlyne's own, so the file kept stays the one
++        // read before it, which going back returns to.
++        let keys = self.opts.keys_page.as_ref().and_then(|page| page.canonicalize().ok());
++        if path.canonicalize().ok() != keys {
++            showing::keep(path);
++        }
+         self.window.set_title(&utils::format_title(path));
+         self.watcher.update_file(path, contents);
+         self.renderer.set_scroll_y(0.0);
+@@ -338,7 +347,10 @@
+                 }
+                 Event::WindowEvent { event, .. } => match event {
+                     WindowEvent::Resized(size) => pending_resize = Some(size),
+-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
++                    WindowEvent::CloseRequested => {
++                        showing::forget();
++                        *control_flow = ControlFlow::Exit;
++                    }
+                     WindowEvent::MouseWheel { delta, .. } => match delta {
+                         MouseScrollDelta::PixelDelta(pos) => {
+                             Self::scroll_pixels(&mut self.renderer, &self.window, pos.y as f32)
+@@ -605,7 +617,10 @@
+                                 }
+                                 Action::Copy => clipboard
+                                     .set_contents(self.selection.text.trim().to_owned()),
+-                                Action::Quit => *control_flow = ControlFlow::Exit,
++                                Action::Quit => {
++                                    showing::forget();
++                                    *control_flow = ControlFlow::Exit;
++                                }
+                                 Action::Keys => {
+                                     let Some(page) = self.opts.keys_page.clone() else {
+                                         return;
+diff -ru b/src/showing.rs c/src/showing.rs
+--- a/src/showing.rs
++++ b/src/showing.rs
+@@ -0,0 +1,57 @@
++//! The file this inlyne shows, kept for the desktop to read: a line saying
++//! the process and the file's whole path, in `inlyne/showing/<pid>` under
++//! the state home. It's written aside and renamed over, so it's never read
++//! half written, and removed as inlyne quits. What a killed inlyne left is
++//! cleared by the next to start. Keeping it is a courtesy, so a failure is
++//! passed over and inlyne runs as it would.
++
++use std::path::{Path, PathBuf};
++use std::{env, fs, process};
++
++fn folder() -> Option<PathBuf> {
++    let state = env::var_os("XDG_STATE_HOME")
++        .map(PathBuf::from)
++        .filter(|state| state.is_absolute())
++        .or_else(|| dirs::home_dir().map(|home| home.join(".local/state")))?;
++    Some(state.join("inlyne/showing"))
++}
++
++/// Clears what inlyne processes that are gone left behind.
++pub fn clear_gone() {
++    let Some(folder) = folder() else { return };
++    let Ok(entries) = fs::read_dir(&folder) else { return };
++    for entry in entries.flatten() {
++        let name = entry.file_name();
++        let Some(pid) = name
++            .to_str()
++            .map(|name| name.trim_start_matches('.'))
++            .filter(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
++        else {
++            continue;
++        };
++        if !Path::new("/proc").join(pid).exists() {
++            let _ = fs::remove_file(entry.path());
++        }
++    }
++}
++
++/// Keeps `path` as the file this inlyne shows.
++pub fn keep(path: &Path) {
++    let Some(folder) = folder() else { return };
++    if fs::create_dir_all(&folder).is_err() {
++        return;
++    }
++    let pid = process::id();
++    let writing = folder.join(format!(".{pid}"));
++    let line = format!("{pid}\t{}\n", path.display());
++    if fs::write(&writing, line).is_ok() {
++        let _ = fs::rename(&writing, folder.join(pid.to_string()));
++    }
++}
++
++/// Says this inlyne shows nothing any more.
++pub fn forget() {
++    if let Some(folder) = folder() {
++        let _ = fs::remove_file(folder.join(process::id().to_string()));
++    }
++}

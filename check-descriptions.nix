@@ -459,6 +459,10 @@
     the strong text and none of its own colours, without asking the desktop for the theme its
     settings name, and markdown files open in it
   '';
+  inlyne-says-the-file-it-shows = ''
+    inlyne keeps the file it shows, read by its Recent's command as its process and whole path, and
+    nothing once q closes it, clearing what a killed one left
+  '';
   inlyne-says-the-files-it-opens = ''
     inlyne says each file it's started with to the desktop's list of files opened lately, then runs
   '';
@@ -974,6 +978,10 @@
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
     End and Home to the last and first, and the picture it opened with, and none after, is said to
     the desktop's list of files opened lately
+  '';
+  swayimg-says-the-picture-it-shows = ''
+    swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
+    and nothing once q closes it, clearing what a killed one left
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -1834,7 +1842,7 @@
   '';
   zathura-says-the-document-it-has-open = ''
     zathura says the document it has open, read by its Recent's command as its process and whole
-    path, and nothing once it quits
+    path, and nothing once q closes it
   '';
   zathura-says-the-files-it-opens = ''
     zathura says each document it's started with to the desktop's list of files opened lately, then

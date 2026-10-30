@@ -108,6 +108,56 @@ onLinux {
         cp page.png keys.png $out
       '';
 
+  # inlyne keeps the file it shows, read by the command its Recent in the
+  # launcher is led by as its process and the whole path of a file given
+  # by name in the folder it was started in, and nothing once q closes it
+  # (../../tests/says-what-it-has-open.sh). What a killed inlyne left is
+  # cleared as it starts.
+  inlyne-says-the-file-it-shows =
+    let
+      home = account graphical;
+      inlyne = lib.findFirst (package: lib.getName package == "inlyne") null home.home.packages;
+      fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      kept = "${home.xdg.stateHome}/inlyne/showing";
+      inherit (home.jitsusama.quickshell.launcher) recents;
+      source = lib.findFirst (each: each.app or "" == "inlyne") null recents;
+      # The launcher's command, reading the folder this check keeps.
+      opened = lib.concatMapStringsSep " " (
+        part: if part == kept then ''"$XDG_STATE_HOME/inlyne/showing"'' else lib.escapeShellArg part
+      ) source.opened;
+    in
+    assert lib.elem kept source.opened;
+    pkgs.runCommandLocal "inlyne-says-the-file-it-shows"
+      {
+        nativeBuildInputs = [
+          inlyne
+          pkgs.cage
+          pkgs.wtype
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run
+        export XDG_STATE_HOME=$PWD/state FONTCONFIG_FILE=${fonts}
+        export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+        export LIBGL_ALWAYS_SOFTWARE=1
+        export __EGL_VENDOR_LIBRARY_DIRS=${pkgs.mesa}/share/glvnd/egl_vendor.d
+        export VK_ICD_FILENAMES=${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.x86_64.json
+        mkdir -p config/inlyne run state/inlyne/showing
+        chmod 700 run
+        cat ${home.xdg.configFile."inlyne/inlyne.toml".source} > config/inlyne/inlyne.toml
+        printf '# A Sheet\n\nTo read.\n' > sheet.md
+        printf '999999\t/gone.md\n' > state/inlyne/showing/999999
+        : > state/inlyne/showing/.999999
+        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} sheet.md \
+          inlyne view -- ${opened} > ran 2>&1 || true
+        if [ ! -e passed ]; then cat ran; exit 1; fi
+        if [ -n "$(ls -A state/inlyne/showing)" ]; then
+          echo "inlyne left this: $(ls -A state/inlyne/showing)"
+          exit 1
+        fi
+        touch $out
+      '';
+
   # inlyne says each file it's started with to the desktop's list of files
   # opened lately, through recent-files where the desktop has it, stood in
   # here, handing on all it was given, and then runs as it would.
