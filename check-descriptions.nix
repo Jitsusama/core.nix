@@ -933,6 +933,9 @@
   stands-alone = ''
     nothing here names a machine, its repository or employer
   '';
+  surface-clock-passes-clippy = ''
+    clippy finds nothing in surface-clock or its tests
+  '';
   swayimg-accepts-its-configuration = ''
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
     and pictures open in it
@@ -1354,9 +1357,18 @@
     the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps
     the firmware's unreadable clock from taking rtc0
   '';
+  the-surface-keeps-the-clock-its-firmware-starts-from = ''
+    the Surface Laptop 4 reads its controller's clock for the firmware's offset before timesyncd
+    starts, through the device the controller's module gives, and sets that clock at shutdown and
+    every hour
+  '';
   the-surface-keyboard-types-at-the-disk-prompt = ''
     the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that
     keyboard out there
+  '';
+  the-surface-loads-its-touchscreen-once-up = ''
+    the Surface Laptop 4 installs its touchscreen's driver with the panel's qualified settings, and
+    loads it from a unit after multi-user.target rather than while the system starts
   '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run against

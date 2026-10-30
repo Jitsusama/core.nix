@@ -1,0 +1,10 @@
+# surface-clock: keeps the Surface Aggregator's clock, which the firmware sets
+# the CMOS clock from at every start, at the true time (src/main.rs says how).
+[package]
+name = "surface-clock"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]

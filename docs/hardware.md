@@ -1031,8 +1031,9 @@ with AMD: a Ryzen 5 Microsoft Surface Edition (six Zen 2 cores, Renoir) with
 Radeon graphics, Intel's AX200 Wi-Fi 6, a Nuvoton TPM 2.0, and Surface's own
 embedded controller, the Surface Aggregator Module, behind which sit the
 keyboard, the battery and the charger. The stock kernel drives all of what's
-below but the thermal sensors and the fan, and amd-pstate for the CPU, which
-two patches add.
+below but the thermal sensors and the fan, amd-pstate for the CPU and Wi-Fi's
+country, which three patches add, and the touchscreen, which a driver out of
+the kernel's tree adds.
 
 | Part     | What the module does                                                      |
 | -------- | ------------------------------------------------------------------------- |
@@ -1042,8 +1043,10 @@ two patches add.
 | Graphics | named as the GPU the desktop waits for, its driver in the initrd          |
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
-| RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
+| RTC      | the CMOS clock as rtc0, and the clock the firmware sets it from kept true |
 | Sensors  | the Aggregator's thermal sensors and fan, through a kernel patch          |
+| Touch    | the touchscreen and pen, through a driver out of the kernel's tree        |
+| Wi-Fi    | the country the access points give, taken while connected                 |
 | Mics     | their gain held at their own level, so a call doesn't clip                |
 | Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
 
@@ -1114,6 +1117,25 @@ in the initrd, so its date comes first, systemd's advance overrides it, and
 NTP puts the time right from there, within seconds of the network coming
 up. Until then the clock reads the last time systemd saved, so a boot after
 a long time off starts that far behind.
+
+The date comes from the Aggregator's own clock. Read through
+`/dev/surface/aggregator` with its request 0x10, which qzed's rtc-surface
+driver ([linux-surface's work in progress][28]) also uses, it gave
+2025-05-17 09:47:25 UTC at 13:19:31 on 2026-10-30, 531 days behind, and the
+same offset 15 minutes later. At that boot's start the CMOS clock had read
+the Aggregator's time less 28,800 s, eight hours, to the second the boot's
+timing allows: at every power-on the firmware copies the Aggregator's clock
+into the CMOS clock through an offset of its own. The Time and Alarm Device
+claims to get and set the real time (bit 2 of `_GCP`) but has neither `_GRT`
+nor `_SRT`, so nothing reached the Aggregator's clock, and nothing set it.
+
+surface-clock ([`clock/clock.nix`][26]) sets it. Early in each boot, before
+timesyncd starts and so before the kernel writes the synchronised time to the
+CMOS clock, it reads both clocks and keeps their difference as the firmware's
+offset. While the time is synchronised, at shutdown and every hour, it sets
+the Aggregator's clock to the true time plus that offset, so the next start's
+CMOS clock reads the true time. It takes the offset as measured rather than as
+eight hours, and refuses one past any time zone's.
 
 ### The Graphics Driver
 
@@ -1224,18 +1246,56 @@ CPPC Enable and the Desired, Minimum and Maximum Performance fields of MSR
 `C00102B3`, so the module boots with `amd_pstate=guided`. The CPU's range
 under CPPC runs from 400 MHz lowest to 2201 MHz nominal.
 
+Under two minutes of load on all 12 threads, the cores ran at 3.55 to
+3.68 GHz for the first seconds, at 42 to 46 W, then held 3.12 to 3.17 GHz
+at 22 to 23 W with the CPU at 89 to 90 °C, in each of the three power
+profiles; one thread alone held 3.96 to 3.98 GHz at 15 W. The sustained
+limit is the firmware's temperature target, not a profile's power limit.
+The profiles changed only the fan: from cold, low-power kept it off at
+88 °C where the others started it.
+
+### Wi-Fi's Country
+
+The AX200 learns its country from the access points it hears
+(location-aware regulatory), and its phy manages its own domain, so neither
+`iw reg set` nor `cfg80211.ieee80211_regdom` changes it. At boot it joined
+its network 2.9 s after cfg80211 loaded, before the firmware had reported a
+country, and iwlmvm drops every report that comes while an interface is
+connected, so the phy kept the world domain (00) and its limits on channels
+and power for the whole session. Disconnected by hand, a scan gave the
+access point's country within 2 s, and it held after joining again. The
+module's kernel patch ([`kernel/iwlmvm-country-while-associated.patch`][25])
+takes a report while connected when the domain is still the world one.
+
+### The Touchscreen and Pen
+
+The panel (`MSHW0231`) speaks HID over SPI behind AMD's SPI controller
+(`AMDI0060`), and mainline drives neither: its spi-amd matches only
+`AMDI0061` to `AMDI0063`, and its HID-over-SPI drivers are Goodix's and
+Intel's. linux-surface lists both as unsupported on this model. avgbob's
+SL4A_TouchScreen ([its repository][27]) drives both out of the kernel's
+tree. Its 1.7.1 release is a beta, qualified on one of these laptops for
+cold starts, reloads and two s2idle resumes, and not yet for the pen.
+
+Loaded by hand on 7.2.12, it bound the controller, read the panel's 936-byte
+report descriptor, the same as the one the driver carries, and registered a
+multitouch screen and a stylus with pressure and tilt. Touching the screen
+gave 1,174 interrupts of touch reports in 12 s. The module
+([`touch/touchscreen.nix`][29]) installs it with the panel's settings from
+the driver's installer, and loads it from a unit after `multi-user.target`,
+as the installer does, so a hang there leaves a login to recover from.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
-| CPU        | its clocks and temperatures under guided amd-pstate aren't measured yet        |
 | Sleep      | the drain on battery overnight isn't measured                                  |
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
 | Firmware   | Microsoft ships firmware updates only for Windows                              |
-| Touch, pen | linux-surface lists the touchscreen and pen as unsupported on this model      |
+| Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
 
 [1]: kernel.md
 [2]: ../hardware/dell-xps-14-da14260/nixos.nix
@@ -1261,3 +1321,8 @@ under CPPC runs from 400 MHz lowest to 2201 MHz nominal.
 [22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
 [23]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
 [24]: ../hardware/microsoft-surface-laptop-4-1958/kernel/amd-pstate-fixed-autonomous-selection.patch
+[25]: ../hardware/microsoft-surface-laptop-4-1958/kernel/iwlmvm-country-while-associated.patch
+[26]: ../hardware/microsoft-surface-laptop-4-1958/clock/clock.nix
+[27]: https://github.com/avgbob/SL4A_TouchScreen/tree/eccedfb606e579242950052de2022d445dee028c
+[28]: https://github.com/linux-surface/kernel/blob/b571ef6ecb026ac9b1e9ac7c28ef350ec2a0519b/drivers/rtc/rtc-surface.c
+[29]: ../hardware/microsoft-surface-laptop-4-1958/touch/touchscreen.nix
