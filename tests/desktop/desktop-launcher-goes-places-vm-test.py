@@ -66,10 +66,12 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     machine = desktop.machine
     jobs = "$XDG_RUNTIME_DIR/jobs"
     # Once as it opens, once as Agents makes its rows on opening, once as
-    # the queue is read on opening, and one to spare for anything else
-    # the desktop changes meanwhile; made again on each write, it would
+    # the queue is read on opening, and three to spare for anything else
+    # the desktop changes meanwhile: run soon after the VM starts, its
+    # displays, networks and Machine were still said again as it opened,
+    # which made one more (2026-10-30). Made again on each write, it would
     # be ten more.
-    joins_on_opening = 4
+    joins_on_opening = 6
     before = int(desktop.as_account("qs ipc call launcher joined"))
     since = desktop.mark()
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
