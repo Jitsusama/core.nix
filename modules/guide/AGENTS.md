@@ -87,7 +87,10 @@ driven on; the installed machine's steps come later.
   disk is opened through the system's own way of letting a person write
   one: UDisks2, which asks polkit, on Linux, and authopen on a Mac. A
   machine's repository offers `nix run .#guide`, core's `lib.guide` with
-  that machine's image and payload built in. The last card says how to
+  that machine's image and payload built in. `nix run` roots nothing it
+  builds, so the writer roots both store paths itself, under its state's
+  `roots/`, for as long as it runs, and refuses one already collected. The
+  last card says how to
   reach that machine's firmware, as its hardware module says in
   `jitsusama.firmware.startFromStick` and `clearSecureBootKeys`: plugging
   the stick in with the machine off, and clearing its keys first only
