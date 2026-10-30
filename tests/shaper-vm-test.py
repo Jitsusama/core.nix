@@ -529,8 +529,7 @@ def test_quiet_tunnel(tunnel: Connection) -> None:
     """A tunnel carrying only bulk goes as bulk on the connection, and one carrying more doesn't.
 
     The connection's queue sees a tunnel as one flow, so its packets take their class from
-    what the tunnel's own queue sends: bulk while that is only bulk and no typed turn runs,
-    best effort otherwise.
+    what the tunnel's own queue sends: bulk while that is only bulk, best effort otherwise.
     """
     client = tunnel.client
     quiet = "nft list set inet shaper vpnbulk | grep -q ca6c"
@@ -545,7 +544,8 @@ def test_quiet_tunnel(tunnel: Connection) -> None:
     assert moved["best effort"] > 2 * moved["bulk"], f"app.slice on eth1: {moved}"
     client.wait_until_succeeds(quiet, timeout=HOLDING)
 
-    # A typed turn may be inside, so while one runs the tunnel's bulk goes as best effort.
+    # A typed turn waiting on its tools sends nothing, so it leaves the tunnel's bulk
+    # as bulk; what it does send is an app's, which puts the tunnel back as above.
     client.succeed(f"mkdir -p /tmp/typing && ln -sf {BIN}/bash /tmp/typing/pi")
     client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=pi-typing"
@@ -555,11 +555,10 @@ def test_quiet_tunnel(tunnel: Connection) -> None:
         "systemctl -M alice@ --user show -p MainPID --value pi-typing.service"
     ).strip()
     client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
-    client.wait_until_fails(quiet, timeout=SHAPING)
-    tunnel.lands("best effort", "jobs.slice", inner, dev="eth1")
+    tunnel.lands("bulk", "jobs.slice", inner, dev="eth1")
+    client.succeed(quiet)
     client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
     client.succeed("systemctl -M alice@ --user stop pi-typing.service")
-    client.wait_until_succeeds(quiet, timeout=HOLDING)
 
 
 def test_route_moves(on_eth2: Connection) -> None:

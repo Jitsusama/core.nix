@@ -9,8 +9,12 @@
 //! `wg-quick` does for a `WireGuard` tunnel, so its packets are told apart
 //! by that mark.
 //! While its own CAKE has sent next to nothing outside bulk for a moment,
-//! and no typed turn runs, they go as bulk, beside every other upload.
-//! Anything more inside puts them back in best effort within a step.
+//! they go as bulk, beside every other upload. Anything more inside puts
+//! them back in best effort within a step. That includes a typed turn's
+//! requests, which are an app's inside, so a typed turn doesn't hold the
+//! VPN out of bulk: it holds its file for its whole length, its tools'
+//! included, and on 30 October one or another was held for 70 of 72
+//! readings, while the step a request waits in bulk costs it about 5 ms.
 
 use serde_json::Value;
 
