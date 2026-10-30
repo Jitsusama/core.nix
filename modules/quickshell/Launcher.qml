@@ -298,6 +298,7 @@ Scope {
             once: oldWords[asked] ? [oldWords[asked]] : [],
             glyph: said.glyph ?? first.glyph,
             graph: said.graph,
+            warns: said.warns === true,
             hue: said.hue ?? first.hue,
             swatch: first.swatch,
             // Who answered, to what, and whether it moves, so a step held
@@ -3851,6 +3852,7 @@ Scope {
                                     swatch: !!entry.modelData.swatch
                                     sort: entry.sort
                                     graph: entry.modelData.graph ?? null
+                                    warns: !!entry.modelData.warns
                                     figures: list.figures
                                     sides: list.sides
                                     name: selected ? entry.modelData.name

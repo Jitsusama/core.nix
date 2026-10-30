@@ -76,6 +76,47 @@ let
     mv "$out.part" "$out.exit"
   '';
 
+  # Stands in for fwupd's fwupdmgr, which the VM doesn't run: each command's
+  # --json answer is what the test wrote to the runtime folder's
+  # fwupd/<command>.json, or else the laptop's two devices with nothing
+  # offered, as fwupd says that, in words and failing.
+  fwupdDevices = pkgs.writeText "fwupd-devices.json" (
+    builtins.toJSON {
+      Devices = [
+        {
+          DeviceId = "bios";
+          Name = "System Firmware";
+          Vendor = "Dell";
+          Version = "1.12.0";
+          Flags = [
+            "internal"
+            "updatable"
+            "needs-reboot"
+          ];
+        }
+        {
+          DeviceId = "ssd";
+          Name = "PVC10 SK hynix 1024GB";
+          Vendor = "SK hynix";
+          Version = "61001171";
+          Flags = [
+            "internal"
+            "updatable"
+          ];
+        }
+      ];
+    }
+  );
+  standInFwupdmgr = pkgs.writeShellScript "fwupdmgr" ''
+    said=$XDG_RUNTIME_DIR/fwupd/$1.json
+    if [ -e "$said" ]; then exec cat "$said"; fi
+    case $1 in
+      get-devices) exec cat ${fwupdDevices} ;;
+      get-history) echo '{"Devices": []}' ;;
+      *) echo "No updatable devices"; exit 2 ;;
+    esac
+  '';
+
   # Stands in for dictation's service, on the socket systemd hands it
   # (desktop/stand-in-dictation.py). ruff and mypy read each of these
   # stand-ins through `nix fmt`, so the writers' flake8 is off.
@@ -518,6 +559,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           "${googleWindow}"
           "%u"
         ];
+        # Firmware's fwupd isn't in the VM, and would have nothing to say.
+        jitsusama.quickshell.launcher.providers.firmware = {
+          enable = lib.mkForce true;
+          fwupdmgr = lib.mkForce "${standInFwupdmgr}";
+        };
         # The Ask row's model would need the network and an account.
         jitsusama.quickshell.launcher.providers.ask = {
           enable = lib.mkForce true;

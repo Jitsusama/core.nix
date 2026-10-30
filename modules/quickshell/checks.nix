@@ -591,6 +591,7 @@ onLinux {
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js
+      cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl

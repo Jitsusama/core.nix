@@ -341,6 +341,11 @@ in
     console = "M";
     means = "the memory: what's used, what's waiting for it and what holds it";
   };
+  firmware = {
+    glyph = nerd "f0697";
+    console = "f";
+    means = "a device's firmware: its version, and an update offered for it";
+  };
   heat = {
     glyph = nerd "f050f";
     console = "H";

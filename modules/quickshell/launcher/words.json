@@ -53,7 +53,8 @@
         "machine:memory",
         "heat",
         "machine:disk",
-        "waits"
+        "waits",
+        "firmware"
       ],
       "commands": [
         "command:volume"
@@ -1199,6 +1200,32 @@
       "name": "See What's Filling the Disk",
       "verb": "see",
       "glyph": "disk"
+    },
+    {
+      "id": "firmware",
+      "name": "Firmware",
+      "glyph": "firmware",
+      "answers": ["firmware", "update", "updates"]
+    },
+    {
+      "id": "firmware:version",
+      "in": "firmware",
+      "name": "Version"
+    },
+    {
+      "id": "firmware:vendor",
+      "in": "firmware",
+      "name": "Vendor"
+    },
+    {
+      "id": "firmware:last-updated",
+      "in": "firmware",
+      "name": "Last Updated"
+    },
+    {
+      "id": "firmware:offered",
+      "in": "firmware",
+      "name": "Offered"
     },
     {
       "id": "light",

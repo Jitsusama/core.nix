@@ -26,6 +26,7 @@ import "Standing.js" as Standing
 import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
+import "Firmware.js" as Firmware
 import "Interfaces.js" as Interfaces
 import "colour-cases.js" as ColourCases
 
@@ -1333,6 +1334,51 @@ QtObject {
         machine("another card's, none", Sounds.ports(soundCard, { "device.id": "8" }, true), []);
         machine("no dump, no ports", Sounds.ports("", { "device.id": "7" }, true), []);
 
+        // The firmware fwupd knows, as its three commands' --json say it: a
+        // device it hides, one with no version and one with no name are
+        // left out; the one with an update offered comes first; two of one
+        // name are numbered; and when each was last updated is from the
+        // history's update that went in.
+        const fwupdDevices = { Devices: [
+            { DeviceId: "ssd", Name: "PVC10 SK hynix 1024GB", Vendor: "SK hynix",
+                Version: "61001171", Flags: ["internal", "updatable", "needs-reboot"] },
+            { DeviceId: "bios", Name: "System Firmware", Vendor: "Dell", Version: "1.12.0",
+                Flags: ["internal", "updatable", "needs-reboot"] },
+            { DeviceId: "region", Name: "Internal SPI Controller (BIOS)", Version: "1.12.0",
+                Flags: ["internal", "updatable-hidden"] },
+            { DeviceId: "spi", Name: "Internal SPI Controller", Flags: ["internal"] },
+            { DeviceId: "nameless", Version: "1" },
+            { DeviceId: "dock1", Name: "USB-C Controller", Vendor: "HP", Version: "69.52",
+                Flags: ["updatable"] },
+            { DeviceId: "dock2", Name: "USB-C Controller", Vendor: "HP", Version: "69.64",
+                Flags: ["updatable"] }
+        ] };
+        const fwupdOffered = { Devices: [{ DeviceId: "bios", Releases: [
+            { Version: "1.13.0",
+                Description: "<p>This release fixes:</p><ul><li>a &amp; b</li><li>c</li></ul>" },
+            { Version: "1.12.5" }] }] };
+        const fwupdHistory = { Devices: [
+            { DeviceId: "bios", UpdateState: 2, Created: 1793234644, Modified: 1793278224 },
+            { DeviceId: "ssd", UpdateState: 3, Created: 1793000000 }
+        ] };
+        const firmware = Firmware.devices(fwupdDevices, fwupdOffered, fwupdHistory);
+        machine("the firmware listed, an update first", firmware.map(device => device.name),
+            ["System Firmware", "PVC10 SK hynix 1024GB", "USB-C Controller 1",
+                "USB-C Controller 2"]);
+        machine("the firmware with an update offered", firmware[0], {
+            id: "bios", name: "System Firmware", vendor: "Dell", version: "1.12.0",
+            offered: "1.13.0", notes: "This release fixes:\na & b\nc", updated: 1793278224,
+            restarts: true
+        });
+        machine("firmware never updated, or not successfully", firmware[1].updated, null);
+        machine("firmware's version with an update offered", Firmware.versionOf(firmware[0]),
+            "1.12.0, 1.13.0 ready");
+        machine("firmware's version alone", Firmware.versionOf(firmware[1]), "61001171");
+        machine("one firmware update ready", Firmware.standing(firmware), "1 update ready");
+        machine("firmware up to date", Firmware.standing(firmware.slice(1)), "up to date");
+        machine("nothing offered, said in words", Firmware.devices(fwupdDevices, {}, {})
+            .every(device => device.offered === null), true);
+        machine("fwupd with no devices", Firmware.devices({}, {}, {}), []);
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
             Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");
