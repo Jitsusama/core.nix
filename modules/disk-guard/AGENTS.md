@@ -110,9 +110,11 @@ or launchd, and [`home.nix`][2] the account's.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
   moment, half a minute after a root leaves, and two minutes after a process
   holding paths ends. It deletes them oldest first, in a pass of their own
-  once something has let some go, and keeps none as a rebuild cache unless
-  a machine gives `garbage.keep` and `garbage.budget`. A path a running
-  process holds, as a temporary root or a file it has open, and every dead
+  once something has let some go. While the disk is healthy it keeps what
+  was built in the last hour, up to 5% of the disk, unless a machine gives
+  its own `garbage.keep` and `garbage.budget`. A path a running process
+  holds, as a temporary root, a file it has open, or a name in its command
+  line or environment, and every dead
   path it reaches, is left for a later pass: Nix refuses a whole delete for
   one live path, deleting none, and each refusal costs it a whole look for
   roots. A built output goes no later than the dead derivation that built
