@@ -673,8 +673,8 @@
       "name": "Space",
       "said": {
         "clearing": "clearing old builds",
-        "clearingAll": "clearing all it safely can",
-        "cleared": "cleared all it may"
+        "clearingAll": "clearing all it can",
+        "cleared": "nothing left to clear"
       }
     },
     {
