@@ -83,6 +83,45 @@ onLinux {
         touch $out
       '';
 
+  # zathura says the document it has open, read over its bus by the command
+  # its Recent in the launcher is led by, as its process and the whole
+  # path of a document given by name in the folder it was started in, and
+  # nothing once it quits (open-now-test.sh), in a compositor of its own.
+  zathura-says-the-document-it-has-open =
+    let
+      home = account graphical;
+      pages = import ../../tests/page.nix {
+        inherit lib pkgs;
+        pages = 1;
+      };
+      source = lib.findFirst (
+        each: each.app or "" == "org.pwmt.zathura"
+      ) null home.jitsusama.quickshell.launcher.recents;
+    in
+    pkgs.runCommandLocal "zathura-says-the-document-it-has-open"
+      {
+        nativeBuildInputs = [
+          home.programs.zathura.package
+          pkgs.cage
+          pkgs.dbus
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+        export XDG_RUNTIME_DIR=$PWD/run GDK_BACKEND=wayland
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+        mkdir -p config/zathura data run
+        chmod 700 run
+        cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
+        cp ${pages} document.pdf
+        dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
+          cage -- $BASH ${./open-now-test.sh} document.pdf ${lib.escapeShellArgs source.opened} \
+          > ran 2>&1 || true
+        if [ ! -e passed ]; then cat ran; exit 1; fi
+        touch $out
+      '';
+
   # zathura says each file it's started with to the desktop's list of files
   # opened lately, through recent-files where the desktop has it, stood in
   # here, handing on all it was given, and then runs as it would.
