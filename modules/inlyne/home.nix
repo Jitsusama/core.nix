@@ -4,7 +4,7 @@
 # another markdown file in place, so ← comes back. Each file it's started
 # with is said to the desktop's list of files opened lately
 # (../open-with/says-what-it-opens.nix), so its Recent in the launcher
-# lists them.
+# lists them, led by the file each inlyne shows now, which Return goes to.
 #
 # Every colour is the theme's: the page on the background, headings in the
 # strong text, links and ticked boxes in the accent, code on a block a step
@@ -16,9 +16,11 @@
 # forward through the pages followed, ↑ and ↓ a few lines, Page Up and Page
 # Down a screen, Home and End the top and the bottom, + and - larger and
 # smaller, 0 as it was, Ctrl+C copies what's selected, Escape or q closes,
-# and ? opens a page saying all of them, which ← leaves. Three patches give
-# it what it lacked: a colour for headings, that page, and opening without
-# asking the desktop for a theme when its settings name one.
+# and ? opens a page saying all of them, which ← leaves. Four patches give
+# it what it lacked: a colour for headings, that page, opening without
+# asking the desktop for a theme when its settings name one, and keeping
+# the file it shows for the launcher, since its command line goes stale
+# once a link opens another file in place.
 {
   config,
   lib,
@@ -34,6 +36,9 @@ let
   says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
   inlyne = says { package = patched; };
 
+  # Where each inlyne keeps the file it shows now (keeps-what-it-shows.patch).
+  showing = "${config.xdg.stateHome}/inlyne/showing";
+
   # nixpkgs gives inlyne X's libraries by path but not Wayland's, which its
   # window library looks for by name and, not finding it, opens the window
   # through X instead, so it's given Wayland's too.
@@ -42,6 +47,7 @@ let
       ./heading-colour.patch
       ./keys-page.patch
       ./named-theme.patch
+      ./keeps-what-it-shows.patch
     ];
     postFixup =
       (old.postFixup or "")
@@ -231,10 +237,26 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/recents.nix
     ../theme/home.nix
   ];
 
   home.packages = [ inlyne ];
+
+  # The file each inlyne shows now, for its Recent in the launcher to lead
+  # with, kept as mpv keeps what it plays (../mpv/home.nix says why in the
+  # state home) by keeps-what-it-shows.patch; its other files stay the
+  # desktop's list of files opened lately.
+  systemd.user.tmpfiles.rules = lib.mkIf pkgs.stdenv.hostPlatform.isLinux [
+    "d ${showing} 0700 - - -"
+  ];
+  jitsusama.quickshell.launcher.recents = [
+    {
+      app = "inlyne";
+      kind = "file";
+      opened = import ../quickshell/kept-in.nix { inherit lib pkgs; } showing;
+    }
+  ];
 
   # The launcher lists these over inlyne's window, by the same words.
   jitsusama.keys.inlyne = map (key: {

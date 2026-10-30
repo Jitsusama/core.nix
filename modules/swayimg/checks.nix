@@ -3,6 +3,7 @@
 {
   account,
   graphical,
+  lib,
   onLinux,
   pkgs,
   ...
@@ -84,6 +85,58 @@ onLinux {
         done
         timeout 60 cage -- bash ${./tests/swayimg-moves-by-its-keys.sh} || true
         test -e moved
+        touch $out
+      '';
+
+  # swayimg keeps the picture it shows, read by the command its Recent in
+  # the launcher is led by as its process and the whole path of a picture
+  # given by name in the folder it was started in, and nothing once q
+  # closes it (../../tests/says-what-it-has-open.sh). What a killed swayimg
+  # left is cleared as it starts.
+  swayimg-says-the-picture-it-shows =
+    let
+      home = account graphical;
+      files = home.xdg.configFile;
+      fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      kept = "${home.xdg.stateHome}/swayimg/viewing";
+      inherit (home.jitsusama.quickshell.launcher) recents;
+      source = lib.findFirst (each: each.app or "" == "swayimg") null recents;
+      # The launcher's command, reading the folder this check keeps.
+      opened = lib.concatMapStringsSep " " (
+        part: if part == kept then ''"$XDG_STATE_HOME/swayimg/viewing"'' else lib.escapeShellArg part
+      ) source.opened;
+    in
+    assert lib.elem kept source.opened;
+    pkgs.runCommandLocal "swayimg-says-the-picture-it-shows"
+      {
+        nativeBuildInputs = [
+          home.programs.swayimg.package
+          pkgs.cage
+          pkgs.wtype
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run
+        export XDG_STATE_HOME=$PWD/state
+        export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
+        export WLR_LIBINPUT_NO_DEVICES=1
+        mkdir -p config/swayimg run state/swayimg/viewing
+        chmod 700 run
+        cp ${files."swayimg/init.lua".source} config/swayimg/init.lua
+        sed 's|${kept}|'"$XDG_STATE_HOME"'/swayimg/viewing|' ${files."swayimg/nix.lua".source} \
+          > config/swayimg/nix.lua
+        grep -q "$XDG_STATE_HOME/swayimg/viewing" config/swayimg/nix.lua \
+          || { echo "nix.lua names no folder it keeps the picture in"; exit 1; }
+        printf 'P3\n1 1\n255\n0 0 0\n' > picture.ppm
+        printf '999999\t/gone.ppm\n' > state/swayimg/viewing/999999
+        : > state/swayimg/viewing/.999999
+        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} picture.ppm \
+          swayimg -- ${opened} > ran 2>&1 || true
+        if [ ! -e passed ]; then cat ran; exit 1; fi
+        if [ -n "$(ls -A state/swayimg/viewing)" ]; then
+          echo "swayimg left this: $(ls -A state/swayimg/viewing)"
+          exit 1
+        fi
         touch $out
       '';
 }

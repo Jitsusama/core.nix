@@ -173,6 +173,51 @@ local function list(mode)
   swayimg.text.visible = true
 end
 
+-- The picture looked at is kept for the launcher, which leads swayimg's
+-- Recent with it: a line saying this swayimg's process and the picture's
+-- whole path, in nix.viewing, written aside and renamed over so it's never
+-- read half written, and removed as swayimg closes. What one killed left
+-- is cleared by the next to start. Keeping it is a courtesy, so a failure
+-- is passed over.
+local stat = io.open('/proc/self/stat')
+local pid = stat and stat:read('*n')
+if stat then
+  stat:close()
+end
+local kept = pid and (nix.viewing .. '/' .. pid)
+
+if pid then
+  os.execute(
+    '{ mkdir -p '
+      .. quoted(nix.viewing)
+      .. ' && cd '
+      .. quoted(nix.viewing)
+      .. ' && for kept in [0-9]* .[0-9]*; do'
+      .. ' [ -e "$kept" ] && [ ! -e "/proc/${kept#.}" ] && rm -f -- "$kept"; done; } 2>/dev/null'
+  )
+end
+
+local function keep(mode)
+  local image = mode.get_image()
+  if not kept or not image then
+    return
+  end
+  local writing = nix.viewing .. '/.' .. pid
+  local file = io.open(writing, 'w')
+  if file then
+    file:write(pid .. '\t' .. image.path .. '\n')
+    file:close()
+    os.rename(writing, kept)
+  end
+end
+
+local function quit()
+  if kept then
+    os.remove(kept)
+  end
+  swayimg.exit(0)
+end
+
 -- The picture it was opened with is said to the desktop's list of files
 -- opened lately (open-with's recent-files, where the desktop has it), so
 -- swayimg's Recent in the launcher lists it. The pictures stepped through
@@ -193,6 +238,7 @@ end
 for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   mode.on_image_change(function()
     shown(mode)
+    keep(mode)
     if mode == swayimg.viewer then
       say_opened()
     end
@@ -219,7 +265,7 @@ local function edit(mode)
     return
   end
   os.execute('niri msg action spawn -- ' .. editor.command .. ' ' .. quoted(image.path))
-  swayimg.exit(0)
+  quit()
 end
 
 -- The picture as it's shown, turned or flipped, goes to the clipboard as a
@@ -273,9 +319,7 @@ local acts = {
   edit = edit,
   copy = copy,
   trash = trash,
-  close = function()
-    swayimg.exit(0)
-  end,
+  close = quit,
   keys = list,
 }
 
