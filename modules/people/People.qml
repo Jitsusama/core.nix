@@ -181,11 +181,16 @@ Provider {
     // sources' order, each Open in that source: a look that leaves them as
     // they are, so after the ways to reach them and before what's with
     // them (VKCF3Z, a91b2722). It opens in the browser, closing the
-    // launcher.
+    // launcher. While a source is still finding out, its row stands in
+    // place, dimmed, saying so, and lights there once it answers.
     function pages(person) {
-        return sources.map(source => ({ source: source, link: source.page(person) }))
-            .filter(each => each.link !== "" && each.source.called !== "")
-            .map(each => thing({
+        const looking = Words.of("verb:person:page").said?.looking ?? "";
+        return sources.map(source => {
+            // Asked first, as asking for the page is what starts a look-up.
+            const link = source.page(person);
+            return { source: source, link: link, looking: link === "" && source.looking(person) };
+        }).filter(each => (each.link !== "" || each.looking) && each.source.called !== "")
+            .map(each => thing(Object.assign({
                 key: `verb:person:page:${each.source.settings.name}`,
                 name: Words.name("verb:person:page", "", { source: each.source.called }),
                 verb: Words.verb("verb:person:page"),
@@ -193,7 +198,12 @@ Provider {
                 hue: "action",
                 later: true,
                 run: () => Niri.spawn(["xdg-open", each.link])
-            }));
+            }, !each.looking ? {} : {
+                // Dimmed, so Return does nothing until it lights.
+                gone: true,
+                side: looking.replace("{source}", each.source.called),
+                run: () => {}
+            })));
     }
 
     // Whether they're a favourite, a switch, from the first source that

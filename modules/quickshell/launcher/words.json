@@ -3725,7 +3725,10 @@
       "in": "people",
       "name": "Open in {source}",
       "verb": "open",
-      "glyph": "web"
+      "glyph": "web",
+      "said": {
+        "looking": "looking in {source}"
+      }
     },
     {
       "id": "verb:person:slack",

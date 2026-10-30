@@ -231,6 +231,16 @@ ShellRoot {
                 === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
             expect("one with no page has no row for it",
                 !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
+            const calls = open[3].verbs();
+            const waiting = calls[1];
+            expect("a page still being found stands in its place, dimmed, saying so",
+                waiting?.name === "Open in Pages" && waiting.gone === true
+                    && waiting.side === "looking in Pages",
+                `${names(calls)}; gone ${waiting?.gone}, side ${waiting?.side}`);
+            Niri.spawned = [];
+            waiting?.run();
+            expect("and opens nothing while dimmed", Niri.spawned.length === 0,
+                Niri.spawned.join(" "));
             const facts = open[0].drawer.facts.map(fact => `${fact.label}: ${fact.value}`);
             expect("a source's facts are theirs, the time there after their zone",
                 facts[1] === "Team: Shell" && facts[2] === "Time Zone: Asia/Kolkata"
