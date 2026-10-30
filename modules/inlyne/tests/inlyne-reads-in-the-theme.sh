@@ -24,14 +24,18 @@ INLYNE_LOG=inlyne=trace env -u DISPLAY inlyne view "$file" > said 2>&1 &
 reader=$!
 
 # Each frame's line says what the redraw histogram recorded, then names it,
-# with whatever colour the log puts between them.
+# with whatever colour the log puts between them. The first may be long in
+# coming on a loaded machine, so it's waited for until a deadline inside
+# cage's minute, however quiet the log is meanwhile.
 frames='record.*key.*redraw'
+deadline=$((SECONDS + 50))
 until grep -q -E "$frames" said; do
-  if ! inotifywait -q -q -t 10 -e modify said && ! grep -q -E "$frames" said; then
-    echo "inlyne never drew $file"
+  if ((SECONDS >= deadline)); then
+    echo "inlyne never drew $file in 50 seconds"
     cat said
     exit 1
   fi
+  inotifywait -q -q -t 1 -e modify said || true
 done
 # Once a second passes with nothing logged, the page is still: a picture
 # loaded after the first frame draws another.

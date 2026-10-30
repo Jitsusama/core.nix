@@ -78,6 +78,12 @@ onLinux {
           # inlyne goes on with its own settings when it can't read the
           # account's, saying so only as a warning.
           if grep -a 'Failed reading config file' said; then exit 1; fi
+          # Its settings name the theme, so it never waits on the desktop
+          # to say one, which nothing here answers (named-theme.patch).
+          if grep -a 'Failed to detect system theme' said; then
+            echo "inlyne asked the desktop for a theme its settings name"
+            exit 1
+          fi
         done
 
         # The colour of one pixel, and how many pixels are one colour.

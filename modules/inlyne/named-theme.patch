@@ -1,0 +1,26 @@
+Ask the system for its theme only when none is named
+
+inlyne asked the desktop for its colour scheme at every start, through
+the settings portal, even when its settings or the command line named a
+theme, which is then used whatever the desktop says. Where nothing
+answers, as in a headless session, the ask waited out D-Bus's timeout
+before the first frame. It's now asked only for Auto, or when no theme
+is named.
+
+diff -ru a/src/opts/mod.rs b/src/opts/mod.rs
+--- a/src/opts/mod.rs
++++ b/src/opts/mod.rs
+@@ -85,7 +85,12 @@
+         }
+         #[cfg(not(test))]
+         {
+-            let system_color_scheme = ResolvedTheme::try_detect();
++            // The system is asked only when no theme is named, since a
++            // named one is used whatever it says, and asking waits on the
++            // desktop's settings portal, for as long as D-Bus allows where
++            // nothing answers.
++            let named = args.theme.or(config.theme).is_some_and(|theme| theme != ThemeType::Auto);
++            let system_color_scheme = if named { None } else { ResolvedTheme::try_detect() };
+             Self::parse_and_load_inner(args, config, system_color_scheme)
+         }
+     }

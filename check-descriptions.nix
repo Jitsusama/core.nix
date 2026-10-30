@@ -445,7 +445,8 @@
   '';
   inlyne-reads-in-the-theme = ''
     inlyne draws a sheet and the keys page its settings name on the theme's background, headings in
-    the strong text and none of its own colours, and markdown files open in it
+    the strong text and none of its own colours, without asking the desktop for the theme its
+    settings name, and markdown files open in it
   '';
   inlyne-says-the-files-it-opens = ''
     inlyne says each file it's started with to the desktop's list of files opened lately, then runs
