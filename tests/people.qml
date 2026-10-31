@@ -11,8 +11,8 @@
 // one who isn't in a call and joining one who is comes first, the
 // Favourite switch after, and their address last; flipping Favourite
 // tells Tuple and moves their row at once; and a change of presence
-// changes how they stand, as Tuple says it, forgetting the favourites
-// changed here that Tuple never heard of. It exits 0 once every case
+// changes how they stand, as Tuple says it, keeping the favourites
+// changed here until Tuple says them. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -240,14 +240,14 @@ ShellRoot {
                 names(people.all));
         }),
         {
-            // As Tuple says them now, which never heard of the favourites
-            // changed here.
+            // As Tuple says them now, with the favourites changed here,
+            // which the stand-in never says, kept as they were asked.
             what: "a favourite gone into a call, as Tuple says it",
             run: () => {
                 touching.running = true;
             },
-            holds: () => names(people.all) === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore"
-                && sides(people.all) === "in a call, in a call, away, offline",
+            holds: () => names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore"
+                && sides(people.all) === "in a call, in a call, , offline",
             check: () => {
                 expect("is joined", people.all[0].verbs()[0].name === "Join Their Call",
                     people.all[0].verbs()[0].name);
