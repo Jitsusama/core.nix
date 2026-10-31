@@ -120,6 +120,9 @@ class Timing:
         """Begin with no key timed."""
         self.desktop = desktop
         self.took: list[float] = []
+        # From the launcher's handler taking each key to its frame: the shell's own part,
+        # which is all the machine's load proof can time of Joel's own keys.
+        self.handled: list[float] = []
         self.next = time.monotonic()
         self.said = self.timed = self.pressing = 0
 
@@ -165,25 +168,39 @@ class Timing:
         assert noted["timed"] == self.timed + self.pressing, (
             f"the launcher timed {noted['timed'] - self.timed} keys of {self.pressing} pressed"
         )
+        assert noted["clock"] == "realtime", f"the launcher keeps time by {noted['clock']}"
+        assert len(noted["heard"]) == len(noted["frames"]), (
+            f"{len(noted['heard'])} keys heard beside {len(noted['frames'])} frames"
+        )
         frames = noted["frames"][-self.pressing :]
-        for line, frame in zip(lines, frames, strict=True):
+        heard = noted["heard"][-self.pressing :]
+        for line, heard_at, frame in zip(lines, heard, frames, strict=True):
             key, down = line.split()
             took = frame - float(down)
             assert took >= 0, f"{key}'s frame came {-took:.0f} ms before it was pressed"
+            # The guest's one clock, so a key is heard after it's pressed and before its
+            # frame, give or take the millisecond the keyboard rounds to.
+            assert float(down) - 1 <= heard_at <= frame, (
+                f"{key} was heard at {heard_at:.0f}, pressed at {down} and drawn at {frame:.0f}"
+            )
             self.took.append(took)
+            self.handled.append(frame - heard_at)
 
     def said_and_held(self) -> None:
         """Say how long keys took to their frames, and fail a launcher seconds behind them."""
         took = sorted(self.took)
+        handled = sorted(self.handled)
 
-        def ranked(share: float) -> float:
-            return took[max(0, math.ceil(share * len(took)) - 1)]
+        def ranked(times: list[float], share: float) -> float:
+            return times[max(0, math.ceil(share * len(times)) - 1)]
 
-        middle, p95, p99 = ranked(0.5), ranked(0.95), ranked(0.99)
+        middle, p95, p99 = ranked(took, 0.5), ranked(took, 0.95), ranked(took, 0.99)
         print(
             f"{len(took)} keys under load, from the keyboard to their frames: half within "
             f"{middle:.0f} ms, 95% within {p95:.0f} ms, 99% within {p99:.0f} ms, "
-            f"the slowest {took[-1]:.0f} ms"
+            f"the slowest {took[-1]:.0f} ms; from the launcher's handler to their frames: "
+            f"half within {ranked(handled, 0.5):.0f} ms, 99% within "
+            f"{ranked(handled, 0.99):.0f} ms"
         )
         assert middle < MIDDLE_MOST, f"half the keys took over {middle:.0f} ms to their frames"
         assert p99 < P99_MOST, f"one key in a hundred took over {p99:.0f} ms to its frame"
