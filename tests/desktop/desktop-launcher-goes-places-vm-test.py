@@ -900,9 +900,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     desktop.photograph("launcher-runs")
     # A fleet at work draws nothing while it's only looked at: what it says
     # changes as its files do, not every frame.
-    assert (drawn := drawn_held_still(desktop)) <= 1, (
-        f"Subagents drew {drawn} frames in three seconds left still on a fleet at work"
-    )
+    draws_nothing_held_still(desktop, "Subagents", "a fleet at work")
     # Stepped into, its members after the way to its session.
     desktop.step_in()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
@@ -921,9 +919,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
         )
     )
     desktop.photograph("launcher-run-members")
-    assert (drawn := drawn_held_still(desktop)) <= 1, (
-        f"a fleet drew {drawn} frames in three seconds left still on its member at work"
-    )
+    draws_nothing_held_still(desktop, "a fleet", "its member at work")
     # Its answer, read in a terminal named for the run and the member.
     machine.send_key("ret")
     reading = "paint-crew \u00b7 roller"
@@ -4558,13 +4554,32 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
 def drawn_held_still(desktop: Desktop) -> int:
     """Count the frames the open launcher draws in three seconds left still.
 
-    The last key's frame lands first. The foot's clock may turn its minute in them, once.
+    What the last key moved draws first: its glide, and a drawer it opened, which a loaded guest
+    draws slowly, so the count begins once a second passes with no frame, or after ten. A
+    launcher that keeps drawing, as a blinking caret would, never settles, and is counted
+    anyway. The foot's clock may turn its minute in the three seconds, once.
     """
-    desktop.as_account("qs ipc call launcher frames")
-    time.sleep(1)
-    began = int(desktop.as_account("qs ipc call launcher frames"))
+
+    def frames() -> int:
+        return int(desktop.as_account("qs ipc call launcher frames"))
+
+    began = frames()
+    settling = time.monotonic() + 10
+    while time.monotonic() < settling:
+        time.sleep(1)
+        settled, began = began, frames()
+        if began == settled:
+            break
     time.sleep(3)
-    return int(desktop.as_account("qs ipc call launcher frames")) - began
+    return frames() - began
+
+
+def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:
+    """Hold that the open launcher, left still on a row, draws at most the foot's minute."""
+    # Counted before it's asserted: pytest's rewriting runs a walrus in an assert again for its
+    # report (pytest-dev/pytest#14445), which would count four more seconds.
+    drawn = drawn_held_still(desktop)
+    assert drawn <= 1, f"{who} drew {drawn} frames in three seconds left still on {on}"
 
 
 def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
