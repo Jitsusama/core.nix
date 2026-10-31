@@ -1429,6 +1429,11 @@
     the shell's Tuple reads a call from tuple-people's stream, who's in it, since when, mutes,
     screens and cameras, tells comings and goings, and wakes on Tuple's log
   '';
+  the-shell-holds-a-daemons-records = ''
+    the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
+    never waited on, one that starts is connected to by itself, keys watched ahead and a get's answer
+    land by key, and what was held stays through a gap
+  '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
     into each figure's parts, hide amounts while sharing, and answer reports by their words
