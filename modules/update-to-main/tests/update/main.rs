@@ -142,6 +142,7 @@ impl World {
             state: root.join("state"),
             socket: root.join("ask.sock"),
             group: own_group(),
+            ended: root.join("last.json"),
             profile: root.join("profile"),
             signers: Signers {
                 ssh: Some(signers),
@@ -715,6 +716,39 @@ fn asks_while_an_update_runs_join_it() {
         assert_eq!(ending, done(&main));
     }
     assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn how_an_update_ended_is_kept_for_its_group_to_read() {
+    use std::os::unix::fs::MetadataExt;
+    let world = World::new();
+    let main = world.signed("one");
+    world.system(&main);
+    let config = world.config.clone();
+    thread::spawn(move || serve::serve(config));
+    while !world.config.socket.exists() {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let ending = ask::ask(&world.config.socket, &mut |_| {}).unwrap();
+    assert_eq!(ending, done(&main));
+    let kept: Line =
+        serde_json::from_str(&fs::read_to_string(&world.config.ended).unwrap()).unwrap();
+    assert_eq!(kept, ending, "the file says how it ended");
+    let meta = fs::metadata(&world.config.ended).unwrap();
+    assert_eq!(meta.mode() & 0o777, 0o640);
+    // SAFETY: getgid can't fail.
+    assert_eq!(meta.gid(), unsafe { libc::getgid() });
+
+    // A second ask, with main where it was, says so in the file in its place.
+    let again = ask::ask(&world.config.socket, &mut |_| {}).unwrap();
+    assert!(matches!(again, Line::Unchanged { .. }), "{again:?}");
+    let kept: Line =
+        serde_json::from_str(&fs::read_to_string(&world.config.ended).unwrap()).unwrap();
+    assert_eq!(kept, again);
+    assert!(
+        !world.root.join("last.json.new").exists(),
+        "nothing is left beside it"
+    );
 }
 
 #[test]

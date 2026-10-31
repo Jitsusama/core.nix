@@ -18,6 +18,7 @@ in
       kind = "nixos";
       state = "/var/lib/update-to-main";
       socket = "/run/update-to-main/ask.sock";
+      ended = "/run/update-to-main/last.json";
       profile = "/nix/var/nix/profiles/system";
       booted = "/run/booted-system";
       power_supplies = "/sys/class/power_supply";
