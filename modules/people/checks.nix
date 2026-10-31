@@ -17,8 +17,9 @@
 onLinux {
   # The people daemon's tests run as it builds: a get is a step-in answered
   # by every source within its patience, a watch asks ahead, says what's
-  # held and gathers a burst of changes into one, a source signed out is
-  # never waited on, one that stops is started again and asked again about
+  # held and gathers a burst of changes into one, a source running is
+  # answering before it's asked anything, a source signed out is never
+  # waited on, one that stops is started again and asked again about
   # everyone watched, a get nothing answers in time is not ready, and an
   # ask or a kind it doesn't know is refused. Stand-in sources in the
   # shell answer for the real ones.

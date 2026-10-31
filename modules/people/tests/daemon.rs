@@ -247,6 +247,25 @@ fn a_source_that_stops_is_started_again_and_asked_again_about_everyone_watched()
 }
 
 #[test]
+fn a_source_running_is_answering_before_anything_asks_it() {
+    let running = Running::with("answering", &[("slack", KNOWING)]);
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let said = client.ask(&json!({"id": 1, "ask": "hello"}));
+        if said["sources"]["slack"] == "answering" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "it never said slack was answering: {said}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(running.asked("slack").is_empty());
+}
+
+#[test]
 fn a_get_nothing_has_answered_in_time_is_not_ready() {
     let silent = "while read -r line; do :; done";
     let running = Running::with("silent", &[("slack", silent)]);

@@ -286,12 +286,14 @@ impl Book {
     }
 
     /// Forgets which keys a source answered, as when it starts again, so
-    /// what it says after is waited on afresh.
+    /// what it says after is waited on afresh. Once running it can be
+    /// asked, so it's answering, though it says nothing until it is: a
+    /// source is only starting until its program has started.
     pub fn restarted(&mut self, source: &str) {
         for answered in self.answered.values_mut() {
             answered.remove(source);
         }
-        self.stand(source, Standing::Starting);
+        self.stand(source, Standing::Answering);
     }
 }
 
@@ -421,8 +423,12 @@ mod tests {
         book.take("vault", Heard::SignedOut, 2);
         assert!(book.ready("person:ada@example.com"));
         assert_eq!(book.standings()["vault"].word(), "signed-out");
+        assert_eq!(
+            Book::of(&["tuple".to_owned()]).standings()["tuple"].word(),
+            "starting"
+        );
         book.restarted("slack");
         assert!(!book.ready("person:ada@example.com"));
-        assert_eq!(book.standings()["slack"].word(), "starting");
+        assert_eq!(book.standings()["slack"].word(), "answering");
     }
 }

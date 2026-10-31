@@ -780,9 +780,9 @@
   people-holds-everyone-ready = ''
     the people daemon answers a get as a step-in, waiting within its patience for every source
     that can answer, asks ahead for a watch, says what it holds and gathers a burst of changes
-    into one, never waits on a source signed out, starts a source that stops again and asks it
-    about everyone watched, says a get nothing answered in time isn't ready, and refuses an ask
-    or a kind it doesn't know
+    into one, says a source running is answering before anything asks it, never waits on a source
+    signed out, starts a source that stops again and asks it about everyone watched, says a get
+    nothing answered in time isn't ready, and refuses an ask or a kind it doesn't know
   '';
   people-passes-clippy = ''
     clippy finds nothing in the people daemon or its tests
