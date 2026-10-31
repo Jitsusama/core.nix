@@ -22,7 +22,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         args = {
           "factory.name" = "support.null-audio-sink";
           "node.name" = "silent-microphone";
-          "media.class" = "Audio/Source";
+          # PipeWire's own recipe for a source with no device under it.
+          "media.class" = "Audio/Source/Virtual";
           "audio.position" = [ "MONO" ];
           "object.linger" = true;
         };

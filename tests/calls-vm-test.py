@@ -69,7 +69,10 @@ def sound(machine: BaseMachine) -> Sound:
 def call(sound: Sound) -> Iterator[Sound]:
     """Have the call program recording, until the test is done."""
     # Collected, so a call that failed leaves nothing to stop the next one starting.
-    sound.as_joel("systemd-run --user --collect --unit=call ./zoom --record /dev/null")
+    sound.as_joel(
+        "systemd-run --user --collect --unit=call"
+        " ./zoom --record --device=silent-microphone /dev/null"
+    )
     try:
         sound.machine.wait_until_succeeds(
             "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 pw-dump --no-colors'"
