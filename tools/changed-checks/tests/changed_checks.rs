@@ -292,6 +292,7 @@ fn the_whole_run_goes_elsewhere_where_nix_offload_takes_it_naming_this_system() 
     stand_in.checks("working", WORKING);
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
     fs::write(stand_in.path("takes-changed"), "").expect("written");
+    fs::write(stand_in.path("clean"), "").expect("written");
 
     let ran = stand_in.run(&["--build", "--no-vm"]);
 
@@ -321,6 +322,18 @@ fn it_runs_here_when_asked_to_when_its_base_is_its_own_or_when_nowhere_took_it()
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
     fs::write(stand_in.path("takes-changed"), "").expect("written");
     let named = "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n";
+
+    // Edits not yet committed stay here: the far side checks a commit, so
+    // it would pass the last one rather than what's in the working tree.
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("uncommitted"),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert_eq!(text(&ran.stdout), named);
+    fs::write(stand_in.path("clean"), "").expect("written");
 
     for arguments in [
         &["--system", "x86_64-linux", "--here"][..],

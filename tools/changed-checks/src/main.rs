@@ -34,8 +34,9 @@
 //! 4.8 GB and several cores of the person's machine. The far side runs
 //! the commit's own changed-checks with the same arguments and marked so
 //! it never sends itself on. With `--here`, a `--base` other than
-//! origin's main, which the far side wouldn't have, or nowhere to send it,
-//! it runs here. While nix-offload lends a builder, a build here is sent
+//! origin's main, which the far side wouldn't have, edits not yet
+//! committed, which it would pass over, or nowhere to send it, it runs
+//! here. While nix-offload lends a builder, a build here is sent
 //! to it as a command naming a commit origin has, and the builder fetches
 //! that commit, evaluates the checks and builds them itself (`there.rs`
 //! says why).
@@ -198,7 +199,7 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
 /// The run sent to another machine by `nix-offload there --changed`, its
 /// exit, or none when it runs here: asked to, already the far side's, a
 /// base only this checkout may have, a nix-offload that doesn't take it,
-/// or nowhere that took it.
+/// edits not yet in a commit, or nowhere that took it.
 fn elsewhere(options: &Options, root: &str, system: &str) -> Result<Option<ExitCode>, String> {
     if options.here || env::var_os(HERE).is_some() || options.base != ORIGIN_MAIN {
         return Ok(None);
@@ -214,6 +215,14 @@ fn elsewhere(options: &Options, root: &str, system: &str) -> Result<Option<ExitC
                 .any(|word| word == "changed")
     });
     if !takes_it {
+        return Ok(None);
+    }
+    // The far side checks a commit, so edits not yet in one would be passed
+    // over for the last commit's checks.
+    if clean_commit()?.is_none() {
+        eprintln!(
+            "changed-checks: uncommitted changes stay on this machine; commit to send the run"
+        );
         return Ok(None);
     }
     let mut given = options.given.clone();
