@@ -423,8 +423,9 @@
     or save, Google's own kinds as their office program's file, never opening one that runs, each
     download asked lately told, and a file cut short leaving nothing behind, and sends what Joel
     saves through the picker up to Drive once it's written and left a moment, a new file and then
-    new versions of it, never a second file for one it may not replace, keeping each staged copy
-    and letting go of those sent a week ago
+    new versions of it, never a second file for one it may not replace, saying which program
+    saved each as the picker named it, keeping each staged copy and letting go of those sent a
+    week ago, with what was kept beside them
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1437,8 +1438,9 @@
     own kind comes as, picked by that name and kind, adopting its document row, with why a file or
     a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
     tells each settled since the shell started once, oldest first, by its folder's name, sent as an
-    answer with Open in Drive and failed with why and what mends it, and finds a failure's notice
-    by its file alone
+    answer with Open in Drive and failed with why and what mends it, a copy that couldn't be read
+    going back to the program that saved it while it's open, and finds a failure's notice by its
+    file alone
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail

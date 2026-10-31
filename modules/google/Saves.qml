@@ -4,7 +4,9 @@ pragma Singleton
 // (Saves.js says which and how). The notices are sent from the shell, as
 // Wi-Fi's sign-in is (SignIn.qml), so the act Joel picks comes back here
 // through the drive ipc target: Open in Drive, Sign In through pi, Try
-// Again, or Save a Copy into a local folder he picks in the launcher. A
+// Again, Save a Copy into a local folder he picks in the launcher, or Go
+// To the program that saved a copy that couldn't be read, while its
+// window is open, named by the picker beside the file (`.<name>.from`). A
 // failure's notice is taken back once its file is up or kept elsewhere.
 // The staged copy stays until one or the other, so nothing saved is lost.
 import qs
@@ -42,22 +44,35 @@ Singleton {
 
     // Sends its notice and runs the act notify-send answers with.
     function tell(upload) {
-        const notice = Said.notice(upload, Google.drive.listings);
+        const from = upload.from ?? "";
+        const program = saverWindow(from) === null ? ""
+            : DesktopEntries.heuristicLookup(from)?.name ?? from;
+        const notice = Said.notice(upload, Google.drive.listings, program);
         const flags = notice.acts.map(act => `--action=${act.key}=${act.name}`)
             .concat(notice.answers ? ["--hint=string:x-answers:save"] : []);
         Niri.spawn(["sh", "-c", saying, "drive-save", notice.summary, notice.body,
-            upload.link ?? "", upload.path].concat(flags));
+            upload.link ?? "", upload.path, from].concat(flags));
+    }
+
+    // A window of the program with this app id, as the picker named it
+    // beside the save, or null when none is open.
+    function saverWindow(from) {
+        if (from === "")
+            return null;
+        return Object.values(Niri.windows)
+            .find(w => (w.app_id ?? "").toLowerCase() === from.toLowerCase()) ?? null;
     }
 
     readonly property string saying: [
-        'summary=$1 body=$2 link=$3 path=$4',
-        'shift 4',
+        'summary=$1 body=$2 link=$3 path=$4 from=$5',
+        'shift 5',
         'asked=$(notify-send --app-name="Google Drive" "$@" -- "$summary" "$body")',
         'case $asked in',
         '    open) exec google-opens "$link" ;;',
         '    sign-in) exec qs ipc call drive signIn ;;',
         '    again) exec qs ipc call drive again "$path" ;;',
         '    copy) exec qs ipc call drive copy "$path" ;;',
+        '    go) exec qs ipc call drive goTo "$from" ;;',
         'esac'
     ].join("\n")
 
@@ -110,7 +125,7 @@ Singleton {
         '    exec notify-send --app-name="Google Drive" -- "Not Saved" \\',
         '        "$name couldn\'t be copied to ${shown%/*}"',
         'fi',
-        'rm -f -- "$staged" "${staged%/*}/.$name.drive"',
+        'rm -f -- "$staged" "${staged%/*}/.$name.drive" "${staged%/*}/.$name.from"',
         'qs ipc call drive kept "$staged"',
         'asked=$(notify-send --app-name="Google Drive" --hint=string:x-answers:save \\',
         '    --action=open="Open" -- "Saved a Copy" "$shown")',
@@ -134,6 +149,14 @@ Singleton {
 
         function kept(path: string): void {
             root.withdraw(path);
+        }
+
+        // Back to the program that saved a file that couldn't be read,
+        // while its window is open.
+        function goTo(from: string): void {
+            const window = root.saverWindow(from);
+            if (window !== null)
+                Niri.act({ FocusWindow: { id: window.id } });
         }
     }
 }

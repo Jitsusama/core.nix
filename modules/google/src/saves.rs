@@ -75,10 +75,30 @@ pub fn staged(root: &Path, path: &Path) -> Option<Staged> {
     })
 }
 
+/// Where the picker names who saved a staged file: `.<name>.from`.
+fn saver(staged: &Path) -> PathBuf {
+    let name = staged.file_name().unwrap_or_default().to_string_lossy();
+    staged.with_file_name(format!(".{name}.from"))
+}
+
 /// The mark kept beside a staged file once it's up: `.<name>.drive`.
 fn mark(staged: &Path) -> PathBuf {
     let name = staged.file_name().unwrap_or_default().to_string_lossy();
     staged.with_file_name(format!(".{name}.drive"))
+}
+
+/// The app id of the program that saved the file staged at `staged`, as
+/// the picker wrote it beside it in `.<name>.from`, or none.
+pub fn from(staged: &Path) -> Option<String> {
+    let said = fs::read_to_string(saver(staged)).ok()?;
+    let said = said.trim();
+    // An app id is one word of a desktop entry's name, nothing more.
+    (!said.is_empty()
+        && said.len() <= 255
+        && said
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')))
+    .then(|| said.to_owned())
 }
 
 /// The id Drive gave the file staged at `staged`, as kept beside it.
@@ -139,6 +159,7 @@ pub fn prune(root: &Path, now: SystemTime) {
             if old && !waiting(&staged.path) {
                 let _ = fs::remove_file(&staged.path);
                 let _ = fs::remove_file(mark(&staged.path));
+                let _ = fs::remove_file(saver(&staged.path));
             }
         }
     }
@@ -355,12 +376,15 @@ mod tests {
         let never = root.join("root/Never.txt");
         fs::write(&sent_up, "x").unwrap();
         fs::write(&never, "x").unwrap();
+        fs::write(root.join("root/.Old.txt.from"), "org.gnome.TextEditor").unwrap();
         keep(&sent_up, "f1").unwrap();
         prune(&root, SystemTime::now() + KEPT / 2);
         assert!(sent_up.exists());
+        assert_eq!(from(&sent_up).as_deref(), Some("org.gnome.TextEditor"));
         prune(&root, SystemTime::now() + KEPT + Duration::from_secs(60));
         assert!(!sent_up.exists());
         assert!(sent(&sent_up).is_none());
+        assert!(from(&sent_up).is_none());
         assert!(never.exists());
         fs::remove_dir_all(root).unwrap();
     }

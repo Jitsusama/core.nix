@@ -1337,11 +1337,19 @@ fn a_save_goes_up_once_as_a_new_file_then_a_new_version_never_a_second_file() {
     fs::create_dir_all(root.join("root")).unwrap();
     fs::create_dir_all(root.join("gone1")).unwrap();
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    // The picker says which program saved it, beside the file.
+    fs::write(root.join("root/.Notes.txt.from"), "org.gnome.TextEditor").unwrap();
     let save = |watch: &mut Watch, at: &str, bytes: &str| {
         let staged = saves::staged(&root, &root.join(at)).unwrap();
         fs::write(&staged.path, bytes).unwrap();
         let going = watch.uploading(&staged, &now()).drive.uploads[0].clone();
         assert_eq!((going.id, going.failed), (None, None));
+        let from = if at == "root/Notes.txt" {
+            Some("org.gnome.TextEditor")
+        } else {
+            None
+        };
+        assert_eq!(going.from.as_deref(), from);
         let done = watch.upload(&now()).drive.uploads[0].clone();
         assert_eq!((done.folder, done.name), (staged.folder, staged.name));
         (done.id, done.link, done.failed)
