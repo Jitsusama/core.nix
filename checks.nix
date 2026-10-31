@@ -389,6 +389,9 @@ let
     # Whether polkit lets an account switch the machine shows only with
     # polkit, systemd and a system to switch to.
     vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
+    # Whether a machine updates itself to signed main, and goes back when it
+    # isn't whole, shows only with systemd, a real switch and Nix building.
+    vm-updates-itself-to-signed-main = import ./tests/update-to-main.nix { inherit self pkgs; };
     # Whether polkit lets an administrator tune the work slices shows only
     # with polkit and systemd.
     vm-admins-tune-the-work-slices = import ./tests/work-slices.nix { inherit self pkgs; };
@@ -947,6 +950,7 @@ gather (
     ./modules/touchpad/checks.nix
     ./modules/tuple/checks.nix
     ./modules/unlisted/checks.nix
+    ./modules/update-to-main/checks.nix
     ./modules/v4l2loopback/checks.nix
     ./modules/wifid/checks.nix
     ./modules/yubikey/checks.nix

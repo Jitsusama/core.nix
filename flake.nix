@@ -231,6 +231,7 @@
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         sudo = ./modules/sudo/darwin.nix;
+        update-to-main = ./modules/update-to-main/darwin.nix;
         yubikey = ./modules/yubikey/system.nix;
         zsh = ./modules/zsh/system.nix;
 
@@ -316,6 +317,7 @@
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
         unlisted = ./modules/unlisted/nixos.nix;
+        update-to-main = ./modules/update-to-main/nixos.nix;
         usb-camera-holders = ./modules/usb-camera-holders/nixos.nix;
         usb-wake = ./modules/usb-wake/nixos.nix;
         v4l2loopback = ./modules/v4l2loopback/nixos.nix;
