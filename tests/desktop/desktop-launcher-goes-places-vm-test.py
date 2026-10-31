@@ -51,6 +51,45 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+def test_heap_by_place(desktop: Desktop) -> None:
+    """Throwaway: the shell's JS heap after each place's first opening."""
+    heap = (
+        "p=$(systemctl --user show quickshell -p MainPID --value);"
+        " awk '/JSGCHeap/{on=1;next} /^[0-9a-f]+-/{on=0} on && /^Rss:/{s+=$2} END{print s}'"
+        " /proc/$p/smaps; grep -E '^(Pss_Anon):' /proc/$p/smaps_rollup"
+    )
+
+    def read(what: str) -> None:
+        time.sleep(3)
+        print(f"HEAP {what}: {' '.join(desktop.as_account(heap).split())}")
+
+    def closed() -> None:
+        desktop.machine.send_key("esc")
+        desktop.machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+
+    read("closed at start")
+    time.sleep(15)
+    read("closed 15 s on")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    read("home")
+    closed()
+    read("closed again")
+    for name in ["on", "agents", "programs", "people", "desktop", "machine", "network"]:
+        desktop.as_account(f"qs ipc call launcher collection {name}")
+        desktop.launcher_ready()
+        read(f"{name} {desktop.showing()['held']}")
+        closed()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("a")
+    read("typed a")
+    closed()
+    read("closed at the end")
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
