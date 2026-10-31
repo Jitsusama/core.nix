@@ -330,6 +330,13 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
         machine.send_key("ret")
     camera.gone()
 
+    # q closes, as Escape does and as Joel's Neovim closes help, keeping nothing.
+    kept = machine.succeed(f"ls {camera.pictures} {camera.videos}")
+    camera.viewfinder("picture from the camera")
+    machine.send_key("q")
+    camera.gone()
+    assert machine.succeed(f"ls {camera.pictures} {camera.videos}") == kept
+
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.
     machine.succeed(
