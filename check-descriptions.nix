@@ -1043,6 +1043,13 @@
     taken as one change, and those already known as none; their conversation is found by any of
     their addresses, its drawer saying who said each message, newest last
   '';
+  slack-says-only-whats-current = ''
+    Now's Slack piece counts what wants Joel only while Slack answered and slack-unreads' file
+    is under ten minutes old, saying it can't check when Slack can't be reached or the count is
+    stale, since when, and signed out once Slack refuses the sign-in; it's listed with something
+    to read or Slack not saying, never with nothing or no file, naming the first two
+    conversations and how many more
+  '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';
@@ -1352,8 +1359,8 @@
     gap's size with the same room all round, and What's on points at the row the keys are on
   '';
   the-margins-marks-are-drawn-level = ''
-    every mark the margin can show, a device's kind among them, is the theme's drawing of it,
-    standing the grid's full height and centred across it as Qt draws it
+    every mark the margin can show, a device's kind and Slack's among them, is the theme's
+    drawing of it, standing the grid's full height and centred across it as Qt draws it
   '';
   the-mic-mute-light-follows-the-mute = ''
     `mic-mute-light` asks after the mute only once a change to a mute or the default source has

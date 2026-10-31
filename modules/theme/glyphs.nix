@@ -1164,6 +1164,12 @@ in
     glyph = nerd "f0b79";
     console = "c";
     means = "people talking in writing, and where they do";
+    # A speech bubble, its tail below at the left, and a dot at its corner
+    # saying some of it waits, drawn as the mail's envelope is.
+    drawn = drawing [
+      "M0 3H7.5V4.5H1.5V9H10.5V5.5H12V10.5H4.5L1.5 12H0Z"
+      "M10 0A2 2 0 0 1 10 4A2 2 0 0 1 10 0Z"
+    ];
   };
   brush = {
     glyph = nerd "f00e3";

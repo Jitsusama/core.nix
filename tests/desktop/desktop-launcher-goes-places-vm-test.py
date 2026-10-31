@@ -2636,6 +2636,118 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     )
 
 
+def slack_says(desktop: Desktop, state: str, conversations: list[Json], *, ago: int = 0) -> None:
+    """Write slack-unreads' file as it does, whole, checked `ago` milliseconds since."""
+    # The guest's clock, which the shell judges the file by.
+    checked = int(desktop.as_account("date +%s%3N").strip()) - ago
+    told = json.dumps({"checked": checked, "state": state, "conversations": conversations})
+    desktop.as_account(
+        f"printf '%s' {shlex.quote(told)} > $XDG_RUNTIME_DIR/slack-unreads.new"
+        " && mv $XDG_RUNTIME_DIR/slack-unreads.new $XDG_RUNTIME_DIR/slack-unreads.json"
+    )
+
+
+def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
+    desktop: Desktop,
+) -> None:
+    """What in Slack wants Joel is counted in Now, and never an old count.
+
+    Return lists each conversation as Slack's one conversation row, then Show Slack. When
+    Slack can't be reached, or the count has gone stale, it says it can't check and lists
+    none; with no file, it's gone.
+    """
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    conversations = [
+        {
+            "id": "D1",
+            "name": "Ada Lovelace",
+            "kind": "dm",
+            "count": 2,
+            "link": "slack://channel?team=T1&id=D1",
+        },
+        {
+            "id": "C1",
+            "name": "#deploys",
+            "kind": "mention",
+            "count": 1,
+            "link": "slack://channel?team=T1&id=C1",
+        },
+        {
+            "id": "threads",
+            "name": "Threads",
+            "kind": "thread",
+            "count": 3,
+            "link": "slack://open?team=T1",
+        },
+    ]
+    slack_says(desktop, "ok", conversations)
+    try:
+        now_rows(desktop)
+        desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
+        desktop.down_to("Slack")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "6 to read"
+                and shown["selected"]["note"] == "Ada Lovelace, #deploys and 1 more"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"][-1:] == ["Slack"]
+                and shown["rows"] == ["Ada Lovelace", "#deploys", "Threads", "Show Slack"]
+                and shown["selected"]["side"] == "2 to read"
+                and shown["selected"]["note"] == "a direct message"
+            )
+        )
+        # Its acts are the conversation's, Open in Slack first; with no link
+        # to share, there's nothing to copy.
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack"])
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # Every Slack conversation row is made by its one component.
+        said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+        assert said["uncomposed"] == [], (
+            "A row drawn by the surface listing it, though a thing is one row:\n"
+            + "\n".join(said["uncomposed"])
+        )
+        # Slack out of reach: no count, and nothing listed but Show Slack.
+        slack_says(desktop, "unreachable", [])
+        now_rows(desktop)
+        desktop.down_to("Slack")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "can't check"
+                and shown["selected"]["note"] == "Slack can't be reached"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Show Slack"])
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # A count eleven minutes old is no count either, and says since when.
+        slack_says(desktop, "ok", conversations, ago=11 * 60 * 1000)
+        now_rows(desktop)
+        desktop.down_to("Slack")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "can't check"
+                and shown["selected"]["note"].startswith("not checked since ")
+            )
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/slack-unreads.json")
+    # With no file, as when slack-unreads stops, Slack is gone from Now.
+    now_rows(desktop)
+    desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 @pytest.mark.usefixtures("google")
 def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> None:
     """Reply writes a new message in Mail to who sent the mail, its subject marked a reply."""
@@ -3994,10 +4106,11 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.launcher_ready()
     # Its top is the layers, each with its count and as many of its first
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
-    # theirs, nor Chrome or Slack, so none of theirs either. After the
-    # terminal's come btop's, which every machine has, the picture viewer's,
-    # the markdown reader's, the document viewer's, the player's,
-    # 1Password's, GIMP's, Inkscape's and Spotify's.
+    # theirs, nor Chrome, so none of its either. After the terminal's come
+    # btop's, which every machine has, the picture viewer's, the markdown
+    # reader's, the document viewer's, the player's, Slack's (which this
+    # area's machine brings, for Now's Slack piece), 1Password's, GIMP's,
+    # Inkscape's and Spotify's.
     layers = [
         "Desktop",
         "Terminal",
@@ -4006,6 +4119,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Markdown Reader",
         "Document Viewer",
         "Player",
+        "Slack",
         "Passwords",
         "Picture Editor",
         "Drawing Editor",

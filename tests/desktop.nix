@@ -545,6 +545,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         fallbackServers = [ ];
       };
       home-manager.users.${account} = {
+        # Slack, as a machine that brings it imports it, so Now's Slack piece
+        # reads the file a test writes in slack-unreads' place. Nobody signs
+        # in to Slack here, so slack-unreads itself never starts. Only where
+        # the launcher's places are tested, since no other area reads it.
+        imports = lib.optional (area == "launcher-goes-places") self.homeModules.slack;
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs photograph kitty the same
         # rather than catching its fade wherever it happens to be.

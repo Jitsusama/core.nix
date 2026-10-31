@@ -129,44 +129,19 @@ PersonSource {
         return said ? [{ at: said.conversation.at, row: conversation(said, provider) }] : [];
     }
 
+    // Slack's conversation row, the one every surface shows
+    // (SlackConversation.qml), named by its newest message's first words.
     function conversation(said, provider) {
         const talk = said.conversation;
-        const open = () => Niri.spawn(["xdg-open",
-            `slack://channel?team=${said.team}&id=${talk.channel}`]);
-        const act = (key, fields) => provider.thing(Object.assign({
-            key: key,
-            name: Words.name(key),
-            verb: Words.verb(key),
-            glyph: Words.glyph(key),
-            hue: "action"
-        }, fields));
-        const name = talk.last !== "" ? talk.last : Words.name("slack:conversation");
-        return provider.thing({
-            key: `slack:conversation:${talk.channel}`,
-            what: "conversation",
-            thing: true,
-            of: "program:slack",
-            part: name,
-            name: name,
-            verb: Words.verb("verb:slack:open"),
-            glyph: Words.glyph("slack:conversation"),
-            hue: "program",
+        return SlackConversation.row({
+            id: talk.channel,
+            name: talk.last !== "" ? talk.last : Words.name("slack:conversation"),
+            opens: `slack://channel?team=${said.team}&id=${talk.channel}`,
+            link: talk.link,
             side: source.called,
             note: Ago.ago(talk.at, Date.now()),
-            drawer: Slack.drawn(said),
-            later: true,
-            run: open,
-            verbs: () => [
-                act("verb:slack:open", { later: true, run: open }),
-                // Copy is last, as everywhere.
-                act("verb:slack:link", {
-                    now: true,
-                    run: () => {
-                        Quickshell.clipboardText = talk.link;
-                    }
-                })
-            ]
-        });
+            drawer: Slack.drawn(said)
+        }, fields => provider.thing(fields));
     }
 
     // Asks Slack about each of their addresses that's due (Slack.due).

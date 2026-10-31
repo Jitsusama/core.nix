@@ -1,10 +1,11 @@
 # Slack's keys, for the launcher to list over its window, whose app id is
-# slack, and Slack as one of People's sources. Slack comes from wherever
+# slack, Slack as one of People's sources, and what in Slack wants Joel as
+# one of what's on in Now. Slack comes from wherever
 # the machine gets it, so this lists its keys and installs nothing of
 # Slack's own; a machine with Slack imports it. Slack takes no settings
 # for its keys, so these are its own, from its help's list for Windows and
 # Linux.
-{ people }:
+{ people, quickshell }:
 {
   config,
   lib,
@@ -22,12 +23,31 @@ in
   imports = [
     ../keys/home.nix
     people
+    quickshell
   ];
 
   home.packages = [ lookUp ];
 
-  # What the source decides, beside it, where its import finds it.
-  xdg.configFile."quickshell/launcher/people/Slack.js".source = ./Slack.js;
+  xdg.configFile = {
+    # What the source decides, beside it, where its import finds it.
+    "quickshell/launcher/people/Slack.js".source = ./Slack.js;
+    # A Slack conversation's one row, which every surface showing one
+    # takes (SlackConversation.qml), and what in Slack wants Joel, read
+    # from slack-unreads' file (SlackUnreads.qml).
+    "quickshell/SlackConversation.qml".source = ./SlackConversation.qml;
+    "quickshell/SlackUnreads.qml".source = ./SlackUnreads.qml;
+    "quickshell/SlackUnreads.js".source = ./SlackUnreads.js;
+  };
+
+  # What in Slack wants Joel, wearing the chat mark; right after the mail,
+  # as VKCF3Z placed it, since both keep.
+  jitsusama.quickshell.overview.pieces.slack = {
+    order = 62;
+    source = ./NewSlack.qml;
+    label = "slack";
+    tier = "when";
+    mark = "chat";
+  };
 
   # Write in Slack for anyone Slack knows by one of their addresses, through
   # the harness's Slack sign-in, read only (Joel, 2026-10-28). It's the

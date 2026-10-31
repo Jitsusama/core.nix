@@ -49,11 +49,16 @@ let
         '') files
       )}
       mv quickshell qs
-      # Slack's source for People is installed only where a machine brings
-      # Slack, as no example does, so it's read here as if one had.
-      mkdir -p qs/launcher/people
+      # Slack's source for People, its conversation's row and Now's Slack
+      # piece are installed only where a machine brings Slack, as no
+      # example does, so they're read here as if one had.
+      mkdir -p qs/launcher/people qs/pieces
       cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
       cp ${../slack/Slack.js} qs/launcher/people/Slack.js
+      cp ${../slack/SlackConversation.qml} qs/SlackConversation.qml
+      cp ${../slack/SlackUnreads.qml} qs/SlackUnreads.qml
+      cp ${../slack/SlackUnreads.js} qs/SlackUnreads.js
+      cp ${../slack/NewSlack.qml} qs/pieces/slack.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
@@ -2394,7 +2399,11 @@ onLinux {
   the-margins-marks-are-drawn-level =
     let
       qt = pkgs.qt6.qtdeclarative;
-      home = account graphical;
+      # With Slack too, whose piece only a machine that brings Slack has.
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        { home-manager.sharedModules = [ self.homeModules.slack ]; }
+      ]);
       marks = lib.unique (
         lib.filter (mark: mark != null) (
           lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.overview.pieces
