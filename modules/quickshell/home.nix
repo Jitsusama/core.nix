@@ -98,6 +98,7 @@ let
     "Pasting.qml"
     "Notices.qml"
     "Forward.js"
+    "Daemon.qml"
     "Sessions.qml"
     "Location.qml"
     "WaitingOnYou.qml"

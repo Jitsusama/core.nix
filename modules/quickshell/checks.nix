@@ -843,6 +843,29 @@ onLinux {
       touch $out
     '';
 
+  # The shell holds a daemon's records over one connection (Daemon.qml),
+  # against the real people daemon with a source stood in for
+  # (tests/daemon-source.sh), started, stopped and started again by
+  # tests/daemon.qml.
+  the-shell-holds-a-daemons-records =
+    let
+      people = pkgs.callPackage ../people/package.nix { };
+    in
+    pkgs.runCommandLocal "the-shell-holds-a-daemons-records" { } ''
+      mkdir -p runtime/daemons && chmod 700 runtime
+      cat > sources.json <<EOF
+      {"sources": [{"name": "slack",
+        "command": ["${lib.getExe pkgs.bash}", "${../../tests/daemon-source.sh}"]}]}
+      EOF
+      cp ${./Daemon.qml} Daemon.qml
+      cp ${../../tests/daemon.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
+      ${shellFolderLint}
+      timeout 90 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's quests find pi's quests in a store written here, as the
   # real pi-quests reads it (tests/quests-store.sh), and open pi on one or
   # go to its session (tests/quests.qml), with niri and pi's sessions stood
