@@ -7,6 +7,7 @@ line of words each, so a test can count how often Slack was asked, and is held u
 runtime folder's slack-answers file exists, so a test sees what the launcher shows while Slack
 is asked. "launcher" finds two messages, Ada's in #launcher and Joel's own to her; "busy" is
 refused as Slack's rate limit refuses; anything else finds nothing. Nothing else is answered.
+Each hello is written down in slack-hellos, so a test knows the shell has reached it.
 """
 
 import json
@@ -20,6 +21,7 @@ SOCKET = Path(sys.argv[1])
 RUNTIME = SOCKET.parent.parent
 SEARCHED = RUNTIME / "slack-searched"
 ANSWERS = RUNTIME / "slack-answers"
+HELLOS = RUNTIME / "slack-hellos"
 # How often a held search looks for leave to answer, in seconds.
 LOOK = 0.05
 # Milliseconds in an hour, as the daemon gives times.
@@ -78,6 +80,8 @@ def answer(said: dict[str, object]) -> dict[str, object]:
     asked = said.get("id")
     now = int(time.time() * 1000)
     if said.get("ask") == "hello":
+        with HELLOS.open("a") as hellos:
+            hellos.write("hello\n")
         return {
             "id": asked,
             "version": 1,

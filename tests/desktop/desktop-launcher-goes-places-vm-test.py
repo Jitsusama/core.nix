@@ -5287,14 +5287,17 @@ def slack(desktop: Desktop) -> Iterator[str]:
     """Start the stand-in Slack daemon for one test, and stop it after, giving its runtime folder.
 
     The launcher offers Search Slack only while Slack's daemon answers, so no other test's
-    search ends with it.
+    search ends with it. The shell looks for the daemon every 2 seconds, so this yields only
+    once the shell has said hello to it.
     """
     runtime = "/run/user/1000"
-    desktop.as_account(f"rm -f {runtime}/slack-searched {runtime}/slack-answers")
+    kept = f"{runtime}/slack-searched {runtime}/slack-answers {runtime}/slack-hellos"
+    desktop.as_account(f"rm -f {kept}")
     desktop.as_account("systemctl --user start slack-stand-in.service")
+    desktop.machine.wait_until_succeeds(f"test -s {runtime}/slack-hellos", timeout=30)
     yield runtime
     desktop.as_account("systemctl --user stop slack-stand-in.service")
-    desktop.as_account(f"rm -f {runtime}/slack-searched {runtime}/slack-answers")
+    desktop.as_account(f"rm -f {kept}")
 
 
 def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_place(
