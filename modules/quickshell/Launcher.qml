@@ -2269,7 +2269,26 @@ Scope {
         if (refreshing.includes(source))
             return;
         refreshing = refreshing.concat([source]);
-        Qt.callLater(refreshDue);
+        // The first change is taken at once, and those after it within a
+        // quarter second together, since each joins the whole corpus again
+        // and searches what's shown: 86 of Slack's answers, one a tenth of
+        // a second just after a restart, held the open launcher for a
+        // minute (2026-10-30, 19:14).
+        const wait = refreshedAt + refreshPace - Date.now();
+        if (open && wait > 0) {
+            if (!refreshPacing.running) {
+                refreshPacing.interval = wait;
+                refreshPacing.start();
+            }
+        } else {
+            Qt.callLater(refreshDue);
+        }
+    }
+    readonly property int refreshPace: 250
+    property real refreshedAt: 0
+    Timer {
+        id: refreshPacing
+        onTriggered: root.refreshDue()
     }
     // A condition a shown place names has moved, as when the charger goes
     // in: its rows are made again, so what it held stays dimmed and says
@@ -2308,6 +2327,9 @@ Scope {
     }
 
     function refreshDue() {
+        if (refreshing.length === 0)
+            return;
+        refreshedAt = Date.now();
         if (open)
             freshen();
         const due = refreshing;
