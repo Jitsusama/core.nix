@@ -3111,6 +3111,13 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
     """
     machine = desktop.machine
     heard = "$XDG_RUNTIME_DIR/collector/heard.jsonl"
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # First an opening with no collector listening, its send refused, as
+    # when the collector is down: what's sent after it still arrives.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     desktop.as_account("systemctl --user start stand-in-collector")
     try:
         machine.wait_until_succeeds(
@@ -3125,9 +3132,7 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
         machine.send_key("left")
         desktop.launcher_until(lambda shown: shown["held"] == [])
         desktop.as_account("qs ipc call launcher toggle")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
         opening = [span for span in spans if span["name"] == "open"][-1]
         mine = [span for span in spans if span["trace"] == opening["trace"]]
