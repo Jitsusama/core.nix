@@ -356,8 +356,8 @@ mod tests {
     fn a_name_is_asked_of_resolved_itself_with_its_port_kept() {
         let (dir, asked) = resolved(
             r#"{"parameters":{"addresses":[
-                {"ifindex":3,"family":2,"address":[192,168,4,45]},
-                {"ifindex":3,"family":10,"address":[254,128,0,0,0,0,0,0,16,111,146,110,239,36,42,62]}
+                {"ifindex":3,"family":2,"address":[192,0,2,45]},
+                {"ifindex":3,"family":10,"address":[254,128,0,0,0,0,0,0,0,0,0,0,0,0,0,45]}
             ],"name":"home.local","flags":0}}"#,
         );
         let found = found("home.local:22", &dir.path().join("resolve"));
@@ -368,13 +368,8 @@ mod tests {
         assert_eq!(
             found,
             [
-                "192.168.4.45:22".parse::<SocketAddr>().expect("v4"),
-                SocketAddr::V6(SocketAddrV6::new(
-                    "fe80::106f:926e:ef24:2a3e".parse().expect("v6"),
-                    22,
-                    0,
-                    3
-                )),
+                "192.0.2.45:22".parse::<SocketAddr>().expect("v4"),
+                SocketAddr::V6(SocketAddrV6::new("fe80::2d".parse().expect("v6"), 22, 0, 3)),
             ]
         );
     }
