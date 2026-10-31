@@ -122,6 +122,18 @@ def enter(machine: QemuMachine, text: str) -> None:
     machine.send_chars(text + "\n", delay=KEY_PACE)
 
 
+def settled(machine: QemuMachine) -> None:
+    """Reach the booted machine, and wait until its devices have all been set up.
+
+    While udev is still loading drivers for what it found at boot, the VM can
+    leave keys sent to it unread long enough to lose some, and a YubiKey's PIN
+    typed then counts as a wrong try. A person at a real keyboard isn't that
+    fast, so this is the test's to wait for, not the guide's.
+    """
+    machine.connect()
+    machine.succeed("udevadm settle")
+
+
 def plug(machine: QemuMachine, rig: Rig, name: str) -> None:
     """Take the key out and plug in the one whose state file is named."""
     machine.send_monitor_command("device_del key")
@@ -498,7 +510,7 @@ def first_boot(shut_down: QemuMachine, rig: Rig, values: dict[str, Any]) -> Qemu
     # systemd-boot enrols the keys the stick readied and restarts before
     # any kernel starts, so the disk asks only once, with Secure Boot on.
     unlock(machine, values["pin"])
-    machine.connect()
+    settled(machine)
     # The guide, at boot, holds multi-user.target back until it's done.
     machine.wait_until_succeeds(
         "systemctl show -P ActiveState guide-installed | grep -qx activating"
@@ -624,7 +636,7 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     machine.succeed(f"{values['tpm2Clear']} -T device:/dev/tpmrm0 -c l")
     machine.reboot()
     unlock(machine, pin)
-    machine.connect()
+    settled(machine)
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
     seal_tpm(machine, values)
@@ -881,7 +893,7 @@ def policy_freed(reinstalled_boot: QemuMachine, values: dict[str, Any]) -> list[
     before = policies(machine, values)
     machine.reboot()
     unlock(machine, values["pin"])
-    machine.connect()
+    settled(machine)
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
     seal_tpm(machine, values)
