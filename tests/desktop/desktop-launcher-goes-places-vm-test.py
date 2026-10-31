@@ -4519,6 +4519,37 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 
 
+def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
+    """A session wanting Joel to do one of its items is in Needs You once, as the item."""
+    desktop.pi_session()
+    asked = f"{MISSION}/waiting/TESTQA.json"
+    desktop.as_account(f"mkdir -p {MISSION}/waiting")
+    kept(desktop, asked, {"items": [{"id": "sign", "title": "Sign the Form", "ready": True}]})
+    since = desktop.machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    # The session's presence mirrors the item as an action it wants.
+    action = {"kind": "action", "since": since, "said": "Sign the Form"}
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Needs You"
+                and shown["selected"]["side"] == "1"
+            )
+        )
+        desktop.machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "Needs You"] and shown["rows"] == ["Sign the Form"]
+            )
+        )
+        launcher_closed(desktop)
+    finally:
+        desktop.as_account(f"rm -f {asked}")
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
 def test_a_wants_notice_goes_to_the_session_through_the_shell(desktop: Desktop) -> None:
     """A want's notice, taken by Super+N, goes to the session as the launcher's Go To does.
 

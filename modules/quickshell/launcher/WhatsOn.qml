@@ -407,7 +407,12 @@ Provider {
     // most pressing first, or to a list saying nothing waits: the row acts
     // the same whatever waits, so Super+O, Return, Return reaches the
     // pressing thing and each press can be foreseen (VKCF3Z, 2026-10-29).
+    // Not a session whose want is an action, though: that's one of its own
+    // items, which a session's presence mirrors (harness #907), and which
+    // is listed here itself, so its session's row would say the same thing
+    // twice (2026-10-31: four items read as eight).
     readonly property var sessions: Sessions.wanting
+        .filter(session => session.presence?.wants?.kind !== "action")
     readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
     readonly property string first: sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
