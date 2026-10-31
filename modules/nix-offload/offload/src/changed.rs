@@ -116,9 +116,10 @@ pub fn sending(source: Source, arguments: &[String]) -> Sending {
          [ -d {mirror} ] || git init -q --bare {mirror}; \
          git -C {mirror} fetch -q https://github.com/{github} \
          +refs/heads/main:refs/heads/main {base}; \
+         git -C {mirror} symbolic-ref HEAD refs/heads/main; \
          git clone -q --shared {mirror} {into}/tree; \
          {unbundled}\
-         git -C {into}/tree checkout -q --detach {commit}; \
+         git -C {into}/tree checkout -q -B nix-offload-changed {commit}; \
          cd {into}/tree/{}; \
          {HERE} nix run .#changed-checks -- {}",
         dir.as_deref().unwrap_or("."),
@@ -277,7 +278,8 @@ mod tests {
         for part in [
             "\"$HOME\"/.cache/nix-offload/changed/someone-thing.git",
             "fetch -q https://github.com/someone/thing +refs/heads/main:refs/heads/main abc123",
-            "checkout -q --detach abc123",
+            "symbolic-ref HEAD refs/heads/main",
+            "checkout -q -B nix-offload-changed abc123",
             "CHANGED_CHECKS_HERE=1 WORK_RUNS_ELSEWHERE=1 nix run .#changed-checks -- \
              --build --system x86_64-linux",
         ] {
@@ -302,7 +304,7 @@ mod tests {
         for part in [
             "+refs/heads/main:refs/heads/main base1",
             "there.bundle refs/nix-offload/there:refs/heads/there",
-            "checkout -q --detach mine2",
+            "checkout -q -B nix-offload-changed mine2",
             "/tree/sub;",
         ] {
             assert!(sent.command.contains(part), "{part} in {}", sent.command);

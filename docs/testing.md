@@ -75,8 +75,9 @@ and builds what it names, or else to the first machine in
 repository's GitHub owner, which only evaluates, and what it names is
 built as any `there` build is. The far side keeps
 each base's derivations as a run here would. `--here` runs it on this
-machine, as does a `--base` other than origin's main, or nowhere taking
-it.
+machine, as does a `--base` other than origin's main, a change to a
+tracked file not yet committed, since the far side checks a commit, or
+nowhere taking it.
 
 `--keep-going` lets every check finish when one fails, so the run names all
 the failures rather than the first. Determinate Nix needs it besides: when a

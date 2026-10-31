@@ -683,7 +683,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     let sent = given();
     assert_eq!(sent.lines().next(), Some("nix-offload"), "{sent}");
     for part in [
-        format!("checkout -q --detach {head}"),
+        format!("checkout -q -B nix-offload-changed {head}"),
         "nix run .#changed-checks -- --build --no-vm --system x86_64-linux".to_owned(),
     ] {
         assert!(sent.contains(&part), "{part} in {sent}");
