@@ -518,8 +518,12 @@ impl Direction {
     /// carrying about 50. Then any thin spell counts, and a cut for the
     /// air's pings costs the call nothing and the rate a climb. A spell
     /// held back here says the connection isn't thin; one carrying under
-    /// the least it may be held to says nothing of the connection. Gives
-    /// whether it cut.
+    /// the least it may be held to says nothing of the connection. Live,
+    /// too, a direction is thin carrying under the share that makes it busy,
+    /// not only under half: at home on 31 October a download at its floor
+    /// carried 57% to 75% of it through a queue of up to 259 ms, too full
+    /// to be thin and too thin to be busy at the floor, so nothing gave.
+    /// Gives whether it cut.
     fn thin(
         &mut self,
         s: &Settings,
@@ -533,8 +537,9 @@ impl Direction {
             return false;
         }
         let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+        let under = if live { s.busy } else { s.loaded };
         let thin =
-            !held_here && carried < float(self.rate) * s.loaded && whole(carried * s.cut) < least;
+            !held_here && carried < float(self.rate) * under && whole(carried * s.cut) < least;
         let gone = self.thin_last.is_some_and(|at| now - at > s.thin_gap_s);
         let steady =
             live || carried >= self.thin_most * STEADY && carried * STEADY <= self.thin_least;
@@ -1517,6 +1522,52 @@ mod tests {
         assert!(held > 0.9, "queued {held} of the minute at the floor");
         assert!(live < 0.5, "queued {live} of the minute while live");
         assert!(most <= 60_000, "{most}");
+    }
+
+    #[test]
+    fn while_real_time_flows_a_download_carrying_most_of_its_floor_is_followed_down() {
+        // At home on 31 October, beside a stand-in call, a download held
+        // at its floor of 80.9 Mbit/s carried 45% to 95% of it, mostly 57%
+        // to 75%, while the pings past the router reached 259 ms. Too
+        // full to be thin and too thin to be busy, it was never followed
+        // down, and the queue was put to the upload, cut from 8.9 Mbit/s
+        // to 3.9 though it carried 12 once the call ended.
+        let mut c = wi_fi(8_900);
+        c.live = true;
+        c.up.best = 14_800;
+        c.up.peak = 14_800;
+        c.down.best = 134_800;
+        c.down.peak = 134_800;
+        c.down.held = 80_900;
+        c.down.rate = 80_900;
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut queue_kbit, mut most) = (0.0_f64, 0.0_f64, 0);
+        let (mut steps, mut queued) = (0_u32, 0_u32);
+        while at < 240.0 {
+            let share = 55_000.0 + 12_000.0 * (at * 1.3).sin() * (at * 0.31).cos();
+            let offered = float(c.down.rate) * 1.05;
+            queue_kbit = (queue_kbit + (offered - share) * 0.2).clamp(0.0, share * 0.4);
+            let received = if queue_kbit > 0.0 { share } else { offered };
+            let delay = queue_kbit / share * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            c.step(at, 8_400.0_f64.min(float(c.up.rate)), received);
+            if at > 180.0 {
+                steps += 1;
+                queued += u32::from(delay > 30.0);
+                most = most.max(c.down.rate);
+            }
+        }
+        let share = f64::from(queued) / f64::from(steps);
+        assert!(share < 0.5, "queued {share} of the minute while live");
+        assert!(most <= 70_000, "{most}");
+        // Pings don't say whose queue it is, so the upload, at its own
+        // floor beside it, may give a step before the download is found.
+        assert!(
+            c.up.rate >= 7_500,
+            "the upload took the blame: {}",
+            c.up.rate
+        );
     }
 
     #[test]
