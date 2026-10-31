@@ -88,8 +88,9 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     On a busy machine the file is rewritten up to 12 times a second. The search's rows, which
     read Queue's note, were made again whole on each write with the launcher closed: two
     thirds of the shell's idle processor on 2026-10-29. Then each write was still read and
-    heard, about 20 wakeups and 14 ms a write (2026-10-30). Now a closed launcher's queue is
-    only noted as written, and read once as it opens, its note saying the last write.
+    heard, about 20 wakeups and 14 ms a write (2026-10-30), and then only noted, each write
+    still waking it (2026-10-31). Now a closed launcher doesn't watch the queue at all, and
+    reads it once as it opens, its note saying the last write.
     """
     machine = desktop.machine
     jobs = "$XDG_RUNTIME_DIR/jobs"
@@ -110,6 +111,19 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
             f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
             f" && mv {jobs}/.q {jobs}/queue.json"
         )
+
+    def watches() -> int:
+        """How many of the shell's inotify watches are on the queue's folder."""
+        return int(
+            desktop.as_account(
+                "p=$(systemctl --user show quickshell -p MainPID --value);"
+                f" i=$(printf '%x' $(stat -c %i {jobs}));"
+                ' cat /proc/$p/fdinfo/* 2>/dev/null | grep -c " ino:$i " || true'
+            ).strip()
+        )
+
+    # Closed, a write never so much as wakes it: the folder isn't watched.
+    assert watches() == 0, "the closed launcher watches the queue's folder"
     try:
         desktop.answer("queue")
         desktop.launcher_until(
@@ -118,6 +132,8 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
                 and shown["selected"]["note"].startswith("20 GiB to spare")
             )
         )
+        # Open, it is, so the count above looked where a watch would be.
+        assert watches() > 0, "the open launcher doesn't watch the queue's folder"
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)}"
