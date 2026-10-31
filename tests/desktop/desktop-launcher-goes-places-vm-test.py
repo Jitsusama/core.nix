@@ -44,6 +44,13 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
+@pytest.fixture(autouse=True)
+def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
+    """Close the launcher after each test, so one failing with it open fails alone."""
+    yield
+    desktop.launcher_left_closed()
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
