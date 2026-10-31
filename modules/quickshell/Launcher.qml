@@ -2381,8 +2381,9 @@ Scope {
             // home was first drawn from none, and a session can start while
             // home is shown.
             const home = typed.trim() === "" && collections.includes(source);
-            if (home || typed.trim() !== "" && matches.some(row => row.endedBy === source
-                || source.things.some(own => own.key === row.key))) {
+            if (home || typed.trim() !== "" && (source.findsLater
+                || matches.some(row => row.endedBy === source
+                    || source.things.some(own => own.key === row.key)))) {
                 reshow(0);
                 Report.say(`refreshed ${source.settings.name}`);
             }

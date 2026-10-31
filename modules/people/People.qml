@@ -18,7 +18,15 @@
 // by its own row, so a mail is Mail's row and a meeting the meeting's.
 // Their details, every address and each source's facts, are in the
 // drawer beside the row.
+//
+// A source the people daemon holds (`held`, as Tuple's is) is read from
+// the daemon, never held whole here: only those it lists with nothing
+// typed, watched as they change, and those a search finds, asked of the
+// daemon as each text is typed. Holding Tuple's 7,731 contacts here made
+// 23,276 rows at each opening and held Joel's first key a second
+// (2026-10-31, 09:31).
 import qs
+import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -51,18 +59,118 @@ Provider {
         sources = made;
     }
 
-    // Everyone, one person each, joined again only when a source says who
-    // it knows again, which is seldom; and each as a row, by key, its name
-    // and addresses made ready to match only when first searched.
+    // The people daemon: those a held source lists, watched as they
+    // change, and a search's answers, given to the search alone.
+    Daemon {
+        id: book
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/people.sock`
+        kind: "person"
+        watching: ({ listed: true })
+    }
+
+    // Counts each change the daemon says, for a source that keeps
+    // something of its own until then (Tuple's favourites changed here).
+    readonly property int revision: book.revision
+
+    // The names of the sources the daemon holds.
+    readonly property var heldBy: sources.filter(source => source.held)
+        .map(source => source.settings.name)
+
+    // What the daemon's search last found, for the words asked, best
+    // first; and the words asked last, so each text is asked once.
+    property var sought: ({ words: "", records: [] })
+    property string seeking: ""
+    // As many as a search is answered with, as the daemon does unasked.
+    readonly property int soughtMost: 50
+
+    // Every record read from the daemon, once each: the latest search's
+    // first, in its order, then those listed.
+    readonly property var records: {
+        const by = {};
+        const all = [];
+        const held = book.revision >= 0 ? book.held : {};
+        for (const record of sought.records.concat(Object.values(held))) {
+            if (record.gone || record.key in by)
+                continue;
+            by[record.key] = record;
+            all.push(record);
+        }
+        return all;
+    }
+    readonly property var recordOf: {
+        const by = {};
+        for (const record of records)
+            by[record.key] = record;
+        return by;
+    }
+
+    // A held source's people and stands, from the records read, as a
+    // source of its own gives them.
+    readonly property var fromDaemon: {
+        const people = {};
+        const stands = {};
+        for (const source of sources.filter(each => each.held)) {
+            const name = source.settings.name;
+            people[name] = [];
+            stands[name] = {};
+            for (const record of records) {
+                const entry = record.sources?.[name];
+                if (!entry)
+                    continue;
+                const email = Person.address(entry.email);
+                const id = String(entry.id ?? "");
+                people[name].push(email !== ""
+                    ? { emails: [email], name: entry.name ?? "", recent: entry.recent === true }
+                    : { emails: [], id: id, name: entry.name ?? "", recent: entry.recent === true });
+                stands[name][email !== "" ? email : `${name}:${id}`] = source.stood(entry);
+            }
+        }
+        return { people: people, stands: stands };
+    }
+
+    // What a held source told the daemon of someone, or null.
+    function entryOf(person, name) {
+        const keys = person.emails.length > 0 ? person.emails.map(email => `person:${email}`)
+            : [`person:${person.key}`];
+        for (const key of keys) {
+            const entry = recordOf[key]?.sources?.[name];
+            if (entry)
+                return entry;
+        }
+        return null;
+    }
+
+    // Asks the daemon for whoever the words find, once a text; the answer
+    // comes within milliseconds and is searched as the rest are, so a
+    // search never waits on it.
+    function seek(typed) {
+        const words = String(typed).trim().toLowerCase();
+        if (heldBy.length === 0 || words === "" || words === seeking)
+            return;
+        seeking = words;
+        book.find({ ask: "search", kind: "person", words: words, limit: soughtMost }, answer => {
+            if (answer !== null && seeking === words)
+                sought = { words: words, records: answer.records ?? [] };
+        });
+    }
+
+    // Its search finds more once the daemon answers.
+    findsLater: true
+
+    // Everyone shown, one person each: those the sources give, and those
+    // read from the daemon; and each as a row, by key, its name and
+    // addresses made ready to match only when first searched.
     readonly property var persons: Person.merged(sources.map(source => ({
         name: source.settings.name,
-        people: source.people
+        people: source.held ? fromDaemon.people[source.settings.name] : source.people
     })))
     readonly property var everyone: persons.map(person => made(person, Person.standing(person, [])))
 
     // How each stands, which changes often, read from every source in
     // order, so the first that says is believed.
-    readonly property var stands: sources.map(source => source.stands)
+    readonly property var stands: sources.map(source => (source.held
+        ? fromDaemon.stands[source.settings.name] : source.stands))
 
     function standOf(person) {
         return Person.standing(person, stands);
@@ -282,8 +390,8 @@ Provider {
         return gather(typed);
     }
 
-    // Everyone is searched, thousands of them, so each name and address's
-    // letters are tested first, which passes most over without a call,
+    // Everyone shown is searched, those the sources give and the daemon's
+    // answers, so each name and address's letters are tested first, which passes most over without a call,
     // and only those left are made ready to match, once. A letter more
     // searches only those the letters before it found, since each word
     // matches where a word starts and so does all it starts with: walking
@@ -293,6 +401,7 @@ Provider {
     readonly property var lately: ({ typed: null, among: null, found: [] })
 
     function gather(typed) {
+        seek(typed);
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const rows = known;

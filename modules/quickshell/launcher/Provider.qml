@@ -60,6 +60,10 @@ Scope {
     // only here rather than twice under two names: the session's Lock is
     // Super+L's "Lock the screen".
     property var draws: []
+    // Whether its search finds more after it's asked, as People's does once
+    // the people daemon answers: a change it says while something is typed
+    // searches again, since what it found may be in no row shown yet.
+    property bool findsLater: false
 
     signal answered
     // A collection's things changed while it might be open.
