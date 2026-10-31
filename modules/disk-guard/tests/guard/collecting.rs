@@ -1080,6 +1080,37 @@ fn garbage_a_root_left_goes_within_a_minute() {
 }
 
 #[test]
+fn a_healthy_store_spends_at_most_a_tenth_of_its_time_listing() {
+    // On a busy machine a root leaves every few seconds, and a listing of a
+    // large store takes its CPU for a minute or two: listed again as soon as
+    // each ended, it was never not listing.
+    let store = Store::new();
+    let built = store.dead("aaa-built", 2.0 * 3600.0, 4096);
+    fs::write(built.join("alive"), "").unwrap();
+    let result = store.root.join("result");
+    fs::write(&result, "").unwrap();
+    fs::create_dir_all(store.root.join("gcroots/auto")).unwrap();
+    std::os::unix::fs::symlink(&result, store.root.join("gcroots/auto/1")).unwrap();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    // A listing begun now is heard 100 s on, so it took 100 s.
+    guard.step(&tick(), &CALM).unwrap();
+    step_later_until(&store, &mut guard, 100.0, &CALM, |store, _| {
+        kept(store).is_some()
+    });
+    fs::remove_file(&result).unwrap();
+    fs::remove_file(built.join("alive")).unwrap();
+    step_later(&mut guard, 200.0, &BUSY);
+    assert_eq!(
+        lists(&store),
+        1,
+        "a root left 100 s after a listing of 100 s"
+    );
+    assert!(built.exists());
+    step_later_until(&store, &mut guard, 1001.0, &BUSY, |_, _| !built.exists());
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
 fn urgent_without_a_listing_collects_by_nix_store_gc_at_once() {
     let store = Store::new();
     let mut guard = store.guard(store.config("100%", "100%"));
