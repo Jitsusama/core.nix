@@ -2276,7 +2276,7 @@ Scope {
             Qt.callLater(refreshDue);
         }
     }
-    readonly property int refreshPace: 250
+    readonly property int refreshPace: 0
     property real refreshedAt: 0
     Timer {
         id: refreshPacing
