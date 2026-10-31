@@ -3181,9 +3181,14 @@ Scope {
             y: Math.round(picked.mapToItem(card, 0, 0).y),
             row: Math.round(chosen.mapToItem(card, 0, chosen.height - Theme.space.xxxl).y)
         };
+        // Where the first row is drawn below the top of the list, so a test
+        // can say a list shown from its start leaves no space above it:
+        // 0 there, less once scrolled, and null when it isn't drawn.
+        const first = list.itemAtIndex(0);
+        const firstAt = first ? Math.round(first.y - list.contentY) : null;
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
-            drawn: root.rowsDrawn });
+            drawn: root.rowsDrawn, firstAt });
     }
 
     // The drawer beside the card (Drawer.qml): what the selected row shows
