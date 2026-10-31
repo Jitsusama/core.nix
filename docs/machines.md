@@ -130,17 +130,18 @@ jitsusama.update-to-main = {
 };
 ```
 
-Nobody being at it, an update mustn't cut what the machine is busy with,
-such as a call. Each of `refuseWhile`'s commands, the machine's own, is
-asked before an update starts and again before it switches, and while one
-succeeds the ask is refused; a command that can't tell counts as busy.
-What was built stays, so the next ask switches at once:
+Nobody being at it, an update mustn't cut what the machine is busy with.
+Each of `refuseWhile`'s commands is asked before an update starts and
+again before it switches, and while one succeeds the ask is refused; a
+command that can't tell counts as busy. What was built stays, so the next
+ask switches at once. On NixOS a call is always one, as `modules/calls`
+counts it in any account's PipeWire; a machine adds its own:
 
 ```nix
 jitsusama.update-to-main.refuseWhile = [
   {
-    command = [ "/run/current-system/sw/bin/a-call-is-on" ];
-    why = "a call is on";
+    command = [ "/run/current-system/sw/bin/backup-running" ];
+    why = "a backup is running";
   }
 ];
 ```
