@@ -353,6 +353,11 @@ Provider {
         return all;
     }
 
+    // Its name, and its quest's title, as a search reads them.
+    function readyTexts(row) {
+        return [row.prepared, row.note !== "" ? Fuzzy.kept(row.note) : null];
+    }
+
     // Found by its name, or by its quest's title, best first.
     function search(typed) {
         const words = Fuzzy.words(typed);

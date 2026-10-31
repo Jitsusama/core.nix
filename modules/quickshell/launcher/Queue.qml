@@ -261,6 +261,11 @@ Provider {
             .filter(part => part !== "").join(" \u00b7 ");
     }
 
+    // Its name, and its quest's title, as a search reads them.
+    function readyTexts(row) {
+        return [row.prepared, Fuzzy.kept(row.note)];
+    }
+
     // Found by its name, or by its quest's title, best first.
     function search(typed) {
         const words = Fuzzy.words(typed);

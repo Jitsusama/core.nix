@@ -214,6 +214,11 @@ Provider {
     // when it's shown.
     readonly property var all: Notices.history.map(notice => made(notice))
 
+    // The same rows, without saying how long ago each came.
+    function looksThrough() {
+        return all;
+    }
+
     function aged(rows) {
         const now = Date.now();
         for (const row of rows)

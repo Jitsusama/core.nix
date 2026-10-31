@@ -184,6 +184,20 @@ Scope {
         return [];
     }
 
+    // The rows its search looks through, whose texts the launcher makes
+    // ready while it's closed: everything, unless it searches more than it
+    // lists, as Quests searches its finished quests too.
+    function looksThrough() {
+        return everything();
+    }
+
+    // Makes ready the texts of one of those rows that its search reads, each
+    // made as it's first read: its name, and its other words for one that
+    // has them.
+    function readyTexts(row) {
+        return [row.prepared, row.also];
+    }
+
     // What a collection's row at home says after its title: how many it
     // holds, grouped by thousands.
     function counted() {

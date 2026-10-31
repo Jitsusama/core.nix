@@ -1447,14 +1447,20 @@ Scope {
         if (letters.replace(/\s+/g, "").length < 2)
             return [];
         const rows = [];
+        // And how many texts each made ready to match, which it should have
+        // had made while closed (textsMadeClosed).
+        const made = {};
         for (const source of among ?? collections) {
             // One opened only by its own chord adds no row to a search, but
             // does inside a category that holds it.
             if (source.collection.searched === false && !among)
                 continue;
             const asked = Date.now();
+            const madeBefore = Fuzzy.keptSoFar();
             const said = source.gather(letters);
             took[source.settings.name] = Date.now() - asked;
+            if (Fuzzy.keptSoFar() > madeBefore)
+                made[source.settings.name] = Fuzzy.keptSoFar() - madeBefore;
             // Inside a category, its best is one named what's typed before
             // one picked for it.
             const learned = learnedFirst(said.rows, letters);
@@ -1495,6 +1501,8 @@ Scope {
                 gathered.landsIn = best;
             rows.push(gathered);
         }
+        if (Object.keys(made).length > 0)
+            Report.say(`texts made ready on a key ${JSON.stringify(made)}`);
         return rows;
     }
 
@@ -3297,6 +3305,8 @@ Scope {
             screenHere = focusedScreen;
             trials.closed();
             spotsLater.restart();
+            if (unready.length > 0)
+                readying.start();
         }
     }
 
@@ -3322,6 +3332,7 @@ Scope {
         onTriggered: {
             if (!root.spotsMade)
                 root.spotsMadeClosed();
+            root.textsMadeClosed();
         }
     }
 
@@ -3332,6 +3343,51 @@ Scope {
         spots = spotsFrom();
         spotsMade = true;
         Report.say("spots made while closed");
+    }
+
+    // So is every text a collection's search looks through, which each
+    // makes ready to match when first searched, and which a restart
+    // forgets: each switch's first search of two letters made them, up to
+    // 968 ms of "ol", nearly all People, Quests and notices
+    // (launcher-trials.json, 2026-10-29 and 30). They're made a few
+    // milliseconds at a time, so nothing else the shell draws waits on
+    // them, and left while it's open, for the search to make what it needs.
+    property var unready: []
+
+    function textsMadeClosed() {
+        const rows = [];
+        // Not one searched only once stepped into, as Emoji is, whose
+        // thousands would be kept for a search that may never come.
+        for (const source of collections.filter(one => one.collection.searched !== false)) {
+            for (const row of source.looksThrough())
+                rows.push({ from: source, row: row });
+        }
+        unready = rows;
+        readying.start();
+    }
+
+    Timer {
+        id: readying
+
+        interval: 16
+        repeat: true
+        onTriggered: root.readySome()
+    }
+
+    function readySome() {
+        if (open) {
+            readying.stop();
+            return;
+        }
+        const until = Date.now() + 4;
+        while (unready.length > 0 && Date.now() < until) {
+            const next = unready.pop();
+            next.from.readyTexts(next.row);
+        }
+        if (unready.length === 0) {
+            readying.stop();
+            Report.say("texts made ready while closed");
+        }
     }
 
     // The screen the keys are on, followed while the launcher is closed so

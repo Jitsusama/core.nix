@@ -226,6 +226,11 @@ Provider {
         return all.filter(row => row.unfinished);
     }
 
+    // A search looks through every quest, finished ones too.
+    function looksThrough() {
+        return all;
+    }
+
     function counted() {
         const open = everything();
         if (open.length === 0)

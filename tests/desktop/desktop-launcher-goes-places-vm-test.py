@@ -1791,10 +1791,10 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_the_first_search_after_the_shell_starts_finds_details_made_already(
+def test_the_first_search_after_the_shell_starts_finds_everything_made_ready(
     desktop: Desktop,
 ) -> None:
-    """The first search after the shell starts finds the details inside things made already."""
+    """The first search after the shell starts finds details and texts made ready already."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # Every switch restarts the shell, and its first search of three letters
@@ -1806,6 +1806,11 @@ def test_the_first_search_after_the_shell_starts_finds_details_made_already(
     since = desktop.mark()
     desktop.reported(
         "spots made while closed", lambda rest: rest == "", since, dt.timedelta(seconds=60)
+    )
+    # So are the texts every collection's search looks through, which its
+    # first search of two letters made, 968 ms on one of Joel's keys.
+    desktop.reported(
+        "texts made ready while closed", lambda rest: rest == "", since, dt.timedelta(seconds=60)
     )
     since = desktop.mark()
     desktop.answer("rotation")
@@ -1819,6 +1824,15 @@ def test_the_first_search_after_the_shell_starts_finds_details_made_already(
         f" --after-cursor={shlex.quote(since)}"
     )
     assert "report[spots made on a key]" not in said, said
+    # Only the queue and Agents, which make their rows only while the
+    # launcher's open, so a closed launcher has none of theirs to make
+    # ready, have any to make.
+    made = [
+        json.loads(line.split("report[texts made ready on a key ", 1)[1].removesuffix("]"))
+        for line in said.splitlines()
+        if "report[texts made ready on a key " in line
+    ]
+    assert all(set(each) <= {"jobs", "agents"} for each in made), made
 
 
 @pytest.fixture
