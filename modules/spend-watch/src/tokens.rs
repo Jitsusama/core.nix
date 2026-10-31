@@ -6,9 +6,12 @@
 //! counts the week's spend, and at the first run that finds it at the cap,
 //! the account is refused until a later run finds it back under. So the
 //! tokens run out at a run, never between, and the warning names that run.
-//! The count a run makes trails the bill by some hours, so from one reading
-//! to the next it moves by about what's spent in an hour less what rolls
-//! out of the week, which is what's projected forward.
+//! The count a run makes trails the bill by some hours and catches up in
+//! jumps: on 31 October its rises from run to run were -$106, $360, $160,
+//! -$79, $524, $212 and then $584, refusing at 10:02, at about twice the
+//! hour's rate. So each run ahead is taken to rise by the larger of the
+//! hour's rate less what rolls out of the week and the largest rise of the
+//! last six runs, and the warning names the soonest run that could refuse.
 //!
 //! The levels are by the time left, since what Joel can do (claim a raise,
 //! pause the session spending most) takes minutes, and a run is an hour
@@ -120,6 +123,34 @@ pub struct Inputs {
     pub rolling: Vec<f64>,
     /// The session that spent most over the last hour, and its quest.
     pub top: Option<(String, Option<String>)>,
+    /// How much the cap's count rose at each of its last runs.
+    pub rises: Vec<f64>,
+}
+
+/// How many of the cap's last runs its rises are read from.
+const RISES: i64 = 6;
+
+/// How the cap's count rose from run to run over its last runs, a run an
+/// hour, each its last reading, as they stood at `now`.
+fn rises(history: &History, cap: &Cap, now: f64) -> Result<Vec<f64>, String> {
+    let mut statement = history
+        .db
+        .prepare(
+            "SELECT spent FROM caps c WHERE feed = ?1 AND name = ?2 AND at <= ?3 AND at > ?4
+             AND at = (SELECT MAX(at) FROM caps d WHERE d.feed = c.feed AND d.name = c.name
+             AND CAST(d.at / 3600 AS INTEGER) = CAST(c.at / 3600 AS INTEGER) AND d.at <= ?3)
+             ORDER BY at",
+        )
+        .map_err(fail)?;
+    let since = now - HOUR * (crate::stats::count(usize::try_from(RISES).unwrap_or(6)) + 1.0);
+    let counts = statement
+        .query_map(rusqlite::params![cap.feed, cap.name, now, since], |row| {
+            row.get::<_, f64>(0)
+        })
+        .map_err(fail)?
+        .collect::<Result<Vec<f64>, _>>()
+        .map_err(fail)?;
+    Ok(counts.windows(2).map(|pair| pair[1] - pair[0]).collect())
 }
 
 /// The cap to watch: the one with an allowance over the longest window,
@@ -215,18 +246,21 @@ pub fn read(history: &History, now: f64, rate: Rate) -> Result<Option<Inputs>, S
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )
         .ok();
+    let rises = rises(history, &cap, now)?;
     Ok(Some(Inputs {
         cap,
         rate,
         rolling,
         top,
+        rises,
     }))
 }
 
 /// Where the count stands at each run from the cap's reading on: the
 /// reading, then each run an hour after the one before, moved by the
-/// rate less what rolls out in the hour it ends in, spending nothing
-/// after the run `stop`.
+/// larger of the rate less what rolls out in the hour it ends in and the
+/// largest recent rise; after the run `stop`, nothing more is spent and
+/// only what rolls out moves it.
 fn counts(inputs: &Inputs, now: f64, stop: Option<usize>) -> Vec<(f64, f64)> {
     let cap = &inputs.cap;
     let mut count = cap.spent;
@@ -238,12 +272,16 @@ fn counts(inputs: &Inputs, now: f64, stop: Option<usize>) -> Vec<(f64, f64)> {
             .and_then(|k| inputs.rolling.get(k))
             .copied()
             .unwrap_or(0.0);
-        let spent = if stop.is_some_and(|stop| run > stop) {
-            0.0
+        let rise = if stop.is_some_and(|stop| run > stop) {
+            -rolled
         } else {
-            inputs.rate
+            inputs
+                .rises
+                .iter()
+                .copied()
+                .fold(inputs.rate - rolled, f64::max)
         };
-        count = (count + spent - rolled).max(0.0);
+        count = (count + rise).max(0.0);
         out.push((at, count));
     }
     out
@@ -366,7 +404,7 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
         (
             format!("Tokens Run Out in {}", minutes(left)),
             format!(
-                "Tokens run out in {} at this hour's rate{then}",
+                "Tokens run out in {} at this rate{then}",
                 minutes(left).to_lowercase()
             ),
         )
@@ -379,7 +417,7 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
     let quiet_rate = if over {
         percent
     } else {
-        format!("at this hour's rate · {percent}")
+        format!("at this rate · {percent}")
     };
     Some(Tokens {
         level,
@@ -466,7 +504,21 @@ mod tests {
             rate,
             rolling: vec![rolled; AHEAD + 1],
             top: Some(("01a19269".into(), Some("QEST-20261025-5FWIUS".into()))),
+            rises: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_count_that_rose_in_a_jump_lately_is_taken_to_again() {
+        // $440 left at $300 an hour would be the second run, but the count
+        // rose $524 at a run lately, so it could be the first.
+        let mut given = inputs(14_560.0, 300.0, 0.0);
+        let later = outlook(&given, None, &toronto(), NOW).unwrap();
+        assert_eq!(later.runs_out, Some(AT + 2.0 * HOUR));
+        given.rises = vec![360.0, -79.0, 524.0, 212.0];
+        let sooner = outlook(&given, None, &toronto(), NOW).unwrap();
+        assert_eq!(sooner.runs_out, Some(AT + HOUR));
+        assert_eq!(sooner.level, Level::Hour);
     }
 
     #[test]
@@ -484,10 +536,7 @@ mod tests {
         assert_eq!(tokens.level, Level::Hours);
         assert_eq!(tokens.runs_out, Some(AT + 4.0 * HOUR));
         assert_eq!(tokens.title, "Tokens Run Out in About 4 Hours");
-        assert_eq!(
-            tokens.hint,
-            "Tokens run out in about 4 hours at this hour's rate"
-        );
+        assert_eq!(tokens.hint, "Tokens run out in about 4 hours at this rate");
         assert_eq!(tokens.context, "at $300 an hour · 92% used");
         assert!(!tokens.quiet.context.contains('$'));
         assert!(!tokens.now);
@@ -505,7 +554,7 @@ mod tests {
         assert_eq!(tokens.value, "resets 10:02");
         assert_eq!(
             tokens.hint,
-            "Tokens run out in about 4 hours at this hour's rate; they reset at 10:02"
+            "Tokens run out in about 4 hours at this rate; they reset at 10:02"
         );
     }
 
