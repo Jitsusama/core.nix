@@ -21,7 +21,8 @@ fn starting() -> MutexGuard<'static, ()> {
 }
 
 /// git as changed-checks asks it: where the repository is, the merge base
-/// with origin's main and nothing else, and no untracked files. The working
+/// with origin's main, with `older`, a commit origin's main holds, and with
+/// `unpushed`, one it doesn't, and no untracked files. The working
 /// tree has a change in it, until a test writes `clean`, and then it's its
 /// commit; origin has that commit once a test writes `pushed`.
 const GIT: &str = r#"#!/bin/sh
@@ -33,7 +34,14 @@ case "$1" in
   remote) echo https://github.com/someone/thing.git ;;
   -C)
     case "$3" in
-      merge-base) [ "$5" = refs/remotes/origin/main ] || exit 1; echo 0123456789abcdef0123 ;;
+      merge-base)
+        case "$4 $5" in
+          "HEAD refs/remotes/origin/main") echo 0123456789abcdef0123 ;;
+          "HEAD older") echo 1a96207100000000000a ;;
+          "HEAD unpushed") echo abcdef0123456789abcd ;;
+          "--is-ancestor 0123456789abcdef0123"|"--is-ancestor 1a96207100000000000a") ;;
+          *) exit 1 ;;
+        esac ;;
       ls-files) ;;
     esac ;;
 esac
@@ -384,6 +392,40 @@ fn it_runs_here_when_asked_to_when_its_base_is_its_own_or_when_nowhere_took_it()
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert!(stand_in.path("changed").exists(), "it was offered first");
     assert_eq!(text(&ran.stdout), named);
+}
+
+#[test]
+fn a_base_origins_main_holds_goes_with_the_run_as_its_commit_and_any_other_stays() {
+    // A run comparing with an older commit of main, as one checking what
+    // changed since main last passed does, stayed here and evaluated twice,
+    // about 4 GB each, at a load of 118 on 30 October.
+    let stand_in = StandIn::new("far-base");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::create_dir_all(stand_in.path("repo")).expect("the repository");
+    fs::write(stand_in.path("takes-changed"), "").expect("written");
+    fs::write(stand_in.path("clean"), "").expect("written");
+
+    let ran = stand_in.run(&["--base", "older", "--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let sent = fs::read_to_string(stand_in.path("changed")).expect("it was sent");
+    assert!(
+        sent.ends_with("there\n--changed\n--base\n1a96207100000000000a\n--system\nx86_64-linux\n"),
+        "{sent}"
+    );
+    assert!(stand_in.runs().is_empty(), "nothing is evaluated here");
+
+    fs::remove_file(stand_in.path("changed")).expect("cleared");
+    let ran = stand_in.run(&["--base", "unpushed", "--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("origin's main doesn't hold abcdef012345"),
+        "{}",
+        text(&ran.stderr)
+    );
 }
 
 #[test]

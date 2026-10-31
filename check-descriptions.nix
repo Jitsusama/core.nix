@@ -182,8 +182,9 @@
     with --build and without --no-vm, compares the system with the most checks unless told one,
     sends a commit origin has to a lent builder to build by itself and anything else builds here,
     and evaluates a commit's checks once; where nix-offload takes it, the whole run goes to
-    `there --changed` naming this machine's system, and it runs here with --here, a base of its
-    own, edits not yet committed, or nowhere taking it
+    `there --changed` naming this machine's system and a base as its merge base's commit, and it
+    runs here with --here, a base origin's main doesn't hold, edits not yet committed, or
+    nowhere taking it
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
