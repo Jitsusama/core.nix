@@ -66,6 +66,10 @@ pub struct Status {
     pub open: Said,
     pub quiet: Said,
     pub actions: Vec<ShellAction>,
+    /// When the tokens run out, while that's near; the shell raises it as
+    /// its own notice and row (tokens.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<crate::tokens::Tokens>,
 }
 
 fn figure_text(figure: &Figure) -> String {
@@ -170,6 +174,7 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
             context: quiet_context,
         },
         actions,
+        tokens: None,
     }
 }
 
@@ -242,6 +247,7 @@ pub fn held(now: f64) -> Status {
         open: said.clone(),
         quiet: said,
         actions: Vec::new(),
+        tokens: None,
     }
 }
 
@@ -278,12 +284,16 @@ pub fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
 /// collection only when it differs from what was last written.
 pub struct Writer {
     last_collection: String,
+    /// The level the tokens' warning was last at, which it keeps until
+    /// the time left is well past it.
+    pub tokens: Option<crate::tokens::Level>,
 }
 
 impl Writer {
     pub fn new() -> Writer {
         Writer {
             last_collection: String::new(),
+            tokens: None,
         }
     }
 

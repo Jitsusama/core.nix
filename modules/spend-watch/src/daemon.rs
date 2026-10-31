@@ -352,7 +352,26 @@ pub fn pass(
     let picture = Picture::read(history, config, now)?;
     let raised = crate::detect::all(&picture, history, config)?;
     let findings = crate::findings::settle(history, &raised, now)?;
-    let shown = status::status(&picture, &findings);
+    // The cap the tokens' warning watches speaks only through it, so its
+    // own findings stay out of the margin and out of notices: one warning,
+    // said once. The collection keeps them all.
+    let inputs = crate::tokens::read(history, now, crate::tokens::Rate::Live)?;
+    let tokens = inputs
+        .as_ref()
+        .and_then(|inputs| crate::tokens::outlook(inputs, writer.tokens, &picture.zone, now));
+    writer.tokens = tokens.as_ref().map(|tokens| tokens.level);
+    let watched = inputs.as_ref().map(crate::tokens::key);
+    let said: Vec<crate::findings::Finding> = findings
+        .iter()
+        .filter(|finding| {
+            !watched
+                .as_ref()
+                .is_some_and(|key| finding.key.starts_with(key))
+        })
+        .cloned()
+        .collect();
+    let mut shown = status::status(&picture, &said);
+    shown.tokens = tokens;
     writer.write(
         &config.runtime()?,
         &shown,
@@ -361,7 +380,7 @@ pub fn pass(
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.
     if config.notices.enable
-        && let Err(error) = tell(history, config, desk, &picture, &findings, now)
+        && let Err(error) = tell(history, config, desk, &picture, &said, now)
     {
         eprintln!("giving notices: {error}");
     }

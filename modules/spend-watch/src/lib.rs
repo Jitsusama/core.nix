@@ -49,4 +49,5 @@ pub mod series;
 pub mod stats;
 pub mod status;
 pub mod time;
+pub mod tokens;
 pub mod waste;
