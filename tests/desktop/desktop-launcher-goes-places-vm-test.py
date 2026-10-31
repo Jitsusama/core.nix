@@ -51,6 +51,54 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+def test_heap_with_many_quests(desktop: Desktop) -> None:
+    """Throwaway: the shell's JS heap with 772 quests, as Joel has."""
+    heap = (
+        "p=$(systemctl --user show quickshell -p MainPID --value);"
+        " awk '/JSGCHeap/{on=1;next} /^[0-9a-f]+-/{on=0} on && /^Rss:/{s+=$2} END{print s}'"
+        " /proc/$p/smaps"
+    )
+
+    def read(what: str) -> None:
+        time.sleep(4)
+        print(f"HEAP {what}: {desktop.as_account(heap).strip()} kB")
+
+    def closed() -> None:
+        desktop.machine.send_key("esc")
+        desktop.machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+
+    words = " ".join(["harbour lighthouse quay ferry"] * 21)
+    desktop.as_account(
+        "for i in $(seq 1 772); do n=$(printf %05d $i); d=" + QUESTS + "/QEST-20261001-Q$n;"
+        " mkdir -p $d; printf '%s\\n' '---' \"id: QEST-20261001-Q$n\" 'status: active'"
+        " 'kind: quest' 'priority: active' \"summary: " + words + " $i\" '---'"
+        " \"# Quest $n About the Harbour\" > $d/README.md; done"
+    )
+    print(desktop.as_account(f"ls {QUESTS} | wc -l"))
+    read("closed with quests written")
+    time.sleep(20)
+    read("closed 20 s on")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    read("open once")
+    closed()
+    read("closed once")
+    time.sleep(10)
+    read("closed 10 s on")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    read("open twice")
+    desktop.type_in("ha")
+    read("typed ha")
+    closed()
+    read("closed at the end")
+    print(desktop.as_account(
+        "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'took [0-9]+ ms' | tail -6"
+    ))
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
