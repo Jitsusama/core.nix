@@ -106,7 +106,10 @@ in
         named alone, as their own lines, in /run/nix-offload/machines-beside,
         for a build that may go to them and nowhere else
         (`--builders @/run/nix-offload/machines-beside`), which builds here
-        while none answers.
+        while none answers. The lent one alone, with nothing mandatory, is
+        in /run/nix-offload/machines-for-anything, for a build that may send
+        any public piece away, such as one with no local jobs; work only
+        some machines may take must ask for a feature its line lacks.
       '';
     };
     nearby = lib.mkOption {

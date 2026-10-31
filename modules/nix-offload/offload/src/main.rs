@@ -108,6 +108,11 @@ const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
 /// one, reads those that answer, by `--builders @` it, so it builds here
 /// when the file is empty.
 const BESIDE: &str = "/run/nix-offload/machines-beside";
+/// Where a build that may send any piece of public work away, such as an
+/// update built with no local jobs, reads the one lent with nothing
+/// mandatory, by `--builders @` it; empty while none is lent. Work only
+/// some machines may take must ask for a feature the lent line lacks.
+const ANYTHING: &str = "/run/nix-offload/machines-for-anything";
 /// Where a build sent to the lent builder as a command reads how to reach
 /// it, as its store's URI, while one stands.
 const STORE: &str = "/run/nix-offload/store";
@@ -566,7 +571,8 @@ fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) {
         LENDING.into(),
         standing,
     )
-    .beside(BESIDE.into(), beside);
+    .beside(BESIDE.into(), beside)
+    .for_anything(ANYTHING.into());
     while !ENDING.load(Ordering::SeqCst) {
         machines.show(None);
         rest(TICK);
@@ -593,7 +599,8 @@ fn serve(settings: &Settings) {
             .beside
             .as_deref()
             .map_or_else(Vec::new, read_standing),
-    );
+    )
+    .for_anything(ANYTHING.into());
     machines.show(None);
     machines.asking(None);
     // Said so a build with no builder waits for one only while a lender
