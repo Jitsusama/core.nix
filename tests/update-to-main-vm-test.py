@@ -25,15 +25,15 @@ FAILED = 1
 REFUSED = 2
 UNASKED = 3
 
-# A flake whose system is a link to one already on the machine, built with the sandbox off
-# so the link's builder is the machine's own shell.
+# A flake whose system is a link to one already on the machine, made in the sandbox by the
+# busybox the machine puts there.
 FLAKE = """{{
   outputs = _: {{
     system = derivation {{
       name = "system";
       system = "x86_64-linux";
-      builder = "/run/current-system/sw/bin/sh";
-      args = [ "-c" "/run/current-system/sw/bin/ln -s {target} $out" ];
+      builder = "/bin/sh";
+      args = [ "-c" "/bin/busybox ln -s {target} $out" ];
     }};
   }};
 }}

@@ -47,9 +47,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       ];
       # Nothing is fetched: the systems are on the machine already.
       substituters = pkgs.lib.mkForce [ ];
-      # main's system is a link built by the machine's own shell, which a
-      # sandbox wouldn't have.
-      sandbox = false;
+      # main's system is a link made in the sandbox, as a real system is
+      # built, by a busybox needing nothing else there.
+      extra-sandbox-paths = [ "/bin/busybox=${pkgs.pkgsStatic.busybox}/bin/busybox" ];
     };
 
     users.users.someone.isNormalUser = true;
