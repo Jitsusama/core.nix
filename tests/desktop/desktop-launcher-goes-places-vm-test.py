@@ -1973,7 +1973,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     # It's the meeting coming too, which wants Joel, and it's that one
     # row, never a second beside it. Now opens on its first row, as every
     # place does, and the meeting is reached by moving down to it.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
     desktop.down_to("Design Review")
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
@@ -2005,7 +2005,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     # Now opens on its first row, and the meeting is below the time.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
     desktop.down_to("Design Review")
     rows = cast("list[str]", desktop.showing()["rows"])
     for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
@@ -2271,12 +2271,8 @@ def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
     desktop: Desktop,
 ) -> None:
     """Now lists what waits on Joel, then the time and the date, then a call, a song and a mode."""
-    queue = "$HOME/.local/state/mission/queue.json"
-    kept(
-        desktop,
-        queue,
-        {"orchestrator": "TESTQA", "items": [{"id": "look", "title": "Look", "when": "now"}]},
-    )
+    asked = f"{MISSION}/waiting/TESTQA.json"
+    kept(desktop, asked, {"items": [{"id": "look", "title": "Look", "when": "now"}]})
     # Standup's call, in the window Chrome would open it in, as above.
     call = "chrome-meet.google.com__abc-defg-hij-Default"
     desktop.as_account(f"niri msg action spawn -- kitty --class {call} --title Meet")
@@ -2307,7 +2303,7 @@ def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
         # open go at its end until it's made again (Steady.js).
         retry(lambda _: listed() == groups, timeout=dt.timedelta(seconds=60))
     finally:
-        desktop.as_account(f"systemctl --user stop player caffeinate.service; rm -f {queue}")
+        desktop.as_account(f"systemctl --user stop player caffeinate.service; rm -f {asked}")
         desktop.close(desktop.window_titled("Meet"))
 
 
@@ -3963,19 +3959,21 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
-# The orchestrator keeps what waits on Joel in one file, and each quest
-# keeps its own beside it.
+# Each quest keeps what only Joel can do in a file of its own, written by
+# the session that needs him.
 
 
 def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     """Now leads with what waits on Joel, and Return goes to where it's done."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    # pi's session is the orchestrator, by the name the harness gives it.
+    # pi's session is the one that needs Joel, by the address the harness
+    # gives it.
     desktop.pi_session()
     desktop.opened("Waiting room")
-    queue = {
-        "orchestrator": "TESTQA",
+    # What it needs him for, in its own file: one done in a window it names,
+    # and one naming none, done in the session's own; neither ready yet.
+    own = {
         "items": [
             {
                 "id": "try",
@@ -3996,12 +3994,9 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # A quest's own, ready to do now.
     asked = {"items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}]}
     state = "$HOME/.local/state"
-    desktop.as_account(
-        f"printf %s {shlex.quote(json.dumps(queue))} > {state}/mission/.q"
-        f" && mv {state}/mission/.q {state}/mission/queue.json"
-    )
+    kept(desktop, f"{state}/mission/waiting/TESTQA.json", own)
     # One ready is said as a notice the moment it's heard, named by what
-    # it asks, so it's never a second "Waiting on you" beside Now's.
+    # it asks, so it's never a second "Needs You" beside Now's.
     with desktop.told("shows card Answer the ask"):
         desktop.as_account(
             f"printf %s {shlex.quote(json.dumps(asked))} > {state}/mission/waiting/.q"
@@ -4014,46 +4009,46 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # Home's Now names the first Joel can do now, with its minutes.
     desktop.launcher_until(
         lambda shown: any(
-            thing["reads"].startswith("Now \u00b7 Waiting on You: Answer the ask, 2 min")
+            thing["reads"].startswith("Now \u00b7 Needs You: Answer the ask \u00b7 2 min")
             for thing in shown["things"]
         )
     )
-    # It counts only what Joel can do now: the queue's two say no when.
-    desktop.type_in("waiting on you", selecting="Waiting on You")
+    # It counts only what Joel can do now: the session's two aren't ready.
+    desktop.type_in("needs you", selecting="Needs You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
-    # Inside, what's for now leads, then what's for later, each in the
-    # agents' order. Return steps into one, as it steps into Waiting on
-    # You itself, with going to where it's done first.
+    # Inside, what's for now, then Later, holding what can't be done yet,
+    # the quickest first. Return on one goes where it's done.
     machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: shown["rows"] == ["Answer the ask", "Try the new home", "Pick a bucket"]
-    )
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Answer the ask", "Later"])
     machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Try the new home"
-    )
-    going_to(desktop)
+    picked(desktop, "Later")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Pick a bucket", "Try the new home"])
+    machine.send_key("down")
+    picked(desktop, "Try the new home")
+    machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled("Waiting room")["is_focused"],
         timeout=dt.timedelta(seconds=10),
     )
-    # One naming no window is done with the orchestrator, in its window.
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("waiting on you", selecting="Waiting on You")
+    # One naming no window is done in its session's window.
+    waiting_opened(desktop)
     desktop.step_in()
     machine.send_key("down")
-    machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Pick a bucket")
-    going_to(desktop)
+    picked(desktop, "Later")
+    desktop.step_in()
+    picked(desktop, "Pick a bucket")
+    machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled(PI_WINDOW)["is_focused"],
         timeout=dt.timedelta(seconds=10),
     )
     # Put back as it was, for the tests after.
-    desktop.as_account(f"rm {state}/mission/queue.json {state}/mission/waiting/QUEST1.json")
+    desktop.as_account(
+        f"rm {state}/mission/waiting/TESTQA.json {state}/mission/waiting/QUEST1.json"
+    )
     for title in ["Waiting room", "Elsewhere"]:
         window = desktop.window_titled(title)["id"]
         desktop.as_account(f"niri msg action close-window --id {window}")
@@ -4080,18 +4075,11 @@ def readme(desktop: Desktop, quest: str, status: str) -> None:
     )
 
 
-def going_to(desktop: Desktop) -> None:
-    """Step into the waiting item selected with Return, and go to its window with Return."""
-    desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
-    desktop.machine.send_key("ret")
-
-
 def waiting_opened(desktop: Desktop) -> None:
-    """Open the launcher on Waiting on you's row."""
+    """Open the launcher on Needs You's row."""
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("waiting on you", selecting="Waiting on You")
+    desktop.type_in("needs you", selecting="Needs You")
 
 
 def launcher_closed(desktop: Desktop) -> None:
@@ -4103,7 +4091,7 @@ def launcher_closed(desktop: Desktop) -> None:
 
 
 def waiting_inside(desktop: Desktop) -> tuple[str, list[str]]:
-    """Give Waiting on you's side and the rows inside it, as a fresh look sees them."""
+    """Give Needs You's side and the rows inside it, as a fresh look sees them."""
     waiting_opened(desktop)
     side = cast("str", (desktop.showing()["selected"] or {}).get("side"))
     desktop.step_in()
@@ -4118,39 +4106,66 @@ def picked(desktop: Desktop, name: str) -> None:
 
 
 def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
-    """Waiting on you drops an ended quest's and a copy, and keeps Joel's word."""
+    """Needs You drops what's found done and an ended quest's, and keeps Joel's word."""
     machine = desktop.machine
     state = "$HOME/.local/state"
     quests = QUESTS
     readme(desktop, "QEST-20261026-LIVEQA", "active")
     readme(desktop, "QEST-20261026-DONEQA", "concluded")
-    # The queue says one thing Joel can do now; a live quest says it again
-    # in other case, and the queue covers another of its by name.
-    kept(
-        desktop,
-        f"{state}/mission/queue.json",
-        {
-            "orchestrator": "TESTQA",
-            "items": [
-                {
-                    "id": "restart",
-                    "title": "Restart once",
-                    "when": "now",
-                    "covers": ["QEST-20261026-LIVEQA:sitting"],
-                }
-            ],
-        },
-    )
+    # A live quest's, as mesh_wait writes them: one ready, one the to do
+    # daemon finds ready, one it finds done, and one for later.
     kept(
         desktop,
         f"{state}/mission/waiting/LIVEQA.json",
         {
+            "v": 2,
             "quest": "QEST-20261026-LIVEQA",
             "items": [
-                {"id": "again", "title": "restart  ONCE", "ready": True},
-                {"id": "sitting", "title": "A sitting", "ready": True},
-                {"id": "later", "title": "Look at the desk", "ready": False, "when": "tomorrow"},
+                {
+                    "id": "restart",
+                    "title": "Restart Once",
+                    "minutes": 5,
+                    "ready": True,
+                    "doneWhen": {"signal": "boot"},
+                },
+                {
+                    "id": "keys",
+                    "title": "Prove the Keys",
+                    "minutes": 10,
+                    "ready": False,
+                    "doneWhen": {"check": "true"},
+                    "readyWhen": {"signal": "device:dock"},
+                },
+                {
+                    "id": "dock",
+                    "title": "Plug In the Dock",
+                    "minutes": 1,
+                    "ready": True,
+                    "doneWhen": {"signal": "device:dock"},
+                },
+                {"id": "later", "title": "Look at the Desk", "ready": False, "when": "tomorrow"},
             ],
+        },
+    )
+    found = dt.datetime.now(dt.UTC).isoformat()
+    kept(
+        desktop,
+        f"{state}/mission/verdicts.json",
+        {
+            "v": 1,
+            "updated": found,
+            "items": {
+                "QEST-20261026-LIVEQA:keys": {
+                    "state": "ready",
+                    "at": found,
+                    "how": {"signal": "device:dock"},
+                },
+                "QEST-20261026-LIVEQA:dock": {
+                    "state": "done",
+                    "at": found,
+                    "how": {"signal": "device:dock"},
+                },
+            },
         },
     )
     # A concluded quest's file stays where it was written, and says nothing.
@@ -4173,31 +4188,20 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         },
     )
 
-    # Two for now: the queue's, which the quest's copy and the one covered
-    # leave alone, and the old one; then what's for later.
+    # Three for now, the quickest first and one saying no time last, then
+    # Later.
+    everything = ["Restart Once", "Prove the Keys", "Answer the old", "Later"]
     retry(
-        lambda _: (
-            waiting_inside(desktop) == ("2", ["Restart once", "Answer the old", "Look at the desk"])
-        ),
+        lambda _: waiting_inside(desktop) == ("3", everything),
         timeout=dt.timedelta(seconds=30),
     )
-    # The right arrow steps into one: going to its window, where one is
-    # open, Done and Not Now, copying it, then what there is to know of it.
+    # One with nowhere to go steps in to Done and Not Now.
     waiting_opened(desktop)
     desktop.step_in()
-    machine.send_key("down")
-    picked(desktop, "Answer the old")
-    desktop.step_in()
-    acts = ["Done", "Not Now", "Copy What It Said", "Why"]
-    desktop.launcher_until(
-        lambda shown: (
-            "Done" in shown["rows"]
-            and shown["rows"][shown["rows"].index("Done") :][:4] == acts
-            and shown["rows"][0] != "Copy What It Said"
-        )
-    )
+    desktop.down_to("Answer the old")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Done", "Not Now"])
     # Done keeps the launcher, and is kept where Joel's word is.
-    desktop.down_to("Done")
     machine.send_key("ret")
     retry(
         lambda _: "OLDQA:old" in desktop.as_account(f"cat {state}/mission/settled.json || true"),
@@ -4206,25 +4210,19 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     assert desktop.showing()["open"]
     launcher_closed(desktop)
     retry(
-        lambda _: waiting_inside(desktop) == ("1", ["Restart once", "Look at the desk"]),
+        lambda _: waiting_inside(desktop) == ("2", ["Restart Once", "Prove the Keys", "Later"]),
         timeout=dt.timedelta(seconds=30),
     )
-    # Not Now puts one under Later, so nothing's for now.
+    # Not Now puts one under Later.
     waiting_opened(desktop)
     desktop.step_in()
-    picked(desktop, "Restart once")
+    picked(desktop, "Restart Once")
     desktop.step_in()
     desktop.down_to("Not Now")
     machine.send_key("ret")
     launcher_closed(desktop)
     retry(
-        lambda _: waiting_inside(desktop) == ("2 later", ["Restart once", "Look at the desk"]),
-        timeout=dt.timedelta(seconds=30),
-    )
-    # A quest that ends takes its things with it, as its README says so.
-    readme(desktop, "QEST-20261026-LIVEQA", "retired")
-    retry(
-        lambda _: waiting_inside(desktop) == ("1 later", ["Restart once"]),
+        lambda _: waiting_inside(desktop) == ("1", ["Prove the Keys", "Later"]),
         timeout=dt.timedelta(seconds=30),
     )
     # Joel's word stays across a restart of the shell.
@@ -4233,59 +4231,68 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         desktop.in_session("qs ipc call launcher showing"), timeout=dt.timedelta(seconds=60)
     )
     retry(
-        lambda _: waiting_inside(desktop) == ("1 later", ["Restart once"]),
+        lambda _: waiting_inside(desktop) == ("1", ["Prove the Keys", "Later"]),
         timeout=dt.timedelta(seconds=60),
     )
+    # A quest that ends takes its things with it, as its README says so.
+    readme(desktop, "QEST-20261026-LIVEQA", "retired")
+    retry(
+        lambda _: waiting_inside(desktop) == ("nothing to do", []),
+        timeout=dt.timedelta(seconds=30),
+    )
     desktop.as_account(
-        f"rm -r {state}/mission/queue.json {state}/mission/waiting/LIVEQA.json"
+        f"rm -r {state}/mission/waiting/LIVEQA.json {state}/mission/verdicts.json"
         f" {state}/mission/waiting/DONEQA.json {state}/mission/waiting/OLDQA.json"
         f" {state}/mission/settled.json"
         f" {quests}/QEST-20261026-LIVEQA {quests}/QEST-20261026-DONEQA"
     )
 
 
-def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
+def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     desktop: Desktop,
 ) -> None:
-    """Waiting on You steps in where nothing is open to go to, and copying comes after Done."""
+    """Needs You steps into one with nowhere to go, whose drawer gives its steps and why."""
     machine = desktop.machine
-    queue = f"{MISSION}/queue.json"
-    # An orchestrator with no session, so the item has no window to go to.
+    asked = f"{MISSION}/waiting/GONEQA.json"
+    # A session that's gone, so the item has no window to go to.
     kept(
         desktop,
-        queue,
+        asked,
         {
-            "orchestrator": "GONEQA",
-            "items": [{"id": "form", "title": "Sign the form", "when": "now", "why": "to send"}],
+            "items": [
+                {
+                    "id": "form",
+                    "title": "Sign the Form",
+                    "when": "now",
+                    "why": "It goes out in your name.",
+                    "steps": ["Print it", "Sign it"],
+                }
+            ]
         },
     )
+    steps = "1. Print it\n2. Sign it\n\nIt goes out in your name."
     try:
         retry(
-            lambda _: waiting_inside(desktop) == ("1", ["Sign the form"]),
+            lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
             timeout=dt.timedelta(seconds=30),
         )
-        # Return on Waiting on You steps in, as the right arrow does, rather
-        # than copying the first.
+        # Return on Needs You steps in, as the right arrow does.
         waiting_opened(desktop)
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "more")
         desktop.step_in("ret")
-        picked(desktop, "Sign the form")
-        # And on the item: its acts, copying last of them, then its facts.
-        desktop.step_in("ret")
+        picked(desktop, "Sign the Form")
+        # Its drawer gives its steps, numbered, then why only Joel can.
         desktop.launcher_until(
-            lambda shown: shown["rows"][:4] == ["Done", "Not Now", "Copy What It Said", "Why"]
+            lambda shown: (
+                (shown.get("drawer") or {}).get("out") is True and shown["drawer"]["body"] == steps
+            )
         )
-        desktop.down_to("Copy What It Said")
-        machine.send_key("ret")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
-        machine.wait_until_succeeds(
-            desktop.in_session('[ "$(wl-paste --no-newline)" = "Sign the form" ]'),
-            timeout=dt.timedelta(seconds=10),
-        )
+        # Return on it steps in, with nowhere to go: Done, then Not Now.
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Done", "Not Now"])
+        launcher_closed(desktop)
     finally:
-        desktop.as_account(f"rm -f {queue}")
+        desktop.as_account(f"rm -f {asked}")
         # Its notice goes a moment after its item does; until then the
         # margin holds it, and Now would open on it in the next subtest.
         machine.wait_until_succeeds(
@@ -4298,15 +4305,14 @@ def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
 
 
 def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
-    """Waiting on You is in Now with nothing waiting, says so, and Now opens on it."""
+    """Needs You is in Now with nothing waiting, says so, and Now opens on it."""
     machine = desktop.machine
     # Nothing waits; Keep Awake is on, a mode left on, which Now never
     # opens on, since Return would turn it off.
     # The account's shell is zsh, which refuses a pattern matching nothing,
     # so what waits is found rather than named by one.
     desktop.as_account(
-        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
-        f" && find {MISSION}/waiting -name '*.json' -delete"
+        f"mkdir -p {MISSION}/waiting && find {MISSION}/waiting -name '*.json' -delete"
     )
     desktop.as_account("systemctl --user start caffeinate.service")
     try:
@@ -4316,11 +4322,11 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
             lambda shown: (
                 shown["held"] == ["now"]
                 and "Keep Awake" in shown["rows"]
-                and (shown["selected"] or {}).get("name") == "Waiting on You"
+                and (shown["selected"] or {}).get("name") == "Needs You"
             )
         )
         selected = desktop.showing()["selected"] or {}
-        assert (selected["side"], selected["verb"]) == ("nothing waits", "more"), selected
+        assert (selected["side"], selected["verb"]) == ("nothing to do", "more"), selected
         # What's typed narrows Now to the rows it names, and clearing it
         # brings them all back.
         desktop.type_in("awake")
@@ -4329,24 +4335,22 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         )
         machine.send_key("left")
         desktop.launcher_until(
-            lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Waiting on You"]
+            lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Needs You"]
         )
         # Clearing keeps the row typing chose, so the selection goes back up.
         shown = desktop.showing()
         for _ in range(shown["rows"].index(shown["selected"]["name"])):
             machine.send_key("up")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You"
-        )
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
         # Return steps in, as it does with things waiting, to a list saying
         # nothing does, rather than closing as if the launcher vanished.
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
                 shown["open"]
-                and shown["held"] == ["now", "Waiting on You"]
+                and shown["held"] == ["now", "Needs You"]
                 and shown["rows"] == []
-                and shown["nothing"] == "Nothing waits on you."
+                and shown["nothing"] == "Nothing to do."
             )
         )
         launcher_closed(desktop)
@@ -4360,23 +4364,22 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
             )
         )
         now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
-        assert "Waiting on You" not in now["reads"], now
+        assert "Needs You" not in now["reads"], now
         launcher_closed(desktop)
     finally:
         desktop.as_account("systemctl --user stop caffeinate.service")
 
 
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
-    """A session wanting Joel is in Waiting on You as its Agents row, and Now has no pi row.
+    """A session wanting Joel is in Needs You as its Agents row, and Now has no pi row.
 
-    Super+O, Return, Return goes to its window: Now opens on Waiting on You, which counts it,
+    Super+O, Return, Return goes to its window: Now opens on Needs You, which counts it,
     Return steps in to the session, selected, and its Return goes to its window.
     """
     machine = desktop.machine
     desktop.pi_session()
     desktop.as_account(
-        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
-        f" && find {MISSION}/waiting -name '*.json' -delete"
+        f"mkdir -p {MISSION}/waiting && find {MISSION}/waiting -name '*.json' -delete"
     )
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
@@ -4390,7 +4393,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now"]
-                and (shown["selected"] or {}).get("name") == "Waiting on You"
+                and (shown["selected"] or {}).get("name") == "Needs You"
                 and shown["selected"]["side"] == "1"
             )
         )
@@ -4398,7 +4401,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "Waiting on You"]
+                shown["held"] == ["now", "Needs You"]
                 and shown["rows"][:1] == ["A quest of its own & whole"]
                 and (shown["selected"] or {}).get("verb") == "go"
             )

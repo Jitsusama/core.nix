@@ -1,14 +1,14 @@
-// What truly waits on Joel, for WaitingOnYou.qml and Sessions.qml, out of
-// the files the agents keep (the orchestrator's queue.json and each quest's
-// waiting/<address>.json), their quests' READMEs, and what Joel has said of
-// each (the shell's own settled.json). Those files are written by many
-// sessions, each when it thinks of it, so they hold items Joel can't do
-// yet, a quest's copy of what the orchestrator's queue already says, and
-// files whose quest has ended. This decides which stand, now or later, so
-// Waiting on You is true. An item goes only on an event, never by its age:
-// its owner takes it out or its file goes, its quest ends, or Joel says
-// it's done or not now. Kept apart from Quickshell's types, so the
-// `waiting-on-you-is-true` check runs it in Qt's own engine
+// What only Joel can do, for WaitingOnYou.qml and Sessions.qml (Needs You,
+// VKCF3Z's, 2026-10-30), out of the files the agents keep, each quest's
+// waiting/<address>.json, written by the session that needs him through
+// mesh_wait; what the to do daemon found of each (verdicts.json, its
+// alone), their quests' READMEs, and what Joel has said of each (the
+// shell's own settled.json). Each item is written once, by its owner, and
+// says how it knows it's done, so this decides which stand, now or later:
+// one goes once its check passes or its signal comes, its quest ends, its
+// owner takes it out or Joel says it's done; one is ready once its owner or
+// a verdict says so. Nothing goes by its age. Kept apart from Quickshell's
+// types, so the `waiting-on-you-is-true` check runs it in Qt's own engine
 // (tests/waiting-on-you.qml).
 .pragma library
 
@@ -18,49 +18,52 @@ const ENDED = ["concluded", "retired"];
 // A path's folders and its .json, which a file's name is without.
 const FOLDERS = /^.*\//;
 const JSON_END = /\.json$/;
-// Any run of spacing, which two owners might write differently.
-const SPACING = /\s+/g;
 // A quest's id, which a README stands behind.
 const QUEST = /^QEST-/;
 // A README's front-matter line naming its status.
 const STATUS = /^status:\s*(\S+)/;
 
-// Each file as a source of items: the orchestrator's first, then each
-// quest's by its file's name, so the first is the orchestrator's choice.
-// `from` is who keeps it: the orchestrator's address, or the file's name,
-// which is the quest's short address.
-function sources(queue, files) {
-    const all = [];
-    if (queue !== null && typeof queue === "object") {
-        all.push({ from: orchestratorOf(queue), read: queue, queue: true });
-    }
-    for (const path of Object.keys(files).sort()) {
-        all.push({
-            from: path.replace(FOLDERS, "").replace(JSON_END, ""),
-            read: files[path],
-            queue: false
-        });
-    }
-    return all;
+// Each file as a source of items, by its file's name, which is its
+// quest's short address: `from`, who keeps it.
+function sources(files) {
+    return Object.keys(files).sort().map(path => ({
+        from: path.replace(FOLDERS, "").replace(JSON_END, ""),
+        read: files[path]
+    }));
 }
 
-// The orchestrator's address, which the file once called the steward.
-function orchestratorOf(queue) {
-    return [queue?.orchestrator, queue?.steward].find(address => typeof address === "string") ?? "";
-}
-
-// Whether Joel can do an item now, as its owner says: `ready`, or, where a
-// file gives no `ready`, as the orchestrator's doesn't, its when saying now.
-function readyOf(item) {
+// Whether Joel can do an item now: once the to do daemon found it ready,
+// else as its owner says, `ready`, or, in a file older than that, its when
+// saying now.
+function readyOf(item, verdict) {
+    if (verdict?.state === "ready") {
+        return true;
+    }
     if (typeof item.ready === "boolean") {
         return item.ready;
     }
     return typeof item.when === "string" && item.when.trim().toLowerCase() === "now";
 }
 
-// A title as two owners might both write it, case and spacing aside.
-function plain(title) {
-    return title.toLowerCase().replace(SPACING, " ").trim();
+// When an item is for, or Infinity for one for no time in particular.
+function timeOf(item) {
+    const at = Date.parse(item.at ?? "");
+    return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+}
+
+// The order Joel does them in (VKCF3Z, 2026-10-30): anything for a time
+// first, soonest first, then the quickest, so a few minutes free always
+// finds something; never by age, and two alike stay as their files list
+// them (`listed`, since Qt's engine may not keep a sort's ties in order).
+function before(one, other) {
+    const times = timeOf(one) - timeOf(other);
+    if (times !== 0 && !Number.isNaN(times)) {
+        return times;
+    }
+    const minutes = item => (typeof item.minutes === "number" ? item.minutes
+        : Number.POSITIVE_INFINITY);
+    const quicker = minutes(one) - minutes(other);
+    return quicker !== 0 && !Number.isNaN(quicker) ? quicker : one.listed - other.listed;
 }
 
 // Who an item is, across every file: its quest and its id.
@@ -72,7 +75,39 @@ function identity(item) {
 // something new of it, and not when its file is rewritten for another.
 function said(item) {
     return JSON.stringify([item.title, item.why ?? null, item.detail ?? null, item.when ?? null,
-        item.ready ?? null, item.minutes ?? null, item.window ?? null]);
+        item.ready ?? null, item.minutes ?? null, item.window ?? null, item.steps ?? null,
+        item.at ?? null, item.deadline ?? null]);
+}
+
+// What an item not ready yet waits for, from what its owner said makes it
+// ready: a signal as { signal, value } ("switch", or "device" and "dock"),
+// a check as { check }, or, in a file older than that, its when as
+// { words }; null when it says nothing.
+function waitsFor(item) {
+    const ready = item.readyWhen;
+    if (typeof ready?.signal === "string") {
+        const colon = ready.signal.indexOf(":");
+        return colon < 0 ? { signal: ready.signal, value: "" }
+            : { signal: ready.signal.slice(0, colon), value: ready.signal.slice(colon + 1) };
+    }
+    if (typeof ready?.check === "string") {
+        return { check: true };
+    }
+    return typeof item.when === "string" && item.when !== "" ? { words: item.when } : null;
+}
+
+// Whether anything will see an item done but Joel: the to do daemon, by
+// its check or its signal, or its owner's session, while one is live
+// (`live`, the addresses of those running). One only Joel can say is done
+// and whose session has gone sits as though tracked, so it's said to be
+// watched by nobody (VKCF3Z, 2026-10-30).
+function watched(item, live) {
+    const done = item.doneWhen;
+    if (typeof done?.check === "string" || typeof done?.signal === "string") {
+        return true;
+    }
+    const owner = item.owner?.address ?? item.from;
+    return live[owner] === true;
 }
 
 // Whether a quest has ended, from what its README said: unknown until it's
@@ -95,45 +130,45 @@ function itemsOf(source) {
         .map(raw => Object.assign({}, raw, {
             quest: typeof raw.quest === "string" ? raw.quest : quest,
             from: source.from,
-            ready: readyOf(raw),
+            // Its file's version: 2 since mesh_wait writes how each is done.
+            v: typeof read?.v === "number" ? read.v : 1,
+            verdict: null,
             since: Date.parse(raw.since ?? read?.updated ?? ""),
             putOff: false
         }));
 }
 
-// Everything that waits, in two lists: `now`, what Joel can do now, in the
-// owners' order; and `later`, what he can't yet or has put off. Joel's
-// `settled` is { done: { identity: when }, notNow: { identity: { said,
-// when } } }: one done stays gone, and one put off waits under Later until
-// its owner says something new of it.
-function sorted(queue, files, owners, settled) {
-    const covered = {};
-    const titled = {};
+// Everything that waits, in two lists: `now`, what Joel can do now; and
+// `later`, what he can't yet or has put off; each in the order he does
+// them (`before`). Joel's `settled` is { done: { identity: when }, notNow:
+// { identity: { said, when } } }: one done stays gone, and one put off
+// waits under Later until its owner says something new of it. The to do
+// daemon's `verdicts` are { items: { identity: { state, at, how } } }: one
+// done is gone, one ready is for now.
+function sorted(files, owners, settled, verdicts) {
     const now = [];
     const later = [];
     const done = settled?.done ?? {};
     const notNow = settled?.notNow ?? {};
-    for (const source of sources(queue, files)) {
+    const found = verdicts?.items ?? {};
+    let listed = 0;
+    for (const source of sources(files)) {
         for (const item of itemsOf(source)) {
-            const id = item.id ?? item.title;
+            item.listed = listed;
+            listed += 1;
+            const verdict = found[identity(item)] ?? null;
             const gone = (QUEST.test(item.quest) && ended(owners, item.quest))
-                || done[identity(item)] !== undefined
-                || (!source.queue && (covered[`${item.quest}:${id}`]
-                    || covered[`${item.from}:${id}`] || titled[plain(item.title)]));
+                || done[identity(item)] !== undefined || verdict?.state === "done";
             if (gone) {
                 continue;
             }
-            if (source.queue) {
-                for (const one of Array.isArray(item.covers) ? item.covers : []) {
-                    covered[one] = true;
-                }
-                titled[plain(item.title)] = true;
-            }
+            item.ready = readyOf(item, verdict);
+            item.verdict = verdict;
             item.putOff = notNow[identity(item)]?.said === said(item);
             (item.ready && !item.putOff ? now : later).push(item);
         }
     }
-    return { now, later };
+    return { now: now.sort(before), later: later.sort(before) };
 }
 
 // Joel's word on an item, added to what he's said: done, or not now.
@@ -149,9 +184,9 @@ function settle(settled, item, how, at) {
 }
 
 // The quests named by any file, whose READMEs say whether they've ended.
-function quests(queue, files) {
+function quests(files) {
     const named = {};
-    for (const source of sources(queue, files)) {
+    for (const source of sources(files)) {
         for (const item of itemsOf(source)) {
             named[item.quest] = true;
         }

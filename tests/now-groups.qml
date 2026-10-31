@@ -33,13 +33,13 @@ QtObject {
             { group: "leftOn", name: "Keep Awake" },
             { group: "playing", name: "Playing" },
             { group: "onAir", name: "In a Call" },
-            { group: "wants", name: "Waiting on You" },
+            { group: "wants", name: "Needs You" },
             { group: "leftOn", name: "Do Not Disturb" },
             { group: "wants", name: "Notices" },
             { group: "onAir", name: "Camera" }
         ];
         expect("every group, in its place", names(Now.ordered(every)),
-            "Notices, Waiting on You, Camera, In a Call, Playing, Do Not Disturb, Keep Awake");
+            "Needs You, Notices, Camera, In a Call, Playing, Do Not Disturb, Keep Awake");
 
         // A name is read as Joel reads it, its numbers by their value and
         // its case aside.
@@ -53,8 +53,8 @@ QtObject {
         expect("an unknown group goes last", names(Now.ordered([
             { group: "elsewhere", name: "Aardvark" },
             { group: "leftOn", name: "Keep Awake" },
-            { group: "wants", name: "Waiting on You" }
-        ])), "Waiting on You, Keep Awake, Aardvark");
+            { group: "wants", name: "Needs You" }
+        ])), "Needs You, Keep Awake, Aardvark");
 
         // The rows given stay as they were, since the launcher keeps them.
         const given = [{ group: "leftOn", name: "B" }, { group: "wants", name: "A" }];
