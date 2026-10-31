@@ -3766,6 +3766,49 @@
       "glyph": "signIn"
     },
     {
+      "id": "verb:slack:search",
+      "by": "program:slack",
+      "name": "Search Slack for {words}",
+      "verb": "search",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:slack:search:again",
+      "by": "program:slack",
+      "name": "Try Again",
+      "verb": "retry",
+      "glyph": "chat"
+    },
+    {
+      "id": "slack:message",
+      "of": "program:slack",
+      "name": "Slack Message",
+      "glyph": "chat",
+      "verb": "open",
+      "said": {
+        "searching": "searching Slack",
+        "none": "Nothing in Slack says {words}.",
+        "busy": "Slack is busy; try again in a minute.",
+        "down": "Slack isn't answering.",
+        "failed": "Slack couldn't be reached.",
+        "you": "You"
+      }
+    },
+    {
+      "id": "verb:slack:message:open",
+      "in": "slack:message",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:slack:message:link",
+      "in": "slack:message",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
       "id": "verb:person:favourite",
       "in": "people",
       "name": "Favourite",
