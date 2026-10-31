@@ -14,14 +14,12 @@
 // times a second, its `at` alone changing in nine writes of ten
 // (2026-10-29); each was a new `said` for every reader.
 //
-// While `held`, as a file nothing shown reads is, it isn't watched at all,
-// and is read once it's let go, so a write costs the shell nothing. Under
-// load the machine queue's pressure changes in nearly every write, 12 a
-// second, each about 20 wakeups and 14 ms of the shell's with the
-// launcher closed (15J7N3, 2026-10-30); only noted, each still woke it,
-// 54 of the 69 folder events Joel's closed shell heard in 30 s
-// (2026-10-31). Its silence isn't kept meanwhile: the read as it's let go
-// says it.
+// While `held`, as a file nothing shown reads is, a new file is only
+// noted, and read once it's let go, so a write costs the shell its wake
+// alone. Under load the machine queue's pressure changes in nearly every
+// write, 12 a second, each about 20 wakeups and 14 ms of the shell's
+// with the launcher closed (15J7N3, 2026-10-30). Its silence isn't kept
+// meanwhile: the read as it's let go says it.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -50,11 +48,16 @@ Scope {
     // What it said last, without its beats, as JSON.
     property string saying: ""
     property bool held: false
+    property bool unread: false
     onHeldChanged: {
-        if (held)
+        if (held) {
             quiet.stop();
-        else
+        } else if (unread) {
+            unread = false;
             file.reload();
+        } else {
+            heard();
+        }
     }
 
     function hear(now) {
@@ -93,9 +96,14 @@ Scope {
     FileView {
         id: file
         path: status.path
-        watchChanges: !status.held
+        watchChanges: true
         printErrors: false
-        onFileChanged: reload()
+        onFileChanged: {
+            if (status.held)
+                status.unread = true;
+            else
+                reload();
+        }
         onLoaded: status.hear(status.parse(file.text()))
         onLoadFailed: status.hear(null)
     }
