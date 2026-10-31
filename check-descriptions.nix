@@ -965,7 +965,10 @@
     are each time, only ever reading; finds their conversation with Joel in plain words, only
     what's in a direct message with them, newest last; asks ahead only after a step-in, finding
     their conversation once and never how they are; and asks nobody once Slack refuses the
-    sign-in or with none at all, saying so
+    sign-in or with none at all, saying so; and slack-unreads keeps in a file, whole, the direct
+    messages with unreads, the channels mentioning Joel and his mentions in threads, never a
+    channel merely unread, each named once a run and opening in Slack, a refused sign-in kept as
+    signed out with nothing counted, and with no sign-in no file and nothing asked
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests

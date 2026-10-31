@@ -5,11 +5,18 @@
 # for its keys, so these are its own, from its help's list for Windows and
 # Linux.
 { people }:
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   grouped = group: map (key: key // { inherit group; });
-  # Who Slack knows by an address, only ever read (slack-people).
+  # Who Slack knows by an address, only ever read (slack-people), and
+  # what in Slack wants Joel (slack-unreads).
   lookUp = pkgs.callPackage ./package.nix { };
+  credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
 in
 {
   imports = [
@@ -30,7 +37,47 @@ in
   jitsusama.people.sources.slack = {
     order = 5;
     source = ./SlackSource.qml;
-    credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
+    inherit credentials;
+  };
+
+  # What in Slack wants Joel, kept in the runtime folder's
+  # slack-unreads.json for Now's Slack piece: direct messages with
+  # unreads, mentions of him and his mentions in threads, read only, and
+  # started once pi has signed in to Slack.
+  systemd.user.paths.slack-unreads = {
+    Unit.Description = "Starts keeping Slack's unreads once pi has signed in";
+    Path.PathExists = credentials;
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  systemd.user.services.slack-unreads = {
+    Unit = {
+      Description = "Keeps what in Slack wants Joel for the shell";
+      # As google's does: restarted after a switch reloads the units, it
+      # comes back as the new one.
+      X-SwitchMethod = "restart";
+    };
+    Service = {
+      Slice = "background.slice";
+      ExecStart = lib.concatStringsSep " " [
+        "${lookUp}/bin/slack-unreads"
+        (lib.escapeShellArg credentials)
+        "%t/slack-unreads.json"
+      ];
+      Restart = "on-failure";
+      RestartSec = 30;
+      # It tells the watchdog after each ask, half a minute apart, so one
+      # that hangs is killed and started again.
+      WatchdogSec = 180;
+      NotifyAccess = "main";
+      # What it counted goes with it, however it stops, so the shell never
+      # shows a count nothing is keeping current.
+      ExecStopPost = lib.concatStringsSep " " [
+        "${pkgs.coreutils}/bin/rm -f"
+        "%t/slack-unreads.json"
+        "%t/slack-unreads.new"
+      ];
+    };
   };
 
   jitsusama.keys.slack =

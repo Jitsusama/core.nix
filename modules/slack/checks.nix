@@ -18,8 +18,9 @@ onLinux {
   # each time, their conversation with Joel found in plain words, asking
   # ahead taken only after a step-in, finding their conversation once and
   # never asking how they are, nothing but reads ever asked, and with no sign-in
-  # nothing asked at all, said so. A stand-in on the machine answers for
-  # Slack.
+  # nothing asked at all, said so; and slack-unreads keeps what wants Joel in
+  # a file, whole, each conversation named once, signed out kept as such,
+  # with no sign-in no file. A stand-in on the machine answers for Slack.
   slack-finds-who-it-knows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });

@@ -10,6 +10,9 @@
 //! `users.info` and `users.getPresence` for how they are, and
 //! `search.messages` for their conversation, are the methods it calls,
 //! and nothing it does sends a message or changes anything in Slack.
+//!
+//! What in Slack wants Joel, for Now, is [`unreads`]'s, which the
+//! slack-unreads program (src/bin/slack-unreads.rs) keeps in a file.
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -18,6 +21,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ureq::Agent;
+
+pub mod unreads;
 
 /// The harness's Slack sign-in, as its credentials file keeps it: the
 /// token Slack's own client uses, with the cookie it goes with, and the
@@ -317,7 +322,7 @@ impl Slack {
     }
 
     /// What Slack answers to one method, asked with the sign-in.
-    fn ask(
+    pub(crate) fn ask(
         &self,
         account: &Account,
         method: &str,
