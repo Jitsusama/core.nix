@@ -37,7 +37,7 @@ const META: &str = "meta.json";
 pub const TRANSCRIPT: &str = "transcript.md";
 
 /// The summary's file in a call's folder.
-const SUMMARY: &str = "summary.md";
+pub const SUMMARY: &str = "summary.md";
 
 /// The milliseconds since the epoch, as the interface gives times.
 pub fn now() -> u64 {

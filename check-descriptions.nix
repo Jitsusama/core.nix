@@ -1712,7 +1712,9 @@
   vm-a-call-is-written-down = ''
     a call program recording in Joel's PipeWire is heard by call-transcripts from its microphone
     and its own playback, and kept as one record under the meeting on, which ends with the call;
-    its transcript holds both sides' three turns in order and nothing another program played
+    its transcript holds both sides' three turns in order and nothing another program played;
+    then the call is summed up into summary.md and its record, saying what was decided, and a
+    notice from Calls says the meeting's summary is ready
   '';
   vm-bluetooth-types-at-the-disk-prompt = ''
     a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its

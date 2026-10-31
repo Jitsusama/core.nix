@@ -78,7 +78,7 @@ unsafe extern "C" {
 }
 
 /// What failed, by the call and the status `GenAI` gave.
-fn check(status: i32, call: &str) -> Result<(), String> {
+pub(crate) fn check(status: i32, call: &str) -> Result<(), String> {
     if status == 0 {
         Ok(())
     } else {
@@ -86,7 +86,7 @@ fn check(status: i32, call: &str) -> Result<(), String> {
     }
 }
 
-fn text_of(value: &str, what: &str) -> Result<CString, String> {
+pub(crate) fn text_of(value: &str, what: &str) -> Result<CString, String> {
     CString::new(value).map_err(|_| format!("{what} holds a NUL"))
 }
 

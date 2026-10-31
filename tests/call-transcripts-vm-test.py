@@ -25,6 +25,10 @@ MEETING = "Review Planning"
 # How long the daemon has to answer, and to start and finish hearing the call.
 ANSWERS_WITHIN = timedelta(minutes=1)
 WRITTEN_WITHIN = timedelta(minutes=10)
+# How long the summarizer has, on the VM's processor, to load and sum the call up.
+SUMMED_WITHIN = timedelta(minutes=15)
+# Where the stand-in for the shell's notices keeps each it's given.
+TOLD = "/home/joel/told"
 # The clips, made as the test builds.
 CLIPS = "/etc/call-clips"
 # The daemon's ask for every call it holds.
@@ -95,11 +99,16 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
     now = int(machine.succeed("date +%s%3N"))
     meetings = {"meetings": [{"id": "e1", "title": MEETING, "start": now, "end": now + 3_600_000}]}
     joel.run(f"echo {shlex.quote(json.dumps(meetings))} > {RUNTIME}/google.json")
+    joel.run(f"systemd-run --user --unit=notices stand-in-notices {TOLD}")
+    joel.wait_for("busctl --user status org.freedesktop.Notifications", ANSWERS_WITHIN)
     joel.run(
         "systemd-run --user --unit=call-transcripts --setenv=DICTATION_DEVICE=CPU"
-        " --setenv=DICTATION_CACHE=$HOME/.cache/call-transcripts"
+        " --setenv=DICTATION_CACHE=$HOME/.cache/call-transcripts/whisper"
+        " --setenv=SUMMARIZER_CACHE=$HOME/.cache/call-transcripts/summarizer"
+        f" --setenv=OPENVINO_TOKENIZERS_PATH_GENAI={values['tokenizers']}"
         " --setenv=PATH=/run/current-system/sw/bin"
-        f" call-transcripts serve {SOCKET} {values['model']} $HOME/Documents/Calls"
+        f" call-transcripts serve {SOCKET} {values['model']} {values['summarizer']}"
+        " $HOME/Documents/Calls"
     )
     joel.wait_for(f"test -S {SOCKET}", ANSWERS_WITHIN)
     return joel
@@ -128,6 +137,28 @@ def call(joel: Joel) -> dict[str, Any]:
         joel.explain()
         raise
     [record] = joel.calls()
+    return record
+
+
+@pytest.fixture(scope="module")
+def summed(joel: Joel, call: dict[str, Any]) -> dict[str, Any]:
+    """Wait for the call to be summed up, giving its record then."""
+    # A summarizer that won't load is said in the daemon's log at once, so it ends the wait.
+    refused = 'journalctl --user -u call-transcripts | grep -qF "summarizer didn\'t load"'
+    try:
+        joel.wait_for(
+            f"{joel.listing()} | jq -e '.records[0].summary != null' > /dev/null || {refused}",
+            SUMMED_WITHIN,
+        )
+    except Exception:
+        joel.explain()
+        raise
+    [record] = joel.calls()
+    if record["summary"] is None:
+        joel.explain()
+        pytest.fail("the summarizer didn't load")
+    assert record["key"] == call["key"]
+    print(record["summary"])
     return record
 
 
@@ -169,3 +200,19 @@ def test_the_recorders_hold_no_call_open(joel: Joel, call: dict[str, Any]) -> No
     """Once the call program stopped, the call ended, though the daemon's recorders had run."""
     assert call["ended"] is not None
     assert len(joel.calls()) == 1
+
+
+def test_the_call_is_summed_up_beside_its_transcript(joel: Joel, summed: dict[str, Any]) -> None:
+    """The summary is written into the call's folder, says what was decided, and is the record's."""
+    written = joel.run(f"cat {shlex.quote(summed['folder'])}/summary.md")
+    assert written.strip() == summed["summary"].strip()
+    assert "thursday" in written.lower()
+
+
+def test_a_notice_says_the_summary_is_ready(joel: Joel, summed: dict[str, Any]) -> None:
+    """The notice comes from Calls, titled by the meeting, and opens with the summary."""
+    joel.wait_for(f"grep -qxF 'Summary of {MEETING} Is Ready' {TOLD}", ANSWERS_WITHIN)
+    app, heading, first = joel.run(f"cat {TOLD}").splitlines()[:3]
+    assert app == "Calls"
+    assert heading == f"Summary of {MEETING} Is Ready"
+    assert first in summed["summary"]

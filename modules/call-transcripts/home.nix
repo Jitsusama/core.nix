@@ -14,6 +14,12 @@
 # Its compiled models are kept in a cache of its own, since a load removes
 # whatever else is in the folder it's given.
 #
+# Once a call is written down whole and no call is being heard, Whisper is
+# let go and Phi-3.5-mini (summarizer.nix) sums the call up beside its
+# transcript, on the NPU at the same priority, its compiled model in a
+# cache of its own beside Whisper's. A notice says it's ready, and its
+# Read It opens the summary.
+#
 # The shell reads the calls from the service, over
 # $XDG_RUNTIME_DIR/daemons/calls.sock in the shell's daemon interface,
 # never from the folder.
@@ -26,6 +32,7 @@
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ../dictation/model.nix { };
+  summarizer = pkgs.callPackage ./summarizer.nix { };
   # The words dictation's module declares, where it's imported too.
   words = config.jitsusama.dictation.words or [ ];
   wordsFile = pkgs.writeText "call-transcripts-words" (lib.concatLines words);
@@ -41,7 +48,7 @@ in
     Service = {
       ExecStart = lib.concatStringsSep " " [
         "${dictation}/bin/call-transcripts serve"
-        "%t/daemons/calls.sock ${model} %h/Documents/Calls"
+        "%t/daemons/calls.sock ${model} ${summarizer} %h/Documents/Calls"
       ];
       ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/calls.sock";
       Slice = "background.slice";
@@ -49,11 +56,18 @@ in
       Restart = "on-failure";
       RestartSec = 5;
       Environment = [
-        "DICTATION_CACHE=%C/call-transcripts"
+        "DICTATION_CACHE=%C/call-transcripts/whisper"
+        "SUMMARIZER_CACHE=%C/call-transcripts/summarizer"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"
-        "PATH=${lib.makeBinPath [ pkgs.pipewire ]}"
+        "PATH=${
+          lib.makeBinPath [
+            pkgs.libnotify
+            pkgs.pipewire
+            pkgs.xdg-utils
+          ]
+        }"
       ]
       ++ lib.optional (words != [ ]) "DICTATION_WORDS=${wordsFile}";
     };

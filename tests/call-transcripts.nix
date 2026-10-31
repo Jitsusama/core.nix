@@ -4,13 +4,23 @@
 # call, and the same program's player for the others' side. Joel asks, the
 # others answer, another program says something of its own meanwhile, and
 # Joel answers back; the transcript must hold the three turns in order and
-# nothing of the other program's. The voices are espeak-ng's, made as the
-# test builds. The tests are call-transcripts-vm-test.py, which pytest runs
-# inside the driver.
+# nothing of the other program's. Then the call is summed up, and a notice
+# says so, which a stand-in for the shell's notices keeps. The voices are
+# espeak-ng's, made as the test builds. The tests are
+# call-transcripts-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
   dictation = pkgs.callPackage ../modules/dictation/package.nix { };
   model = pkgs.callPackage ../modules/dictation/model.nix { };
+  summarizer = pkgs.callPackage ../modules/call-transcripts/summarizer.nix { };
+  notices = pkgs.writeShellApplication {
+    name = "stand-in-notices";
+    text = ''
+      exec ${
+        pkgs.python3.withPackages (python: [ python.dbus-fast ])
+      }/bin/python3 ${./stand-in-notices.py} "$@"
+    '';
+  };
   # Joel's side, the others', and a program that isn't the call, each a
   # 16 kHz mono WAV from the call's start.
   clips =
@@ -42,21 +52,31 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
   nodes.machine = {
     imports = [ "${self}/modules/pipewire/nixos.nix" ];
-    # Whisper on the CPU, as dictation's checks run it, since a VM has no
-    # NPU, needs the room.
-    virtualisation.memorySize = 4096;
+    # Whisper and then the summarizer on the CPU, as dictation's checks run
+    # Whisper, since a VM has no NPU, need the room.
+    virtualisation.memorySize = 6144;
     virtualisation.cores = 4;
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [
       dictation
+      notices
       pkgs.jq
+      pkgs.libnotify
       pkgs.pulseaudio
       pkgs.socat
     ];
     environment.etc."call-clips".source = clips;
   };
 
-  values = _: pkgs.writeText "call-transcripts-values.json" (builtins.toJSON { inherit model; });
+  values =
+    _:
+    pkgs.writeText "call-transcripts-values.json" (
+      builtins.toJSON {
+        inherit model summarizer;
+        # The summarizer's tokenizer needs the library the service names too.
+        tokenizers = "${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so";
+      }
+    );
 
   tests = ./call-transcripts-vm-test.py;
 }
