@@ -83,21 +83,34 @@ pub fn agents_directories(config: &Config) -> Vec<PathBuf> {
 /// directories the pattern passes through are read, so a large tree beside
 /// them costs nothing.
 pub fn matching(pattern: &str) -> Vec<PathBuf> {
+    let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
     let mut at = vec![PathBuf::from("/")];
-    for part in pattern.split('/').filter(|part| !part.is_empty()) {
-        at = if part.contains('*') {
-            at.iter()
-                .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().flatten())
-                .filter(|entry| fits(part, &entry.file_name().to_string_lossy()))
-                .map(|entry| entry.path())
-                .collect()
-        } else {
-            at.iter().map(|dir| dir.join(part)).collect()
-        };
+    for (index, part) in parts.iter().enumerate() {
+        at = step(&at, part, index + 1 == parts.len());
     }
     let mut found: Vec<PathBuf> = at.into_iter().filter(|path| path.is_file()).collect();
     oldest_first(&mut found);
     found
+}
+
+/// What one part of a pattern reaches from each of `at`. Before the last
+/// part only a folder can lead on, or a link that may be one, so nothing
+/// else is kept: the entry's own type says which without a look at the
+/// file, and scratch folders beside the logs hold millions of files.
+fn step(at: &[PathBuf], part: &str, last: bool) -> Vec<PathBuf> {
+    if !part.contains('*') {
+        return at.iter().map(|dir| dir.join(part)).collect();
+    }
+    at.iter()
+        .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().flatten())
+        .filter(|entry| {
+            last || entry
+                .file_type()
+                .is_ok_and(|kind| kind.is_dir() || kind.is_symlink())
+        })
+        .filter(|entry| fits(part, &entry.file_name().to_string_lossy()))
+        .map(|entry| entry.path())
+        .collect()
 }
 
 /// pi names a log by when it began, so by name is oldest first. Two logs
@@ -451,6 +464,29 @@ mod tests {
                 "q2/demo/agents/b1/session/2026_x.jsonl",
             ]
         );
+    }
+
+    // On 31 October one part of the agents' patterns reached 3,064,197
+    // entries in quests' scratch folders, every 30 s, and the daemon grew
+    // by up to 2.4 GB holding them. Only a folder, or a link that may be
+    // one, can lead anywhere before the last part.
+    #[test]
+    fn a_part_before_the_last_keeps_only_what_could_be_a_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("folder")).unwrap();
+        std::fs::write(root.join("file"), "").unwrap();
+        std::os::unix::fs::symlink(root.join("folder"), root.join("link")).unwrap();
+        let names = |last| {
+            let mut names: Vec<String> = step(&[root.to_path_buf()], "*", last)
+                .iter()
+                .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(names(false), ["folder", "link"]);
+        assert_eq!(names(true), ["file", "folder", "link"]);
     }
 
     // An agent's log is read as its kind, in its workspace's quest.
