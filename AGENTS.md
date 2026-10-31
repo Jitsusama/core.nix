@@ -74,8 +74,8 @@ nix fmt                                # format, and lint every language strictl
 nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
 run-subtests vm-desktop-<area> <words> # a VM test's subtests named, in seconds
 shell-preview --type <words>           # the shell from the working copy, in a niri window
-changed-checks --no-vm                 # names every check the change touched, VM tests aside
-nix build .#checks.x86_64-linux.<each> # builds those it named, as a command of its own
+changed-checks                         # names and builds what the change touched, VM tests aside
+changed-checks --build                 # the same with the VM tests among them
 nix flake check --keep-going           # everything, only for a change every check reads
 ```
 

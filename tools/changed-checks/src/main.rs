@@ -4,13 +4,20 @@
 //! since its result is already what it was. This evaluates every check's
 //! derivation at the base, the merge base with origin's main unless told
 //! otherwise, and in the working tree, and names each check added, changed
-//! or removed, and each that no longer evaluates. With `--build` it builds
-//! those added and changed, from the derivations it evaluated. With `--keep-base` it only evaluates the base
+//! or removed, and each that no longer evaluates, then builds those added
+//! and changed, from the derivations it evaluated: all but the VM tests,
+//! and with `--build` those too unless `--no-vm` says not. A named check
+//! proves nothing until it's built, and core's main once broke on a change
+//! that named checks without building them. `--name-only` builds nothing.
+//! With no `--system` it compares the system with the most checks, this
+//! machine's on a tie, since a repository may hold some on one system
+//! alone, and a run on a Mac passed over core's Linux-only checks.
+//! With `--keep-base` it only evaluates the base
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
 //!
-//! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--keep-base]
-//! [--here]`
+//! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--name-only]
+//! [--keep-base] [--here]`
 //!
 //! The working tree is read as Nix reads a git checkout, so a new file
 //! counts only once git knows it (`git add -N`). A change that only some
@@ -62,7 +69,7 @@ use runs::Run;
 const USAGE: u8 = 64;
 
 const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
-                    [--keep-base] [--here]";
+                    [--name-only] [--keep-base] [--here]";
 
 /// The base a run compares with unless told otherwise.
 const ORIGIN_MAIN: &str = "refs/remotes/origin/main";
@@ -104,12 +111,13 @@ impl Options {
         let mut options = Self {
             base: ORIGIN_MAIN.to_owned(),
             system: None,
-            build: false,
-            vm: true,
+            build: true,
+            vm: false,
             keep_base: false,
             here: false,
             given: Vec::new(),
         };
+        let (mut whole, mut no_vm, mut name_only) = (false, false, false);
         while let Some(argument) = arguments.next() {
             let mut value = || {
                 arguments
@@ -119,13 +127,19 @@ impl Options {
             match argument.as_str() {
                 "--base" => options.base = value()?,
                 "--system" => options.system = Some(value()?),
-                "--build" => options.build = true,
-                "--no-vm" => options.vm = false,
+                "--build" => whole = true,
+                "--no-vm" => no_vm = true,
+                "--name-only" => name_only = true,
                 "--keep-base" => options.keep_base = true,
                 "--here" => options.here = true,
                 _ => return Err(format!("{argument} isn't something it takes")),
             }
         }
+        if whole && name_only {
+            return Err("--build and --name-only ask for opposite things".to_owned());
+        }
+        options.build = !name_only;
+        options.vm = whole && !no_vm;
         options.given = given;
         Ok(options)
     }
@@ -163,20 +177,11 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         );
         return Ok(ExitCode::from(USAGE));
     };
+    let flake = format!("git+file://{root}");
     let system = match &options.system {
         Some(system) => system.clone(),
-        None => run(
-            "nix",
-            &[
-                "eval",
-                "--raw",
-                "--impure",
-                "--expr",
-                "builtins.currentSystem",
-            ],
-        )?,
+        None => busiest_system(&flake)?,
     };
-    let flake = format!("git+file://{root}");
     let untracked = run(
         "git",
         &["-C", &root, "ls-files", "--others", "--exclude-standard"],
@@ -194,6 +199,30 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
     compared
+}
+
+/// The system whose checks are the most, `checks::busiest` says why. Only
+/// the names are counted, which took 1.1 s and 158 MB for core's 580 checks
+/// on 30 October, against 4.8 GB for evaluating them.
+fn busiest_system(flake: &str) -> Result<String, String> {
+    let here = run(
+        "nix",
+        &[
+            "eval",
+            "--raw",
+            "--impure",
+            "--expr",
+            "builtins.currentSystem",
+        ],
+    )?;
+    let counting = format!(
+        "builtins.mapAttrs (_: checks: builtins.length (builtins.attrNames checks)) \
+         ((builtins.getFlake \"{flake}\").checks or {{ }})"
+    );
+    let counted = run("nix", &["eval", "--json", "--impure", "--expr", &counting])?;
+    let counts = serde_json::from_str(&counted)
+        .map_err(|error| format!("reading how many checks each system has: {error}"))?;
+    Ok(checks::busiest(&counts, &here))
 }
 
 /// The run sent to another machine by `nix-offload there --changed`, its

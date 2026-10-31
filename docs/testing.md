@@ -17,11 +17,14 @@ subtests it touches. `changed-checks`, in the dev shell, finds them all: it
 evaluates every check at the change's merge base with origin's main and in
 the working tree, and names each whose derivation was added, changed or
 removed, or no longer evaluates. A check whose derivation is the same
-proves what it proved before, so only the others need building, and
-`--no-vm` leaves out the VM tests, for `run-subtests` to take a piece of.
-Build what it names as a command of its own rather than with `--build`: a
-queue that lets short builds go first sees a build of named checks, and
-sees `--build` only as one long command. `nix flake check` runs only for a
+proves what it proved before, so only the others need building, and it
+builds them, all but the VM tests, which `--build` adds and `run-subtests`
+can take a piece of. A named check proves nothing until it's built:
+core's main broke on 30 October on a change whose run named checks and
+built only some, and `--name-only` is for naming alone. With no
+`--system` it compares the system with the most checks, since core holds
+its checks about checks on Linux alone, and that change's run, on a Mac,
+compared only the Mac's. `nix flake check` runs only for a
 change every check reads, such as `flake.lock`: on a machine shared with
 other work, a whole run is what makes the loop slow, and the load it adds
 is what makes VM tests time out.

@@ -245,9 +245,39 @@ pub fn keeping(cache: &Path, base: &str, system: &str) -> PathBuf {
         .join(format!("{base}-{system}.json"))
 }
 
+/// The system to compare when none is named, from how many checks each
+/// system has: the one with the most, since a repository may hold some on
+/// one system alone, as core holds its checks about checks on Linux, and a
+/// run on another machine compared only its own and passed over them.
+/// This machine's own wins a tie, and stands when the flake names none.
+pub fn busiest(counts: &BTreeMap<String, u64>, here: &str) -> String {
+    let own = counts.get(here).copied().unwrap_or(0);
+    counts
+        .iter()
+        .filter(|&(_, &count)| count > own)
+        .max_by_key(|&(_, &count)| count)
+        .map_or_else(|| here.to_owned(), |(system, _)| system.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_system_with_the_most_checks_is_compared_and_this_one_wins_a_tie() {
+        let counts = |pairs: &[(&str, u64)]| {
+            pairs
+                .iter()
+                .map(|&(system, count)| (system.to_owned(), count))
+                .collect::<BTreeMap<_, _>>()
+        };
+        let core = counts(&[("aarch64-darwin", 136), ("x86_64-linux", 444)]);
+        assert_eq!(busiest(&core, "aarch64-darwin"), "x86_64-linux");
+        assert_eq!(busiest(&core, "x86_64-linux"), "x86_64-linux");
+        let even = counts(&[("aarch64-darwin", 3), ("x86_64-linux", 3)]);
+        assert_eq!(busiest(&even, "aarch64-darwin"), "aarch64-darwin");
+        assert_eq!(busiest(&BTreeMap::new(), "riscv64-linux"), "riscv64-linux");
+    }
 
     fn derivations(pairs: &[(&str, Option<&str>)]) -> Derivations {
         pairs
