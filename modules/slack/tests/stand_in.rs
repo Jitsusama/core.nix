@@ -651,11 +651,18 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     );
     let record = &found["records"][0];
     assert_eq!(
-        (&record["key"], &record["place"], &record["first"]),
+        (
+            &record["key"],
+            &record["place"],
+            &record["first"],
+            &record["team"]
+        ),
         (
             &serde_json::json!("slack-message:C1:1730300000.000100"),
             &serde_json::json!("#launcher"),
-            &serde_json::json!("The launcher is fast")
+            &serde_json::json!("The launcher is fast"),
+            // A match that doesn't say its workspace is the sign-in's.
+            &serde_json::json!("T1")
         )
     );
     let near = asked(

@@ -38,8 +38,11 @@ pub struct Found {
     pub text: String,
     /// In milliseconds since the epoch.
     pub at: u64,
-    /// Where Slack opens it.
+    /// Where Slack shows it on the web, for its link to be copied.
     pub link: String,
+    /// The workspace it's in, which a `slack://` link opening its
+    /// conversation in Slack names.
+    pub team: String,
     /// For a direct message, the other person's id, by which the search
     /// names its place.
     #[serde(skip)]
@@ -146,6 +149,11 @@ pub fn found(said: &Value, me: &str) -> Result<Vec<Found>, Failed> {
                 text: cut(&words, LONGEST),
                 at,
                 link: text("permalink").to_owned(),
+                team: one
+                    .pointer("/team")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
                 with: if flag("is_im") {
                     name.to_owned()
                 } else {
@@ -221,6 +229,10 @@ impl Slack {
             &[("query", words), ("count", MATCHES), ("highlight", "false")],
         )?;
         let mut found = found(&said, &account.user)?;
+        // A match on a grid may not say its workspace; the sign-in's is it.
+        for one in found.iter_mut().filter(|one| one.team.is_empty()) {
+            one.team.clone_from(&account.team);
+        }
         // Each direct message's other person, asked once a search.
         let mut names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         for one in &mut found {
@@ -286,6 +298,7 @@ mod tests {
                 text: "The launcher & its rows\nmore".to_owned(),
                 at: 1_730_300_000_000,
                 link: "https://slack/p1".to_owned(),
+                team: String::new(),
                 with: String::new(),
             }
         );
