@@ -489,9 +489,6 @@ local function act()
   draw()
 end
 
-mp.add_forced_key_binding('ENTER', 'camera-act', act)
-mp.add_forced_key_binding('KP_ENTER', 'camera-act-pad', act)
-mp.add_forced_key_binding('SPACE', 'camera-act-space', act)
 -- Which Return makes, chosen while nothing records: Tab the other one, as
 -- Tab is the one used last everywhere, and the arrows that way, a picture
 -- on the left and a video on the right.
@@ -503,17 +500,41 @@ local function choose(chosen)
   draw()
 end
 
-mp.add_forced_key_binding('TAB', 'camera-mode', function()
-  choose()
-end)
-mp.add_forced_key_binding('LEFT', 'camera-picture', function()
-  choose('picture')
-end)
-mp.add_forced_key_binding('RIGHT', 'camera-video', function()
-  choose('video')
-end)
-mp.add_forced_key_binding('ESC', 'camera-close', close)
-mp.add_forced_key_binding('q', 'camera-quit', close)
+-- Every key the viewfinder answers, by what it does, read from this one
+-- table so the desktop's one control system can retune them: few on
+-- purpose, and q closing as Escape does, as Joel's Neovim closes help
+-- (docs/design.md, Vi's Keys).
+local keys = {
+  { act = 'act', keys = { 'ENTER', 'KP_ENTER', 'SPACE' }, run = act },
+  {
+    act = 'other',
+    keys = { 'TAB' },
+    run = function()
+      choose()
+    end,
+  },
+  {
+    act = 'picture',
+    keys = { 'LEFT' },
+    run = function()
+      choose('picture')
+    end,
+  },
+  {
+    act = 'video',
+    keys = { 'RIGHT' },
+    run = function()
+      choose('video')
+    end,
+  },
+  { act = 'close', keys = { 'ESC', 'q' }, run = close },
+}
+
+for _, binding in ipairs(keys) do
+  for _, key in ipairs(binding.keys) do
+    mp.add_forced_key_binding(key, 'camera-' .. binding.act .. '-' .. key, binding.run)
+  end
+end
 
 -- Once the viewfinder has let a source go: the camera handed to the
 -- recording, or taken back once the recording's pipe ends. The camera
