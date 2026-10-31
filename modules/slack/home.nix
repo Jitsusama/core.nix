@@ -38,6 +38,12 @@ in
     order = 5;
     source = ./SlackSource.qml;
     inherit credentials;
+    # The same program, run by the people daemon, which asks it only what
+    # a client of the daemon asks.
+    daemon = [
+      (lib.getExe lookUp)
+      credentials
+    ];
   };
 
   # What in Slack wants Joel, kept in the runtime folder's

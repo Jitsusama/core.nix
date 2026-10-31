@@ -1,0 +1,13 @@
+# Everyone Joel deals with, held ready for the shell: one resident program
+# that runs each People source as a child and answers over a socket in the
+# shell's daemon interface (src/main.rs says how).
+[package]
+name = "people"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
