@@ -74,8 +74,9 @@
     # niri draws its first frame the moment it starts, its bare backdrop,
     # so the boot splash's picture went dark for the second or more until
     # the shell's wallpaper was drawn. The patch (hold-first-frame.patch,
-    # made on the rest) gives `debug { hold-first-frame-for-background; }`:
-    # on a screen of its own, not nested in a window, an output's first
+    # made on the rest) holds it when niri starts with NIRI_HOLD_FIRST_FRAME
+    # set, which home.nix sets, never through the config, which a running
+    # niri older than the patch would refuse whole: on a screen of its own, not nested in a window, an output's first
     # frame waits until a background or overlay layer surface maps on it,
     # the wallpaper or the greeter, for at most 5 seconds, and never while
     # the session locks, so the screen keeps what the splash left until

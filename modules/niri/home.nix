@@ -123,6 +123,30 @@ in
 
   config.jitsusama.niri.binds = import ./binds.nix { inherit lib; };
 
+  options.jitsusama.niri.holdFirstFrame = lib.mkOption {
+    type = lib.types.bool;
+    default = pictured;
+    description = ''
+      Whether niri holds each screen's first frame until the wallpaper or
+      the greeter is drawn, so the boot splash stays rather than going dark
+      between them (nixos.nix's hold-first-frame.patch, for at most 5
+      seconds). On only with a picture to wait for.
+    '';
+  };
+
+  # Asked through the environment niri starts in rather than its config:
+  # niri reloads its config in place, and a running niri started before
+  # the patch refuses a config naming what it doesn't know, all of it. The
+  # greeter's niri is asked the same way (../greetd/nixos.nix).
+  config.xdg.configFile."systemd/user/niri.service.d/hold-first-frame.conf" =
+    lib.mkIf (config.jitsusama.niri.holdFirstFrame && pkgs.stdenv.hostPlatform.isLinux)
+      {
+        text = ''
+          [Service]
+          Environment=NIRI_HOLD_FIRST_FRAME=1
+        '';
+      };
+
   # The touchscreen's swipes, which niri does itself (nixos.nix's patch), as
   # the touchpad's: three fingers move the columns and the workspaces the way
   # the content moves under them, four up open the overview and four down
@@ -331,14 +355,6 @@ in
     recent-windows {
         off
     }
-    ${lib.optionalString pictured ''
-      // The boot splash stays until the wallpaper or the greeter is drawn,
-      // rather than going dark between them (nixos.nix's
-      // hold-first-frame.patch, for at most 5 seconds).
-      debug {
-          hold-first-frame-for-background
-      }
-    ''}
     cursor {
         xcursor-theme "${cursor.name}"
         xcursor-size ${toString cursor.size}

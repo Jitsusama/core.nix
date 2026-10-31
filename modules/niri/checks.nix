@@ -92,6 +92,30 @@ onLinux {
         && lib.elem "srgb-gamut" home.jitsusama.niri.outputs."eDP-1"
       );
 
+  # niri reads its settings again in place when a switch changes them, and
+  # refuses all of them for one it doesn't know. The niri running through a
+  # switch is the one the machine booted, from before the switch, so a
+  # patch adding a setting leaves it refusing every change until the next
+  # boot, as hold-first-frame.patch once did. A patch asks through niri's
+  # environment or its command line instead. srgb-gamut.patch's setting is
+  # in every niri booted since it came in.
+  niri-patches-add-no-settings =
+    let
+      kept = [ "srgb-gamut.patch" ];
+      patches = lib.filter (
+        patch: !lib.elem (baseNameOf (toString patch)) kept
+      ) graphical.config.programs.niri.package.patches;
+    in
+    pkgs.runCommandLocal "niri-patches-add-no-settings" { } ''
+      for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+        if grep -q '^+++ b/niri-config/' "$patch"; then
+          echo "$patch adds a setting to niri's config, which a niri started before it refuses whole at a switch, and every change with it; ask through niri's environment instead." >&2
+          exit 1
+        fi
+      done
+      touch $out
+    '';
+
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
   niri-accepts-its-configuration =

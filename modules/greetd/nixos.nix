@@ -63,6 +63,11 @@ let
   inherit (import ./account.nix { inherit config lib options; }) home;
   files = home.home-files;
 
+  # Whether the account's niri holds each screen's first frame for its
+  # wallpaper (../niri/home.nix), which the greeter's niri is asked through
+  # its environment as the session's is, so the greeter ends it.
+  holds = lib.attrByPath [ "jitsusama" "niri" "holdFirstFrame" ] false home;
+
   # Every account that can sign in, the machine's own first, each called by
   # the first word of its description.
   accounts =
@@ -133,6 +138,7 @@ let
         "systemd_cat=${lib.getExe' config.systemd.package "systemd-cat"}"
       ])
       "compositor=(${lib.escapeShellArgs cfg.compositor}) niri_config=${compositor}/config.kdl"
+      (lib.optionalString holds "export NIRI_HOLD_FIRST_FRAME=1")
       "tuigreet=(${lib.escapeShellArgs tuigreet})"
       (builtins.readFile ./greeter.sh)
     ]

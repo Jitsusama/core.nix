@@ -1,7 +1,9 @@
 # Boots the graphical role in a virtual machine with niri straight on its
 # screen, not nested in Cage as the desktop test runs it, so the screen can
 # really go and come back, as at an undock. niri must first have held each
-# screen's first frame for the wallpaper. The shell's surfaces must be
+# screen's first frame for the wallpaper, and a niri from before that hold
+# must still take the account's settings, as it reloads them at a switch
+# while it runs. The shell's surfaces must be
 # there again after: the launcher, a notice that was up, the margin's marks
 # and dictation listening. Then the console is switched away and back, and
 # the machine sleeps as a laptop does and wakes at a key, and they must all
@@ -117,6 +119,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           });
         })
       ];
+
+      # The machine's niri as it was before the hold on its first frame came
+      # in, as a niri started before a switch still is, for the script to
+      # read the account's settings with.
+      environment.etc."niri-before-the-hold".source = config.programs.niri.package.overrideAttrs (old: {
+        patches = lib.filter (patch: baseNameOf (toString patch) != "hold-first-frame.patch") old.patches;
+      });
 
       virtualisation = {
         memorySize = 4096;

@@ -698,6 +698,10 @@
     no niri key opens its screenshot screen, its key list or a quit that asks, and the launcher's
     Log Out quits without asking
   '';
+  niri-patches-add-no-settings = ''
+    no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
+    settings with it, but srgb-gamut's, in every niri booted since
+  '';
   niri-says-what-the-gpu-gave-it = ''
     the session's niri lets smithay say which GPU priority niri got, keeping the rest of niri's own
     log filter
@@ -1515,8 +1519,9 @@
     with the splash, systemd writes only failures to the console
   '';
   the-splash-outlasts-niris-hold = ''
-    niri holds its first frame for the wallpaper, only with one to wait for, for less time than
-    Plymouth takes to quit, so what the splash left stays on the screen until the desktop draws
+    niri holds its first frame for the wallpaper, only with one to wait for, asked by the name its
+    patch reads, for less time than Plymouth takes to quit, so what the splash left stays on the
+    screen until the desktop draws
   '';
   the-splash-reads-the-generation-from-the-entry = ''
     the splash is told the generation only from an entry whose name carries one
