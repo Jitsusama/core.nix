@@ -1,9 +1,12 @@
 // Drives the shell's client of a daemon (modules/quickshell/Daemon.qml)
-// against the real people daemon (modules/people), with one source stood
-// in for by tests/daemon-source.sh, through Quickshell itself. With no
+// against the real people daemon (modules/people), with two sources stood
+// in for, one asked (tests/daemon-source.sh) and one saying everyone
+// unasked (tests/daemon-roster.sh), through Quickshell itself. With no
 // daemon running the client says it isn't answering and gives a get none
 // at once; once the daemon starts the client connects by itself and says
-// hello, which names the source; the keys it watches ahead come to be
+// hello, which names the source; a watch narrowed to those listed holds
+// them alone; a search's answer is given to it and never held; the keys
+// it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
 // daemon stopping is said, keeping what was held and giving a get none;
 // and once it starts again, the client connects again by itself and asks
@@ -28,6 +31,18 @@ ShellRoot {
         kind: "person"
     }
 
+    // Watching only those a source lists with nothing typed.
+    Daemon {
+        id: listed
+
+        socket: `${root.runtime}/daemons/people.sock`
+        kind: "person"
+        watching: ({ listed: true })
+    }
+
+    readonly property string eli: "person:eli@example.com"
+    readonly property string hal: "person:hal@example.com"
+
     Process {
         id: running
 
@@ -36,7 +51,9 @@ ShellRoot {
     }
 
     function fail(what) {
-        console.warn(`FAIL ${what}: state ${people.state}, held ${JSON.stringify(people.held)}`);
+        console.warn(`FAIL ${what}: state ${people.state}, held ${JSON.stringify(people.held)}`
+            + `, listed ${Object.keys(listed.held).join(" ")}`
+            + `, answered ${JSON.stringify(root.answered)}`);
         Qt.exit(1);
     }
 
@@ -68,6 +85,23 @@ ShellRoot {
                 running.running = true;
             },
             holds: () => people.state === "answering" && "slack" in people.sources
+        },
+        {
+            what: "a watch narrowed to those listed holds them alone",
+            holds: () => root.eli in listed.held && !(root.hal in listed.held)
+                && root.hal in people.held
+        },
+        {
+            what: "a search's answer is given to it and never held",
+            run: () => {
+                root.answered = undefined;
+                listed.find({ ask: "search", kind: "person", words: "hal", limit: 5 },
+                    answer => {
+                        root.answered = answer;
+                    });
+            },
+            holds: () => (root.answered?.records ?? []).some(record => record.key === root.hal)
+                && !(root.hal in listed.held)
         },
         {
             what: "a key watched ahead comes to be held, asked ahead",
