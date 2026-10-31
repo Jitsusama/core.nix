@@ -2159,9 +2159,13 @@ Scope {
     }
 
     function steadied(found) {
-        const renamed = matches.filter(row => !row.gone && onOffer(row.key)
+        // What ends a search comes after it all and is made again with it,
+        // so it's no row to hold in place: held, it stood dimmed above the
+        // one made again.
+        const shown = matches.filter(row => !row.endedBy);
+        const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        return Steady.kept(matches, found.concat(renamed), steadyId);
+        return Steady.kept(shown, found.concat(renamed), steadyId);
     }
 
     // Whether the step held last is a collection, whose members are things
