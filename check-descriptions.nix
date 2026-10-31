@@ -603,6 +603,11 @@
     steer folders under the harness's per-realm roots and its own link key, apart from the home
     realm's agents key; its pis are told which realm is home
   '';
+  mycelium-serves-the-harness-files = ''
+    each realm's node serves the harness's files of that realm, its quests and the sessions to
+    restore, from the realm's own folders, and the home realm's alone the machine's waiting and
+    verdicts, each keyed as the launcher reads it
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints, its agents by realm) has it written where
