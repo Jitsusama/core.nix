@@ -565,9 +565,9 @@ fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
 }
 
 /// How the flake in `folder` reaches the builder. Its commit is the
-/// tree's HEAD, or, with changes to tracked files, a commit of them made
-/// without touching the branch or the index, as `nix build` of the tree
-/// here would read them. The newest commit GitHub has is where it meets
+/// tree's HEAD, or, with changes to the files its index holds, staged
+/// new ones included, a commit of them made without touching the branch
+/// or the index, as `nix build` of the tree here would read them. The newest commit GitHub has is where it meets
 /// its upstream branch, else origin's main. A tree that isn't git, or
 /// whose origin isn't on GitHub, can't reach it.
 pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
@@ -592,7 +592,12 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
     } else {
         fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
         let index = mine(scratch, "index");
-        let made = git(&top, &["read-tree", "HEAD"], Some(&index))
+        // Seeded from the tree's own index, as Nix reads a tree, so a file
+        // staged, or added with -N, goes too; `add -u` then takes every
+        // tracked file as it stands, and anything untracked stays here.
+        let made = git(&top, &["rev-parse", "--git-path", "index"], None)
+            .map(|own| top.join(own))
+            .filter(|own| fs::copy(own, &index).is_ok())
             .and_then(|_| git(&top, &["add", "-u"], Some(&index)))
             .and_then(|_| git(&top, &["write-tree"], Some(&index)))
             .and_then(|tree| {

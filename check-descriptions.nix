@@ -700,7 +700,9 @@
     day's journal sums to its hours and cost, each at its price; and `there`
     sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, or, when none stands or none answers, builds nothing and exits
-    75, saying so, unless --here asks it to build here;
+    75, saying so, unless --here asks it to build here; a tree's uncommitted changes go as a
+    commit of what its index holds, files staged or added with -N included and untracked ones
+    left, with the branch and index untouched;
     `there --changed` runs a tree's own changed-checks on the lent builder, else only
     evaluates on the first evaluator that answers and takes the repository's owner, and
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
