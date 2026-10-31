@@ -95,6 +95,15 @@ Scope {
             source.answered.connect(() => root.reanswer(source));
             source.changed.connect(() => root.refreshed(source));
             source.thingsChanged.connect(root.stale);
+            // Counted, so a closing can say which sources changed since
+            // the last (madeSaid).
+            const name = listed.name;
+            const count = () => {
+                root.changesIn[name] = (root.changesIn[name] ?? 0) + 1;
+            };
+            source.thingsChanged.connect(count);
+            source.answered.connect(count);
+            source.changed.connect(count);
             made.push(source);
         }
         sources = made;
@@ -3407,7 +3416,13 @@ Scope {
     // MB within a second (2026-10-30, 22:50), which a copy of the shell on
     // the same data didn't do, so the shell names it from what it makes.
     // Closing counts the spots made after it too.
-    property var madeFrom: ({ rows: {}, texts: 0, when: "" })
+    property var madeFrom: ({ rows: {}, texts: 0, changes: {}, when: "" })
+    // How often each source has said it changed (its things, an answer or
+    // its rows), kept in place so counting tells no binding. The spots a
+    // closing remakes come from what changed, if anything did, so the line
+    // says which did, to learn from Joel's own shell whether remaking them
+    // only after a change would spare most closings (2026-10-31).
+    readonly property var changesIn: ({})
     function tallies() {
         const by = {};
         for (const source of sources)
@@ -3415,7 +3430,8 @@ Scope {
         return by;
     }
     function madeSince(when) {
-        madeFrom = { rows: tallies(), texts: Fuzzy.keptSoFar(), when: when };
+        madeFrom = { rows: tallies(), texts: Fuzzy.keptSoFar(), changes: Object.assign({}, changesIn),
+            when: when };
         madeSettling.restart();
     }
     Timer {
@@ -3432,7 +3448,13 @@ Scope {
         const total = made.reduce((sum, each) => sum + each.rows, 0);
         const texts = Fuzzy.keptSoFar() - madeFrom.texts;
         const most = made.slice(0, 8).map(each => `${each.name} ${each.rows}`).join(", ");
-        console.info(`launcher: ${madeFrom.when} made ${total} rows (${most}) and ${texts} texts`);
+        const changed = Object.keys(changesIn).map(name => ({ name, times: changesIn[name]
+            - (madeFrom.changes[name] ?? 0) })).filter(each => each.times > 0)
+            .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name));
+        const times = changed.reduce((sum, each) => sum + each.times, 0);
+        const which = changed.slice(0, 8).map(each => `${each.name} ${each.times}`).join(", ");
+        console.info(`launcher: ${madeFrom.when} made ${total} rows (${most}) and ${texts} texts,`
+            + ` after ${times} changes (${which})`);
     }
 
     // What's inside things is read again a moment after the launcher
