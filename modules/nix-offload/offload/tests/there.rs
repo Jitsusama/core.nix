@@ -41,10 +41,12 @@ fn executable(path: &Path, script: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// nix as it builds here: it records its arguments and exits 0.
+/// nix as it builds here: it records its arguments and exits 0, or as
+/// the `nix-status` file beside it says.
 const NIX: &str = r#"#!/bin/sh
 echo "$@" > "$(dirname "$0")/nix-was-given"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$(dirname "$0")/nix-marked"
+exit "$(cat "$(dirname "$0")/nix-status" 2>/dev/null || echo 0)"
 "#;
 
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
@@ -108,6 +110,45 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
     assert_eq!(line["on"], "nix-offload");
     assert_eq!(line["sent"], 3812);
     assert_eq!(line["status"], 100);
+}
+
+#[test]
+fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
+    assert_eq!(
+        fs::read_to_string(folder.path().join("ssh-was-given")).unwrap(),
+        "nix-offload\nnix build --no-link --print-out-paths -L --keep-going \
+         'github:o/r/abc#checks.x.a'\n"
+    );
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
+        format!(
+            "copy --no-check-sigs --from {} /nix/store/aaaa-a\n",
+            STORE.trim()
+        )
+    );
+}
+
+#[test]
+fn a_built_path_that_cant_be_brought_here_fails_and_prints_nothing() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(folder.path().join("nix-status"), "1").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "");
 }
 
 #[test]
@@ -720,7 +761,7 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\nhere\n"
+        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\n"
     );
 }
 

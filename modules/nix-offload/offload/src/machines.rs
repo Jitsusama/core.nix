@@ -233,6 +233,9 @@ pub struct Machines {
     lending: File,
     standing: Vec<Standing>,
     beside: Vec<Standing>,
+    /// Where the builders beside that answer are named alone, once
+    /// `beside` gives it.
+    alone: Option<File>,
 }
 
 impl Machines {
@@ -254,15 +257,25 @@ impl Machines {
             lending: file(lending),
             standing,
             beside: Vec::new(),
+            alone: None,
         }
     }
 
     /// With `beside`, builders standing by whose owner lets them take any
     /// of this machine's work, so they're named to every build while they
-    /// answer, and never to a build that asks for the standing ones.
+    /// answer, and never to a build that asks for the standing ones; and
+    /// named alone, as themselves, in `alone`, for a build that may go to
+    /// them and nowhere else, empty while none answers.
     #[must_use]
-    pub fn beside(self, beside: Vec<Standing>) -> Self {
-        Self { beside, ..self }
+    pub fn beside(self, alone: PathBuf, beside: Vec<Standing>) -> Self {
+        Self {
+            beside,
+            alone: Some(File {
+                path: alone,
+                written: None,
+            }),
+            ..self
+        }
     }
 
     /// Say the builder being made, a line of its own, or nothing once it
@@ -290,14 +303,17 @@ impl Machines {
             .filter(|builder| answers(&builder.address))
             .map(|builder| builder.line.as_str());
         self.with_standing.say(text(answering, lent));
-        let beside: Vec<String> = self
+        let beside: Vec<&str> = self
             .beside
             .iter()
             .filter(|builder| answers(&builder.address))
-            .map(|builder| for_big_work(&builder.line))
+            .map(|builder| builder.line.as_str())
             .collect();
-        self.every
-            .say(text(beside.iter().map(String::as_str), lent));
+        if let Some(alone) = &mut self.alone {
+            alone.say(text(beside.iter().copied(), None));
+        }
+        let big: Vec<String> = beside.iter().map(|line| for_big_work(line)).collect();
+        self.every.say(text(big.iter().map(String::as_str), lent));
     }
 }
 
@@ -470,6 +486,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("a folder");
         let every = dir.path().join("machines");
         let asked = dir.path().join("machines-with-standing");
+        let alone = dir.path().join("machines-beside");
         let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
         let address = listening.local_addr().expect("its address").to_string();
         let mut machines = Machines::new(
@@ -479,10 +496,13 @@ mod tests {
             dir.path().join("lending"),
             vec![],
         )
-        .beside(vec![Standing {
-            address,
-            line: "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark".to_owned(),
-        }]);
+        .beside(
+            alone.clone(),
+            vec![Standing {
+                address,
+                line: "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark".to_owned(),
+            }],
+        );
         let read = |path| fs::read_to_string(path).expect("read");
         machines.show(Some(Lending {
             line: "ssh-ng://lent",
@@ -494,10 +514,17 @@ mod tests {
              ssh-ng://lent\n"
         );
         assert_eq!(read(&asked), "ssh-ng://lent\n");
+        // Named alone, as itself, for a build that may go there and
+        // nowhere else.
+        assert_eq!(
+            read(&alone),
+            "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark\n"
+        );
         drop(listening);
         machines.beside[0].address = "127.0.0.1:0".to_owned();
         machines.show(None);
         assert_eq!(read(&every), "");
+        assert_eq!(read(&alone), "");
     }
 
     #[test]

@@ -93,7 +93,11 @@ in
         Builders always there that may take any of this machine's work, such as
         a second machine for the same work, named to every build beside any
         lent one while they answer, for their big-parallel work alone, as the
-        lent one is. Never named with the standing builders.
+        lent one is. Never named with the standing builders. They're also
+        named alone, as their own lines, in /run/nix-offload/machines-beside,
+        for a build that may go to them and nowhere else
+        (`--builders @/run/nix-offload/machines-beside`), which builds here
+        while none answers.
       '';
     };
     nearby = lib.mkOption {

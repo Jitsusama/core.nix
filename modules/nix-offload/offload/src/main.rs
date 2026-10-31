@@ -4,10 +4,11 @@
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
 //! PATH] [--beside PATH]`, or `nix-offload stand [--standing PATH]
-//! [--beside PATH]` to name standing builders alone and lend none, or `nix-offload report --rate DOLLARS` for
-//! today's line, or `nix-offload there [-L] [--keep-going] [--apply
-//! FUNCTION] [--out DIR] [--here] FLAKE ATTR...` to build a flake on the builder, or
-//! on a machine nearby for systems this one can't build, as src/there.rs
+//! [--beside PATH]` to name standing builders alone and lend none, or
+//! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
+//! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
+//! [--print-out-paths] [--here] FLAKE ATTR...` to build a flake on the
+//! builder, or on a machine nearby for systems this one can't build, as src/there.rs
 //! says. A build waiting for a builder says so in /run/nix-offload/wanted,
 //! which counts as queued work.
 //!
@@ -98,6 +99,10 @@ const MACHINES: &str = "/run/nix-offload/machines";
 /// `--builders @` it: never every build, since they may be machines only
 /// some work may reach.
 const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
+/// Where a build that may go only to the builders beside, never the lent
+/// one, reads those that answer, by `--builders @` it, so it builds here
+/// when the file is empty.
+const BESIDE: &str = "/run/nix-offload/machines-beside";
 /// Where a build sent to the lent builder as a command reads how to reach
 /// it, as its store's URI, while one stands.
 const STORE: &str = "/run/nix-offload/store";
@@ -122,7 +127,8 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--here] FLAKE ATTR... | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
+                    [--print-out-paths] [--here] FLAKE ATTR... \
+                    | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -358,7 +364,7 @@ fn changed_somewhere(
     let on_builder = |store: Option<String>| {
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
         let sending = changed::sending(source.clone(), arguments);
-        match there::on(&lent, &sending, None, scratch, "ssh") {
+        match there::on(&lent, &sending, there::Bring::Nothing, scratch, "ssh") {
             Ok(ran) if ran.status != there::UNREACHED => Some(exited(ran.status)),
             _ => {
                 eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
@@ -532,7 +538,7 @@ fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) {
         LENDING.into(),
         standing,
     )
-    .beside(beside);
+    .beside(BESIDE.into(), beside);
     while !ENDING.load(Ordering::SeqCst) {
         machines.show(None);
         rest(TICK);
@@ -554,6 +560,7 @@ fn serve(settings: &Settings) {
         standing,
     )
     .beside(
+        BESIDE.into(),
         settings
             .beside
             .as_deref()
