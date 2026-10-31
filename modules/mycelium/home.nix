@@ -40,6 +40,10 @@
 #
 # With it goes the command an agent session starts with in each realm, which
 # pi's module sets where pi is installed (jitsusama.mycelium.agents).
+#
+# Each node also serves the harness's files of its realm to whoever asks it,
+# as the launcher does, and hears each change: its quests and the sessions
+# to restore, and on the home realm's the machine's waiting and verdicts.
 { mycelium }:
 {
   config,
@@ -210,7 +214,50 @@ let
     ++ lib.concatMap (machine: [
       "--ssh"
       machine
-    ]) links;
+    ]) links
+    ++ [
+      "--serves"
+      (servesFile realm)
+    ];
+  # The harness's files a realm's node serves whoever reads it, the
+  # launcher first, each as a kind of records: the realm's quests and the
+  # sessions to restore, and on the home realm's node the machine's
+  # waiting and verdicts, which no realm owns, so nothing is heard twice.
+  # A file not written yet is served as holding nothing.
+  servesIn =
+    realm:
+    let
+      state = config.xdg.stateHome;
+      home = realm == cfg.realm;
+      harness =
+        if home then "${state}/pi/agentic-harness.pi" else "${state}/pi/agentic-harness.pi/realms/${realm}";
+    in
+    {
+      quest = {
+        file = "${harness}/quest-workflow/quests.json";
+        records = "quests";
+        key = "id";
+      };
+      restore = {
+        file = if home then "${state}/pi/restore.json" else "${harness}/restore.json";
+        records = "sessions";
+        key = "id";
+      };
+    }
+    // lib.optionalAttrs home {
+      waiting = {
+        folder = "${state}/mission/waiting";
+        records = "items";
+        key = "id";
+        by = "quest";
+      };
+      verdict = {
+        file = "${state}/mission/verdicts.json";
+        records = "items";
+      };
+    };
+  servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
+  realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
   node = nodeIn cfg.realm cfg.links [ ];
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
@@ -374,6 +421,14 @@ in
         // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
         // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
         // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
+      );
+    })
+    (lib.mkIf serving {
+      xdg.configFile = lib.listToAttrs (
+        map (
+          realm:
+          lib.nameValuePair "mycelium/serves-${realm}.json" { text = builtins.toJSON (servesIn realm); }
+        ) realms
       );
     })
     (lib.mkIf (isLinux && serving) {

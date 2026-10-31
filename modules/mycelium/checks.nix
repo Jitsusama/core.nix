@@ -130,6 +130,10 @@ in
             "node"
           ]
           ++ ssh
+          ++ [
+            "--serves"
+            "${(mac links).xdg.configHome}/mycelium/serves-personal.json"
+          ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
         && lib.hasInfix "--realm personal node" (
@@ -166,13 +170,66 @@ in
         )) otherNode
         && bothLinux.mycelium-other.Service.Environment == [ "SSH_AUTH_SOCK=%t/other-link.sock" ]
         && bothLinux.mycelium-other.Unit.Wants == [ "other-link.socket" ]
-        && lib.hasSuffix "--realm home node --ssh one" (toString bothLinux.mycelium.Service.ExecStart)
+        && lib.hasSuffix "--realm home node --ssh one --serves /home/someone/.config/mycelium/serves-home.json" (
+          toString bothLinux.mycelium.Service.ExecStart
+        )
         && bothLinux.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
-        && lib.hasSuffix "/.local/state/pi/agentic-harness.pi/realms/other/steer --ssh two" (
+        && lib.hasInfix "/.local/state/pi/agentic-harness.pi/realms/other/steer --ssh two --serves " (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )
         && (linux both).home.sessionVariables.PI_HOME_REALM == "home"
         && (linux both).home.sessionVariables.MYCELIUM_REALM == "home"
+      );
+
+  # Each realm's node serves the harness's files of its realm, as the
+  # harness keeps them: the home realm's in the harness's usual folders, a
+  # further realm's in its own, and the machine's waiting and verdicts on
+  # the home realm's node alone, so nothing is heard twice.
+  mycelium-serves-the-harness-files =
+    holds "mycelium-serves-the-harness-files"
+      "A realm's node doesn't serve its realm's quests and restore list from that realm's folders, or the machine's waiting and verdicts aren't served by the home realm's node alone."
+      (
+        let
+          state = "/home/someone/.local/state";
+          serves = realm: builtins.fromJSON (linux both).xdg.configFile."mycelium/serves-${realm}.json".text;
+        in
+        serves "home" == {
+          quest = {
+            file = "${state}/pi/agentic-harness.pi/quest-workflow/quests.json";
+            records = "quests";
+            key = "id";
+          };
+          restore = {
+            file = "${state}/pi/restore.json";
+            records = "sessions";
+            key = "id";
+          };
+          waiting = {
+            folder = "${state}/mission/waiting";
+            records = "items";
+            key = "id";
+            by = "quest";
+          };
+          verdict = {
+            file = "${state}/mission/verdicts.json";
+            records = "items";
+          };
+        }
+        &&
+          serves "other" == {
+            quest = {
+              file = "${state}/pi/agentic-harness.pi/realms/other/quest-workflow/quests.json";
+              records = "quests";
+              key = "id";
+            };
+            restore = {
+              file = "${state}/pi/agentic-harness.pi/realms/other/restore.json";
+              records = "sessions";
+              key = "id";
+            };
+          }
+        && lib.hasSuffix "--serves /home/someone/.config/mycelium/serves-other.json" otherNode
+        && !(apart.xdg.configFile ? "mycelium/serves-home.json")
       );
 
   # A machine that declares what its node can't measure has it written where
