@@ -31,7 +31,9 @@
 // Replace It; Return makes the folder the place said to save in, here,
 // and then answers the path, which the place takes from there (VKCF3Z,
 // 2026-10-30). An ask from inside the shell for a local folder alone
-// (`local`) is given no places.
+// (`local`) is given no places. The folder here a save last went to is
+// kept (`savedLastIn`), so a save asked from inside the shell can start
+// there.
 //
 // The answer goes back on the socket open-with listens on, as one line:
 // the paths picked, the filter in use and the option of each choice, or an
@@ -94,6 +96,9 @@ Provider {
     // Saving into a place kept elsewhere: the ask and the path, while the
     // folder the path is in is made.
     property var staging: null
+    // The folder here a save last went to, kept in a file (`savedIn`) so
+    // a restart keeps it, or "" before any.
+    property string savedLast: ""
     // Each kind of file by how it's named, and the kinds each is one of.
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
@@ -337,7 +342,7 @@ Provider {
             changed();
             return;
         }
-        pick([was.path]);
+        pick([was.path], true);
         launcher.open = false;
     }
 
@@ -695,10 +700,14 @@ Provider {
         return `${everything().length} ${folders ? "folders" : "files"}`;
     }
 
-    // Says what was picked, held to what the program offered.
-    function pick(paths) {
+    // Says what was picked, held to what the program offered. A save here
+    // keeps the folder it went to; one staged for a place kept elsewhere
+    // (`away`) doesn't, since its folder is only the place's staging.
+    function pick(paths, away) {
         if (asking === null)
             return;
+        if ((saving || mode === "save-files") && away !== true && String(paths[0] ?? "").startsWith("/"))
+            keepSavedIn(saving ? parentOf(paths[0]) : paths[0]);
         const choices = {};
         for (const choice of request.choices ?? [])
             choices[choice.id] = optionOf(choice);
@@ -707,6 +716,22 @@ Provider {
             filter: inUse < 0 ? null : inUse,
             choices: choices
         }));
+    }
+
+    function keepSavedIn(folder) {
+        if (folder === savedLast)
+            return;
+        savedLast = folder;
+        if (settings.savedIn)
+            savedInFile.setText(`${folder}\n`);
+    }
+
+    // The folder here a save last went to, through the portal or from
+    // inside the shell, or "" before any: where Google's Drive starts a
+    // Save a Copy of a file it couldn't take (427IH3 and VKCF3Z,
+    // 2026-10-30).
+    function savedLastIn() {
+        return savedLast;
     }
 
     // Says the answer, or none, on the ask's socket, or to what the shell
@@ -853,6 +878,15 @@ Provider {
                 provider.changed();
             }
         }
+    }
+
+    // Read once as the shell starts; this is its only writer.
+    FileView {
+        id: savedInFile
+
+        path: provider.settings.savedIn ?? ""
+        printErrors: false
+        onLoaded: provider.savedLast = text().trim()
     }
 
     FileView {

@@ -31,8 +31,10 @@
 // be saved in, each leading with the name, a name already there stepping
 // in to Replace It; what's typed names it instead, and Return makes the
 // folder the place stages it in and answers the path there, closing the
-// launcher once it's made. It exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// launcher once it's made. A save here keeps the folder it went to, one
+// asked from inside the shell too, never an open nor a save staged
+// elsewhere, and the chooser made again reads it. It exits 0 once every
+// case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 
 import qs
@@ -90,8 +92,23 @@ ShellRoot {
         settings: ({
             name: "fileChooser",
             recent: [Quickshell.env("RECENT_LIST")],
-            kinds: Quickshell.env("KINDS")
+            kinds: Quickshell.env("KINDS"),
+            savedIn: `${root.home}/state/open-with/saved-in`
         })
+    }
+
+    // The chooser again, as the shell makes it once it's restarted, made
+    // at the end to read where a save last went.
+    property var restarted: null
+
+    Component {
+        id: restarting
+
+        Launcher.FileChooser {
+            launcher: launcher
+            settings: chooser.settings
+            onSavedLastChanged: Qt.callLater(root.step)
+        }
     }
 
     // A stand-in for Google's Drive (modules/google): one place, a folder in
@@ -241,6 +258,8 @@ ShellRoot {
                 expect("what's typed saves in the folder it's typed in, with each choice's option",
                     answers[1] === JSON.stringify({ paths: [`${notes}/sub/new.md`], filter: null,
                         choices: { encoding: "latin1" } }), answers[1]);
+                expect("a save keeps the folder it went to", chooser.savedLastIn() === `${notes}/sub`,
+                    chooser.savedLastIn());
                 ask(3, { mode: "open", title: "Pick a Folder", folders: true, folder: notes });
             } else if (stage === 5 && chooser.asking?.reply.endsWith("/3.sock") && ready([notes])) {
                 stage = 6;
@@ -286,6 +305,8 @@ ShellRoot {
                 expect("an ask from inside the shell is answered with the path, never on a socket",
                     JSON.stringify(shellPicked) === JSON.stringify([`${notes}/copy.pdf`])
                         && answers.length === 6, `${JSON.stringify(shellPicked)}, ${answers.length} answers`);
+                expect("a save asked from inside the shell keeps its folder too",
+                    chooser.savedLastIn() === notes, chooser.savedLastIn());
                 shellPicked = null;
                 chooser.chooseToSave({ name: "copy.pdf", folder: notes }, root.heardFromTheShell);
             } else if (stage === 15 && chooser.shown.startsWith("shell:")) {
@@ -311,6 +332,8 @@ ShellRoot {
                 expect("once it's fetched, its path is answered and the launcher closes",
                     answers[6] === JSON.stringify({ paths: [`${runtime}/picked/report.pdf`], filter: null,
                         choices: {} }) && !launcher.open, `${answers[6]}, ${launcher.open}`);
+                expect("what's opened never moves where a save went", chooser.savedLastIn() === notes,
+                    chooser.savedLastIn());
                 ask(9, { mode: "open", title: "Open Several", multiple: true, folder: home });
             } else if (stage === 20 && chooser.asking?.reply.endsWith("/9.sock") && ready([home])) {
                 stage = 21;
@@ -343,6 +366,11 @@ ShellRoot {
                 expect("Return makes the folder the place stages it in, then answers the path there",
                     answers[8] === JSON.stringify({ paths: [`${home}/staged/plans/new.md`], filter: null,
                         choices: {} }) && !launcher.open, `${answers[8]}, ${launcher.open}`);
+                expect("a save staged for a place kept elsewhere never moves where a save here went",
+                    chooser.savedLastIn() === notes, chooser.savedLastIn());
+                restarted = restarting.createObject(root);
+            } else if (stage === 26 && restarted?.savedLastIn() === notes) {
+                stage = 27;
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -558,6 +586,8 @@ ShellRoot {
     Timer {
         interval: 50000
         running: true
-        onTriggered: root.fail(`stopped at stage ${root.stage}`)
+        onTriggered: root.fail(root.stage === 26
+            ? "the chooser made again never read where a save last went"
+            : `stopped at stage ${root.stage}`)
     }
 }
