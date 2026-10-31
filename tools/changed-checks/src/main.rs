@@ -40,10 +40,10 @@
 //! evaluates with its builds sent on. Each evaluation here held about
 //! 4.8 GB and several cores of the person's machine. The far side runs
 //! the commit's own changed-checks with the same arguments and marked so
-//! it never sends itself on. With `--here`, a `--base` other than
-//! origin's main, which the far side wouldn't have, edits not yet
-//! committed, which it would pass over, or nowhere to send it, it runs
-//! here. While nix-offload lends a builder, a build here is sent
+//! it never sends itself on, a `--base` given as its merge base's commit.
+//! With `--here`, a base whose merge base origin's main doesn't hold,
+//! which the far side wouldn't have, edits not yet committed, which it
+//! would pass over, or nowhere to send it, it runs here. While nix-offload lends a builder, a build here is sent
 //! to it as a command naming a commit origin has, and the builder fetches
 //! that commit, evaluates the checks and builds them itself (`there.rs`
 //! says why).
@@ -189,7 +189,7 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if !untracked.is_empty() {
         eprintln!("changed-checks: Nix doesn't read files git doesn't know:\n{untracked}");
     }
-    if let Some(code) = elsewhere(options, &root, &system)? {
+    if let Some(code) = elsewhere(options, &root, &base, &system)? {
         return Ok(code);
     }
     let mut noted = Run::new(&base, &system);
@@ -227,10 +227,28 @@ fn busiest_system(flake: &str) -> Result<String, String> {
 
 /// The run sent to another machine by `nix-offload there --changed`, its
 /// exit, or none when it runs here: asked to, already the far side's, a
-/// base only this checkout may have, a nix-offload that doesn't take it,
-/// edits not yet in a commit, or nowhere that took it.
-fn elsewhere(options: &Options, root: &str, system: &str) -> Result<Option<ExitCode>, String> {
-    if options.here || env::var_os(HERE).is_some() || options.base != ORIGIN_MAIN {
+/// base whose merge base origin's main doesn't hold, a nix-offload that
+/// doesn't take it, edits not yet in a commit, or nowhere that took it.
+fn elsewhere(
+    options: &Options,
+    root: &str,
+    base: &str,
+    system: &str,
+) -> Result<Option<ExitCode>, String> {
+    if options.here || env::var_os(HERE).is_some() {
+        return Ok(None);
+    }
+    // The far side fetches origin's main, so it has any commit main holds,
+    // and the merge base is what the comparison starts from either way.
+    let holds = Command::new("git")
+        .args(["-C", root, "merge-base", "--is-ancestor", base, ORIGIN_MAIN])
+        .status()
+        .is_ok_and(|status| status.success());
+    if options.base != ORIGIN_MAIN && !holds {
+        eprintln!(
+            "changed-checks: origin's main doesn't hold {}, so the run stays on this machine",
+            base.get(..12).unwrap_or(base)
+        );
         return Ok(None);
     }
     let takes = Command::new("nix-offload")
@@ -254,7 +272,17 @@ fn elsewhere(options: &Options, root: &str, system: &str) -> Result<Option<ExitC
         );
         return Ok(None);
     }
-    let mut given = options.given.clone();
+    // A base is given as its merge base's commit, which a ref named only
+    // here, such as a branch, wouldn't be on the far side.
+    let mut given = Vec::new();
+    let mut words = options.given.iter();
+    while let Some(word) = words.next() {
+        given.push(word.clone());
+        if word == "--base" {
+            words.next();
+            given.push(base.to_owned());
+        }
+    }
     // The far side may be another system, which would name its own.
     if options.system.is_none() {
         given.extend(["--system".to_owned(), system.to_owned()]);
