@@ -32,13 +32,21 @@
 //!   muted,sharing,camera],...]}}`, Joel's own state first and then each
 //!   of the others', `since` null until it connects;
 //! - `{"call":null}`, no call.
+//!
+//! Given a file after the socket, it also keeps there who the call is
+//! with, for what records a call without the shell (a transcript names
+//! its folder by them): `{"since":ms,"with":[{"id":id,"name":"name",
+//! "email":"address"},...]}`, written whole while a call is on, as it
+//! changes, and removed once there's none, or this ends. One left by an
+//! earlier run that was killed is removed as this starts.
 
 use std::env;
 use std::fmt::Write as _;
+use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 /// What follows the tuple command.
@@ -489,10 +497,105 @@ fn call_line(data: &Value) -> String {
     out
 }
 
-/// What was last said of the call, so only a change is said again.
+/// Who a call is with, for the call's file: none when there's no call.
+fn with_line(data: &Value) -> Option<String> {
+    let Value::Object(call) = data else {
+        return None;
+    };
+    let mut out = String::from("{\"since\":");
+    match field(call, "started_at") {
+        Some(Value::Number(at)) => out.push_str(at),
+        _ => out.push_str("null"),
+    }
+    out.push_str(",\"with\":[");
+    let others = match field(call, "participants") {
+        Some(Value::List(others)) => others.as_slice(),
+        _ => &[],
+    };
+    let mut first = true;
+    for other in others {
+        let Value::Object(fields) = other else {
+            continue;
+        };
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push_str("{\"id\":");
+        match field(fields, "id") {
+            Some(Value::Number(id)) => out.push_str(id),
+            Some(Value::Text(id)) => quote(&mut out, id),
+            _ => out.push_str("null"),
+        }
+        out.push_str(",\"name\":");
+        let name = ["full_name", "short_name"]
+            .into_iter()
+            .map(|key| words(fields, key))
+            .find(|name| !name.is_empty())
+            .unwrap_or("");
+        quote(&mut out, name);
+        out.push_str(",\"email\":");
+        quote(&mut out, words(fields, "email"));
+        out.push('}');
+    }
+    out.push_str("]}");
+    Some(out)
+}
+
+/// What was last said of the call, so only a change is said again, and
+/// the file who it's with is kept in, if any.
 #[derive(Default)]
 struct Call {
     last: Option<String>,
+    file: Option<PathBuf>,
+    kept: Option<String>,
+}
+
+impl Call {
+    fn keeping(file: PathBuf) -> Self {
+        forget(&file);
+        Self {
+            last: None,
+            file: Some(file),
+            kept: None,
+        }
+    }
+
+    /// Keeps who the call is with in the file, written whole beside it
+    /// and moved into place so it's never read half written, or removes
+    /// it once there's no call. A file that can't be written is left be:
+    /// the shell's line matters more.
+    fn keep(&mut self, with: Option<String>) {
+        let Some(file) = &self.file else {
+            return;
+        };
+        if self.kept == with {
+            return;
+        }
+        match &with {
+            Some(line) => {
+                let new = file.with_extension("new");
+                if fs::write(&new, format!("{line}\n")).is_ok() {
+                    let _ = fs::rename(&new, file);
+                }
+            }
+            None => forget(file),
+        }
+        self.kept = with;
+    }
+}
+
+impl Drop for Call {
+    fn drop(&mut self) {
+        if let Some(file) = &self.file {
+            forget(file);
+        }
+    }
+}
+
+/// Removes the call's file, there or not.
+fn forget(file: &Path) {
+    let _ = fs::remove_file(file);
 }
 
 impl Hears for Call {
@@ -509,7 +612,9 @@ impl Hears for Call {
         if words(&fields, "type") != "current_call" {
             return Vec::new();
         }
-        let said = call_line(field(&fields, "data").unwrap_or(&Value::Null));
+        let data = field(&fields, "data").unwrap_or(&Value::Null);
+        self.keep(with_line(data));
+        let said = call_line(data);
         if self.last.as_ref() == Some(&said) {
             return Vec::new();
         }
@@ -610,20 +715,31 @@ fn running(socket: &Path) -> bool {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    let (calls, tuple, socket) = match args.as_slice() {
-        [tuple, socket] => (false, tuple, socket),
-        [mode, tuple, socket] if mode == "call" => (true, tuple, socket),
+    let (calls, tuple, socket, file) = match args.as_slice() {
+        [tuple, socket] => (false, tuple, socket, None),
+        [mode, tuple, socket] if mode == "call" => (true, tuple, socket, None),
+        [mode, tuple, socket, file] if mode == "call" => {
+            (true, tuple, socket, Some(PathBuf::from(file)))
+        }
         _ => {
-            eprintln!("usage: tuple-people [call] <the tuple command> <its daemon's socket>");
+            eprintln!(
+                "usage: tuple-people [call] <the tuple command> <its daemon's socket> \
+                 [call: the file it's kept in]"
+            );
             return ExitCode::from(2);
         }
     };
     if !running(Path::new(socket)) {
+        // No Tuple, no call.
+        if let Some(file) = &file {
+            forget(file);
+        }
         return ExitCode::from(NOT_RUNNING);
     }
     let out = io::stdout().lock();
     let code = if calls {
-        follow(Command::new(tuple).args(CALL_ARGS), Call::default(), out)
+        let heard = file.map_or_else(Call::default, Call::keeping);
+        follow(Command::new(tuple).args(CALL_ARGS), heard, out)
     } else {
         follow(Command::new(tuple).args(ARGS), Follower::default(), out)
     };
@@ -879,6 +995,31 @@ mod tests {
                 .heard("{\"type\":\"current_call\",\"data\":null}\n")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_calls_file_says_who_its_with_while_it_lasts() {
+        let folder = std::env::temp_dir().join(format!("tuple-call-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let file = folder.join("tuple-call.json");
+        // One an earlier run left is taken as no call.
+        fs::write(&file, "{}").unwrap();
+        let mut heard = Call::keeping(file.clone());
+        assert!(!file.exists());
+        heard.heard(&call("connected", true, [false; 3], [false; 3]));
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            "{\"since\":1792759701457,\"with\":[{\"id\":7,\"name\":\"Ada Brightwater\",\
+             \"email\":\"ada@example.com\"}]}\n"
+        );
+        heard.heard("{\"type\":\"current_call\",\"data\":null}\n");
+        assert!(!file.exists());
+        // And it goes when this does, mid-call.
+        heard.heard(&call("connected", true, [false; 3], [false; 3]));
+        assert!(file.exists());
+        drop(heard);
+        assert!(!file.exists());
+        fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
