@@ -16,10 +16,8 @@
 //! said "ok" never outlives the program that read it.
 //!
 //! It's Slack's daemon too: on SOCKET it answers the shell's daemon
-//! interface, searching Slack when Joel asks (answers.rs), so nothing is
-//! started to search.
-
-mod answers;
+//! interface, searching Slack when Joel asks (lib's `daemon`), so nothing
+//! is started to search.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -47,7 +45,7 @@ fn main() {
         std::process::exit(64);
     };
     let origin = args.next().unwrap_or_else(|| "https://slack.com".into());
-    answers::listen(
+    slack_people::daemon::listen(
         Path::new(&socket),
         PathBuf::from(&credentials),
         origin.clone(),

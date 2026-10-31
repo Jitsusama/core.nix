@@ -1,7 +1,7 @@
-//! What slack-unreads answers over its socket, in the shell's daemon
-//! interface (RSCH-20261029-0E8050, "Daemons: One Interface"), version 1:
-//! `hello`, `health`, `search` for Joel's words, and `get` of a message a
-//! search found, with the few around it. Each ask is answered on a thread
+//! What Slack's daemon, slack-unreads, answers over its socket, in the
+//! shell's daemon interface (RSCH-20261029-0E8050, "Daemons: One
+//! Interface"), version 1: `hello`, `health`, `search` for Joel's words,
+//! and `get` of a message a search found, with the few around it. Each ask is answered on a thread
 //! of its own, so a search waiting on Slack holds up no other ask.
 
 use std::io::{BufRead, BufReader, Write};
@@ -11,10 +11,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
-use slack_people::search::{self, Failed};
-use slack_people::{Account, Slack};
 
-/// Listens on `socket` for as long as the program runs.
+use crate::search::{self, Failed};
+use crate::{Account, Slack};
+
+/// Listens on `socket`, on a thread of its own, for as long as the
+/// program runs.
 pub fn listen(socket: &Path, credentials: PathBuf, origin: String) {
     let listener = match bind(socket) {
         Ok(listener) => listener,
@@ -23,7 +25,7 @@ pub fn listen(socket: &Path, credentials: PathBuf, origin: String) {
             return;
         }
     };
-    let since = crate::millis();
+    let since = crate::now() * 1000;
     let asking = Arc::new(Asking {
         credentials,
         origin,

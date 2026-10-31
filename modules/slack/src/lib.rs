@@ -12,9 +12,9 @@
 //! and nothing it does sends a message or changes anything in Slack.
 //!
 //! What in Slack wants Joel, for Now, is [`unreads`]'s, which the
-//! slack-unreads program (src/bin/slack-unreads/main.rs) keeps in a file,
-//! and searching Slack when Joel asks is [`search`]'s, which that program
-//! answers over the socket it holds as Slack's daemon.
+//! slack-unreads program (src/bin/slack-unreads.rs) keeps in a file, and
+//! searching Slack when Joel asks is [`search`]'s, which that program
+//! answers over the socket it holds as Slack's daemon ([`daemon`]).
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ureq::Agent;
 
+pub mod daemon;
 pub mod search;
 pub mod unreads;
 
