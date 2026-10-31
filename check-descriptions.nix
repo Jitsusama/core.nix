@@ -1589,7 +1589,7 @@
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
     restarts on a switch, the Mac's daemon names no store path, both start it from the running
-    system, and its askers are its group's members
+    system, the Mac's waiting until that system holds it, and its askers are its group's members
   '';
   update-to-main-passes-clippy = ''
     clippy finds nothing in update-to-main or its tests

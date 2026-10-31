@@ -6,9 +6,14 @@
 # The daemon's definition names only the running system's path and a fixed
 # config path, so it's the same in every system and activate never reloads
 # it mid-switch; it starts itself again once a switch is done.
+#
+# launchd loads it before that path names a system holding it: at boot, and
+# in the switch that first brings it. launchd never tries a missing program
+# again, so the daemon waits for its program rather than be one.
 { config, lib, ... }:
 let
   cfg = config.jitsusama.update-to-main;
+  program = "/run/current-system/sw/bin/update-to-main";
   # The machine's own Nix: nix-darwin's when it manages Nix, and otherwise
   # the installer's, as Determinate's is, never another beside it.
   nixBin =
@@ -48,10 +53,9 @@ in
     launchd.daemons.update-to-main.serviceConfig = {
       Label = "org.jitsusama.update-to-main";
       ProgramArguments = [
-        "/run/current-system/sw/bin/update-to-main"
-        "serve"
-        "--config"
-        "/etc/update-to-main/config.json"
+        "/bin/sh"
+        "-c"
+        "until [ -x ${program} ]; do sleep 1; done; exec ${program} serve --config /etc/update-to-main/config.json"
       ];
       RunAtLoad = true;
       KeepAlive = true;
