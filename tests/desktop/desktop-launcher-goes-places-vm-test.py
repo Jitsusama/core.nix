@@ -67,17 +67,18 @@ def test_an_opening_says_what_each_source_made(desktop: Desktop) -> None:
     machine = desktop.machine
     said = (
         "journalctl --user --unit=quickshell --no-pager --output=cat --since=-30s"
-        " | grep -E 'launcher: {} made {} rows \\({}\\) and [0-9]+ texts'"
+        " | grep -E 'launcher: {} made {} rows \\({}\\) and [0-9]+ texts{}'"
     )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # Opening makes rows, each source's counted and named.
-    opening = said.format("opening", "[1-9][0-9]*", "[a-z]+ [1-9][0-9]*.*")
+    opening = said.format("opening", "[1-9][0-9]*", "[a-z]+ [1-9][0-9]*.*", "")
     machine.wait_until_succeeds(desktop.in_session(opening), timeout=dt.timedelta(seconds=20))
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # Closing is said too, though it may make nothing new.
-    closing = said.format("closing", "[0-9]+", ".*")
+    # Closing is said too, though it may make nothing new, with which
+    # sources changed since it opened, if any did.
+    closing = said.format("closing", "[0-9]+", ".*", ", after [0-9]+ changes \\(.*\\)")
     machine.wait_until_succeeds(desktop.in_session(closing), timeout=dt.timedelta(seconds=20))
 
 
