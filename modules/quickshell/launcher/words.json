@@ -3104,7 +3104,7 @@
       "name": "Needs You",
       "verb": "go",
       "glyph": "waitsOnJoel",
-      "empty": "Nothing to do.",
+      "empty": "Nothing needs you.",
       "said": {
         "first": "{title} \u00b7 {minutes} min",
         "minutes": "{minutes} min",
