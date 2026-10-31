@@ -4,7 +4,8 @@
 # layout when the machine is installed and declares its mounts from then on.
 # The partitions and the open volume are found by the disk's name, so two
 # disks attached at once, such as a machine's drive and a stick it was
-# installed from, need names of their own.
+# installed from, need names of their own. The cryptsetup typed by hand
+# reads the disk's YubiKey and TPM tokens, as the boot does.
 { disko }:
 {
   config,
@@ -29,6 +30,20 @@ let
       fi
     done < /etc/crypttab
   '';
+
+  # cryptsetup as typed by hand, given systemd's token plugins. Its own
+  # build looks for them in a folder of its own that holds none, and
+  # --external-tokens-path doesn't move it, so without them it passes over
+  # every YubiKey and TPM token on the disk.
+  cryptsetup = lib.hiPrio (
+    pkgs.runCommand "cryptsetup-with-systemds-tokens"
+      { nativeBuildInputs = [ pkgs.makeBinaryWrapper ]; }
+      ''
+        mkdir -p $out/bin
+        makeBinaryWrapper ${lib.getExe' pkgs.cryptsetup "cryptsetup"} $out/bin/cryptsetup \
+          --prefix LD_LIBRARY_PATH : ${config.systemd.package}/lib/cryptsetup
+      ''
+  );
 
   # Light compression, no access-time writes, and discards in the background
   # rather than on every delete.
@@ -106,6 +121,8 @@ in
   # none has no key for the TPM's PIN to reach, and keeps the plugins and
   # their passphrase prompt. Should the reading fail, nothing is written and
   # the disk opens as it would with the plugins.
+  config.environment.systemPackages = [ cryptsetup ];
+
   config.boot.initrd.systemd.storePaths = [ findKeyed ];
   config.boot.initrd.systemd.services."systemd-cryptsetup@" = {
     overrideStrategy = "asDropin";
