@@ -148,8 +148,14 @@ impl Step for ConfirmDisk {
 }
 
 /// Whether the target's volume is laid out on its disk and open at the
-/// install's root, which stays true until the install is done.
+/// install's root, which stays true until the install is done. Only the
+/// journal tells a layout of this install's from an old system left open
+/// there, by Recover or a carry, which must still be wiped; a start that
+/// carries on after a restart learns the fact from the journal's copy.
 fn laid_out(machine: &mut dyn Machine, target: &Target, disk: &Disk) -> Result<bool, Fault> {
+    if !machine.journal().knows("lay-out-disk", &target.machine) {
+        return Ok(false);
+    }
     let Some(volume) = machine.resolve(&target.volume())? else {
         return Ok(false);
     };
