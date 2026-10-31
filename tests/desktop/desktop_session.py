@@ -488,6 +488,19 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """
         self.launcher_until(lambda shown: shown["open"] and shown["keys"])
 
+    def launcher_left_closed(self) -> None:
+        """Close the launcher if a test left it open, so the next test starts as every test does.
+
+        A test failing with it open handed it open to every test after it, and each failed
+        on what the first left (2026-10-30: one failure in goes-places took 31 more with it).
+        """
+        left_open, _ = self.machine.execute(self.in_session(LAUNCHER_OPEN))
+        if left_open != 0:
+            return
+        print("the launcher was left open, so it's closed for the next test")
+        self.as_account("qs ipc call launcher toggle")
+        self.machine.wait_until_fails(self.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter with Return's row settled.
 
