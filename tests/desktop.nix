@@ -635,10 +635,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           }"
         ];
       };
+      environment.etc."wakes-probe.py".source = ./desktop/wakes-probe.py;
       environment.systemPackages = [
         reports
         piStandIn
         pkgs.libnotify
+        pkgs.strace
+        pkgs.python3
         # The disk guard's own program, without its daemons, so Disk's Keep
         # marks a folder kept in the status file the test writes in the
         # account's guard's place, as the guard itself would.

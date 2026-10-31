@@ -51,6 +51,22 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+WAKES_PROBE = "/etc/wakes-probe.py"
+
+
+def test_wakes_probe_what_the_closed_shell_reads(desktop: Desktop) -> None:
+    """THROWAWAY: what the closed shell reads over 30 s, by thread and fd."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.succeed("sleep 20")
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    probe = machine.succeed(f"python3 {WAKES_PROBE} {pid}")
+    raise AssertionError("wakes probe\n" + probe)
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
