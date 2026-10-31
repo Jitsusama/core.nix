@@ -768,9 +768,10 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     desktop.down_to("Agents")
     machine.send_key("ret")
     # Its row comes after the sessions running, its count beside it.
-    desktop.launcher_until(lambda shown: "Reopen Last Boot's Sessions" in shown["rows"])
-    desktop.down_to("Reopen Last Boot's Sessions")
-    assert desktop.showing()["selected"]["side"] == "1 session", desktop.showing()
+    desktop.launcher_until(lambda shown: "Sessions to Reopen" in shown["rows"])
+    desktop.down_to("Sessions to Reopen")
+    selected = desktop.showing()["selected"]
+    assert (selected["side"], selected["note"]) == ("1 session", "from the last boot"), selected
     # Return steps in, all of them first, so Return twice reopens them.
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
@@ -787,7 +788,7 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     # Put off, it's gone for this boot, as no harness here drops it.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
+    desktop.type_in("to reopen", selecting="Sessions to Reopen")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
     desktop.down_to("Not Now")
@@ -801,10 +802,93 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     desktop.launcher_until(
         lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
     )
-    assert "Reopen Last Boot's Sessions" not in desktop.showing()["rows"], desktop.showing()
+    assert "Sessions to Reopen" not in desktop.showing()["rows"], desktop.showing()
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"rm -rf {opened} ~/harbour")
+
+
+def test_agents_reopens_a_session_another_machine_carried_here(desktop: Desktop) -> None:
+    """Agents offers a session another machine carried here whatever the boot, without Not Now."""
+    machine = desktop.machine
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    restore = "~/.local/state/pi/restore.json"
+    # This boot's own file, so nothing of the last boot's is offered, but
+    # for one session another machine handed here as it went away.
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    at = "2026-10-30T12:00:00Z"
+    ferry = {
+        "id": "01b2-ferry",
+        "address": "FERRYQ",
+        "title": "Ferry",
+        "cwd": "/home/jitsusama/ferry",
+        "lostAt": at,
+        "carried": {"from": "lighthouse", "at": at},
+    }
+    desktop.as_account(f"rm -f {opened} && mkdir -p ~/ferry")
+    kept(desktop, restore, {"v": 1, "boot": boot, "sessions": [ferry]})
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("to reopen", selecting="Sessions to Reopen")
+    selected = desktop.showing()["selected"]
+    assert (selected["side"], selected["note"]) == ("1 session", "carried from lighthouse"), (
+        selected
+    )
+    # Inside there's no Not Now, which puts off only the last boot's.
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Ferry"])
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/ferry " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01b2-ferry"], said
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # Once it runs here the harness drops it, and the row goes with it.
+    kept(desktop, restore, {"v": 1, "boot": boot, "sessions": []})
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents"]
+            and "Start a Session" in shown["rows"]
+            and "Sessions to Reopen" not in shown["rows"]
+        )
+    )
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm -rf {opened} ~/ferry")
+
+
+def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -> None:
+    """The shell takes the sessions the harness hands it, answering at once, and reopens each."""
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    handed = "$XDG_RUNTIME_DIR/handed.json"
+    desktop.as_account(f"rm -f {opened} && mkdir -p ~/quay")
+
+    def handing(sessions: dict[str, Any]) -> str:
+        """Hand the shell these, as the harness does, and give its answer."""
+        kept(desktop, handed, sessions)
+        return desktop.as_account(f'qs ipc call sessions reopen "$(cat {handed})"').strip()
+
+    # What isn't a list of sessions, or names none whole, is refused.
+    answer = handing({"id": "01b2-quay"})
+    assert answer == "refused: not a list of sessions", answer
+    answer = handing({"sessions": [{"id": "", "cwd": "/home/jitsusama/quay"}]})
+    assert answer == "refused: no session with an id and a folder", answer
+    # One whole, as `quest restore` hands it over, is taken at once.
+    answer = handing({"sessions": [{"id": "01b2-quay", "cwd": "/home/jitsusama/quay"}]})
+    assert answer == "taken", answer
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/quay " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01b2-quay"], said
+    desktop.as_account(f"rm -rf {opened} {handed} ~/quay")
 
 
 def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
@@ -877,7 +961,7 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     kept(desktop, arranged, {"v": 1, "boots": {"a-boot-before": where}})
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
+    desktop.type_in("to reopen", selecting="Sessions to Reopen")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
     # kitty focuses a window it made with the token niri gave it, and on a

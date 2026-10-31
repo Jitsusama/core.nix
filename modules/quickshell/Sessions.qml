@@ -256,8 +256,9 @@ Singleton {
     // that boot). The harness keeps them in restore.json (its #866),
     // rewritten whole as each pi starts and ends, with the boot they ran
     // in, so a reopened one leaves the list within seconds. Only another
-    // boot's are offered, and only until Joel puts that boot off. This
-    // boot is `bootId`, as the records are read by.
+    // boot's are offered, and only until Joel puts that boot off, but for
+    // those another machine carried here (`carried`). This boot is
+    // `bootId`, as the records are read by.
     readonly property var restoring: restoreOf(restoreFile.text())
     FileView {
         id: restoreFile
@@ -287,10 +288,17 @@ Singleton {
             && typeof one.address === "string" && Array.isArray(one.attach)
             && one.attach.length > 0 && one.attach.every(word => typeof word === "string")
             && typeof one.cwd === "string" && (one.cwd === "" || one.cwd.startsWith("/"));
+        // One another machine carried here as it went away (the harness's
+        // carried.ts) says which and when; one saying it badly is no last
+        // boot's either, so it's left out.
+        const carried = one => one.carried === undefined
+            || one.carried !== null && typeof one.carried === "object"
+            && typeof one.carried.from === "string" && one.carried.from !== ""
+            && typeof one.carried.at === "string";
         return {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
-                && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
+                && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? "")) && carried(one)
                 && (one.machine === undefined
                     ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
@@ -314,7 +322,19 @@ Singleton {
     }
 
     readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
-        && restoring.boot !== bootId && restoring.boot !== putOff ? restoring.sessions : []
+        && restoring.boot !== bootId && restoring.boot !== putOff
+        ? restoring.sessions.filter(one => one.carried === undefined) : []
+
+    // The sessions other machines carried here as they went away, offered
+    // whatever the boot until each runs here, when the harness drops it,
+    // and never put off with the last boot's (VKCF3Z, [17db838c]): the
+    // newest carried first, by id when two came at once.
+    readonly property var carried: restoring.sessions.filter(one => one.carried !== undefined)
+        .sort((one, other) => other.carried.at.localeCompare(one.carried.at)
+            || one.id.localeCompare(other.id))
+
+    // Every session there is to reopen: the last boot's, then the carried.
+    readonly property var toReopen: lastBoot.concat(carried)
 
     // One of them, in its own folder only: when that's gone, nothing is
     // opened, and `gone(cwd)` is told so the caller says so, since there's
@@ -516,24 +536,70 @@ Singleton {
     // does, and for two seconds after it began (reopenPace). One with
     // nowhere kept opens beside where Joel was, after the rest, and Joel
     // is taken back there at the end. `gone(one, cwd)` is
-    // told of one whose folder is gone, which isn't opened.
+    // told of one whose folder is gone, which isn't opened. `keptAt(id)`
+    // says where one sat, the boot being restored's place by default. A
+    // list given while another is being reopened joins its end, so two
+    // never open at once and misplace each other.
     property var reopening: null
-    function reopenAll(lost, gone) {
-        const kept = arrangement[restoring.boot] ?? {};
+    function reopenAll(lost, gone, keptAt) {
+        const kept = keptAt ?? (id => arrangement[restoring.boot]?.[id] ?? null);
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one));
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : a.at.output.localeCompare(b.at.output) || a.at.workspace - b.at.workspace
                 || a.at.column - b.at.column || a.at.tile - b.at.tile;
+        const queue = lost.filter(one => one.machine === undefined)
+            .map(one => ({ one, at: kept(one.id), gone })).sort(order);
+        if (reopening !== null) {
+            reopening.queue = reopening.queue.concat(queue);
+            if (reopening.waiting === null && !reopening.looking && !reopenPacing.running)
+                reopenSoon();
+            return;
+        }
         reopening = {
-            queue: lost.filter(one => one.machine === undefined)
-                .map(one => ({ one, at: kept[one.id] ?? null })).sort(order),
-            gone,
+            queue,
             back: Niri.current,
             waiting: null,
+            looking: false,
             late: [],
             taken: []
         };
         reopenNext();
+    }
+
+    // Sessions the harness hands over to reopen, as `quest restore` and
+    // `quest spawn` do rather than open every window at once, so one
+    // placer puts each where it belongs (85PKB2, 2026-10-30 [020fe1dd]:
+    // six restored at once came out reversed, every pi starting together).
+    // A JSON object whose `sessions` lists each {id, cwd}, rather than a bare
+    // list, since `qs ipc call` doesn't pass an argument starting with `[`
+    // through whole (2026-10-31). Each is reopened as Reopen Them All does, at
+    // its place kept this boot or else the restored boot's, else beside
+    // where Joel is. It answers "taken" at once, so the harness knows the
+    // shell has them; a shell that doesn't answer leaves it to open them
+    // itself. It's asked through the sessions target below.
+    function handedOver(sessions) {
+        let read = null;
+        try {
+            read = JSON.parse(sessions);
+        } catch (error) {
+            read = null;
+        }
+        const listed = Array.isArray(read) ? read
+            : Array.isArray(read?.sessions) ? read.sessions : null;
+        if (listed === null)
+            return "refused: not a list of sessions";
+        const given = listed.filter(one => one !== null && typeof one === "object"
+            && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
+            && typeof one.cwd === "string" && one.cwd.startsWith("/"))
+            .map(one => ({ id: String(one.id), cwd: one.cwd }));
+        if (given.length === 0)
+            return "refused: no session with an id and a folder";
+        console.info(`sessions: reopening ${given.length} handed over`);
+        reopenAll(given, (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
+            + `since its folder, ${cwd}, is gone`),
+            id => arrangement[bootId]?.[id] ?? arrangement[restoring.boot]?.[id] ?? null);
+        return given.length === listed.length ? "taken"
+            : `taken ${given.length} of ${listed.length}`;
     }
     function reopenNext() {
         const next = reopening?.queue[0];
@@ -546,9 +612,11 @@ Singleton {
             return;
         }
         reopening.queue = reopening.queue.slice(1);
+        reopening.looking = true;
         lookFor([next.one.cwd], there => {
+            reopening.looking = false;
             if (!there[0]) {
-                reopening.gone?.(next.one, next.one.cwd);
+                next.gone?.(next.one, next.one.cwd);
                 reopenNext();
                 return;
             }
@@ -914,10 +982,16 @@ Singleton {
         }
     }
 
-    // Go To for what's outside the shell, as a want's notice: the session
-    // by an address it answers to, if it still runs.
+    // What's outside the shell asks of sessions: Go To, as a want's notice
+    // does, the session by an address it answers to, if it still runs; and
+    // reopen, as the harness hands over the sessions it restores
+    // (handedOver).
     IpcHandler {
         target: "sessions"
+
+        function reopen(sessions: string): string {
+            return root.handedOver(sessions);
+        }
 
         function goTo(address: string): void {
             const upper = address.toUpperCase();
