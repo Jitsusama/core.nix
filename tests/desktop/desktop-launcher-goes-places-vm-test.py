@@ -62,6 +62,25 @@ def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Des
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+def test_an_opening_says_what_each_source_made(desktop: Desktop) -> None:
+    """An opening says, once settled, how many rows each source made, and so does a closing."""
+    machine = desktop.machine
+    said = (
+        "journalctl --user --unit=quickshell --no-pager --output=cat --since=-30s"
+        " | grep -E 'launcher: {} made {} rows \\({}\\) and [0-9]+ texts'"
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Opening makes rows, each source's counted and named.
+    opening = said.format("opening", "[1-9][0-9]*", "[a-z]+ [1-9][0-9]*.*")
+    machine.wait_until_succeeds(desktop.in_session(opening), timeout=dt.timedelta(seconds=20))
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # Closing is said too, though it may make nothing new.
+    closing = said.format("closing", "[0-9]+", ".*")
+    machine.wait_until_succeeds(desktop.in_session(closing), timeout=dt.timedelta(seconds=20))
+
+
 def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) -> None:
     """Rewrite the machine queue's file while the launcher is closed, and see it read once open.
 
