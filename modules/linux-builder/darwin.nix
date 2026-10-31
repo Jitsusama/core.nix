@@ -14,6 +14,10 @@
 #
 # It offers `big-parallel` and `benchmark`, never `kvm`: Rosetta runs no
 # x86_64 VM, so a VM test is never sent there to crawl.
+#
+# Only the Mac reaches the VM, on a port of its own loopback. Another machine
+# that builds there jumps through the Mac's SSH to that port, and signs in to
+# the VM with a key of its own, given in `authorizedKeys`.
 {
   config,
   lib,
@@ -24,7 +28,8 @@ let
   cfg = config.jitsusama.linux-builder;
 
   # Sizing it changes only the Mac's side of it, which the Mac builds in
-  # seconds; the guest's system still comes from the cache.
+  # seconds; the guest's system still comes from the cache. A key from
+  # another machine changes the guest's, which the running VM then builds.
   builder = pkgs.darwin.linux-builder-vz.override {
     modules = [
       {
@@ -34,6 +39,12 @@ let
           diskSize = cfg.disk;
         };
       }
+      (lib.mkIf (cfg.authorizedKeys != [ ]) {
+        users.users.builder.openssh.authorizedKeys.keys = cfg.authorizedKeys;
+        # nixpkgs' VM forces its SSH to read only the Mac's key, so the
+        # file NixOS writes these to is forced beside it.
+        services.openssh.authorizedKeysFiles = lib.mkForce [ "/etc/ssh/authorized_keys.d/%u" ];
+      })
     ];
   };
   guest = builder.nixosConfig;
@@ -78,6 +89,32 @@ in
       description = ''
         The VM's store in MiB, a sparse file it collects once under a GiB is
         free, so it grows towards this.
+      '';
+    };
+    authorizedKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.singleLineStr;
+      default = [ ];
+      example = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... root@elsewhere" ];
+      description = ''
+        Keys besides the Mac's own that may sign in to the VM as its builder,
+        and so build there: another machine's, reaching the VM through the
+        Mac. None by default, which keeps the guest's system the cached one.
+      '';
+    };
+    builder = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      internal = true;
+      default = builder;
+      description = "The VM as the Mac runs it, its guest's system in its `nixosConfig`.";
+    };
+    port = lib.mkOption {
+      type = lib.types.port;
+      readOnly = true;
+      default = guest.virtualisation.darwin-builder.hostPort;
+      description = ''
+        The Mac's loopback port the VM's SSH answers on, for a machine that
+        jumps through the Mac to it.
       '';
     };
     nixDaemon = lib.mkOption {
