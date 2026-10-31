@@ -2,14 +2,16 @@
 //! (main.rs) and its tests share: the harness's Slack sign-in, read and
 //! never written ([`Account`]), one look-up by address ([`Slack`]), said
 //! to the shell as one JSON line ([`Found`]), and who each address was
-//! found to be, kept between runs ([`Kept`]).
+//! found to be, kept between runs ([`Kept`]), with their direct messages
+//! with Joel ([`Conversation`]), which are never kept.
 //!
 //! It only ever reads: `users.lookupByEmail`, and where a workspace
 //! refuses that to the sign-in, `search.messages` and `users.info`, then
-//! `users.info` and `users.getPresence` for how they are, are the methods
-//! it calls, and nothing it does sends a message or changes anything in
-//! Slack.
+//! `users.info` and `users.getPresence` for how they are, and
+//! `search.messages` for their conversation, are the methods it calls,
+//! and nothing it does sends a message or changes anything in Slack.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +29,9 @@ pub struct Account {
     pub cookie: String,
     #[serde(rename = "teamId")]
     pub team: String,
+    /// Joel's own id in Slack, which tells his messages from theirs.
+    #[serde(rename = "userId", default)]
+    pub user: String,
 }
 
 #[derive(Deserialize)]
@@ -65,17 +70,50 @@ pub struct Found {
     /// Their status's emoji as Unicode while it's set, or "" for none or
     /// for a workspace's own picture, which has no Unicode form to show.
     pub emoji: String,
+    /// Their handle, as "ada", which their conversation is found by, or
+    /// "" for nobody.
+    #[serde(default)]
+    pub handle: String,
+    /// Their direct messages with Joel, while Slack finds any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<Conversation>,
+}
+
+/// Someone's direct messages with Joel, as one thing: where it is in
+/// Slack, a link to its newest message, that message's first words,
+/// which name it, and when it was said, with its last few messages.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Conversation {
+    /// The direct message's id, as "D1", which opens it in Slack.
+    pub channel: String,
+    pub link: String,
+    pub last: String,
+    /// In milliseconds since the epoch, as the shell keeps time.
+    pub at: u64,
+    /// Oldest first, so the newest is last, as they're read.
+    pub messages: Vec<Message>,
+}
+
+/// One message in a conversation, in plain words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Message {
+    /// Whether Joel said it.
+    pub mine: bool,
+    pub text: String,
+    pub at: u64,
 }
 
 impl Found {
     /// Who they are without how they are, as it's kept: whether they're
-    /// active and their status are only ever as fresh as Slack's answer.
+    /// active, their status and what they said are only ever as fresh as
+    /// Slack's answer.
     #[must_use]
     pub fn who(&self) -> Found {
         Found {
             presence: String::new(),
             status: String::new(),
             emoji: String::new(),
+            conversation: None,
             ..self.clone()
         }
     }
@@ -175,6 +213,9 @@ pub enum Refused {
 pub struct Slack {
     agent: Agent,
     origin: String,
+    /// Searches asked since [`Slack::searched`] was last asked, which a
+    /// grid allows only about 20 of a minute.
+    searches: Cell<u32>,
 }
 
 impl Slack {
@@ -187,7 +228,40 @@ impl Slack {
         Slack {
             agent,
             origin: origin.into(),
+            searches: Cell::new(0),
         }
+    }
+
+    /// How many searches were asked since this was last asked.
+    pub fn searched(&self) -> u32 {
+        self.searches.replace(0)
+    }
+
+    /// Their direct messages with Joel, for someone found: a search in
+    /// their conversation, newest first, taking only what's in a direct
+    /// message with them, since a search names each match's channel.
+    pub fn conversation(
+        &self,
+        account: &Account,
+        found: &Found,
+    ) -> Result<Option<Conversation>, Refused> {
+        let Some(id) = &found.id else {
+            return Ok(None);
+        };
+        if found.handle.is_empty() {
+            return Ok(None);
+        }
+        let said = self.ask(
+            account,
+            "search.messages",
+            &[
+                ("query", &format!("in:@{}", found.handle)),
+                ("count", "5"),
+                ("sort", "timestamp"),
+                ("sort_dir", "desc"),
+            ],
+        )?;
+        conversation(&said, id, &found.name, &account.user)
     }
 
     /// Who Slack knows by `email` in the account's workspace.
@@ -249,6 +323,9 @@ impl Slack {
         method: &str,
         query: &[(&str, &str)],
     ) -> Result<Value, Refused> {
+        if method == "search.messages" {
+            self.searches.set(self.searches.get() + 1);
+        }
         let mut asked = self
             .agent
             .get(format!("{}/api/{method}", self.origin))
@@ -299,6 +376,151 @@ pub fn speaker(said: &Value, handle: &str) -> Result<Option<String>, Refused> {
         let id = message.get("user").and_then(Value::as_str)?;
         by.eq_ignore_ascii_case(handle).then(|| id.to_owned())
     }))
+}
+
+/// The conversation a search in someone's direct messages found,
+/// newest first as asked, or none when it found nothing said there. `id`
+/// and `name` are theirs, `me` is Joel's id.
+pub fn conversation(
+    said: &Value,
+    id: &str,
+    name: &str,
+    me: &str,
+) -> Result<Option<Conversation>, Refused> {
+    if said.get("ok").and_then(Value::as_bool) != Some(true) {
+        return found(said, "", "").map(|_| None);
+    }
+    let names = [(id, name)];
+    let matches = said.pointer("/messages/matches").and_then(Value::as_array);
+    let mut newest: Option<(String, String)> = None;
+    let mut messages: Vec<Message> = Vec::new();
+    for one in matches.into_iter().flatten() {
+        let channel = one.get("channel").unwrap_or(&Value::Null);
+        let theirs = channel.get("is_im").and_then(Value::as_bool) == Some(true)
+            && channel.get("name").and_then(Value::as_str) == Some(id);
+        let text = plain(
+            one.get("text").and_then(Value::as_str).unwrap_or_default(),
+            &names,
+        );
+        let Some(at) = one.get("ts").and_then(Value::as_str).and_then(millis) else {
+            continue;
+        };
+        if !theirs || text.is_empty() {
+            continue;
+        }
+        if newest.is_none() {
+            let Some(channel) = channel.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            let link = one
+                .get("permalink")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            newest = Some((channel.to_owned(), link.to_owned()));
+        }
+        let mine = !me.is_empty() && one.get("user").and_then(Value::as_str) == Some(me);
+        messages.push(Message { mine, text, at });
+    }
+    let Some((channel, link)) = newest else {
+        return Ok(None);
+    };
+    messages.reverse();
+    let last = messages.last().map_or(String::new(), |message| {
+        cut(message.text.lines().next().unwrap_or_default(), FIRST_WORDS)
+    });
+    let at = messages.last().map_or(0, |message| message.at);
+    Ok(Some(Conversation {
+        channel,
+        link,
+        last,
+        at,
+        messages,
+    }))
+}
+
+/// How many characters a conversation's name, its newest message's first
+/// words, runs to at most.
+const FIRST_WORDS: usize = 60;
+/// How many characters of a message the drawer shows at most.
+const LONGEST: usize = 400;
+
+/// A message in plain words, as Slack's markup would show it: a link by
+/// its label, or itself without `mailto:`; someone mentioned by name, by
+/// `names` (id and name), or as someone; a channel by its name; `@here`
+/// and its like by their word; then `&lt;`, `&gt;` and `&amp;` as
+/// themselves, cut at a word to [`LONGEST`].
+pub fn plain(text: &str, names: &[(&str, &str)]) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('<') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('>') else {
+            out.push_str(&rest[start..]);
+            rest = "";
+            break;
+        };
+        out.push_str(&marked(&after[..end], names));
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    let out = out
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&");
+    cut(out.trim(), LONGEST)
+}
+
+/// What one piece of Slack's markup, between `<` and `>`, shows as.
+fn marked(inside: &str, names: &[(&str, &str)]) -> String {
+    let (target, label) = match inside.split_once('|') {
+        Some((target, label)) => (target, Some(label)),
+        None => (inside, None),
+    };
+    if let Some(user) = target.strip_prefix('@') {
+        let name = label
+            .or_else(|| {
+                names
+                    .iter()
+                    .find(|(id, _)| *id == user)
+                    .map(|(_, name)| *name)
+            })
+            .filter(|name| !name.is_empty())
+            .unwrap_or("someone");
+        return format!("@{}", name.trim_start_matches('@'));
+    }
+    if let Some(channel) = target.strip_prefix('#') {
+        return format!("#{}", label.unwrap_or(channel).trim_start_matches('#'));
+    }
+    if let Some(special) = target.strip_prefix('!') {
+        let word = special.split('^').next().unwrap_or(special);
+        return format!("@{}", label.unwrap_or(word).trim_start_matches('@'));
+    }
+    label.map_or_else(
+        || target.strip_prefix("mailto:").unwrap_or(target).to_owned(),
+        str::to_owned,
+    )
+}
+
+/// `text` cut at a word to at most `most` characters.
+fn cut(text: &str, most: usize) -> String {
+    if text.chars().count() <= most {
+        return text.to_owned();
+    }
+    let upto: String = text.chars().take(most).collect();
+    upto.rfind(char::is_whitespace)
+        .map_or(upto.as_str(), |space| &upto[..space])
+        .trim_end()
+        .to_owned()
+}
+
+/// When a message was said, from Slack's `ts`, as "1730312345.123456",
+/// in milliseconds since the epoch.
+pub fn millis(ts: &str) -> Option<u64> {
+    let (seconds, fraction) = ts.split_once('.').unwrap_or((ts, ""));
+    let seconds: u64 = seconds.parse().ok()?;
+    let thousandths: String = fraction.chars().chain("000".chars()).take(3).collect();
+    Some(seconds * 1000 + thousandths.parse::<u64>().ok()?)
 }
 
 /// The address a profile Slack gave keeps, as written in lower case.
@@ -359,6 +581,8 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
         presence: String::new(),
         status: String::new(),
         emoji: String::new(),
+        handle: String::new(),
+        conversation: None,
     };
     if said.get("ok").and_then(Value::as_bool) == Some(true) {
         let user = said.get("user").unwrap_or(&Value::Null);
@@ -386,6 +610,8 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
             presence: if huddle { "in a huddle" } else { "" }.to_owned(),
             status,
             emoji,
+            handle: text("/name").unwrap_or_default().to_owned(),
+            conversation: None,
         });
     }
     match said.get("error").and_then(Value::as_str).unwrap_or("") {
@@ -432,8 +658,96 @@ mod tests {
                 presence: String::new(),
                 status: String::new(),
                 emoji: String::new(),
+                handle: String::new(),
+                conversation: None,
             })
         );
+        let handled = json!({ "ok": true, "user": { "id": "U1", "name": "ada" } });
+        assert_eq!(
+            found(&handled, "ada@example.com", "T1").unwrap().handle,
+            "ada"
+        );
+    }
+
+    #[test]
+    fn a_conversation_is_their_direct_messages_with_joel_newest_last() {
+        let im = json!({ "id": "D1", "is_im": true, "name": "U1" });
+        let said = json!({ "ok": true, "messages": { "matches": [
+            { "channel": im, "user": "U1", "text": "See you at <!here|here> lunch",
+              "ts": "1730312345.123456", "permalink": "https://slack.example/p3" },
+            { "channel": { "id": "C1", "is_im": false, "name": "general" },
+              "user": "U1", "text": "In a channel", "ts": "1730312300.000000" },
+            { "channel": { "id": "D7", "is_im": true, "name": "U7" },
+              "user": "U7", "text": "Someone else's", "ts": "1730312290.000000" },
+            { "channel": im, "user": "U0", "text": "", "ts": "1730312280.000000" },
+            { "channel": im, "user": "U0", "text": "Lunch, <@U1>?",
+              "ts": "1730312200.5", "permalink": "https://slack.example/p1" }] } });
+        assert_eq!(
+            conversation(&said, "U1", "Ada Lovelace", "U0"),
+            Ok(Some(Conversation {
+                channel: "D1".into(),
+                link: "https://slack.example/p3".into(),
+                last: "See you at @here lunch".into(),
+                at: 1_730_312_345_123,
+                messages: vec![
+                    Message {
+                        mine: true,
+                        text: "Lunch, @Ada Lovelace?".into(),
+                        at: 1_730_312_200_500,
+                    },
+                    Message {
+                        mine: false,
+                        text: "See you at @here lunch".into(),
+                        at: 1_730_312_345_123,
+                    },
+                ],
+            }))
+        );
+        let none = json!({ "ok": true, "messages": { "matches": [] } });
+        assert_eq!(conversation(&none, "U1", "Ada", "U0"), Ok(None));
+        let refused = json!({ "ok": false, "error": "invalid_auth" });
+        assert_eq!(
+            conversation(&refused, "U1", "Ada", "U0"),
+            Err(Refused::SignedOut)
+        );
+    }
+
+    #[test]
+    fn a_message_is_said_in_plain_words() {
+        let names = [("U1", "Ada Lovelace")];
+        let said = |text| plain(text, &names);
+        assert_eq!(
+            said("<https://a.example|the plan> &amp; <https://b.example>"),
+            "the plan & https://b.example"
+        );
+        assert_eq!(
+            said("write <mailto:ada@example.com|me> or <mailto:g@example.com>"),
+            "write me or g@example.com"
+        );
+        assert_eq!(
+            said("<@U1> and <@U2> and <@U3|grace>"),
+            "@Ada Lovelace and @someone and @grace"
+        );
+        assert_eq!(
+            said("in <#C1|general> <!channel> <!subteam^S1|@shell>"),
+            "in #general @channel @shell"
+        );
+        assert_eq!(said("1 &lt; 2 &gt; 0"), "1 < 2 > 0");
+        assert_eq!(
+            said("an open < without its end"),
+            "an open < without its end"
+        );
+        let long = "word ".repeat(100);
+        let cut = said(&long);
+        assert!(cut.len() <= LONGEST && cut.ends_with("word"), "{cut}");
+    }
+
+    #[test]
+    fn slacks_times_are_milliseconds() {
+        assert_eq!(millis("1730312345.123456"), Some(1_730_312_345_123));
+        assert_eq!(millis("1730312345.5"), Some(1_730_312_345_500));
+        assert_eq!(millis("1730312345"), Some(1_730_312_345_000));
+        assert_eq!(millis("soon"), None);
     }
 
     #[test]
@@ -535,6 +849,14 @@ mod tests {
             presence: "active".into(),
             status: "Writing".into(),
             emoji: "📝".into(),
+            handle: "ada".into(),
+            conversation: Some(Conversation {
+                channel: "D1".into(),
+                link: String::new(),
+                last: "Hello".into(),
+                at: 1,
+                messages: Vec::new(),
+            }),
         };
         let nobody = found(&nobody(), "x@example.com", "T1").unwrap();
         let mut kept = Kept::at(Some(path.clone()));

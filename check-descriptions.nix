@@ -928,8 +928,10 @@
     slack-people says who Slack knows by an email address with their time zone, presence and
     status, on a grid by a search their profile confirms, and one it knows nobody by; finds each
     once with the harness's sign-in, keeping who it found across a restart, and asks how they
-    are each time, only ever reading; asks ahead only after a step-in, and never how they are;
-    and asks nobody once Slack refuses the sign-in or with none at all, saying so
+    are each time, only ever reading; finds their conversation with Joel in plain words, only
+    what's in a direct message with them, newest last; asks ahead only after a step-in, finding
+    their conversation once and never how they are; and asks nobody once Slack refuses the
+    sign-in or with none at all, saying so
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
@@ -938,7 +940,9 @@
     Slack's source in People asks about each address once a minute as Joel steps in, never one
     known to be nobody, and ahead about those listed, in order, each once; Write in Slack stands
     dimmed, looking in Slack, until it's answered, or not in Slack once a step-in found nobody,
-    and isn't listed for someone already known not to be there
+    and isn't listed for someone already known not to be there; answers that come together are
+    taken as one change, and those already known as none; their conversation is found by any of
+    their addresses, its drawer saying who said each message, newest last
   '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing

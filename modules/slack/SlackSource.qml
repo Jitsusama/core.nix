@@ -19,13 +19,24 @@
 // such row (VKCF3Z, 8a0f14ea). Slack refusing the sign-in stops the
 // asking until the shell starts again; with no sign-in, nothing stands
 // in waiting.
+//
+// Their direct messages with Joel are one conversation in their Recent,
+// named by its newest message's first words, beside "Slack" and noted
+// with when, among mail and meetings by that time; Return opens it in
+// Slack, and inside are Open in Slack then Copy the Link, its drawer its
+// last few messages (VKCF3Z, 42b57b7d). It's asked ahead too, so their
+// Recent is there as Joel steps in rather than coming late.
 import qs
+import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Slack.js" as Slack
+import "../Ago.js" as Ago
 
 PersonSource {
     id: source
+
+    called: "Slack"
 
     // What Slack said of each address asked about: { id, team, name,
     // zone, presence, status, emoji }, with no id for one Slack knows
@@ -51,6 +62,10 @@ PersonSource {
     // How long an answer, or an ask Slack never answered, holds before a
     // step-in asks again.
     readonly property int fresh: 60 * 1000
+    // The newest answer for each address not yet taken, kept in place:
+    // answers that come together, as a restart's kept people do, are
+    // taken as one change, since each change makes everyone anew.
+    property var pending: ({})
 
     people: Object.values(known).filter(said => said.id).map(said => ({
         emails: [said.email],
@@ -106,6 +121,52 @@ PersonSource {
             side: String(said[waiting] ?? ""),
             run: () => {}
         }))];
+    }
+
+    // Their conversation with Joel, when Slack found one.
+    function recent(person, provider) {
+        const said = Slack.talked(person.emails, known);
+        return said ? [{ at: said.conversation.at, row: conversation(said, provider) }] : [];
+    }
+
+    function conversation(said, provider) {
+        const talk = said.conversation;
+        const open = () => Niri.spawn(["xdg-open",
+            `slack://channel?team=${said.team}&id=${talk.channel}`]);
+        const act = (key, fields) => provider.thing(Object.assign({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action"
+        }, fields));
+        const name = talk.last !== "" ? talk.last : Words.name("slack:conversation");
+        return provider.thing({
+            key: `slack:conversation:${talk.channel}`,
+            what: "conversation",
+            thing: true,
+            of: "program:slack",
+            part: name,
+            name: name,
+            verb: Words.verb("verb:slack:open"),
+            glyph: Words.glyph("slack:conversation"),
+            hue: "program",
+            side: source.called,
+            note: Ago.ago(talk.at, Date.now()),
+            drawer: Slack.drawn(said),
+            later: true,
+            run: open,
+            verbs: () => [
+                act("verb:slack:open", { later: true, run: open }),
+                // Copy is last, as everywhere.
+                act("verb:slack:link", {
+                    now: true,
+                    run: () => {
+                        Quickshell.clipboardText = talk.link;
+                    }
+                })
+            ]
+        });
     }
 
     // Asks Slack about each of their addresses that's due (Slack.due).
@@ -186,11 +247,28 @@ PersonSource {
             if (!said.id)
                 missed = Object.assign({}, missed, { [said.email]: true });
         }
-        // The same answer again changes nothing, so nobody is made anew.
-        if (JSON.stringify(known[said.email]) === JSON.stringify(said))
+        pending[said.email] = said;
+        if (!settling.running)
+            settling.start();
+    }
+
+    // Takes the answers that came together as one change, or none when
+    // they're what was known, so nobody is made anew.
+    function settle() {
+        const next = Slack.settled(known, pending);
+        pending = {};
+        if (!next)
             return;
-        known = Object.assign({}, known, { [said.email]: said });
+        known = next;
         place?.changed();
+    }
+
+    Timer {
+        id: settling
+        // Started by the first of a burst, never put off by the rest, so
+        // a step-in's answer lights within a quarter of a second.
+        interval: 250
+        onTriggered: source.settle()
     }
 
     Process {
