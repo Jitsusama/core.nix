@@ -4340,7 +4340,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     # A quest that ends takes its things with it, as its README says so.
     readme(desktop, "QEST-20261026-LIVEQA", "retired")
     retry(
-        lambda _: waiting_inside(desktop) == ("nothing to do", []),
+        lambda _: waiting_inside(desktop) == ("nothing now", []),
         timeout=dt.timedelta(seconds=30),
     )
     desktop.as_account(
@@ -4369,11 +4369,13 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                     "when": "now",
                     "why": "It goes out in your name.",
                     "steps": ["Print it", "Sign it"],
+                    "doneWhen": {"by": "person"},
                 }
             ]
         },
     )
-    steps = "1. Print it\n2. Sign it\n\nIt goes out in your name."
+    # Its steps, then why only Joel can, then how it'll be known done.
+    steps = "1. Print it\n2. Sign it\n\nIt goes out in your name.\nOnly you can say it's done."
     try:
         retry(
             lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
@@ -4429,7 +4431,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
             )
         )
         selected = desktop.showing()["selected"] or {}
-        assert (selected["side"], selected["verb"]) == ("nothing to do", "more"), selected
+        assert (selected["side"], selected["verb"]) == ("nothing now", "more"), selected
         # What's typed narrows Now to the rows it names, and clearing it
         # brings them all back.
         desktop.type_in("awake")
