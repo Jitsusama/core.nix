@@ -44,12 +44,18 @@
 //! weighted as the `--quests` file says, which `src/quests.rs` says why and
 //! how.
 //!
+//! With `--background`, a window, a `--home` or `--weigh` scope, whose
+//! every pi is marked there as one nobody is at runs at `--low-weight`
+//! until a mark goes, as `src/low.rs` says why and how.
+//!
 //! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
+//!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
 
+mod low;
 mod oom;
 mod quests;
 mod real_time;
@@ -78,6 +84,9 @@ struct Settings {
     no_real_time: Vec<String>,
     by_quest: Vec<String>,
     quests: Option<PathBuf>,
+    background: Option<PathBuf>,
+    low_weight: u64,
+    weigh: Vec<String>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -348,7 +357,9 @@ fn made_here(cgroup: &str) -> bool {
 /// `pids`: the user manager's `StartTransientUnit`, with its description.
 /// A command can exit between being read and being moved, and systemd
 /// then fails its scope, which would stay in the failed list for good; so
-/// a failed scope is unloaded as a finished one is.
+/// a failed scope is unloaded as a finished one is. When only some have
+/// exited, systemd moves the rest and logs "PID ... vanished before we could
+/// move it" for each one gone: that is this race, and no fault.
 fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<String> {
     let mut args: Vec<String> = [
         "--user",
@@ -424,6 +435,95 @@ fn weigh(weights: &mut quests::Weights, slice: &str, weight: u64) {
         Err(error) => {
             if weights.first_failure() {
                 eprintln!("Couldn't run busctl to weigh {slice}: {error}");
+            }
+        }
+    }
+}
+
+/// The windows weighed low: the scopes under `under` whose names start
+/// with one of `prefixes`, while every pi in one is marked in `dir`, at
+/// `weight`.
+struct Windows<'a> {
+    under: &'a Path,
+    prefixes: &'a [String],
+    dir: &'a Path,
+    weight: u64,
+}
+
+/// Watches the folder of marks, made if it isn't there yet. Without a
+/// watch, which is said, windows keep their weight.
+fn watch_marks(dir: &Path) -> Option<low::Watch> {
+    fs::create_dir_all(dir)
+        .and_then(|()| low::Watch::new(dir))
+        .map_err(|error| eprintln!("Can't watch {}: {error}", dir.display()))
+        .ok()
+}
+
+/// Waits out `every` between passes, weighing the windows each time a mark
+/// comes or goes and once at its end. A mark that goes is a key on its way,
+/// so its window is weighed back at once, and the pass still comes on time.
+fn rest(watch: &low::Watch, every: Duration, windows: &Windows, weighing: &mut low::Weighing) {
+    let at = std::time::Instant::now() + every;
+    loop {
+        let left = at.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() || !watch.wait(left) {
+            break;
+        }
+        weigh_windows(windows, weighing);
+    }
+    weigh_windows(windows, weighing);
+}
+
+/// Weighs each window low while every pi in it is marked, and back once
+/// one isn't. A failure is said once, and tried again on the next look.
+fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
+    let Windows {
+        under,
+        prefixes,
+        dir,
+        weight,
+    } = *windows;
+    let windows: Vec<(String, bool)> = homes(under, prefixes)
+        .iter()
+        .filter_map(|scope| {
+            let unit = scope.file_name()?.to_str()?.to_owned();
+            let pis: Vec<u32> = samples(scope)
+                .iter()
+                .filter(|proc| proc.comm == "pi")
+                .map(|proc| proc.pid)
+                .collect();
+            let low = low::low(&pis, |pid| dir.join(pid.to_string()).exists());
+            Some((unit, low))
+        })
+        .collect();
+    weighing.keep_only(
+        &windows
+            .iter()
+            .map(|(unit, _)| unit.clone())
+            .collect::<Vec<_>>(),
+    );
+    for (unit, wanted) in weighing.changes(&windows, weight) {
+        match Command::new("busctl")
+            .args(low::weigh_call(&unit, wanted))
+            .stdout(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                weighing.weighed(&unit, wanted);
+                eprintln!("Weighed {unit} at {wanted}.");
+            }
+            Ok(output) => {
+                if !std::mem::replace(&mut weighing.failed, true) {
+                    eprintln!(
+                        "Couldn't weigh {unit} at {wanted}: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut weighing.failed, true) {
+                    eprintln!("Couldn't run busctl to weigh {unit}: {error}");
+                }
             }
         }
     }
@@ -631,6 +731,9 @@ fn settings() -> Result<Settings, String> {
         no_real_time: Vec::new(),
         by_quest: Vec::new(),
         quests: None,
+        background: None,
+        low_weight: 10,
+        weigh: Vec::new(),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -644,6 +747,11 @@ fn settings() -> Result<Settings, String> {
             "--no-real-time" => settings.no_real_time.push(value()?),
             "--by-quest" => settings.by_quest.push(value()?),
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
+            "--background" => settings.background = Some(PathBuf::from(value()?)),
+            "--weigh" => settings.weigh.push(value()?),
+            "--low-weight" => {
+                settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
+            }
             "--busy" => settings.busy_ms = value()?.parse().map_err(|_| "--busy is ms")?,
             "--ticks" => settings.ticks = value()?.parse().map_err(|_| "--ticks is a count")?,
             "--every" => {
@@ -687,8 +795,27 @@ fn run() -> Result<(), String> {
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
     let mut weights = quests::Weights::new(settings.quests.clone().unwrap_or_default());
     let mut pass: u32 = 0;
+    let windows: Vec<String> = settings
+        .homes
+        .iter()
+        .chain(&settings.weigh)
+        .cloned()
+        .collect();
+    let watch = settings.background.as_deref().and_then(watch_marks);
+    let mut weighing = low::Weighing::default();
     loop {
-        thread::sleep(settings.every);
+        match (&watch, &settings.background) {
+            (Some(watch), Some(dir)) => {
+                let windows = Windows {
+                    under: &under,
+                    prefixes: &windows,
+                    dir,
+                    weight: settings.low_weight,
+                };
+                rest(watch, settings.every, &windows, &mut weighing);
+            }
+            _ => thread::sleep(settings.every),
+        }
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
         let mut alive = HashSet::new();
         for scope in homes(&under, &settings.homes) {
@@ -765,6 +892,9 @@ mod tests {
             no_real_time: vec!["jobs.slice/jobs-work.slice".into()],
             by_quest: vec!["jobs-work.slice".into()],
             quests: None,
+            background: None,
+            low_weight: 10,
+            weigh: Vec::new(),
         }
     }
 
