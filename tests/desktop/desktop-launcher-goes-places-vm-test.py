@@ -62,6 +62,34 @@ def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Des
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+def test_throwaway_closing_costs(desktop: Desktop) -> None:
+    """Throwaway: the heap over ten closings with spots remade, then ten without."""
+    machine = desktop.machine
+    heap = (
+        "p=$(systemctl --user show quickshell -p MainPID --value);"
+        " awk '/JSGCHeap/{on=1;next} /^[0-9a-f]+-/{on=0} on && /^Rss:/{s+=$2} END{print s}'"
+        " /proc/$p/smaps"
+    )
+    for skip in ("make", "skip"):
+        machine.succeed(f"echo {skip} > /tmp/spots-skip && chmod 644 /tmp/spots-skip")
+        time.sleep(2)
+        for turn in range(10):
+            desktop.as_account("qs ipc call launcher toggle")
+            desktop.launcher_ready()
+            time.sleep(0.5)
+            machine.send_key("esc")
+            machine.wait_until_fails(
+                desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+            )
+            time.sleep(2)
+            print(f"CLOSING {skip} {turn}: {desktop.as_account(heap).strip()} kB")
+    print(desktop.as_account(
+        "journalctl --user -u quickshell --no-pager -o cat --since=-120s"
+        " | grep -a -E 'THROWAWAY|closing made' | sed 's/^/CLOSING /'"
+    ))
+    machine.succeed("rm -f /tmp/spots-skip")
+
+
 def test_an_opening_says_what_each_source_made(desktop: Desktop) -> None:
     """An opening says, once settled, how many rows each source made, and so does a closing."""
     machine = desktop.machine

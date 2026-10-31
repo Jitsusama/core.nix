@@ -3449,10 +3449,24 @@ Scope {
     function spotsMadeClosed() {
         if (open)
             return;
+        if (spotsMade && spotsSkip.text().trim() === "skip")
+            return;
+        const began = Date.now();
+        const texts = Fuzzy.keptSoFar();
         freshen();
         spots = spotsFrom();
         spotsMade = true;
+        console.info(`THROWAWAY spots ${Date.now() - began} ms, ${spots.length} spots, ${Fuzzy.keptSoFar() - texts} texts`);
         Report.say("spots made while closed");
+    }
+    FileView {
+        id: spotsSkip
+
+        path: "/tmp/spots-skip"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
     }
 
     // So is every text a collection's search looks through, which each
