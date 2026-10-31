@@ -586,6 +586,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           order = 30;
           source = ./desktop/people-pages.qml;
         };
+        # And one that knows a crowd, as Tuple knows every contact, silent
+        # until a test says how many.
+        jitsusama.people.sources.crowd = {
+          order = 31;
+          source = ./desktop/people-crowd.qml;
+        };
         # A source ending each search, as Search Slack does, silent until a
         # test says what it ends with.
         jitsusama.quickshell.launcher.providers.search-ends = {

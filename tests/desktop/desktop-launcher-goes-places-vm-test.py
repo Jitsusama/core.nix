@@ -3082,6 +3082,83 @@ def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+# About as many people as Tuple lists on Joel's machine, said anew every
+# 0.3 s to load the shell as Slack's answers do People.
+CROWD_LOAD = 8000
+# How many times the walk goes round.
+WALKS = 2
+# How many times each place stepped into is read for where its first row is.
+READS = 3
+
+
+def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
+    desktop: Desktop,
+) -> None:
+    """A place stepped into while the shell is loaded shows its first row at its top.
+
+    Joel saw empty space at the top of a menu, and glitches as he went through them, while
+    his machine was busy (2026-10-31, 08:4x). Here the shell is kept busy by a source that
+    knows thousands, said anew every 0.3 s, while the keys go as fast as his do.
+    """
+    machine = desktop.machine
+    crowd = "/run/user/1000/crowd"
+    machine.succeed(
+        "cat > /tmp/crowd-load.sh <<'EOF'\n"
+        f"i=0; while [ -e {crowd}-going ]; do i=$((i + 1));"
+        f' echo "{CROWD_LOAD} $i" > {crowd}.new && mv {crowd}.new {crowd}; sleep 0.3; done\n'
+        "EOF"
+    )
+    unlike: list[str] = []
+
+    def first_rows(top: int | None) -> None:
+        """Read the place shown a few times, noting each read whose first row isn't at top."""
+        path = " > ".join(desktop.showing()["path"])
+        for _ in range(READS):
+            at = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["firstAt"]
+            if at != top:
+                unlike.append(f"{path}: {at}")
+
+    since = desktop.mark()
+    # As a unit of the account's own, since a loop started from su's
+    # session ends with it.
+    desktop.as_account(
+        f"touch {crowd}-going && systemd-run --user --collect --unit=crowd-load"
+        " sh /tmp/crowd-load.sh"
+    )
+    try:
+        desktop.reported("crowd ", lambda rest: rest.startswith(f"{CROWD_LOAD} "), since)
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        top = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["firstAt"]
+        for _ in range(WALKS):
+            desktop.down_to("Machine")
+            desktop.step_in()
+            first_rows(top)
+            # Down to its last place, below the fold, and straight into it.
+            desktop.down_to("Firmware")
+            desktop.step_in()
+            first_rows(top)
+            machine.send_key("left")
+            machine.send_key("left")
+            desktop.launcher_until(lambda shown: shown["held"] == [])
+            # And from home's last place straight into it.
+            desktop.down_to("Keyboard")
+            desktop.step_in()
+            first_rows(top)
+            machine.send_key("left")
+            desktop.launcher_until(lambda shown: shown["held"] == [])
+            machine.send_key("up")
+        assert not unlike, f"the first row stood below the top ({top}): {unlike}"
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+    finally:
+        # Quiet again, and known no more, so no later test finds the crowd.
+        desktop.as_account(f"rm -f {crowd}-going")
+        desktop.as_account(f"echo '0 0' > {crowd}.new && mv {crowd}.new {crowd}")
+
+
 @pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,
