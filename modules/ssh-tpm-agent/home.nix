@@ -40,7 +40,7 @@
               ]
             );
             default = null;
-            description = "What `guide github` adds it to GitHub as: a key that signs in, or one that signs commits.";
+            description = "What `guide finish` adds it to GitHub as: a key that signs in, or one that signs commits.";
           };
         };
       }

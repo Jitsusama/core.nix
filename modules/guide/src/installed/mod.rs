@@ -63,6 +63,10 @@ pub struct Facts {
     /// The accounts that keep a spare SSH key on each YubiKey.
     #[serde(default)]
     pub spares: Vec<spares::Spare>,
+    /// The steps the machine's repo adds once someone is signed in and
+    /// online, after GitHub's (`guide finish`), none when it adds none.
+    #[serde(default)]
+    pub once_signed_in: Vec<crate::finish::Added>,
 }
 
 pub fn facts(machine: &mut dyn Machine) -> Result<Facts, Fault> {

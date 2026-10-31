@@ -252,9 +252,9 @@ driven on; the installed machine's steps come later.
   key file with a description, as ssh-tpm-keygen writes, so the guide
   takes its halves out itself (`observe::keyfile`). Any other refusal
   is a fault, and a key under another parent is taken as it stands.
-- **The keys on GitHub.** `guide github`, run as the account once it's
+- **The keys on GitHub.** `guide finish`, run as the account once it's
   signed in and online (the installed guide runs at boot, before any
-  network), adds each key its modules mark with `github` in
+  network), first adds each key its modules mark with `github` in
   `jitsusama.tpmKeys`, titled by the machine's name and the key's label,
   or TPM for the login key (`src/github.rs`). It runs GitHub's device
   sign-in itself with curl and gh's own OAuth app, so its screen says
@@ -267,6 +267,16 @@ driven on; the installed machine's steps come later.
   so gh's git credential helper has it. A key whose type and key GitHub
   already lists is left as it is. No VM has a GitHub, so only the unit
   tests and a real machine prove it.
+- **The machine's own steps once signed in.** Then `guide finish` walks
+  the steps the machine's repo adds in `jitsusama.guide.onceSignedIn`,
+  such as an employer's enrolment (`src/finish.rs`). Each is a program
+  with screens of its own, often driving the desktop's browser, which
+  the guide can't run inside its own, so the step says what to type in
+  another terminal and stands blocked, the walk looking again by itself,
+  until the step's `done` program, run as the account, exits 0. What
+  `done` printed first is the evidence, or, while it isn't done, why.
+  A protocol between the guide and a program of the repo's would carry
+  no more than these few fields.
 - **The spares on the YubiKeys.** Then the installed guide keeps the
   login key's spare, a resident ed25519-sk key, on each YubiKey the
   stick enrolled, for the one account with

@@ -1,4 +1,4 @@
-//! `guide github`: GitHub's device sign-in, its code and token never on a
+//! `guide finish`'s first steps: GitHub's device sign-in, its code and token never on a
 //! command line, and each key an account's modules send to GitHub added
 //! once, as the kind they say, titled as they say.
 

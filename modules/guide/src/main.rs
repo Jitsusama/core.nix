@@ -41,7 +41,7 @@ use guide::writer::carried;
 use guide::writer::{self, GatherBundles, Payload, WriteStick};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide github
+const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide finish
        guide host IMAGE [--sign-with DIRECTORY]... [--every-machine] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE]]
        guide seal-keys TARGET BUNDLE";
@@ -85,7 +85,7 @@ fn main() -> ExitCode {
             reported(recover())
         }
         ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
-        ["github"] => reported(github()),
+        ["finish"] => reported(finish()),
         ["host", image, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
@@ -676,7 +676,7 @@ fn installed() -> Result<(), Fault> {
     // No restart: at boot the guide holds the boot back from counting as
     // good, so restarting from here would spend one of a new generation's
     // tries.
-    let next = "From the next start, the disk asks for the TPM's PIN you just chose. A YubiKey with its own PIN, or the recovery key, still opens it whenever the TPM won't. Once you're signed in and online, type guide github in a terminal to add this machine's keys to GitHub.";
+    let next = "From the next start, the disk asks for the TPM's PIN you just chose. A YubiKey with its own PIN, or the recovery key, still opens it whenever the TPM won't. Once you're signed in and online, type guide finish in a terminal, which adds this machine's keys to GitHub and walks you through what's left.";
     walk.card(
         &mut terminal,
         &format!("{name} is finished"),
@@ -686,21 +686,22 @@ fn installed() -> Result<(), Fault> {
     Ok(())
 }
 
-/// The account's keys in the TPM added to GitHub, after a sign-in on the
-/// person's phone. Run as the account, signed in and online, since it's
-/// their GitHub and their gh.
-fn github() -> Result<(), Fault> {
+/// What's left once the person is signed in and online: the account's keys
+/// in the TPM added to GitHub, after a sign-in on their phone, then the
+/// steps the machine's repo adds. Run as the account, since it's their
+/// GitHub, their gh and their session.
+fn finish() -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
         return Err(Fault::Blocked {
-            step: "github",
+            step: "finish",
             why: "it adds your own keys to your own GitHub, so run it as yourself, without sudo"
                 .into(),
         });
     }
     let from = |name: &str| {
         std::env::var(name).map_err(|_| Fault::Blocked {
-            step: "github",
+            step: "finish",
             why: format!("{name} isn't set, so run it from a terminal in your own session"),
         })
     };
@@ -711,13 +712,15 @@ fn github() -> Result<(), Fault> {
         bus: std::env::var("DBUS_SESSION_BUS_ADDRESS").ok(),
     };
     let mut machine = System::new(Journal::in_memory(), None);
-    let journey = Journey::new(guide::github::steps(&account))
-        .map_err(|why| Fault::unreadable("GitHub's steps", why))?;
+    let added = guide::installed::facts(&mut machine)?.once_signed_in;
+    let theirs = !added.is_empty();
+    let journey = Journey::new(guide::finish::steps(&account, added))
+        .map_err(|why| Fault::unreadable("what's left to finish", why))?;
     let name = machine.read("/etc/hostname")?.map_or_else(
         || "this machine".into(),
         |bytes| String::from_utf8_lossy(&bytes).trim().to_string(),
     );
-    let title = format!("Add {name}'s keys to GitHub");
+    let title = format!("Finish {name} online");
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
     let walk = Walk {
@@ -732,10 +735,15 @@ fn github() -> Result<(), Fault> {
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
     }
+    let said = if theirs {
+        "GitHub takes this machine's SSH logins and shows the commits it signs as verified, and every step its repo adds is done."
+    } else {
+        "GitHub takes this machine's SSH logins, and shows the commits it signs as verified."
+    };
     walk.card(
         &mut terminal,
-        "GitHub has this machine's keys",
-        "From now on it takes this machine's SSH logins, and shows the commits it signs as verified.",
+        &format!("{name} is finished online"),
+        said,
         "leave",
     )?;
     Ok(())
