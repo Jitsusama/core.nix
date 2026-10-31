@@ -220,7 +220,10 @@ in
     # patch (ncspot-sign-in.patch) asks for that address for ncspot's app
     # alone, keeping /login for the streaming client's sign-in, which is
     # Spotify's own app. Upstream's aome510/spotify-player#1108 changes only
-    # the first half; take this out once a release signs in.
+    # the first half; take this out once a release signs in. The patch also
+    # has `spotify_player authenticate` sign the streaming client in with
+    # the token it gets, which is what saves the credentials it plays with;
+    # it dropped the token, so a sign-in by that command alone never played.
     package = pkgs.spotify-player.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [ ./ncspot-sign-in.patch ];
     });

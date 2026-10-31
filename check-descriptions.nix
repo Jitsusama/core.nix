@@ -1076,6 +1076,10 @@
   spotify-player-accepts-its-configuration = ''
     spotify-player starts with its settings
   '';
+  spotify-player-keeps-its-streaming-sign-in = ''
+    spotify-player's authenticate signs the streaming client in with its token, saving the
+    credentials it plays with
+  '';
   spotify-player-signs-in-where-spotify-answers = ''
     spotify-player's sign-in asks ncspot's Spotify app to answer at the one address that app takes
   '';

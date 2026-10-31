@@ -97,4 +97,20 @@ onLinux {
         fi
         touch $out
       '';
+
+  # `spotify_player authenticate` signs the streaming client in with the
+  # token Spotify gives it, which is what saves the credentials it plays
+  # with. Spotify doesn't answer here, so the check reads that the step is
+  # in the program, by what it says when the step fails.
+  spotify-player-keeps-its-streaming-sign-in =
+    let
+      package = (account graphical).programs.spotify-player.package;
+    in
+    pkgs.runCommandLocal "spotify-player-keeps-its-streaming-sign-in" { } ''
+      if ! grep -q -a -F 'sign the streaming client in' ${lib.getExe package}; then
+        echo "spotify-player's authenticate drops the streaming client's token rather than signing it in, so it never saves the credentials it plays with." >&2
+        exit 1
+      fi
+      touch $out
+    '';
 }
