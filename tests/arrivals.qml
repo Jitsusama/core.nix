@@ -4,9 +4,17 @@
 // it's asked for, a line each. A meeting already telling "10 min" as the
 // shell starts is no news, so nothing is said of it; a camera coming on,
 // which tells nothing, is said once, as before; the meeting telling
-// something new, "start", is said again, its earlier notice taken back
-// first and no other mark's, while the camera isn't said again; and the
-// meeting going takes back whichever of its notices is up, by its mark.
+// something new, "start", is said again, its earlier notice, one this
+// shell never said, taken back first and no other mark's, while the camera
+// isn't said again; and the meeting going takes back whichever of its
+// notices is up, by its mark. Then the tokens running out are said, and
+// as their minutes count down their card is said again in place, by the
+// id the server gave it, with no card taken back; a level lower says the
+// same card again, urgent, and raises it; once Joel has put it away a new
+// count says nothing, and the next level is a new card. The stand-in
+// notify-send gives each new notice an id from 101 up (the camera's first,
+// then the meeting's, then the tokens'), and one replaced the id it
+// replaces, written after `=>`.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
@@ -94,10 +102,27 @@ ShellRoot {
         property var actions: []
     }
 
+    QtObject {
+        id: tokens
+
+        property bool present: true
+        property bool active: false
+        property bool arrives: true
+        property bool now: false
+        property bool withdraws: true
+        property string telling: "hour"
+        property string app: "Tokens"
+        property string title: "Tokens Run Out in About 50 Min"
+        property string hint: "Tokens Run Out in About 50 Min"
+        property string context: "at this hour's rate"
+        property var actions: [{ name: "See What Spends" }]
+    }
+
     Component.onCompleted: {
         Facts.all = [
             { entry: { mark: "camera" }, piece: camera },
-            { entry: { mark: "meeting" }, piece: meeting }
+            { entry: { mark: "meeting" }, piece: meeting },
+            { entry: { mark: "tokens" }, piece: tokens }
         ];
     }
 
@@ -192,8 +217,89 @@ ShellRoot {
                     root.said().join(" | "));
                 root.expect("the one up is taken back by its mark, and no other",
                     JSON.stringify(root.dismissed) === "[7,10]", JSON.stringify(root.dismissed));
+                root.waiting = "the tokens said";
+                tokens.active = true;
+                counting.start();
+            } catch (error) {
+                root.fail(error.message);
+            }
+        }
+    }
+
+    // The id the stand-in gave a line's notice.
+    function idOf(line) {
+        return Number(line.split(" =>")[1]);
+    }
+
+    Timer {
+        id: counting
+        interval: 200
+        repeat: true
+        onTriggered: root.countDown()
+    }
+
+    function countDown() {
+        try {
+            const lines = root.said();
+            const last = lines[lines.length - 1];
+            if (root.waiting === "the tokens said" && lines.length === 3) {
+                expect("the tokens are said as a new notice", last.includes("--app-name=Tokens")
+                    && last.includes("--print-id") && !last.includes("--replace-id")
+                    && last.includes("About 50 Min") && root.idOf(last) === 103, last);
+                Notices.live = { "103": notice(103, "tokens") };
+                root.waiting = "the count said in place";
+                tokens.hint = "Tokens Run Out in About 49 Min";
+            } else if (root.waiting === "the count said in place" && lines.length === 4) {
+                expect("the new count replaces the notice by its id",
+                    last.includes("--replace-id=103") && last.includes("About 49 Min")
+                    && last.includes("--action=0=See What Spends") && root.idOf(last) === 103, last);
+                expect("no card was taken back for it",
+                    JSON.stringify(root.dismissed) === "[7,10]", JSON.stringify(root.dismissed));
+                expect("what's kept of it says the new count",
+                    JSON.stringify(Notices.reworded) === "[103]", JSON.stringify(Notices.reworded));
+                root.waiting = "a level lower raises the same card";
+                tokens.hint = "Tokens Run Out in About 14 Min";
+                tokens.now = true;
+                tokens.telling = "minutes";
+            } else if (root.waiting === "a level lower raises the same card" && lines.length === 5
+                && Notices.raisedIds.length > 0) {
+                expect("a level lower says the same card again, urgent",
+                    last.includes("--replace-id=103") && last.includes("About 14 Min")
+                    && last.includes("--urgency=critical") && root.idOf(last) === 103, last);
+                expect("and raises it, taking nothing back",
+                    JSON.stringify(Notices.raisedIds) === "[103]"
+                    && JSON.stringify(root.dismissed) === "[7,10]",
+                    `${JSON.stringify(Notices.raisedIds)} ${JSON.stringify(root.dismissed)}`);
+                // Joel puts it away, and the count goes on.
+                Notices.live = {};
+                root.waiting = "nothing said once it's put away";
+                tokens.hint = "Tokens Run Out in About 13 Min";
+                counting.stop();
+                putAway.start();
+            } else if (root.waiting === "a level lower said anew" && lines.length === 6) {
+                expect("once put away, a level lower is a new notice",
+                    last.includes("Tokens Ran Out") && !last.includes("--replace-id")
+                    && last.includes("--urgency=critical") && root.idOf(last) === 104, last);
                 console.log("every case held");
                 Qt.exit(0);
+            }
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Long enough for a new count to have been said, were it to be.
+    Timer {
+        id: putAway
+        interval: 1000
+        onTriggered: {
+            try {
+                root.expect("a count after it's put away says nothing", root.said().length === 5,
+                    root.said().join(" | "));
+                root.waiting = "a level lower said anew";
+                tokens.hint = "Tokens Ran Out";
+                tokens.telling = "out";
+                counting.start();
             } catch (error) {
                 root.fail(error.message);
             }

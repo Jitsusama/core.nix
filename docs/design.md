@@ -557,6 +557,7 @@ it. Owners go by layer:
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend, a part of Agents (Super+U); Now |
+| AI tokens running out                                                  | the margin mark, only while they run out within four hours at the last hour's rate, or are out; one notice, its words following the minutes in place, rising again only as the time left steps down | Now; AI Spend, a part of Agents |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 

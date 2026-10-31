@@ -2439,8 +2439,8 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
     """A meeting within the hour is in Now, and is said at its reminder and as it starts.
 
     Twenty minutes off it's in Now alone, counting down, unsaid; a minute off it's said, and
-    again as it starts, the first notice taken back, and Return joins it. Its notice goes by
-    itself, read, once its call is open.
+    as it starts the same card says so and is raised again, one card rather than two, and
+    Return joins it. Its notice goes by itself, read, once its call is open.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
@@ -2468,16 +2468,19 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         # A minute and a half on: said at its reminder, a minute before,
-        # once the shell's minute passes it, and again as it starts.
+        # once the shell's minute passes it, and as it starts its card,
+        # still open, says so in place and is raised again.
         desktop.as_account("systemctl --user set-environment GOOGLE_STAND_IN_SOON=90000")
         with desktop.told("arrives Design Review", timeout=dt.timedelta(seconds=120)):
             desktop.as_account("systemctl --user restart google.service")
-        with desktop.told("arrives Design Review", timeout=dt.timedelta(seconds=120)):
+        with desktop.told("raises Design Review now", timeout=dt.timedelta(seconds=120)):
             pass
-        # The reminder's notice was taken back, read, as the start's came.
+        # One card, so what's kept of it says the start, and nothing the
+        # reminder.
         machine.wait_until_succeeds(
             desktop.in_session(
-                f'{notices} | grep -q \'"summary":"Design Review in 1 min"[^}}]*"read":true\''
+                f'{notices} | grep -q \'"summary":"Design Review now"\''
+                f" && ! {notices} | grep -q 'Design Review in 1 min'"
             ),
             timeout=dt.timedelta(seconds=10),
         )

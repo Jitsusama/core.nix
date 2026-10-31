@@ -94,7 +94,8 @@
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
     piece that tells something new is said again, its own earlier notice taken back first and no
-    other's; and one that goes takes back whichever of its notices is up
+    other's; one whose words alone change is said again in place, by its id, and not once Joel has
+    put it away; and one that goes takes back whichever of its notices is up
   '';
   an-ipc-reply-arrives-whole = ''
     a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
@@ -1514,7 +1515,8 @@
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
-    into each figure's parts, hide amounts while sharing, and answer reports by their words
+    into each figure's parts, hide amounts while sharing, and answer reports by their words; the
+    tokens piece is there only while the watch's tokens warn, with its acts for a running session
   '';
   the-shell-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks

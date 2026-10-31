@@ -644,6 +644,72 @@ def test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
 
+def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near(
+    desktop: Desktop,
+) -> None:
+    """Tokens running out are one card, counting down in place and raised as they near."""
+    machine = desktop.machine
+    desktop.reported("settles arrivals", lambda rest: rest == "", "")
+    # The VM runs no spend-watch, so this writes its status as it does,
+    # whole and renamed in, its heartbeat the guest's now.
+    status = "$XDG_RUNTIME_DIR/spend-watch/status.json"
+
+    def watch_says(title: str, level: str, now: bool) -> None:
+        """Write spend-watch's status, its tokens warning with this title, or none."""
+        stamp = int(machine.succeed("date +%s").strip())
+        quiet = {"value": "today", "badge": "", "hint": "today", "context": ""}
+        said: dict[str, object] = {
+            "v": 1,
+            "heartbeat": stamp,
+            "title": "AI spend",
+            "open": quiet,
+            "quiet": quiet,
+            "actions": [],
+        }
+        if title:
+            said["tokens"] = {
+                "level": level,
+                "now": now,
+                "title": title,
+                "value": "resets 14:00",
+                "context": "at this hour's rate",
+                "quiet": {"title": title, "value": "resets 14:00", "context": ""},
+                "actions": [{"kind": "spends", "name": "See What Spends"}],
+            }
+        desktop.as_account(
+            f"mkdir -p $(dirname {status}) && echo {shlex.quote(json.dumps(said))} > {status}.new"
+            f" && mv {status}.new {status}"
+        )
+
+    since = desktop.mark()
+    with desktop.told("shows card Tokens Run Out in About 40 Min"):
+        watch_says("Tokens Run Out in About 40 Min", "hour", now=False)
+    desktop.photograph("notice-tokens")
+    # A minute on, the same card says so in place.
+    with desktop.told("rewords Tokens Run Out in About 39 Min"):
+        watch_says("Tokens Run Out in About 39 Min", "hour", now=False)
+    # A level lower raises the same card again, urgent.
+    with desktop.told("raises Tokens Run Out in About 14 Min"):
+        watch_says("Tokens Run Out in About 14 Min", "minutes", now=True)
+    desktop.photograph("notice-tokens-minutes")
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    arrived = re.findall(r"\barrives Tokens", said)
+    assert len(arrived) == 1, f"the tokens were said as {len(arrived)} cards, not one"
+    # Now lists it among what wants Joel, in the same words.
+    now_down_to(desktop, "Tokens Run Out in About 14 Min")
+    row = desktop.showing()["selected"] or {}
+    assert "resets 14:00" in json.dumps(row), row
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # Once it no longer warns, its card is taken back.
+    watch_says("", "", now=False)
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
+    desktop.as_account(f"rm -f {status}")
+
+
 def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     desktop: Desktop,
 ) -> None:

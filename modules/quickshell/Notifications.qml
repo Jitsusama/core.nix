@@ -561,6 +561,27 @@ Scope {
     // that's up is let go for a turn and made again.
     property bool remaking: false
 
+    // One said again in place that tells something new comes back to the
+    // front, as one arriving would, unless notices are held and it isn't
+    // urgent, when it keeps resting. The server tells nothing of a notice
+    // replaced by its id, so Arrivals says it through Notices.
+    Connections {
+        target: Notices
+
+        function onRaisedChanged() {
+            const id = Notices.raised?.id;
+            const notification = server.trackedNotifications.values
+                .find(one => one.id === id);
+            if (!notification
+                || Quiet.on && notification.urgency !== NotificationUrgency.Critical)
+                return;
+            Notices.wake(id);
+            root.order = Stack.forward(root.order.includes(id) ? root.order
+                : root.order.concat([id]), id);
+            Report.say(`raises ${notification.summary}`);
+        }
+    }
+
     Connections {
         target: Quickshell
 
