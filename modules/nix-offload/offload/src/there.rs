@@ -1,5 +1,5 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--here] FLAKE ATTR...`: builds a flake's attributes on the lent
+//! [--print-out-paths] [--here] FLAKE ATTR...`: builds a flake's attributes on the lent
 //! builder by sending it a command, or here with `--here` when none takes
 //! it.
 //!
@@ -23,6 +23,9 @@
 //!
 //! `--apply` builds a Nix function applied to the one attribute, and
 //! `--out` copies its output back into a folder, as a VM test's pictures.
+//! `--print-out-paths` brings what was built into this machine's store,
+//! from wherever it was built, and prints its paths as `nix build` does,
+//! so a system built elsewhere can be sent on or switched to.
 //! `there --takes` says which of these it takes, a word a line.
 //!
 //! An attribute for a system a machine nearby takes, named by its second
@@ -57,6 +60,9 @@ pub struct Asked {
     /// Where the one attribute's output is copied back to, as plain files,
     /// as `--out` gives it.
     out: Option<PathBuf>,
+    /// Whether what's built is brought into this machine's store and its
+    /// paths printed, as `--print-out-paths` asks.
+    print: bool,
     /// Whether it may build here when no builder takes it, as `--here`
     /// says.
     here: bool,
@@ -64,12 +70,13 @@ pub struct Asked {
 
 /// Reads `there`'s arguments: its flags, in any place, then the flake and
 /// at least one attribute. `--apply FUNCTION` and `--out DIR` take one
-/// attribute only. Anything else is refused, since only a build whose
+/// attribute only, and `--out` not with `--print-out-paths`. Anything
+/// else is refused, since only a build whose
 /// every word is known can be sent whole.
 pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
-    let (mut apply, mut out, mut here) = (None, None, false);
+    let (mut apply, mut out, mut print, mut here) = (None, None, false, false);
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -80,6 +87,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             }
             "--apply" => apply = Some(arguments.next()?.clone()),
             "--out" => out = Some(PathBuf::from(arguments.next()?)),
+            "--print-out-paths" => print = true,
             "--here" => here = true,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
@@ -87,12 +95,14 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
     }
     let (flake, attributes) = words.split_first()?;
     let one = attributes.len() == 1;
-    (!attributes.is_empty() && (one || (apply.is_none() && out.is_none()))).then(|| Asked {
+    let alone = one || (apply.is_none() && out.is_none());
+    (!attributes.is_empty() && alone && !(print && out.is_some())).then(|| Asked {
         flake: flake.clone(),
         attributes: attributes.to_vec(),
         flags,
         apply,
         out,
+        print,
         here,
     })
 }
@@ -107,6 +117,7 @@ impl Asked {
             flags: self.flags.clone(),
             apply: self.apply.clone(),
             out: self.out.clone(),
+            print: self.print,
             here: self.here,
         }
     }
@@ -124,7 +135,7 @@ impl Asked {
             .iter()
             .map(|word| (*word).to_owned())
             .collect();
-        if self.out.is_some() {
+        if self.out.is_some() || self.print {
             words.push("--print-out-paths".to_owned());
         }
         words.extend(self.flags.iter().cloned());
@@ -197,6 +208,8 @@ pub struct Builder {
     pub key: Option<String>,
     /// The builder's host key, as a line of a known hosts file has it.
     pub host_key: Option<String>,
+    /// Its store, as Nix is given one to copy from.
+    pub store: String,
 }
 
 /// The builder an ssh store's URI names, as Nix writes one:
@@ -220,6 +233,7 @@ pub fn builder(store: &str) -> Option<Builder> {
         host: host.to_owned(),
         key: setting("ssh-key"),
         host_key: setting("base64-ssh-public-host-key").and_then(|key| decoded(&key)),
+        store: store.to_owned(),
     })
 }
 
@@ -274,7 +288,12 @@ pub fn run(
     };
     let reached = reached.and_then(|sending| {
         let ran = loop {
-            let ran = on(&lent, &sending, asked.out.as_deref(), scratch, ssh);
+            let bring = match (&asked.out, asked.print) {
+                (Some(out), _) => Bring::Folder(out),
+                (None, true) => Bring::Store(nix),
+                (None, false) => Bring::Nothing,
+            };
+            let ran = on(&lent, &sending, bring, scratch, ssh);
             if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
                 break ran;
             }
@@ -533,9 +552,12 @@ impl Source {
 
 /// What `there --takes` says it takes: a flake that's a git tree here,
 /// `--apply`, `--out`, waiting for a builder it asks for, a flake that's a
-/// folder no commit names, `--changed`, changed-checks run elsewhere, and
-/// `--here`, a build no builder took made here.
-pub const TAKES: [&str; 7] = ["tree", "apply", "out", "wants", "folder", "changed", "here"];
+/// folder no commit names, `--changed`, changed-checks run elsewhere,
+/// `--here`, a build no builder took made here, and `--print-out-paths`,
+/// what was built brought into this store.
+pub const TAKES: [&str; 8] = [
+    "tree", "apply", "out", "wants", "folder", "changed", "here", "print",
+];
 
 /// The ref a bundle carries its commit under, here only while it's made.
 pub const BUNDLED: &str = "refs/nix-offload/there";
@@ -701,10 +723,20 @@ pub fn mine(scratch: &Path, name: &str) -> PathBuf {
     scratch.join(format!("{name}-{}", std::process::id()))
 }
 
+/// What comes back from a build elsewhere besides its log and status.
+#[derive(Clone, Copy)]
+pub enum Bring<'a> {
+    Nothing,
+    /// Its output, unpacked into this folder.
+    Folder(&'a Path),
+    /// Its output paths, copied into this machine's store by this nix.
+    Store(&'a str),
+}
+
 pub fn on(
     lent: &Builder,
     sending: &Sending,
-    out: Option<&Path>,
+    bring: Bring,
     scratch: &Path,
     ssh: &str,
 ) -> Result<Ran, String> {
@@ -730,9 +762,10 @@ pub fn on(
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
     }
-    let status = match out {
-        None => command.status(),
-        Some(out) => unpacked_into(&mut command, out),
+    let status = match bring {
+        Bring::Nothing => command.status(),
+        Bring::Folder(out) => unpacked_into(&mut command, out),
+        Bring::Store(nix) => brought_from(&mut command, &lent.store, nix),
     };
     let sent = fs::read_to_string(&said).ok().and_then(|log| sent(&log));
     let _ = fs::remove_file(&known);
@@ -771,6 +804,41 @@ fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::proc
         );
     }
     Ok(status)
+}
+
+/// Runs `command`, a build that prints its output paths, then copies them
+/// from `store` into this machine's, and prints them once they're here, so
+/// a caller never reads a path this store lacks. Its status is the build's,
+/// or 1 when the copy fails. This machine's account is one its daemon
+/// trusts, so the builder's paths need no signature.
+fn brought_from(
+    command: &mut Command,
+    store: &str,
+    nix: &str,
+) -> std::io::Result<std::process::ExitStatus> {
+    use std::os::unix::process::ExitStatusExt;
+    let built = command.stdout(Stdio::piped()).output()?;
+    if !built.status.success() {
+        return Ok(built.status);
+    }
+    let printed = String::from_utf8_lossy(&built.stdout).into_owned();
+    let paths: Vec<&str> = printed.split_whitespace().collect();
+    // ssh's control socket goes in TMPDIR, and a long one is past what a
+    // socket's path may be.
+    let copied = Command::new(nix)
+        .args(["copy", "--no-check-sigs", "--from", store])
+        .args(&paths)
+        .env("TMPDIR", "/tmp")
+        .status()?;
+    if !copied.success() {
+        eprintln!("nix-offload: couldn't bring what was built from {store} into this store");
+        return Ok(std::process::ExitStatus::from_raw(1 << 8));
+    }
+    let mut stdout = std::io::stdout();
+    for path in paths {
+        let _ = writeln!(stdout, "{path}");
+    }
+    Ok(built.status)
 }
 
 /// How a build waits for a builder when none stands: how long the lender
@@ -1125,11 +1193,14 @@ fn sent_nearby(
         }
     };
     eprintln!("nix-offload: building on {}, {}", machine.host, asked.flake);
-    let status = reaching(ssh, &said)
-        .arg(&machine.host)
-        .arg(command)
-        .status()
-        .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
+    let mut reached = reaching(ssh, &said);
+    reached.arg(&machine.host).arg(command);
+    let status = if asked.print {
+        brought_from(&mut reached, &format!("ssh-ng://{}", machine.host), nix)
+    } else {
+        reached.status()
+    }
+    .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
     counted(&mut sent, &said);
     Ok(Ran {
         on: Some(machine.host.clone()),
@@ -1337,6 +1408,7 @@ mod tests {
                 flags: words("-L --keep-going"),
                 apply: None,
                 out: None,
+                print: false,
                 here: false,
             })
         );
@@ -1511,6 +1583,13 @@ mod tests {
         assert_eq!(asked(&words("github:o/r/abc")), None);
         assert_eq!(asked(&words("-L")), None);
         assert_eq!(asked(&words("--impure github:o/r/abc checks.x.a")), None);
+        // A folder's copy and the store's paths are two answers to one ask.
+        assert_eq!(
+            asked(&words(
+                "--out /o --print-out-paths github:o/r/abc checks.x.a"
+            )),
+            None
+        );
     }
 
     #[test]
@@ -1523,7 +1602,7 @@ mod tests {
     }
 
     #[test]
-    fn a_store_names_its_host_its_key_and_its_host_key() {
+    fn a_store_names_its_host_its_key_its_host_key_and_itself() {
         let store = "ssh-ng://nix-offload?compress=true&ssh-key=/k&\
                      base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==";
         assert_eq!(
@@ -1532,6 +1611,7 @@ mod tests {
                 host: "nix-offload".to_owned(),
                 key: Some("/k".to_owned()),
                 host_key: Some("ssh-ed25519 AAAA".to_owned()),
+                store: store.to_owned(),
             })
         );
         assert_eq!(
