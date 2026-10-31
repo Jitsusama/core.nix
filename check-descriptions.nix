@@ -539,6 +539,10 @@
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
   '';
+  linux-builder-offers-the-features-it-is-given = ''
+    a Mac's Linux builder offers benchmark and big-parallel and any feature it's given, on the Mac's
+    line and in the guest's Nix, and with none given offers only its own
+  '';
   linux-builder-lets-in-only-the-keys-it-is-given = ''
     a Mac's Linux VM given other machines' keys lets exactly those in as its builder beside the
     Mac's own, and a VM given none is the very guest nixpkgs caches
