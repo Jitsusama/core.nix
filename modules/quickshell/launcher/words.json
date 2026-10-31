@@ -4915,6 +4915,7 @@
       "verb": "open",
       "said": {
         "open": "open",
+        "windows": "open in {count} windows",
         "closed": "closed"
       }
     },

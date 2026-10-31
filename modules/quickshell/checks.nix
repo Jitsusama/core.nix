@@ -1557,10 +1557,15 @@ onLinux {
       ''}
       # What the viewer has open now, as mpv's opened lists what each mpv
       # plays: one file in two of its processes, one also on the list
-      # programs share, and one in a process with no window.
+      # programs share, and one in a process with no window; then, as
+      # Neovim's says what's open in kitty's windows, one file in two
+      # windows named by niri's id, with what Go To is given, and one in a
+      # window that's gone.
       export VIEWING_LIST=${pkgs.writeShellScript "viewing-list" ''
         printf '%s\t%s\n' 5151 "$HOME/open.pdf" 5252 "$HOME/paper.pdf" 5353 "$HOME/open.pdf" \
           9999 "$HOME/ghost.pdf"
+        printf '%s\t%s\t%s\n' @35 "$HOME/notes.md" 10:7 @34 "$HOME/notes.md" 10:6 \
+          @36 "$HOME/gone.md" 10:8
       ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

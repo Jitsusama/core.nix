@@ -28,8 +28,12 @@
       too: `opened`, the command printing the process that has a file open
       and the file's whole path, a tab between, a file a line, read as the
       program is stepped into; Go To and Close It act on that process's
-      window. One with only `app`, `kind` and `opened` keeps the list
-      programs share for its program's other paths.
+      window. Where one process has many windows, as kitty has for each
+      Neovim, a line names niri's window instead, as `@` and its id, and
+      after another tab what `go` is given ({id}) to bring the file forward
+      inside that window before Go To brings the window forward; such a
+      file has no Close It. One with only `app`, `kind` and `opened` keeps
+      the list programs share for its program's other paths.
     '';
   };
 }

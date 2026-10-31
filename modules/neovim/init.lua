@@ -113,6 +113,10 @@ vim.opt.sessionoptions =
 -- The status line, which holds the window's facts (status.lua).
 require('status').setup()
 
+-- The file open here, said to the kitty window for the launcher's Recent
+-- (showing.lua).
+require('showing').setup()
+
 -- How problems look, set as vim.diagnostic first loads, since nothing
 -- needs it until something reports one. The sign column marks a problem as
 -- the status line counts it, with the theme's marks.
