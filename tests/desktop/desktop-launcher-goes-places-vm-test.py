@@ -107,6 +107,74 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
         desktop.as_account(f"rm -f {jobs}/queue.json")
 
 
+def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) -> None:
+    """Rewrite the machine queue's file 30 times in 3 s while the launcher is open.
+
+    Each change a source says joins the whole corpus again and searches what's shown, so 86 of
+    Slack's answers, a tenth of a second apart just after a restart, held the open launcher a
+    minute (2026-10-30). A burst is taken as one refresh, then one each quarter second.
+    """
+    machine = desktop.machine
+    jobs = "$XDG_RUNTIME_DIR/jobs"
+    writes = 30
+
+    # Each write holds another job, so the queue's rows change and it says
+    # so, and says how much is to spare, which its report names.
+    def lined(at: int) -> str:
+        job = {
+            "id": f"burst-{at}",
+            "class": "bulk",
+            "kind": "build",
+            "state": "waiting",
+            "owner": {"session": "elsewhere", "pid": 1},
+            "what": "nix build .#lighthouse",
+            "name": f"lighthouse {at}",
+            "memoryGib": 1,
+        }
+        spare = {"availableGib": at}
+        return json.dumps({"v": 1, "heartbeat": 0.0, "machine": spare, "jobs": [job]})
+
+    # A tenth of a second apart, as Slack's answers came, so each is heard
+    # as a change of its own: written at once, a busy shell hears several
+    # as one, and there's nothing left to take together.
+    burst = " && sleep 0.1 && ".join(
+        f"echo '{lined(at)}' > {jobs}/.q && mv {jobs}/.q {jobs}/queue.json"
+        for at in range(1, writes + 1)
+    )
+    desktop.as_account(f"mkdir -p {jobs}")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    try:
+        since = desktop.mark()
+        desktop.as_account(burst)
+        desktop.reported("heard jobs ", lambda rest: rest == f"{writes}", since)
+        # The last change is in once a refresh is said after it was heard.
+        last = (
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+            f" | sed -n '/heard jobs {writes}]/,$p' | grep -q 'refreshed jobs'"
+        )
+        machine.wait_until_succeeds(desktop.in_session(last), timeout=dt.timedelta(seconds=10))
+        heard = started_apart(desktop, since, "report[heard jobs ")
+        refreshes = started_apart(desktop, since, "report[refreshed jobs]")
+        assert len(heard) >= writes // 3, f"only {len(heard)} changes heard, too few to tell"
+        # Taken one by one, each change heard was a refresh of its own, some
+        # a tenth of a second after the last (2026-10-30). Together, there's
+        # one at once and then at most four a second while they come, a
+        # quarter second apart, less what a refresh's own work moves its
+        # report by.
+        most = 2 + int(sum(heard) * 4)
+        assert len(refreshes) <= most, f"{len(heard)} changes, {len(refreshes)} refreshes"
+        closest = min(refreshes[1:], default=1.0)
+        assert closest >= 0.18, f"refreshes {closest:.2f} s apart: {refreshes}"  # noqa: PLR2004
+    finally:
+        machine.send_key("esc")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+        desktop.as_account(f"rm -f {jobs}/queue.json")
+
+
 # One walk, as its subtest was: each step starts where the last left it.
 def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  # noqa: PLR0915
     desktop: Desktop,
@@ -3751,6 +3819,9 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.photograph("launcher-shortcuts")
     for _ in "paste":
         machine.send_key("backspace")
+    # Each field cleared before the next is typed, or a busy shell takes
+    # the new keys between the last backspaces (QGB4ON, 2026-10-30).
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
     # The touchscreen's swipes are the desktop's, found by "swipe": one
     # doing what a chord does is that chord's row, saying the swipe in
     # words, and one no chord does is drawn as its fingers and its way.
@@ -3763,11 +3834,13 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.photograph("launcher-swipes")
     for _ in swipe:
         machine.send_key("backspace")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
     swipe = "swipe stop showing"
     desktop.type_in(swipe, selecting="Stop showing every workspace")
     assert desktop.showing()["selected"]["chord"].startswith("4 ")
     for _ in swipe:
         machine.send_key("backspace")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
     desktop.type_in("open a terminal")
     machine.send_key("ret")
 
