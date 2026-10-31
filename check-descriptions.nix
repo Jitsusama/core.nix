@@ -1564,7 +1564,8 @@
   update-to-main-updates-to-signed-main = ''
     update-to-main builds and switches to a main signed by a key it was given and descended from what
     it ran, builds nothing when main hasn't moved, refuses an unsigned, untrusted or rewritten main
-    and a low battery, leaves the machine as it was when the build fails, goes back when the switch
+    and a low battery, refuses to start or switch while the machine is busy or can't tell, leaves
+    the machine as it was when the build fails, goes back when the switch
     fails or the machine isn't whole after it, leaves a new kernel for the next boot, joins asks to
     the update that runs, refuses any other ask, serves on a socket only its group writes, and keeps
     how each update ended in a file only its group reads; and a hosted main, unsigned, is built
@@ -1573,8 +1574,8 @@
     nothing without a token; and a followed input is built at its own signed main past the lock,
     builds again when only it moved, and is refused unsigned or behind its lock; and building
     elsewhere sends only the heavy pieces away, builds nothing here without a builder, sends a
-    kept piece only to its own builders, and none at all when it has none, and builds what's
-    built from one here with no builders
+    kept piece only to its own builders, and none at all when it has none, unless it may be built
+    here, small, which waits under load, and builds what's built from one here with no builders
   '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate

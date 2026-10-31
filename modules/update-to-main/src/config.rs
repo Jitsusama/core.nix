@@ -62,6 +62,9 @@ pub struct Config {
     pub health_within: u64,
     /// Below this charge, on battery, nothing is started.
     pub battery_floor: u8,
+    /// What the machine may be busy with, such as a call, when an update
+    /// mustn't start or switch.
+    pub refuse_while: Vec<Busy>,
     /// Where Linux says how the machine is powered.
     pub power_supplies: PathBuf,
     /// The programs it runs, by their paths in the store.
@@ -86,6 +89,32 @@ pub struct Kept {
     /// The builders they go to, as Nix's `builders` setting takes them;
     /// none to build none of them, so an update needing one fails.
     pub builders: Option<String>,
+    /// When set, kept pieces their builders didn't build are built here,
+    /// small and only while the machine is quiet, rather than failing.
+    pub here: Option<Here>,
+}
+
+/// How small kept pieces are built here when their own builders don't.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Here {
+    /// How many pieces build at once.
+    pub max_jobs: u32,
+    /// How many cores each piece may use.
+    pub cores: u32,
+    /// The minute's load average at or above which they wait.
+    pub below_load: f64,
+}
+
+/// Something the machine may be busy with, which a command tells.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Busy {
+    /// Succeeds while the machine is busy with it and exits 1 while it
+    /// isn't; anything else counts as busy, since it couldn't tell.
+    pub command: Vec<String>,
+    /// What it's busy with, as the refusal says it, such as `a call is on`.
+    pub why: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

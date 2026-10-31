@@ -20,7 +20,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
-use update_to_main::config::{Config, Follow, Hosted, Kept, Kind, Signers, Tools};
+use update_to_main::config::{Busy, Config, Follow, Here, Hosted, Kept, Kind, Signers, Tools};
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, serve, update};
 
@@ -94,7 +94,10 @@ impl World {
         // eval or nix build --no-link for an input fetched by its lock. A
         // build elsewhere first lists a light piece, a heavy one and a
         // wrapper built from a secret piece built already, and sends the
-        // heavy ones away, which fails while no-builder is there. Each input
+        // heavy ones away, which fails while no-builder is there; kept ones
+        // go to their own builders, failing while no-kept-builder is there,
+        // or are built here, small, which writes them in here. A system's
+        // build starts a call while call-starts is there. Each input
         // overridden is written down.
         write_program(
             &stand_ins.join("nix"),
@@ -114,8 +117,11 @@ impl World {
                  \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}'\"$secret\"'}}}}'; exit 0;;\n\
+                 *' --builders @'*) if [ -e {no_kept_builder} ]; then \
+                 echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
+                 *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' eval '*) echo \"$UPDATE_TO_MAIN_LOCKED\" >> {fetched}; echo /nix/store/x-source; exit 0;;\n\
                  *' --no-link '*) echo \"$last\" >> {fetched}; exit 0;;\n\
                  esac\n\
@@ -127,12 +133,17 @@ impl World {
                  esac\n\
                  echo \"$*\" > {last_build}\n\
                  echo \"$rev\" >> {log}\n\
+                 if [ -e {call_starts} ]; then touch {call}; fi\n\
                  if [ -e {systems}/$rev.fails ]; then echo 'error: builder failed' >&2; exit 1; fi\n\
                  echo {systems}/$rev\n",
                 log = root.join("builds").display(),
                 fetched = root.join("fetched").display(),
                 overridden = root.join("overridden").display(),
                 no_builder = root.join("no-builder").display(),
+                no_kept_builder = root.join("no-kept-builder").display(),
+                here = root.join("here").display(),
+                call_starts = root.join("call-starts").display(),
+                call = root.join("call").display(),
                 away = root.join("away").display(),
                 seen = root.join("seen").display(),
                 last_build = root.join("last-build").display(),
@@ -169,6 +180,7 @@ impl World {
             ]],
             health_within: 1,
             battery_floor: 20,
+            refuse_while: Vec::new(),
             power_supplies: root.join("power"),
             tools: Tools {
                 git: program("git"),
@@ -1070,6 +1082,7 @@ fn a_kept_piece_goes_only_to_its_own_builders_and_what_is_built_from_one_stays()
     world.config.kept = Kept {
         names: vec!["secret*".to_owned()],
         builders: Some("@/etc/kept-builders".to_owned()),
+        here: None,
     };
     let head = world.signed("one");
     world.system(&head);
@@ -1098,6 +1111,7 @@ fn a_kept_piece_with_no_builders_of_its_own_builds_nothing() {
     world.config.kept = Kept {
         names: vec!["secret*".to_owned()],
         builders: None,
+        here: None,
     };
     let head = world.signed("one");
     world.system(&head);
@@ -1109,4 +1123,163 @@ fn a_kept_piece_with_no_builders_of_its_own_builds_nothing() {
     // Not even the open piece was sent anywhere.
     assert_eq!(world.read("away"), "");
     assert_eq!(world.builds(), 0);
+}
+
+/// Keeps the secret pieces to builders of their own, which may be built
+/// here, small, under `below_load`.
+fn kept_with_here(world: &mut World, below_load: f64) {
+    world.config.elsewhere = true;
+    world.config.kept = Kept {
+        names: vec!["secret*".to_owned()],
+        builders: Some("@/etc/kept-builders".to_owned()),
+        here: Some(Here {
+            max_jobs: 1,
+            cores: 4,
+            below_load,
+        }),
+    };
+}
+
+#[test]
+fn a_kept_piece_its_builders_dont_build_is_built_here_small() {
+    let mut world = World::new();
+    kept_with_here(&mut world, 1e9);
+    fs::write(world.root.join("no-kept-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let here = world.read("here");
+    assert!(
+        here.contains("--builders  --max-jobs 1 --cores 4"),
+        "{here}"
+    );
+    assert!(here.contains("/nix/store/t-secret-tool.drv^*"), "{here}");
+    assert!(!here.contains("b-heavy"), "{here}");
+    // The open piece still goes to the daemon's builders.
+    let away = world.read("away");
+    assert!(away.contains("/nix/store/b-heavy.drv^*"), "{away}");
+    assert!(!away.contains("secret"), "{away}");
+}
+
+#[test]
+fn a_kept_piece_its_builders_build_is_not_built_here() {
+    let mut world = World::new();
+    kept_with_here(&mut world, 1e9);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.read("here"), "");
+    assert!(
+        world
+            .read("away")
+            .contains("--builders @/etc/kept-builders")
+    );
+}
+
+#[test]
+fn a_kept_piece_waits_rather_than_build_here_under_load() {
+    let mut world = World::new();
+    // No load is below nothing.
+    kept_with_here(&mut world, 0.0);
+    fs::write(world.root.join("no-kept-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Failed { why, lines, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    assert!(why.contains("not below 0, so they wait"), "{why}");
+    assert_eq!(lines, ["no kept builder answers"]);
+    assert_eq!(world.read("here"), "");
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_kept_piece_with_no_builders_named_is_built_here_when_it_may_be() {
+    let mut world = World::new();
+    kept_with_here(&mut world, 1e9);
+    world.config.kept.builders = None;
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert!(world.read("here").contains("t-secret-tool"));
+    assert!(!world.read("away").contains("secret"));
+}
+
+/// Refuses while the world's `call` file is there, and can't tell when
+/// `cant-tell` is.
+fn refuse_during_calls(world: &mut World) {
+    world.config.refuse_while = vec![Busy {
+        command: vec![
+            shell(),
+            "-c".to_owned(),
+            format!(
+                "test -e {}/cant-tell && exit 3; test -e {}/call",
+                world.root.display(),
+                world.root.display()
+            ),
+        ],
+        why: "a call is on".to_owned(),
+    }];
+}
+
+#[test]
+fn a_call_starts_nothing() {
+    let mut world = World::new();
+    refuse_during_calls(&mut world);
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let (told, ending) = world.update();
+    assert!(told.is_empty());
+    let Line::Refused { why, .. } = ending else {
+        panic!("not refused: {ending:?}")
+    };
+    assert_eq!(why, "a call is on");
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_call_starting_during_the_build_holds_the_switch_until_the_next_ask() {
+    let mut world = World::new();
+    refuse_during_calls(&mut world);
+    fs::write(world.root.join("call-starts"), "").unwrap();
+    let head = world.signed("one");
+    let system = world.system(&head);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert_eq!(why, "a call is on");
+    assert_eq!(world.builds(), 1);
+    assert_ne!(fs::read_link(world.root.join("running")).ok(), Some(system));
+    // Once the call is over, the next ask switches.
+    fs::remove_file(world.root.join("call-starts")).unwrap();
+    fs::remove_file(world.root.join("call")).unwrap();
+    assert_eq!(world.update().1, done(&head));
+}
+
+#[test]
+fn a_busy_check_that_cant_tell_counts_as_busy() {
+    let mut world = World::new();
+    refuse_during_calls(&mut world);
+    fs::write(world.root.join("cant-tell"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(
+        why.starts_with("it can't tell whether a call is on"),
+        "{why}"
+    );
+    assert!(why.contains("exit status: 3"), "{why}");
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_machine_not_busy_updates() {
+    let mut world = World::new();
+    refuse_during_calls(&mut world);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
 }
