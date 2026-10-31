@@ -69,6 +69,8 @@ in
         "${lookUp}/bin/slack-unreads"
         (lib.escapeShellArg credentials)
         "%t/slack-unreads.json"
+        # Slack's daemon, where the shell searches Slack (src/search.rs).
+        "%t/daemons/slack.sock"
       ];
       Restart = "on-failure";
       RestartSec = 30;
@@ -82,6 +84,7 @@ in
         "${pkgs.coreutils}/bin/rm -f"
         "%t/slack-unreads.json"
         "%t/slack-unreads.new"
+        "%t/daemons/slack.sock"
       ];
     };
   };

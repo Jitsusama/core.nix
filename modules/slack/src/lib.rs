@@ -12,7 +12,9 @@
 //! and nothing it does sends a message or changes anything in Slack.
 //!
 //! What in Slack wants Joel, for Now, is [`unreads`]'s, which the
-//! slack-unreads program (src/bin/slack-unreads.rs) keeps in a file.
+//! slack-unreads program (src/bin/slack-unreads.rs) keeps in a file, and
+//! searching Slack when Joel asks is [`search`]'s, which that program
+//! answers over the socket it holds as Slack's daemon ([`daemon`]).
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -22,6 +24,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ureq::Agent;
 
+pub mod daemon;
+pub mod search;
 pub mod unreads;
 
 /// The harness's Slack sign-in, as its credentials file keeps it: the
@@ -343,6 +347,9 @@ impl Slack {
             .call()
             .map_err(|error| Refused::Unreachable(format!("couldn't reach Slack: {error}")))?;
         let status = answer.status().as_u16();
+        if status == 429 {
+            return Err(Refused::Unreachable(search::BUSY.to_owned()));
+        }
         if status != 200 {
             return Err(Refused::Unreachable(format!("Slack answered {status}")));
         }
@@ -445,9 +452,9 @@ pub fn conversation(
 
 /// How many characters a conversation's name, its newest message's first
 /// words, runs to at most.
-const FIRST_WORDS: usize = 60;
+pub(crate) const FIRST_WORDS: usize = 60;
 /// How many characters of a message the drawer shows at most.
-const LONGEST: usize = 400;
+pub(crate) const LONGEST: usize = 400;
 
 /// A message in plain words, as Slack's markup would show it: a link by
 /// its label, or itself without `mailto:`; someone mentioned by name, by
@@ -508,7 +515,7 @@ fn marked(inside: &str, names: &[(&str, &str)]) -> String {
 }
 
 /// `text` cut at a word to at most `most` characters.
-fn cut(text: &str, most: usize) -> String {
+pub(crate) fn cut(text: &str, most: usize) -> String {
     if text.chars().count() <= most {
         return text.to_owned();
     }

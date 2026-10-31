@@ -1003,14 +1003,17 @@
     sign-in or with none at all, saying so; and slack-unreads keeps in a file, whole, the direct
     messages with unreads, the channels mentioning Joel and his mentions in threads, never a
     channel merely unread, each named once a run and opening in Slack, a refused sign-in kept as
-    signed out with nothing counted, and with no sign-in no file and nothing asked
+    signed out with nothing counted, and with no sign-in no file and nothing asked; and over its
+    socket says each message a search finds by where it is, who said it and its first words, the
+    messages around one oldest first, and Slack too busy apart from signed out or out of reach
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
   '';
   slack-unreads-go-with-the-service = ''
     slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
-    is restarted when its watchdog hears nothing, and takes its file with it however it stops
+    is restarted when its watchdog hears nothing, and takes its file and its socket with it
+    however it stops
   '';
   slack-waits-in-its-place = ''
     Slack's source in People asks about each address once a minute as Joel steps in, never one

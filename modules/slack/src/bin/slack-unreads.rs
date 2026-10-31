@@ -1,4 +1,4 @@
-//! slack-unreads CREDENTIALS FILE [ORIGIN [PACE]]
+//! slack-unreads CREDENTIALS FILE SOCKET [ORIGIN [PACE]]
 //!
 //! What in Slack wants Joel, kept in FILE for the shell's Now (lib's
 //! `unreads` says what it is and how it's read): Slack is asked every
@@ -14,6 +14,10 @@
 //! Run by systemd, it tells its watchdog after each ask, so one that hangs
 //! is restarted, and its unit takes FILE away however it stops: a count
 //! said "ok" never outlives the program that read it.
+//!
+//! It's Slack's daemon too: on SOCKET it answers the shell's daemon
+//! interface, searching Slack when Joel asks (lib's `daemon`), so nothing
+//! is started to search.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -35,11 +39,18 @@ const MISSES: u32 = 2;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (Some(credentials), Some(file)) = (args.next(), args.next()) else {
-        eprintln!("usage: slack-unreads CREDENTIALS FILE [ORIGIN [PACE]]");
+    let (Some(credentials), Some(file), Some(socket)) = (args.next(), args.next(), args.next())
+    else {
+        eprintln!("usage: slack-unreads CREDENTIALS FILE SOCKET [ORIGIN [PACE]]");
         std::process::exit(64);
     };
-    let slack = Slack::new(args.next().unwrap_or_else(|| "https://slack.com".into()));
+    let origin = args.next().unwrap_or_else(|| "https://slack.com".into());
+    slack_people::daemon::listen(
+        Path::new(&socket),
+        PathBuf::from(&credentials),
+        origin.clone(),
+    );
+    let slack = Slack::new(origin);
     let every = args
         .next()
         .and_then(|every| every.parse().ok())
