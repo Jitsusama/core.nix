@@ -6,19 +6,22 @@
 # heard it, and only the words are written.
 #
 # The program is dictation's second, call-transcripts, sharing its Whisper
-# (modules/dictation/src/bin/call-transcripts/main.rs says how), with the
-# words dictation is given, so a name is spelled alike in both. Whisper
-# runs on the NPU at its background priority, behind dictation and
-# anything live, and the service in background.slice, since nobody waits
-# on a transcript; it's loaded with a call's first words and let go after.
+# (modules/dictation/src/bin/call-transcripts/main.rs says how), but not
+# the words dictation is given: told them, Whisper writes them back for a
+# take with no speech, and a call came out as those words. Whisper runs
+# on the NPU at its background priority, behind dictation and anything
+# live, and the service in background.slice, since nobody waits on a
+# transcript; it's loaded with a call's first words and let go after.
 # Its compiled models are kept in a cache of its own, since a load removes
 # whatever else is in the folder it's given.
 #
 # Once a call is written down whole and no call is being heard, Whisper is
 # let go and Phi-3.5-mini (summarizer.nix) sums the call up beside its
 # transcript, on the NPU at the same priority, its compiled model in a
-# cache of its own beside Whisper's. A notice says it's ready, and its
-# Read It opens the summary.
+# cache of its own beside Whisper's. A call with too little said is told
+# so with no model asked, and a summary naming what the call never did
+# is written once more, told not to, and isn't kept if it still does. A
+# notice says it's ready, and its Read It opens the summary.
 #
 # The shell reads the calls from the service, over
 # $XDG_RUNTIME_DIR/daemons/calls.sock in the shell's daemon interface,
@@ -33,9 +36,6 @@ let
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ../dictation/model.nix { };
   summarizer = pkgs.callPackage ./summarizer.nix { };
-  # The words dictation's module declares, where it's imported too.
-  words = config.jitsusama.dictation.words or [ ];
-  wordsFile = pkgs.writeText "call-transcripts-words" (lib.concatLines words);
 in
 {
   systemd.user.services.call-transcripts = {
@@ -72,8 +72,7 @@ in
             pkgs.xdg-utils
           ]
         }:${config.home.profileDirectory}/bin"
-      ]
-      ++ lib.optional (words != [ ]) "DICTATION_WORDS=${wordsFile}";
+      ];
     };
     Install.WantedBy = [ "default.target" ];
   };
