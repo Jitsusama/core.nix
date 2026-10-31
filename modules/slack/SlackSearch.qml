@@ -26,7 +26,11 @@ Provider {
         kind: "slack-message"
     }
 
-    readonly property bool signedIn: slack.sources?.slack === "answering"
+    // Offered only while the daemon answers and Slack is signed in, since
+    // a row is never listed that can't do what it says; what the daemon
+    // last said of Slack is kept through a gap, so both are read.
+    readonly property bool signedIn: slack.state === "answering"
+        && slack.sources?.slack === "answering"
 
     // What each search found, by its words: { state: "asking" | "found" |
     // "failed", records, code }, kept while the shell runs, so stepping
@@ -43,8 +47,6 @@ Provider {
         if (words === "" || !signedIn)
             return null;
         const key = "verb:slack:search";
-        const search = searches[words];
-        const none = search?.state === "found" && search.records.length === 0;
         return provider.entering(provider.thing({
             key: `${key}:${words.toLowerCase()}`,
             name: Words.name(key, "", { words: words }),
@@ -52,9 +54,8 @@ Provider {
             hue: "action",
             side: "",
             note: "",
-            // Nothing found is said in the step's place, as a sentence, with
-            // no act under it, since searching again is just typing.
-            empty: none ? said("none").replace("{words}", words) : ""
+            // What's found inside are things with acts of their own.
+            nested: true
         }), () => provider.found(words));
     }
 
@@ -75,6 +76,12 @@ Provider {
             return search.code === "too-many"
                 ? [waiting("busy"), again(words)]
                 : [waiting(search.code === "down" ? "down" : "failed"), again(words)];
+        // Nothing found is said where the first would be, as a sentence,
+        // with no act under it, since searching again is just typing; an
+        // empty list would say it only once the placeholder, held dimmed
+        // until a key (Steady.js), had gone.
+        if (search.records.length === 0)
+            return [waiting("none", words)];
         // The first lights where the placeholder stood, by its key, as a
         // page found does (VKCF3Z, c3240f08); the rest follow it.
         return search.records.map((record, at) => provider.message(record,
@@ -105,12 +112,14 @@ Provider {
 
     // A dimmed row holding the first message's place: while Slack is asked
     // a Slack message "searching Slack", and once it couldn't answer, the
-    // sentence saying why, over Try Again. Return on it does nothing.
-    function waiting(word) {
+    // sentence saying why, over Try Again, or that nothing was found for
+    // `words`. Return on it does nothing.
+    function waiting(word, words) {
         const asking = word === "searching";
         return provider.thing({
             key: first,
-            name: asking ? Words.name("slack:message") : said(word),
+            name: asking ? Words.name("slack:message")
+                : said(word).replace("{words}", words ?? ""),
             glyph: Words.glyph("slack:message"),
             hue: "program",
             side: asking ? said(word) : "",
