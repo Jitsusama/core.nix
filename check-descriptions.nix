@@ -787,6 +787,9 @@
   one-ssh-agent = ''
     a workstation with a screen answers SSH with the TPM only
   '';
+  onepassword-answers-its-command-line = ''
+    1Password's command-line tool runs setgid in the onepassword-cli group, so the app answers it
+  '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
