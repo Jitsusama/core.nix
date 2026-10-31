@@ -68,4 +68,20 @@ onLinux {
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml slack.qml
       touch $out
     '';
+  # Now's Slack piece shows a count only while Slack answered and its file
+  # is fresh, says why there's none when not, and names who and where,
+  # SlackUnreads.js's, run in Qt's own engine (tests/slack-unreads.qml).
+  slack-says-only-whats-current =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "slack-says-only-whats-current" { } ''
+      cp ${../../tests/slack-unreads.qml} slack-unreads.qml
+      cp ${./SlackUnreads.js} SlackUnreads.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml slack-unreads.qml
+      touch $out
+    '';
 }
