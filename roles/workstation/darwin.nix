@@ -7,6 +7,7 @@
   imports = [
     darwinModules.base
     darwinModules.disk-guard
+    darwinModules.mycelium
     darwinModules.yubikey
   ];
   home-manager.sharedModules = [

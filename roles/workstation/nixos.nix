@@ -22,6 +22,7 @@
     nixosModules.libvirt
     nixosModules.linux-id
     nixosModules.memory
+    nixosModules.mycelium
     nixosModules.nix-daemon
     nixosModules.perf
     nixosModules.podman

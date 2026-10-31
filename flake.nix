@@ -228,6 +228,7 @@
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
         linux-builder = ./modules/linux-builder/darwin.nix;
+        mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         sudo = ./modules/sudo/darwin.nix;
@@ -287,6 +288,7 @@
         memory-modules = ./modules/memory-modules/nixos.nix;
         mic-mute-light = ./modules/mic-mute-light/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
+        mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;
