@@ -1,6 +1,7 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! FLAKE ATTR...`: builds a flake's attributes on the lent builder by
-//! sending it a command, or here when none stands.
+//! [--here] FLAKE ATTR...`: builds a flake's attributes on the lent
+//! builder by sending it a command, or here with `--here` when none takes
+//! it.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -16,8 +17,9 @@
 //!
 //! With no builder standing, it asks the lender for one and waits, since
 //! one stands in about 70 s, while a VM test here holds the person's
-//! machine for minutes. With no lender running, or none being made, it
-//! builds here.
+//! machine for minutes. With no lender running, none being made, or none
+//! reached, it builds nothing and says so, unless `--here` asks it to
+//! build here.
 //!
 //! `--apply` builds a Nix function applied to the one attribute, and
 //! `--out` copies its output back into a folder, as a VM test's pictures.
@@ -55,6 +57,9 @@ pub struct Asked {
     /// Where the one attribute's output is copied back to, as plain files,
     /// as `--out` gives it.
     out: Option<PathBuf>,
+    /// Whether it may build here when no builder takes it, as `--here`
+    /// says.
+    here: bool,
 }
 
 /// Reads `there`'s arguments: its flags, in any place, then the flake and
@@ -64,7 +69,7 @@ pub struct Asked {
 pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
-    let (mut apply, mut out) = (None, None);
+    let (mut apply, mut out, mut here) = (None, None, false);
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -75,6 +80,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             }
             "--apply" => apply = Some(arguments.next()?.clone()),
             "--out" => out = Some(PathBuf::from(arguments.next()?)),
+            "--here" => here = true,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
         }
@@ -87,6 +93,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         flags,
         apply,
         out,
+        here,
     })
 }
 
@@ -100,6 +107,7 @@ impl Asked {
             flags: self.flags.clone(),
             apply: self.apply.clone(),
             out: self.out.clone(),
+            here: self.here,
         }
     }
 
@@ -248,8 +256,7 @@ pub fn run(
 ) -> Ran {
     let lent = store.and_then(|store| builder(store.lines().next()?.trim()));
     let Some(mut lent) = lent else {
-        eprintln!("nix-offload: no builder is lent, so this builds here");
-        return here(asked, nix);
+        return unsent(asked, nix, "no builder is lent");
     };
     let reached = match folder_of(&asked.flake) {
         None => Ok(Sending {
@@ -287,17 +294,33 @@ pub fn run(
     });
     match reached {
         Ok(ran) if ran.status != UNREACHED => ran,
-        Ok(_) => {
-            eprintln!(
-                "nix-offload: ssh couldn't reach {}, so this builds here",
-                lent.host
-            );
-            here(asked, nix)
-        }
-        Err(error) => {
-            eprintln!("nix-offload: {error}, so this builds here");
-            here(asked, nix)
-        }
+        Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
+        Err(error) => unsent(asked, nix, &error),
+    }
+}
+
+/// What `there` exits with when no builder took a build and it wasn't
+/// asked to build here: sysexits.h's temporary failure, as `--changed`
+/// gives when nowhere took its run.
+pub const UNSENT: i32 = 75;
+
+/// A build no builder took, `why`: built here only when asked to with
+/// `--here`. Built here unasked after midnight on 30 October, with no
+/// builder lent, every session's builds ran beside the person's work at a
+/// load of 145.
+fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
+    if asked.here {
+        eprintln!("nix-offload: {why}, so this builds here");
+        return here(asked, nix);
+    }
+    eprintln!(
+        "nix-offload: {why}, so nothing was built; ask again once a builder stands, \
+         or give --here to build on this machine"
+    );
+    Ran {
+        on: None,
+        status: UNSENT,
+        sent: None,
     }
 }
 
@@ -510,8 +533,9 @@ impl Source {
 
 /// What `there --takes` says it takes: a flake that's a git tree here,
 /// `--apply`, `--out`, waiting for a builder it asks for, a flake that's a
-/// folder no commit names, and `--changed`, changed-checks run elsewhere.
-pub const TAKES: [&str; 6] = ["tree", "apply", "out", "wants", "folder", "changed"];
+/// folder no commit names, `--changed`, changed-checks run elsewhere, and
+/// `--here`, a build no builder took made here.
+pub const TAKES: [&str; 7] = ["tree", "apply", "out", "wants", "folder", "changed", "here"];
 
 /// The ref a bundle carries its commit under, here only while it's made.
 pub const BUNDLED: &str = "refs/nix-offload/there";
@@ -1308,6 +1332,7 @@ mod tests {
                 flags: words("-L --keep-going"),
                 apply: None,
                 out: None,
+                here: false,
             })
         );
     }

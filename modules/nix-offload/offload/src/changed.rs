@@ -30,6 +30,11 @@ use crate::there::{self, Sending, Source};
 /// no changed-checks run gives.
 pub const NOT_TAKEN: u8 = 75;
 
+/// What it exits with when an evaluator named the checks but no builder
+/// took their build: sysexits.h's unavailable service, apart from
+/// [`NOT_TAKEN`], so the run isn't done here instead.
+pub const UNBUILT: u8 = 69;
+
 /// What the far side's changed-checks is told, so it runs there and never
 /// sends itself on, and so the far side's slices treat it as other work.
 const HERE: &str = "CHANGED_CHECKS_HERE=1 WORK_RUNS_ELSEWHERE=1";

@@ -48,6 +48,11 @@ fn stand_ins(folder: &Path, status: u8) {
 }
 
 fn there(folder: &Path, offload: &Path) -> Output {
+    there_with(folder, offload, &[])
+}
+
+/// `there` given `extra` arguments besides.
+fn there_with(folder: &Path, offload: &Path, extra: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_nix-offload"))
         .args([
             "there",
@@ -56,6 +61,7 @@ fn there(folder: &Path, offload: &Path) -> Output {
             "checks.x.a",
             "--keep-going",
         ])
+        .args(extra)
         .env(
             "PATH",
             format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
@@ -265,8 +271,9 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     fs::write(offload.join("store"), STORE).unwrap();
     let out = folder.path().join("out");
     let flake = format!("path:{}", copy.display());
+    // Its inputs can't go anywhere, so it builds here only when asked to.
     let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", "--out"])
+        .args(["there", "-L", "--here", "--out"])
         .arg(&out)
         .args([flake.as_str(), "packages.x.guide"])
         .env(
@@ -379,6 +386,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
         .args([
             "there",
             "-L",
+            "--here",
             &flake,
             "checks.aarch64-darwin.a",
             "checks.x86_64-linux.b",
@@ -633,7 +641,7 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\n"
+        "tree\napply\nout\nwants\nfolder\nchanged\nhere\n"
     );
 }
 
@@ -695,7 +703,8 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     }
 
     // With none lent, an evaluator that answers only evaluates, and what it
-    // names is built as any `there` build is: here, with no builder.
+    // names is built as any `there` build is: nowhere, with no builder, and
+    // never handed back to run here whole.
     fs::remove_file(offload.join("store")).unwrap();
     let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = answering.local_addr().unwrap();
@@ -707,7 +716,11 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     assert_eq!(run().status.code(), Some(75), "it isn't sent there");
     fs::write(&evaluators, format!("{address} far others,o\n")).unwrap();
     let ran = run();
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("no builder took their build"),
+        "{ran:?}"
+    );
     let sent = given();
     assert_eq!(sent.lines().next(), Some("far"), "{sent}");
     assert!(
@@ -718,15 +731,16 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
         String::from_utf8_lossy(&ran.stdout).contains("changed  a"),
         "what it named comes here: {ran:?}"
     );
-    let built = fs::read_to_string(bin.join("nix-was-given")).unwrap();
-    assert!(built.contains("checks.x86_64-linux.a"), "{built}");
-    assert!(!built.contains("vm-b"), "no VM test was wanted: {built}");
+    assert!(
+        !bin.join("nix-was-given").exists(),
+        "nothing was built here"
+    );
 
     // A commit's changed-checks from before --name-only refuses it, and
     // without --build it only names anyway, so it's asked once without.
     fs::write(bin.join("refuses-name-only"), "").unwrap();
     let ran = run();
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
     let sent = given();
     assert!(
         sent.contains("nix run .#changed-checks -- --no-vm --system x86_64-linux")
@@ -749,7 +763,7 @@ fn what_it_starts_is_marked_as_waiting_on_work_elsewhere() {
     fs::create_dir(&offload).unwrap();
     stand_ins(folder.path(), 255);
     fs::write(offload.join("store"), STORE).unwrap();
-    let ran = there(folder.path(), &offload);
+    let ran = there_with(folder.path(), &offload, &["--here"]);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     for marked in ["ssh-marked", "nix-marked"] {
         assert_eq!(
@@ -761,28 +775,42 @@ fn what_it_starts_is_marked_as_waiting_on_work_elsewhere() {
 }
 
 #[test]
-fn with_no_builder_or_none_reached_it_builds_here_and_says_so() {
+fn with_no_builder_or_none_reached_it_builds_nothing_unless_asked_to_build_here() {
+    // With no builder lent after midnight on 30 October, `there` built
+    // here, beside every other build, at a load of 145.
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     stand_ins(folder.path(), 255);
+    let given = folder.path().join("nix-was-given");
     let here = "build --no-link -L --keep-going github:o/r/abc#checks.x.a\n";
+
     let ran = there(folder.path(), &offload);
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    assert!(String::from_utf8_lossy(&ran.stderr).contains("no builder is lent"));
-    assert_eq!(
-        fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
-        here
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("no builder is lent, so nothing was built"),
+        "{said}"
     );
+    assert!(said.contains("--here"), "{said}");
+    assert!(!given.exists(), "nothing was built here");
+
+    let ran = there_with(folder.path(), &offload, &["--here"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("no builder is lent, so this builds here")
+    );
+    assert_eq!(fs::read_to_string(&given).unwrap(), here);
     assert!(journalled(folder.path())["on"].is_null());
 
-    fs::remove_file(folder.path().join("nix-was-given")).unwrap();
+    fs::remove_file(&given).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
     let ran = there(folder.path(), &offload);
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
     assert!(String::from_utf8_lossy(&ran.stderr).contains("couldn't reach nix-offload"));
-    assert_eq!(
-        fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
-        here
-    );
+    assert!(!given.exists(), "nothing was built here");
+
+    let ran = there_with(folder.path(), &offload, &["--here"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(fs::read_to_string(&given).unwrap(), here);
 }

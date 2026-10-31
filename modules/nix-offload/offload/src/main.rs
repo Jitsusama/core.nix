@@ -6,7 +6,7 @@
 //! PATH]`, or `nix-offload stand --standing PATH` to name standing
 //! builders alone and lend none, or `nix-offload report --rate DOLLARS` for
 //! today's line, or `nix-offload there [-L] [--keep-going] [--apply
-//! FUNCTION] [--out DIR] FLAKE ATTR...` to build a flake on the builder, or
+//! FUNCTION] [--out DIR] [--here] FLAKE ATTR...` to build a flake on the builder, or
 //! on a machine nearby for systems this one can't build, as src/there.rs
 //! says. A build waiting for a builder says so in /run/nix-offload/wanted,
 //! which counts as queued work.
@@ -118,7 +118,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     [--standing PATH] | nix-offload stand --standing PATH \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    FLAKE ATTR... | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
+                    [--here] FLAKE ATTR... | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -411,7 +411,21 @@ fn changed_somewhere(
             return Some(ExitCode::from(64));
         };
         let built = changed::building(folder, system, &targets).status();
-        return Some(built.map_or(ExitCode::FAILURE, |built| exited(built.code().unwrap_or(1))));
+        return Some(built.map_or(ExitCode::FAILURE, |built| {
+            match built.code() {
+                // Never `NOT_TAKEN`, which would have changed-checks do it
+                // all here, the build it was just refused included.
+                Some(there::UNSENT) => {
+                    eprintln!(
+                        "nix-offload: {} checks were named, but no builder took their build, \
+                         so nothing was built",
+                        targets.len()
+                    );
+                    ExitCode::from(changed::UNBUILT)
+                }
+                code => exited(code.unwrap_or(1)),
+            }
+        }));
     }
     // Asked for and waited on, as any `there` waits, while a lender runs.
     on_builder(there::waited(dir, there::WAITING))

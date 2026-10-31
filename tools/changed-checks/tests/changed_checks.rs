@@ -95,6 +95,7 @@ esac
 /// started in and exits with `changed-exit`'s number, or 0.
 const NIX_OFFLOAD: &str = r#"#!/bin/sh
 [ -f "$STAND_IN/refuses" ] && exit 64
+[ -f "$STAND_IN/unsent" ] && exit 75
 if [ "$2" = --takes ]; then
   [ -f "$STAND_IN/takes-changed" ] && printf 'tree\nchanged\n'
   exit 0
@@ -302,6 +303,16 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     assert_eq!(built["lent"], true, "{built}");
     assert_eq!(built["sent"], 4321, "{built}");
     assert_eq!(built["checks"], 2, "{built}");
+
+    // A builder gone before it took the build builds nothing there, and
+    // it's built here.
+    fs::write(stand_in.path("unsent"), "").expect("written");
+    let ran = asked();
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(stand_in.built(), here, "taken by no builder");
+    assert!(text(&ran.stderr).contains("since no builder took the build there"));
+    fs::remove_file(stand_in.path("unsent")).expect("cleared");
+    fs::remove_file(stand_in.path("built")).expect("cleared");
 
     // A nix-offload older than `there` refuses it, and it's built here.
     fs::write(stand_in.path("refuses"), "").expect("written");
