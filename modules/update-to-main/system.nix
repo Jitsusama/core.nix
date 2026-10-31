@@ -98,6 +98,30 @@ in
         rather than building one here when none takes it.
       '';
     };
+    kept = {
+      names = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "secret-tool*" ];
+        description = ''
+          Pieces of the system, built elsewhere, that go only to `builders`
+          and never to the Nix daemon's own, by patterns over each piece's
+          derivation name or its `pname`, where `*` stands for any run of
+          characters. Every piece built from one is kept too, since it
+          would carry that one to whichever builder took it.
+        '';
+      };
+      builders = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "@/run/kept-builders";
+        description = ''
+          The builders the kept pieces go to, as Nix's `builders` setting
+          takes them. None builds none of them, so an update needing a kept
+          piece fails and the machine stays as it is.
+        '';
+      };
+    };
     hosted = mkOption {
       type = types.nullOr (
         types.submodule (
@@ -216,6 +240,10 @@ in
         assertion = cfg.hosted == null || (cfg.signers.ssh == [ ] && cfg.signers.openpgp == [ ]);
         message = "jitsusama.update-to-main.hosted trusts the host, so it takes no signers.";
       }
+      {
+        assertion = cfg.kept.names == [ ] || cfg.elsewhere;
+        message = "jitsusama.update-to-main.kept needs elsewhere, or kept pieces build here.";
+      }
     ]
     ++ lib.mapAttrsToList (name: follow: {
       assertion = follow.signers.ssh != [ ] || follow.signers.openpgp != [ ];
@@ -251,7 +279,7 @@ in
               inherit (follow) repository branch;
               signers = signersFor follow.signers;
             }) cfg.follows;
-            inherit (cfg) hosted elsewhere;
+            inherit (cfg) hosted elsewhere kept;
             # The running system's path, so once it has switched the newest
             # update-to-main serves.
             program = "/run/current-system/sw/bin/update-to-main";

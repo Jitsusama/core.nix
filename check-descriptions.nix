@@ -1560,12 +1560,14 @@
     and a low battery, leaves the machine as it was when the build fails, goes back when the switch
     fails or the machine isn't whole after it, leaves a new kernel for the next boot, joins asks to
     the update that runs, refuses any other ask, serves on a socket only its group writes, and keeps
-    how each update ended in a file only its group reads; and a hosted main, unsigned, is built from its flake's folder with root reading the account's
-    checkout, fetched there first when it lacks main, its private inputs fetched by their locks,
-    refused when rewritten, and builds nothing without a token; and a followed input is built at
-    its own signed main past the lock, builds again when only it moved, and is refused unsigned or
-    behind its lock; and building elsewhere sends only the heavy pieces away and builds nothing
-    here without a builder
+    how each update ended in a file only its group reads; and a hosted main, unsigned, is built
+    from its flake's folder with root reading the account's checkout, fetched there first when it
+    lacks main, its private inputs fetched by their locks, refused when rewritten, and builds
+    nothing without a token; and a followed input is built at its own signed main past the lock,
+    builds again when only it moved, and is refused unsigned or behind its lock; and building
+    elsewhere sends only the heavy pieces away, builds nothing here without a builder, sends a
+    kept piece only to its own builders, and none at all when it has none, and builds what's
+    built from one here with no builders
   '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate

@@ -20,7 +20,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
-use update_to_main::config::{Config, Follow, Hosted, Kind, Signers, Tools};
+use update_to_main::config::{Config, Follow, Hosted, Kept, Kind, Signers, Tools};
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, serve, update};
 
@@ -92,9 +92,10 @@ impl World {
         // nix build --print-out-paths --out-link LINK git+file://...&rev=REV#OUT,
         // or path:STATE/source/REV/FOLDER#OUT for a hosted main; and nix
         // eval or nix build --no-link for an input fetched by its lock. A
-        // build elsewhere first lists a light piece and a heavy one, and
-        // sends the heavy one away, which fails while no-builder is there.
-        // Each input overridden is written down.
+        // build elsewhere first lists a light piece, a heavy one and a
+        // wrapper built from a secret piece built already, and sends the
+        // heavy ones away, which fails while no-builder is there. Each input
+        // overridden is written down.
         write_program(
             &stand_ins.join("nix"),
             &format!(
@@ -102,10 +103,17 @@ impl World {
                  [ \"$before\" = --override-input ] && echo \"$prev $a\" >> {overridden}\n\
                  before=$prev; prev=$a; last=$a; done\n\
                  case \" $* \" in\n\
-                 *' --dry-run '*) printf 'these 2 derivations will be built:\\n  \
-                 /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n' >&2; exit 0;;\n\
-                 *' derivation show '*) echo '{{\"derivations\": {{\"a-light.drv\": \
-                 {{\"env\": {{\"preferLocalBuild\": \"1\"}}}}, \"b-heavy.drv\": {{\"env\": {{}}}}}}}}'; exit 0;;\n\
+                 *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
+                 /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n  \
+                 /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; exit 0;;\n\
+                 *' derivation show '*) secret=\n\
+                 case \" $* \" in *' --recursive '*) secret=', \"s-secret.drv\": \
+                 {{\"name\": \"secret-1.0\", \"env\": {{}}}}';; esac\n\
+                 echo '{{\"derivations\": {{\"a-light.drv\": \
+                 {{\"env\": {{\"preferLocalBuild\": \"1\"}}}}, \"b-heavy.drv\": {{\"env\": {{}}}}, \
+                 \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
+                 \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
+                 \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}'\"$secret\"'}}}}'; exit 0;;\n\
                  *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' eval '*) echo \"$UPDATE_TO_MAIN_LOCKED\" >> {fetched}; echo /nix/store/x-source; exit 0;;\n\
@@ -117,6 +125,7 @@ impl World {
                  *) rev=${{flake##*/source/}}; rev=${{rev%%/*}}; rev=${{rev%%#*}}\n\
                  folder=${{flake#path:}}; cat \"${{folder%%#*}}/file\" >> {seen};;\n\
                  esac\n\
+                 echo \"$*\" > {last_build}\n\
                  echo \"$rev\" >> {log}\n\
                  if [ -e {systems}/$rev.fails ]; then echo 'error: builder failed' >&2; exit 1; fi\n\
                  echo {systems}/$rev\n",
@@ -126,6 +135,7 @@ impl World {
                 no_builder = root.join("no-builder").display(),
                 away = root.join("away").display(),
                 seen = root.join("seen").display(),
+                last_build = root.join("last-build").display(),
                 systems = root.join("systems").display()
             ),
         );
@@ -151,6 +161,7 @@ impl World {
             hosted: None,
             follows: BTreeMap::new(),
             elsewhere: false,
+            kept: Kept::default(),
             health: vec![vec![
                 sh.clone(),
                 "-c".to_owned(),
@@ -1031,6 +1042,9 @@ fn building_elsewhere_sends_only_the_heavy_pieces_away() {
     let away = world.read("away");
     assert!(away.contains("/nix/store/b-heavy.drv^*"), "{away}");
     assert!(!away.contains("a-light"), "{away}");
+    // What's left is built here, with no builders to send it to.
+    let last = world.read("last-build");
+    assert!(last.contains("--builders  "), "{last}");
     assert_eq!(world.builds(), 1);
 }
 
@@ -1046,5 +1060,53 @@ fn building_elsewhere_with_no_builder_builds_nothing_here() {
     };
     assert!(why.contains("on the machine's builders"), "{why}");
     assert_eq!(lines, ["local builds are disabled"]);
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_kept_piece_goes_only_to_its_own_builders_and_what_is_built_from_one_stays() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    world.config.kept = Kept {
+        names: vec!["secret*".to_owned()],
+        builders: Some("@/etc/kept-builders".to_owned()),
+    };
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    let sent: Vec<&str> = away.lines().collect();
+    assert_eq!(sent.len(), 2, "{away}");
+    // The secret tool goes first and alone to the kept builders, and the
+    // open piece to the daemon's. The wrapper, built from a secret piece,
+    // goes to neither, and is built here with no builders at all.
+    assert!(sent[0].contains("--builders @/etc/kept-builders"), "{away}");
+    assert!(sent[0].contains("/nix/store/t-secret-tool.drv^*"), "{away}");
+    assert!(!sent[0].contains("b-heavy"), "{away}");
+    assert!(!sent[1].contains("--builders"), "{away}");
+    assert!(sent[1].contains("/nix/store/b-heavy.drv^*"), "{away}");
+    assert!(!away.contains("c-wrapper"), "{away}");
+    let last = world.read("last-build");
+    assert!(last.contains("--builders  "), "{last}");
+    assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn a_kept_piece_with_no_builders_of_its_own_builds_nothing() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    world.config.kept = Kept {
+        names: vec!["secret*".to_owned()],
+        builders: None,
+    };
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Failed { why, lines, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    assert!(why.contains("builders of their own"), "{why}");
+    assert_eq!(lines, ["/nix/store/t-secret-tool.drv"]);
+    // Not even the open piece was sent anywhere.
+    assert_eq!(world.read("away"), "");
     assert_eq!(world.builds(), 0);
 }
