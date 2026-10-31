@@ -463,6 +463,10 @@
   icon-marks-past-the-basic-plane = ''
     an icon mark past U+FFFF reaches the shell whole
   '';
+  idle-pi-windows-yield = ''
+    the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
+    sessions started outside a terminal as it weighs windows
+  '';
   inkscape-accepts-its-configuration = ''
     Inkscape starts a drawing on the theme's desk and reads its stylesheet
   '';
@@ -488,8 +492,9 @@
     clippy finds nothing in the jobs sorter or its tests
   '';
   jobs-sorter-sorts-by-behaviour = ''
-    the sorter moves a group busy two seconds running, never the shell's or pi's, and sends a scope
-    started from jobs back there unless it sets limits
+    the sorter moves a group busy two seconds running, never the shell's or pi's, sends a scope
+    started from jobs back there unless it sets limits, and weighs a window low only while every
+    pi in it is marked as one nobody is at, waking at once when a mark goes
   '';
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work

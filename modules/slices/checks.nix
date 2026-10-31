@@ -163,6 +163,21 @@
         && lib.elem graphical.config.systemd.package sorter.path
       );
 
+  # A pi window running a turn nobody typed took the processor from the
+  # apps beside builds, so the sorter weighs it low while the harness marks
+  # every pi in it as one nobody is at, and pi sessions started outside a
+  # terminal are weighed the same way.
+  idle-pi-windows-yield =
+    let
+      sorter = graphical.config.systemd.user.services.jobs-sorter;
+      given =
+        flag: value:
+        lib.hasInfix " ${flag} ${lib.escapeShellArg value} " "${sorter.serviceConfig.ExecStart} ";
+    in
+    holds "idle-pi-windows-yield"
+      "A pi window nobody is at keeps its full weight beside the apps, or one outside a terminal isn't weighed."
+      (given "--background" "%t/pi/background" && given "--weigh" "mycelium-pi-");
+
   # A real-time thread runs ahead of every cgroup's weight, and what agents
   # start inherits the account's real-time limit, so the sorter takes real
   # time from everything in agents' and timers' cgroups. Joel's own terminal

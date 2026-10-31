@@ -404,6 +404,14 @@ in
           "jobs-work.slice"
           "--quests"
           "%t/jobs/quests.json"
+          # A window whose every pi runs a turn nobody typed, with no key
+          # for a minute and nothing in its editor, as the harness marks
+          # them, yields to the apps until a key comes; a session started
+          # outside a terminal is weighed the same way.
+          "--background"
+          "%t/pi/background"
+          "--weigh"
+          "mycelium-pi-"
         ];
         Restart = "on-failure";
         RestartSec = 5;
