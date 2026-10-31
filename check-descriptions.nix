@@ -774,6 +774,20 @@
     pebble-lights finds the speakers' control and sound card, keeps their lighting on while sound
     plays and a while after unless the screen is locked, and lets the speakers' own button win
   '';
+  people-holds-everyone-ready = ''
+    the people daemon answers a get as a step-in, waiting within its patience for every source
+    that can answer, asks ahead for a watch, says what it holds and gathers a burst of changes
+    into one, never waits on a source signed out, starts a source that stops again and asks it
+    about everyone watched, says a get nothing answered in time isn't ready, and refuses an ask
+    or a kind it doesn't know
+  '';
+  people-passes-clippy = ''
+    clippy finds nothing in the people daemon or its tests
+  '';
+  people-runs-where-a-source-names-a-program = ''
+    the people daemon runs for Slack's source on the daemons' socket, restarting as the new one
+    after a switch, and doesn't run where no source names a program for it
+  '';
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
     extensions, the digest of what's true on the machine and, on Linux, the launcher's tool as its
