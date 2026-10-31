@@ -1575,41 +1575,50 @@ onLinux {
   # The launcher chooses the files a program opens or saves, as open-with
   # asks it (tests/file-chooser.qml): in folders made here, with the files
   # opened lately listed by a stand-in for recent-files, the desktop's
-  # kinds of file by a few of shared-mime-info's lines, and a place kept
-  # elsewhere by a stand-in for Google's Drive.
+  # kinds of file by a few of shared-mime-info's lines, a place kept
+  # elsewhere by a stand-in for Google's Drive, and niri by one whose
+  # window with the keys is a text editor's, the program that asks.
   the-launcher-chooses-files-as-asked =
-    pkgs.runCommandLocal "the-launcher-chooses-files-as-asked" { }
-      ''
-        mkdir -p launcher kinds
-        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${./Fuzzy.js} Fuzzy.js
-        cp ${./launcher/Provider.qml} launcher/Provider.qml
-        cp ${./launcher/Asking.js} launcher/Asking.js
-        cp ${./launcher/Numbers.js} launcher/Numbers.js
-        cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
-        cp ${./Words.qml} Words.qml
-        cp ${./Files.qml} Files.qml
-        cp ${./launcher/words.json} launcher/words.json
-        cp ${../../tests/file-chooser.qml} shell.qml
-        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-        mkdir -m 700 $XDG_RUNTIME_DIR
-        mkdir $XDG_RUNTIME_DIR/open-with
-        export FONTCONFIG_FILE=${noFonts}
-        # A folder of notes, two hidden things in it, and a file opened lately
-        # elsewhere beside one of its own.
-        mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere
-        touch $HOME/notes/a.md $HOME/notes/b.png $HOME/notes/notes.txt $HOME/notes/.hidden.txt
-        touch $HOME/elsewhere/old.md
-        printf 'Notes\t%s\nNotes\t%s\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" > $HOME/recent
-        export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
-        printf '50:text/markdown:*.md\n50:image/png:*.png\n50:text/plain:*.txt\n' > kinds/globs2
-        printf 'text/markdown text/plain\n' > kinds/subclasses
-        export KINDS=$PWD/kinds
-        ${shellFolderLint}
-        timeout 60 ${qs} -p shell.qml
-        [ -d $HOME/staged/plans ] || { echo "saving into a place kept elsewhere made no folder"; exit 1; }
-        touch $out
+    let
+      niri = singleton "Niri.qml" ''
+        property var windows: ({ "7": { id: 7, app_id: "org.gnome.TextEditor" } })
+        property var current: 7
       '';
+    in
+    pkgs.runCommandLocal "the-launcher-chooses-files-as-asked" { } ''
+      mkdir -p launcher kinds
+      cp ${niri} Niri.qml
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./Files.qml} Files.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/file-chooser.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir $XDG_RUNTIME_DIR/open-with
+      export FONTCONFIG_FILE=${noFonts}
+      # A folder of notes, two hidden things in it, and a file opened lately
+      # elsewhere beside one of its own.
+      mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere
+      touch $HOME/notes/a.md $HOME/notes/b.png $HOME/notes/notes.txt $HOME/notes/.hidden.txt
+      touch $HOME/elsewhere/old.md
+      printf 'Notes\t%s\nNotes\t%s\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" > $HOME/recent
+      export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
+      printf '50:text/markdown:*.md\n50:image/png:*.png\n50:text/plain:*.txt\n' > kinds/globs2
+      printf 'text/markdown text/plain\n' > kinds/subclasses
+      export KINDS=$PWD/kinds
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      [ -d $HOME/staged/plans ] || { echo "saving into a place kept elsewhere made no folder"; exit 1; }
+      from=$HOME/staged/plans/.new.md.from
+      printf org.gnome.TextEditor | cmp -s - $from || { echo "a save staged elsewhere doesn't say beside it which program asked: $(cat $from 2>&1)"; exit 1; }
+      touch $out
+    '';
 
   # Every program an account lists in the launcher, each desktop entry it
   # shows, wears a mark of its own in launcher/Provider.qml's table, its

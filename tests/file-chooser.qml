@@ -31,7 +31,8 @@
 // be saved in, each leading with the name, a name already there stepping
 // in to Replace It; what's typed names it instead, and Return makes the
 // folder the place stages it in and answers the path there, closing the
-// launcher once it's made. A save here keeps the folder it went to, one
+// launcher once it's made, the program that asked written beside it (the
+// check reads it). A save here keeps the folder it went to, one
 // asked from inside the shell too, never an open nor a save staged
 // elsewhere, and the chooser made again reads it. It exits 0 once every
 // case holds, and otherwise 1, saying which didn't.
