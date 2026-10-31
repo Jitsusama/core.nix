@@ -27,6 +27,7 @@ use crate::history::{History, sql as fail};
 use crate::money::whole;
 use crate::time::{HOUR, Zone, hour_of, hour_start};
 use serde::Serialize;
+use std::fmt::Write as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -306,13 +307,8 @@ pub fn key(inputs: &Inputs) -> String {
     format!("cap:{}:{}:", inputs.cap.feed, inputs.cap.name)
 }
 
-/// The outlook now, given the level said before, if any.
-#[must_use]
-pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) -> Option<Tokens> {
-    let cap = &inputs.cap;
-    let allowance = cap.allowance?;
-    let used = cap.spent / allowance;
-    let key = key(inputs);
+/// What Joel can do: see what spends, and pause the session spending most.
+fn acts(inputs: &Inputs) -> Vec<Act> {
     let mut acts = vec![Act {
         kind: "spends".into(),
         name: "See What Spends".into(),
@@ -331,33 +327,60 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
             quest: quest.clone(),
         });
     }
-    let percent = format!("{:.0}% used", used * 100.0);
-    let over = cap.state == "refused" || cap.spent >= allowance;
-    if !over && now - cap.at > STALE {
-        if used < UNREAD_FROM {
-            return None;
-        }
-        let since = format!("can't be read since {}", zone.clock(cap.at, now));
-        return Some(Tokens {
-            level: Level::Unread,
-            now: false,
+    acts
+}
+
+/// Said in the row while the cap's reading is too old to project from.
+fn unread(inputs: &Inputs, zone: &Zone, now: f64) -> Tokens {
+    let since = format!("can't be read since {}", zone.clock(inputs.cap.at, now));
+    Tokens {
+        level: Level::Unread,
+        now: false,
+        title: "Tokens Can't Be Read".into(),
+        value: String::new(),
+        context: since.clone(),
+        hint: format!("Tokens {since}"),
+        quiet: Quiet {
             title: "Tokens Can't Be Read".into(),
             value: String::new(),
             context: since.clone(),
             hint: format!("Tokens {since}"),
-            quiet: Quiet {
-                title: "Tokens Can't Be Read".into(),
-                value: String::new(),
-                context: since.clone(),
-                hint: format!("Tokens {since}"),
-                unread: Some(since.clone()),
-            },
-            actions: acts,
-            unread: Some(since),
-            runs_out: None,
-            back: None,
-            cap: key,
-        });
+            unread: Some(since.clone()),
+        },
+        actions: acts(inputs),
+        unread: Some(since),
+        runs_out: None,
+        back: None,
+        cap: key(inputs),
+    }
+}
+
+/// The level for the time left, keeping one said before until the time
+/// left rises past its own bound by half an hour, so a wavering rate
+/// doesn't raise it again.
+fn level(left: f64, before: Option<Level>) -> Option<Level> {
+    let fresh = [Level::Minutes, Level::Hour, Level::Hours]
+        .into_iter()
+        .find(|level| left < level.under());
+    let held = before
+        .filter(|held| matches!(held, Level::Minutes | Level::Hour | Level::Hours))
+        .filter(|held| left < held.under() + LEAVE);
+    match (fresh, held) {
+        (Some(fresh), Some(held)) => Some(fresh.min(held)),
+        (fresh, held) => fresh.or(held),
+    }
+}
+
+/// The outlook now, given the level said before, if any.
+#[must_use]
+pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) -> Option<Tokens> {
+    let cap = &inputs.cap;
+    let allowance = cap.allowance?;
+    let used = cap.spent / allowance;
+    let percent = format!("{:.0}% used", used * 100.0);
+    let over = cap.state == "refused" || cap.spent >= allowance;
+    if !over && now - cap.at > STALE {
+        return (used >= UNREAD_FROM).then(|| unread(inputs, zone, now));
     }
     // The run at which it's reached, and the first after it back under if
     // nothing more is spent from then.
@@ -379,19 +402,7 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
     let level = if over {
         Level::Out
     } else {
-        let fresh = [Level::Minutes, Level::Hour, Level::Hours]
-            .into_iter()
-            .find(|level| left < level.under());
-        // A level said before is kept until the time left rises past its
-        // own bound by half an hour, so a wavering rate doesn't raise it
-        // again.
-        let held = before
-            .filter(|held| matches!(held, Level::Minutes | Level::Hour | Level::Hours))
-            .filter(|held| left < held.under() + LEAVE);
-        match (fresh, held) {
-            (Some(fresh), Some(held)) => fresh.min(held),
-            (fresh, held) => fresh.or(held)?,
-        }
+        level(left, before)?
     };
     let resets = back.map_or_else(String::new, |at| format!("resets {}", zone.clock(at, now)));
     // The notice's summary, so it says the reset too.
@@ -433,11 +444,11 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
             hint,
             unread: None,
         },
-        actions: acts,
+        actions: acts(inputs),
         unread: None,
         runs_out: Some(runs_out),
         back,
-        cap: key,
+        cap: key(inputs),
     })
 }
 
@@ -460,7 +471,7 @@ pub fn replay(history: &History, zone: &Zone, from: f64, to: f64) -> Result<Stri
             },
         );
         if line != said {
-            out.push_str(&format!("{} {line}\n", zone.clock(at, to)));
+            writeln!(out, "{} {line}", zone.clock(at, to)).map_err(|error| error.to_string())?;
             said = line;
         }
         at += 300.0;
@@ -632,11 +643,10 @@ mod tests {
         history
             .db
             .execute_batch(&format!(
-                "INSERT INTO caps VALUES ('proxy', 'weekly', {at}, 'weekly cap', 15000, 168,
+                "INSERT INTO caps VALUES ('proxy', 'weekly', {AT}, 'weekly cap', 15000, 168,
                  14000, 0.9, NULL, 'ok', NULL, 0, NULL);
-                 INSERT INTO caps VALUES ('proxy', 'premium', {at}, 'premium day', 1000, 24,
-                 0, 0.5, NULL, 'ok', NULL, 0, NULL);",
-                at = AT
+                 INSERT INTO caps VALUES ('proxy', 'premium', {AT}, 'premium day', 1000, 24,
+                 0, 0.5, NULL, 'ok', NULL, 0, NULL);"
             ))
             .unwrap();
         let hour = hour_of(AT);
