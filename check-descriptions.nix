@@ -1413,6 +1413,10 @@
   the-pinentry-asks-the-shell = ''
     linux-id's pinentry asks the askpass in the program's words
   '';
+  linux-id-passes-its-own-tests = ''
+    linux-id builds with core's patches and passes its tests, Chrome's touch
+    probe refused without asking among them
+  '';
   the-power-profile-answers-before-the-network = ''
     the power profile daemon's unit, the XPS 14's patched one too, waits for neither the network nor
     the boot's end, and keeps upstream's settings

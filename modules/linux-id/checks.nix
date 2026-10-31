@@ -6,6 +6,11 @@
   ...
 }:
 onLinux {
+  # linux-id builds with core's patches and passes its own tests, which run
+  # as it builds, the patches' among them: Chrome's touch probe refused
+  # without asking.
+  linux-id-passes-its-own-tests = pkgs.callPackage ./package.nix { };
+
   # linux-id's pinentry speaks pinentry's protocol and asks the askpass in
   # the words the program set, as its own tests say.
   the-pinentry-asks-the-shell =

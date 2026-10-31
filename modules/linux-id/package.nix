@@ -20,6 +20,14 @@ buildGoModule (finalAttrs: {
 
   vendorHash = "sha256-G+MNVGrTAiWhJ4XQa5dQ0ChhHTSvO5VMQ/Cy5CWP7tk=";
 
+  # Written here; each patch's message has the cause, and linux-id's own
+  # tests, which run as it builds, hold it.
+  patches = [
+    # Refuses the throwaway credential Chrome asks for to see which key was
+    # touched, which, answered, ends a passkey sign-in and its QR code.
+    ./linux-id-refuses-chromes-probe.patch
+  ];
+
   ldflags = [
     "-s"
     "-w"
