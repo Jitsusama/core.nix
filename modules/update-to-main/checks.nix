@@ -70,4 +70,10 @@ in
         && nixos.users.groups.update-ask.members == [ "someone" ]
         && darwin.users.groups.update-ask.members == [ "someone" ]
       );
+  # Nix runs git to fetch the main it builds, and systemd's default path
+  # has none, so NixOS's service is given git on its path.
+  update-to-main-has-git-to-fetch-with =
+    holds "update-to-main-has-git-to-fetch-with"
+      "NixOS's update-to-main has no git on its path, so Nix can't fetch the main it builds."
+      (builtins.elem pkgs.git service.path);
 }

@@ -52,6 +52,10 @@ in
       wants = [ "network-online.target" ];
       restartIfChanged = false;
       stopIfChanged = false;
+      # Nix runs git to fetch the main it builds, by the git+file reference
+      # to root's copy, and finds it on the service's path, which systemd's
+      # default leaves it off. A Mac's launchd path has the system's own.
+      path = [ pkgs.git ];
       serviceConfig = {
         ExecStart = "/run/current-system/sw/bin/update-to-main serve --config /etc/update-to-main/config.json";
         Restart = "always";
