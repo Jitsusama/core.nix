@@ -262,6 +262,7 @@ off.
 | VM | a computer run as a program on this one | virtual machine | libvirt, QEMU |
 | Linux builder | a VM on a Mac that builds what Linux machines run, so the Mac's work builds there | | `darwinModules.linux-builder`, `darwin.linux-builder-vz` |
 | container | a program run apart from the machine, with its own files | | Podman |
+| update | the machine switched to its repository's main, signed, by root's own choosing when asked | upgrade, self-update | `update-to-main` |
 
 ## Network
 

@@ -109,6 +109,23 @@ machine and the account together.
 On a NixOS workstation, an account in `wheel` can switch to a system it built
 without a password: `switch-system ./result` after `nixos-rebuild build`.
 
+A machine that imports `update-to-main` updates itself instead, with nobody
+at it: one of its `jitsusama.update-to-main.askers` runs
+`update-to-main ask`, and root fetches the repository's main, builds the
+system only if a key in `signers` signed it and it descends from what the
+machine runs, switches, and goes back if the machine isn't whole after. The
+ask takes no arguments, so whoever asks can't choose what runs:
+
+```nix
+jitsusama.update-to-main = {
+  repository = "https://github.com/someone/machines";
+  output = "nixosConfigurations.laptop.config.system.build.toplevel";
+  signers.openpgp = [ ./forge-merges.asc ];
+  askers = [ "someone" ];
+  health = [ ];
+};
+```
+
 ## Formatting and Linting
 
 A machine repository formats and lints its code as core does by giving

@@ -41,8 +41,17 @@ pub fn command(program: &Path, home: &Path) -> Command {
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null());
+    // The system's certificates, where both NixOS and nix-darwin keep
+    // them, for git's and Nix's fetches over HTTPS.
+    if Path::new(CERTIFICATES).exists() {
+        command
+            .env("SSL_CERT_FILE", CERTIFICATES)
+            .env("NIX_SSL_CERT_FILE", CERTIFICATES);
+    }
     command
 }
+
+const CERTIFICATES: &str = "/etc/ssl/certs/ca-certificates.crt";
 
 /// Runs a command to its end, giving what it printed, or a failure naming
 /// `what` with the last lines of everything it said.
