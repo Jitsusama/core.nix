@@ -3109,13 +3109,15 @@
       "verb": "go",
       "glyph": "waitsOnJoel",
       "empty": "Nothing needs you.",
+      "tells": {
+        "known": "Known done {how}.",
+        "person": "Only you can say it's done."
+      },
       "said": {
         "first": "{title} \u00b7 {minutes} min",
         "minutes": "{minutes} min",
         "later": "nothing now, {count} later",
         "none": "nothing now",
-        "known": "Known done {how}.",
-        "person": "Only you can say it's done.",
         "at": "at {time}",
         "by": "by {time}",
         "on": "on {machine}",

@@ -271,6 +271,7 @@ def shown(entry: Entry) -> list[tuple[str, str]]:
         words = state.get("said", {})
         said.extend(("said", word) for word in
                     (words.values() if isinstance(words, dict) else [words]))  # fmt: skip
+        said.extend(("tells", told) for told in state.get("tells", {}).values())
     return said
 
 
@@ -293,6 +294,9 @@ def unsaid(vocabulary: Entry) -> list[str]:
         # word cased as a name is refused.
         if key == "said" and text[:1].isupper() and not text.split()[0].isupper():
             out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")
+        # What a drawer tells is a sentence of its own, read as one.
+        if key == "tells" and not (text[:1].isupper() and text.endswith(".")):
+            out.append(f"{thing} tells {text!r} in its drawer, which isn't a sentence.")
     for entry in vocabulary["things"]:
         for state in [entry, *entry.get("states", {}).values()]:
             verb = state.get("verb", "").split()
@@ -321,6 +325,10 @@ REFUSED: list[tuple[str, Entry]] = [
         {"id": "bad:state", "name": "Lid", "states": {"shut": {"said": {"why": "Closed"}}}},
     ),
     ("a verb of two words", {"id": "bad:verb", "name": "Join", "verb": "join now"}),
+    (
+        "a drawer's words not a sentence",
+        {"id": "bad:tells", "name": "Lid", "tells": {"shut": "shut"}},
+    ),
 ]
 
 # A command saying a program's name, as unsaid refuses for commands too.
@@ -346,6 +354,7 @@ ALLOWED: Entry = {
             "verb": "turn off",
             "states": {"wired": {"said": "USB 3", "verb": "copy"}},
         },
+        {"id": "good:tells", "name": "Lid", "tells": {"shut": "Closed since {time}."}},
     ],
     "commands": [{"id": "good:command", "start": "", "form": "ip", "says": "your addresses"}],
 }

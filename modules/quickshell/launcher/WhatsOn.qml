@@ -315,10 +315,12 @@ Provider {
         const done = WaitingOnYou.doneBy(each);
         if (done === null)
             return "";
+        // Sentences of the drawer's own, as words.json's `tells` holds them.
+        const tells = Words.of("on:waiting").tells ?? {};
         if (done.person)
-            return waitingSaid("person", {});
+            return tells.person ?? "";
         const how = waitingSaid(done.check ? "check" : done.signal, { value: done.value ?? "" });
-        return how === "" ? "" : waitingSaid("known", { how: how });
+        return how === "" ? "" : (tells.known ?? "").replace("{how}", how);
     }
 
     // Where an item is done, by name: the session its window is, else the

@@ -55,6 +55,10 @@ def shown(entry: dict[str, object]) -> Iterator[str]:
         value = entry.get(field)
         if isinstance(value, str):
             yield value
+    # The sentences a drawer tells, by what each is for.
+    tells = entry.get("tells")
+    if isinstance(tells, dict):
+        yield from (told for told in tells.values() if isinstance(told, str))
     states = entry.get("states")
     if isinstance(states, dict):
         for state in states.values():
