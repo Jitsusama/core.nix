@@ -59,8 +59,20 @@ Provider {
         }), () => provider.found(words));
     }
 
+    // A Slack message's words beside a row, and the sentences it tells in
+    // a row's place.
     function said(word) {
         return Words.of("slack:message").said[word] ?? "";
+    }
+
+    function tells(word) {
+        return Words.of("slack:message").tells[word] ?? "";
+    }
+
+    // Joel, as he leads a note or a line: "You".
+    function you() {
+        const word = said("you");
+        return word.charAt(0).toUpperCase() + word.slice(1);
     }
 
     // What a search holds: asked the first time it's stepped into.
@@ -119,7 +131,7 @@ Provider {
         return provider.thing({
             key: first,
             name: asking ? Words.name("slack:message")
-                : said(word).replace("{words}", words ?? ""),
+                : tells(word).replace("{words}", words ?? ""),
             glyph: Words.glyph("slack:message"),
             hue: "program",
             side: asking ? said(word) : "",
@@ -153,7 +165,7 @@ Provider {
             glyph: Words.glyph(key),
             hue: "action"
         }, fields));
-        const who = record.mine ? said("you") : record.who;
+        const who = record.mine ? you() : record.who;
         return provider.thing({
             key: key,
             what: "slack message",
@@ -204,11 +216,10 @@ Provider {
             return lone;
         // Only Joel's own are named: Slack gives the others by an id, and
         // in a channel they're many.
-        const you = said("you");
         return {
             title: record.place,
             facts: [],
-            body: messages.map(one => one.mine ? `${you}: ${one.text}` : one.text).join("\n\n")
+            body: messages.map(one => one.mine ? `${you()}: ${one.text}` : one.text).join("\n\n")
         };
     }
 }

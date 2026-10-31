@@ -3767,14 +3767,14 @@
     },
     {
       "id": "verb:slack:search",
-      "by": "program:slack",
+      "of": "program:slack",
       "name": "Search Slack for {words}",
       "verb": "search",
       "glyph": "chat"
     },
     {
       "id": "verb:slack:search:again",
-      "by": "program:slack",
+      "in": "slack:message",
       "name": "Try Again",
       "verb": "retry",
       "glyph": "chat"
@@ -3787,11 +3787,13 @@
       "verb": "open",
       "said": {
         "searching": "searching Slack",
+        "you": "you"
+      },
+      "tells": {
         "none": "Nothing in Slack says {words}.",
         "busy": "Slack is busy; try again in a minute.",
         "down": "Slack isn't answering.",
-        "failed": "Slack couldn't be reached.",
-        "you": "You"
+        "failed": "Slack couldn't be reached."
       }
     },
     {
