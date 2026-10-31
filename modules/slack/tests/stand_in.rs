@@ -516,11 +516,30 @@ fn unreads(stand_in: &StandIn, credentials: &std::path::Path, file: &std::path::
     Command::new(env!("CARGO_BIN_EXE_slack-unreads"))
         .arg(credentials)
         .arg(file)
+        .arg(socket(file))
         .arg(&stand_in.origin)
         .arg("50")
         .stderr(Stdio::null())
         .spawn()
         .unwrap()
+}
+
+/// Where a run keeping `file` answers asks.
+fn socket(file: &std::path::Path) -> PathBuf {
+    file.with_extension("daemons").join("slack.sock")
+}
+
+/// Asks a running slack-unreads one thing over its socket, and what it
+/// answered.
+fn asked(file: &std::path::Path, ask: &serde_json::Value) -> serde_json::Value {
+    let mut stream = std::os::unix::net::UnixStream::connect(socket(file)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    writeln!(stream, "{ask}").unwrap();
+    let mut line = String::new();
+    BufReader::new(stream).read_line(&mut line).unwrap();
+    serde_json::from_str(&line).unwrap()
 }
 
 /// Waits until `held` holds, failing with `what` after ten seconds.
@@ -580,6 +599,99 @@ fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
         "{heard:?}"
     );
     let _ = std::fs::remove_file(&file);
+    forget(&path);
+}
+
+/// Slack as it answers a search for "launcher" and what's around a
+/// message, or that it's had too many searches, for "busy"; and what
+/// wants Joel, as `wanting` does.
+fn searching(line: &str) -> String {
+    if line.contains("search.messages") && line.contains("query=busy") {
+        r#"{"ok": false, "error": "ratelimited"}"#.into()
+    } else if line.contains("search.messages") {
+        concat!(
+            r#"{"ok": true, "messages": {"matches": [{"channel": {"id": "C1","#,
+            r#""is_channel": true, "name": "launcher"}, "ts": "1730300000.000100","#,
+            r#""user": "U9", "username": "ada", "text": "The launcher is fast","#,
+            r#""permalink": "https://slack/p1"}]}}"#
+        )
+        .into()
+    } else if line.contains("conversations.history") && line.contains("latest=") {
+        concat!(
+            r#"{"ok": true, "messages": [{"ts": "1730300000.000100", "user": "U9","#,
+            r#""text": "The launcher is fast"}, {"ts": "1730299999.000100", "user": "U0","#,
+            r#""text": "Is it?"}]}"#
+        )
+        .into()
+    } else if line.contains("conversations.history") {
+        r#"{"ok": true, "messages": [{"ts": "1730300000.000100", "user": "U9", "text": "The launcher is fast"}]}"#.into()
+    } else {
+        wanting(line)
+    }
+}
+
+#[test]
+fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
+    let stand_in = StandIn::new(searching);
+    let path = credentials("unreads-search");
+    let file = path.with_extension("search.json");
+    let mut program = unreads(&stand_in, &path, &file);
+    until("the socket never came", || socket(&file).exists());
+    let hello = asked(
+        &file,
+        &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
+    );
+    assert_eq!(
+        (&hello["domain"], &hello["sources"]["slack"]),
+        (&serde_json::json!("slack"), &serde_json::json!("answering"))
+    );
+    let found = asked(
+        &file,
+        &serde_json::json!({"id": 2, "ask": "search", "words": "launcher"}),
+    );
+    let record = &found["records"][0];
+    assert_eq!(
+        (&record["key"], &record["place"], &record["first"]),
+        (
+            &serde_json::json!("slack-message:C1:1730300000.000100"),
+            &serde_json::json!("#launcher"),
+            &serde_json::json!("The launcher is fast")
+        )
+    );
+    let near = asked(
+        &file,
+        &serde_json::json!({"id": 3, "ask": "get", "keys": [record["key"]]}),
+    );
+    let around: Vec<(&str, bool)> = near["records"][0]["around"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|one| {
+            (
+                one["text"].as_str().unwrap(),
+                one["asked"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(around, [("Is it?", false), ("The launcher is fast", true)]);
+    let busy = asked(
+        &file,
+        &serde_json::json!({"id": 4, "ask": "search", "words": "busy"}),
+    );
+    assert_eq!(busy["error"]["code"], "too-many");
+    program.kill().unwrap();
+    program.wait().unwrap();
+    // Still only reading.
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .all(|heard| heard.line.starts_with("GET /api/")),
+        "{:?}",
+        stand_in.heard()
+    );
+    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_dir_all(socket(&file).parent().unwrap());
     forget(&path);
 }
 

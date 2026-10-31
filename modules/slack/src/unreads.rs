@@ -159,7 +159,7 @@ pub fn called(said: &Value) -> Result<Called, Refused> {
 
 /// A group's name as its members' handles: Slack names one
 /// `mpdm-ada--grace--joel-1`.
-fn group(name: &str) -> String {
+pub(crate) fn group(name: &str) -> String {
     let inside = name.strip_prefix("mpdm-").unwrap_or(name);
     let inside = inside
         .rsplit_once('-')
