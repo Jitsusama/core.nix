@@ -134,6 +134,7 @@
         bat = ./modules/bat/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
+        call-transcripts = ./modules/call-transcripts/home.nix;
         camera = ./modules/camera/home.nix;
         cargo = ./modules/cargo/home.nix;
         chrome = ./modules/chrome/home.nix;

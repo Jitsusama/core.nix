@@ -19,68 +19,17 @@
 //! himself in the meantime is left as he left it. It ends when PipeWire
 //! goes, for systemd to start it again.
 
-use calls::{Recording, STARTS_AFTER};
+use calls::{Call, Change, Recording};
 use serde_json::Value;
 use std::io::BufReader;
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
-
-/// How long the recording has to stop before the call counts as over.
-const ENDS_AFTER: Duration = Duration::from_secs(5);
+use std::time::Instant;
 
 /// The start of each Spotify's name on the session bus: its own client's,
 /// and spotify-player's.
 const SPOTIFY: &str = "org.mpris.MediaPlayer2.spotify";
-
-/// What a call's start or end asks of Spotify.
-#[derive(Debug, PartialEq, Eq)]
-enum Ask {
-    Pause,
-    Play,
-}
-
-/// Where a call stands, with when it last changed.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Call {
-    Off,
-    Starting(Instant),
-    On,
-    Ending(Instant),
-}
-
-impl Call {
-    /// Moves on from whether anything is recording now, saying what to ask
-    /// of Spotify when the call starts or ends.
-    fn step(&mut self, recording: bool, now: Instant) -> Option<Ask> {
-        let (next, ask) = match (*self, recording) {
-            (Call::Off, true) => (Call::Starting(now), None),
-            (Call::Starting(_) | Call::Off, false) => (Call::Off, None),
-            (Call::Starting(since), true) if now - since >= STARTS_AFTER => {
-                (Call::On, Some(Ask::Pause))
-            }
-            (Call::On, false) => (Call::Ending(now), None),
-            (Call::Ending(_) | Call::On, true) => (Call::On, None),
-            (Call::Ending(since), false) if now - since >= ENDS_AFTER => {
-                (Call::Off, Some(Ask::Play))
-            }
-            (waiting, _) => (waiting, None),
-        };
-        *self = next;
-        ask
-    }
-
-    /// How long until the call starts or ends if nothing changes, for the
-    /// wait between pw-dump's arrays.
-    fn due(&self, now: Instant) -> Option<Duration> {
-        match *self {
-            Call::Starting(since) => Some((since + STARTS_AFTER).saturating_duration_since(now)),
-            Call::Ending(since) => Some((since + ENDS_AFTER).saturating_duration_since(now)),
-            Call::Off | Call::On => None,
-        }
-    }
-}
 
 /// The Spotify names among the session bus's names, a line each with the
 /// name first, as `busctl --user list` prints them.
@@ -181,8 +130,8 @@ fn main() -> ExitCode {
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
         match call.step(recording.any(), Instant::now()) {
-            Some(Ask::Pause) => paused = pause(),
-            Some(Ask::Play) => play(&std::mem::take(&mut paused)),
+            Some(Change::Started) => paused = pause(),
+            Some(Change::Ended) => play(&std::mem::take(&mut paused)),
             None => {}
         }
     }
@@ -194,46 +143,6 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_call_pauses_after_two_seconds_and_plays_five_after_it_ends() {
-        let start = Instant::now();
-        let at = |secs: f64| start + Duration::from_secs_f64(secs);
-        let mut call = Call::Off;
-        assert_eq!(call.step(true, at(0.0)), None);
-        assert_eq!(call.due(at(0.5)), Some(Duration::from_secs_f64(1.5)));
-        assert_eq!(call.step(true, at(1.9)), None);
-        assert_eq!(call.step(true, at(2.0)), Some(Ask::Pause));
-        assert_eq!(call.step(true, at(60.0)), None, "it pauses once");
-        assert_eq!(call.step(false, at(61.0)), None);
-        assert_eq!(call.step(false, at(65.9)), None);
-        assert_eq!(call.step(false, at(66.0)), Some(Ask::Play));
-        assert_eq!(call, Call::Off);
-    }
-
-    #[test]
-    fn a_moment_of_recording_pauses_nothing() {
-        let start = Instant::now();
-        let mut call = Call::Off;
-        call.step(true, start);
-        call.step(false, start + Duration::from_secs(1));
-        assert_eq!(call.step(false, start + Duration::from_secs(9)), None);
-        assert_eq!(call, Call::Off);
-    }
-
-    #[test]
-    fn a_call_app_reconnecting_keeps_the_call() {
-        let start = Instant::now();
-        let at = |secs: u64| start + Duration::from_secs(secs);
-        let mut call = Call::Off;
-        call.step(true, at(0));
-        assert_eq!(call.step(true, at(2)), Some(Ask::Pause));
-        call.step(false, at(10));
-        assert_eq!(call.step(true, at(13)), None);
-        assert_eq!(call.step(false, at(20)), None);
-        assert_eq!(call.step(false, at(24)), None);
-        assert_eq!(call.step(false, at(25)), Some(Ask::Play));
-    }
 
     #[test]
     fn each_spotify_is_found_among_the_bus_names() {

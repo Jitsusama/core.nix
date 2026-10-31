@@ -60,6 +60,7 @@
   ];
   home-manager.sharedModules = [
     homeModules.backlight
+    homeModules.call-transcripts
     homeModules.camera
     homeModules.dictation
     homeModules.firmware-notice
