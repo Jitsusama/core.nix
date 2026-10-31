@@ -51,13 +51,14 @@ pub fn give_back(hours: Hours, tick: Tick, used: u64, gone: bool) -> Option<Even
     }
 }
 
-/// When the next builder may be asked for, after one ends with `event`.
-/// One given back idle while work still `wants` it is one that work
-/// couldn't use, so it waits as long as after a failure.
-pub fn next_after(event: Event, wants: bool, now: u64) -> u64 {
+/// When the next builder may be asked for, after one last used at `used`
+/// ends with `event`. One given back idle while work still `wants` it is
+/// one that work couldn't use, so it waits as long as after a failure;
+/// one given back in use, at the deadline, doesn't.
+pub fn next_after(event: Event, wants: bool, used: u64, now: u64) -> u64 {
     match event {
         Event::Lost | Event::Failed => now + AFTER_FAILING,
-        Event::Stopped if wants => now + AFTER_FAILING,
+        Event::Stopped if wants && now.saturating_sub(used) >= IDLE => now + AFTER_FAILING,
         _ => now,
     }
 }
@@ -108,14 +109,26 @@ mod tests {
     #[test]
     fn none_is_lent_while_waiting_out_a_failure() {
         assert_eq!(lend(HOURS, at(12 * 3600, true), 1_000_001, 0), None);
-        assert_eq!(next_after(Event::Failed, false, 5), 5 + AFTER_FAILING);
-        assert_eq!(next_after(Event::Lost, false, 5), 5 + AFTER_FAILING);
-        assert_eq!(next_after(Event::Stopped, false, 5), 5);
+        assert_eq!(next_after(Event::Failed, false, 5, 5), 5 + AFTER_FAILING);
+        assert_eq!(next_after(Event::Lost, false, 5, 5), 5 + AFTER_FAILING);
+        assert_eq!(next_after(Event::Stopped, false, 0, IDLE), IDLE);
     }
 
     #[test]
     fn one_given_back_unused_while_work_waits_is_not_asked_for_again_at_once() {
-        assert_eq!(next_after(Event::Stopped, true, 5), 5 + AFTER_FAILING);
+        let now = 100_000;
+        assert_eq!(
+            next_after(Event::Stopped, true, now - IDLE, now),
+            now + AFTER_FAILING
+        );
+    }
+
+    #[test]
+    fn one_given_back_in_use_at_the_deadline_leaves_the_next_day_free_to_ask() {
+        // Given back at 23:59 in use on 30 October, the next waited out
+        // half an hour of the day after as if no work could use it.
+        let now = 100_000;
+        assert_eq!(next_after(Event::Stopped, true, now - 60, now), now);
     }
 
     #[test]

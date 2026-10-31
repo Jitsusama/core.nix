@@ -680,7 +680,8 @@
     for big-parallel work alone, offering nothing a VM test needs, so small builds and VM
     tests stay, with its store named for a build sent there whole when the helper gives one,
     and it's named as being made until it stands or won't; it's given back once idle, at the
-    deadline or once gone, with a wait after a failure;
+    deadline or once gone, with a wait after a failure or one given back idle while work waits,
+    and none after one given back in use;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
     for the next start, which takes it back before the deadline, keeping its price and idle
     time, or gives it back, priced to then or its own idle delete; standing builders are
