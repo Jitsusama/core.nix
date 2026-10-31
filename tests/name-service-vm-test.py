@@ -120,8 +120,9 @@ def test_an_absent_name_leaves_the_others_resolving(started: dict[str, BaseMachi
     """A program that looked up an absent .local name still finds a present one, in time.
 
     resolved takes longer to give up on the absent name than glibc waits for nsncd, and glibc,
-    given no answer, stops asking nsncd and can't resolve .local names itself. nsncd answers
-    the absent one as not found first, so both lookups go through nsncd in one process.
+    given no answer, stops asking nsncd and asks resolved's stub itself, seconds later, or no
+    one that knows .local names where another resolver serves DNS. nsncd answers the absent
+    one as not found first, so both lookups go through nsncd in one process.
     """
     asker, answerer = started["asker"], started["answerer"]
     expected = address(answerer)

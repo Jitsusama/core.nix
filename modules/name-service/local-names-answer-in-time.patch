@@ -2,11 +2,13 @@ Answer a .local host lookup as not found once it has taken 4 s
 
 glibc's client waits 5 s for nscd's answer and, given none, stops asking
 nscd for any host for its next 100 lookups, falling back to the modules
-in its own process. On NixOS those can't resolve .local names, since
-systemd-resolved is reached only through nscd. systemd-resolved takes
-about 7 s to give up on a .local name nothing answers, so one lookup of
-an absent neighbour cut a long-lived process off from every .local name
-for its next hundred lookups, while fresh processes resolved them.
+in its own process. On NixOS those reach systemd-resolved only as a DNS
+server: when /etc/resolv.conf names resolved's stub they find a .local
+name seconds late, and when it names another resolver, as a VPN client's
+does, not at all. systemd-resolved takes about 7 s to give up on a .local
+name nothing answers, so one lookup of an absent neighbour cut a
+long-lived process off from every .local name for its next hundred
+lookups, or slowed each by seconds, while fresh processes resolved them.
 
 nsncd now answers a host lookup of a .local name as not found when it
 hasn't been answered within 4 s, and leaves the lookup to finish on a
@@ -23,8 +25,8 @@ index 600d131..620de66 100644
  
 +/// How long a host lookup of a .local name may take before it's answered as
 +/// not found. glibc's client waits 5 s for an answer and, given none, stops
-+/// asking nscd for any host for its next 100 lookups, falling back to modules
-+/// in its own process, which on NixOS can't resolve .local names at all. An
++/// asking nscd for any host for its next 100 lookups. Its own fallback finds
++/// .local names only through a DNS server that is resolved's, and slowly. An
 +/// absent .local name takes resolved about 7 s to give up on, so without an
 +/// answer in time one such lookup cuts the process off from every .local name.
 +const LOCAL_NAME_WITHIN: std::time::Duration = std::time::Duration::from_secs(4);

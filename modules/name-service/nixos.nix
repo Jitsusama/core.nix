@@ -11,11 +11,13 @@
 # it (getai-asks-each-family.patch).
 #
 # And it answers a .local name in time. glibc's client gives nscd 5 s, then
-# stops asking it for any host for its next 100 lookups, and the modules in
-# its own process can't resolve .local names. resolved takes about 7 s to
-# give up on an absent one, so one lookup of a neighbour that was off cut a
-# long-lived program off from every .local name. nsncd now answers a .local
-# name as not found after 4 s (local-names-answer-in-time.patch).
+# stops asking it for any host for its next 100 lookups. The modules in its
+# own process reach resolved only as a DNS server, slowly when
+# /etc/resolv.conf names resolved's stub and not at all when it names another
+# resolver, as a VPN client's does. resolved takes about 7 s to give up on an
+# absent name, so one lookup of a neighbour that was off cut a long-lived
+# program off from every .local name. nsncd now answers a .local name as not
+# found after 4 s (local-names-answer-in-time.patch).
 {
   nixpkgs.overlays = [
     (_: prev: {
