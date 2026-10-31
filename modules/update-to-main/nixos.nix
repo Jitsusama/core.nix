@@ -5,8 +5,15 @@
 #
 # The service starts from the running system's path with the config at a
 # fixed one, and a switch never restarts it: it's what's switching, and it
-# starts itself again once the switch is done.
-{ config, lib, ... }:
+# starts itself again once the switch is done. It never starts or switches
+# while a call is on, as calls counts one, since a switch restarts the
+# sound server under it.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.jitsusama.update-to-main;
 in
@@ -28,6 +35,13 @@ in
         pmset = null;
       };
     };
+
+    jitsusama.update-to-main.refuseWhile = lib.mkBefore [
+      {
+        command = [ (lib.getExe (pkgs.callPackage ../calls/package.nix { })) ];
+        why = "a call is on";
+      }
+    ];
 
     users.groups.update-ask.members = cfg.askers;
 
