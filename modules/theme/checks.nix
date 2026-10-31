@@ -21,28 +21,41 @@
       nerd "f075d" != nerd "f075" + "d" && builtins.stringLength (nerd "f075d") == 4
     );
 
-  # A theme that draws text too faint to read doesn't build. The ratio is
-  # WCAG's: black on white is 21:1, and #777777 on white just misses 4.5:1.
-  # Osaka Jade's own muted, at 2.90:1, is the faint text it was made to catch.
+  # A theme that draws text too faint to read doesn't build, by WCAG's ratio
+  # or by APCA's lightness contrast. WCAG's black on white is 21:1, and
+  # #777777 on white just misses 4.5:1; Osaka Jade's own muted, at 2.90:1, is
+  # the faint text it was made to catch. APCA's black on white is Lc 106.0
+  # and white on black 107.9, its own reference values; Osaka Jade's old
+  # text, parchment, passes 4.5:1 yet is Lc 67.6, too dim for body text.
   a-faint-theme-is-refused =
     let
       contrast = import ./contrast.nix { inherit lib; };
-      machine = bareNixos [
-        {
-          home-manager.users.someone = {
-            imports = [ ./home.nix ];
-            jitsusama.theme.colours.muted = "#53685B";
-          };
-        }
-      ];
-      refusals = map (check: check.message) (
-        lib.filter (check: !check.assertion) (account machine).assertions
-      );
+      apca = import ./apca.nix { inherit lib; };
+      refused =
+        colours:
+        map (check: check.message) (
+          lib.filter (check: !check.assertion)
+            (account (bareNixos [
+              {
+                home-manager.users.someone = {
+                  imports = [ ./home.nix ];
+                  jitsusama.theme = { inherit colours; };
+                };
+              }
+            ])).assertions
+        );
+      faint = refused { muted = "#53685B"; };
+      dim = refused { text = "#C1C497"; };
     in
     holds "a-faint-theme-is-refused" "A theme with text too faint to read wasn't refused." (
       contrast.show (contrast.ratio "#000000" "#ffffff") == "21.00"
       && contrast.show (contrast.ratio "#777777" "#ffffff") == "4.47"
-      && lib.any (lib.hasInfix "muted on background: 2.90:1") refusals
+      && lib.any (lib.hasInfix "muted on background: 2.90:1") faint
+      && apca.show (apca.lc "#000000" "#ffffff") == "106.0"
+      && apca.show (apca.lc "#ffffff" "#000000") == "107.9"
+      && apca.lc "#ffffff" "#000000" < 0
+      && lib.any (lib.hasInfix "text on background: Lc 67.6, under 75") dim
+      && refused { } == [ ]
     );
 
   # Claude Code's theme is drawn from the machine's, every colour a hex one

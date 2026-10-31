@@ -9,6 +9,7 @@
 let
   cfg = config.jitsusama.theme;
   contrast = import ./contrast.nix { inherit lib; };
+  apca = import ./apca.nix { inherit lib; };
 
   themes = {
     osaka-jade = ./osaka-jade.toml;
@@ -229,6 +230,47 @@ let
       [ "black" ];
 
   illegible = lib.filter (pair: contrast.ratio pair.fg.value pair.bg.value < 4.5) readable;
+
+  # The text roles on the grounds they're read on, held to APCA as well:
+  # WCAG's ratio passes a dark theme's dim text that APCA, weighing how
+  # light the background is, finds too dim for reading. Text and strong are
+  # body text, which APCA asks Lc 75 of; muted gives context in labels and
+  # hints, held to the 60 it asks of any text. The raised and selection
+  # surfaces stay with WCAG alone: they're drawn translucent over another,
+  # so the colour behind their text isn't the role's own.
+  dim =
+    let
+      grounds = [
+        "background"
+        "sunken"
+        "deepest"
+      ];
+      held = least: names: {
+        inherit least names;
+      };
+    in
+    lib.filter (pair: apca.lightness pair.fg pair.bg < pair.least) (
+      lib.concatMap
+        (
+          rule:
+          lib.concatMap (
+            ground:
+            map (name: {
+              inherit (rule) least;
+              name = "${name} on ${ground}";
+              fg = cfg.colours.${name};
+              bg = cfg.colours.${ground};
+            }) rule.names
+          ) grounds
+        )
+        [
+          (held 75 [
+            "text"
+            "strong"
+          ])
+          (held 60 [ "muted" ])
+        ]
+    );
 
   # A table the theme file may leave out, and a value in it, falling back to
   # this module's default.
@@ -910,6 +952,15 @@ in
           pair:
           "  ${pair.fg.name} on ${pair.bg.name}: ${contrast.show (contrast.ratio pair.fg.value pair.bg.value)}:1"
         ) illegible}
+      '';
+    }
+    {
+      assertion = dim == [ ];
+      message = ''
+        The theme draws text too dim to read by APCA. Text needs Lc 75, muted Lc 60:
+        ${lib.concatMapStringsSep "\n" (
+          pair: "  ${pair.name}: Lc ${apca.show (apca.lc pair.fg pair.bg)}, under ${toString pair.least}"
+        ) dim}
       '';
     }
   ];
