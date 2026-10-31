@@ -1512,7 +1512,10 @@
     it ran, builds nothing when main hasn't moved, refuses an unsigned, untrusted or rewritten main
     and a low battery, leaves the machine as it was when the build fails, goes back when the switch
     fails or the machine isn't whole after it, leaves a new kernel for the next boot, joins asks to
-    the update that runs, refuses any other ask, and serves on a socket only its group writes
+    the update that runs, refuses any other ask, and serves on a socket only its group writes; and a
+    hosted main, unsigned, is built from its flake's folder with root reading the account's
+    checkout, fetched there first when it lacks main, its private inputs fetched by their locks,
+    refused when rewritten, and builds nothing without a token
   '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
@@ -1826,7 +1829,10 @@
   vm-updates-itself-to-signed-main = ''
     an account in update-ask updates the machine to signed main with a real switch, and asked again
     with main where it was builds nothing; an account outside it can't ask, an unsigned main is
-    refused, and a main the health check refuses is switched to and then gone back from
+    refused, and a main the health check refuses is switched to and then gone back from; and a
+    machine following its host's word builds main unsigned, root reading the objects someone
+    fetched into their checkout and the token asked as someone with none of root's groups, and
+    with no token builds nothing
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in

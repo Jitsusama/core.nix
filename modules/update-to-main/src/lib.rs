@@ -5,13 +5,15 @@
 //! system and whose signatures count are all in the config the machine's
 //! module wrote to the store. So whoever may ask, Joel's agents through the
 //! node included, can make the machine run only what main already holds,
-//! signed and descended from what it ran. No sudoers rule is needed, and no
+//! signed, or named by its host where the host signs nothing, and descended
+//! from what it ran. No sudoers rule is needed, and no
 //! command takes a path to switch to.
 //!
 //! - `config`: what the module tells it.
 //! - `serve`: the socket, and asks joining the update that's running.
 //! - `update`: one update, from fetching main to its ending.
 //! - `git`: root's copy of main, its history and its signature.
+//! - `hosted`: main as its host names it, for a host that signs nothing.
 //! - `system`: building, switching, the health checks and going back.
 //! - `power`: whether the machine is on a battery too low to start.
 //! - `line`: what an asker hears.
@@ -21,6 +23,7 @@
 pub mod ask;
 pub mod config;
 pub mod git;
+pub mod hosted;
 pub mod line;
 pub mod power;
 pub mod run;

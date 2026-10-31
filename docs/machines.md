@@ -126,6 +126,30 @@ jitsusama.update-to-main = {
 };
 ```
 
+A repository whose host signs nothing is followed by what the host names
+instead. With `hosted` set, root asks the host for main over TLS with a
+token the account's `token` command prints, reads that commit's objects from
+the account's checkout, which git checks against it, and builds the flake in
+`directory`. The account fetches main into its checkout when the commit
+isn't there yet, and fetches each of `inputs`, the private ones, by its
+lock. The machine then trusts the host and takes no signers:
+
+```nix
+jitsusama.update-to-main = {
+  repository = "https://forge.example/someone/monorepo.git";
+  output = "nixosConfigurations.laptop.config.system.build.toplevel";
+  hosted = {
+    user = "someone";
+    checkout = "/home/someone/monorepo";
+    directory = "machines";
+    token = [ "/home/someone/bin/forge-token" ];
+    inputs = [ "private-modules" ];
+  };
+  askers = [ "someone" ];
+  health = [ ];
+};
+```
+
 ## Formatting and Linting
 
 A machine repository formats and lints its code as core does by giving

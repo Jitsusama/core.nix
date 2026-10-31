@@ -1,11 +1,12 @@
 //! One update, from an ask to its ending: refuse on a low battery, fetch
 //! main, check it descends from what the machine last switched to and is
-//! signed by a key that counts, build it, switch, check the machine is
-//! whole, and go back to the system it left if anything after the switch's
-//! start fails. Each step is told as it starts.
+//! signed by a key that counts, or is what its host names, build it,
+//! switch, check the machine is whole, and go back to the system it left if
+//! anything after the switch's start fails. Each step is told as it starts.
 
 use crate::config::{Config, Kind};
 use crate::git;
+use crate::hosted;
 use crate::line::{Applied, Line};
 use crate::power::{self, Power};
 use crate::run::Failure;
@@ -20,7 +21,11 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
         return Line::Refused { commit: last, why };
     }
     tell(&Line::Fetching);
-    let head = match git::keyring(config).and_then(|()| git::fetch(config)) {
+    let head = match &config.hosted {
+        Some(hosted) => hosted::head(config, hosted),
+        None => git::keyring(config).and_then(|()| git::fetch(config)),
+    };
+    let head = match head {
         Ok(head) => head,
         Err(failure) => return failed(last, failure),
     };
@@ -43,16 +48,24 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
             Err(failure) => return failed(Some(last.clone()), failure),
         }
     }
-    match git::signed(config, &head) {
-        Ok(Ok(())) => {}
-        Ok(Err(why)) => return Line::Refused { commit: last, why },
-        Err(failure) => return failed(last, failure),
+    // A hosted main is the host's word, asked over TLS; any other is only
+    // as good as its signature.
+    if config.hosted.is_none() {
+        match git::signed(config, &head) {
+            Ok(Ok(())) => {}
+            Ok(Err(why)) => return Line::Refused { commit: last, why },
+            Err(failure) => return failed(last, failure),
+        }
     }
 
     tell(&Line::Building {
         commit: head.clone(),
     });
-    let built = match system::build(config, &git::flake(config, &head)) {
+    let flake = match &config.hosted {
+        Some(hosted) => hosted::prepare(config, hosted, &head),
+        None => Ok(git::flake(config, &head)),
+    };
+    let built = match flake.and_then(|flake| system::build(config, &flake)) {
         Ok(built) => built,
         Err(failure) => return failed(last, failure),
     };

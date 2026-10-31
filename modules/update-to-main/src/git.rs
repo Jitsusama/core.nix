@@ -16,7 +16,8 @@ const MAIN: &str = "refs/heads/main";
 /// is trusted ultimately as it's imported.
 const GOOD: &str = "G";
 
-fn git(config: &Config) -> Command {
+/// Root's git, in root's copy, with nothing of anyone's configuration.
+pub fn git(config: &Config) -> Command {
     let mut command = run::command(&config.tools.git, &config.state);
     command
         .env("GNUPGHOME", config.keyring())
@@ -25,17 +26,33 @@ fn git(config: &Config) -> Command {
     command
 }
 
+/// Makes root's copy, empty, when there isn't one.
+pub fn make_copy(config: &Config) -> Result<(), Failure> {
+    let copy = config.repository_copy();
+    if copy.join("HEAD").exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(&copy).map_err(|e| Failure::new(format!("{}: {e}", copy.display())))?;
+    run::output(
+        git(config),
+        "making root's copy",
+        ["init", "--quiet", "--bare"],
+    )?;
+    Ok(())
+}
+
+/// Whether root's copy can read `commit`.
+pub fn has(config: &Config, commit: &str) -> bool {
+    git(config)
+        .args(["cat-file", "-e", &format!("{commit}^{{commit}}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Fetches main into root's copy, whole, and gives its head.
 pub fn fetch(config: &Config) -> Result<String, Failure> {
-    let copy = config.repository_copy();
-    if !copy.join("HEAD").exists() {
-        fs::create_dir_all(&copy).map_err(|e| Failure::new(format!("{}: {e}", copy.display())))?;
-        run::output(
-            git(config),
-            "making root's copy",
-            ["init", "--quiet", "--bare"],
-        )?;
-    }
+    make_copy(config)?;
     let refspec = format!("+refs/heads/{}:{MAIN}", config.branch);
     run::output(
         git(config),

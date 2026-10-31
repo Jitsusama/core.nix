@@ -38,6 +38,10 @@ pub struct Config {
     pub profile: PathBuf,
     /// The signatures a commit may carry to be built.
     pub signers: Signers,
+    /// When set, main's head is what the repository's host names, asked
+    /// over TLS, rather than what a signature vouches for: for a host whose
+    /// merges aren't signed.
+    pub hosted: Option<Hosted>,
     /// Commands that each have to succeed once the switch is done, within
     /// `health_within` seconds, or the machine goes back.
     pub health: Vec<Vec<String>>,
@@ -66,6 +70,31 @@ pub struct Signers {
     pub openpgp: Vec<PathBuf>,
 }
 
+/// How main is known on a host that doesn't sign it. Root asks the host
+/// itself, and builds from objects git checks against the commit the host
+/// named; only a token, objects and the flake's locked inputs come from
+/// `user`, and none of them can change what's built.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hosted {
+    /// The account whose logins reach the host and the flake's private
+    /// inputs, and whose checkout holds the repository's objects.
+    pub user: String,
+    /// That account's checkout of the repository, whose objects root reads
+    /// and none of whose configuration.
+    pub checkout: PathBuf,
+    /// The folder in the repository the flake is in, empty for its top.
+    pub directory: String,
+    /// A command run as `user` in `checkout` that prints a token the host
+    /// takes as a bearer.
+    pub token: Vec<String>,
+    /// The folders `user`'s commands find their programs in.
+    pub path: Vec<PathBuf>,
+    /// The flake's inputs only `user` can fetch, fetched as them by their
+    /// locks before a build.
+    pub inputs: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tools {
@@ -75,6 +104,8 @@ pub struct Tools {
     pub ssh_keygen: PathBuf,
     pub nix: PathBuf,
     pub nix_env: PathBuf,
+    /// What unpacks the folder a hosted main's flake is in.
+    pub tar: PathBuf,
     /// macOS's pmset, which says how a Mac is powered; none on Linux.
     pub pmset: Option<PathBuf>,
 }
@@ -99,6 +130,12 @@ impl Config {
     /// The link that keeps the system being built from being collected.
     pub fn building_link(&self) -> PathBuf {
         self.state.join("building")
+    }
+
+    /// The folder a hosted main's files are unpacked in, one commit at a
+    /// time.
+    pub fn source(&self) -> PathBuf {
+        self.state.join("source")
     }
 
     /// The keyring holding only the PGP keys that count.

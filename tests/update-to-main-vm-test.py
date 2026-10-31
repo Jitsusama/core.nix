@@ -5,6 +5,11 @@ The repository is bare, at /srv/machines.git, and a commit's flake gives one of 
 systems as main's: its first, or a specialisation that adds /etc/switched, or one that adds
 /etc/unhealthy, which the machine's health check refuses. Each test commits the main it needs
 and reads what the machine runs afterwards.
+
+hosted trusts its repository's word for main rather than a signature, so its commits are
+unsigned, their flake in the repository's machine folder. Its objects are read from someone's
+clone at /home/someone/machines, and its token comes from a stand-in that writes who ran it
+to that account's home.
 """
 
 from __future__ import annotations
@@ -48,14 +53,18 @@ class Machine:
     first: str
     switched: str
     unhealthy: str
+    folder: str = WORK
 
     def commit(self, target: str, *, signed: bool = True) -> str:
         """Commit a main whose system is target, signed by the trusted key or not."""
-        self.machine.succeed(f"cat > {WORK}/flake.nix <<'EOF'\n{FLAKE.format(target=target)}EOF")
+        self.machine.succeed(
+            f"mkdir -p {self.folder}"
+            f" && cat > {self.folder}/flake.nix <<'EOF'\n{FLAKE.format(target=target)}EOF"
+        )
         how = "-c gpg.format=ssh -c user.signingkey=/root/key" if signed else ""
         flag = "-S" if signed else ""
         self.machine.succeed(
-            f"cd {WORK} && git add flake.nix"
+            f"cd {WORK} && git add -A"
             f" && git {how} commit --quiet --allow-empty {flag} -m main"
             " && git push --quiet origin HEAD:main"
         )
@@ -76,9 +85,8 @@ class Machine:
         return self.machine.succeed("readlink -f /nix/var/nix/profiles/system").strip()
 
 
-@pytest.fixture(scope="module")
-def machine_(machine: BaseMachine, values: dict[str, str]) -> Machine:
-    """Give the machine up, with an empty repository and the key that signs its main."""
+def up(machine: BaseMachine, folder: str = WORK) -> Machine:
+    """Give a machine up, with an empty repository to commit its main to."""
     machine.wait_for_unit("update-to-main.service")
     machine.wait_for_file("/run/update-to-main/ask.sock")
     first = machine.succeed("readlink -f /run/current-system").strip()
@@ -87,14 +95,47 @@ def machine_(machine: BaseMachine, values: dict[str, str]) -> Machine:
         for name in ("switched", "unhealthy")
     }
     machine.succeed(
-        f"install -m 0600 {values['key']} /root/key",
         "git init --quiet --bare --initial-branch=main /srv/machines.git",
         f"git init --quiet --initial-branch=main {WORK}",
         f"git -C {WORK} remote add origin /srv/machines.git",
         "git config --global user.name Tester",
         "git config --global user.email tester@test",
     )
-    return Machine(machine, first, systems["switched"], systems["unhealthy"])
+    return Machine(machine, first, systems["switched"], systems["unhealthy"], folder)
+
+
+@pytest.fixture(scope="module")
+def machine_(machine: BaseMachine, values: dict[str, str]) -> Machine:
+    """Give the machine up, with an empty repository and the key that signs its main."""
+    machine_ = up(machine)
+    machine.succeed(f"install -m 0600 {values['key']} /root/key")
+    return machine_
+
+
+@pytest.fixture(scope="module")
+def hosted_(machines: dict[str, BaseMachine]) -> Machine:
+    """Give the hosted machine up, with someone's clone of its repository."""
+    hosted = up(machines["hosted"], f"{WORK}/machine")
+    hosted.machine.succeed(
+        f"git -C {WORK} commit --quiet --allow-empty -m start",
+        f"git -C {WORK} push --quiet origin HEAD:main",
+        # The repository is root's, which someone's git won't read unless told it may.
+        "runuser -l someone -c 'git config --global safe.directory \"*\"'",
+        "runuser -l someone -c 'git clone --quiet /srv/machines.git machines'",
+    )
+    return hosted
+
+
+@pytest.fixture
+def hosted_on_first(hosted_: Machine) -> Machine:
+    """Give the hosted machine on its first system, with a token to give."""
+    hosted_.machine.succeed("rm -f /etc/no-token")
+    if hosted_.running() != hosted_.first:
+        hosted_.commit(hosted_.first, signed=False)
+        status, _, said = hosted_.ask()
+        assert status == 0, said
+    assert hosted_.running() == hosted_.first
+    return hosted_
 
 
 @pytest.fixture
@@ -148,6 +189,42 @@ def test_an_unsigned_main_is_refused(on_first: Machine) -> None:
     assert lines[-1]["step"] == "refused"
     assert "isn't signed by a key this machine trusts" in lines[-1]["why"]
     assert on_first.running() == on_first.first
+
+
+def test_a_hosted_main_is_built_unsigned_from_the_accounts_checkout(
+    hosted_on_first: Machine,
+) -> None:
+    """A hosted main is built unsigned, its objects fetched as someone and read by root."""
+    hosted = hosted_on_first
+    head = hosted.commit(hosted.switched, signed=False)
+    status, lines, said = hosted.ask()
+    assert status == 0, said
+    assert lines[-1]["commit"] == head
+    hosted.machine.succeed("test -e /etc/switched")
+    assert hosted.running() == hosted.switched
+    # The token came from someone, with someone's groups and none of root's.
+    asker, *groups = hosted.machine.succeed("cat /home/someone/token-asker").split()
+    assert asker == "someone", groups
+    assert "root" not in groups, groups
+    # main was fetched into someone's checkout, as someone, and root reads it from there.
+    hosted.machine.succeed(f"runuser -l someone -c 'git -C machines cat-file -e {head}'")
+    borrowed = "/var/lib/update-to-main/repository.git/objects/info/alternates"
+    assert hosted.machine.succeed(f"cat {borrowed}").strip() == (
+        "/home/someone/machines/.git/objects"
+    )
+
+
+def test_a_hosted_main_with_no_token_builds_nothing(hosted_on_first: Machine) -> None:
+    """With no token to ask its host with, the hosted machine stays on what it ran."""
+    hosted = hosted_on_first
+    hosted.commit(hosted.switched, signed=False)
+    hosted.machine.succeed("touch /etc/no-token")
+    status, lines, said = hosted.ask()
+    hosted.machine.succeed("rm /etc/no-token")
+    assert status == FAILED, said
+    assert "asking for a token failed" in lines[-1]["why"]
+    assert lines[-1]["lines"] == ["no login"]
+    assert hosted.running() == hosted.first
 
 
 def test_a_machine_not_whole_goes_back(on_first: Machine) -> None:
