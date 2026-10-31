@@ -133,6 +133,15 @@ in
   jitsusama.people.sources.tuple = {
     order = 10;
     source = ./TupleSource.qml;
+    # Every contact, held by the people daemon rather than the shell, said
+    # as each changes (people.rs); Tuple's daemon listens on tuple-0 in
+    # the runtime folder.
+    daemon = [
+      (lib.getExe' following "tuple-people")
+      "people"
+      tuple
+      "tuple-0"
+    ];
   };
   jitsusama.quickshell = {
     overview.pieces.call = {
