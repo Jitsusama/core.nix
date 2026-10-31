@@ -175,17 +175,20 @@ signers. Root fetches that main, checks its signature and that it descends
 from the lock's commit and from what it last followed, and builds with the
 input overridden to it; an ask with main where it was builds again when a
 followed main moved. With `elsewhere = true`, the machine builds only the
-pieces nixpkgs marks light itself and sends every other to the Nix
-daemon's builders, failing rather than build one when none takes it.
+pieces nixpkgs marks light itself and sends every other to `builders`,
+the Nix daemon's when it names none, failing rather than build one when
+none takes it. A builder takes only pieces asking for what it must have,
+as one kept for big builds does, so with `here` set what the builders
+don't build is built here instead, a few cores at a time and only while
+the load is below `here.belowLoad`.
 
 Code that may go to some builders and not others is named in `kept`, by
 patterns over its pieces' names. Those pieces go only to `kept.builders`,
 and when it names none an update needing one fails. A piece built from a
 kept one, such as a wrapper, a unit or the system itself, would carry it
 to whichever builder took it, so it's built here, where the kept one now
-is, with no builders at all. With `kept.here` set, kept pieces their own
-builders don't build are built here instead, a few cores at a time and
-only while the load is below `kept.here.belowLoad`:
+is, with no builders at all, as kept pieces their own builders don't
+build are when `here` is set:
 
 ```nix
 jitsusama.update-to-main = {
@@ -194,10 +197,10 @@ jitsusama.update-to-main = {
     signers.openpgp = [ ./forge-merges.asc ];
   };
   elsewhere = true;
+  here.belowLoad = 30;
   kept = {
     names = [ "secret-tool" "secret-service*" ];
     builders = "@/run/kept-builders";
-    here.belowLoad = 30;
   };
 };
 ```

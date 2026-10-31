@@ -65,8 +65,10 @@ fn nix(config: &Config) -> std::process::Command {
 }
 
 /// Builds every piece of the system that nixpkgs doesn't mark light on the
-/// Nix daemon's builders, with no build here allowed, so it fails rather
-/// than compile here when none takes one. The light pieces, such as a
+/// machine's builders, with no build here allowed, so it fails rather than
+/// compile here when none takes one, unless `here` lets it build them here
+/// small. A builder may take only pieces that ask for what it has, as one
+/// for big builds does, so the rest is built here then too. The light pieces, such as a
 /// written file or a folder of links, are left for the build here, as
 /// sending each one away would cost more than making it. Kept pieces go
 /// first and only to their own builders. A piece built from one would
@@ -106,41 +108,54 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
         build_kept(config, &kept)?;
     }
     if !rest.is_empty() {
-        let mut away = nix(config);
-        away.args(["build", "--no-link", "--max-jobs", "0"]);
-        run::output(
-            away,
+        let builders = config.builders.as_deref();
+        if let Err(apart) = away(
+            config,
+            &rest,
+            builders,
             "building the system on the machine's builders",
-            rest.iter().map(|drv| format!("{drv}^*")),
-        )?;
+        ) {
+            // The builders stay, so a piece only they take still goes to them.
+            here(config, &rest, apart, builders, "building the rest here")?;
+        }
     }
     Ok(())
+}
+
+/// Builds pieces on builders, the daemon's when none are given, with no
+/// build here allowed.
+fn away(
+    config: &Config,
+    pieces: &[String],
+    builders: Option<&str>,
+    what: &str,
+) -> Result<(), Failure> {
+    let mut away = nix(config);
+    away.args(["build", "--no-link", "--max-jobs", "0"]);
+    if let Some(builders) = builders {
+        away.args(["--builders", builders]);
+    }
+    run::output(away, what, outputs(pieces)).map(|_| ())
+}
+
+/// Every output of each piece, as Nix builds them.
+fn outputs(pieces: &[String]) -> impl Iterator<Item = String> + '_ {
+    pieces.iter().map(|drv| format!("{drv}^*"))
 }
 
 /// Builds the kept pieces on their own builders, or, when those don't and
 /// the machine may, here, small and only while it's quiet.
 fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
-    let outputs = || kept.iter().map(|drv| format!("{drv}^*"));
     let apart = match &config.kept.builders {
-        Some(builders) => {
-            let mut apart = nix(config);
-            apart.args([
-                "build",
-                "--no-link",
-                "--max-jobs",
-                "0",
-                "--builders",
-                builders,
-            ]);
-            match run::output(
-                apart,
-                "building the kept pieces on their own builders",
-                outputs(),
-            ) {
-                Ok(_) => return Ok(()),
-                Err(failure) => failure,
-            }
-        }
+        Some(builders) => match away(
+            config,
+            kept,
+            Some(builders),
+            "building the kept pieces on their own builders",
+        ) {
+            Ok(()) => return Ok(()),
+            Err(failure) => failure,
+        },
         None => Failure {
             why: format!(
                 "{} pieces may go only to builders of their own, and none are named",
@@ -149,7 +164,26 @@ fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
             lines: kept.iter().take(run::TAIL).cloned().collect(),
         },
     };
-    let Some(here) = &config.kept.here else {
+    // With no builders at all, so a kept piece goes to none of the daemon's.
+    here(
+        config,
+        kept,
+        apart,
+        Some(""),
+        "building the kept pieces here",
+    )
+}
+
+/// Builds pieces their builders didn't here, small, when `here` lets the
+/// machine and only while it's quiet; otherwise gives why they weren't.
+fn here(
+    config: &Config,
+    pieces: &[String],
+    apart: Failure,
+    builders: Option<&str>,
+    what: &str,
+) -> Result<(), Failure> {
+    let Some(here) = &config.here else {
         return Err(apart);
     };
     let busy = match load() {
@@ -167,10 +201,13 @@ fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
         });
     }
     let mut local = nix(config);
-    local.args(["build", "--no-link", "--builders", ""]);
+    local.args(["build", "--no-link"]);
+    if let Some(builders) = builders {
+        local.args(["--builders", builders]);
+    }
     local.args(["--max-jobs", &here.max_jobs.to_string()]);
     local.args(["--cores", &here.cores.to_string()]);
-    run::output(local, "building the kept pieces here", outputs()).map(|_| ())
+    run::output(local, what, outputs(pieces)).map(|_| ())
 }
 
 /// The machine's load averaged over the last minute, when it can be read.

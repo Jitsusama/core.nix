@@ -1586,9 +1586,10 @@
     lacks main, its private inputs fetched by their locks, refused when rewritten, and builds
     nothing without a token; and a followed input is built at its own signed main past the lock,
     builds again when only it moved, and is refused unsigned or behind its lock; and building
-    elsewhere sends only the heavy pieces away, builds nothing here without a builder, sends a
-    kept piece only to its own builders, and none at all when it has none, unless it may be built
-    here, small, which waits under load, and builds what's built from one here with no builders
+    elsewhere sends only the heavy pieces away, to the builders named when some are, builds nothing
+    here without a builder, sends a kept piece only to its own builders, and none at all when it
+    has none, unless pieces may be built here, small, which keeps a piece's builders but a kept
+    one's none and waits under load, and builds what's built from a kept one here with no builders
   '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate

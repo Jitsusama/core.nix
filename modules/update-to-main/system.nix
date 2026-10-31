@@ -94,8 +94,56 @@ in
       description = ''
         Whether the machine builds only the light pieces of its system
         itself, those nixpkgs marks to build where they're asked for,
-        leaving every other to the Nix daemon's builders and failing
-        rather than building one here when none takes it.
+        leaving every other to `builders` and failing rather than building
+        one here when none takes it, unless `here` lets it.
+      '';
+    };
+    builders = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "@/run/builders-for-anything";
+      description = ''
+        The builders the pieces built elsewhere go to, as Nix's `builders`
+        setting takes them; none for the Nix daemon's own. A builder takes
+        only pieces that ask for what it must have, so one kept for big
+        builds leaves the rest to `here`.
+      '';
+    };
+    here = mkOption {
+      type = types.nullOr (
+        types.submodule {
+          options = {
+            maxJobs = mkOption {
+              type = types.ints.positive;
+              default = 1;
+              description = "How many pieces build here at once.";
+            };
+            cores = mkOption {
+              type = types.ints.positive;
+              default = 4;
+              description = "How many cores each may use.";
+            };
+            belowLoad = mkOption {
+              type = types.numbers.positive;
+              description = ''
+                The minute's load average they build under; at it or above,
+                or when it can't be read, the update fails and the machine
+                stays as it is.
+              '';
+            };
+          };
+        }
+      );
+      default = null;
+      example = {
+        belowLoad = 30;
+      };
+      description = ''
+        When set, pieces built elsewhere that their builders don't build,
+        because none takes them or none answers, are built here instead,
+        small and only while the machine is quiet, rather than the update
+        failing. Kept pieces built here go to no builder at all; the rest
+        still go to theirs when they can.
       '';
     };
     kept = {
@@ -119,41 +167,6 @@ in
           The builders the kept pieces go to, as Nix's `builders` setting
           takes them. None builds none of them, so an update needing a kept
           piece fails and the machine stays as it is.
-        '';
-      };
-      here = mkOption {
-        type = types.nullOr (
-          types.submodule {
-            options = {
-              maxJobs = mkOption {
-                type = types.ints.positive;
-                default = 1;
-                description = "How many kept pieces build here at once.";
-              };
-              cores = mkOption {
-                type = types.ints.positive;
-                default = 4;
-                description = "How many cores each may use.";
-              };
-              belowLoad = mkOption {
-                type = types.numbers.positive;
-                description = ''
-                  The minute's load average they build under; at it or above,
-                  or when it can't be read, the update fails and the machine
-                  stays as it is.
-                '';
-              };
-            };
-          }
-        );
-        default = null;
-        example = {
-          belowLoad = 30;
-        };
-        description = ''
-          When set, kept pieces their own builders don't build, because
-          none are named or none answers, are built here instead, small and
-          only while the machine is quiet, rather than the update failing.
         '';
       };
     };
@@ -307,6 +320,10 @@ in
         assertion = cfg.kept.names == [ ] || cfg.elsewhere;
         message = "jitsusama.update-to-main.kept needs elsewhere, or kept pieces build here.";
       }
+      {
+        assertion = (cfg.builders == null && cfg.here == null) || cfg.elsewhere;
+        message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
+      }
     ]
     ++ lib.mapAttrsToList (name: follow: {
       assertion = follow.signers.ssh != [ ] || follow.signers.openpgp != [ ];
@@ -342,19 +359,17 @@ in
               inherit (follow) repository branch;
               signers = signersFor follow.signers;
             }) cfg.follows;
-            inherit (cfg) hosted elsewhere;
-            kept = {
-              inherit (cfg.kept) names builders;
-              here =
-                if cfg.kept.here == null then
-                  null
-                else
-                  {
-                    max_jobs = cfg.kept.here.maxJobs;
-                    inherit (cfg.kept.here) cores;
-                    below_load = cfg.kept.here.belowLoad;
-                  };
-            };
+            inherit (cfg) hosted elsewhere builders;
+            kept = { inherit (cfg.kept) names builders; };
+            here =
+              if cfg.here == null then
+                null
+              else
+                {
+                  max_jobs = cfg.here.maxJobs;
+                  inherit (cfg.here) cores;
+                  below_load = cfg.here.belowLoad;
+                };
             refuse_while = cfg.refuseWhile;
             # The running system's path, so once it has switched the newest
             # update-to-main serves.
