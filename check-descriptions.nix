@@ -1886,11 +1886,11 @@
     others' routing rules, keeps the card awake on the charger
   '';
   waiting-on-you-is-true = ''
-    over the agents' own files, Waiting on You holds now only what Joel can do now, puts what he
-    can't yet or has put off under Later, keeps gone what he marked done, shows an item the
-    orchestrator's queue covers once, keeps nothing of an ended quest and drops nothing by its
-    age, and counts a session's want as his only while its quest has something ready or the
-    question is his
+    over the agents' own files, Needs You holds now only what Joel can do now, a timed one first
+    and then the quickest, puts what he can't yet or has put off under Later, saying what each
+    waits for, keeps gone what he or the to do daemon found done, says when nothing watches one,
+    keeps nothing of an ended quest and drops nothing by its age, and counts a session's want as
+    his only while its quest has something ready or the question is his
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

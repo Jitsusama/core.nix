@@ -54,13 +54,13 @@ LAG_LASTS = 3600
 
 
 def now_down_to(desktop: Desktop, name: str) -> None:
-    """Open Now with Super+O, and move down to this row from Waiting on You.
+    """Open Now with Super+O, and move down to this row from Needs You.
 
-    Now opens on its first row, Waiting on You, as every place opens on
+    Now opens on its first row, Needs You, as every place opens on
     its first, so the same keys land in the same place each time.
     """
     desktop.machine.send_key("meta_l-o")
-    desktop.whats_on("Waiting on You")
+    desktop.whats_on("Needs You")
     desktop.down_to(name)
 
 
@@ -663,7 +663,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     with desktop.told("drawn margin"):
         desktop.as_account("systemctl --user start caffeinate.service")
     desktop.reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
-    # Super+O opens What's on, on Waiting on You, since a mode left on is
+    # Super+O opens What's on, on Needs You, since a mode left on is
     # never what it opens on; on its row, the mark its keys are on wears
     # the accent, nothing grown; closed, it's as it was.
     glyph = changed_at_the_top(empty, desktop.settled_screen("margin-awake"))
@@ -754,10 +754,10 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
     desktop.photograph("margin-waiting")
-    # Now opens on Waiting on You, its first row, however much the notices
+    # Now opens on Needs You, its first row, however much the notices
     # want Joel; they're reached by moving down to them.
     machine.send_key("meta_l-o")
-    desktop.whats_on("Waiting on You")
+    desktop.whats_on("Needs You")
     desktop.down_to("Notices")
     # The time and the date are among Now's own rows, at its top before
     # what comes and goes, the notices among them, each its own answer as

@@ -3105,15 +3105,35 @@
     {
       "id": "on:waiting",
       "in": "on",
-      "name": "Waiting on You",
+      "name": "Needs You",
       "verb": "go",
       "glyph": "waitsOnJoel",
-      "empty": "Nothing waits on you.",
+      "empty": "Nothing needs you.",
       "said": {
-        "first": "{title}, {minutes} min",
+        "first": "{title} \u00b7 {minutes} min",
         "minutes": "{minutes} min",
         "later": "{count} later",
-        "none": "nothing waits"
+        "none": "nothing to do",
+        "at": "at {time}",
+        "by": "by {time}",
+        "on": "on {machine}",
+        "nobody": "nobody's watching this",
+        "boot": "after the next boot",
+        "switch": "after the next switch",
+        "signin": "once signed in to {value}",
+        "device": "once the {value} is seen",
+        "file": "once its file is written",
+        "check": "once its check passes"
+      }
+    },
+    {
+      "id": "on:waiting:later",
+      "in": "on",
+      "name": "Later",
+      "verb": "more",
+      "glyph": "queued",
+      "said": {
+        "note": "what can't be done yet"
       }
     },
     {
@@ -3122,13 +3142,6 @@
       "name": "Go To",
       "verb": "go",
       "glyph": "windows"
-    },
-    {
-      "id": "verb:on:waiting:copy",
-      "in": "on",
-      "name": "Copy What It Said",
-      "verb": "copy",
-      "glyph": "copy"
     },
     {
       "id": "verb:on:waiting:done",
@@ -3143,31 +3156,6 @@
       "name": "Not Now",
       "verb": "later",
       "glyph": "queued"
-    },
-    {
-      "id": "on:waiting:why",
-      "in": "on",
-      "name": "Why"
-    },
-    {
-      "id": "on:waiting:when",
-      "in": "on",
-      "name": "When"
-    },
-    {
-      "id": "on:waiting:quest",
-      "in": "on",
-      "name": "Quest"
-    },
-    {
-      "id": "on:waiting:since",
-      "in": "on",
-      "name": "Since"
-    },
-    {
-      "id": "on:waiting:detail",
-      "in": "on",
-      "name": "Detail"
     },
     {
       "id": "verb:on:layer:release",

@@ -258,12 +258,50 @@ Provider {
         return words;
     }
 
-    // How long since an item was last said, for one gone stale: in hours,
-    // and in days past one.
-    function since(at) {
+    // A time an item names, as the clock says it: today's by its hour, and
+    // another day's with its day.
+    function clocked(at) {
         const when = new Date(at);
         const today = new Date().toDateString() === when.toDateString();
         return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
+    }
+
+    // What one not ready yet waits for, in words (Waiting.waitsFor), or its
+    // owner's own words in a file older than that.
+    function waitsSaid(each) {
+        const waits = WaitingOnYou.waitsFor(each);
+        if (waits === null)
+            return "";
+        if (typeof waits.words === "string")
+            return waits.words;
+        return waitingSaid(waits.check ? "check" : waits.signal, { value: waits.value ?? "" });
+    }
+
+    // Where and by when it's done, each where its owner said, and that
+    // nobody's watching it when only Joel can say it's done and the session
+    // that raised it has gone (VKCF3Z, 2026-10-30). An item that says none
+    // of it says why it waits, as one from a file older than that does.
+    function noteOf(each) {
+        const time = at => Number.isNaN(Date.parse(at ?? "")) ? "" : clocked(at);
+        const parts = [
+            time(each.at) === "" ? "" : waitingSaid("at", { time: time(each.at) }),
+            time(each.deadline) === "" ? "" : waitingSaid("by", { time: time(each.deadline) }),
+            typeof each.where?.machine === "string" && each.where.machine !== ""
+                ? waitingSaid("on", { machine: each.where.machine }) : "",
+            WaitingOnYou.watched(each) ? "" : waitingSaid("nobody", {})
+        ].filter(part => part !== "");
+        if (parts.length === 0 && each.v !== 2 && typeof each.why === "string")
+            return each.why;
+        return parts.join(" \u00b7 ");
+    }
+
+    // Its drawer: its steps, numbered, then why only Joel can do it.
+    function drawerOf(each) {
+        const steps = (Array.isArray(each.steps) ? each.steps : [])
+            .filter(step => typeof step === "string" && step !== "")
+            .map((step, at) => `${at + 1}. ${step}`);
+        const why = typeof each.why === "string" ? each.why : "";
+        return { title: each.title, body: steps.concat(why === "" ? [] : ["", why]).join("\n") };
     }
 
     // Where an item is done, by name: the session its window is, else the
@@ -288,38 +326,14 @@ Provider {
         }, fields));
     }
 
-    // What there is to know of an item, each a part named first, saying its
-    // value and copying it: why it waits, when, whose quest, since when it's
-    // been said, and the detail its owner gave.
-    function facts(each) {
-        const fact = (id, value) => typeof value !== "string" || value === "" ? null
-            : copyRow({
-                key: `fact:on:waiting:${id}:${WaitingOnYou.identity(each)}`,
-                name: Words.name(`on:waiting:${id}`),
-                side: value,
-                copy: value,
-                glyph: Theme.glyph.waitsOnJoel
-            });
-        return [
-            fact("why", each.why),
-            fact("when", each.when),
-            fact("quest", WaitingOnYou.questOf(each)),
-            fact("since", Number.isNaN(each.since) ? "" : since(each.since)),
-            fact("detail", each.detail)
-        ].filter(row => row !== null);
-    }
-
-    // One thing waiting on Joel, as the agents keep them (WaitingOnYou.qml):
-    // its title, how long it takes, and why it waits. One he can do now is
-    // strong and says its minutes; one for later is muted and says when, in
-    // its owner's words. Return steps in, as the right arrow does, since it
-    // holds more than one act and which acts depends on whether its window
-    // is open (the launcher's shape, RSCH-20261028-2NK1E5: Return does a
-    // thing's one harmless act, and otherwise steps in with it first):
-    // going to its window, then Done and Not Now, which stay open as the
-    // item leaves its place, then copying it, never first (Joel, 2026-10-28:
-    // "having the separate copy option at the top is very confusing"), then
-    // what there is to know of it.
+    // One thing only Joel can do, as its owner wrote it (WaitingOnYou.qml,
+    // VKCF3Z, 2026-10-30): its title, the act; at its side how long it
+    // takes, or, for one not ready yet, what it waits for; in its note where
+    // and by when; and in its drawer its steps and why only he can. One he
+    // can do now is strong, one for later muted. Return goes where it's
+    // done, its window or its session's, and with nowhere to go steps in, as
+    // the right arrow does: Go To, then Done and Not Now, which stay open as
+    // the item leaves its place, then its quest.
     function item(each) {
         const now = each.ready && !each.putOff;
         const where = whereOf(each);
@@ -330,38 +344,51 @@ Provider {
             later: true,
             run: () => WaitingOnYou.go(each)
         });
+        const quest = () => (source("quests")?.everything() ?? [])
+            .find(row => row.key === `quest:${each.quest}`) ?? null;
         const inside = () => [does,
             act(each, "done", { stays: true, run: () => WaitingOnYou.settle(each, "done") }),
             act(each, "notNow", { stays: true, run: () => WaitingOnYou.settle(each, "notNow") }),
-            // The clipboard takes text only while the launcher holds the
-            // keys, so a copy is made before it closes.
-            act(each, "copy", {
-                now: true,
-                run: () => {
-                    Quickshell.clipboardText = WaitingOnYou.titled(each);
-                }
-            })
-        ].filter(row => row !== null).concat(provider.facts(each));
+            quest()
+        ].filter(row => row !== null);
         const row = member({
             thing: true,
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
-            verb: "more",
-            stays: true,
+            verb: does === null ? "more" : "go",
+            stays: does === null,
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,
             hue: now ? "strong" : "muted",
-            side: !now && typeof each.when === "string" ? each.when
+            side: !now && waitsSaid(each) !== "" ? waitsSaid(each)
                 : typeof each.minutes === "number"
                 ? waitingSaid("minutes", { minutes: each.minutes }) : "",
-            note: typeof each.why === "string" ? each.why : "",
+            note: noteOf(each),
+            drawer: () => provider.drawerOf(each),
             // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
             verbs: inside,
             targets: inside,
-            run: () => provider.launcher?.enter(row)
+            run: () => does === null ? provider.launcher?.enter(row) : WaitingOnYou.go(each)
         });
         return row;
     }
+
+    // What can't be done yet, one row at the end of the list, so the list
+    // holds only what Joel can do now; each inside says what it waits for.
+    readonly property var laterRow: WaitingOnYou.later.length === 0 ? null : member({
+        key: "on:waiting:later",
+        verb: "more",
+        stays: true,
+        name: Words.name("on:waiting:later"),
+        glyph: Words.glyph("on:waiting:later"),
+        hue: "muted",
+        side: String(WaitingOnYou.later.length),
+        note: (Words.of("on:waiting:later").said ?? {}).note ?? "",
+        nested: true,
+        verbs: () => WaitingOnYou.later.map(each => provider.item(each)),
+        targets: () => WaitingOnYou.later.map(each => provider.item(each)),
+        run: () => provider.launcher?.enter(provider.laterRow)
+    })
 
     // Everything waiting on Joel's hands, one row however many: the pi
     // sessions that want him, each the row it is in Agents (Agents.qml's
@@ -389,7 +416,8 @@ Provider {
     function waitingRows() {
         const agents = source("agents");
         return (agents ? sessions.map(session => agents.made(session)) : [])
-            .concat(WaitingOnYou.items.map(each => provider.item(each)));
+            .concat(WaitingOnYou.now.map(each => provider.item(each)),
+                laterRow === null ? [] : [laterRow]);
     }
     readonly property var waiting: member({
         // Not `on:waiting`, which is the missed notices' row, by its mark

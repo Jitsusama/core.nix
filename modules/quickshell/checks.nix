@@ -977,7 +977,7 @@ onLinux {
         function settle(each, how) {}
         function go(each) {}
       '';
-      # Where an item is done names its session, and Waiting on You lists
+      # Where an item is done names its session, and Needs You lists
       # the sessions wanting Joel, none of which it needs here.
       sessions = singleton "Sessions.qml" ''
         property var running: []
@@ -2336,8 +2336,8 @@ onLinux {
       touch $out
     '';
 
-  # Waiting on You holds only what truly waits on Joel, now or later, each
-  # once, and a session's want is his only while it's true, as
+  # Needs You holds only what Joel can do, now or later, in the order he
+  # does them, and a session's want is his only while it's true, as
   # tests/waiting-on-you.qml holds Waiting.js to the agents' own files.
   waiting-on-you-is-true =
     let
