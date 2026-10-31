@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::mel::RATE;
-use crate::{genai, whisper, words};
+use crate::{cache, genai, whisper, words};
 
 /// Whisper, loaded where it runs best.
 pub enum Speech {
@@ -19,12 +19,37 @@ pub enum Speech {
 }
 
 impl Speech {
-    /// Whisper from the export in `dir`, with `words` read before each take.
+    /// Whisper from the export in `dir`, with `words` read before each take,
+    /// its compiled models kept in a folder of `cache` for these models and
+    /// words, and every other folder there removed once it loads.
     ///
     /// # Errors
     ///
     /// When neither way loads it.
     pub fn load(
+        dir: &Path,
+        device: &str,
+        cache: Option<&Path>,
+        words: &str,
+    ) -> Result<Self, String> {
+        // This build's own path changes with OpenVINO, GenAI or dictation,
+        // any of which makes what's compiled differ.
+        let build = std::env::current_exe().unwrap_or_default();
+        let parts = [
+            dir.as_os_str().as_encoded_bytes(),
+            device.as_bytes(),
+            words.as_bytes(),
+            build.as_os_str().as_encoded_bytes(),
+        ];
+        let kept = cache.map(|cache| cache::folder(cache, &parts));
+        let speech = Self::load_in(dir, device, kept.as_deref(), words)?;
+        if let (Some(cache), Some(kept)) = (cache, &kept) {
+            cache::forget_others(cache, kept);
+        }
+        Ok(speech)
+    }
+
+    fn load_in(
         dir: &Path,
         device: &str,
         cache: Option<&Path>,

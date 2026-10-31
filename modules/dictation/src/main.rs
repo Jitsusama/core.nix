@@ -25,6 +25,7 @@
 //! CPU), `DICTATION_CACHE` where OpenVINO keeps what it compiles, and
 //! `DICTATION_WORDS` a file of words Whisper should know, one a line.
 
+mod cache;
 mod genai;
 mod mel;
 mod openvino;
