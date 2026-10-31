@@ -174,7 +174,7 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | see | looking at a meeting's details in the launcher: when, its call, who's going | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
-| Slack message | a message in Slack, found by searching Slack and opened in its conversation | unread | the Slack daemon's `slack-message` |
+| Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
 
 ## Desktop
 
