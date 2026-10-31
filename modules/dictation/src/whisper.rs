@@ -9,11 +9,16 @@
 //!
 //! Given words, the decoder reads them first as what came before
 //! (words.rs), so it writes them as they're spelled there.
+//!
+//! A decoder just compiled runs its first steps slowly, as the CPU builds
+//! its kernels for each shape it meets and the weights' pages come in, so
+//! its first take took 2.9 s against 0.5 s for the next. Warming it, on
+//! silence, pays that while what's said is still being heard.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::mel::{FRAMES, MELS, Spectrogram};
+use crate::mel::{FRAMES, MELS, RATE, Spectrogram};
 use crate::openvino::{Compiled, Core, Input, Request, Result};
 use crate::vocab::Vocab;
 use crate::words::{self, Encoder};
@@ -128,37 +133,9 @@ impl Whisper {
         let start = Instant::now();
         let features = self.spectrogram.features(audio);
         let after_features = Instant::now();
-        let (shape, hidden) = self.encoder.run(
-            &[Input::F32(
-                "input_features",
-                &[1, i64_of(MELS), i64_of(FRAMES)],
-                &features,
-            )],
-            "last_hidden_state",
-            None,
-        )?;
+        let (shape, hidden) = self.encode(&features)?;
         let after_encoder = Instant::now();
-
-        let mut decoder = self.decoder.request()?;
-        let mut tokens = Vec::new();
-        let mut ids = self.start.clone();
-        for _ in 0..MOST.min(CONTEXT - self.start.len()) {
-            let (_, logits) = decoder.run(
-                &[
-                    Input::I64("input_ids", &[1, i64_of(ids.len())], &ids),
-                    Input::F32("encoder_hidden_states", &shape, &hidden),
-                    Input::I32("beam_idx", &[1], &[0]),
-                ],
-                "logits",
-                Some(VOCAB),
-            )?;
-            let next = most_likely(&logits);
-            if next == END {
-                break;
-            }
-            tokens.push(next);
-            ids = vec![i64_of(next)];
-        }
+        let tokens = self.decode(&shape, &hidden, MOST.min(CONTEXT - self.start.len()), true)?;
         let after_decoder = Instant::now();
         Ok((
             self.vocab.text(&tokens, END),
@@ -169,6 +146,58 @@ impl Whisper {
                 tokens: tokens.len(),
             },
         ))
+    }
+
+    /// Runs both models once on a second of silence, as a take does, and
+    /// the decoder for its first two steps, the prompt's and the first
+    /// token's, so the next take finds them ready.
+    ///
+    /// # Errors
+    ///
+    /// When a run of either model fails.
+    pub fn warm(&mut self) -> Result<()> {
+        let features = self.spectrogram.features(&vec![0.0; RATE]);
+        let (shape, hidden) = self.encode(&features)?;
+        self.decode(&shape, &hidden, 2, false).map(|_| ())
+    }
+
+    /// The encoder's hidden states, and their shape, for `features`.
+    fn encode(&mut self, features: &[f32]) -> Result<(Vec<i64>, Vec<f32>)> {
+        self.encoder.run(
+            &[Input::F32(
+                "input_features",
+                &[1, i64_of(MELS), i64_of(FRAMES)],
+                features,
+            )],
+            "last_hidden_state",
+            None,
+        )
+    }
+
+    /// Up to `most` tokens, greedily, from a fresh request, stopping at the
+    /// end when `ends`.
+    fn decode(&self, shape: &[i64], hidden: &[f32], most: usize, ends: bool) -> Result<Vec<usize>> {
+        let mut decoder = self.decoder.request()?;
+        let mut tokens = Vec::new();
+        let mut ids = self.start.clone();
+        for _ in 0..most {
+            let (_, logits) = decoder.run(
+                &[
+                    Input::I64("input_ids", &[1, i64_of(ids.len())], &ids),
+                    Input::F32("encoder_hidden_states", shape, hidden),
+                    Input::I32("beam_idx", &[1], &[0]),
+                ],
+                "logits",
+                Some(VOCAB),
+            )?;
+            let next = most_likely(&logits);
+            if ends && next == END {
+                break;
+            }
+            tokens.push(next);
+            ids = vec![i64_of(next)];
+        }
+        Ok(tokens)
     }
 }
 

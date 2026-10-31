@@ -520,9 +520,10 @@ fn stop(recording: Option<Recording>, jobs: &Sender<Job>) -> Result<State, Nothi
     Ok(State::Transcribing)
 }
 
-/// The thread that holds Whisper: it loads the models when listening
-/// starts, transcribes what it's given, and lets the models go once
-/// they've gone unused for ten minutes.
+/// The thread that holds Whisper: it loads and warms the models when
+/// listening starts, so both are done while what's said is heard,
+/// transcribes what it's given, and lets the models go once they've gone
+/// unused for ten minutes.
 fn worker(
     model: PathBuf,
     device: String,
@@ -535,7 +536,14 @@ fn worker(
         let mut whisper: Option<Whisper> = None;
         let load = |whisper: &mut Option<Whisper>| -> Result<(), String> {
             if whisper.is_none() {
-                *whisper = Some(Whisper::load(&model, &device, cache.as_deref(), &words)?);
+                let started = Instant::now();
+                let mut loaded = Whisper::load(&model, &device, cache.as_deref(), &words)?;
+                loaded.warm()?;
+                eprintln!(
+                    "dictation: loaded and warmed in {} ms",
+                    started.elapsed().as_millis()
+                );
+                *whisper = Some(loaded);
             }
             Ok(())
         };
