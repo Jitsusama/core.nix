@@ -620,7 +620,7 @@
     steer folders under the harness's per-realm roots and its own link key, apart from the home
     realm's agents key; its pis are told which realm is home
   '';
-  mycelium-limits-what-a-link-key-runs = ''
+  mycelium-lets-a-link-key-only-link = ''
     each link key a machine's system names, on NixOS or nix-darwin, is authorized only to run
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
