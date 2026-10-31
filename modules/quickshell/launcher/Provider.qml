@@ -115,14 +115,6 @@ Scope {
         return null;
     }
 
-    // The one row a source ends every search at the top with, after
-    // everything found, as Search Slack for what's typed is (VKCF3Z,
-    // d7c0f933), or null. Asked each time the list is put together, so it
-    // reads only what the source already holds.
-    function last(typed) {
-        return null;
-    }
-
     property var questions: []
 
     // What's typed, read as answers read it.

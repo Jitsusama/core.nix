@@ -252,10 +252,7 @@ Scope {
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
         const placedAll = Date.now();
-        // What ends a search at the top comes after it all, never counted as
-        // found, so an answer given only when nothing is still shows.
-        const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
-        matches = (steadying ? steadied(rows.concat(below)) : rows.concat(below)).concat(ending);
+        matches = steadying ? steadied(rows.concat(below)) : rows.concat(below);
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -270,19 +267,6 @@ Scope {
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
             showing: Date.now() - placedAll };
-    }
-
-    // The rows sources end a search with (Provider.qml's last), each
-    // knowing who gave it and for what, so it's asked for again when that
-    // source changes.
-    function endings(letters) {
-        const ending = [];
-        for (const source of sources) {
-            const row = source.last(letters);
-            if (row)
-                ending.push(Object.assign({}, row, { endedBy: source, endedFor: letters }));
-        }
-        return ending;
     }
 
     // What the last composing spent its time on: the answers asked, the rows
@@ -2367,8 +2351,8 @@ Scope {
             // home was first drawn from none, and a session can start while
             // home is shown.
             const home = typed.trim() === "" && collections.includes(source);
-            if (home || typed.trim() !== "" && matches.some(row => row.endedBy === source
-                || source.things.some(own => own.key === row.key))) {
+            if (home || typed.trim() !== ""
+                && matches.some(row => source.things.some(own => own.key === row.key))) {
                 reshow(0);
                 Report.say(`refreshed ${source.settings.name}`);
             }
@@ -2387,13 +2371,8 @@ Scope {
         // step stepped into from the top.
         const fromTop = from < 0 && held.length > 0 && !held[0].row.from && !held[0].row.category;
         const found = row => row.key === held[0].row.key;
-        // One a search ended with is asked of its source again, for what
-        // was typed then, and kept knowing who gave it.
-        const endedFor = held.length > 0 ? held[0].row.endedFor : "";
-        const ended = fromTop && held[0].row.endedBy === source ? source.last(endedFor) : null;
-        const own = !fromTop ? [] : ended
-            ? [Object.assign({}, ended, { endedBy: source, endedFor: endedFor })]
-            : source.things.some(found) ? source.things : source.looksThrough();
+        const own = !fromTop ? [] : source.things.some(found) ? source.things
+            : source.looksThrough();
         const top = fromTop && own.some(found);
         if (from < 0 && !top && !held.some(ofSource))
             return;
