@@ -31,6 +31,9 @@ IPV4, IPV6 = 2, 10
 
 RESOLVE = "/run/systemd/resolve/io.systemd.Resolve"
 
+# How long glibc's client waits for nsncd's answer before it stops asking nsncd.
+GLIBC_WAITS = timedelta(seconds=5)
+
 # How much longer than resolved's own IPv4 answer a lookup through the name service may take,
 # for a neighbour with no IPv6 address.
 SLOWER_BY_AT_MOST = timedelta(milliseconds=500)
@@ -111,6 +114,22 @@ def test_a_neighbour_without_ipv6_answers_as_soon_as_resolved_does(
     assert through - direct < SLOWER_BY_AT_MOST, (
         f"getent {lookup} took {through}, against resolved's {direct}"
     )
+
+
+def test_an_absent_name_leaves_the_others_resolving(started: dict[str, BaseMachine]) -> None:
+    """A program that looked up an absent .local name still finds a present one, in time.
+
+    resolved takes longer to give up on the absent name than glibc waits for nsncd, and glibc,
+    given no answer, stops asking nsncd and asks resolved's stub itself, seconds later, or no
+    one that knows .local names where another resolver serves DNS. nsncd answers the absent
+    one as not found first, so both lookups go through nsncd in one process.
+    """
+    asker, answerer = started["asker"], started["answerer"]
+    expected = address(answerer)
+    # getent fails for the absent name, and the output is wanted all the same.
+    took, found = timed(asker, "{ getent ahostsv4 nobody-here.local answerer.local || :; }")
+    assert expected in found.split(), f"after an absent name, getent gave {found!r}"
+    assert took < GLIBC_WAITS + SLOWER_BY_AT_MOST, f"both lookups took {took}"
 
 
 def test_resolved_answers_from_ipv6_alone(held_back: dict[str, BaseMachine]) -> None:
