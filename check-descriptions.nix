@@ -807,6 +807,9 @@
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
   '';
+  onepassword-starts-with-the-session = ''
+    the session starts the system's 1Password without its window, through a switch it still takes
+  '';
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
   '';
