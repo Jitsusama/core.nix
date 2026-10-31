@@ -863,6 +863,34 @@ def test_agents_reopens_a_session_another_machine_carried_here(desktop: Desktop)
     desktop.as_account(f"rm -rf {opened} ~/ferry")
 
 
+def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -> None:
+    """The shell takes the sessions the harness hands it, answering at once, and reopens each."""
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    handed = "$XDG_RUNTIME_DIR/handed.json"
+    desktop.as_account(f"rm -f {opened} && mkdir -p ~/quay")
+
+    def handing(sessions: dict[str, Any]) -> str:
+        """Hand the shell these, as the harness does, and give its answer."""
+        kept(desktop, handed, sessions)
+        return desktop.as_account(f'qs ipc call sessions reopen "$(cat {handed})"').strip()
+
+    # What isn't a list of sessions, or names none whole, is refused.
+    answer = handing({"id": "01b2-quay"})
+    assert answer == "refused: not a list of sessions", answer
+    answer = handing({"sessions": [{"id": "", "cwd": "/home/jitsusama/quay"}]})
+    assert answer == "refused: no session with an id and a folder", answer
+    # One whole, as `quest restore` hands it over, is taken at once.
+    answer = handing({"sessions": [{"id": "01b2-quay", "cwd": "/home/jitsusama/quay"}]})
+    assert answer == "taken", answer
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/quay " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01b2-quay"], said
+    desktop.as_account(f"rm -rf {opened} {handed} ~/quay")
+
+
 def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
     """Give each stand-in session's workspace and column, by its session, as niri lists them."""
     spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
