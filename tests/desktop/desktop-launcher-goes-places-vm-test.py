@@ -2953,10 +2953,13 @@ def test_a_crowd_known_anew_costs_the_heap_little_and_anyone_in_it_is_found(
         # (desktop/people-crowd.qml).
         for round_ in ("1", "2", "3"):
             say(f"{CROWD} {round_}")
+            time.sleep(2)
+            print(f"HEAPAT round {round_}: {desktop.as_account(heap)}")
         desktop.answer("crowd member 4321")
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("is") == "person:crowd4321@example.com"
         )
+        print(f"HEAPAT found: {desktop.as_account(heap)}")
         desktop.step_in("ret")
         after = int(desktop.as_account(heap))
         print(f"the JS heap rose {after - before} kB, {before} to {after}")
