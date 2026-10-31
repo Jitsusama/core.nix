@@ -88,8 +88,11 @@ fn version() -> u32 {
     VERSION
 }
 
-/// Writes `value` to `path` whole: to a file beside it, flushed to disk,
-/// then renamed over it, and the directory flushed so the rename lasts.
+/// Writes `value` to `path` whole: to a file in a `.writing` folder beside
+/// it, flushed to disk, then renamed over it, and the directory flushed so
+/// the rename lasts. The shell watches the folders its status files are in,
+/// and a file made, written and renamed there woke it three times a write;
+/// made in a folder of its own, only the rename is heard (2026-10-31).
 pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(io::Error::new(
@@ -100,10 +103,11 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     // Named for the process, since a command and the daemon both write
     // the status file, and one's rename must never take the other's
     // half-written file.
-    let mut beside = std::ffi::OsString::from(".");
-    beside.push(name);
+    let mut beside = std::ffi::OsString::from(name);
     beside.push(format!(".{}.new", std::process::id()));
-    let beside = dir.join(beside);
+    let writing = dir.join(".writing");
+    fs::create_dir_all(&writing)?;
+    let beside = writing.join(beside);
     let text = serde_json::to_vec(value).map_err(io::Error::other)?;
     let mut file = fs::File::create(&beside)?;
     file.write_all(&text)?;
