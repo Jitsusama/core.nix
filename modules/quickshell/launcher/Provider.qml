@@ -221,9 +221,16 @@ Scope {
     // come from, so a provider that only answers leaves it empty.
     property string what: ""
 
+    // How many rows this source has made since the shell started, so the
+    // launcher can say which made what as it opened (Launcher.qml's
+    // madeSince). A plain count in an object, so making a row notifies
+    // nothing.
+    readonly property var tally: ({ rows: 0 })
+
     // A collection's row: a thing whose name is made ready to match only
     // when it's first drawn, since a collection has thousands.
     function member(fields) {
+        tally.rows += 1;
         const made = Object.assign({
             what: provider.what,
             chord: [],
@@ -541,6 +548,7 @@ Scope {
     // A row with what's left unsaid filled in, its name and keywords
     // prepared for matching once rather than on every key.
     function thing(fields) {
+        tally.rows += 1;
         const made = Object.assign({
             // An act done to a thing (its key `verb:`) isn't of the
             // thing's kind: Return does what its name says, so the foot

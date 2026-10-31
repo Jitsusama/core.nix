@@ -3344,6 +3344,7 @@ Scope {
     }
 
     onOpenChanged: {
+        madeSince(open ? "opening" : "closing");
         if (open) {
             // Joined whole each time it opens, stale or not: a
             // collection's count reads live state (Agents' sessions, the
@@ -3383,6 +3384,40 @@ Scope {
             if (unready.length > 0)
                 readying.start();
         }
+    }
+
+    // What each source made as the launcher opened or closed, and how many
+    // texts were made ready to match, said once it has settled. The first
+    // opening after each start took the shell's heap from about 60 to 260
+    // MB within a second (2026-10-30, 22:50), which a copy of the shell on
+    // the same data didn't do, so the shell names it from what it makes.
+    // Closing counts the spots made after it too.
+    property var madeFrom: ({ rows: {}, texts: 0, when: "" })
+    function tallies() {
+        const by = {};
+        for (const source of sources)
+            by[source.settings?.name ?? ""] = source.tally?.rows ?? 0;
+        return by;
+    }
+    function madeSince(when) {
+        madeFrom = { rows: tallies(), texts: Fuzzy.keptSoFar(), when: when };
+        madeSettling.restart();
+    }
+    Timer {
+        id: madeSettling
+
+        interval: 3000
+        onTriggered: root.madeSaid()
+    }
+    function madeSaid() {
+        const now = tallies();
+        const made = Object.keys(now).map(name => ({ name, rows: now[name]
+            - (madeFrom.rows[name] ?? 0) })).filter(each => each.rows > 0)
+            .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
+        const total = made.reduce((sum, each) => sum + each.rows, 0);
+        const texts = Fuzzy.keptSoFar() - madeFrom.texts;
+        const most = made.slice(0, 8).map(each => `${each.name} ${each.rows}`).join(", ");
+        console.info(`launcher: ${madeFrom.when} made ${total} rows (${most}) and ${texts} texts`);
     }
 
     // What's inside things is read again a moment after the launcher
