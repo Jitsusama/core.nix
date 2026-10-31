@@ -973,6 +973,10 @@
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
   '';
+  slack-unreads-go-with-the-service = ''
+    slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
+    is restarted when its watchdog hears nothing, and takes its file with it however it stops
+  '';
   slack-waits-in-its-place = ''
     Slack's source in People asks about each address once a minute as Joel steps in, never one
     known to be nobody, and ahead about those listed, in order, each once; Write in Slack stands
