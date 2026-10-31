@@ -42,15 +42,26 @@ pub enum Ask {
         keys: Vec<String>,
         patience: u64,
     },
-    /// Every record held, in the order heard, at most `limit`.
+    /// Every record held, in the order heard, at most `limit`, or only
+    /// those a source lists.
     List {
         id: Value,
         limit: Option<usize>,
+        listed: bool,
     },
-    /// Records as they change, these keys or all of them.
+    /// Records as they change, these keys or all of them, or only those a
+    /// source lists, and each that stops being listed.
     Watch {
         id: Value,
         keys: Option<Vec<String>>,
+        listed: bool,
+    },
+    /// Those whose name or address the words find, best first, at most
+    /// `limit`.
+    Search {
+        id: Value,
+        words: String,
+        limit: usize,
     },
     Unwatch {
         id: Value,
@@ -90,7 +101,8 @@ pub fn ask(line: &str) -> Ask {
         })
     };
     let kind = said.get("kind").and_then(Value::as_str).unwrap_or(KIND);
-    if matches!(asked, "list" | "watch") && kind != KIND {
+    let listed = said.get("listed").and_then(Value::as_bool) == Some(true);
+    if matches!(asked, "list" | "watch" | "search") && kind != KIND {
         return Ask::UnknownKind {
             id,
             kind: kind.to_owned(),
@@ -109,8 +121,26 @@ pub fn ask(line: &str) -> Ask {
                 .get("limit")
                 .and_then(Value::as_u64)
                 .and_then(|limit| usize::try_from(limit).ok()),
+            listed,
         },
-        "watch" => Ask::Watch { id, keys: keys() },
+        "watch" => Ask::Watch {
+            id,
+            keys: keys(),
+            listed,
+        },
+        "search" => Ask::Search {
+            id,
+            words: said
+                .get("words")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned(),
+            limit: said
+                .get("limit")
+                .and_then(Value::as_u64)
+                .and_then(|limit| usize::try_from(limit).ok())
+                .unwrap_or(SEARCHED),
+        },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
         other => Ask::Unknown {
@@ -125,11 +155,20 @@ pub fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
 }
 
+/// How many a search answers when it doesn't say.
+pub const SEARCHED: usize = 50;
+
 /// What a source said, one line of its protocol.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Heard {
-    /// What it knows of someone, its line less the address.
+    /// What it knows of someone, its line less the address. One it knows
+    /// by no address is known by its `id`, as that source's alone.
     Person { address: String, entry: Value },
+    /// It no longer knows someone, as when a contact is deleted.
+    Gone { address: String, id: Option<String> },
+    /// It says everyone it knows without being asked, so it's never
+    /// waited on: its first line, `{"roster": true}`.
+    Roster,
     /// It has nothing to say of someone yet, and will be asked again.
     Later { address: String },
     /// Its sign-in was refused, or there's none: signing in again mends it.
@@ -148,10 +187,24 @@ pub fn heard(line: &str) -> Heard {
     {
         return Heard::SignedOut;
     }
+    if said.get("roster").and_then(Value::as_bool) == Some(true) {
+        return Heard::Roster;
+    }
     let Some(Value::String(address)) = said.remove("email") else {
         return Heard::Other;
     };
     let address = address.trim().to_lowercase();
+    let id = match said.get("id") {
+        Some(Value::String(id)) if !id.is_empty() => Some(id.clone()),
+        Some(Value::Number(id)) => Some(id.to_string()),
+        _ => None,
+    };
+    if address.is_empty() && id.is_none() {
+        return Heard::Other;
+    }
+    if said.get("gone").and_then(Value::as_bool) == Some(true) {
+        return Heard::Gone { address, id };
+    }
     if said.get("later").and_then(Value::as_bool) == Some(true) {
         return Heard::Later { address };
     }
@@ -189,12 +242,158 @@ pub struct Record {
     /// since the epoch.
     pub heard: u64,
     pub sources: BTreeMap<String, Value>,
+    /// Each name a source gives them and their address, made ready to
+    /// search as they're heard, since a search reads everyone.
+    names: Vec<Text>,
+    mailed: Option<Text>,
+    listed: bool,
 }
 
 impl Record {
+    fn of(key: String, now: u64) -> Record {
+        let mailed = address(&key).map(Text::of);
+        Record {
+            key,
+            heard: now,
+            sources: BTreeMap::new(),
+            names: Vec::new(),
+            mailed,
+            listed: false,
+        }
+    }
+
+    /// Reads again what a search and a list read, as what's said changes.
+    fn indexed(&mut self) {
+        self.names = self
+            .sources
+            .values()
+            .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+            .map(Text::of)
+            .collect();
+        self.listed = self.sources.values().any(|entry| {
+            ["favourite", "recent"]
+                .iter()
+                .any(|word| entry.get(word).and_then(Value::as_bool) == Some(true))
+        });
+    }
+
     pub fn json(&self) -> Value {
         json!({"key": self.key, "kind": KIND, "heard": self.heard, "sources": self.sources})
     }
+
+    /// The answer for a key no source knows any more.
+    pub fn gone(key: &str) -> Value {
+        json!({"key": key, "kind": KIND, "gone": true})
+    }
+
+    /// Whether a source lists them with nothing typed: a favourite, or
+    /// someone Joel dealt with lately.
+    pub fn listed(&self) -> bool {
+        self.listed
+    }
+
+    /// How well the words find them: by a name, by their address, or not.
+    fn found(&self, words: &[Vec<char>]) -> Option<Found> {
+        if self.names.iter().any(|name| name.finds(words)) {
+            return Some(Found::ByName);
+        }
+        self.mailed
+            .as_ref()
+            .filter(|address| address.finds(words))
+            .map(|_| Found::ByAddress)
+    }
+}
+
+/// A text made ready to search: its characters in lower case, and where
+/// each of its words starts.
+#[derive(Clone, Debug, PartialEq)]
+struct Text {
+    lower: Vec<char>,
+    starts: Vec<usize>,
+    /// The letters its words start with, a bit each, as Fuzzy.js's
+    /// `starts`, so someone no word typed could start is passed over at
+    /// once.
+    begins: u32,
+}
+
+/// A character's bit: one for each of a to z, one for any digit, and one
+/// shared by everything else.
+fn bit(c: char) -> u32 {
+    match c {
+        'a'..='z' => 1 << (c as u32 - 'a' as u32),
+        '0'..='9' => 1 << 26,
+        _ => 1 << 27,
+    }
+}
+
+impl Text {
+    fn of(text: &str) -> Text {
+        let chars: Vec<char> = text.chars().collect();
+        let starts: Vec<usize> = (0..chars.len())
+            .filter(|&at| starts_a_word(at.checked_sub(1).map(|before| chars[before]), chars[at]))
+            .collect();
+        let lower: Vec<char> = chars
+            .iter()
+            .map(|c| c.to_lowercase().next().unwrap_or(*c))
+            .collect();
+        let begins = starts.iter().fold(0, |mask, &at| mask | bit(lower[at]));
+        Text {
+            lower,
+            starts,
+            begins,
+        }
+    }
+
+    fn finds(&self, words: &[Vec<char>]) -> bool {
+        !words.is_empty()
+            && words
+                .iter()
+                .all(|word| word.first().is_some_and(|&c| self.begins & bit(c) != 0))
+            && words.iter().all(|word| {
+                self.starts
+                    .iter()
+                    .any(|&at| self.lower.get(at..at + word.len()) == Some(word.as_slice()))
+            })
+    }
+}
+
+/// How a search found someone, the better first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Found {
+    ByName,
+    ByAddress,
+}
+
+/// The words of a search, lowercased, each its characters.
+pub fn words(typed: &str) -> Vec<Vec<char>> {
+    typed
+        .split_whitespace()
+        .map(|word| word.chars().flat_map(char::to_lowercase).collect())
+        .collect()
+}
+
+/// Whether each word starts a word of the text, its letters unbroken, in
+/// any order and any case. A word starts where the shell's Fuzzy.js says
+/// one does, as fzf does: at the text's start, after anything that isn't
+/// a letter or a digit, at a capital after a small letter or a digit, and
+/// at a digit after a letter. So what's found here is never fewer than
+/// the shell would find among everyone, and the shell ranks it.
+pub fn finds(text: &str, words: &[Vec<char>]) -> bool {
+    Text::of(text).finds(words)
+}
+
+fn starts_a_word(before: Option<char>, c: char) -> bool {
+    let Some(before) = before else {
+        return true;
+    };
+    if !c.is_alphanumeric() {
+        // Punctuation is its own start, as Fuzzy.js gives it a bonus.
+        return !c.is_whitespace();
+    }
+    !before.is_alphanumeric()
+        || (before.is_lowercase() && c.is_uppercase())
+        || (before.is_ascii_digit() && c.is_uppercase())
+        || (!before.is_ascii_digit() && c.is_ascii_digit())
 }
 
 /// Everyone heard of, and how each source stands.
@@ -206,6 +405,25 @@ pub struct Book {
     /// Which sources have answered for each key, a later aside.
     answered: HashMap<String, HashSet<String>>,
     standings: BTreeMap<String, Standing>,
+    /// The sources that say everyone unasked, never waited on.
+    rosters: HashSet<String>,
+}
+
+/// The key of someone a source knows by an address, or else by its own
+/// id for them, as Person.js keys them: `person:tuple:7`.
+fn key_of(source: &str, address: &str, id: Option<&str>) -> String {
+    match id {
+        Some(id) if address.is_empty() => key(&format!("{source}:{id}")),
+        _ => key(address),
+    }
+}
+
+fn id_of(entry: &Value) -> Option<String> {
+    match entry.get("id") {
+        Some(Value::String(id)) if !id.is_empty() => Some(id.clone()),
+        Some(Value::Number(id)) => Some(id.to_string()),
+        _ => None,
+    }
 }
 
 impl Book {
@@ -226,16 +444,15 @@ impl Book {
         match heard {
             Heard::Person { address, entry } => {
                 self.stand(source, Standing::Answering);
-                let key = key(&address);
+                let key = key_of(source, &address, id_of(&entry).as_deref());
                 self.answered
                     .entry(key.clone())
                     .or_default()
                     .insert(source.to_owned());
-                let record = self.records.entry(key.clone()).or_insert_with(|| Record {
-                    key: key.clone(),
-                    heard: now,
-                    sources: BTreeMap::new(),
-                });
+                let record = self
+                    .records
+                    .entry(key.clone())
+                    .or_insert_with(|| Record::of(key.clone(), now));
                 if record.sources.get(source) == Some(&entry) {
                     return None;
                 }
@@ -243,10 +460,29 @@ impl Book {
                     self.order.push(key.clone());
                 }
                 record.sources.insert(source.to_owned(), entry);
+                record.indexed();
                 record.heard = now;
                 Some(key)
             }
             Heard::Later { .. } => {
+                self.stand(source, Standing::Answering);
+                None
+            }
+            Heard::Gone { address, id } => {
+                let key = key_of(source, &address, id.as_deref());
+                let record = self.records.get_mut(&key)?;
+                record.sources.remove(source)?;
+                record.indexed();
+                record.heard = now;
+                if record.sources.is_empty() {
+                    self.records.remove(&key);
+                    self.order.retain(|kept| kept != &key);
+                    self.answered.remove(&key);
+                }
+                Some(key)
+            }
+            Heard::Roster => {
+                self.rosters.insert(source.to_owned());
                 self.stand(source, Standing::Answering);
                 None
             }
@@ -255,6 +491,17 @@ impl Book {
                 None
             }
             Heard::Other => None,
+        }
+    }
+
+    /// The key a source's line is about, if it's about someone.
+    pub fn about(&self, source: &str, heard: &Heard) -> Option<String> {
+        match heard {
+            Heard::Person { address, entry } => {
+                Some(key_of(source, address, id_of(entry).as_deref()))
+            }
+            Heard::Gone { address, id } => Some(key_of(source, address, id.as_deref())),
+            _ => None,
         }
     }
 
@@ -275,12 +522,35 @@ impl Book {
         self.order.iter().filter_map(|key| self.records.get(key))
     }
 
+    /// Those the words find, at most `limit`: those a source lists first,
+    /// then those found by name before those found only by address, and
+    /// among equals in the order heard.
+    pub fn search(&self, typed: &str, limit: usize) -> Vec<&Record> {
+        let words = words(typed);
+        let mut found: Vec<(bool, Found, usize, &Record)> = self
+            .everyone()
+            .enumerate()
+            .filter_map(|(at, record)| {
+                record
+                    .found(&words)
+                    .map(|how| (!record.listed(), how, at, record))
+            })
+            .collect();
+        found.sort_unstable_by_key(|&(unlisted, how, at, _)| (unlisted, how, at));
+        found
+            .into_iter()
+            .take(limit)
+            .map(|(.., record)| record)
+            .collect()
+    }
+
     /// Whether every source that can answer has answered for a key: one
     /// signed out or refused never will, so it isn't waited on.
     pub fn ready(&self, key: &str) -> bool {
         let answered = self.answered.get(key);
         self.standings.iter().all(|(source, standing)| {
-            matches!(standing, Standing::SignedOut | Standing::Refused(_))
+            self.rosters.contains(source)
+                || matches!(standing, Standing::SignedOut | Standing::Refused(_))
                 || answered.is_some_and(|answered| answered.contains(source))
         })
     }
@@ -293,6 +563,8 @@ impl Book {
         for answered in self.answered.values_mut() {
             answered.remove(source);
         }
+        // It says again whether it's a roster.
+        self.rosters.remove(source);
         self.stand(source, Standing::Answering);
     }
 }
@@ -335,14 +607,32 @@ mod tests {
             ask(r#"{"id": 3, "ask": "list", "kind": "person", "limit": 200}"#),
             Ask::List {
                 id: json!(3),
-                limit: Some(200)
+                limit: Some(200),
+                listed: false
             }
         );
         assert_eq!(
             ask(r#"{"id": 4, "ask": "watch", "kind": "person"}"#),
             Ask::Watch {
                 id: json!(4),
-                keys: None
+                keys: None,
+                listed: false
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id": 7, "ask": "watch", "listed": true}"#),
+            Ask::Watch {
+                id: json!(7),
+                keys: None,
+                listed: true
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id": 8, "ask": "search", "words": "ada b"}"#),
+            Ask::Search {
+                id: json!(8),
+                words: "ada b".to_owned(),
+                limit: SEARCHED
             }
         );
         assert_eq!(
@@ -377,6 +667,15 @@ mod tests {
                 address: "ada@example.com".to_owned()
             }
         );
+        assert_eq!(
+            heard(r#"{"email": "", "id": 7, "gone": true}"#),
+            Heard::Gone {
+                address: String::new(),
+                id: Some("7".to_owned())
+            }
+        );
+        assert_eq!(heard(r#"{"email": "", "name": "Nobody"}"#), Heard::Other);
+        assert_eq!(heard(r#"{"roster": true}"#), Heard::Roster);
         assert_eq!(heard(r#"{"signedOut": true}"#), Heard::SignedOut);
         assert_eq!(heard(r#"{"signedIn": false}"#), Heard::SignedOut);
         assert_eq!(heard("hello"), Heard::Other);
@@ -430,5 +729,126 @@ mod tests {
         book.restarted("slack");
         assert!(!book.ready("person:ada@example.com"));
         assert_eq!(book.standings()["slack"].word(), "answering");
+    }
+
+    fn tuple(address: &str, id: u32, name: &str, favourite: bool) -> Heard {
+        Heard::Person {
+            address: address.to_owned(),
+            entry: json!({"id": id, "name": name, "status": "unknown",
+                          "favourite": favourite, "recent": false}),
+        }
+    }
+
+    #[test]
+    fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
+        let mut book = Book::of(&["slack".to_owned(), "tuple".to_owned()]);
+        book.take("tuple", Heard::Roster, 1);
+        book.take("tuple", tuple("", 7, "Gus", false), 1);
+        assert!(book.record("person:tuple:7").is_some());
+        // Only Slack, which is asked, is waited on.
+        assert!(!book.ready("person:ada@example.com"));
+        book.take(
+            "slack",
+            Heard::Later {
+                address: "ada@example.com".to_owned(),
+            },
+            2,
+        );
+        book.take(
+            "slack",
+            Heard::Person {
+                address: "ada@example.com".to_owned(),
+                entry: json!({}),
+            },
+            2,
+        );
+        assert!(book.ready("person:ada@example.com"));
+        book.restarted("tuple");
+        assert!(!book.ready("person:ada@example.com"));
+    }
+
+    #[test]
+    fn someone_a_source_forgets_keeps_what_the_others_say_or_goes() {
+        let mut book = Book::of(&["slack".to_owned(), "tuple".to_owned()]);
+        book.take("tuple", tuple("ada@example.com", 1, "Ada", false), 1);
+        book.take("tuple", tuple("eli@example.com", 2, "Eli", false), 1);
+        book.take(
+            "slack",
+            Heard::Person {
+                address: "ada@example.com".to_owned(),
+                entry: json!({}),
+            },
+            1,
+        );
+        let gone = |address: &str| Heard::Gone {
+            address: address.to_owned(),
+            id: None,
+        };
+        assert_eq!(
+            book.take("tuple", gone("ada@example.com"), 2),
+            Some("person:ada@example.com".to_owned())
+        );
+        assert_eq!(
+            book.record("person:ada@example.com")
+                .unwrap()
+                .sources
+                .keys()
+                .collect::<Vec<_>>(),
+            ["slack"]
+        );
+        assert_eq!(
+            book.take("tuple", gone("eli@example.com"), 3),
+            Some("person:eli@example.com".to_owned())
+        );
+        assert!(book.record("person:eli@example.com").is_none());
+        assert_eq!(book.everyone().count(), 1);
+        assert_eq!(book.take("tuple", gone("eli@example.com"), 4), None);
+    }
+
+    #[test]
+    fn words_start_words_as_the_shells_fuzzy_says() {
+        let find = |text: &str, typed: &str| finds(text, &words(typed));
+        assert!(find("Ada Brightwater", "bri ad"));
+        assert!(find("Ada Brightwater", "ADA"));
+        assert!(!find("Ada Brightwater", "water"));
+        assert!(find("ada.brightwater@example.com", "bright"));
+        assert!(find("ada@example.com", "exam"));
+        assert!(find("McKenzie", "ken"));
+        assert!(find("agent007", "007"));
+        assert!(find("Zoë Ångström", "ång"));
+        assert!(!find("Ada", ""));
+        assert!(!find("Ada", "adam"));
+    }
+
+    #[test]
+    fn a_search_lists_the_listed_first_then_names_then_addresses() {
+        let mut book = Book::of(&["tuple".to_owned()]);
+        book.take(
+            "tuple",
+            tuple("dale@example.com", 1, "Ada's Friend", false),
+            1,
+        );
+        book.take("tuple", tuple("ada.k@example.com", 2, "Kim", false), 1);
+        book.take("tuple", tuple("eli@example.com", 3, "Ada Eli", false), 1);
+        book.take("tuple", tuple("x@example.com", 4, "Adams Ray", true), 1);
+        book.take("tuple", tuple("gus@example.com", 5, "Gus", false), 1);
+        let keys = |limit| {
+            book.search("ada", limit)
+                .iter()
+                .map(|record| record.key.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            keys(10),
+            [
+                "person:x@example.com",
+                "person:dale@example.com",
+                "person:eli@example.com",
+                "person:ada.k@example.com"
+            ]
+        );
+        assert_eq!(keys(2).len(), 2);
+        assert!(book.record("person:x@example.com").unwrap().listed());
+        assert!(!book.record("person:gus@example.com").unwrap().listed());
     }
 }
