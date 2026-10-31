@@ -13,7 +13,9 @@
 #   !include linux-builder.conf
 #
 # It offers `big-parallel` and `benchmark`, never `kvm`: Rosetta runs no
-# x86_64 VM, so a VM test is never sent there to crawl.
+# x86_64 VM, so a VM test is never sent there to crawl. A machine adds
+# features of its own in `features`, such as one that marks code allowed
+# only on its own builders.
 #
 # Only the Mac reaches the VM, on a port of its own loopback. Another machine
 # that builds there jumps through the Mac's SSH to that port, and signs in to
@@ -39,6 +41,11 @@ let
           diskSize = cfg.disk;
         };
       }
+      (lib.mkIf (cfg.features != [ ]) {
+        # Added to what the guest's Nix already offers, so it builds a piece
+        # asking for one rather than refuse it.
+        nix.settings.extra-system-features = cfg.features;
+      })
       (lib.mkIf (cfg.authorizedKeys != [ ]) {
         users.users.builder.openssh.authorizedKeys.keys = cfg.authorizedKeys;
         # nixpkgs' VM forces its SSH to read only the Mac's key, so the
@@ -59,7 +66,13 @@ let
     "/etc/nix/builder_ed25519"
     (toString guest.virtualisation.cores)
     "1"
-    "benchmark,big-parallel"
+    (lib.concatStringsSep "," (
+      [
+        "benchmark"
+        "big-parallel"
+      ]
+      ++ cfg.features
+    ))
     "-"
     # nixpkgs' builder image carries this host key, as nix-darwin's says.
     "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUpCV2N4Yi9CbGFxdDFhdU90RStGOFFVV3JVb3RpQzVxQkorVXVFV2RWQ2Igcm9vdEBuaXhvcwo="
@@ -89,6 +102,16 @@ in
       description = ''
         The VM's store in MiB, a sparse file it collects once under a GiB is
         free, so it grows towards this.
+      '';
+    };
+    features = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[a-z0-9-]+");
+      default = [ ];
+      example = [ "own-code" ];
+      description = ''
+        Features the VM offers besides `benchmark` and `big-parallel`, on the
+        Mac's line and in the guest's Nix, so a piece asking for one is sent
+        there and built. None by default, which keeps the guest the cached one.
       '';
     };
     authorizedKeys = lib.mkOption {

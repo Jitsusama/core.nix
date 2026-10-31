@@ -8,13 +8,22 @@
   ...
 }:
 let
-  # The VM's guest on a Mac running the builder with these settings.
-  guestOf =
+  # A Mac running the builder with these settings, and the VM's guest on it.
+  macOf =
     settings:
     (bareDarwin [
       self.darwinModules.linux-builder
       { jitsusama.linux-builder = settings; }
-    ]).config.jitsusama.linux-builder.builder.nixosConfig;
+    ]).config;
+  guestOf = settings: (macOf settings).jitsusama.linux-builder.builder.nixosConfig;
+  # The features the Mac's line offers.
+  offered =
+    settings:
+    lib.splitString "," (
+      builtins.elemAt (lib.splitString " "
+        (macOf settings).environment.etc."nix/linux-builder.conf".text
+      ) 7
+    );
 
   # The guest nixpkgs builds, which is the one its cache holds.
   cached = (bareDarwin [ ]).pkgs.darwin.linux-builder-vz.nixosConfig;
@@ -22,6 +31,7 @@ let
   another = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGRkdxraohorYagcirm3lEonh6at0F7DvFoLuEqBQajh elsewhere";
   plain = guestOf { };
   opened = guestOf { authorizedKeys = [ another ]; };
+  marked = guestOf { features = [ "own-code" ]; };
   system = guest: builtins.unsafeDiscardStringContext guest.system.build.toplevel.drvPath;
 in
 {
@@ -38,5 +48,27 @@ in
         && plain.services.openssh.authorizedKeysFiles == cached.services.openssh.authorizedKeysFiles
         && system plain == system cached
         && system opened != system cached
+      );
+
+  # A feature of the machine's own is offered on the Mac's line and by the
+  # guest's Nix, beside the builder's own, so a piece asking for it is both
+  # sent there and built there; with none, both offer only the builder's.
+  linux-builder-offers-the-features-it-is-given =
+    holds "linux-builder-offers-the-features-it-is-given"
+      "The VM's builder didn't offer exactly benchmark, big-parallel and the features it was given, on the Mac's line and in the guest's Nix."
+      (
+        offered { } == [
+          "benchmark"
+          "big-parallel"
+        ]
+        &&
+          offered { features = [ "own-code" ]; } == [
+            "benchmark"
+            "big-parallel"
+            "own-code"
+          ]
+        && marked.nix.settings.extra-system-features == [ "own-code" ]
+        && !(plain.nix.settings ? extra-system-features)
+        && builtins.elem "big-parallel" marked.nix.settings.system-features
       );
 }
