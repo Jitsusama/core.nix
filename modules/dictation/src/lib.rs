@@ -5,10 +5,12 @@
 
 pub mod cache;
 pub mod genai;
+pub mod graph;
 pub mod mel;
 pub mod openvino;
 pub mod speech;
 pub mod takes;
+pub mod transcript;
 pub mod vocab;
 pub mod wav;
 pub mod whisper;

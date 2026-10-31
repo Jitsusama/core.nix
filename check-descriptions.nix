@@ -1695,6 +1695,11 @@
     root's a-call-is-on says a call is on while a call program records in an account's PipeWire, and
     none before it starts or once it ends
   '';
+  vm-a-call-is-written-down = ''
+    a call program recording in Joel's PipeWire is heard by call-transcripts from its microphone
+    and its own playback, and kept as one record under the meeting on, which ends with the call;
+    its transcript holds both sides' three turns in order and nothing another program played
+  '';
   vm-bluetooth-types-at-the-disk-prompt = ''
     a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its
     link key nowhere in the ESP; after a restart the prompt asks while the pairing is still being
