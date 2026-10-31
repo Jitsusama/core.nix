@@ -2913,6 +2913,58 @@ def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_
 
 
 @pytest.mark.usefixtures("google")
+def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
+    desktop: Desktop,
+) -> None:
+    """A search ends with what a source ends it with, after all it found, lit once found."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    ends = "/run/user/1000/search-ends"
+    further = "Look Further for grace hopper"
+
+    def say(said: str) -> None:
+        # Moved into place whole, and heard before anything is looked for.
+        since = desktop.mark()
+        desktop.as_account(f"echo {said} > {ends}.new && mv {ends}.new {ends}")
+        desktop.reported("search ends ", lambda rest: rest == said, since)
+
+    # The stand-in source ends each search with Look Further, still asking
+    # (desktop/search-ends.qml), as Search Slack does.
+    say("asking")
+    # Silenced again however it ends, so no later search ends with it.
+    try:
+        desktop.answer("grace hopper")
+        # After everything found, each row named, and the list still opening
+        # on what was found first.
+        desktop.launcher_until(
+            lambda shown: shown["rows"][-1:] == [further] and shown["count"] == len(shown["rows"])
+        )
+        shown = desktop.showing()
+        assert len(shown["rows"]) > 1, shown["rows"]
+        assert (shown["selected"] or {}).get("name") == shown["rows"][0], shown["selected"]
+        desktop.down_to(further)
+        desktop.step_in()
+        # Inside, a stand-in dimmed while it's asked, then what was found
+        # once the source says so, with nothing typed again. The stand-in
+        # stays dimmed where it stood until a key, as any row that leaves
+        # does (Steady.js), so nothing moves under the selection.
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Still Looking"])
+        standing = desktop.showing()["things"][0]
+        assert standing["gone"], standing
+        say("found")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Still Looking", "Found grace hopper"]
+                and not shown["things"][1]["gone"]
+            )
+        )
+    finally:
+        say("none")
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,
 ) -> None:

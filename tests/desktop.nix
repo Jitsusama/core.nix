@@ -581,6 +581,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           order = 30;
           source = ./desktop/people-pages.qml;
         };
+        # A source ending each search, as Search Slack does, silent until a
+        # test says what it ends with.
+        jitsusama.quickshell.launcher.providers.search-ends = {
+          order = 990;
+          source = ./desktop/search-ends.qml;
+        };
         # Firmware's fwupd isn't in the VM, and would have nothing to say.
         jitsusama.quickshell.launcher.providers.firmware = {
           enable = lib.mkForce true;
