@@ -20,6 +20,17 @@ if TYPE_CHECKING:
 # What a-call-is-on exits with while a call is on, and while none is.
 ON = 0
 OFF = 1
+# How many seconds the call program's stream has to start running in.
+RECORDS_WITHIN = 30
+# The call program's stream, running, as jq finds it in pw-dump's graph.
+RECORDING = (
+    '.[] | select(.info.props["application.process.binary"] == "zoom" and .info.state == "running")'
+)
+# Each node's id, state, class and name, to read why no stream ran.
+NODES = (
+    '.[] | select(.type == "PipeWire:Interface:Node")'
+    ' | [.id, .info.state, .info.props["media.class"], .info.props["node.name"]]'
+)
 
 
 class Sound:
@@ -58,10 +69,15 @@ def sound(machine: BaseMachine) -> Sound:
 def call(sound: Sound) -> Iterator[Sound]:
     """Have the call program recording, until the test is done."""
     sound.as_joel("systemd-run --user --unit=call ./zoom --record /dev/null")
-    sound.machine.wait_until_succeeds(
-        "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 pw-dump --no-colors'"
-        ' | grep -q \'"application.process.binary": "zoom"\''
-    )
+    try:
+        sound.machine.wait_until_succeeds(
+            "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 pw-dump --no-colors'"
+            f" | jq -e {shlex.quote(RECORDING)}",
+            timeout=RECORDS_WITHIN,
+        )
+    except Exception:
+        print(sound.as_joel(f"pw-dump --no-colors | jq -c {shlex.quote(NODES)}"))
+        raise
     yield sound
     # A test may have ended the call itself.
     sound.as_joel("systemctl --user stop call || true")

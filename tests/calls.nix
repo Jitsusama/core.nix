@@ -13,6 +13,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [
       (pkgs.callPackage ../modules/calls/package.nix { })
+      pkgs.jq
       pkgs.pulseaudio
     ];
     services.pipewire.extraConfig.pipewire."10-silent-microphone"."context.objects" = [
