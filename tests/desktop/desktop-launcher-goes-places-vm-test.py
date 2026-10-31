@@ -62,6 +62,33 @@ def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Des
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+def test_throwaway_first_key(desktop: Desktop) -> None:
+    """Throwaway: the first key after a restart, against later ones, and what each opening made."""
+    machine = desktop.machine
+    desktop.as_account("systemctl --user restart quickshell")
+    since = desktop.mark()
+    desktop.reported(
+        "texts made ready while closed", lambda rest: rest == "", since, dt.timedelta(seconds=60)
+    )
+    time.sleep(5)
+    for turn in range(3):
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        time.sleep(1)
+        desktop.type_in("c")
+        time.sleep(4)
+        machine.send_key("esc")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+        time.sleep(4)
+        print(f"FIRSTKEY turn {turn}")
+    print(desktop.as_account(
+        "journalctl --user -u quickshell --no-pager -o cat --since=-60s"
+        " | grep -a -E 'took [0-9]+ ms|made [0-9]+ rows|came late' | sed 's/^/FIRSTKEY /'"
+    ))
+
+
 def test_an_opening_says_what_each_source_made(desktop: Desktop) -> None:
     """An opening says, once settled, how many rows each source made, and so does a closing."""
     machine = desktop.machine
