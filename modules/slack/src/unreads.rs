@@ -70,7 +70,9 @@ pub struct Counted {
 }
 
 /// What wants Joel in an answer of `client.counts`, direct messages first,
-/// then channels, then threads, each in Slack's order.
+/// then channels, then threads, each newest first by its latest message
+/// (VKCF3Z, f0c8ef61). Slack's `latest` is a timestamp of fixed width,
+/// seconds and microseconds, so it sorts as text.
 ///
 /// # Errors
 ///
@@ -78,41 +80,15 @@ pub struct Counted {
 /// reach.
 pub fn counted(said: &Value) -> Result<Vec<Counted>, Refused> {
     answered(said)?;
-    let count = |each: &Value| {
-        each.get("mention_count")
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-    };
     let listed = |key: &str| {
         said.get(key)
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
     };
-    let mut wanting = Vec::new();
-    for each in listed("ims").chain(listed("mpims")) {
-        // A direct message's unreads are all his, and come as its mentions.
-        if let Some(id) = each.get("id").and_then(Value::as_str)
-            && count(each) > 0
-        {
-            wanting.push(Counted {
-                id: id.to_owned(),
-                kind: Kind::Dm,
-                count: count(each),
-            });
-        }
-    }
-    for each in listed("channels") {
-        if let Some(id) = each.get("id").and_then(Value::as_str)
-            && count(each) > 0
-        {
-            wanting.push(Counted {
-                id: id.to_owned(),
-                kind: Kind::Mention,
-                count: count(each),
-            });
-        }
-    }
+    // A direct message's unreads are all his, and come as its mentions.
+    let mut wanting = newest(Kind::Dm, listed("ims").chain(listed("mpims")));
+    wanting.extend(newest(Kind::Mention, listed("channels")));
     let threads = said
         .pointer("/threads/mention_count")
         .and_then(Value::as_u64)
@@ -125,6 +101,32 @@ pub fn counted(said: &Value) -> Result<Vec<Counted>, Refused> {
         });
     }
     Ok(wanting)
+}
+
+/// Those of one kind that mention Joel, newest first.
+fn newest<'a>(kind: Kind, listed: impl Iterator<Item = &'a Value>) -> Vec<Counted> {
+    let count = |each: &Value| {
+        each.get("mention_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    };
+    let mut found: Vec<(&str, Counted)> = listed
+        .filter(|each| count(each) > 0)
+        .filter_map(|each| {
+            let id = each.get("id").and_then(Value::as_str)?;
+            let latest = each.get("latest").and_then(Value::as_str).unwrap_or("");
+            Some((
+                latest,
+                Counted {
+                    id: id.to_owned(),
+                    kind,
+                    count: count(each),
+                },
+            ))
+        })
+        .collect();
+    found.sort_by(|(one, _), (other, _)| other.cmp(one));
+    found.into_iter().map(|(_, counted)| counted).collect()
 }
 
 /// What a conversation is called, from `conversations.info`: a channel's
@@ -249,17 +251,22 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn what_wants_joel_is_unread_messages_and_mentions_not_unread_channels() {
+    fn what_wants_joel_is_unread_messages_and_mentions_newest_first_not_unread_channels() {
         let said = json!({
             "ok": true,
             "ims": [
-                {"id": "D1", "has_unreads": true, "mention_count": 2},
+                {"id": "D1", "has_unreads": true, "mention_count": 2,
+                 "latest": "1730300000.000100"},
                 {"id": "D2", "has_unreads": false, "mention_count": 0}
             ],
-            "mpims": [{"id": "G1", "has_unreads": true, "mention_count": 1}],
+            "mpims": [{"id": "G1", "has_unreads": true, "mention_count": 1,
+                        "latest": "1730400000.000100"}],
             "channels": [
                 {"id": "C1", "has_unreads": true, "mention_count": 0},
-                {"id": "C2", "has_unreads": true, "mention_count": 3}
+                {"id": "C2", "has_unreads": true, "mention_count": 3,
+                 "latest": "1730200000.000100"},
+                {"id": "C3", "has_unreads": true, "mention_count": 1,
+                 "latest": "1730500000.000100"}
             ],
             "threads": {"has_unreads": true, "mention_count": 4}
         });
@@ -271,8 +278,9 @@ mod tests {
         assert_eq!(
             shown,
             [
-                ("D1", Kind::Dm, 2),
                 ("G1", Kind::Dm, 1),
+                ("D1", Kind::Dm, 2),
+                ("C3", Kind::Mention, 1),
                 ("C2", Kind::Mention, 3),
                 ("threads", Kind::Thread, 4)
             ]
