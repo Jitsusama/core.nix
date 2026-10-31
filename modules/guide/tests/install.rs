@@ -525,11 +525,10 @@ fn a_removable_disk_is_never_the_one_installed_onto() {
     );
 }
 
-#[test]
-fn a_disk_laid_out_and_open_at_the_root_stays_done() {
-    let target = target("/dev/disk/by-id/virtio-root");
-    let scratch = Scratch::new("install-laid-out");
-    let mut stand_in = stick(&scratch, &target);
+/// A disk holding the machine's volume, open and mounted at the install's
+/// root, whoever opened it.
+fn opened_at_the_root(scratch: &Scratch, target: &Target) -> StandIn {
+    let mut stand_in = stick(scratch, target);
     lsblk(&mut stand_in, fixture!("lsblk-laid-out.json"));
     stand_in
         .link("/dev/disk/by-partlabel/system", Some("/dev/vda2"))
@@ -541,10 +540,47 @@ fn a_disk_laid_out_and_open_at_the_root_stays_done() {
             "",
             "",
         );
+    stand_in
+}
+
+#[test]
+fn a_disk_laid_out_and_open_at_the_root_stays_done() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-laid-out");
+    let mut stand_in = opened_at_the_root(&scratch, &target);
+    stand_in
+        .journal()
+        .record("lay-out-disk", &target.machine)
+        .unwrap();
     assert!(matches!(
         LayOutDisk.observe(&mut stand_in).unwrap(),
         Standing::Done { .. }
     ));
+}
+
+// An old system left open at the root, by Recover or a carry that
+// couldn't put it away, looks just like a disk laid out; only the
+// journal knows the install laid this one out.
+#[test]
+fn a_volume_open_at_the_root_that_the_install_didnt_lay_out_is_still_wiped() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-opened-by-another");
+    let mut stand_in = opened_at_the_root(&scratch, &target);
+    let standing = LayOutDisk.observe(&mut stand_in).unwrap();
+    assert!(matches!(standing, Standing::Needed { .. }), "{standing:?}");
+}
+
+#[test]
+fn a_volume_laid_out_for_another_machine_is_still_wiped() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-laid-out-for-another");
+    let mut stand_in = opened_at_the_root(&scratch, &target);
+    stand_in
+        .journal()
+        .record("lay-out-disk", "another")
+        .unwrap();
+    let standing = LayOutDisk.observe(&mut stand_in).unwrap();
+    assert!(matches!(standing, Standing::Needed { .. }), "{standing:?}");
 }
 
 #[test]

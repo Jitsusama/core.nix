@@ -106,7 +106,9 @@ driven on; the installed machine's steps come later.
   wiped only to be unbootable. The disk is wiped only once the machine's
   name is typed back for it, then laid out by the machine's own disko
   script, run with the stick's disk tools, its volume made with a key held
-  only in memory.
+  only in memory. The wipe counts as done only when the journal says this
+  install laid the disk out, so an old system left open at the install's
+  root is still wiped.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk. The Secure Boot keys come
   next, then a recovery key, its words held before they're enrolled so a
