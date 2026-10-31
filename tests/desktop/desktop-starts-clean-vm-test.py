@@ -597,6 +597,8 @@ def test_the_bluetooth_agent_stops_at_once_handing_its_agent_back(bluetooth: Des
 # How long the shell is watched while nothing shows, and the most its main thread may wake in a
 # second meanwhile (RSCH-20261029-0E8050's budgets).
 QUIET = 30
+# Ten of niri's callbacks to a surface it isn't drawing.
+QUIET_LOCKED = 10
 WAKEUPS_A_SECOND = 5
 
 
@@ -652,6 +654,30 @@ def test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows(desktop: D
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
     opening = json.loads(desktop.as_account("qs ipc call frames said"))
     assert opening.get("launcher", 0) > 0, f"the launcher opened without a frame: {opening}"
+
+
+def test_the_shell_draws_nothing_behind_the_lock(desktop: Desktop) -> None:
+    """The shell draws no frame of its own windows while the lock covers them.
+
+    niri draws only the lock then, so it calls each other surface back for its next frame only
+    once a second. Qt took a callback that late for a window gone out of sight and drew it
+    whole when it came, which asked for the next: the launcher, margin and wallpaper each drew
+    once a second for as long as Joel's screen stayed locked (2026-10-31).
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    desktop.as_account("lock-screen")
+    try:
+        # The frames owed as it locked, each called back within two seconds.
+        machine.sleep(duration=timedelta(seconds=3))
+        desktop.as_account("qs ipc call frames start")
+        # The span measured, not a wait for something to happen.
+        machine.sleep(duration=timedelta(seconds=QUIET_LOCKED))
+        frames = json.loads(desktop.as_account("qs ipc call frames said"))
+    finally:
+        desktop.as_account("qs ipc call lock release")
+    # The lock is a window of its own, which doesn't count its frames.
+    assert frames == {}, f"windows drew in {QUIET_LOCKED} s behind the lock: {frames}"
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:

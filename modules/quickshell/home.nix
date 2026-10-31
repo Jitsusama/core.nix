@@ -1884,6 +1884,14 @@ in
         # shell's default font and slows its start, and it draws from the
         # theme itself.
         UnsetEnvironment = [ "QT_QPA_PLATFORMTHEME" ];
+        # niri calls back a surface it isn't drawing, as behind the lock or on
+        # a dark screen, only once a second. Qt took a callback 100 ms late for
+        # a window gone out of sight and drew it whole when it came, asking for
+        # the next, so every window drew once a second while Joel's screen was
+        # locked (2026-10-31). With no timeout a late callback changes nothing;
+        # a frame drawn while one is owed still waits for it, a tenth of a
+        # second at most.
+        Environment = [ "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0" ];
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
         # its tenfold CPU weight and behind its memory floor (modules/slices),
