@@ -1576,6 +1576,11 @@
     the desktop takes a screen, a window, a region, a recording and the camera's pictures by the
     keys, and its lock screen, polkit's prompt and the askpass answer and hold
   '';
+  vm-desktop-keeps-pace = ''
+    the launcher draws half its keys, arrowed or typed, within a second and nearly every one within
+    two of a keyboard pressing them, while every core is busy in jobs.slice and build.slice, so it
+    never falls whole seconds behind
+  '';
   vm-desktop-launcher-answers = ''
     the launcher lists each thing once for everything Joel types, copies what it answers, keeps
     emoji in their own place, and takes the weather's here from where whereabouts says the laptop

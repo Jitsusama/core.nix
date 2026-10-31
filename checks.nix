@@ -303,6 +303,10 @@ let
       inherit self pkgs;
       area = "captures-and-locks";
     };
+    vm-desktop-keeps-pace = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "keeps-pace";
+    };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
     # once it has.
