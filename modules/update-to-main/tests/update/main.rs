@@ -530,7 +530,10 @@ fn checking_an_openpgp_signature_leaves_no_agent_running() {
         .unwrap();
     let socket = String::from_utf8_lossy(&socket.stdout).trim().to_owned();
     assert!(!socket.is_empty(), "gpgconf names no agent socket");
-    assert!(!Path::new(&socket).exists(), "an agent still runs on {socket}");
+    assert!(
+        !Path::new(&socket).exists(),
+        "an agent still runs on {socket}"
+    );
 }
 
 #[test]
