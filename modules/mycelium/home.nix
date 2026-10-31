@@ -160,6 +160,41 @@ let
           work tolerates it by. The machine enforces its own.
         '';
       };
+      within = lib.mkOption {
+        type = lib.types.nullOr another;
+        default = null;
+        example = {
+          machine = "host-machine";
+          file = "/run/host/said.json";
+        };
+        description = ''
+          The machine this one runs within, as a virtual machine runs in its
+          host, and the file, as this machine reaches it, in which the host
+          says its power and room, which this machine then has as its own.
+        '';
+      };
+      hosts = lib.mkOption {
+        type = lib.types.listOf another;
+        default = [ ];
+        description = ''
+          The machines that run within this one, each with the file, as this
+          machine reaches it, that its node writes its power and room to
+          each minute.
+        '';
+      };
+    };
+  };
+  # One machine within another, as either names it.
+  another = lib.types.submodule {
+    options = {
+      machine = lib.mkOption {
+        type = name;
+        description = "The other machine's name in the realm.";
+      };
+      file = lib.mkOption {
+        type = lib.types.str;
+        description = "The file the two share, as this machine reaches it.";
+      };
     };
   };
   # The words that run a realm's node, given what keeps it apart.
@@ -337,6 +372,8 @@ in
           costs_money = cfg.declares.costsMoney;
         }
         // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
+        // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
+        // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
       );
     })
     (lib.mkIf (isLinux && serving) {
