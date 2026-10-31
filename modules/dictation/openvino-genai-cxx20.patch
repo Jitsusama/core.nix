@@ -1,0 +1,33 @@
+OpenVINO GenAI 2026.4.0 built as C++20 (from main, for 2026.5)
+
+8fd47ed3b4e5 Fix linear attention guard construction under C++20 (#4531)
+2cd140c74af7 whisper: construct the replacement marker as UTF-8 bytes (#4259)
+
+Under C++20 a struct that declares its copy constructor deleted is no
+longer an aggregate, so the guard that hands back borrowed rows gains a
+constructor, and a u8 literal is char8_t, so Whisper's replacement
+marker is written as its UTF-8 bytes.
+
+--- a/src/cpp/src/continuous_batching/pipeline_impl.cpp
++++ b/src/cpp/src/continuous_batching/pipeline_impl.cpp
+@@ -529,6 +529,9 @@
+         const Scheduler::Output& m_scheduler_output;
+         bool m_armed = true;
+ 
++        BorrowedLinearAttentionRowsGuard(ContinuousBatchingImpl& impl, const Scheduler::Output& scheduler_output)
++            : m_impl(impl),
++              m_scheduler_output(scheduler_output) {}
+         ~BorrowedLinearAttentionRowsGuard() {
+             if (m_armed) {
+                 m_impl._release_linear_attention_borrowed_rows(m_scheduler_output);
+--- a/src/cpp/src/whisper/word_level_timestamps.cpp
++++ b/src/cpp/src/whisper/word_level_timestamps.cpp
+@@ -340,7 +340,7 @@
+     const std::vector<int64_t>& tokens,
+     ov::genai::Tokenizer& tokenizer) {
+     const std::string decoded_full = tokenizer.decode(tokens, ov::genai::skip_special_tokens(false));
+-    const std::string replacement_char = u8"\uFFFD";
++    const std::string replacement_char = "\xEF\xBF\xBD";
+ 
+     std::vector<std::string> words;
+     std::vector<std::vector<int64_t>> word_tokens;
