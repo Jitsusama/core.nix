@@ -19,6 +19,8 @@ import pytest
 from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
@@ -38,6 +40,13 @@ RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     """Give the desktop, started once a run."""
     return desktop_session.started(machine, cast("desktop_session.Values", values))
+
+
+@pytest.fixture(autouse=True)
+def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
+    """Close the launcher after each test, so one failing with it open fails alone."""
+    yield
+    desktop.launcher_left_closed()
 
 
 def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Desktop) -> None:

@@ -21,7 +21,7 @@ import pytest
 from desktop_session import KEY_PACE, LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -31,6 +31,13 @@ if TYPE_CHECKING:
 def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     """Give the desktop, started once a run."""
     return desktop_session.started(machine, cast("desktop_session.Values", values))
+
+
+@pytest.fixture(autouse=True)
+def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
+    """Close the launcher after each test, so one failing with it open fails alone."""
+    yield
+    desktop.launcher_left_closed()
 
 
 def field_key(field: list[Json], mark: str, word: str) -> Json:
