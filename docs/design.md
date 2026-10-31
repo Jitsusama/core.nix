@@ -1339,7 +1339,10 @@ the result beside the source before calling it done.
   remaining exception with the reason until it's gone.
 - **Legibility is a check.** Each theme's text pairs are measured for WCAG
   contrast as the machine is evaluated: 4.5:1 for text, 3:1 for large text and
-  glyphs. A theme that fails doesn't build.
+  glyphs. The text roles are measured by APCA as well, which weighs how light
+  the background is: on the background, sunken and deepest, text and strong
+  need Lc 75, as body text does, and muted Lc 60. A theme that fails doesn't
+  build.
 - **Proven whole.** Swapping themes rebuilds the initrd, so the proof goes the
   whole way: switch, reboot, the TPM still opens the disk, and the new theme is
   on the first frame after the firmware's.
@@ -1902,6 +1905,13 @@ What each studio round settled, newest first, with the reason.
   muted measures 2.90:1 on the background, too faint to read, so muted text
   is its hue made just light enough to pass (4.52:1), and the original
   stays for rules and marks that aren't read. Still to be judged by eye.
+- **Text is linen and muted is reed** (2026-10-31). Measured by APCA on the
+  background, parchment, Omarchy's foreground, is Lc 67.6, under the 75 body
+  text needs, and sage Lc 34.3, under the 60 any text needs; and sage's hue
+  sat 46° from parchment's, so rank read as a change of hue. Text is now
+  linen (Lc 78.9), Omarchy's light foreground, and muted is reed (Lc 60.8),
+  linen's own hue and chroma made darker, so rank is lightness alone. Sage
+  stays for the terminal's bright black. Judged by screenshot in both themes.
 
 [surfaces]: #surfaces
 [decisions]: #decisions
