@@ -16,11 +16,12 @@
 # forward through the pages followed, ↑ and ↓ a few lines, Page Up and Page
 # Down a screen, Home and End the top and the bottom, + and - larger and
 # smaller, 0 as it was, Ctrl+C copies what's selected, Escape or q closes,
-# and ? opens a page saying all of them, which ← leaves. Four patches give
+# and ? opens a page saying all of them, which ← leaves. Five patches give
 # it what it lacked: a colour for headings, that page, opening without
-# asking the desktop for a theme when its settings name one, and keeping
-# the file it shows for the launcher, since its command line goes stale
-# once a link opens another file in place.
+# asking the desktop for a theme when its settings name one, keeping the
+# file it shows for the launcher, since its command line goes stale once a
+# link opens another file in place, and a space where a paragraph's line
+# wraps in the file, which it dropped, joining the words either side.
 {
   config,
   lib,
@@ -48,6 +49,7 @@ let
       ./keys-page.patch
       ./named-theme.patch
       ./keeps-what-it-shows.patch
+      ./keeps-words-apart.patch
     ];
     postFixup =
       (old.postFixup or "")

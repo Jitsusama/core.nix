@@ -1,0 +1,145 @@
+diff --git a/src/interpreter/ast.rs b/src/interpreter/ast.rs
+index 19e02f3..169de54 100644
+--- a/src/interpreter/ast.rs
++++ b/src/interpreter/ast.rs
+@@ -298,7 +298,7 @@ trait Process {
+             }
+         }
+     }
+-    fn text(global: &Static, element: &mut TextBox, state: State, mut string: &str) {
++    fn text(global: &Static, element: &mut TextBox, state: State, string: &str) {
+         let text_native_color = global.opts.native_color(global.opts.theme.text_color);
+         if string.trim().is_empty() {
+             if state.text_options.pre_formatted {
+@@ -320,8 +320,17 @@ trait Process {
+                 }
+             }
+         } else {
+-            if element.texts.is_empty() && !state.text_options.pre_formatted {
+-                string = string.trim_start();
++            // Outside preformatted text a run of whitespace, a paragraph's soft line break among
++            // them, is one space, as HTML has it. A newline kept in the text splits it into
++            // spans drawn with nothing between them, which joined the words either side.
++            let collapsed;
++            let mut string = string;
++            if !state.text_options.pre_formatted {
++                collapsed = collapse_whitespace(string);
++                string = &collapsed;
++                if element.texts.is_empty() {
++                    string = string.trim_start();
++                }
+             }
+ 
+             let mut text = Text::new(
+@@ -1045,3 +1054,21 @@ impl Process for TableCellProcess {
+         row.push(tb);
+     }
+ }
++
++/// Each run of whitespace in `text` as one space.
++fn collapse_whitespace(text: &str) -> String {
++    let mut collapsed = String::with_capacity(text.len());
++    let mut in_space = false;
++    for c in text.chars() {
++        if c.is_whitespace() {
++            if !in_space {
++                collapsed.push(' ');
++            }
++            in_space = true;
++        } else {
++            collapsed.push(c);
++            in_space = false;
++        }
++    }
++    collapsed
++}
+diff --git a/src/interpreter/snapshots/inlyne__interpreter__tests__header_inherit_align.snap b/src/interpreter/snapshots/inlyne__interpreter__tests__header_inherit_align.snap
+index 9225a45..3fecdd8 100644
+--- a/src/interpreter/snapshots/inlyne__interpreter__tests__header_inherit_align.snap
++++ b/src/interpreter/snapshots/inlyne__interpreter__tests__header_inherit_align.snap
+@@ -10,10 +10,10 @@ expression: "interpret_md_with_opts(text, opts)"
+     TextBox(
+         TextBox {
+             align: Center,
+-            is_anchor: Some("#install------------usage----"),
++            is_anchor: Some("#install----usage-"),
+             texts: [
+                 Text {
+-                    text: "Install\n    ",
++                    text: "Install ",
+                     color: Some(Color { r: 0.09, g: 0.13, b: 1.00 }),
+                     style: BOLD ,
+                     link: Some("#install"),
+@@ -26,7 +26,7 @@ expression: "interpret_md_with_opts(text, opts)"
+                     ..
+                 },
+                 Text {
+-                    text: "      Usage\n    ",
++                    text: " Usage ",
+                     color: Some(Color { r: 0.09, g: 0.13, b: 1.00 }),
+                     style: BOLD ,
+                     link: Some("#usage"),
+diff --git a/src/interpreter/tests.rs b/src/interpreter/tests.rs
+index 115f742..1017b1d 100644
+--- a/src/interpreter/tests.rs
++++ b/src/interpreter/tests.rs
+@@ -320,6 +320,38 @@ fn elem_as_text_box(elem: &Element) -> Option<&TextBox> {
+     }
+ }
+ 
++/// Paragraphs wrapped at 80 columns, as Markdown files are kept.
++const WRAPPED: &str = include_str!("wrapped-paragraphs.md");
++
++#[test]
++fn wrapped_lines_keep_a_space_between_their_words() {
++    log::init();
++    let elements = interpret_md(WRAPPED);
++    let said: Vec<String> = elements
++        .iter()
++        .filter_map(elem_as_text_box)
++        .map(|text_box| text_box.texts.iter().map(|text| text.text.as_str()).collect())
++        .collect();
++    let said = said.join("\n");
++    // Each pair is the last word of a line and the first of the next.
++    for pair in [
++        "wraps its paragraphs",
++        "at eighty columns,",
++        "so each line ends",
++        "with a word that",
++        "the next begins. The",
++        "reader joins them",
++        "with a space, as",
++        "with emphasis at",
++        "the edge and a link",
++        "near the end. A hard",
++    ] {
++        assert!(said.contains(pair), "{pair:?} isn't in what was read: {said}");
++    }
++    assert!(said.contains("break\nstarts"), "a hard break didn't start a line: {said}");
++    assert!(!said.contains("\n starts"), "a line after a hard break starts with a space: {said}");
++}
++
+ const UNIQUE_ANCHORS: &str = "\
+ # Foo
+ # Foo
+diff --git a/src/interpreter/wrapped-paragraphs.md b/src/interpreter/wrapped-paragraphs.md
+new file mode 100644
+index 0000000..c73502a
+--- /dev/null
++++ b/src/interpreter/wrapped-paragraphs.md
+@@ -0,0 +1,15 @@
++# Wrapped Paragraphs
++
++A Markdown file kept the way these are wraps its paragraphs
++at eighty columns, so each line ends
++with a word that
++the next begins. The
++reader joins them
++with a space, as a browser does, rather than running them together into one.
++
++This paragraph wraps
++with *emphasis at*
++*the edge* and a link
++[near the end](https://example.com). A hard
++break  
++starts a new line without a space at its start.
