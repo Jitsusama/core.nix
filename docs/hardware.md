@@ -995,11 +995,22 @@ upstream as it is and the override can then come out.
   decoder with a cache of fixed length. On a 2.4 s clip at a load of about
   ten, a take went from 460 to 580 ms with the decoder on the CPU to about
   155 ms, and a whole run, the model's load included, from 2.2 s of CPU
-  time and a 1 GB peak in memory to 0.85 s and 194 MB. GenAI's 2026.4.0 needs two C++20 fixes
-  from its main to build, and its static pipeline takes Joel's words only
-  with our patch (`modules/dictation/openvino-genai-npu-prompt.patch`);
-  the NPU's other pipeline can't, since its plugin fixes the decoder's
-  first step at four tokens.
+  time and a 1 GB peak in memory to 0.85 s and 194 MB. GenAI's 2026.4.0
+  needs two C++20 fixes from its main to build, and its static pipeline
+  takes Joel's words only with our patch
+  (`modules/dictation/openvino-genai-npu-prompt.patch`); the NPU's other
+  pipeline can't, since its plugin fixes the decoder's first step at four
+  tokens.
+
+- **Sharing the NPU.** Every job on the NPU says its OpenVINO
+  `MODEL_PRIORITY`: live work on a call HIGH, what Joel waits on, such as
+  dictation, MEDIUM, and background work LOW. With a camera's cut-out
+  every 33 ms, a noise suppressor every 8 ms and Whisper transcribing a
+  minute of speech all on the NPU at the default, the camera's frames
+  waited up to 36 ms behind Whisper, a frame late. With those priorities
+  the frames' 99th percentile fell from 24.8 ms to 3.6 ms and the
+  suppressor kept inside its 8 ms, while Whisper, at LOW, took 4.5 s for
+  68 s of speech rather than 2.5 s.
 
 ### Left Out on Purpose
 

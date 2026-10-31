@@ -18,6 +18,8 @@ use std::ffi::{CString, c_char};
 use std::path::Path;
 use std::ptr;
 
+use crate::openvino::NPU_PRIORITY;
+
 #[repr(C)]
 struct Pipeline {
     _private: [u8; 0],
@@ -139,10 +141,12 @@ impl Whisper {
             ov_genai_whisper_pipeline_create(
                 dir.as_ptr(),
                 device.as_ptr(),
-                6,
+                8,
                 &raw mut pipeline,
                 pipeline_key.as_ptr(),
                 static_pipeline.as_ptr(),
+                c"MODEL_PRIORITY".as_ptr(),
+                NPU_PRIORITY.as_ptr(),
                 cache_key.as_ptr(),
                 cache.as_ptr(),
                 prompt_key.as_ptr(),
