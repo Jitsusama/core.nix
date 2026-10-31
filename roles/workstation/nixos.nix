@@ -33,6 +33,7 @@
   home-manager.sharedModules = [
     homeModules.workstation
     homeModules.cargo
+    homeModules.collector
     homeModules.disk-guard
     homeModules.link-keys
     homeModules.pnpm

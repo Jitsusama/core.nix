@@ -875,6 +875,7 @@ gather (
     ./modules/chrome/checks.nix
     ./modules/claude/checks.nix
     ./modules/clippy/checks.nix
+    ./modules/collector/checks.nix
     ./modules/console/checks.nix
     ./modules/creative-pebble-x-plus/checks.nix
     ./modules/ddcutil/checks.nix

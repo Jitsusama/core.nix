@@ -1,0 +1,25 @@
+# collector keeps the traces an account's programs send it, so any moment
+# can be read back afterwards (src/main.rs says how).
+[package]
+name = "collector"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Local times for reading a moment back, the database built in so the build
+# and its tests need no zoneinfo.
+jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
+# An hour's spans a file, with SQLite built in, as spend-watch has it.
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }

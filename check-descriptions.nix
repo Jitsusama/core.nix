@@ -241,6 +241,13 @@
     clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
     or its tests
   '';
+  collector-passes-clippy = ''
+    clippy finds nothing in the collector, which keeps the traces programs send it, or its tests
+  '';
+  collector-stays-in-the-background = ''
+    the collector runs in background.slice, restarts when it fails, and has a runtime folder for
+    its socket
+  '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
   '';
