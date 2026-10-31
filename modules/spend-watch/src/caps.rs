@@ -76,6 +76,21 @@ pub fn latest(history: &History) -> Result<Vec<Cap>, String> {
     rows.collect::<Result<Vec<_>, _>>().map_err(fail)
 }
 
+/// A cap as it was last read at or before `at`, for replaying a time gone by.
+pub fn earlier_at(history: &History, of: &Cap, at: f64) -> Result<Option<Cap>, String> {
+    let mut statement = history
+        .db
+        .prepare(&format!(
+            "SELECT {COLUMNS} FROM caps WHERE feed = ?1 AND name = ?2 AND at <= ?3
+             ORDER BY at DESC LIMIT 1"
+        ))
+        .map_err(fail)?;
+    let mut rows = statement
+        .query_map(rusqlite::params![of.feed, of.name, at], cap)
+        .map_err(fail)?;
+    rows.next().transpose().map_err(fail)
+}
+
 /// A period's cap as it was last read in each of up to `periods` periods
 /// before its own, newest first; none for a rolling one.
 pub fn earlier(history: &History, of: &Cap, periods: usize) -> Result<Vec<Cap>, String> {

@@ -277,6 +277,7 @@ in
       type = lib.types.listOf lib.types.str;
       default = [
         "over the allowed cap"
+        "over your weekly cap"
         "credit balance is too low"
         "usage limit"
       ];

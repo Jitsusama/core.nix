@@ -66,6 +66,7 @@ fn default_lead() -> Vec<u32> {
 fn default_refusals() -> Vec<String> {
     [
         "over the allowed cap",
+        "over your weekly cap",
         "credit balance is too low",
         "usage limit",
     ]

@@ -18,6 +18,10 @@ spend-watch: what AI use costs
   spend-watch findings              what holds now
   spend-watch findings expect <key> mark one expected
   spend-watch backtest              the forecast and the notices, replayed
+  spend-watch tokens replay <from> <to>
+                                    when the tokens' warning would have said
+                                    what, every five minutes between two
+                                    RFC 3339 instants
   spend-watch refresh               ask the daemon for a pass now
   spend-watch go <session>          bring a session's terminal forward
   spend-watch contract check <file> check a feed's lines against the contract
@@ -137,6 +141,14 @@ fn command(args: Vec<String>) -> Result<String, String> {
                 &crate::backtest::backtest(&history, &picture, &config)?,
                 format,
             ))
+        }
+        ["tokens", "replay", from, to] => {
+            let config = Config::read(&path)?;
+            let history = History::open(&config.history())?;
+            let read = |text: &str| {
+                crate::time::parse(text).ok_or(format!("not an RFC 3339 instant: {text}"))
+            };
+            crate::tokens::replay(&history, &config.zone()?, read(from)?, read(to)?)
         }
         ["report", rest @ ..] => {
             let config = Config::read(&path)?;
