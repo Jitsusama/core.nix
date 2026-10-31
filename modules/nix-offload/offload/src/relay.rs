@@ -11,7 +11,7 @@
 //! and is never dialled again.
 
 use std::io::{self, Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream, ToSocketAddrs};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,7 +31,34 @@ pub struct Relay {
 /// The longest first line waited for; ssh's is at most 255 bytes.
 const LONGEST: usize = 255;
 
+/// A listener on each address `name` gives that can be bound, as
+/// `localhost` gives both `::1` and `127.0.0.1`.
+pub fn listening(name: &str) -> Vec<TcpListener> {
+    name.to_socket_addrs()
+        .map(|addresses| {
+            addresses
+                .filter_map(|address| TcpListener::bind(address).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 impl Relay {
+    /// Passes on every connection each of `listeners` takes, for as long as
+    /// they listen.
+    pub fn serve_all(&self, listeners: Vec<TcpListener>) {
+        let serving: Vec<_> = listeners
+            .into_iter()
+            .map(|listener| {
+                let relay = self.clone();
+                thread::spawn(move || relay.serve(&listener))
+            })
+            .collect();
+        for listener in serving {
+            let _ = listener.join();
+        }
+    }
+
     /// Passes on every connection `listener` takes, each in a thread of
     /// its own, for as long as it listens.
     pub fn serve(&self, listener: &TcpListener) {
@@ -200,6 +227,18 @@ mod tests {
         line.clear();
         reading.read_line(&mut line).expect("the word back");
         assert_eq!(line, "world\n");
+    }
+
+    #[test]
+    fn a_name_is_listened_on_at_every_address_it_gives() {
+        let bound = listening("localhost:0");
+        assert!(!bound.is_empty());
+        let addresses: Vec<_> = "localhost:0"
+            .to_socket_addrs()
+            .expect("localhost")
+            .collect();
+        assert!(bound.len() <= addresses.len());
+        assert!(listening("no.such.name.invalid:0").is_empty());
     }
 
     #[test]

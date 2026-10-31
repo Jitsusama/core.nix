@@ -238,13 +238,13 @@ fn main() -> ExitCode {
             eprintln!("nix-offload: relay needs --listen and --to\n{USED}");
             return ExitCode::from(64);
         };
-        let listener = match std::net::TcpListener::bind(&listen) {
-            Ok(listener) => listener,
-            Err(error) => {
-                eprintln!("nix-offload: listening on {listen}: {error}");
-                return ExitCode::FAILURE;
-            }
-        };
+        // Every address the name gives, since ssh tries localhost's ::1
+        // before 127.0.0.1, as the tunnel it stands in for listens on both.
+        let listeners = relay::listening(&listen);
+        if listeners.is_empty() {
+            eprintln!("nix-offload: couldn't listen on {listen}");
+            return ExitCode::FAILURE;
+        }
         // Less than the 10 s ssh gives a server to answer, so a caller
         // hung up on hears it before ssh gives up on its own.
         relay::Relay {
@@ -252,7 +252,7 @@ fn main() -> ExitCode {
             within: Duration::from_secs(9),
             pause: Duration::from_millis(250),
         }
-        .serve(&listener);
+        .serve_all(listeners);
         return ExitCode::SUCCESS;
     }
     if arguments.first().map(String::as_str) == Some("stand") {
