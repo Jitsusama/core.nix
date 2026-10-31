@@ -25,6 +25,7 @@ in
       kind = "darwin";
       state = "/var/root/.local/state/update-to-main";
       socket = "/var/run/update-to-main.sock";
+      ended = "/var/run/update-to-main.last.json";
       profile = "/nix/var/nix/profiles/system";
       # A Mac boots no NixOS system, and says its power through pmset.
       booted = "/var/empty";

@@ -226,6 +226,11 @@ def test_an_asker_updates_the_machine_to_signed_main(on_first: Machine) -> None:
     on_first.machine.succeed("test -e /etc/switched")
     assert on_first.running() == on_first.switched
     assert on_first.booting() == on_first.switched
+    # How it ended is kept, past the restart its switch brought, for the
+    # group to read and no one else.
+    kept = on_first.machine.succeed("runuser -u someone -- cat /run/update-to-main/last.json")
+    assert json.loads(kept) == lines[-1]
+    on_first.machine.fail("runuser -u other -- cat /run/update-to-main/last.json")
 
 
 def test_main_where_it_was_builds_nothing(on_first: Machine) -> None:

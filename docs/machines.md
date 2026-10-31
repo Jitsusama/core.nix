@@ -114,7 +114,11 @@ at it: one of its `jitsusama.update-to-main.askers` runs
 `update-to-main ask`, and root fetches the repository's main, builds the
 system only if a key in `signers` signed it and it descends from what the
 machine runs, switches, and goes back if the machine isn't whole after. The
-ask takes no arguments, so whoever asks can't choose what runs:
+ask takes no arguments, so whoever asks can't choose what runs. How the
+last update ended is kept as its line, for the askers to read, in
+`/run/update-to-main/last.json` on NixOS and
+`/var/run/update-to-main.last.json` on a Mac, so it's there though the
+switch restarted whoever asked:
 
 ```nix
 jitsusama.update-to-main = {

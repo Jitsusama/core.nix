@@ -4,6 +4,10 @@
 //! joins it and hears it from its first line, so a flood of asks is one
 //! update. Once an update has switched, the program starts itself again
 //! from the running system's path, so the newest one serves the next.
+//!
+//! Each update's ending is also kept in a file the group reads, so a
+//! machine's node can say how the last update ended though the switch
+//! restarted it before it heard.
 
 use crate::config::Config;
 use crate::line::{Applied, Line};
@@ -14,6 +18,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -69,19 +74,47 @@ fn listen(config: &Config) -> Result<UnixListener, String> {
     }
     // Made under another name and moved into place once it's only the
     // group's, so whoever finds the socket finds it as it stays.
-    let making = socket.with_extension("new");
+    let making = beside(socket);
     let _ = fs::remove_file(&making);
     let listener = UnixListener::bind(&making).map_err(named)?;
-    let gid = group_id(&config.group)?;
-    let path = CString::new(making.as_os_str().as_encoded_bytes()).map_err(|e| e.to_string())?;
-    // SAFETY: path is a valid C string. Only the group changes: the socket
-    // is its maker's, root's when it serves a machine.
-    if unsafe { libc::chown(path.as_ptr(), libc::uid_t::MAX, gid) } != 0 {
-        return Err(named(io::Error::last_os_error()));
-    }
-    fs::set_permissions(&making, fs::Permissions::from_mode(0o660)).map_err(named)?;
+    the_groups(&making, &config.group, 0o660)?;
     fs::rename(&making, socket).map_err(named)?;
     Ok(listener)
+}
+
+/// Where a file is made before it's moved into place at `path`.
+fn beside(path: &Path) -> PathBuf {
+    let mut beside = path.as_os_str().to_owned();
+    beside.push(".new");
+    PathBuf::from(beside)
+}
+
+/// Gives `path` to `group` with `mode`. Only the group changes: the file
+/// is its maker's, root's when it serves a machine.
+fn the_groups(path: &Path, group: &str, mode: u32) -> Result<(), String> {
+    let named = |e: io::Error| format!("{}: {e}", path.display());
+    let gid = group_id(group)?;
+    let c = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| e.to_string())?;
+    // SAFETY: c is a valid C string.
+    if unsafe { libc::chown(c.as_ptr(), libc::uid_t::MAX, gid) } != 0 {
+        return Err(named(io::Error::last_os_error()));
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(named)
+}
+
+/// Keeps `ending` in the config's ended file, whole: written beside it,
+/// then moved into place, so a reader never finds half of one.
+fn keep(config: &Config, ending: &Line) -> Result<(), String> {
+    let file = &config.ended;
+    let making = beside(file);
+    let kept = fs::write(&making, format!("{}\n", ending.json()))
+        .map_err(|e| format!("{}: {e}", making.display()))
+        .and_then(|()| the_groups(&making, &config.group, 0o640))
+        .and_then(|()| fs::rename(&making, file).map_err(|e| format!("{}: {e}", file.display())));
+    if kept.is_err() {
+        let _ = fs::remove_file(&making);
+    }
+    kept
 }
 
 fn group_id(name: &str) -> Result<libc::gid_t, String> {
@@ -179,6 +212,11 @@ fn run(config: &Config, heard: &Answer) {
     };
     let ending = update::update(config, &mut |line| push(line));
     eprintln!("{}", ending.json());
+    // Kept before the askers hear it, so one that reads the file after the
+    // ending finds it there. Not keeping it costs only the node's word.
+    if let Err(why) = keep(config, &ending) {
+        eprintln!("couldn't keep how the update ended: {why}");
+    }
     let switched = matches!(
         ending,
         Line::Done {
@@ -199,7 +237,7 @@ fn run(config: &Config, heard: &Answer) {
 
 /// Waits for the askers to hear the ending, then becomes the running
 /// system's update-to-main, with the same arguments.
-fn start_again(program: &std::path::Path, heard: &Answer) {
+fn start_again(program: &Path, heard: &Answer) {
     let said = heard.state.lock().expect("the answer's lock");
     let _ = heard
         .grew

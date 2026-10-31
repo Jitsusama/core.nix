@@ -35,6 +35,9 @@ pub struct Config {
     pub socket: PathBuf,
     /// The group that may write the socket, and only it.
     pub group: String,
+    /// Where the last update's ending is kept, as its line, for the group
+    /// to read.
+    pub ended: PathBuf,
     /// The system profile, which the machine boots and rolls back by.
     pub profile: PathBuf,
     /// The signatures a commit may carry to be built.
