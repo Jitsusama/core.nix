@@ -40,6 +40,8 @@ import "Tuple.js" as Log
 Singleton {
     id: root
 
+    readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR") ?? ""
+
     readonly property string log: `${Quickshell.env("XDG_DATA_HOME")
         || Quickshell.env("HOME") + "/.local/share"}/tuple/0/log.txt`
 
@@ -430,7 +432,10 @@ Singleton {
         id: following
         running: true
         // Tuple's daemon listens here, as tuple-0 for its first account.
-        command: ["tuple-people", "call", "tuple", `${Quickshell.env("XDG_RUNTIME_DIR")}/tuple-0`]
+        // Who a call is with is kept in tuple-call.json beside it, for
+        // what records a call without the shell (people.rs).
+        command: ["tuple-people", "call", "tuple", `${root.runtime}/tuple-0`,
+            `${root.runtime}/tuple-call.json`]
         stdout: SplitParser {
             onRead: line => root.streams(line)
         }
