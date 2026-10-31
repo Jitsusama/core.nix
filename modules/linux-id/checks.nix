@@ -8,7 +8,8 @@
 onLinux {
   # linux-id builds with core's patches and passes its own tests, which run
   # as it builds, the patches' among them: Chrome's touch probe refused
-  # without asking.
+  # without asking, and an approval kept only for the site and operation it
+  # was given for.
   linux-id-passes-its-own-tests = pkgs.callPackage ./package.nix { };
 
   # linux-id's pinentry speaks pinentry's protocol and asks the askpass in

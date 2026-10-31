@@ -1,0 +1,113 @@
+Ask again for another site within the verifier's cache
+
+The verifier keeps a person's approval for five seconds, so a browser's
+preflight and its real request for one sign-in ask only once. It kept
+the approval whatever was asked next, so a request from any other site,
+or a registration, within those seconds was approved without asking.
+Keep it only for the prompt that was approved, which names the
+operation and the site.
+
+diff --git a/main.go b/main.go
+index 35f519a..95019a2 100644
+--- a/main.go
++++ b/main.go
+@@ -126,12 +126,17 @@ func (v *fprintdVerifier) PerformsUV() bool { return true }
+ 
+ const uvCacheTTL = 5 * time.Second
+ 
++// cachingVerifier answers a request for the prompt the person approved last,
++// within ttl, without asking again: a browser's preflight and its real
++// request for one sign-in. The prompt names the operation and the site, so
++// another site, or a registration after a sign-in, is always asked.
+ type cachingVerifier struct {
+-	inner  UserVerifier
+-	ttl    time.Duration
+-	now    func() time.Time
+-	mu     sync.Mutex
+-	lastOK time.Time
++	inner    UserVerifier
++	ttl      time.Duration
++	now      func() time.Time
++	mu       sync.Mutex
++	lastOK   time.Time
++	okPrompt string
+ }
+ 
+ func newCachingVerifier(inner UserVerifier) *cachingVerifier {
+@@ -140,7 +145,7 @@ func newCachingVerifier(inner UserVerifier) *cachingVerifier {
+ 
+ func (v *cachingVerifier) VerifyUser(prompt string) (<-chan VerifyResult, error) {
+ 	v.mu.Lock()
+-	if !v.lastOK.IsZero() && v.now().Sub(v.lastOK) < v.ttl {
++	if !v.lastOK.IsZero() && v.okPrompt == prompt && v.now().Sub(v.lastOK) < v.ttl {
+ 		v.mu.Unlock()
+ 		log.Print("verifier: UV cache hit, skipping prompt")
+ 		ch := make(chan VerifyResult, 1)
+@@ -159,6 +164,7 @@ func (v *cachingVerifier) VerifyUser(prompt string) (<-chan VerifyResult, error)
+ 		if r.OK {
+ 			v.mu.Lock()
+ 			v.lastOK = v.now()
++			v.okPrompt = prompt
+ 			v.mu.Unlock()
+ 		}
+ 		out <- r
+diff --git a/main_test.go b/main_test.go
+index 5537f15..44b53ff 100644
+--- a/main_test.go
++++ b/main_test.go
+@@ -436,7 +436,7 @@ func TestCachingVerifier_CachesRecentSuccess(t *testing.T) {
+ 	inner := &fakeVerifier{nextResult: VerifyResult{OK: true}}
+ 	v := newCachingVerifier(inner)
+ 
+-	ch1, err := v.VerifyUser("first")
++	ch1, err := v.VerifyUser("FIDO2 Authenticate: site.example")
+ 	if err != nil {
+ 		t.Fatalf("first VerifyUser: %s", err)
+ 	}
+@@ -447,7 +447,7 @@ func TestCachingVerifier_CachesRecentSuccess(t *testing.T) {
+ 		t.Fatalf("after first call, inner.callCount = %d, want 1", inner.callCount)
+ 	}
+ 
+-	ch2, err := v.VerifyUser("second")
++	ch2, err := v.VerifyUser("FIDO2 Authenticate: site.example")
+ 	if err != nil {
+ 		t.Fatalf("second VerifyUser: %s", err)
+ 	}
+@@ -459,6 +459,28 @@ func TestCachingVerifier_CachesRecentSuccess(t *testing.T) {
+ 	}
+ }
+ 
++// An approval for one site, or for signing in, never answers a request for
++// another site, or a registration, that comes within the cache's time.
++func TestCachingVerifier_AsksForAnotherPrompt(t *testing.T) {
++	inner := &fakeVerifier{nextResult: VerifyResult{OK: true}}
++	v := newCachingVerifier(inner)
++
++	for _, prompt := range []string{
++		"FIDO2 Authenticate: site.example",
++		"FIDO2 Authenticate: other.example",
++		"FIDO2 Register: other.example",
++	} {
++		ch, err := v.VerifyUser(prompt)
++		if err != nil {
++			t.Fatalf("VerifyUser(%q): %s", prompt, err)
++		}
++		<-ch
++	}
++	if inner.callCount != 3 {
++		t.Errorf("an approval answered another prompt; inner.callCount = %d, want 3", inner.callCount)
++	}
++}
++
+ func TestCachingVerifier_DoesNotCacheFailure(t *testing.T) {
+ 	inner := &fakeVerifier{nextResult: VerifyResult{OK: false}}
+ 	v := newCachingVerifier(inner)
+@@ -492,7 +514,7 @@ func TestCachingVerifier_CacheExpires(t *testing.T) {
+ 
+ 	now = now.Add(2 * uvCacheTTL)
+ 
+-	ch2, _ := v.VerifyUser("b")
++	ch2, _ := v.VerifyUser("a")
+ 	<-ch2
+ 	if inner.callCount != 2 {
+ 		t.Errorf("expired cache should not short-circuit; inner.callCount = %d, want 2", inner.callCount)

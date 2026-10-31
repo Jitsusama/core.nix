@@ -1477,8 +1477,9 @@
     linux-id's pinentry asks the askpass in the program's words
   '';
   linux-id-passes-its-own-tests = ''
-    linux-id builds with core's patches and passes its tests, Chrome's touch
-    probe refused without asking among them
+    linux-id builds with core's patches and passes its tests, among them
+    Chrome's touch probe refused without asking, and an approval kept only
+    for the site and operation it was given for
   '';
   the-power-profile-answers-before-the-network = ''
     the power profile daemon's unit, the XPS 14's patched one too, waits for neither the network nor
