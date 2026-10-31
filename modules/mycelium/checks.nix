@@ -290,8 +290,8 @@ in
   # A machine's system pins each key that links to it, on either system, to
   # its own realm and machine, with a terminal for an attach; one naming
   # none authorizes nothing of mycelium's.
-  mycelium-pins-the-keys-that-link =
-    holds "mycelium-pins-the-keys-that-link"
+  mycelium-lets-a-link-key-only-link =
+    holds "mycelium-lets-a-link-key-only-link"
       "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, or a machine naming none authorizes a key."
       (
         let
