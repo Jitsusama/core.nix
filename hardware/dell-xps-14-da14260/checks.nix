@@ -119,6 +119,31 @@ in
       "xe's non-purgeable seeks aren't set to 64, so reclaim under a build backs up window buffers and the compositor waits on them."
       (lib.hasInfix ''DRIVER=="xe", ATTR{shrinker_non_purgeable_seeks}="64"'' extraRules);
 
+  # xe's 2 MiB buffer pages had the thread asking reclaim and compact for
+  # them, round after round, while memory was fragmented, and niri stalled
+  # for up to 1.3 s. Read from the patched source, that try only wakes
+  # background reclaim and falls back. No test runs the fallback itself:
+  # TTM's own tests never name a size the device gains from, and a 2 MiB
+  # allocation fails on cue only with fault injection, which this kernel
+  # isn't built with.
+  the-gpu-pool-never-stalls-for-big-pages =
+    let
+      pool = "drivers/gpu/drm/ttm/ttm_pool.c";
+    in
+    pkgs.runCommandLocal "the-gpu-pool-never-stalls-for-big-pages" { } ''
+      cd ${kernelSource [ pool ]}
+      fail() {
+        echo "The GPU's page pool $1, so a 2 MiB page can stall the compositor for a second."
+        exit 1
+      }
+      tried=$(grep -A1 'if (beneficial_order && order == beneficial_order)' ${pool}) ||
+        fail "has no try at the size the device gains from where this check looks"
+      grep -qF 'gfp_flags &= ~__GFP_DIRECT_RECLAIM;' <<<"$tried" ||
+        fail "reclaims in the caller for it"
+      ! grep -qF '__GFP_RETRY_MAYFAIL' <<<"$tried" || fail "retries reclaim for it"
+      touch $out
+    '';
+
   greetd-waits-for-the-gpu =
     let
       xps = bareNixos [

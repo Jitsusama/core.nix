@@ -1196,6 +1196,10 @@
     replaced twice or written as any context's word, each clash is printed, and the check
     refuses a stand-in glossary breaking each of its rules
   '';
+  the-gpu-pool-never-stalls-for-big-pages = ''
+    the XPS 14's patched TTM pool asks for the 2 MiB pages xe gains from without reclaiming or
+    retrying in the caller, so the try only wakes background reclaim and falls back
+  '';
   the-gpu-security-link-loads-with-the-gpu = ''
     the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its
     CSME link

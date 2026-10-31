@@ -1,0 +1,41 @@
+drm/ttm: don't reclaim in the caller for the beneficial order
+
+Since a driver can name the order it benefits from, the pool tries that
+order with __GFP_RETRY_MAYFAIL in place of __GFP_NORETRY. For a costly
+order, that has the allocating thread reclaim and compact over and over
+while memory is fragmented, until neither makes progress, before it
+falls back to the lower orders it would have taken anyway. Every other
+order above zero already skips reclaim.
+
+On a Panther Lake laptop with xe, whose beneficial order is 2 MiB, a
+compositor's main thread was seen stalled on memory for 0.1 to 1.3 s at
+a time, each stall beside failing direct compaction and direct reclaim
+and no huge-page fault.
+
+Clear __GFP_DIRECT_RECLAIM at the beneficial order and keep
+__GFP_KSWAPD_RECLAIM, so kswapd and kcompactd make 2 MiB blocks for the
+next allocation while this one falls back, as THP's defer does.
+
+diff --git a/drivers/gpu/drm/ttm/ttm_pool.c b/drivers/gpu/drm/ttm/ttm_pool.c
+--- a/drivers/gpu/drm/ttm/ttm_pool.c
++++ b/drivers/gpu/drm/ttm/ttm_pool.c
+@@ -183,10 +183,15 @@
+ 	if (order && beneficial_order && order != beneficial_order)
+ 		gfp_flags &= ~__GFP_RECLAIM;
+ 
+-	if (beneficial_order && order == beneficial_order) {
+-		gfp_flags &= ~__GFP_NORETRY;
+-		gfp_flags |= __GFP_RETRY_MAYFAIL;
+-	}
++	/*
++	 * Nor at the order the device does gain from: reclaiming and
++	 * compacting for it in the caller held a compositor's thread for over
++	 * a second while memory was fragmented. Wake kswapd, which wakes
++	 * kcompactd, to make such blocks for the next allocation, and let
++	 * this one fall back to the lower orders, as THP's defer does.
++	 */
++	if (beneficial_order && order == beneficial_order)
++		gfp_flags &= ~__GFP_DIRECT_RECLAIM;
+ 
+ 	if (!ttm_pool_uses_dma_alloc(pool)) {
+ 		p = alloc_pages_node(pool->nid, gfp_flags, order);

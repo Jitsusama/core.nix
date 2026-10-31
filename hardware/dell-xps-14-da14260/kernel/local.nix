@@ -115,5 +115,14 @@
       name = "xe-shrinker-keeps-write-combined-buffers";
       patch = ./local/xe-shrinker-keeps-write-combined-buffers.patch;
     }
+    {
+      # The GPU's buffers are taken in 2 MiB blocks where they can be, and
+      # while memory was fragmented the thread asking reclaimed and
+      # compacted for one before falling back to smaller pages, so niri
+      # stalled for up to 1.3 s. Background reclaim makes the blocks now.
+      # Written here; the patch says why.
+      name = "ttm-pool-defers-big-pages";
+      patch = ./local/ttm-pool-defers-big-pages.patch;
+    }
   ];
 }
