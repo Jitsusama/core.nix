@@ -9,9 +9,9 @@
 }:
 {
   # The cryptsetup a person types reads a disk's YubiKey tokens through
-  # systemd's plugin: its dump of one says what the token asks for, which
-  # cryptsetup alone can't.
-  cryptsetup-finds-its-tokens =
+  # systemd's plugin: its dump of one says what the key asks for, which
+  # cryptsetup alone can't. The plugin writes its part to stderr.
+  cryptsetup-finds-systemds-plugins =
     let
       machine = bareNixos [
         self.nixosModules.disko
@@ -33,13 +33,13 @@
         fido2-uv-required = false;
       };
     in
-    pkgs.runCommandLocal "cryptsetup-finds-its-tokens" { } ''
+    pkgs.runCommandLocal "cryptsetup-finds-systemds-plugins" { } ''
       cryptsetup=${machine.config.system.path}/bin/cryptsetup
       truncate -s 20M disk.img
       printf pw | $cryptsetup luksFormat -q --disable-locks --type luks2 --pbkdf pbkdf2 \
         --pbkdf-force-iterations 1000 --key-file - disk.img
       printf '%s' '${token}' | $cryptsetup token import --disable-locks --json-file - disk.img
-      $cryptsetup luksDump --disable-locks disk.img > dump
+      $cryptsetup luksDump --disable-locks disk.img > dump 2>&1
       grep -q 'fido2-clientPin-required' dump || {
         echo "cryptsetup on the machine's path read the YubiKey token without systemd's plugin:"
         sed -n '/^Tokens:/,/^Digests:/p' dump
