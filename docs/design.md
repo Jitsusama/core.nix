@@ -1193,6 +1193,67 @@ niri opens it; Super+Shift+Return opens a terminal just below the focused
 window instead, and Super+Alt+Return does that for whichever window opens
 next, from the launcher or anywhere else.
 
+### Vi's Keys
+
+Every surface of ours where nothing is typed speaks vi, exactly as Neovim
+does (Joel, 2026-10-31: "i want it to feel exactly like neovim"). Its keys
+are measured against Neovim's own and Joel's config in `modules/neovim`,
+and where one of ours differs, the reason is written beside it. The keys go
+by letter, wherever they sit on Colemak Mod-DH, and the arrows keep doing
+what they do, since they're what Joel presses.
+
+- **Where.** The reader, the notices on screen, the camera's viewfinder,
+  and any list or page of ours with no field. A surface where letters
+  type, as the launcher's field does, takes no vi keys. Pickers that search
+  as you type have no mode, Joel's own Neovim's included, and a mode there
+  would cost the one Escape that closes them.
+- **First, on every such surface:**
+  - **Moving:** h, j, k and l, as the arrows; gg and G to the first and
+    last; Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen.
+  - **Counts** before a motion: 5j, 3G.
+  - **Searching,** where there's text: / and ?, then n and N, with case
+    ignored until a capital is typed, as his smartcase has it.
+  - **Marks,** where a place lasts: m and a letter sets one, ' and the
+    letter goes back, and '' goes back to the last jump.
+  - **Closing:** q closes, as his Neovim closes help and its plugin
+    windows.
+  - **An Escape that always works:** it cancels whatever is in progress (a
+    count, a search, a selection, labels, a key waiting for its second).
+    At rest it steps out, and closes a surface that floats over others.
+- **Then, in each surface's turn:** visual mode, operators (y copies as
+  the surface's own format; d does a thing's ending act, asking once when
+  it can't be undone) and text objects, wherever there's text to act on.
+  The reader has them from the start.
+- **Proved by a VM test of its keys,** one for each surface, as it lands.
+
+Where vi meets the keys already here, each clash resolves one way:
+
+- **?** means every key here, and in vi searches backward. Where there's
+  text to search it's vi's, and Space ? shows the keys, as in his Neovim.
+- **Escape at rest** backs out here, and in vi does nothing. It steps out
+  of what floats over others; in a window, as the reader is, it does
+  nothing, so a habitual second Escape never closes a page mid-read.
+- **Return** opens or acts here, and in vi moves down a line. It acts, and
+  moves down a line only on plain text.
+- **Tab** is the one used last here, and in vi goes forward through the
+  jumps. It stays ours; where Space is the leader, Space Tab is the one
+  used last, and Ctrl+I goes forward through the jumps.
+- **Page Up and Page Down** are the level above here, and a screen in vi.
+  The reader takes vi's; everywhere else keeps the level above.
+- **q** records a macro in vi. Here it closes, as in his Neovim's help and
+  plugin windows, so no surface of ours has macros.
+- **Ctrl+C** cancels in vi. Here it copies, as on the whole desktop.
+- **x and dd** delete in vi. Here they do a thing's ending act, asking once
+  when it can't be undone.
+
+On the notices on screen, held: j and k (and ↓ and ↑) turn through the
+cards, l steps into the front card's acts and h back out, and there j and
+k choose an act. Return runs it, and Ctrl+Return runs it and closes. dd or
+Delete forgets the front card, with Shift for all. gg and G go to the
+newest and the oldest, and Escape steps out, then lets the stack go. In
+the viewfinder, q closes as Escape does, and nothing else changes, since
+its keys are few on purpose.
+
 ## Customising
 
 Every choice comes with deep room to change it, and changing it never slows
