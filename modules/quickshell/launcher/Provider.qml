@@ -62,8 +62,10 @@ Scope {
     property var draws: []
     signal answered
     // Its search found more after it was asked, as People's does once the
-    // people daemon answers, so what's typed is searched again in place.
-    signal foundMore
+    // people daemon answers, so what's typed is searched again: ranked as
+    // a key's search is when `fresh`, come so soon after the key that it
+    // was hardly seen, else in place.
+    signal foundMore(bool fresh)
     // A collection's things changed while it might be open.
     signal changed
 

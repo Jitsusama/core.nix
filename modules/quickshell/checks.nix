@@ -1859,6 +1859,7 @@ onLinux {
         property var spawned: []
         function spawn(command) { spawned = command; }
       '';
+      report = singleton "Report.qml" "function say(text) {}";
       people = pkgs.callPackage ../people/package.nix { };
       helper = pkgs.callPackage ./pi-helper.nix {
         name = "tuple-people";
@@ -1926,6 +1927,7 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
+      cp ${report} Report.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       # Here is UTC, so how far a zone is from here is known.
       export TZ=UTC

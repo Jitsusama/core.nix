@@ -2461,11 +2461,16 @@ Scope {
     // the list alone, rather than starting them afresh to be put back: the
     // rows are made once a refresh, not twice.
     // A source's search found more once asked, as People's does when the
-    // people daemon answers, within milliseconds of the key: what's typed
-    // is searched again in place, holding still what's shown, and only
-    // then, never on the source's other changes.
-    function foundMore() {
-        if (open && !asking && typed.trim() !== "")
+    // people daemon answers, and only then, never on its other changes:
+    // what's typed is searched again, ranked as the key's own search when
+    // the answer came fresh, so soon that its first frame hardly showed
+    // without it, and otherwise in place, holding still what's shown.
+    function foundMore(fresh) {
+        if (!open || asking || typed.trim() === "")
+            return;
+        if (fresh)
+            search(typed);
+        else
             reshow(held.length);
     }
 
