@@ -64,6 +64,7 @@
 //! the file `--standing` gives, and join the machines file while they
 //! answer, so Nix never waits on one that's away.
 
+mod changed;
 mod decide;
 mod journal;
 mod machines;
@@ -114,7 +115,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     [--standing PATH] | nix-offload stand --standing PATH \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    FLAKE ATTR...";
+                    FLAKE ATTR... | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -245,6 +246,12 @@ fn there(arguments: &[String]) -> ExitCode {
         println!("{}", there::TAKES.join("\n"));
         return ExitCode::SUCCESS;
     }
+    if let Some(("--changed", rest)) = arguments
+        .split_first()
+        .map(|(first, rest)| (first.as_str(), rest))
+    {
+        return changed_there(rest);
+    }
     let Some(asked) = there::asked(arguments) else {
         eprintln!("nix-offload: there takes a flake and its attributes\n{USED}");
         return ExitCode::from(64);
@@ -294,6 +301,105 @@ fn there(arguments: &[String]) -> ExitCode {
         });
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
+}
+
+/// `there --changed`: changed-checks run for the tree here on the lent
+/// builder, else an evaluator with its builds sent on, else a builder
+/// waited for (`changed.rs` says why). It exits with the run's status, or
+/// `NOT_TAKEN` when nowhere else took it.
+fn changed_there(arguments: &[String]) -> ExitCode {
+    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let scratch = env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-there");
+    let not_taken = |why: &str| {
+        eprintln!("nix-offload: {why}, so changed-checks runs here");
+        ExitCode::from(changed::NOT_TAKEN)
+    };
+    let Ok(folder) = env::current_dir() else {
+        return not_taken("this folder can't be read");
+    };
+    let source = match there::source(&folder, &scratch) {
+        Ok(source) => source,
+        Err(why) => return not_taken(&why),
+    };
+    let bundle = match &source {
+        there::Source::Bundled { bundle, .. } => Some(bundle.clone()),
+        there::Source::Pushed { .. } => None,
+    };
+    let code = changed_somewhere(arguments, &dir, &scratch, &folder, &source);
+    if let Some(bundle) = bundle {
+        let _ = fs::remove_file(bundle);
+    }
+    code.unwrap_or_else(|| not_taken("no builder or evaluator answered"))
+}
+
+/// Where `there --changed` runs, in its order, or none when nowhere did.
+fn changed_somewhere(
+    arguments: &[String],
+    dir: &Path,
+    scratch: &Path,
+    folder: &Path,
+    source: &there::Source,
+) -> Option<ExitCode> {
+    let exited = |status: i32| ExitCode::from(u8::try_from(status).unwrap_or(1));
+    let on_builder = |store: Option<String>| {
+        let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
+        let sending = changed::sending(source.clone(), arguments);
+        match there::on(&lent, &sending, None, scratch, "ssh") {
+            Ok(ran) if ran.status != there::UNREACHED => Some(exited(ran.status)),
+            _ => {
+                eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
+                None
+            }
+        }
+    };
+    let store = fs::read_to_string(dir.join("store"))
+        .ok()
+        .filter(|store| !store.trim().is_empty());
+    if let Some(code) = on_builder(store) {
+        return Some(code);
+    }
+    let wanted = changed::wanted(arguments);
+    let evaluating: Vec<String> = arguments
+        .iter()
+        .filter(|word| *word != "--build")
+        .cloned()
+        .collect();
+    let evaluators = fs::read_to_string(config().join("nix-offload/evaluators"))
+        .map(|text| changed::evaluators(&text))
+        .unwrap_or_default();
+    let github = match source {
+        there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
+    };
+    for evaluator in evaluators
+        .iter()
+        .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
+    {
+        eprintln!("nix-offload: evaluating on {}", evaluator.host);
+        let sending = changed::sending(source.clone(), &evaluating);
+        let (status, printed) = match changed::evaluated("ssh", &evaluator.host, &sending, scratch)
+        {
+            Ok((status, _)) if status == there::UNREACHED => continue,
+            Ok(evaluated) => evaluated,
+            Err(why) => {
+                eprintln!("nix-offload: {why}");
+                continue;
+            }
+        };
+        let targets = changed::to_build(&printed, wanted.vm);
+        if status != 0 || !wanted.build || targets.is_empty() {
+            return Some(exited(status));
+        }
+        let Some(system) = &wanted.system else {
+            eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
+            return Some(ExitCode::from(64));
+        };
+        let built = changed::building(folder, system, &targets).status();
+        return Some(built.map_or(ExitCode::FAILURE, |built| exited(built.code().unwrap_or(1))));
+    }
+    // Asked for and waited on, as any `there` waits, while a lender runs.
+    on_builder(there::waited(dir, there::WAITING))
 }
 
 /// `serve`: lends builders while the queue has builds one could take.

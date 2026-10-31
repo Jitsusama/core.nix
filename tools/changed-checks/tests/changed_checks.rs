@@ -50,6 +50,7 @@ const NIX: &str = r#"#!/bin/sh
 case "$1" in
   build) shift; echo "$@" >> "$STAND_IN/built"; exit 0 ;;
 esac
+[ "$5" = builtins.currentSystem ] && { echo x86_64-linux; exit 0; }
 [ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
 side=working
 case "$3" in *'?rev='*) side=base ;; esac
@@ -74,9 +75,19 @@ esac
 
 /// nix-offload as changed-checks asks it to build there: it records what
 /// it was given, and journals the build as sent from the lent builder, as
-/// `nix-offload there` does.
+/// `nix-offload there` does. Once a test writes `takes-changed`, it says
+/// it takes `--changed`, and a run sent so is recorded with the folder it
+/// started in and exits with `changed-exit`'s number, or 0.
 const NIX_OFFLOAD: &str = r#"#!/bin/sh
 [ -f "$STAND_IN/refuses" ] && exit 64
+if [ "$2" = --takes ]; then
+  [ -f "$STAND_IN/takes-changed" ] && printf 'tree\nchanged\n'
+  exit 0
+fi
+if [ "$2" = --changed ]; then
+  { pwd; printf '%s\n' "$@"; } > "$STAND_IN/changed"
+  exit "$(cat "$STAND_IN/changed-exit" 2>/dev/null || echo 0)"
+fi
 printf '%s\n' "$@" > "$STAND_IN/sent"
 mkdir -p "$XDG_STATE_HOME/nix-offload"
 echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
@@ -272,6 +283,76 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(stand_in.built(), here, "refused there");
     assert!(text(&ran.stderr).contains("since nix-offload couldn't take the build there"));
+}
+
+#[test]
+fn the_whole_run_goes_elsewhere_where_nix_offload_takes_it_naming_this_system() {
+    let stand_in = StandIn::new("sent-whole");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::create_dir_all(stand_in.path("repo")).expect("the repository");
+    fs::write(stand_in.path("takes-changed"), "").expect("written");
+
+    let ran = stand_in.run(&["--build", "--no-vm"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        fs::read_to_string(stand_in.path("changed")).expect("it was sent"),
+        format!(
+            "{}\nthere\n--changed\n--build\n--no-vm\n--system\nx86_64-linux\n",
+            fs::canonicalize(stand_in.path("repo"))
+                .expect("the repository")
+                .display()
+        )
+    );
+    assert_eq!(stand_in.built(), "", "nothing is built here");
+    assert!(stand_in.runs().is_empty(), "nothing is evaluated here");
+
+    // The far side's failure is the run's.
+    fs::write(stand_in.path("changed-exit"), "1").expect("written");
+    assert_eq!(stand_in.run(&["--build"]).status.code(), Some(1));
+}
+
+#[test]
+fn it_runs_here_when_asked_to_when_its_base_is_its_own_or_when_nowhere_took_it() {
+    let stand_in = StandIn::new("kept-here");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::create_dir_all(stand_in.path("repo")).expect("the repository");
+    fs::write(stand_in.path("takes-changed"), "").expect("written");
+    let named = "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n";
+
+    for arguments in [
+        &["--system", "x86_64-linux", "--here"][..],
+        &[
+            "--system",
+            "x86_64-linux",
+            "--base",
+            "refs/remotes/origin/main",
+        ][..],
+    ] {
+        let _ = fs::remove_file(stand_in.path("changed"));
+        let ran = stand_in.run(arguments);
+        let sent = stand_in.path("changed").exists();
+        let here = arguments.contains(&"--here");
+        assert_eq!(sent, !here, "{arguments:?}: {}", text(&ran.stderr));
+        if here {
+            assert_eq!(text(&ran.stdout), named, "{arguments:?}");
+        }
+    }
+
+    // A base only this checkout names stays here; the stand-in git knows
+    // origin's main alone, so it says it shares no history.
+    let _ = fs::remove_file(stand_in.path("changed"));
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--base", "topic"]);
+    assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
+
+    // Nowhere took it, so it runs here after all.
+    fs::write(stand_in.path("changed-exit"), "75").expect("written");
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(stand_in.path("changed").exists(), "it was offered first");
+    assert_eq!(text(&ran.stdout), named);
 }
 
 #[test]

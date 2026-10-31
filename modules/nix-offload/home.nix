@@ -15,6 +15,7 @@ let
   standing = pkgs.writeText "nix-offload-standing" (
     lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n") cfg.standing
   );
+  sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
 in
 {
   options.jitsusama.nix-offload = {
@@ -120,6 +121,37 @@ in
         it's a folder here, so the build needs nothing this machine builds.
       '';
     };
+    evaluators = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            address = lib.mkOption {
+              type = lib.types.str;
+              description = "Where it answers, `host:port`, when it can be reached.";
+            };
+            host = lib.mkOption {
+              type = lib.types.str;
+              description = "The host ssh is given to reach it, as the person's own account.";
+            };
+            owners = lib.mkOption {
+              type = lib.types.nonEmptyListOf lib.types.str;
+              description = ''
+                The GitHub owners whose repositories it takes, so a machine only some work
+                may reach is given that work alone.
+              '';
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        Machines that evaluate a change's checks for `nix-offload there
+        --changed`, as changed-checks sends itself, when no builder is lent:
+        the first that answers runs changed-checks, and what it names is built
+        as any `there` build is. Each needs Nix with flakes, git and network
+        access to GitHub, and nothing more.
+      '';
+    };
     timeZone = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -127,8 +159,14 @@ in
     };
   };
 
-  config = lib.mkIf (cfg.helper != null || cfg.standing != [ ] || cfg.nearby != [ ]) {
+  config = lib.mkIf (cfg.helper != null || cfg.standing != [ ] || sendsElsewhere) {
     home.packages = [ offload ];
+
+    xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
+      text = lib.concatMapStrings (
+        machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.owners}\n"
+      ) cfg.evaluators;
+    };
 
     xdg.configFile."nix-offload/nearby" = lib.mkIf (cfg.nearby != [ ]) {
       text = lib.concatMapStrings (

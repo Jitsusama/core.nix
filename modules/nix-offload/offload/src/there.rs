@@ -182,18 +182,18 @@ fn nix_string(text: &str) -> String {
 /// The lent builder, as nix-offload names its store: where ssh reaches it,
 /// the key it takes and its host key.
 #[derive(Debug, PartialEq, Eq)]
-struct Builder {
+pub struct Builder {
     /// The host, as ssh is given it, with its user where the store names one.
-    host: String,
+    pub host: String,
     /// The key the builder takes, where the store names one.
-    key: Option<String>,
+    pub key: Option<String>,
     /// The builder's host key, as a line of a known hosts file has it.
-    host_key: Option<String>,
+    pub host_key: Option<String>,
 }
 
 /// The builder an ssh store's URI names, as Nix writes one:
 /// `ssh-ng://host?ssh-key=...&base64-ssh-public-host-key=...`.
-fn builder(store: &str) -> Option<Builder> {
+pub fn builder(store: &str) -> Option<Builder> {
     let rest = store
         .strip_prefix("ssh-ng://")
         .or_else(|| store.strip_prefix("ssh://"))?;
@@ -217,7 +217,7 @@ fn builder(store: &str) -> Option<Builder> {
 
 /// ssh's own status when it couldn't reach the builder or lost it, which
 /// no build gives.
-const UNREACHED: i32 = 255;
+pub const UNREACHED: i32 = 255;
 
 /// Where a build ran and how it ended.
 #[derive(Debug, PartialEq, Eq)]
@@ -432,17 +432,21 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
 /// What the lent builder is given for a build: the command its shell
 /// runs, and a file sent on its standard input, a bundle of commits it
 /// lacks or a tarball of a folder.
-struct Sending {
-    command: String,
-    bundle: Option<PathBuf>,
+pub struct Sending {
+    pub command: String,
+    pub bundle: Option<PathBuf>,
 }
 
 /// How a flake that's a git tree here reaches the builder: as a commit
 /// GitHub has, or as the commits since the newest one it has, bundled.
-#[derive(Debug, PartialEq, Eq)]
-enum Source {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
     Pushed {
-        flake: String,
+        /// The repository on GitHub, `owner/name`.
+        github: String,
+        commit: String,
+        /// The flake's folder in the repository, when not its top.
+        dir: Option<String>,
     },
     Bundled {
         /// The repository on GitHub, `owner/name`.
@@ -458,8 +462,17 @@ enum Source {
 impl Source {
     fn sending(self, asked: &Asked) -> Sending {
         match self {
-            Source::Pushed { flake } => Sending {
-                command: asked.command_of(&flake),
+            Source::Pushed {
+                github,
+                commit,
+                dir,
+            } => Sending {
+                command: asked.command_of(&format!(
+                    "github:{github}/{commit}{}",
+                    dir.as_deref()
+                        .map(|dir| format!("?dir={dir}"))
+                        .unwrap_or_default()
+                )),
                 bundle: None,
             },
             Source::Bundled {
@@ -496,12 +509,12 @@ impl Source {
 }
 
 /// What `there --takes` says it takes: a flake that's a git tree here,
-/// `--apply`, `--out`, waiting for a builder it asks for, and a flake
-/// that's a folder no commit names.
-pub const TAKES: [&str; 5] = ["tree", "apply", "out", "wants", "folder"];
+/// `--apply`, `--out`, waiting for a builder it asks for, a flake that's a
+/// folder no commit names, and `--changed`, changed-checks run elsewhere.
+pub const TAKES: [&str; 6] = ["tree", "apply", "out", "wants", "folder", "changed"];
 
 /// The ref a bundle carries its commit under, here only while it's made.
-const BUNDLED: &str = "refs/nix-offload/there";
+pub const BUNDLED: &str = "refs/nix-offload/there";
 
 /// The GitHub repository a remote's URL names, `owner/name`.
 fn github_of(url: &str) -> Option<String> {
@@ -533,7 +546,7 @@ fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
 /// here would read them. The newest commit GitHub has is where it meets
 /// its upstream branch, else origin's main. A tree that isn't git, or
 /// whose origin isn't on GitHub, can't reach it.
-fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
+pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
     let folder =
         fs::canonicalize(folder).map_err(|error| format!("{}: {error}", folder.display()))?;
     let not = |what: &str| format!("{} {what}", folder.display());
@@ -580,13 +593,11 @@ fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
         .find_map(|theirs| git(&top, &["merge-base", &commit, theirs], None))
         .ok_or_else(|| not("shares no commit with origin"))?;
     if base == commit {
-        let flake = format!(
-            "github:{github}/{commit}{}",
-            dir.as_deref()
-                .map(|dir| format!("?dir={dir}"))
-                .unwrap_or_default()
-        );
-        return Ok(Source::Pushed { flake });
+        return Ok(Source::Pushed {
+            github,
+            commit,
+            dir,
+        });
     }
     let bundle = mine(scratch, "bundle");
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
@@ -621,7 +632,7 @@ fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
 /// connection.
-fn reaching(ssh: &str, said: &Path) -> Command {
+pub fn reaching(ssh: &str, said: &Path) -> Command {
     let mut command = Command::new(ssh);
     command
         .args(["-o", "BatchMode=yes", "-o", "LogLevel=VERBOSE"])
@@ -657,11 +668,11 @@ fn sized(bytes: u64) -> String {
 }
 
 /// A file of this run's own in `scratch`.
-fn mine(scratch: &Path, name: &str) -> PathBuf {
+pub fn mine(scratch: &Path, name: &str) -> PathBuf {
     scratch.join(format!("{name}-{}", std::process::id()))
 }
 
-fn on(
+pub fn on(
     lent: &Builder,
     sending: &Sending,
     out: Option<&Path>,
@@ -1236,7 +1247,7 @@ fn sent(log: &str) -> Option<u64> {
 }
 
 /// A word the builder's shell reads as itself.
-fn quoted(word: &str) -> String {
+pub fn quoted(word: &str) -> String {
     if word
         .bytes()
         .all(|byte| byte.is_ascii_alphanumeric() || b"-_./:".contains(&byte))

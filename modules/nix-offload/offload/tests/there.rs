@@ -8,7 +8,8 @@ use std::process::{Command, Output};
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
-/// command) apart, and exits as the `status` file beside it says.
+/// command) apart, prints what the `says` file beside it holds, and exits
+/// as the `status` file beside it says.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -19,6 +20,7 @@ done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
+[ -f "$here/says" ] && cat "$here/says"
 exit "$(cat "$here/status")"
 "#;
 
@@ -626,8 +628,99 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\n"
+        "tree\napply\nout\nwants\nfolder\nchanged\n"
     );
+}
+
+#[test]
+fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let config = folder.path().join("gitconfig");
+    fs::write(
+        &config,
+        "[user]\nname = Tester\nemail = tester@example.com\n",
+    )
+    .unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    let git = |arguments: &[&str]| git(&tree, &config, arguments);
+    git(&["init", "-q", "-b", "main"]);
+    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+    fs::write(tree.join("flake.nix"), "{ }").unwrap();
+    git(&["add", "flake.nix"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    let head = git(&["rev-parse", "HEAD"]);
+    git(&["update-ref", "refs/remotes/origin/main", &head]);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "--changed", "--build", "--no-vm"])
+            .args(["--system", "x86_64-linux"])
+            .current_dir(&tree)
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .env("GIT_CONFIG_GLOBAL", &config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap()
+    };
+    let given = || fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+
+    // The lent builder evaluates and builds, in one place.
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = given();
+    assert_eq!(sent.lines().next(), Some("nix-offload"), "{sent}");
+    for part in [
+        format!("checkout -q --detach {head}"),
+        "nix run .#changed-checks -- --build --no-vm --system x86_64-linux".to_owned(),
+    ] {
+        assert!(sent.contains(&part), "{part} in {sent}");
+    }
+
+    // With none lent, an evaluator that answers only evaluates, and what it
+    // names is built as any `there` build is: here, with no builder.
+    fs::remove_file(offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    let evaluators = folder.path().join("nix-offload/evaluators");
+    fs::write(bin.join("says"), "changed  a\nadded    vm-b\nremoved  c\n").unwrap();
+    // One that takes other owners' repositories alone is never sent this.
+    fs::write(&evaluators, format!("{address} far others\n")).unwrap();
+    assert_eq!(run().status.code(), Some(75), "it isn't sent there");
+    fs::write(&evaluators, format!("{address} far others,o\n")).unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = given();
+    assert_eq!(sent.lines().next(), Some("far"), "{sent}");
+    assert!(
+        sent.contains("nix run .#changed-checks -- --no-vm --system x86_64-linux"),
+        "it evaluates and doesn't build: {sent}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stdout).contains("changed  a"),
+        "what it named comes here: {ran:?}"
+    );
+    let built = fs::read_to_string(bin.join("nix-was-given")).unwrap();
+    assert!(built.contains("checks.x86_64-linux.a"), "{built}");
+    assert!(!built.contains("vm-b"), "no VM test was wanted: {built}");
+
+    // Nowhere answers, so changed-checks is told to run here.
+    drop(answering);
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
 }
 
 #[test]

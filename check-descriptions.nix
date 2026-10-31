@@ -179,7 +179,9 @@
     changed-checks names a check added, changed, removed or broken by its derivation, fails on a
     broken one, builds those added and changed when asked, leaving out the VM tests with --no-vm,
     sends a commit origin has to a lent builder to build by itself and anything else builds here,
-    and evaluates a commit's checks once
+    and evaluates a commit's checks once; where nix-offload takes it, the whole run goes to
+    `there --changed` naming this machine's system, and it runs here with --here, a base of its
+    own, or nowhere taking it
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
@@ -672,7 +674,11 @@
     named while they answer, and only to builds that ask for them, never in the file every
     build reads; a day's journal sums to its hours and cost, each at its price; and `there`
     sends a flake's build to the lent builder as one command, returning its status and
-    journalling what ssh sent, or builds here, saying so, when none stands or none answers
+    journalling what ssh sent, or builds here, saying so, when none stands or none answers;
+    `there --changed` runs a tree's own changed-checks on the lent builder, else only
+    evaluates on the first evaluator that answers and takes the repository's owner, and
+    builds what it names as `there` does,
+    else tells changed-checks to run here
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
