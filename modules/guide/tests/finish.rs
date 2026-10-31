@@ -139,5 +139,5 @@ fn a_machine_whose_repo_adds_nothing_has_only_githubs_steps() {
     let mut stand_in = StandIn::new();
     stand_in.file(FACTS, br#"{"disk_name": "system"}"#);
     let facts = guide::installed::facts(&mut stand_in).unwrap();
-    assert!(facts.once_signed_in.is_empty());
+    assert_eq!(facts.once_signed_in, Vec::<Added>::new());
 }
