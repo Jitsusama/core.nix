@@ -35,6 +35,9 @@ in
     # What makes the folder a file saved into a place kept elsewhere goes
     # in, as Google's Drive stages one to upload.
     mkdir = lib.getExe' pkgs.coreutils "mkdir";
+    # Where the folder a save last went to is kept, made as it's first
+    # written.
+    savedIn = "${config.xdg.stateHome}/open-with/saved-in";
   };
 
   home.packages = [ recent-files ];
