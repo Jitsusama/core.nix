@@ -29,7 +29,8 @@ function heard(line) {
         meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null },
         drive: {
             listings: Array.isArray(said.drive?.listings) ? said.drive.listings : [],
-            downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : []
+            downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : [],
+            uploads: Array.isArray(said.drive?.uploads) ? said.drive.uploads : []
         }
     };
 }
@@ -58,6 +59,12 @@ function changed(held, said) {
 // folder's id.
 function list(folder) {
     return `${JSON.stringify({ list: { folder } })}\n`;
+}
+
+// The line asking for a save the picker staged to be sent up again, by
+// where it's staged.
+function upload(path) {
+    return `${JSON.stringify({ upload: { path } })}\n`;
 }
 
 // The line that asks the program to download a Drive file to "open",

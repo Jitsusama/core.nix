@@ -9,6 +9,7 @@
 import QtQuick
 import "Drive.js" as Drive
 import "Google.js" as Google
+import "Saves.js" as Saves
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -91,10 +92,10 @@ QtObject {
         const drive = { listings, downloads };
         check("a folder listed and the downloads, read", Google.heard(JSON.stringify({
             account: "ready", meetings: [], drive
-        })).drive, drive);
+        })).drive, Object.assign({}, drive, { uploads: [] }));
         check("no Drive said, none held", Google.heard(JSON.stringify({
             account: "ready", meetings: []
-        })).drive, { listings: [], downloads: [] });
+        })).drive, { listings: [], downloads: [], uploads: [] });
         check("each folder asked together is found, none asked before", [
             Google.listing(drive, "drives", now),
             Google.listing(drive, "root", now),
@@ -171,6 +172,71 @@ QtObject {
             "Google Drive couldn't be reached.", "Listing it.", "Google Drive couldn't be reached.",
             ""
         ]);
+
+        // Saves into Drive: read from the program's line, and none from one
+        // before them; asked again by the line Try Again writes.
+        const notes = {
+            path: "/s/google/drive-saves/f1/Notes.txt", folder: "f1", name: "Notes.txt",
+            asked: now, id: "n1", link: "https://drive.google.com/file/d/n1/view", failed: null
+        };
+        check("the saves read", Google.heard(JSON.stringify({
+            account: "ready", meetings: [], drive: { listings: [], downloads: [], uploads: [notes] }
+        })).drive.uploads, [notes]);
+        check("none from a program before them", Google.heard(JSON.stringify({
+            account: "ready", meetings: [], drive: { listings: [], downloads: [] }
+        })).drive.uploads, []);
+        check("Try Again's line", Google.upload(notes.path),
+            '{"upload":{"path":"/s/google/drive-saves/f1/Notes.txt"}}\n');
+
+        // Which to tell: settled, asked since the shell started, not told,
+        // oldest first.
+        const going = Object.assign({}, notes, { path: "/s/a", id: null, link: null });
+        const before = Object.assign({}, notes, { path: "/s/b", asked: now - 60000 });
+        const pdf = Object.assign({}, notes, {
+            path: "/s/google/drive-saves/root/Menu.pdf", folder: "root", name: "Menu.pdf",
+            asked: now + 5, id: null, link: null, failed: "replaceNotGranted"
+        });
+        check("the saves to tell", Saves.untold([pdf, going, notes, before], now, [])
+            .map(upload => upload.name), ["Notes.txt", "Menu.pdf"]);
+        check("none told twice", Saves.untold([pdf, notes], now, [Saves.key(notes)])
+            .map(upload => upload.name), ["Menu.pdf"]);
+
+        // Where it went, as Joel knows the folder.
+        const shown = [{ folder: "root", files: [{ id: "f1", name: "Plans", kind: "folder" }] }];
+        check("its folder, by a listing's name for it", Saves.where(notes, shown), "Plans");
+        check("My Drive's top", Saves.where(pdf, []), "My Drive");
+        check("a folder no listing showed", Saves.where(notes, []), "");
+
+        // What each is told as.
+        check("one sent", Saves.notice(notes, shown), {
+            summary: "Saved to Google Drive", body: "Notes.txt \u00b7 Plans",
+            acts: [{ key: "open", name: "Open in Drive" }], answers: true
+        });
+        const failed = why => Saves.notice(Object.assign({}, pdf, { failed: why }), []);
+        check("signed out", failed("signedOut"), {
+            summary: "Not Saved to Google Drive", body: "Menu.pdf: Google signed out",
+            acts: [{ key: "sign-in", name: "Sign In" }, { key: "copy", name: "Save a Copy" }],
+            answers: false
+        });
+        check("Drive out of reach", failed("unreachable").acts.map(act => act.name),
+            ["Try Again", "Save a Copy"]);
+        check("one it may not replace", [failed("replaceNotGranted").body,
+            failed("replaceNotGranted").acts.map(act => act.name)], [
+            "Menu.pdf: Drive holds one you made elsewhere, which this can't replace",
+            ["Save a Copy"]
+        ]);
+        check("a folder gone", failed("gone").body, "Menu.pdf: that folder is gone");
+        check("a copy that couldn't be read", [failed("unread").body, failed("unread").acts],
+            ["Menu.pdf couldn't be read, so nothing was saved", []]);
+
+        // A failure's notice, found to take back by its file alone.
+        const told = { app: "Google Drive", summary: "Not Saved to Google Drive",
+            body: "Menu.pdf: that folder is gone" };
+        check("its failure's notice", [
+            Saves.failedOf(told, pdf.path),
+            Saves.failedOf(told, "/s/google/drive-saves/root/Menu.pdf.bak"),
+            Saves.failedOf(Object.assign({}, told, { summary: "Saved to Google Drive" }), pdf.path)
+        ], [true, false, false]);
 
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);

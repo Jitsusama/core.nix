@@ -3,7 +3,9 @@
 # the niri nested-niri.sh runs, sends a notice as a program does, and checks
 # the shell drew its card on a layer niri lists as the notices'. Then a
 # critical one, which stays until it's dealt with, is put away by what
-# Super+Shift+N runs, and kept in the history unread.
+# Super+Shift+N runs, and kept in the history unread. And a sender whose
+# notices are missed until seen keeps one that answers what Joel just did,
+# said by the x-answers hint, unmissed, as Google Drive's saves are.
 # usage: notices-on-niri.sh <shell folder> <logs> <what Super+Shift+N runs>...
 set -euo pipefail
 
@@ -54,6 +56,28 @@ done
 if [ "$listed" != true ]; then
   echo "niri lists no notices' layer:" >&2
   echo "$layers" >&2
+  exit 1
+fi
+
+notify-send --app-name="Google Drive" --hint=string:x-answers:save \
+  "Saved to Google Drive" "Notes.txt, in My Drive"
+says "report[shows card Saved to Google Drive]"
+notify-send --app-name="Google Drive" "Not Saved to Google Drive" "Notes.txt: Google signed out"
+says "report[shows card Not Saved to Google Drive]"
+# Read before Super+Shift+N below, which counts every missed one seen.
+answered='"summary":"Saved to Google Drive"[^}]*"missed":false'
+missed='"summary":"Not Saved to Google Drive"[^}]*"missed":true'
+held_apart=false
+for _ in $(seq "$saying"); do
+  kept=$(cat "$XDG_STATE_HOME"/quickshell/by-shell/*/notices.json 2> /dev/null || true)
+  if grep -q "$answered" <<< "$kept" && grep -q "$missed" <<< "$kept"; then
+    held_apart=true
+    break
+  fi
+  sleep 0.1
+done
+if [ "$held_apart" != true ]; then
+  echo "The history doesn't keep the answer unmissed and the failure missed: $kept" >&2
   exit 1
 fi
 

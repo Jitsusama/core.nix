@@ -24,7 +24,9 @@
 # meeting coming within the hour wants Joel, and is said as a notice at
 # each of its reminders and as it starts (Starting.qml); the account
 # signed out wants him to sign in again (SignedOut.qml); and the mail that
-# wants him is counted there too (NewMail.qml).
+# wants him is counted there too (NewMail.qml). What became of each save
+# the launcher's picker staged for Drive is said as a notice (Saves.qml),
+# a failed one with Save a Copy, so nothing saved is lost.
 { people, quickshell }:
 {
   config,
@@ -130,6 +132,8 @@ in
       "quickshell/Meet.js".source = ./Meet.js;
       "quickshell/Drive.qml".source = ./Drive.qml;
       "quickshell/Drive.js".source = ./Drive.js;
+      "quickshell/Saves.qml".source = ./Saves.qml;
+      "quickshell/Saves.js".source = ./Saves.js;
     };
 
     # The account signed out, which wants Joel to sign in again, wearing
