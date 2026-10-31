@@ -1489,6 +1489,21 @@
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
     above 100
   '';
+  update-to-main-outlives-its-switch = ''
+    neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
+    restarts on a switch, the Mac's daemon names no store path, both start it from the running
+    system, and its askers are its group's members
+  '';
+  update-to-main-passes-clippy = ''
+    clippy finds nothing in update-to-main or its tests
+  '';
+  update-to-main-updates-to-signed-main = ''
+    update-to-main builds and switches to a main signed by a key it was given and descended from what
+    it ran, builds nothing when main hasn't moved, refuses an unsigned, untrusted or rewritten main
+    and a low battery, leaves the machine as it was when the build fails, goes back when the switch
+    fails or the machine isn't whole after it, leaves a new kernel for the next boot, joins asks to
+    the update that runs, refuses any other ask, and serves on a socket only its group writes
+  '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
     setting, names its file for the camera, made a plain file name, and removes it when the node
@@ -1796,6 +1811,11 @@
     again keeps its class; the client's own network isn't slowed; inside a WireGuard VPN the same
     classes reach the VPN's own CAKE; the queues follow the default route, a link unplugged and
     plugged back in is shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
+  '';
+  vm-updates-itself-to-signed-main = ''
+    an account in update-ask updates the machine to signed main with a real switch, and asked again
+    with main where it was builds nothing; an account outside it can't ask, an unsigned main is
+    refused, and a main the health check refuses is switched to and then gone back from
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in
