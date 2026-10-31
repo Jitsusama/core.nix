@@ -282,4 +282,37 @@ in
           elsewhere = "an-agent";
         })
       );
+
+  # A machine's system pins each key that links to it, on either system, to
+  # its own realm and machine, with a terminal for an attach; one naming
+  # none authorizes nothing of mycelium's.
+  mycelium-pins-the-keys-that-link =
+    holds "mycelium-pins-the-keys-that-link"
+      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, or a machine naming none authorizes a key."
+      (
+        let
+          key = "ecdsa-sha2-nistp256 AAAAone";
+          pinning = {
+            account = "someone";
+            linkedFrom.personal.one = key;
+          };
+          keys =
+            bare: role: settings:
+            (bare [
+              role
+              { jitsusama.mycelium = settings; }
+            ]).config.users.users.someone.openssh.authorizedKeys.keys;
+          pinnedOn =
+            bare: role:
+            let
+              given = keys bare role pinning;
+            in
+            builtins.length given == 1
+            && lib.hasPrefix ''restrict,pty,command="/nix/store/'' (lib.head given)
+            && lib.hasSuffix ''/bin/mycelium --realm personal ssh --from one" ${key}'' (lib.head given);
+        in
+        pinnedOn bareNixos self.nixosModules.workstation
+        && pinnedOn bareDarwin self.darwinModules.workstation
+        && keys bareNixos self.nixosModules.workstation { } == [ ]
+      );
 }
