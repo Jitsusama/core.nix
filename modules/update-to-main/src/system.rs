@@ -24,18 +24,18 @@ pub struct Switched {
     pub restarted: Vec<String>,
 }
 
-/// Builds `flake`, keeping it from being collected until the next build,
-/// and gives the system's path once it's one this machine's kind can run.
-pub fn build(config: &Config, flake: &str) -> Result<PathBuf, Failure> {
-    let mut nix = run::command(&config.tools.nix, &config.state);
-    nix.args([
-        "--extra-experimental-features",
-        "nix-command flakes",
-        "build",
-        "--print-out-paths",
-        "--out-link",
-    ])
-    .arg(config.building_link());
+/// Builds `flake`, its inputs overridden by `overrides`, keeping it from
+/// being collected until the next build, and gives the system's path once
+/// it's one this machine's kind can run. Building elsewhere, everything but
+/// the light pieces is built on the builders first.
+pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathBuf, Failure> {
+    if config.elsewhere {
+        build_elsewhere(config, flake, overrides)?;
+    }
+    let mut nix = nix(config);
+    nix.args(["build", "--print-out-paths", "--out-link"])
+        .arg(config.building_link())
+        .args(overrides);
     let printed = run::output(nix, "building the system", [flake])?;
     let system = PathBuf::from(printed.lines().last().unwrap_or_default());
     let needs: &[&str] = match config.kind {
@@ -50,6 +50,98 @@ pub fn build(config: &Config, flake: &str) -> Result<PathBuf, Failure> {
             system.display()
         )))
     }
+}
+
+/// Nix, with the commands and flakes it's asked for.
+fn nix(config: &Config) -> std::process::Command {
+    let mut nix = run::command(&config.tools.nix, &config.state);
+    nix.args(["--extra-experimental-features", "nix-command flakes"]);
+    nix
+}
+
+/// Builds every piece of the system that nixpkgs doesn't mark light on the
+/// Nix daemon's builders, with no build here allowed, so it fails rather
+/// than compile here when none takes one. The light pieces, such as a
+/// written file or a folder of links, are left for the build here, as
+/// sending each one away would cost more than making it.
+fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result<(), Failure> {
+    let mut listing = nix(config);
+    listing
+        .args(["build", "--dry-run", "--no-link"])
+        .args(overrides)
+        .arg(flake);
+    let listed = listing
+        .output()
+        .map_err(|e| Failure::new(format!("listing what the system needs: {e}")))?;
+    let said = String::from_utf8_lossy(&listed.stderr);
+    if !listed.status.success() {
+        return Err(Failure {
+            why: format!("listing what the system needs failed ({})", listed.status),
+            lines: run::tail(&said),
+        });
+    }
+    let needed = to_build(&said);
+    if needed.is_empty() {
+        return Ok(());
+    }
+    let mut show = nix(config);
+    show.args(["derivation", "show"]);
+    let shown = run::output(show, "reading what the system needs", &needed)?;
+    let heavy = heavy(&shown)?;
+    if heavy.is_empty() {
+        return Ok(());
+    }
+    let mut away = nix(config);
+    away.args(["build", "--no-link", "--max-jobs", "0"]);
+    run::output(
+        away,
+        "building the system on the machine's builders",
+        heavy.iter().map(|drv| format!("{drv}^*")),
+    )?;
+    Ok(())
+}
+
+/// The derivations a dry run says it would build, by their paths.
+fn to_build(said: &str) -> Vec<String> {
+    let mut building = false;
+    let mut needed = Vec::new();
+    for line in said.lines() {
+        let line = line.trim();
+        if line.ends_with("will be built:") {
+            building = true;
+        } else if line.contains("will be fetched") {
+            building = false;
+        } else if building
+            && line.starts_with('/')
+            && Path::new(line).extension().is_some_and(|e| e == "drv")
+        {
+            needed.push(line.to_owned());
+        }
+    }
+    needed
+}
+
+/// Of the derivations `nix derivation show` gave, the ones not marked to
+/// build where they're asked for, by their paths. Newer Nix keys them by
+/// name under `derivations`, older by path at the top.
+fn heavy(shown: &str) -> Result<Vec<String>, Failure> {
+    let shown: serde_json::Value = serde_json::from_str(shown)
+        .map_err(|e| Failure::new(format!("reading what the system needs: {e}")))?;
+    let derivations = shown.get("derivations").unwrap_or(&shown);
+    let derivations = derivations
+        .as_object()
+        .ok_or_else(|| Failure::new("reading what the system needs: no derivations"))?;
+    Ok(derivations
+        .iter()
+        .filter(|(_, d)| d["env"]["preferLocalBuild"].as_str() != Some("1"))
+        .map(|(key, _)| {
+            if key.starts_with('/') {
+                key.clone()
+            } else {
+                format!("/nix/store/{key}")
+            }
+        })
+        .collect())
 }
 
 /// The system the profile points at, which the machine runs or boots.
@@ -203,6 +295,32 @@ fn daemons(system: &Path) -> BTreeMap<String, Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_a_dry_run_would_build_is_read_and_what_it_would_fetch_isnt() {
+        let said = "these 2 derivations will be built:\n  /nix/store/a-one.drv\n  \
+                    /nix/store/b-two.drv\nthis path will be fetched (1.0 MiB download):\n  \
+                    /nix/store/c-three\nwarning: something\n";
+        assert_eq!(
+            to_build(said),
+            ["/nix/store/a-one.drv", "/nix/store/b-two.drv"]
+        );
+        assert!(to_build("this path will be fetched:\n  /nix/store/c.drv\n").is_empty());
+    }
+
+    #[test]
+    fn only_what_nixpkgs_marks_light_stays_here() {
+        let newer = r#"{"derivations": {
+            "a-light.drv": {"env": {"preferLocalBuild": "1"}},
+            "b-heavy.drv": {"env": {}},
+            "c-heavy.drv": {"env": {"preferLocalBuild": ""}}}}"#;
+        assert_eq!(
+            heavy(newer).unwrap(),
+            ["/nix/store/b-heavy.drv", "/nix/store/c-heavy.drv"]
+        );
+        let older = r#"{"/nix/store/d-heavy.drv": {"env": {}}}"#;
+        assert_eq!(heavy(older).unwrap(), ["/nix/store/d-heavy.drv"]);
+    }
 
     #[test]
     fn the_units_a_switch_restarted_are_read_from_what_it_said() {

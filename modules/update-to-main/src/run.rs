@@ -2,8 +2,9 @@
 //! root was started in: no git configuration but what's given here, no
 //! prompts, and a fixed path, so what runs depends only on the config.
 
-use std::ffi::OsStr;
-use std::path::Path;
+use std::ffi::{CStr, CString, OsStr};
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// How many of a failed command's last lines an answer carries.
@@ -56,6 +57,105 @@ pub fn command(program: &Path, home: &Path) -> Command {
 }
 
 const CERTIFICATES: &str = "/etc/ssl/certs/ca-certificates.crt";
+
+/// An account a command runs as.
+#[derive(Clone, Debug)]
+pub struct Account {
+    name: CString,
+    uid: libc::uid_t,
+    gid: libc::gid_t,
+    home: PathBuf,
+}
+
+/// Looks an account up by its name.
+pub fn account(name: &str) -> Result<Account, Failure> {
+    let unknown = || Failure::new(format!("there's no account named {name}"));
+    let c_name = CString::new(name).map_err(|_| unknown())?;
+    let mut record = zeroed_passwd();
+    let mut buffer = vec![0 as libc::c_char; 16 * 1024];
+    let mut found: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: every pointer is to memory this frame owns, sized as given,
+    // and the record's strings point into `buffer`, read before it goes.
+    let status = unsafe {
+        libc::getpwnam_r(
+            c_name.as_ptr(),
+            &raw mut record,
+            buffer.as_mut_ptr(),
+            buffer.len(),
+            &raw mut found,
+        )
+    };
+    if status != 0 || found.is_null() {
+        return Err(unknown());
+    }
+    // SAFETY: getpwnam_r found the account, so pw_dir is a C string in
+    // `buffer`.
+    let home = unsafe { CStr::from_ptr(record.pw_dir) };
+    Ok(Account {
+        name: c_name,
+        uid: record.pw_uid,
+        gid: record.pw_gid,
+        home: PathBuf::from(home.to_string_lossy().into_owned()),
+    })
+}
+
+fn zeroed_passwd() -> libc::passwd {
+    // SAFETY: passwd is plain data, for which all zeroes is a valid value:
+    // null pointers and zero numbers, all overwritten by getpwnam_r.
+    unsafe { std::mem::zeroed() }
+}
+
+/// A command run as `account` in `dir`: its own groups, its own home, so
+/// its own logins, `path` to find programs in, and nothing else of root's
+/// environment.
+pub fn command_as(program: &OsStr, account: &Account, path: &[PathBuf], dir: &Path) -> Command {
+    let mut command = Command::new(program);
+    command
+        .env_clear()
+        .env("HOME", &account.home)
+        .env("USER", account.name.to_string_lossy().as_ref())
+        .env("LOGNAME", account.name.to_string_lossy().as_ref())
+        .env("PATH", std::env::join_paths(path).unwrap_or_default())
+        .env("LANG", "C.UTF-8")
+        .env("NIX_REMOTE", "daemon")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .current_dir(dir)
+        .stdin(Stdio::null());
+    if Path::new(CERTIFICATES).exists() {
+        command
+            .env("SSL_CERT_FILE", CERTIFICATES)
+            .env("NIX_SSL_CERT_FILE", CERTIFICATES);
+    }
+    let runtime = PathBuf::from(format!("/run/user/{}", account.uid));
+    if runtime.is_dir() {
+        command.env("XDG_RUNTIME_DIR", runtime);
+    }
+    // Root becomes the account, its groups first, as a login would; anyone
+    // else runs it as themselves, which is all they can do.
+    let (name, uid, gid) = (account.name.clone(), account.uid, account.gid);
+    // SAFETY: what runs between fork and exec is geteuid and the calls a
+    // child makes to change who it is, with nothing allocated; initgroups
+    // reads the group database, as login programs do at this point.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::geteuid() != 0 || uid == 0 {
+                return Ok(());
+            }
+            #[cfg(target_os = "macos")]
+            let gid_arg = gid.cast_signed();
+            #[cfg(not(target_os = "macos"))]
+            let gid_arg = gid;
+            if libc::initgroups(name.as_ptr(), gid_arg) != 0
+                || libc::setgid(gid) != 0
+                || libc::setuid(uid) != 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    command
+}
 
 /// Runs a command to its end, giving what it printed, or a failure naming
 /// `what` with the last lines of everything it said.

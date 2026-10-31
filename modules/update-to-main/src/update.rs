@@ -1,11 +1,14 @@
 //! One update, from an ask to its ending: refuse on a low battery, fetch
 //! main, check it descends from what the machine last switched to and is
-//! signed by a key that counts, build it, switch, check the machine is
-//! whole, and go back to the system it left if anything after the switch's
-//! start fails. Each step is told as it starts.
+//! signed by a key that counts, or is what its host names, fetch and check
+//! each input that follows its own main, build it, switch, check the
+//! machine is whole, and go back to the system it left if anything after
+//! the switch's start fails. Each step is told as it starts.
 
 use crate::config::{Config, Kind};
-use crate::git;
+use crate::follows;
+use crate::git::{self, Repo};
+use crate::hosted;
 use crate::line::{Applied, Line};
 use crate::power::{self, Power};
 use crate::run::Failure;
@@ -20,15 +23,29 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
         return Line::Refused { commit: last, why };
     }
     tell(&Line::Fetching);
-    let head = match git::keyring(config).and_then(|()| git::fetch(config)) {
+    let main = Repo::main(config);
+    let head = match &config.hosted {
+        Some(hosted) => hosted::head(config, hosted),
+        None => git::keyring(&main).and_then(|()| git::fetch(&main)),
+    };
+    let head = match head {
         Ok(head) => head,
         Err(failure) => return failed(last, failure),
     };
-    if last.as_deref() == Some(head.as_str()) {
-        return Line::Unchanged { commit: head };
+    let last_followed = follows::last(config);
+    let followed = match follows::heads(config, &head, &last_followed) {
+        Ok(Ok(followed)) => followed,
+        Ok(Err(why)) => return Line::Refused { commit: last, why },
+        Err(failure) => return failed(last, failure),
+    };
+    if last.as_deref() == Some(head.as_str()) && followed == last_followed {
+        return Line::Unchanged {
+            commit: head,
+            followed,
+        };
     }
     if let Some(last) = &last {
-        match git::descends(config, last, &head) {
+        match git::descends(&main, last, &head) {
             Ok(true) => {}
             Ok(false) => {
                 return Line::Refused {
@@ -43,16 +60,25 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
             Err(failure) => return failed(Some(last.clone()), failure),
         }
     }
-    match git::signed(config, &head) {
-        Ok(Ok(())) => {}
-        Ok(Err(why)) => return Line::Refused { commit: last, why },
-        Err(failure) => return failed(last, failure),
+    // A hosted main is the host's word, asked over TLS; any other is only
+    // as good as its signature.
+    if config.hosted.is_none() {
+        match git::signed(&main, &head) {
+            Ok(Ok(())) => {}
+            Ok(Err(why)) => return Line::Refused { commit: last, why },
+            Err(failure) => return failed(last, failure),
+        }
     }
 
     tell(&Line::Building {
         commit: head.clone(),
     });
-    let built = match system::build(config, &git::flake(config, &head)) {
+    let flake = match &config.hosted {
+        Some(hosted) => hosted::prepare(config, hosted, &head),
+        None => Ok(git::flake(config, &head)),
+    };
+    let overrides = follows::overrides(config, &followed);
+    let built = match flake.and_then(|flake| system::build(config, &flake, &overrides)) {
         Ok(built) => built,
         Err(failure) => return failed(last, failure),
     };
@@ -60,8 +86,21 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     tell(&Line::Switching {
         commit: head.clone(),
     });
+    switch(config, &built, last, head, followed)
+}
+
+/// Switches to `built`, main's `head` with its inputs at `followed`, and
+/// goes back to what the machine ran if the switch or the health checks
+/// fail.
+fn switch(
+    config: &Config,
+    built: &std::path::Path,
+    last: Option<String>,
+    head: String,
+    followed: follows::Followed,
+) -> Line {
     let previous = system::current(config);
-    let switched = system::switch(config, &built).and_then(|switched| {
+    let switched = system::switch(config, built).and_then(|switched| {
         if switched.applied == Applied::Now {
             system::healthy(config)?;
         }
@@ -69,7 +108,9 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     });
     match switched {
         Ok(switched) => {
-            if let Err(e) = remember(config, &head) {
+            if let Err(e) =
+                remember(config, &head).and_then(|()| follows::remember(config, &followed))
+            {
                 return failed(Some(head), e);
             }
             Line::Done {
@@ -77,6 +118,7 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
                 applied: switched.applied,
                 restart: switched.restart,
                 restarted: switched.restarted,
+                followed,
             }
         }
         Err(mut failure) => {

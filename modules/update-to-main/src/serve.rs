@@ -67,15 +67,20 @@ fn listen(config: &Config) -> Result<UnixListener, String> {
         Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(named(e)),
         _ => {}
     }
-    let listener = UnixListener::bind(socket).map_err(named)?;
+    // Made under another name and moved into place once it's only the
+    // group's, so whoever finds the socket finds it as it stays.
+    let making = socket.with_extension("new");
+    let _ = fs::remove_file(&making);
+    let listener = UnixListener::bind(&making).map_err(named)?;
     let gid = group_id(&config.group)?;
-    let path = CString::new(socket.as_os_str().as_encoded_bytes()).map_err(|e| e.to_string())?;
+    let path = CString::new(making.as_os_str().as_encoded_bytes()).map_err(|e| e.to_string())?;
     // SAFETY: path is a valid C string. Only the group changes: the socket
     // is its maker's, root's when it serves a machine.
     if unsafe { libc::chown(path.as_ptr(), libc::uid_t::MAX, gid) } != 0 {
         return Err(named(io::Error::last_os_error()));
     }
-    fs::set_permissions(socket, fs::Permissions::from_mode(0o660)).map_err(named)?;
+    fs::set_permissions(&making, fs::Permissions::from_mode(0o660)).map_err(named)?;
+    fs::rename(&making, socket).map_err(named)?;
     Ok(listener)
 }
 

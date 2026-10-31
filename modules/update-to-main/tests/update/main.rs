@@ -8,13 +8,19 @@
 //! health check fails while the running system is marked unhealthy. So
 //! every test reads, after an update, which system runs and what the
 //! profile points at.
+//!
+//! A hosted world's main is the remote's, as `ls-remote` names it, with a
+//! checkout of the test's own account holding its objects; the stand-in
+//! nix records the inputs it's asked to fetch, and what the unpacked
+//! flake's folder held.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
-use update_to_main::config::{Config, Kind, Signers, Tools};
+use update_to_main::config::{Config, Follow, Hosted, Kind, Signers, Tools};
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, serve, update};
 
@@ -83,15 +89,43 @@ impl World {
 
         let sh = shell();
         let head = stand_in_head();
-        // nix build --print-out-paths --out-link LINK git+file://...&rev=REV#OUT
+        // nix build --print-out-paths --out-link LINK git+file://...&rev=REV#OUT,
+        // or path:STATE/source/REV/FOLDER#OUT for a hosted main; and nix
+        // eval or nix build --no-link for an input fetched by its lock. A
+        // build elsewhere first lists a light piece and a heavy one, and
+        // sends the heavy one away, which fails while no-builder is there.
+        // Each input overridden is written down.
         write_program(
             &stand_ins.join("nix"),
             &format!(
-                "{head}\nfor a; do flake=$a; done\nrev=${{flake##*rev=}}; rev=${{rev%%#*}}\n\
+                "{head}\nprev=\nbefore=\nfor a; do\n\
+                 [ \"$before\" = --override-input ] && echo \"$prev $a\" >> {overridden}\n\
+                 before=$prev; prev=$a; last=$a; done\n\
+                 case \" $* \" in\n\
+                 *' --dry-run '*) printf 'these 2 derivations will be built:\\n  \
+                 /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n' >&2; exit 0;;\n\
+                 *' derivation show '*) echo '{{\"derivations\": {{\"a-light.drv\": \
+                 {{\"env\": {{\"preferLocalBuild\": \"1\"}}}}, \"b-heavy.drv\": {{\"env\": {{}}}}}}}}'; exit 0;;\n\
+                 *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
+                 echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
+                 *' eval '*) echo \"$UPDATE_TO_MAIN_LOCKED\" >> {fetched}; echo /nix/store/x-source; exit 0;;\n\
+                 *' --no-link '*) echo \"$last\" >> {fetched}; exit 0;;\n\
+                 esac\n\
+                 flake=$last\n\
+                 case $flake in\n\
+                 *rev=*) rev=${{flake##*rev=}}; rev=${{rev%%#*}};;\n\
+                 *) rev=${{flake##*/source/}}; rev=${{rev%%/*}}; rev=${{rev%%#*}}\n\
+                 folder=${{flake#path:}}; cat \"${{folder%%#*}}/file\" >> {seen};;\n\
+                 esac\n\
                  echo \"$rev\" >> {log}\n\
                  if [ -e {systems}/$rev.fails ]; then echo 'error: builder failed' >&2; exit 1; fi\n\
                  echo {systems}/$rev\n",
                 log = root.join("builds").display(),
+                fetched = root.join("fetched").display(),
+                overridden = root.join("overridden").display(),
+                no_builder = root.join("no-builder").display(),
+                away = root.join("away").display(),
+                seen = root.join("seen").display(),
                 systems = root.join("systems").display()
             ),
         );
@@ -113,6 +147,9 @@ impl World {
                 ssh: Some(signers),
                 openpgp: Vec::new(),
             },
+            hosted: None,
+            follows: BTreeMap::new(),
+            elsewhere: false,
             health: vec![vec![
                 sh.clone(),
                 "-c".to_owned(),
@@ -127,6 +164,7 @@ impl World {
                 ssh_keygen: program("ssh-keygen"),
                 nix: stand_ins.join("nix"),
                 nix_env: stand_ins.join("nix-env"),
+                tar: program("tar"),
                 pmset: None,
             },
             program: None,
@@ -166,6 +204,48 @@ impl World {
             ],
         );
         self.head()
+    }
+
+    /// A world whose main is the remote's word, its objects read from a
+    /// checkout of the test's own account, which asks for a token with the
+    /// shell command `token` gives for the world's folder.
+    fn hosted_from(mut world: World, token: impl Fn(&Path) -> String) -> World {
+        let token = token(&world.root);
+        let checkout = world.root.join("checkout");
+        git(
+            &world.root,
+            &["clone", "--quiet", &world.config.repository, "checkout"],
+        );
+        let path = std::env::var_os("PATH").expect("a PATH");
+        world.config.signers.ssh = None;
+        world.config.hosted = Some(Hosted {
+            user: own_user(),
+            checkout,
+            directory: "machine".to_owned(),
+            token: vec![shell(), "-c".to_owned(), token],
+            path: std::env::split_paths(&path).collect(),
+            inputs: Vec::new(),
+        });
+        world
+    }
+
+    /// Commits to the remote's main, unsigned, a flake in its machine folder
+    /// beside a file saying `message`, and `lock` as its lock when given.
+    fn hosted_commit(&self, message: &str, lock: Option<&str>) -> String {
+        let machine = self.origin.join("machine");
+        fs::create_dir_all(&machine).unwrap();
+        fs::write(machine.join("flake.nix"), "{ outputs = _: { }; }\n").unwrap();
+        fs::write(machine.join("file"), message).unwrap();
+        if let Some(lock) = lock {
+            fs::write(machine.join("flake.lock"), lock).unwrap();
+        }
+        git(&self.origin, &["add", "machine"]);
+        git(&self.origin, &["commit", "--quiet", "-m", message]);
+        self.head()
+    }
+
+    fn read(&self, name: &str) -> String {
+        fs::read_to_string(self.root.join(name)).unwrap_or_default()
     }
 
     /// Commits to the remote's main with no signature.
@@ -251,6 +331,18 @@ fn write_program(path: &Path, text: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+fn own_user() -> String {
+    // SAFETY: getpwuid's record is read at once, before anything else
+    // could call it.
+    unsafe {
+        let user = libc::getpwuid(libc::getuid());
+        assert!(!user.is_null(), "the test's account has no name");
+        std::ffi::CStr::from_ptr((*user).pw_name)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 fn own_group() -> String {
     // SAFETY: getgrgid's record is read at once, before anything else
     // could call it.
@@ -269,6 +361,7 @@ fn done(commit: &str) -> Line {
         applied: Applied::Now,
         restart: None,
         restarted: vec!["sshd.service".to_owned()],
+        followed: BTreeMap::new(),
     }
 }
 
@@ -302,7 +395,13 @@ fn an_ask_with_main_where_it_was_builds_nothing() {
     world.system(&head);
     world.update();
     let (_, ending) = world.update();
-    assert_eq!(ending, Line::Unchanged { commit: head });
+    assert_eq!(
+        ending,
+        Line::Unchanged {
+            commit: head,
+            followed: BTreeMap::new()
+        }
+    );
     assert_eq!(world.builds(), 1);
 }
 
@@ -542,6 +641,7 @@ fn a_new_kernel_is_left_for_the_next_boot() {
             applied: Applied::NextBoot,
             restart: Some("its kernel changed".to_owned()),
             restarted: Vec::new(),
+            followed: BTreeMap::new(),
         }
     );
     assert_eq!(world.running(), first);
@@ -648,4 +748,269 @@ fn the_socket_is_only_its_groups_to_write() {
     assert_eq!(meta.mode() & 0o777, 0o660);
     // SAFETY: getgid can't fail.
     assert_eq!(meta.gid(), unsafe { libc::getgid() });
+}
+
+/// A token command that counts its asks and gives a token.
+fn counted_token(world_root: &Path) -> String {
+    format!(
+        "echo asked >> {}; echo a-token",
+        world_root.join("tokens").display()
+    )
+}
+
+#[test]
+fn a_hosted_main_is_built_from_its_folder_unsigned() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let head = world.hosted_commit("one", None);
+    let system = world.system(&head);
+    let (told, ending) = world.update();
+    assert_eq!(told.len(), 3, "{told:?}");
+    assert_eq!(ending, done(&head));
+    assert_eq!(world.running(), system);
+    assert_eq!(world.read("seen"), "one");
+    assert_eq!(world.read("tokens"), "asked\n");
+}
+
+#[test]
+fn a_hosted_main_the_checkout_lacks_is_fetched_there_first() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let head = world.hosted_commit("one", None);
+    world.system(&head);
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    assert_eq!(world.update().1, done(&head));
+    git(&checkout, &["cat-file", "-e", &head]);
+    // Root's copy holds none of the objects itself: it reads the checkout's.
+    let copy = world.config.state.join("repository.git/objects");
+    let own = fs::read_dir(&copy)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().len() == 2)
+        .count();
+    assert_eq!(own, 0);
+}
+
+#[test]
+fn a_hosted_main_with_no_token_builds_nothing() {
+    let world = World::hosted_from(World::new(), |_| "echo no login >&2; exit 3".to_owned());
+    let head = world.hosted_commit("one", None);
+    world.system(&head);
+    let (_, ending) = world.update();
+    let Line::Failed { why, lines, .. } = ending else {
+        panic!("not failed: {ending:?}")
+    };
+    assert!(why.contains("asking for a token failed"), "{why}");
+    assert_eq!(lines, ["no login"]);
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_hosted_mains_private_inputs_are_fetched_by_their_locks() {
+    let mut world = World::hosted_from(World::new(), counted_token);
+    world.config.hosted.as_mut().unwrap().inputs = vec!["private".to_owned(), "pinned".to_owned()];
+    let lock = r#"{
+      "root": "root",
+      "nodes": {
+        "root": { "inputs": { "private": "private_2", "pinned": "pinned", "public": "public" } },
+        "private_2": { "locked": { "type": "git", "url": "https://example.com/private", "rev": "abc" } },
+        "pinned": { "locked": { "type": "path", "path": "/nix/store/abc-pinned" } },
+        "public": { "locked": { "type": "github", "owner": "o", "repo": "r" } }
+      },
+      "version": 7
+    }"#;
+    let head = world.hosted_commit("one", Some(lock));
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let fetched = world.read("fetched");
+    let fetched: Vec<&str> = fetched.lines().collect();
+    assert_eq!(fetched.len(), 2, "{fetched:?}");
+    let private: serde_json::Value = serde_json::from_str(fetched[0]).unwrap();
+    assert_eq!(private["url"], "https://example.com/private");
+    assert_eq!(fetched[1], "/nix/store/abc-pinned");
+}
+
+#[test]
+fn a_hosted_main_rewritten_is_refused() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    world.update();
+    git(&world.origin, &["checkout", "--quiet", "--orphan", "other"]);
+    let other = world.hosted_commit("another history", None);
+    git(&world.origin, &["branch", "--quiet", "-f", "main", &other]);
+    world.system(&other);
+    let (_, ending) = world.update();
+    let Line::Refused { why, .. } = ending else {
+        panic!("not refused: {ending:?}")
+    };
+    assert!(why.contains("doesn't descend from"), "{why}");
+    assert_eq!(world.builds(), 1);
+}
+
+/// A world whose flake has an input, core, that follows its own main in a
+/// repository of its own, signed by the machine's trusted key.
+fn following() -> World {
+    let mut world = World::new();
+    let core = world.root.join("core");
+    fs::create_dir_all(&core).unwrap();
+    git(&core, &["init", "--quiet", "--initial-branch=main"]);
+    world.config.follows.insert(
+        "core".to_owned(),
+        Follow {
+            repository: format!("file://{}", core.display()),
+            branch: "main".to_owned(),
+            signers: world.config.signers.clone(),
+        },
+    );
+    world
+}
+
+impl World {
+    /// Commits to core's main, signed by the trusted key or not.
+    fn core_commit(&self, message: &str, signed: bool) -> String {
+        let core = self.root.join("core");
+        fs::write(core.join("file"), message).unwrap();
+        git(&core, &["add", "file"]);
+        let key = format!("user.signingkey={}", self.key.display());
+        let mut args = vec!["-c", "gpg.format=ssh", "-c", &key, "commit", "--quiet"];
+        if signed {
+            args.push("-S");
+        }
+        args.extend(["-m", message]);
+        git(&core, &args);
+        git(&core, &["rev-parse", "HEAD"])
+    }
+
+    /// Commits a signed main whose lock pins core at `pinned`.
+    fn signed_pinning(&self, message: &str, pinned: &str) -> String {
+        let lock = serde_json::json!({
+            "nodes": {
+                "root": { "inputs": { "core": "core" } },
+                "core": { "locked": { "type": "github", "rev": pinned } },
+            },
+            "root": "root",
+            "version": 7,
+        });
+        fs::write(self.origin.join("flake.lock"), lock.to_string()).unwrap();
+        git(&self.origin, &["add", "flake.lock"]);
+        self.signed(message)
+    }
+}
+
+fn following_done(commit: &str, core: &str) -> Line {
+    let Line::Done {
+        commit,
+        applied,
+        restart,
+        restarted,
+        ..
+    } = done(commit)
+    else {
+        unreachable!()
+    };
+    Line::Done {
+        commit,
+        applied,
+        restart,
+        restarted,
+        followed: BTreeMap::from([("core".to_owned(), core.to_owned())]),
+    }
+}
+
+#[test]
+fn a_followed_input_is_built_at_its_signed_main_past_the_lock() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let newer = world.core_commit("newer", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    assert_eq!(world.update().1, following_done(&head, &newer));
+    let overridden = world.read("overridden");
+    assert!(overridden.starts_with("core git+file://"), "{overridden}");
+    assert!(
+        overridden.trim().ends_with(&format!("rev={newer}")),
+        "{overridden}"
+    );
+}
+
+#[test]
+fn main_where_it_was_with_its_input_moved_on_is_built_again() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    world.update();
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: head.clone(),
+            followed: BTreeMap::from([("core".to_owned(), pinned)]),
+        }
+    );
+    let newer = world.core_commit("newer", true);
+    assert_eq!(world.update().1, following_done(&head, &newer));
+    assert_eq!(world.builds(), 2);
+}
+
+#[test]
+fn a_followed_input_unsigned_is_refused_and_nothing_is_built() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    world.core_commit("unsigned", false);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with("core's main: "), "{why}");
+    assert!(
+        why.contains("isn't signed by a key this machine trusts"),
+        "{why}"
+    );
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn a_followed_input_behind_its_lock_is_refused() {
+    let world = following();
+    let older = world.core_commit("older", true);
+    let pinned = world.core_commit("pinned", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    git(
+        &world.root.join("core"),
+        &["reset", "--quiet", "--hard", &older],
+    );
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.contains("which the flake's lock pins"), "{why}");
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn building_elsewhere_sends_only_the_heavy_pieces_away() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    assert!(away.contains("/nix/store/b-heavy.drv^*"), "{away}");
+    assert!(!away.contains("a-light"), "{away}");
+    assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn building_elsewhere_with_no_builder_builds_nothing_here() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    let head = world.signed("one");
+    world.system(&head);
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let Line::Failed { why, lines, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    assert!(why.contains("on the machine's builders"), "{why}");
+    assert_eq!(lines, ["local builds are disabled"]);
+    assert_eq!(world.builds(), 0);
 }

@@ -1,8 +1,9 @@
 # update-to-main, built from this directory, its tests run as it builds
-# against real git, gpg and ssh-keygen.
+# against real git, gpg, ssh-keygen and tar.
 {
   git,
   gnupg,
+  gnutar,
   lib,
   openssh,
   runtimeShell,
@@ -24,6 +25,7 @@ rustPlatform.buildRustPackage {
   nativeCheckInputs = [
     git
     gnupg
+    gnutar
     openssh
   ];
   # The tests' stand-ins for Nix and a system's switch run under the

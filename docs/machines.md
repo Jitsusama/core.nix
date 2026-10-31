@@ -126,6 +126,49 @@ jitsusama.update-to-main = {
 };
 ```
 
+A repository whose host signs nothing is followed by what the host names
+instead. With `hosted` set, root asks the host for main over TLS with a
+token the account's `token` command prints, reads that commit's objects from
+the account's checkout, which git checks against it, and builds the flake in
+`directory`. The account fetches main into its checkout when the commit
+isn't there yet, and fetches each of `inputs`, the private ones, by its
+lock. The machine then trusts the host and takes no signers:
+
+```nix
+jitsusama.update-to-main = {
+  repository = "https://forge.example/someone/everything.git";
+  output = "nixosConfigurations.laptop.config.system.build.toplevel";
+  hosted = {
+    user = "someone";
+    checkout = "/home/someone/everything";
+    directory = "machines";
+    token = [ "/home/someone/bin/forge-token" ];
+    inputs = [ "private-modules" ];
+  };
+  askers = [ "someone" ];
+  health = [ ];
+};
+```
+
+An input the machine should run at its own main, rather than wait for the
+flake's lock to move, is named in `follows` with its repository and
+signers. Root fetches that main, checks its signature and that it descends
+from the lock's commit and from what it last followed, and builds with the
+input overridden to it; an ask with main where it was builds again when a
+followed main moved. With `elsewhere = true`, the machine builds only the
+pieces nixpkgs marks light itself and sends every other to the Nix
+daemon's builders, failing rather than build one when none takes it:
+
+```nix
+jitsusama.update-to-main = {
+  follows.core = {
+    repository = "https://github.com/someone/core";
+    signers.openpgp = [ ./forge-merges.asc ];
+  };
+  elsewhere = true;
+};
+```
+
 ## Formatting and Linting
 
 A machine repository formats and lints its code as core does by giving

@@ -2,9 +2,13 @@
 # asks, from a real NixOS switch, and nothing else moves it
 # (modules/update-to-main). The repository is a bare one on the machine,
 # whose flake gives one of the machine's specialisations as its system, so a
-# commit chooses which system main is. The tests are
-# update-to-main-vm-test.py, which pytest runs inside the driver
-# (tests/lib/vm_pytest.py).
+# commit chooses which system main is. machine trusts main by its signature;
+# hosted trusts what its repository names, reading its objects from
+# someone's checkout and asking for a token as someone, the flake in a
+# folder of the repository, and builds only light pieces itself, having no
+# builders; following's flake has an input, core, that follows its own
+# signed main, whose file names the system. The tests are update-to-main-vm-test.py, which
+# pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
   # The key the tests sign main with, made for them and trusted nowhere
@@ -15,20 +19,24 @@ let
       key = ./update-to-main-signer;
     }
   );
-in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
-  name = "update-to-main";
-
-  nodes.machine = {
-    imports = [ self.nixosModules.update-to-main ];
+  # Says in its home who asked for the token, and their groups, and gives
+  # none while /etc/no-token is there.
+  token = pkgs.writeShellScript "token" ''
+    if [ -e /etc/no-token ]; then echo "no login" >&2; exit 3; fi
+    echo "$(${pkgs.coreutils}/bin/id -un) $(${pkgs.coreutils}/bin/id -Gn)" > "$HOME/token-asker"
+    echo a-token
+  '';
+  # What both machines are: whole only while not marked broken, which one
+  # of the specialisations does, and building main's system in the sandbox.
+  machine = extra: {
+    imports = [
+      self.nixosModules.update-to-main
+      extra
+    ];
 
     jitsusama.update-to-main = {
-      repository = "file:///srv/machines.git";
       output = "system";
-      signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
       askers = [ "someone" ];
-      # A machine is whole only while it isn't marked broken, which one of
-      # the specialisations does.
       health = [
         [
           "${pkgs.coreutils}/bin/test"
@@ -63,6 +71,40 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     # machine unwhole.
     specialisation.switched.configuration.environment.etc.switched.text = "switched\n";
     specialisation.unhealthy.configuration.environment.etc.unhealthy.text = "unhealthy\n";
+  };
+in
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+  name = "update-to-main";
+
+  nodes.machine = machine {
+    jitsusama.update-to-main = {
+      repository = "file:///srv/machines.git";
+      signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
+    };
+  };
+
+  nodes.hosted = machine {
+    jitsusama.update-to-main = {
+      repository = "file:///srv/machines.git";
+      hosted = {
+        user = "someone";
+        checkout = "/home/someone/machines";
+        directory = "machine";
+        token = [ "${token}" ];
+      };
+      elsewhere = true;
+    };
+  };
+
+  nodes.following = machine {
+    jitsusama.update-to-main = {
+      repository = "file:///srv/machines.git";
+      signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
+      follows.core = {
+        repository = "file:///srv/core.git";
+        signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
+      };
+    };
   };
 
   tests = ./update-to-main-vm-test.py;
