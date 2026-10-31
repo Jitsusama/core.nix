@@ -331,6 +331,14 @@ in
     recent-windows {
         off
     }
+    ${lib.optionalString pictured ''
+      // The boot splash stays until the wallpaper or the greeter is drawn,
+      // rather than going dark between them (nixos.nix's
+      // hold-first-frame.patch, for at most 5 seconds).
+      debug {
+          hold-first-frame-for-background
+      }
+    ''}
     cursor {
         xcursor-theme "${cursor.name}"
         xcursor-size ${toString cursor.size}

@@ -1469,6 +1469,10 @@
   the-splash-keeps-systemd-quiet = ''
     with the splash, systemd writes only failures to the console
   '';
+  the-splash-outlasts-niris-hold = ''
+    niri holds its first frame for the wallpaper, only with one to wait for, for less time than
+    Plymouth takes to quit, so what the splash left stays on the screen until the desktop draws
+  '';
   the-splash-reads-the-generation-from-the-entry = ''
     the splash is told the generation only from an entry whose name carries one
   '';

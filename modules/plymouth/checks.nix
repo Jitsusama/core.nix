@@ -71,6 +71,37 @@
         && waits plain
       );
 
+  # niri holds its first frame for the wallpaper, keeping on the screen what
+  # the splash left, for no longer than its patch says
+  # (hold-first-frame.patch), and only with a picture to wait for. Plymouth
+  # quits after that, since the picture it left goes with it, and a niri
+  # still holding would then show nothing at all.
+  the-splash-outlasts-niris-hold =
+    let
+      machine =
+        (bareNixos [
+          self.nixosModules.graphical
+          { jitsusama.login.account = "someone"; }
+        ]).config;
+      home = machine.home-manager.users.someone;
+      said = home.xdg.configFile."niri/theme.kdl".text;
+      line = lib.findFirst (lib.hasInfix "const FIRST_FRAME_HOLD") "" (
+        lib.splitString "\n" (builtins.readFile ../niri/hold-first-frame.patch)
+      );
+      hold = lib.toInt (lib.head (builtins.match ".*from_secs[(]([0-9]+)[)].*" line));
+      quits = lib.toInt (
+        lib.removeSuffix "s" machine.systemd.timers.plymouth-quit.timerConfig.OnActiveSec
+      );
+    in
+    holds "the-splash-outlasts-niris-hold"
+      "Plymouth quits before niri's hold on its first frame can run out, or niri holds with no wallpaper to wait for."
+      (
+        hold < quits
+        &&
+          lib.hasInfix "hold-first-frame-for-background" said
+          == (home.jitsusama.theme.wallpaper.desktop != null)
+      );
+
   # The splash keeps systemd's lines off the console, so nothing shows
   # between the firmware's logo and the splash, which a test machine can't
   # show: its kernel writes everything to the screen, and systemd writes to
