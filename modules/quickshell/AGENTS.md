@@ -54,7 +54,9 @@ Joel sees.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
   each starting from [`Provider.qml`][provider], whose header says what a
   row holds. Every name, word and glyph a provider shows or is found by is
-  said once, in [`launcher/words.json`][words], read through `Words.qml`;
+  said once, in [`launcher/words.json`][words], read through `Words.qml`:
+  what sits beside a row in `said`, lowercase, and a sentence its drawer
+  tells in `tells`;
   `the-launcher-means-one-thing-a-word` fails on a word that finds two
   things, and prints each. What it can do is asked from outside through
   its catalogue, `qs ipc call launcher list`, `run` and `runWith`, which
