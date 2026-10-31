@@ -56,7 +56,9 @@ echo "$live" >"$state/live.pid"
 # What the last boot's end took away, as the harness keeps it: one whole,
 # one whose folder is gone since, one with no folder and one whose id a
 # shell would read; and two windows joined to sessions another machine
-# holds, one by its words as an argv and one by a line a shell would read.
+# holds, one by its words as an argv and one by a line a shell would read;
+# and three another machine carried here as it went away, two whole, the
+# older listed first, and one saying where from badly.
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
@@ -66,7 +68,13 @@ cat >"$state/pi/restore.json" <<'EOF'
   {"id":"s-far","address":"FARLST","title":"Far","cwd":"/tmp","lostAt":"",
    "machine":"lighthouse","attach":["ssh","-t","lighthouse","mycelium","attach","s-far"]},
   {"id":"s-said","address":"SAIDSO","title":"Said","cwd":"/tmp","lostAt":"",
-   "machine":"lighthouse","attach":"ssh lighthouse mycelium attach s-said"}
+   "machine":"lighthouse","attach":"ssh lighthouse mycelium attach s-said"},
+  {"id":"s-ferried","address":"FERRID","title":"Ferried","cwd":"/tmp","lostAt":"",
+   "carried":{"from":"lighthouse","at":"2026-10-30T10:00:00Z"}},
+  {"id":"s-ferry","address":"FERRYQ","title":"Ferry","cwd":"/tmp","lostAt":"",
+   "carried":{"from":"lighthouse","at":"2026-10-30T12:00:00Z"}},
+  {"id":"s-adrift","address":"ADRIFT","title":"Adrift","cwd":"/tmp","lostAt":"",
+   "carried":"lighthouse"}
 ]}
 EOF
 echo "$other" >"$state/other.pid"

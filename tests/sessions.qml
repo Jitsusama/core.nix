@@ -9,7 +9,9 @@ pragma ComponentBehavior: Bound
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
 // ends, takes its session with it. What an earlier boot's end took away
-// is offered whole, reopened held in its own folder, until put off, and a
+// is offered whole, reopened held in its own folder, until put off, what
+// another machine carried here is offered after it, the newest first, and
+// never put off with it, and a
 // window it had joined to a session another machine holds is joined again
 // by its words, once; a closed session resumes in its own folder, and one whose folder is gone
 // opens nowhere but its quest's start folder, never the home folder. A
@@ -137,6 +139,13 @@ ShellRoot {
         expect("only the whole ones of another boot",
             Sessions.lastBoot.map(one => one.id).join(" ") === "s-before s-given-back s-far",
             JSON.stringify(Sessions.lastBoot));
+        // Those another machine carried here apart, the newest first, and
+        // one saying where from badly left out.
+        expect("the carried, newest first",
+            Sessions.carried.map(one => one.id).join(" ") === "s-ferry s-ferried",
+            JSON.stringify(Sessions.carried));
+        expect("the last boot's, then the carried", Sessions.toReopen.map(one => one.id).join(" ")
+            === "s-before s-given-back s-far s-ferry s-ferried", JSON.stringify(Sessions.toReopen));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
         // One held elsewhere is joined again once, however often asked.
         Sessions.reopen(Sessions.lastBoot[2], told("s-far"));
@@ -174,6 +183,9 @@ ShellRoot {
             JSON.stringify(unopened));
         Sessions.putOffLastBoot();
         expect("put off, none", Sessions.lastBoot.length === 0, JSON.stringify(Sessions.lastBoot));
+        // The carried are never put off with the last boot.
+        expect("put off, the carried still", Sessions.toReopen.map(one => one.id).join(" ")
+            === "s-ferry s-ferried", JSON.stringify(Sessions.toReopen));
         stage = "forgotten";
         removing.running = true;
     }

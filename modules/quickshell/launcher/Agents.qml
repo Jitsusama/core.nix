@@ -283,67 +283,90 @@ Provider {
         });
     }
 
-    // The sessions the last boot's end took away (Sessions.qml's
-    // lastBoot), one row after the sessions running while any are left,
-    // and gone on the boot they ran in or once put off (VKCF3Z's design,
-    // [fce929da]). Now shows this same row among what else wants Joel
-    // (WhatsOn.qml). Return steps in with Reopen Them All first, so
-    // Return twice brings every one back, each in its own window and
-    // folder; then each one, as a closed session, reopening just it; then
-    // Not Now. Its count is in its note, never its name, which would
-    // change as he reopens them.
-    readonly property var lastBoot: {
-        const lost = Sessions.lastBoot;
+    // The sessions there are to reopen (Sessions.qml's toReopen): those the
+    // last boot's end took away, gone on the boot they ran in or once put
+    // off, and those other machines carried here, offered whatever the
+    // boot until each runs here (VKCF3Z's design, [fce929da], [17db838c]).
+    // One row after the sessions running while any are left, which Now
+    // shows among what else wants Joel (WhatsOn.qml). Return steps in with
+    // Reopen Them All first, so Return twice brings every one back, each in
+    // its own window and folder; then each one, as a closed session,
+    // reopening just it, the last boot's and then the carried, newest
+    // first; then Not Now, which puts off only the last boot's, so it's
+    // there only while any are. Its count is at its side, never in its
+    // name, which would change as he reopens them, and its note says where
+    // they came from.
+    readonly property var toReopen: {
+        const lost = Sessions.toReopen;
         if (lost.length === 0)
             return null;
+        const said = Words.of("agents:to-reopen").said ?? {};
         const act = (id, fields) => thing(Object.assign({
-            key: `verb:agents:last-boot:${id}`,
-            verb: Words.verb(`verb:agents:last-boot:${id}`),
-            name: Words.name(`verb:agents:last-boot:${id}`),
-            glyph: Words.glyph(`verb:agents:last-boot:${id}`),
+            key: `verb:agents:to-reopen:${id}`,
+            verb: Words.verb(`verb:agents:to-reopen:${id}`),
+            name: Words.name(`verb:agents:to-reopen:${id}`),
+            glyph: Words.glyph(`verb:agents:to-reopen:${id}`),
             hue: "action"
         }, fields));
+        // Where one came from: the last boot, or the machine that carried
+        // it; several machines are counted rather than listed.
+        const carriedFrom = machines => String(said.carried ?? "").replace("{machine}",
+            machines.length === 1 ? machines[0]
+                : String(said.machines ?? "").replace("{count}", machines.length));
+        const fromOf = one => one.carried === undefined ? String(said.lastBoot ?? "")
+            : carriedFrom([one.carried.from]);
+        const booted = Sessions.lastBoot.length;
+        const machines = Sessions.carried.map(one => one.carried.from)
+            .filter((from, at, all) => all.indexOf(from) === at);
+        const note = machines.length === 0 ? String(said.lastBoot ?? "")
+            : booted === 0 ? carriedFrom(machines)
+            : String(said.both ?? "").replace("{boot}", booted)
+                .replace("{carried}", Sessions.carried.length)
+                .replace("{from}", carriedFrom(machines));
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;
         // In its own folder only; when that's gone, a notice says so and
         // nothing opens, never one in the home folder instead.
-        const gone = String((Words.of("verb:agents:last-boot:one").said ?? {}).gone ?? "");
+        const gone = String((Words.of("verb:agents:to-reopen:one").said ?? {}).gone ?? "");
         const unopened = (one, cwd) => Sessions.sayUnopened(
             String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd)));
         const reopen = one => Sessions.reopen(one, cwd => unopened(one, cwd));
         const closed = one => thing({
             thing: true,
-            key: `agents:last-boot:${one.id}`,
+            key: `agents:to-reopen:${one.id}`,
             name: String(one.title || one.address || one.id),
             // One held elsewhere says where, as a session there does.
             side: one.machine !== undefined ? provider.elsewhere("on", one) : homely(one.cwd),
-            verb: Words.verb("verb:agents:last-boot:one"),
+            note: fromOf(one),
+            verb: Words.verb("verb:agents:to-reopen:one"),
             glyph: Theme.glyph.agent,
             hue: "program",
             later: true,
             run: () => reopen(one)
         });
         return thingRow({
-            key: "agents:last-boot",
-            name: Words.name("agents:last-boot"),
-            side: ((Words.of("agents:last-boot").said ?? {})[lost.length === 1 ? "one" : "many"]
-                ?? "").replace("{count}", lost.length),
-            glyph: Words.glyph("agents:last-boot"),
+            key: "agents:to-reopen",
+            name: Words.name("agents:to-reopen"),
+            side: String(said[lost.length === 1 ? "one" : "many"] ?? "")
+                .replace("{count}", lost.length),
+            note: note,
+            glyph: Words.glyph("agents:to-reopen"),
             hue: "action"
         }, () => [act("all", {
             later: true,
-            // Each back where it sat (Sessions.qml's reopenAll).
+            // Each back where it sat (Sessions.qml's reopenAll), a carried
+            // one beside where Joel is, since it never sat here.
             run: () => Sessions.reopenAll(lost, unopened)
-        })].concat(lost.map(closed), [act("notNow", {
+        })].concat(lost.map(closed), booted === 0 ? [] : [act("notNow", {
             run: () => Sessions.putOffLastBoot()
         })]));
     }
 
-    things: lastBoot ? [lastBoot, start] : [start]
+    things: toReopen ? [toReopen, start] : [start]
 
     function everything() {
-        return all.concat(lastBoot ? [lastBoot] : [], [start]);
+        return all.concat(toReopen ? [toReopen] : [], [start]);
     }
 
     function counted() {

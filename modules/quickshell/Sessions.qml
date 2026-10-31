@@ -256,8 +256,9 @@ Singleton {
     // that boot). The harness keeps them in restore.json (its #866),
     // rewritten whole as each pi starts and ends, with the boot they ran
     // in, so a reopened one leaves the list within seconds. Only another
-    // boot's are offered, and only until Joel puts that boot off. This
-    // boot is `bootId`, as the records are read by.
+    // boot's are offered, and only until Joel puts that boot off, but for
+    // those another machine carried here (`carried`). This boot is
+    // `bootId`, as the records are read by.
     readonly property var restoring: restoreOf(restoreFile.text())
     FileView {
         id: restoreFile
@@ -287,10 +288,17 @@ Singleton {
             && typeof one.address === "string" && Array.isArray(one.attach)
             && one.attach.length > 0 && one.attach.every(word => typeof word === "string")
             && typeof one.cwd === "string" && (one.cwd === "" || one.cwd.startsWith("/"));
+        // One another machine carried here as it went away (the harness's
+        // carried.ts) says which and when; one saying it badly is no last
+        // boot's either, so it's left out.
+        const carried = one => one.carried === undefined
+            || one.carried !== null && typeof one.carried === "object"
+            && typeof one.carried.from === "string" && one.carried.from !== ""
+            && typeof one.carried.at === "string";
         return {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
-                && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
+                && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? "")) && carried(one)
                 && (one.machine === undefined
                     ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
@@ -314,7 +322,19 @@ Singleton {
     }
 
     readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
-        && restoring.boot !== bootId && restoring.boot !== putOff ? restoring.sessions : []
+        && restoring.boot !== bootId && restoring.boot !== putOff
+        ? restoring.sessions.filter(one => one.carried === undefined) : []
+
+    // The sessions other machines carried here as they went away, offered
+    // whatever the boot until each runs here, when the harness drops it,
+    // and never put off with the last boot's (VKCF3Z, [17db838c]): the
+    // newest carried first, by id when two came at once.
+    readonly property var carried: restoring.sessions.filter(one => one.carried !== undefined)
+        .sort((one, other) => other.carried.at.localeCompare(one.carried.at)
+            || one.id.localeCompare(other.id))
+
+    // Every session there is to reopen: the last boot's, then the carried.
+    readonly property var toReopen: lastBoot.concat(carried)
 
     // One of them, in its own folder only: when that's gone, nothing is
     // opened, and `gone(cwd)` is told so the caller says so, since there's

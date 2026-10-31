@@ -124,26 +124,30 @@
       "name": "Quest"
     },
     {
-      "id": "agents:last-boot",
+      "id": "agents:to-reopen",
       "in": "agents",
-      "name": "Reopen Last Boot's Sessions",
+      "name": "Sessions to Reopen",
       "verb": "more",
       "glyph": "resume",
       "said": {
         "one": "1 session",
-        "many": "{count} sessions"
+        "many": "{count} sessions",
+        "lastBoot": "from the last boot",
+        "carried": "carried from {machine}",
+        "machines": "{count} machines",
+        "both": "{boot} from the last boot, {carried} {from}"
       }
     },
     {
-      "id": "verb:agents:last-boot:all",
-      "in": "agents:last-boot",
+      "id": "verb:agents:to-reopen:all",
+      "in": "agents:to-reopen",
       "name": "Reopen Them All",
       "verb": "reopen",
       "glyph": "resume"
     },
     {
-      "id": "verb:agents:last-boot:one",
-      "in": "agents:last-boot",
+      "id": "verb:agents:to-reopen:one",
+      "in": "agents:to-reopen",
       "name": "Reopen",
       "verb": "reopen",
       "glyph": "resume",
@@ -152,8 +156,8 @@
       }
     },
     {
-      "id": "verb:agents:last-boot:notNow",
-      "in": "agents:last-boot",
+      "id": "verb:agents:to-reopen:notNow",
+      "in": "agents:to-reopen",
       "name": "Not Now",
       "verb": "later",
       "glyph": "queued"
