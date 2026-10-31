@@ -175,12 +175,14 @@ let
   # two of their faults corrected: the blur module doesn't say it depends on
   # Quickshell, whose Region it names, and PanelWindow is marked uncreatable
   # because Quickshell types it as the interface it makes a real window
-  # behind. The launcher's maths sits beside them, as the machine's
-  # Quickshell finds it (modules/quickshell/nixos.nix).
+  # behind. The launcher's maths and key times sit beside them, as the
+  # machine's Quickshell finds them (modules/quickshell/nixos.nix).
   quickshellTypes = pkgs.runCommandLocal "quickshell-types" { } ''
     mkdir -p $out/lib/qt-6/qml
     cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
     cp -r ${pkgs.callPackage ./modules/quickshell/maths/package.nix { }}/lib/qt-6/qml/Maths \
+      $out/lib/qt-6/qml/
+    cp -r ${pkgs.callPackage ./modules/quickshell/key-times/package.nix { }}/lib/qt-6/qml/KeyTimes \
       $out/lib/qt-6/qml/
     chmod -R u+w $out
     echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir

@@ -2,8 +2,9 @@
 
 Each line written to /run/keyboard names a key by its evdev name without KEY_ ("down", "a"). The
 keyboard presses and lets go of it, then appends the key and when it went down, in milliseconds
-of the realtime clock, to /run/keyboard.log. That's the clock the shell's Date.now() reads, so a
-key's time and the time of the frame that drew it are on one clock inside the machine. The
+of the monotonic clock, to /run/keyboard.log. That's the clock the kernel stamps input on and the
+launcher keeps its key times by, so a key's time and the time of the frame that drew it are on
+one clock inside the machine. The
 device's event node goes to /run/keyboard.device first, so a test can wait until the desktop has
 it open before it presses.
 """
@@ -33,7 +34,7 @@ def report(device: UInput) -> None:
 
 def press(device: UInput, key: int) -> float:
     """Press the key once and let it go, giving when it went down in milliseconds."""
-    pressed = time.clock_gettime(time.CLOCK_REALTIME) * 1000
+    pressed = time.clock_gettime(time.CLOCK_MONOTONIC) * 1000
     device.write(e.EV_KEY, key, 1)
     report(device)
     time.sleep(HELD)

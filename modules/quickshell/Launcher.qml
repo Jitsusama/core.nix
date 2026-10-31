@@ -44,6 +44,7 @@ import Quickshell.Io
 import Quickshell.Services.UPower
 import Quickshell.Wayland
 import QtQuick
+import KeyTimes
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
@@ -80,6 +81,8 @@ Scope {
     property var sources: []
 
     Component.onCompleted: {
+        // Made now, so it hears the first key pressed (key-times/).
+        KeyTimes.now();
         const made = [];
         for (const listed of Providers.providers) {
             const file = Qt.createComponent(`launcher/${listed.file}`);
@@ -2791,23 +2794,29 @@ Scope {
         keyText = typed;
         keyWaits = true;
         keysWaiting += 1;
-        keysHeard.push(began);
+        // Still inside the press that made it, if a press did.
+        const pressed = KeyTimes.pressed();
+        keysPressed.push(pressed > 0 ? pressed : null);
+        keysHeard.push(KeyTimes.now() - (Date.now() - began));
     }
 
     function keyDrawn() {
         keyWaits = false;
         const drawn = Date.now();
+        const shown = KeyTimes.now();
         trials.timed(keySearched, drawn - keyBegan, searchParts, keyText);
         // Every key since the last frame shows in this one, so each keeps
         // it as its own, and the list holds one time a key.
         for (let each = 0; each < keysWaiting; each += 1)
-            keysFramed.push(drawn);
+            keysFramed.push(shown);
         keysTimed += keysWaiting;
         keysWaiting = 0;
         if (keysFramed.length > keysKept)
             keysFramed.splice(0, keysFramed.length - keysKept);
         if (keysHeard.length > keysKept)
             keysHeard.splice(0, keysHeard.length - keysKept);
+        if (keysPressed.length > keysKept)
+            keysPressed.splice(0, keysPressed.length - keysKept);
     }
 
     // When each of the last keys reached its frame, oldest first, for the
@@ -2819,13 +2828,15 @@ Scope {
     // changed in place.
     readonly property int keysKept: 300
     property var keysFramed: []
-    // When the shell's own handler took each of those keys, on the same
-    // clock, so the machine's load proof can time Joel's own keys from the
-    // handler to their frames with no keyboard of its own. It can't see
-    // the wait before the handler runs, a busy main thread's, nor niri's
-    // part (P9R1KI, 2026-10-30: "handler to frame, realtime clock"). A key
-    // is kept here once heard, so this runs ahead of the frames by the keys
-    // still waiting for one.
+    // When each of those keys was pressed, as the compositor says, and
+    // when the shell's own handler took it, all on the monotonic clock the
+    // compositor's times are on, so the machine's load proof can time
+    // Joel's own keys with no keyboard of its own: the press counts the
+    // kernel's, niri's and a busy main thread's part, the handler only the
+    // shell's. A key no press made, as text set when the launcher opens,
+    // has no press. A key is kept in both once heard, so they run ahead of
+    // the frames by the keys still waiting for one.
+    property var keysPressed: []
     property var keysHeard: []
     property int keysTimed: 0
     property int keysWaiting: 0
@@ -3091,15 +3102,16 @@ Scope {
             return String(root.choicesJoined);
         }
 
-        // When each of the last keys, typed or arrowed, reached its frame,
-        // and when the launcher's handler took it, as milliseconds since
-        // the epoch on the realtime clock, oldest first, a key at each
-        // place in both; and how many keys have reached a frame since the
-        // shell started.
+        // When each of the last keys, typed or arrowed, was pressed, when
+        // the launcher's handler took it and when it reached its frame, in
+        // milliseconds of the monotonic clock, oldest first, a key at each
+        // place in all three, its press null if no press made it; and how
+        // many keys have reached a frame since the shell started.
         function framed(): string {
-            return JSON.stringify({ timed: root.keysTimed, clock: "realtime",
-                heard: root.keysHeard.slice(0, root.keysFramed.length),
-                frames: root.keysFramed });
+            const drawn = root.keysFramed.length;
+            return JSON.stringify({ timed: root.keysTimed, clock: "monotonic",
+                pressed: root.keysPressed.slice(0, drawn),
+                heard: root.keysHeard.slice(0, drawn), frames: root.keysFramed });
         }
 
         // How many frames the card has drawn since this was first asked,
