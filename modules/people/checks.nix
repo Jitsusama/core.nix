@@ -31,7 +31,10 @@ onLinux {
   people-runs-where-a-source-names-a-program =
     let
       slack = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.slack ]; } ]);
-      started = slack.systemd.user.services.people.Service.ExecStart or "";
+      # Home Manager keeps a unit's ExecStart as a list of its lines.
+      started = lib.concatStringsSep " " (
+        lib.toList (slack.systemd.user.services.people.Service.ExecStart or "")
+      );
     in
     holds "people-runs-where-a-source-names-a-program"
       "The people daemon doesn't run for Slack's source, or runs where no source names one."
