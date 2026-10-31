@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
@@ -528,70 +528,114 @@ fn git(tree: &Path, config: &Path, arguments: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
-#[test]
-fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
-    let folder = tempfile::tempdir().unwrap();
-    let bin = folder.path().join("bin");
-    fs::create_dir(&bin).unwrap();
-    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
-        let path = bin.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+/// A tree with one commit GitHub has and one on top of it it lacks, its
+/// flake edited since, with a builder lent.
+struct Unpushed {
+    folder: tempfile::TempDir,
+    bin: PathBuf,
+    config: PathBuf,
+    tree: PathBuf,
+    offload: PathBuf,
+    pushed: String,
+    head: String,
+}
+
+impl Unpushed {
+    fn new() -> Self {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+            let path = bin.join(name);
+            fs::write(&path, script).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        fs::write(bin.join("status"), "0").unwrap();
+        let config = folder.path().join("gitconfig");
+        fs::write(
+            &config,
+            "[user]\nname = Tester\nemail = tester@example.com\n",
+        )
+        .unwrap();
+        let tree = folder.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        let offload = folder.path().join("offload");
+        fs::create_dir(&offload).unwrap();
+        fs::write(offload.join("store"), STORE).unwrap();
+        let mut made = Self {
+            folder,
+            bin,
+            config,
+            tree,
+            offload,
+            pushed: String::new(),
+            head: String::new(),
+        };
+        made.git(&["init", "-q", "-b", "main"]);
+        made.git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+        fs::write(made.tree.join("flake.nix"), "{ }").unwrap();
+        made.git(&["add", "flake.nix"]);
+        made.git(&["commit", "-q", "-m", "pushed"]);
+        made.pushed = made.git(&["rev-parse", "HEAD"]);
+        made.git(&["update-ref", "refs/remotes/origin/main", &made.pushed]);
+        fs::write(made.tree.join("flake.nix"), "{ outputs = _: { }; }").unwrap();
+        made.git(&["commit", "-q", "-am", "not pushed"]);
+        made.head = made.git(&["rev-parse", "HEAD"]);
+        fs::write(made.tree.join("flake.nix"), "{ outputs = _: { x = 1; }; }").unwrap();
+        made
     }
-    fs::write(bin.join("status"), "0").unwrap();
-    let config = folder.path().join("gitconfig");
-    fs::write(
-        &config,
-        "[user]\nname = Tester\nemail = tester@example.com\n",
-    )
-    .unwrap();
-    let tree = folder.path().join("tree");
-    fs::create_dir(&tree).unwrap();
-    let git = |arguments: &[&str]| git(&tree, &config, arguments);
-    git(&["init", "-q", "-b", "main"]);
-    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
-    fs::write(tree.join("flake.nix"), "{ }").unwrap();
-    git(&["add", "flake.nix"]);
-    git(&["commit", "-q", "-m", "pushed"]);
-    let pushed = git(&["rev-parse", "HEAD"]);
-    git(&["update-ref", "refs/remotes/origin/main", &pushed]);
-    fs::write(tree.join("flake.nix"), "{ outputs = _: { }; }").unwrap();
-    git(&["commit", "-q", "-am", "not pushed"]);
-    let head = git(&["rev-parse", "HEAD"]);
-    fs::write(tree.join("flake.nix"), "{ outputs = _: { x = 1; }; }").unwrap();
-    let offload = folder.path().join("offload");
-    fs::create_dir(&offload).unwrap();
-    fs::write(offload.join("store"), STORE).unwrap();
-    let run = || {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L", &tree.to_string_lossy(), "checks.x.a"])
+
+    fn git(&self, arguments: &[&str]) -> String {
+        git(&self.tree, &self.config, arguments)
+    }
+
+    /// Runs `there` on the tree, and answers with what ssh was told to run.
+    fn there(&self) -> String {
+        let _ = fs::remove_file(self.bin.join("ssh-was-given"));
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L", &self.tree.to_string_lossy(), "checks.x.a"])
             .env(
                 "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
             )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
-            .env("GIT_CONFIG_GLOBAL", &config)
+            .env("NIX_OFFLOAD_DIR", &self.offload)
+            .env("XDG_RUNTIME_DIR", self.folder.path())
+            .env("XDG_STATE_HOME", self.folder.path())
+            .env("XDG_CONFIG_HOME", self.folder.path())
+            .env("GIT_CONFIG_GLOBAL", &self.config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
-            .unwrap()
-    };
-    let ran = run();
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let given = fs::read_to_string(self.bin.join("ssh-was-given")).unwrap();
+        given.lines().nth(1).unwrap().to_owned()
+    }
+}
 
-    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
-    let command = given.lines().nth(1).unwrap();
+/// The commit a command sent to the builder builds.
+fn rev_in(command: &str) -> String {
+    command
+        .split("?rev=")
+        .nth(1)
+        .and_then(|rest| rest.get(..40))
+        .unwrap()
+        .to_owned()
+}
+
+#[test]
+fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
+    let unpushed = Unpushed::new();
+    let Unpushed {
+        bin, pushed, head, ..
+    } = &unpushed;
+    let git = |arguments: &[&str]| unpushed.git(arguments);
+    let command = unpushed.there();
     assert!(
         command.contains(&format!("git fetch -q https://github.com/o/r {pushed}")),
         "the builder fetches the newest commit GitHub has: {command}"
     );
-    let rev = command
-        .split("?rev=")
-        .nth(1)
-        .and_then(|rest| rest.get(..40))
-        .unwrap();
+    let rev = rev_in(&command);
+    let rev = rev.as_str();
     assert_ne!(rev, head, "the uncommitted change is built too");
     assert!(
         git(&["cat-file", "-p", rev]).contains(&format!("parent {head}")),
@@ -600,14 +644,14 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
     let heads = Command::new("git")
         .args(["bundle", "list-heads"])
         .arg(bin.join("received"))
-        .current_dir(&tree)
+        .current_dir(&unpushed.tree)
         .output()
         .unwrap();
     assert!(
         String::from_utf8_lossy(&heads.stdout).contains(rev),
         "the bundle carries it: {heads:?}"
     );
-    assert_eq!(git(&["rev-parse", "HEAD"]), head, "the branch stays");
+    assert_eq!(&git(&["rev-parse", "HEAD"]), head, "the branch stays");
     assert_eq!(
         git(&["status", "--porcelain"]),
         "M flake.nix",
@@ -620,15 +664,45 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
     );
 
     git(&["checkout", "-q", "--", "flake.nix"]);
-    git(&["update-ref", "refs/remotes/origin/main", &head]);
-    fs::remove_file(bin.join("ssh-was-given")).unwrap();
-    let ran = run();
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    git(&["update-ref", "refs/remotes/origin/main", head]);
     assert_eq!(
-        given.lines().nth(1).unwrap(),
+        unpushed.there(),
         format!("nix build --no-link -L 'github:o/r/{head}#checks.x.a'"),
         "a clean tree GitHub has goes by its commit"
+    );
+}
+
+#[test]
+fn a_tree_goes_as_its_index_holds_it_new_files_included_and_untracked_ones_left() {
+    // Nix builds a tree as its index has it: a file added, or only meant
+    // to be with -N, is in the build, and one git doesn't track isn't.
+    let unpushed = Unpushed::new();
+    let git = |arguments: &[&str]| unpushed.git(arguments);
+    let tree = &unpushed.tree;
+    fs::write(tree.join("added.nix"), "1").unwrap();
+    git(&["add", "added.nix"]);
+    fs::write(tree.join("added.nix"), "2").unwrap();
+    fs::write(tree.join("meant.nix"), "3").unwrap();
+    git(&["add", "-N", "meant.nix"]);
+    fs::write(tree.join("loose.nix"), "4").unwrap();
+    let status = git(&["status", "--porcelain"]);
+
+    let rev = rev_in(&unpushed.there());
+    for (file, holds) in [("added.nix", "2"), ("meant.nix", "3")] {
+        assert_eq!(
+            git(&["show", &format!("{rev}:{file}")]),
+            holds,
+            "{file} goes as it stands"
+        );
+    }
+    assert!(
+        !git(&["ls-tree", "-r", "--name-only", &rev]).contains("loose.nix"),
+        "an untracked file stays here"
+    );
+    assert_eq!(
+        git(&["status", "--porcelain"]),
+        status,
+        "the index is left as it was"
     );
 }
 
