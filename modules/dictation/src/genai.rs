@@ -18,7 +18,7 @@ use std::ffi::{CString, c_char};
 use std::path::Path;
 use std::ptr;
 
-use crate::openvino::NPU_PRIORITY;
+use crate::openvino::Priority;
 
 #[repr(C)]
 struct Pipeline {
@@ -102,7 +102,7 @@ unsafe impl Send for Whisper {}
 impl Whisper {
     /// The static pipeline for the export in `dir` on `device`, its
     /// compiled models kept in `cache` when one is given, with `prompt`
-    /// read before every take.
+    /// read before every take, at `priority` among the NPU's jobs.
     ///
     /// # Errors
     ///
@@ -112,6 +112,7 @@ impl Whisper {
         device: &str,
         cache: Option<&Path>,
         prompt: &str,
+        priority: Priority,
     ) -> Result<Self, String> {
         let dir = text_of(&dir.to_string_lossy(), "the model's path")?;
         let device = text_of(device, "the device")?;
@@ -146,7 +147,7 @@ impl Whisper {
                 pipeline_key.as_ptr(),
                 static_pipeline.as_ptr(),
                 c"MODEL_PRIORITY".as_ptr(),
-                NPU_PRIORITY.as_ptr(),
+                priority.name().as_ptr(),
                 cache_key.as_ptr(),
                 cache.as_ptr(),
                 prompt_key.as_ptr(),

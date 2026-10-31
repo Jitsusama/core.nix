@@ -115,6 +115,58 @@
         touch $out
       '';
 
+  # A call's two sides, each its own recording from the call's start, come
+  # out as one transcript in the order they spoke: Joel asks, the far end
+  # answers in another voice while his side is quiet, and Joel answers
+  # back. Each side's pauses cut it into takes, so three paragraphs, the
+  # middle one the others', prove the cutting, the times and the order.
+  call-transcripts-writes-down-both-sides =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./model.nix { };
+    in
+    pkgs.runCommand "call-transcripts-writes-down-both-sides"
+      {
+        nativeBuildInputs = [
+          pkgs.espeak-ng
+          pkgs.sox
+        ];
+      }
+      ''
+        say() {
+          espeak-ng -v "$1" -s 160 -w said.wav "$2"
+          sox said.wav -r 16000 -c 1 -b 16 "$3"
+        }
+        say en-us "Can we move the review to Thursday?" ask.wav
+        say en-gb "Thursday morning works for everyone." answer.wav
+        say en-us "Perfect, thank you so much." thanks.wav
+        sox ask.wav asked.wav pad 0.5 6
+        sox asked.wav thanks.wav mine.wav
+        sox answer.wav theirs.wav pad 4 4
+        DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts transcribe ${model} \
+          mine.wav theirs.wav > transcript.md
+        cat transcript.md
+        grep '^\*\*' transcript.md > said
+        if [ "$(wc -l < said)" != 3 ]; then
+          echo "the transcript doesn't have three turns"
+          exit 1
+        fi
+        turn() { sed -n "$1p" said; }
+        if turn 1 | grep -q '^\*\*Others\*\*' || ! turn 1 | grep -qi review; then
+          echo "the first turn isn't Joel's question"
+          exit 1
+        fi
+        if ! turn 2 | grep -q '^\*\*Others\*\*, 0:0[34]: ' || ! turn 2 | grep -qi morning; then
+          echo "the second turn isn't the others' answer, about four seconds in"
+          exit 1
+        fi
+        if turn 3 | grep -q '^\*\*Others\*\*' || ! turn 3 | grep -qi thank; then
+          echo "the last turn isn't Joel's answer"
+          exit 1
+        fi
+        touch $out
+      '';
+
   # clippy finds nothing in dictation, its tests included.
   dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
     pkgs.callPackage ./package.nix { }

@@ -8,6 +8,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::mel::RATE;
+use crate::openvino::Priority;
 use crate::{cache, genai, whisper, words};
 
 /// Whisper, loaded where it runs best.
@@ -21,7 +22,9 @@ pub enum Speech {
 impl Speech {
     /// Whisper from the export in `dir`, with `words` read before each take,
     /// its compiled models kept in a folder of `cache` for these models and
-    /// words, and every other folder there removed once it loads.
+    /// words, and every other folder there removed once it loads, so each
+    /// program using it needs a cache of its own. On the NPU it takes its
+    /// turn at `priority`.
     ///
     /// # Errors
     ///
@@ -31,6 +34,7 @@ impl Speech {
         device: &str,
         cache: Option<&Path>,
         words: &str,
+        priority: Priority,
     ) -> Result<Self, String> {
         // This build's own path changes with OpenVINO, GenAI or dictation,
         // any of which makes what's compiled differ.
@@ -42,7 +46,7 @@ impl Speech {
             build.as_os_str().as_encoded_bytes(),
         ];
         let kept = cache.map(|cache| cache::folder(cache, &parts));
-        let speech = Self::load_in(dir, device, kept.as_deref(), words)?;
+        let speech = Self::load_in(dir, device, kept.as_deref(), words, priority)?;
         if let (Some(cache), Some(kept)) = (cache, &kept) {
             cache::forget_others(cache, kept);
         }
@@ -54,6 +58,7 @@ impl Speech {
         device: &str,
         cache: Option<&Path>,
         words: &str,
+        priority: Priority,
     ) -> Result<Self, String> {
         if device == "NPU" {
             // GenAI's compiled models are kept apart from OpenVINO's own,
@@ -62,14 +67,14 @@ impl Speech {
             let sentence = words::sentence(words);
             // A pipeline the NPU makes can still refuse its takes, so one
             // on silence proves it before it's chosen.
-            let whole = genai::Whisper::load(dir, device, cache.as_deref(), &sentence)
+            let whole = genai::Whisper::load(dir, device, cache.as_deref(), &sentence, priority)
                 .and_then(|mut whole| whole.transcribe(&vec![0.0; RATE]).map(|_| whole));
             match whole {
                 Ok(whole) => return Ok(Self::Whole(whole)),
                 Err(error) => eprintln!("dictation: {error}, so the decoder runs on the CPU"),
             }
         }
-        whisper::Whisper::load(dir, device, cache, words).map(Self::Split)
+        whisper::Whisper::load(dir, device, cache, words, priority).map(Self::Split)
     }
 
     /// Runs a take on a second of silence, so the next one finds every

@@ -19,7 +19,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crate::mel::{FRAMES, MELS, RATE, Spectrogram};
-use crate::openvino::{Compiled, Core, Input, Request, Result};
+use crate::openvino::{Compiled, Core, Input, Priority, Request, Result};
 use crate::vocab::Vocab;
 use crate::words::{self, Encoder};
 
@@ -78,7 +78,13 @@ impl Whisper {
     /// # Errors
     ///
     /// When a file is missing or neither device takes a model.
-    pub fn load(dir: &Path, device: &str, cache: Option<&Path>, words: &str) -> Result<Self> {
+    pub fn load(
+        dir: &Path,
+        device: &str,
+        cache: Option<&Path>,
+        words: &str,
+        priority: Priority,
+    ) -> Result<Self> {
         let vocab = std::fs::read_to_string(dir.join("vocab.json"))
             .map_err(|e| format!("reading vocab.json: {e}"))
             .and_then(|json| Vocab::parse(&json))?;
@@ -104,15 +110,16 @@ impl Whisper {
         let core = Core::new(cache)?;
         let mut encoder = core.read(&dir.join("openvino_encoder_model.xml"))?;
         encoder.fix_input(&[1, i64_of(MELS), i64_of(FRAMES)])?;
-        let (encoder, device) = match core.compile(&encoder, device) {
+        let (encoder, device) = match core.compile(&encoder, device, priority) {
             Ok(compiled) => (compiled, device.to_owned()),
             Err(error) if device != "CPU" => {
                 eprintln!("dictation: the encoder runs on the CPU: {error}");
-                (core.compile(&encoder, "CPU")?, "CPU".to_owned())
+                (core.compile(&encoder, "CPU", priority)?, "CPU".to_owned())
             }
             Err(error) => return Err(error),
         };
-        let decoder = core.compile(&core.read(&dir.join("openvino_decoder_model.xml"))?, "CPU")?;
+        let decoder = core.read(&dir.join("openvino_decoder_model.xml"))?;
+        let decoder = core.compile(&decoder, "CPU", priority)?;
         Ok(Self {
             spectrogram: Spectrogram::new(),
             vocab,

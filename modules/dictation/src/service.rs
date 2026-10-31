@@ -42,8 +42,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::mel::{RATE, SAMPLES};
-use crate::speech::Speech;
+use dictation::mel::{RATE, SAMPLES};
+use dictation::openvino::Priority;
+use dictation::speech::Speech;
 
 const UNUSED: Duration = Duration::from_mins(10);
 // A chord let go sooner than this was a tap, which leaves it listening.
@@ -537,7 +538,8 @@ fn worker(
         let load = |whisper: &mut Option<Speech>| -> Result<(), String> {
             if whisper.is_none() {
                 let started = Instant::now();
-                let mut loaded = Speech::load(&model, &device, cache.as_deref(), &words)?;
+                let mut loaded =
+                    Speech::load(&model, &device, cache.as_deref(), &words, Priority::Waited)?;
                 loaded.warm()?;
                 eprintln!(
                     "dictation: loaded and warmed in {} ms",
@@ -563,7 +565,13 @@ fn worker(
                 Job::Prime => {
                     if whisper.is_none() {
                         let started = Instant::now();
-                        match Speech::load(&model, &device, cache.as_deref(), &words) {
+                        match Speech::load(
+                            &model,
+                            &device,
+                            cache.as_deref(),
+                            &words,
+                            Priority::Waited,
+                        ) {
                             Ok(_) => eprintln!(
                                 "dictation: ready in {} ms",
                                 started.elapsed().as_millis()
