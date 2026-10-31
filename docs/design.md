@@ -405,7 +405,7 @@ lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
 What each is, in words, is the launcher's Now, opened by Super+O on its
-first row, Waiting on You, or by clicking a mark, on that mark's row: a
+first row, Needs You, or by clicking a mark, on that mark's row: a
 row each, its glyph, its name, how it stands at the right, and what more
 there is to know in the footer, grouped by how much it asks with what
 wants Joel first. Return does its first
@@ -752,13 +752,14 @@ works the same way everywhere.
   did, not each time what they're made from moves.
 - **Home is a few places.** With nothing typed, the launcher shows Now,
   then after a gap the places, each a context with its own words: Agents,
-  Programs, Desktop, Machine, Network and Keyboard, always in that order,
-  seven rows in a card of eight, so home's shape never changes. Disk is a
+  Programs and People, what Joel works with; then Desktop, Machine,
+  Network and Keyboards, what he works on; always in that order, eight
+  rows, so home's shape never changes. Disk is a
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
-  fast shows in Now. Now's top never changes: Waiting on You first,
-  always, saying how many wait now and later or that nothing does, a
-  session that wants Joel among them, drawn as the session; then its own
+  fast shows in Now. Now's top never changes: Needs You first, always,
+  its side how many, its note the first of them, or "Nothing needs you.";
+  then its own
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
   one row that thing is anywhere it shows, never a version Now draws of
@@ -767,10 +768,9 @@ works the same way everywhere.
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
-  left on). Waiting on You is a place, so Return steps into it whatever waits, to
-  the most pressing first or to "Nothing waits on you.", and into each
-  thing waiting, going to its window first inside; Super+O, Return,
-  Return reaches the pressing thing, each press foreseen. Every place
+  left on). Needs You is a place, so Return steps into it whatever it
+  holds, and Return on what's first goes where it's done; Super+O,
+  Return, Return reaches the pressing thing, each press foreseen. Every place
   and list opens on its first row, Now and Notices included, so the same
   keys land on the same row every time: what's pressing earns the top by
   order, never by the selection travelling to it (Joel, 2026-10-29:
@@ -783,6 +783,28 @@ works the same way everywhere.
   Inside a place, things come by importance and relation, never A to Z,
   and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
+- **Needs You holds only what only Joel can do, and keeps itself
+  true.** Each item is raised by the session that needs him, under its
+  quest, through the one tool every session uses, and is never copied
+  into a list someone keeps by hand. Every item says how it'll be known
+  done: a check that passes, a sign such as a boot, a switch, a sign-in,
+  a device seen or a file written, or, where nothing can tell, only Joel
+  saying so, which its drawer says. It goes the moment its check passes
+  or its sign comes, its quest ends or its session takes it back, never
+  staying once done; a session ending keeps its items. An item that
+  can't be done yet waits under Later, saying what for, until a fact
+  makes it ready, and one notice says when it does. Every item reads in
+  the same four parts: its title the act, in Title Case ("Send the Deploy
+  v3 Update"); its side how long ("3 min"); its note where, and any
+  limit ("not during a call"); its drawer the steps, numbered, one
+  sentence on why only he can, and how it'll be known done. Anything
+  timed comes first, soonest first, then the quickest, so a few free
+  minutes always find something; a session that needs Joel is there
+  drawn as the session. Return goes where it's done (the window, the
+  page, the program), else steps in; inside are Go To, Done, Not Now and
+  its quest. The name says what's in it (Joel, 2026-10-30: "i don't even
+  know what waiting on me means"), so its row reads as a sentence with
+  its count: "Needs You · 2".
 - **Tab only completes.** It takes the grey completion the field shows, and
   does nothing while none shows. The field says so at its right edge,
   "⇥ complete", only then, rather than the foot, where its coming and
