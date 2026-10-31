@@ -338,6 +338,10 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-machine-answers-local-names-in-time = ''
+    every NixOS machine's name service is nsncd answering a .local name as not found once it has
+    taken 4 s, inside the 5 s glibc's client waits
+  '';
   every-machine-asks-names-in-each-family = ''
     every NixOS machine's name service is nsncd asking for each address family on its own
   '';
@@ -1751,7 +1755,8 @@
   '';
   vm-names-give-ipv4-when-ipv6-answers-first = ''
     a .local name whose answer over IPv6 comes first, which resolved then gives alone, still gives
-    its IPv4 address, and both families, through the name service
+    its IPv4 address, and both families, through the name service; and a program that has looked
+    up an absent .local name still finds a present one
   '';
   vm-network-revives-units = ''
     what the network let down starts, and reloads on change

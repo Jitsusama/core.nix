@@ -1,0 +1,93 @@
+Answer a .local host lookup as not found once it has taken 4 s
+
+glibc's client waits 5 s for nscd's answer and, given none, stops asking
+nscd for any host for its next 100 lookups, falling back to the modules
+in its own process. On NixOS those can't resolve .local names, since
+systemd-resolved is reached only through nscd. systemd-resolved takes
+about 7 s to give up on a .local name nothing answers, so one lookup of
+an absent neighbour cut a long-lived process off from every .local name
+for its next hundred lookups, while fresh processes resolved them.
+
+nsncd now answers a host lookup of a .local name as not found when it
+hasn't been answered within 4 s, and leaves the lookup to finish on a
+thread of its own. Other names keep waiting, since the client's own
+fallback still resolves them by unicast DNS.
+
+diff --git a/src/handlers.rs b/src/handlers.rs
+index 600d131..620de66 100644
+--- a/src/handlers.rs
++++ b/src/handlers.rs
+@@ -402,6 +402,60 @@ impl NetgroupWithName {
+     }
+ }
+ 
++/// How long a host lookup of a .local name may take before it's answered as
++/// not found. glibc's client waits 5 s for an answer and, given none, stops
++/// asking nscd for any host for its next 100 lookups, falling back to modules
++/// in its own process, which on NixOS can't resolve .local names at all. An
++/// absent .local name takes resolved about 7 s to give up on, so without an
++/// answer in time one such lookup cuts the process off from every .local name.
++const LOCAL_NAME_WITHIN: std::time::Duration = std::time::Duration::from_secs(4);
++
++/// Handle a request as [handle_request] does, except that a host lookup of a
++/// .local name still unanswered after [LOCAL_NAME_WITHIN] is answered as not
++/// found, its lookup left to finish on its own thread. Other names keep
++/// waiting, since the client's own fallback can still resolve them.
++pub fn handle_request_in_time(
++    log: &Logger,
++    config: &Config,
++    request: &protocol::Request,
++) -> Result<Vec<u8>> {
++    let Some(not_found) = local_name_not_found(request) else {
++        return handle_request(log, config, request);
++    };
++    let (answered, answer) = std::sync::mpsc::channel();
++    let (log_, config_, ty, key) = (log.clone(), *config, request.ty, request.key.to_vec());
++    std::thread::spawn(move || {
++        let request = protocol::Request { ty, key: &key };
++        let _ = answered.send(handle_request(&log_, &config_, &request));
++    });
++    match answer.recv_timeout(LOCAL_NAME_WITHIN) {
++        Ok(answer) => answer,
++        Err(_) => {
++            debug!(log, "answering a .local name as not found, unanswered in time"; "request" => ?request);
++            not_found
++        }
++    }
++}
++
++/// The not-found answer to a host lookup of a .local name, or nothing for any
++/// other request.
++fn local_name_not_found(request: &protocol::Request) -> Option<Result<Vec<u8>>> {
++    let name = CStr::from_bytes_with_nul(request.key).ok()?.to_str().ok()?;
++    if !name.trim_end_matches('.').to_ascii_lowercase().ends_with(".local") {
++        return None;
++    }
++    match request.ty {
++        RequestType::GETAI => Some(serialize_address_info(AiResponse {
++            canon_name: name.to_string(),
++            addrs: vec![],
++        })),
++        RequestType::GETHOSTBYNAME | RequestType::GETHOSTBYNAMEv6 => Some(serialize_hostent(
++            Hostent::error_value(protocol::H_ERRNO_TRY_AGAIN),
++        )),
++        _ => None,
++    }
++}
++
+ /// Handle a request by performing the appropriate lookup and sending the
+ /// serialized response back to the client.
+ ///
+diff --git a/src/main.rs b/src/main.rs
+index 99a8749..d5d5fea 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -206,7 +206,7 @@ fn handle_stream(log: &slog::Logger, config: &Config, mut stream: UnixStream) {
+     };
+     let type_str = format!("{:?}", request.ty);
+     let log = log.new(o!("request_type" => type_str));
+-    let response = match handlers::handle_request(&log, config, &request) {
++    let response = match handlers::handle_request_in_time(&log, config, &request) {
+         Ok(x) => x,
+         Err(e) => {
+             error!(log, "error handling request"; "err" => %e);
