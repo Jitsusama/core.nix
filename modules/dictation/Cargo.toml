@@ -11,6 +11,8 @@ publish = false
 # What counts as a call, and when one starts and ends, kept in one place
 # for everything that follows calls; call-transcripts is one.
 calls = { path = "../calls" }
+# Screenshots are PNGs, which screen-text reads the words of.
+png = "0.18"
 serde_json = "1.0"
 
 [dev-dependencies]
