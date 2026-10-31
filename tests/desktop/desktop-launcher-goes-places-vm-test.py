@@ -51,6 +51,45 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+@pytest.mark.usefixtures("google")
+def test_heap_with_many_people(desktop: Desktop) -> None:
+    """Throwaway: the shell's JS heap with 88 people, and a search of them."""
+    heap = (
+        "p=$(systemctl --user show quickshell -p MainPID --value);"
+        " awk '/JSGCHeap/{on=1;next} /^[0-9a-f]+-/{on=0} on && /^Rss:/{s+=$2} END{print s}'"
+        " /proc/$p/smaps"
+    )
+
+    def read(what: str) -> None:
+        time.sleep(3)
+        print(f"HEAP {what}: {desktop.as_account(heap).strip()} kB")
+
+    def closed() -> None:
+        desktop.machine.send_key("esc")
+        desktop.machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+
+    read("closed at start")
+    time.sleep(20)
+    read("closed 20 s on")
+    for turn in range(4):
+        desktop.as_account("qs ipc call launcher collection people")
+        desktop.launcher_ready()
+        read(f"people {turn} rows {len(desktop.showing()['rows'])}")
+        closed()
+    for turn in range(3):
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("dr")
+        read(f"typed dr {turn}")
+        closed()
+    print(desktop.as_account(
+        "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'took [0-9]+ ms' | tail -12"
+    ))
+    read("closed at the end")
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine

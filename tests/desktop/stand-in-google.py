@@ -162,7 +162,15 @@ class Account:
                 "Planning",
                 now + LATER,
                 "klm-nopq-rst",
-                guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}],
+                guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}]
+                + [
+                    {"name": f"{first} {last}", "email": f"{first}.{last}@example.com".lower(),
+                     "answer": "yes"}
+                    for first in ["Drew", "Andrea", "Pedro", "Audrey", "Mia", "Noah", "Liam",
+                                  "Ava", "Zoe", "Theo"]
+                    for last in ["Hardy", "Drummond", "Chen", "Okafor", "Silva", "Novak",
+                                 "Reyes", "Patel", "Kim"]
+                ][:87],
             ),
         ]
         self.mail = [
