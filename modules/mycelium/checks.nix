@@ -75,6 +75,25 @@ let
   declared =
     bare:
     builtins.fromJSON (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
+  # A machine within another, and the host it runs in, each naming the other.
+  declaredAs =
+    extra:
+    builtins.fromJSON
+      (linux { declares = declaring // extra; }).xdg.configFile."mycelium/declared.json".text;
+  inVm = declaredAs {
+    within = {
+      machine = "host-machine";
+      file = "/run/host/said.json";
+    };
+  };
+  hosting = declaredAs {
+    hosts = [
+      {
+        machine = "guest-machine";
+        file = "/var/host/said.json";
+      }
+    ];
+  };
   # A machine at home naming the command its sessions there start with, or
   # one in a realm it doesn't join.
   saying =
@@ -177,6 +196,22 @@ in
           inherit (declaring) taints;
         }
         && (declared mac).outlives == [ ]
+        && !((declared linux) ? within)
+        && !((declared linux) ? hosts)
+        && (
+          inVm.within or null == {
+            machine = "host-machine";
+            file = "/run/host/said.json";
+          }
+        )
+        && (
+          hosting.hosts or null == [
+            {
+              machine = "guest-machine";
+              file = "/var/host/said.json";
+            }
+          ]
+        )
         && !(apart.xdg.configFile ? "mycelium/declared.json")
         &&
           (builtins.fromJSON (saying { home = "an-agent"; }).xdg.configFile."mycelium/declared.json".text)
