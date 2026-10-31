@@ -392,6 +392,29 @@ fn done(commit: &str) -> Line {
 }
 
 #[test]
+fn nix_finds_roots_git_where_the_system_has_none() {
+    let mut world = World::new();
+    let head = world.signed("one");
+    let system = world.system(&head);
+    // Nix runs git to fetch main by its git+file reference, and fails as
+    // Nix does when git isn't first on the path it's given.
+    let nix = world.config.tools.nix.clone();
+    let wrapped = world.root.join("stand-ins/nix-wanting-git");
+    write_program(
+        &wrapped,
+        &format!(
+            "#!{}\ncase \"$PATH\" in '{}':*) ;; *) echo 'executing \"git\": No such file or directory' >&2; exit 1 ;; esac\nexec '{}' \"$@\"\n",
+            shell(),
+            world.config.tools.git.parent().unwrap().display(),
+            nix.display()
+        ),
+    );
+    world.config.tools.nix = wrapped;
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.running(), system);
+}
+
+#[test]
 fn a_signed_main_is_built_and_switched_to() {
     let world = World::new();
     let head = world.signed("one");

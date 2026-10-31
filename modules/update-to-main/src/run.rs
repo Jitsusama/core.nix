@@ -7,6 +7,9 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+/// The path every command starts with: the system's own programs.
+pub const PATH: &str = "/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+
 /// How many of a failed command's last lines an answer carries.
 pub const TAIL: usize = 20;
 
@@ -33,10 +36,7 @@ pub fn command(program: &Path, home: &Path) -> Command {
     command
         .env_clear()
         .env("HOME", home)
-        .env(
-            "PATH",
-            "/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        )
+        .env("PATH", PATH)
         .env("LANG", "C.UTF-8")
         // Nix builds through the machine's daemon, as anyone else's do, so
         // a build takes its builders, its place and its limits, rather than
