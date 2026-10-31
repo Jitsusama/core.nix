@@ -34,17 +34,24 @@ fn nothing_saved_loads_as_nothing() {
     );
 }
 
+// Written in a folder of its own beside it, so a watcher of the file's
+// folder hears only the rename, and nothing is left in either.
 #[test]
 fn a_save_replaces_the_file_whole_and_leaves_nothing_beside_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("memory.json");
     fs::write(&path, "x".repeat(100_000)).unwrap();
     save(&path, &remembered()).unwrap();
-    let names: Vec<_> = fs::read_dir(dir.path())
+    let mut names: Vec<_> = fs::read_dir(dir.path())
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(names, ["memory.json"]);
+    names.sort();
+    assert_eq!(names, [".writing", "memory.json"]);
+    assert_eq!(
+        fs::read_dir(dir.path().join(".writing")).unwrap().count(),
+        0
+    );
     assert!(load::<Memory>(&path).unwrap().is_some());
 }
 

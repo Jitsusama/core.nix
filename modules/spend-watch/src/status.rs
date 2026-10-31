@@ -253,13 +253,17 @@ pub(crate) fn capitalized(text: &str) -> String {
     }
 }
 
-/// Writes a file whole or not at all: to a temporary name beside it,
-/// then renamed over it, so the shell never reads half of one.
+/// Writes a file whole or not at all: to a temporary name in a `.writing`
+/// folder beside it, then renamed over it, so the shell never reads half
+/// of one. The shell watches the folder, so a file made and written there
+/// woke it for each step; made aside, only the rename is heard.
 pub fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     let dir = path.parent().ok_or("a status file needs a directory")?;
-    std::fs::create_dir_all(dir).map_err(|error| format!("making {}: {error}", dir.display()))?;
-    let temporary = dir.join(format!(
-        ".{}.new",
+    let writing = dir.join(".writing");
+    std::fs::create_dir_all(&writing)
+        .map_err(|error| format!("making {}: {error}", writing.display()))?;
+    let temporary = writing.join(format!(
+        "{}.new",
         path.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("status")
@@ -318,6 +322,29 @@ mod tests {
             "state": "/none", "zone": "UTC",
         }))
         .unwrap()
+    }
+
+    // A status file is written aside and renamed in, so its folder only
+    // ever holds it and the folder it's written in, and that's left empty.
+    #[test]
+    fn a_status_file_is_written_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        write_atomic(&path, "{}").unwrap();
+        write_atomic(&path, "{\"a\":1}").unwrap();
+        let mut names: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, [".writing", "status.json"]);
+        assert_eq!(
+            std::fs::read_dir(dir.path().join(".writing"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");
     }
 
     // The margin's header says how today stands beside a five-figure day,
