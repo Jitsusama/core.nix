@@ -2,7 +2,8 @@
 //! a step-in, answered within its patience; a watch asks ahead, says what's
 //! held, then each change, a burst gathered into one; a source signed out
 //! is never waited on; one that stops is started again and asked again
-//! about everyone watched; and an ask or kind it doesn't know is refused.
+//! about everyone watched; a roster is searched and watched by who it
+//! lists; and an ask or kind it doesn't know is refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -43,6 +44,25 @@ log=$1
 read -r line
 printf '%s\n' "$line" >> "$log"
 printf '{"email":"%s","name":"once"}\n' "${line#?}"
+"#;
+
+/// A source that says everyone it knows unasked, as Tuple's contacts are
+/// said: Ada a favourite, Eli, and Gus, whom it knows by its id alone.
+/// Stepping into Eli makes him a favourite, into Ada makes her none, and
+/// into Gus deletes him, as Tuple saying so meanwhile would.
+const ROSTER: &str = r#"
+say() { printf '{"email":"%s","id":%s,"name":"%s","status":"unknown","favourite":%s,"recent":false}\n' "$@"; }
+echo '{"roster":true}'
+say ada@example.com 1 'Ada Brightwater' true
+say eli@example.com 2 'Eli Fenwick' false
+say '' 7 'Gus Ada-Moor' false
+while read -r line; do
+  case $line in
+    eli@example.com) say eli@example.com 2 'Eli Fenwick' true ;;
+    ada@example.com) say ada@example.com 1 'Ada Brightwater' false ;;
+    tuple:7) echo '{"email":"","id":7,"gone":true}' ;;
+  esac
+done
 "#;
 
 /// The daemon, running with these sources, and where its test keeps
@@ -273,6 +293,69 @@ fn a_get_nothing_has_answered_in_time_is_not_ready() {
     let said = client
         .ask(&json!({"id": 1, "ask": "get", "keys": ["person:ada@example.com"], "patience": 100}));
     assert_eq!(said["error"]["code"], "not-ready");
+}
+
+#[test]
+fn a_roster_is_searched_and_watched_by_who_it_lists() {
+    let running = Running::with("roster", &[("tuple", ROSTER)]);
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while client.ask(&json!({"id": 0, "ask": "health"}))["people"] != 3 {
+        assert!(Instant::now() < deadline, "the roster was never held");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let keys = |said: &Value| -> Vec<String> {
+        said["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["key"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    // Ada's listed, so first; Gus is found by his name, by Tuple's id.
+    let said = client.ask(&json!({"id": 1, "ask": "search", "words": "ada"}));
+    assert_eq!(keys(&said), ["person:ada@example.com", "person:tuple:7"]);
+    let said = client.ask(&json!({"id": 2, "ask": "search", "words": "ada", "limit": 1}));
+    assert_eq!(keys(&said), ["person:ada@example.com"]);
+    assert_eq!(
+        keys(&client.ask(&json!({"id": 3, "ask": "search", "words": "fenw"}))),
+        ["person:eli@example.com"]
+    );
+    let said = client.ask(&json!({"id": 4, "ask": "list", "listed": true}));
+    assert_eq!(keys(&said), ["person:ada@example.com"]);
+    let said = client.ask(&json!({"id": 5, "ask": "watch", "listed": true}));
+    assert_eq!(keys(&said), ["person:ada@example.com"]);
+    // A roster isn't waited on: a step-in answers with what's held.
+    let began = Instant::now();
+    let said = client
+        .ask(&json!({"id": 6, "ask": "get", "keys": ["person:eli@example.com"], "patience": 5000}));
+    assert!(
+        began.elapsed() < Duration::from_secs(2),
+        "it waited on a roster"
+    );
+    assert_eq!(said["waiting"], json!([]));
+    // Eli made a favourite is told to the watch of the listed.
+    let said = client.next();
+    assert_eq!(said["id"], 5);
+    assert_eq!(said["changed"][0]["key"], "person:eli@example.com");
+    assert_eq!(said["changed"][0]["sources"]["tuple"]["favourite"], true);
+    // Ada no longer one is told too, so it's dropped.
+    client.ask(&json!({"id": 7, "ask": "get", "keys": ["person:ada@example.com"]}));
+    let said = client.next();
+    assert_eq!(said["changed"][0]["key"], "person:ada@example.com");
+    assert_eq!(said["changed"][0]["sources"]["tuple"]["favourite"], false);
+    // Gus, never listed, goes without a word to it, and from the book.
+    let mut everyone = running.client();
+    everyone.ask(&json!({"id": 1, "ask": "watch"}));
+    client.ask(&json!({"id": 8, "ask": "get", "keys": ["person:tuple:7"]}));
+    let said = everyone.next();
+    assert_eq!(
+        said["changed"],
+        json!([{"key": "person:tuple:7", "kind": "person", "gone": true}])
+    );
+    assert_eq!(client.ask(&json!({"id": 9, "ask": "health"}))["people"], 2);
+    let said = client.ask(&json!({"id": 10, "ask": "list", "listed": true}));
+    assert_eq!(keys(&said), ["person:eli@example.com"]);
 }
 
 #[test]

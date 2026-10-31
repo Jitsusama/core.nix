@@ -67,8 +67,10 @@ in
               The program and its arguments the people daemon runs for this
               source, speaking People's line protocol: an address on a line
               in, as a step-in, `?ADDRESS` as an ask ahead, and a JSON line
-              out for each, with its `email`. None for a source the daemon
-              doesn't run.
+              out for each, with its `email`; or, first saying
+              `{"roster": true}`, a line for everyone it knows unasked, and
+              `"gone": true` for one it no longer does. None for a source
+              the daemon doesn't run.
             '';
           };
         };

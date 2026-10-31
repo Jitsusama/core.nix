@@ -15,6 +15,12 @@
 //! A `watch` asks ahead about its addresses, says each record held at
 //! once, then each change, gathered and said at most four times a second,
 //! so a burst of answers is one change to the client.
+//!
+//! A source whose first line is `{"roster": true}`, as Tuple's is, says
+//! everyone it knows without being asked, thousands of them, and is never
+//! waited on. So the shell holds none of them: a `search` answers the few
+//! dozen whose names or addresses the words find, and a `list` or `watch`
+//! with `listed` only those a source lists with nothing typed.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -26,7 +32,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use people::{Ask, Book, KIND, Standing, VERSION, address, ask, error, heard, now};
+use people::{Ask, Book, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -58,6 +64,8 @@ struct Watch {
     id: Value,
     /// The keys watched, in the order asked, or none for everyone.
     keys: Option<Vec<String>>,
+    /// Whether, watching everyone, it's only those a source lists.
+    listed: bool,
     told: Sender<String>,
     /// What changed since it was last told, by key.
     pending: HashMap<String, Value>,
@@ -220,12 +228,25 @@ fn run(shared: &Shared, source: &Source) {
 /// Takes one line a source said, telling each watch of what it changed.
 fn took_in(shared: &Shared, source: &str, line: &str) {
     let mut daemon = lock(shared);
-    if let Some(key) = daemon.book.take(source, heard(line), now())
-        && let Some(record) = daemon.book.record(&key).map(people::Record::json)
-    {
+    let heard = heard(line);
+    // Whether they were listed before, so a watch of the listed hears of
+    // one who stops being.
+    let was_listed = daemon
+        .book
+        .about(source, &heard)
+        .and_then(|key| daemon.book.record(&key))
+        .is_some_and(Record::listed);
+    if let Some(key) = daemon.book.take(source, heard, now()) {
+        let record = daemon.book.record(&key);
+        let listed = was_listed || record.is_some_and(Record::listed);
+        let told = record.map_or_else(|| Record::gone(&key), Record::json);
         for watch in &mut daemon.watches {
-            if watch.keys.as_ref().is_none_or(|keys| keys.contains(&key)) {
-                watch.pending.insert(key.clone(), record.clone());
+            let wants = match &watch.keys {
+                Some(keys) => keys.contains(&key),
+                None => !watch.listed || listed,
+            };
+            if wants {
+                watch.pending.insert(key.clone(), told.clone());
             }
         }
     }
@@ -320,25 +341,41 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             })
         }
         Ask::Get { id, keys, patience } => get(shared, &id, &keys, patience),
-        Ask::List { id, limit } => {
+        Ask::List { id, limit, listed } => {
             let daemon = lock(shared);
             let records: Vec<Value> = daemon
                 .book
                 .everyone()
+                .filter(|record| !listed || record.listed())
                 .take(limit.unwrap_or(usize::MAX))
-                .map(people::Record::json)
+                .map(Record::json)
                 .collect();
             json!({"id": id, "records": records})
         }
-        Ask::Watch { id, keys } => {
+        Ask::Search { id, words, limit } => {
+            let daemon = lock(shared);
+            let records: Vec<Value> = daemon
+                .book
+                .search(&words, limit)
+                .into_iter()
+                .map(Record::json)
+                .collect();
+            json!({"id": id, "records": records})
+        }
+        Ask::Watch { id, keys, listed } => {
             let mut daemon = lock(shared);
             let held: Vec<Value> = match &keys {
                 Some(keys) => keys
                     .iter()
                     .filter_map(|key| daemon.book.record(key))
-                    .map(people::Record::json)
+                    .map(Record::json)
                     .collect(),
-                None => daemon.book.everyone().map(people::Record::json).collect(),
+                None => daemon
+                    .book
+                    .everyone()
+                    .filter(|record| !listed || record.listed())
+                    .map(Record::json)
+                    .collect(),
             };
             if let Some(keys) = &keys {
                 ask_ahead(&mut daemon, keys);
@@ -352,6 +389,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 connection,
                 id: id.clone(),
                 keys,
+                listed,
                 told: told.clone(),
                 pending: HashMap::new(),
             });
