@@ -78,6 +78,9 @@ struct Daemon {
     inputs: HashMap<String, ChildStdin>,
     /// Each source's addresses asked ahead while it has run this time.
     ahead: HashMap<String, HashSet<String>>,
+    /// The addresses a get waits on, each with how many wait on it, so a
+    /// source that starts while one waits is asked too.
+    stepping: HashMap<String, usize>,
     watches: Vec<Watch>,
     /// How long the last gets took, in milliseconds.
     took: VecDeque<u64>,
@@ -116,6 +119,7 @@ fn main() {
             book: Book::of(&names),
             inputs: HashMap::new(),
             ahead: HashMap::new(),
+            stepping: HashMap::new(),
             watches: Vec::new(),
             took: VecDeque::new(),
             since: now(),
@@ -182,6 +186,12 @@ fn run(shared: &Shared, source: &Source) {
                         daemon.inputs.insert(source.name.clone(), input);
                     }
                     daemon.ahead.remove(&source.name);
+                    // Whoever a get waits on is asked about now, since the
+                    // get told only the sources running when it came.
+                    let stepping: Vec<String> = daemon.stepping.keys().cloned().collect();
+                    for address in &stepping {
+                        tell(&mut daemon, std::slice::from_ref(&source.name), address);
+                    }
                     // Everyone watched is asked about again.
                     let watched: Vec<String> = daemon
                         .watches
@@ -450,8 +460,14 @@ fn get(shared: &Shared, id: &Value, keys: &[String], patience: u64) -> Value {
     let began = Instant::now();
     let mut daemon = lock(shared);
     let sources: Vec<String> = daemon.inputs.keys().cloned().collect();
-    for address in keys.iter().filter_map(|key| address(key)) {
+    let addresses: Vec<String> = keys
+        .iter()
+        .filter_map(|key| address(key))
+        .map(str::to_owned)
+        .collect();
+    for address in &addresses {
         tell(&mut daemon, &sources, address);
+        *daemon.stepping.entry(address.clone()).or_default() += 1;
     }
     let deadline = began + Duration::from_millis(patience);
     while !keys.iter().all(|key| daemon.book.ready(key)) {
@@ -470,6 +486,14 @@ fn get(shared: &Shared, id: &Value, keys: &[String], patience: u64) -> Value {
         .filter_map(|key| daemon.book.record(key))
         .map(people::Record::json)
         .collect();
+    for address in &addresses {
+        if let Some(count) = daemon.stepping.get_mut(address) {
+            *count -= 1;
+            if *count == 0 {
+                daemon.stepping.remove(address);
+            }
+        }
+    }
     let waiting: Vec<&String> = keys.iter().filter(|key| !daemon.book.ready(key)).collect();
     let took = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX);
     daemon.took.push_back(took);
