@@ -2918,6 +2918,58 @@ def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+# About as many as Tuple lists on Joel's machine.
+CROWD = 8000
+# How far the JS heap may rise as the crowd is said three times and searched.
+HEAP_RISE_MOST_KB = 40_000
+
+
+def test_a_crowd_known_anew_costs_the_heap_little_and_anyone_in_it_is_found(
+    desktop: Desktop,
+) -> None:
+    """A source knowing thousands, said anew three times, leaves the JS heap nearly as it was.
+
+    Tuple lists every contact, 7,731 on Joel's machine, and People made a row for each every
+    time any source's people changed: three times at his first opening after a start, which
+    took the shell's JS heap from 52 to 270 MB (2026-10-31). Now a row is made only for
+    someone a search keeps, and the crowd is still searched whole.
+    """
+    machine = desktop.machine
+    crowd = "/run/user/1000/crowd"
+    heap = (
+        "p=$(systemctl --user show quickshell -p MainPID --value);"
+        " awk '/JSGCHeap/{on=1;next} /^[0-9a-f]+-/{on=0} on && /^Rss:/{s+=$2} END{print s}'"
+        " /proc/$p/smaps"
+    )
+
+    def say(said: str) -> None:
+        since = desktop.mark()
+        desktop.as_account(f"echo {said} > {crowd}.new && mv {crowd}.new {crowd}")
+        desktop.reported("crowd ", lambda rest: rest == said, since)
+
+    before = int(desktop.as_account(heap))
+    try:
+        # The stand-in knows 8,000 people, said anew each round
+        # (desktop/people-crowd.qml).
+        for round_ in ("1", "2", "3"):
+            say(f"{CROWD} {round_}")
+        desktop.answer("crowd member 4321")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == "person:crowd4321@example.com"
+        )
+        desktop.step_in("ret")
+        after = int(desktop.as_account(heap))
+        print(f"the JS heap rose {after - before} kB, {before} to {after}")
+        assert after - before < HEAP_RISE_MOST_KB, f"the JS heap rose {after - before} kB"
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+    finally:
+        # Known no more, so no later test finds the crowd.
+        say("0 0")
+
+
 @pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,
