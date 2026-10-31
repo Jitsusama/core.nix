@@ -7,9 +7,10 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 /// One request the stand-in heard: its first line and its headers.
 #[derive(Clone, Debug)]
@@ -483,5 +484,133 @@ fn with_no_sign_in_it_says_so_and_slack_is_never_asked() {
     let missing = std::env::temp_dir().join("slack-people-no-such-file.json");
     let said = told(&stand_in, &missing, "ada@example.com\n?grace@example.com\n");
     assert_eq!(said, [r#"{"signedIn":false}"#; 2]);
+    assert!(stand_in.heard().is_empty());
+}
+
+/// Slack as it answers what wants Joel: Ada's direct message with two
+/// unread, a channel with one unread and a mention of him, another unread
+/// with none, and three mentions in threads.
+fn wanting(line: &str) -> String {
+    let said = if line.contains("client.counts") {
+        concat!(
+            r#"{"ok": true, "ims": [{"id": "D1", "has_unreads": true, "mention_count": 2}],"#,
+            r#""mpims": [], "channels": [{"id": "C2", "has_unreads": true, "mention_count": 1},"#,
+            r#"{"id": "C3", "has_unreads": true, "mention_count": 0}],"#,
+            r#""threads": {"has_unreads": true, "mention_count": 3}}"#
+        )
+    } else if line.contains("conversations.info?channel=D1") {
+        r#"{"ok": true, "channel": {"id": "D1", "is_im": true, "user": "U7"}}"#
+    } else if line.contains("conversations.info?channel=C2") {
+        r#"{"ok": true, "channel": {"id": "C2", "is_channel": true, "name": "launcher"}}"#
+    } else if line.contains("users.info?user=U7") {
+        r#"{"ok": true, "user": {"id": "U7", "profile": {"real_name": "Ada Lovelace"}}}"#
+    } else {
+        r#"{"ok": false, "error": "unknown_method"}"#
+    };
+    said.into()
+}
+
+/// slack-unreads, started over the stand-in with this sign-in, asking
+/// every 50 ms and keeping what it reads in `file`.
+fn unreads(stand_in: &StandIn, credentials: &std::path::Path, file: &std::path::Path) -> Child {
+    Command::new(env!("CARGO_BIN_EXE_slack-unreads"))
+        .arg(credentials)
+        .arg(file)
+        .arg(&stand_in.origin)
+        .arg("50")
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
+}
+
+/// Waits until `held` holds, failing with `what` after ten seconds.
+fn until(what: &str, held: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !held() {
+        assert!(Instant::now() < deadline, "{what}");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// What the file says, once it says anything whole.
+fn kept(file: &std::path::Path) -> Option<serde_json::Value> {
+    serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()
+}
+
+#[test]
+fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
+    let stand_in = StandIn::new(wanting);
+    let path = credentials("unreads");
+    let file = path.with_extension("unreads.json");
+    let mut program = unreads(&stand_in, &path, &file);
+    until("the file never said anything", || kept(&file).is_some());
+    let said = kept(&file).unwrap();
+    assert_eq!(said["state"], "ok");
+    assert_eq!(
+        said["conversations"],
+        serde_json::json!([
+            {"id": "D1", "name": "Ada Lovelace", "kind": "dm", "count": 2,
+             "link": "slack://channel?team=T1&id=D1"},
+            {"id": "C2", "name": "#launcher", "kind": "mention", "count": 1,
+             "link": "slack://channel?team=T1&id=C2"},
+            {"id": "threads", "name": "Threads", "kind": "thread", "count": 3,
+             "link": "slack://open?team=T1"}
+        ])
+    );
+    // Asked again and again, each conversation is named only once a run.
+    let asked = |method: &str| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains(method))
+            .count()
+    };
+    until("Slack wasn't asked again", || asked("client.counts") >= 4);
+    program.kill().unwrap();
+    program.wait().unwrap();
+    assert_eq!((asked("conversations.info"), asked("users.info")), (2, 1));
+    let heard = stand_in.heard();
+    assert!(
+        heard.iter().all(|heard| heard.line.starts_with("GET /api/")
+            && heard
+                .headers
+                .iter()
+                .any(|header| header == "authorization: Bearer xoxc-mine"
+                    || header == "Authorization: Bearer xoxc-mine")),
+        "{heard:?}"
+    );
+    let _ = std::fs::remove_file(&file);
+    forget(&path);
+}
+
+#[test]
+fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
+    let stand_in = StandIn::new(|_| r#"{"ok": false, "error": "invalid_auth"}"#.into());
+    let path = credentials("unreads-refused");
+    let file = path.with_extension("unreads.json");
+    let mut program = unreads(&stand_in, &path, &file);
+    until("the file never said anything", || kept(&file).is_some());
+    program.kill().unwrap();
+    program.wait().unwrap();
+    let said = kept(&file).unwrap();
+    assert_eq!(
+        (&said["state"], &said["conversations"]),
+        (&serde_json::json!("signedOut"), &serde_json::json!([]))
+    );
+    let _ = std::fs::remove_file(&file);
+    forget(&path);
+}
+
+#[test]
+fn with_no_sign_in_nothing_is_kept_and_slack_is_never_asked() {
+    let stand_in = StandIn::new(wanting);
+    let missing = std::env::temp_dir().join("slack-unreads-no-such-file.json");
+    let file = std::env::temp_dir().join(format!("slack-unreads-none-{}.json", std::process::id()));
+    let mut program = unreads(&stand_in, &missing, &file);
+    // Long enough for several rounds of asking.
+    thread::sleep(Duration::from_millis(300));
+    program.kill().unwrap();
+    program.wait().unwrap();
+    assert!(!file.exists());
     assert!(stand_in.heard().is_empty());
 }

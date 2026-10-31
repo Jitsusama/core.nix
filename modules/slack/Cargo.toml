@@ -1,6 +1,7 @@
-# Who Slack knows by an email address, for People's Slack source: a small
-# program that reads the harness's Slack sign-in and asks Slack's own API,
-# only ever reading (src/main.rs says how).
+# Who Slack knows by an email address, for People's Slack source, and what
+# in Slack wants Joel, for Now: two small programs that read the harness's
+# Slack sign-in and ask Slack's own API, only ever reading (src/main.rs and
+# src/bin/slack-unreads.rs say how).
 [package]
 name = "slack-people"
 version = "0.1.0"
