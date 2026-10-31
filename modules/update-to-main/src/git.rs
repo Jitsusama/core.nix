@@ -152,6 +152,11 @@ pub fn keyring(repo: &Repo) -> Result<(), Failure> {
     let _ = fs::remove_dir_all(keyring);
     fs::create_dir_all(keyring).map_err(|e| Failure::new(format!("{}: {e}", keyring.display())))?;
     set_private(keyring)?;
+    // Nothing here needs a secret key, so no agent: one started on a
+    // keyring made afresh each time would be one more left at every ask.
+    let settings = keyring.join("gpg.conf");
+    fs::write(&settings, "no-autostart\n")
+        .map_err(|e| Failure::new(format!("{}: {e}", settings.display())))?;
     for key in &repo.signers.openpgp {
         let mut gpg = run::command(&config.tools.gpg, &config.state);
         gpg.env("GNUPGHOME", keyring);
