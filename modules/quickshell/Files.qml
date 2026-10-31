@@ -51,12 +51,14 @@ Singleton {
     }
 
     // A file a program has open now, as a program's Recent leads with it:
-    // the same row, with `now` said beside its folder (open, or closed),
-    // and one `gone` dimmed where it was, as the launcher keeps a row whose
-    // thing has gone.
+    // the same row, with `now` (open, or closed) said before its folder, so
+    // a side cut short loses the folder and never the state, which sits in
+    // the same spot on every row that has one (VKCF3Z, 2026-10-30), and one
+    // `gone` dimmed where it was, as the launcher keeps a row whose thing
+    // has gone.
     function held(path, thing, acts, now, gone) {
         return made("file", path, thing, acts, null, {
-            side: `${within(path)} \u00b7 ${now}`,
+            side: `${now} \u00b7 ${within(path)}`,
             gone: gone === true
         });
     }

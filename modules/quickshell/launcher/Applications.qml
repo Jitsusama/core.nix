@@ -738,7 +738,7 @@ Provider {
         const counted = said => (said ?? "").replace("{count}", String(page.length));
         const host = hostOf(tab.address);
         if ((provider.recents.closed[entry.id] ?? []).includes(tab.address))
-            return site(tab.address, tab.title, `${host} \u00b7 ${words.closed ?? ""}`, [], true);
+            return site(tab.address, tab.title, `${words.closed ?? ""} \u00b7 ${host}`, [], true);
         const front = tabs.find(one => one.window === tab.window && one.front) ?? tab;
         const window = (running[entry.id] ?? [])
             .find(one => titled(one, entry) === front.title) ?? null;
@@ -768,7 +768,9 @@ Provider {
             }
         })];
         const acts = [goes].concat(closes, window ? [windowRow(window, entry)] : []);
-        return site(tab.address, tab.title, `${host} \u00b7 ${open}`, acts);
+        // The state before the host, as a file's before its folder
+        // (Files.held), so a side cut short keeps it.
+        return site(tab.address, tab.title, `${open} \u00b7 ${host}`, acts);
     }
 
     // What a program has open now, as its file source's `opened` prints
