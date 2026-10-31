@@ -114,13 +114,13 @@ fn decode(likely: &[f32], known: usize, characters: &[String]) -> Read {
     let mut sure = Vec::new();
     let mut last = 0;
     for step in likely.chunks_exact(known) {
-        let (best, chance) = step
-            .iter()
-            .copied()
-            .enumerate()
-            .fold((0, f32::MIN), |kept, (at, chance)| {
-                if chance > kept.1 { (at, chance) } else { kept }
-            });
+        let (best, chance) =
+            step.iter()
+                .copied()
+                .enumerate()
+                .fold((0, f32::MIN), |kept, (at, chance)| {
+                    if chance > kept.1 { (at, chance) } else { kept }
+                });
         if best != 0 && best != last {
             text.push_str(&characters[best - 1]);
             sure.push(chance);

@@ -194,6 +194,7 @@
         qt = ./modules/qt/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
+        screen-text = ./modules/screen-text/home.nix;
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;

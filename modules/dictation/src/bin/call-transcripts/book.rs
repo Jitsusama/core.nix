@@ -1,8 +1,6 @@
 //! Every call heard, a record each, kept for the shell, which asks for
 //! them over a socket in version 1 of its daemons' interface
-//! (RSCH-20261029-0E8050, "Daemons: One Interface"), as the people daemon
-//! answers it: JSON lines, each ask with an `id` echoed in its answers;
-//! hello, get, list, watch, unwatch and health.
+//! (dictation's daemon.rs): hello, get, list, watch, unwatch and health.
 //!
 //! A record is kind "call", keyed `call:<event>` for a meeting, by its
 //! calendar event, `call:person:<address>:<started>` for a Tuple call, by
@@ -14,18 +12,16 @@
 //! back as the daemon starts, and only then: the shell never reads the
 //! folder.
 
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Sender};
-use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc::Sender;
+use std::time::UNIX_EPOCH;
 
+use dictation::daemon::{self, Answers, VERSION, Watches, error};
+pub use dictation::daemon::{now, write_whole};
 use serde_json::{Value, json};
 
-/// The interface's version this speaks.
-const VERSION: u64 = 1;
+/// The book, shared between the daemon's threads.
+pub type Shared = daemon::Shared<Book>;
 
 /// The one kind of record this daemon keeps.
 const KIND: &str = "call";
@@ -38,15 +34,6 @@ pub const TRANSCRIPT: &str = "transcript.md";
 
 /// The summary's file in a call's folder.
 pub const SUMMARY: &str = "summary.md";
-
-/// The milliseconds since the epoch, as the interface gives times.
-pub fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| {
-            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-        })
-}
 
 /// One call.
 #[derive(Clone, Debug, PartialEq)]
@@ -120,29 +107,11 @@ impl Record {
     }
 }
 
-/// Writes `text` to `file` whole: into a file beside it, then renamed over
-/// it, so nothing ever reads half of it.
-pub fn write_whole(file: &Path, text: &str) -> std::io::Result<()> {
-    let name = file.file_name().unwrap_or_default().to_string_lossy();
-    let part = file.with_file_name(format!(".{name}.part"));
-    std::fs::write(&part, text)?;
-    std::fs::rename(&part, file)
-}
-
-/// One watch a client holds.
-struct Watch {
-    connection: u64,
-    id: Value,
-    /// The keys watched, or none for every call.
-    keys: Option<Vec<String>>,
-    told: Sender<String>,
-}
-
 /// Every call, newest first, and who watches them.
 #[derive(Default)]
 pub struct Book {
     records: Vec<Record>,
-    watches: Vec<Watch>,
+    watches: Watches,
     since: u64,
 }
 
@@ -158,7 +127,7 @@ impl Book {
         records.sort_by_key(|record| std::cmp::Reverse(record.started));
         Self {
             records,
-            watches: Vec::new(),
+            watches: Watches::default(),
             since: now(),
         }
     }
@@ -178,14 +147,7 @@ impl Book {
                 record.folder.display()
             );
         }
-        let line = |id: &Value| json!({"id": id, "changed": [record.json()]}).to_string();
-        self.watches.retain(|watch| {
-            let watched = watch
-                .keys
-                .as_ref()
-                .is_none_or(|keys| keys.contains(&record.key));
-            !watched || watch.told.send(line(&watch.id)).is_ok()
-        });
+        self.watches.tell(&record.key, &record.json());
         self.records.retain(|held| held.key != record.key);
         let at = self
             .records
@@ -194,7 +156,9 @@ impl Book {
             .unwrap_or(self.records.len());
         self.records.insert(at, record);
     }
+}
 
+impl Answers for Book {
     /// What one line from a client asks, answered.
     fn answer(&mut self, line: &str, connection: u64, told: &Sender<String>) -> Value {
         let Ok(said) = serde_json::from_str::<Value>(line) else {
@@ -207,12 +171,7 @@ impl Book {
             let why = format!("this daemon keeps only {KIND}, not {kind}");
             return error(&id, "unknown-kind", &why);
         }
-        let keys = said["keys"].as_array().map(|keys| {
-            keys.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect::<Vec<_>>()
-        });
+        let keys = daemon::keys(&said);
         let records = |keys: Option<&Vec<String>>| -> Vec<Value> {
             self.records
                 .iter()
@@ -227,30 +186,17 @@ impl Book {
             }),
             "get" => json!({"id": id, "records": records(Some(&keys.unwrap_or_default()))}),
             "list" => {
-                let limit = said["limit"]
-                    .as_u64()
-                    .and_then(|limit| usize::try_from(limit).ok())
-                    .unwrap_or(usize::MAX);
                 let mut listed = records(None);
-                listed.truncate(limit);
+                listed.truncate(daemon::limit(&said));
                 json!({"id": id, "records": listed})
             }
             "watch" => {
                 let held = records(keys.as_ref());
-                // A watch asked again by its id replaces the one before.
-                self.watches
-                    .retain(|watch| !(watch.connection == connection && watch.id == id));
-                self.watches.push(Watch {
-                    connection,
-                    id: id.clone(),
-                    keys,
-                    told: told.clone(),
-                });
+                self.watches.watch(connection, &id, keys, told);
                 json!({"id": id, "records": held})
             }
             "unwatch" => {
-                self.watches
-                    .retain(|watch| !(watch.connection == connection && watch.id == id));
+                self.watches.unwatch(connection, &id);
                 json!({"id": id, "unwatched": true})
             }
             "health" => json!({
@@ -261,76 +207,16 @@ impl Book {
             other => error(&id, "unknown-ask", &format!("no ask {other:?}")),
         }
     }
-}
 
-/// An error answer, by the interface's codes.
-fn error(id: &Value, code: &str, message: &str) -> Value {
-    json!({"id": id, "error": {"code": code, "message": message}})
-}
-
-/// The book, shared between the threads.
-pub struct Shared(Mutex<Book>);
-
-impl Shared {
-    pub fn new(book: Book) -> Self {
-        Self(Mutex::new(book))
+    fn gone(&mut self, connection: u64) {
+        self.watches.gone(connection);
     }
-
-    pub fn lock(&self) -> MutexGuard<'_, Book> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-}
-
-/// The socket, in a folder only this account reaches.
-pub fn listen(socket: &Path) -> Result<UnixListener, String> {
-    let made = || -> std::io::Result<UnixListener> {
-        if let Some(folder) = socket.parent() {
-            std::fs::create_dir_all(folder)?;
-            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-        }
-        let _ = std::fs::remove_file(socket);
-        UnixListener::bind(socket)
-    };
-    made().map_err(|why| format!("listening on {}: {why}", socket.display()))
-}
-
-/// Answers every client, each on a thread of its own.
-pub fn answer_all(book: &std::sync::Arc<Shared>, listener: &UnixListener) {
-    for (connection, stream) in (0..).zip(listener.incoming()) {
-        let Ok(stream) = stream else { continue };
-        let book = std::sync::Arc::clone(book);
-        std::thread::spawn(move || serve(&book, stream, connection));
-    }
-}
-
-/// Answers one client until it goes.
-fn serve(book: &Shared, stream: UnixStream, connection: u64) {
-    let Ok(reading) = stream.try_clone() else {
-        return;
-    };
-    let (told, lines) = mpsc::channel::<String>();
-    let mut writing = stream;
-    std::thread::spawn(move || {
-        for line in lines {
-            if writeln!(writing, "{line}").is_err() {
-                break;
-            }
-        }
-    });
-    for line in BufReader::new(reading).lines() {
-        let Ok(line) = line else { break };
-        let answer = book.lock().answer(&line, connection, &told);
-        if told.send(answer.to_string()).is_err() {
-            break;
-        }
-    }
-    book.lock()
-        .watches
-        .retain(|watch| watch.connection != connection);
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+
     use super::*;
 
     fn call(folder: &Path, key: &str, started: u64) -> Record {

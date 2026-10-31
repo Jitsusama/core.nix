@@ -995,9 +995,17 @@
   rust-programs-pass-clippy = ''
     clippy finds nothing in the single-file programs or their tests
   '';
+  screen-text-finds-a-screenshot-by-its-words = ''
+    screen-text's daemon, on the CPU, reads a screenshot moved into its folder and finds it by its
+    words, with the line that matched, giving its lines by key; lets its record go once it's
+    removed; and after a restart reads nothing it read before
+  '';
   screen-text-reads-a-screenshot = ''
     screen-text, on the CPU, reads a picture drawn as the check builds, larger than the detector's
     tile, giving back its heading and a row of two lines apart, each whole and in reading order
+  '';
+  screen-text-switches-to-the-new-one = ''
+    a switch restarts screen-text after reloading its unit, so the shell asks the new one
   '';
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
