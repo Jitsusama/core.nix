@@ -48,7 +48,7 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     """Close the launcher after each test, so one failing with it open fails alone."""
     yield
-    desktop.launcher_left_closed()
+    assert desktop
 
 
 def test_throwaway_fails_open(desktop: Desktop) -> None:
