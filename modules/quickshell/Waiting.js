@@ -96,6 +96,22 @@ function waitsFor(item) {
     return typeof item.when === "string" && item.when !== "" ? { words: item.when } : null;
 }
 
+// How an item will be known done, from what its owner said of it: a
+// signal as { signal, value }, a check as { check }, only Joel's word as
+// { person }, or null when it says nothing, as a file older than that.
+function doneBy(item) {
+    const done = item.doneWhen;
+    if (typeof done?.signal === "string") {
+        const colon = done.signal.indexOf(":");
+        return colon < 0 ? { signal: done.signal, value: "" }
+            : { signal: done.signal.slice(0, colon), value: done.signal.slice(colon + 1) };
+    }
+    if (typeof done?.check === "string") {
+        return { check: true };
+    }
+    return done?.by === "person" ? { person: true } : null;
+}
+
 // Whether anything will see an item done but Joel: the to do daemon, by
 // its check or its signal, or its owner's session, while one is live
 // (`live`, the addresses of those running). One only Joel can say is done

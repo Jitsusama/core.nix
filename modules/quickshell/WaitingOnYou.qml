@@ -117,6 +117,11 @@ Singleton {
         return Waiting.waitsFor(item);
     }
 
+    // How an item will be known done (Waiting.js).
+    function doneBy(item) {
+        return Waiting.doneBy(item);
+    }
+
     // Whether anything but Joel will see an item done (Waiting.js).
     function watched(item) {
         const live = {};

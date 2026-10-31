@@ -295,13 +295,30 @@ Provider {
         return parts.join(" \u00b7 ");
     }
 
-    // Its drawer: its steps, numbered, then why only Joel can do it.
+    // Its drawer: its steps, numbered, then why only Joel can do it, then
+    // how it'll be known done (VKCF3Z, 2026-10-31), the four parts an item
+    // says, each only when it says it.
     function drawerOf(each) {
         const steps = (Array.isArray(each.steps) ? each.steps : [])
             .filter(step => typeof step === "string" && step !== "")
             .map((step, at) => `${at + 1}. ${step}`);
         const why = typeof each.why === "string" ? each.why : "";
-        return { title: each.title, body: steps.concat(why === "" ? [] : ["", why]).join("\n") };
+        const known = knownSaid(each);
+        const after = [why, known].filter(part => part !== "").join("\n");
+        return { title: each.title, body: steps.concat(after === "" ? [] : ["", after]).join("\n") };
+    }
+
+    // How an item will be known done, in words (Waiting.doneBy): by its
+    // check or signal, in the phrases what it waits for is said in, or by
+    // Joel alone; "" when it doesn't say.
+    function knownSaid(each) {
+        const done = WaitingOnYou.doneBy(each);
+        if (done === null)
+            return "";
+        if (done.person)
+            return waitingSaid("person", {});
+        const how = waitingSaid(done.check ? "check" : done.signal, { value: done.value ?? "" });
+        return how === "" ? "" : waitingSaid("known", { how: how });
     }
 
     // Where an item is done, by name: the session its window is, else the
@@ -407,7 +424,12 @@ Provider {
     // most pressing first, or to a list saying nothing waits: the row acts
     // the same whatever waits, so Super+O, Return, Return reaches the
     // pressing thing and each press can be foreseen (VKCF3Z, 2026-10-29).
+    // Not a session whose want is an action, though: that's one of its own
+    // items, which a session's presence mirrors (harness #907), and which
+    // is listed here itself, so its session's row would say the same thing
+    // twice (2026-10-31: four items read as eight).
     readonly property var sessions: Sessions.wanting
+        .filter(session => session.presence?.wants?.kind !== "action")
     readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
     readonly property string first: sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`

@@ -133,6 +133,14 @@ QtObject {
         expect("an older file's words", waits("tuple-pointer"), { words: "about 11:00" });
         expect("or nothing", waits("suspend-sitting"), null);
 
+        // How one will be known done, as its owner said.
+        expect("done by a signal and its value",
+            Waiting.doneBy({ doneWhen: { signal: "device:dock" } }), { signal: "device", value: "dock" });
+        expect("done by a check", Waiting.doneBy({ doneWhen: { check: "true" } }), { check: true });
+        expect("done only by Joel's word", Waiting.doneBy({ doneWhen: { by: "person" } }),
+            { person: true });
+        expect("or said nothing of", Waiting.doneBy({}), null);
+
         // Whether anything but Joel will see it done.
         const item = id => today.now.concat(today.later).find(one => one.id === id);
         expect("a check watches it", Waiting.watched(item("keys"), {}), true);
