@@ -26,12 +26,14 @@ function untold(uploads, since, told) {
 // Where it went, as Joel knows the folder: My Drive for its top, else the
 // folder's name from any listing that showed it, else nothing.
 function where(upload, listings) {
-    if (upload.folder === "root")
+    if (upload.folder === "root") {
         return "My Drive";
+    }
     for (const listing of listings ?? []) {
         const found = (listing.files ?? []).find(file => file.id === upload.folder);
-        if (found)
+        if (found) {
             return found.name;
+        }
     }
     return "";
 }

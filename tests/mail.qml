@@ -42,7 +42,7 @@ QtObject {
 
         // What the file says: [what, the line, what's read of it]
         const unmade = { granted: false, made: null };
-        const undriven = { listings: [], downloads: [] };
+        const undriven = { listings: [], downloads: [], uploads: [] };
         const lines = [
             ["the whole state",
                 JSON.stringify({
