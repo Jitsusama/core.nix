@@ -167,6 +167,36 @@
         touch $out
       '';
 
+  # screen-text reads a screenshot's words: a picture drawn as the check
+  # builds, wider and taller than the detector's tile, holds a heading,
+  # then a row of two lines apart, the first across where two tiles
+  # overlap. Read on the CPU, as a machine with no NPU reads it, each line
+  # must come back whole, in reading order.
+  screen-text-reads-a-screenshot =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      models = pkgs.callPackage ../screen-text/models.nix { };
+      font = "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf";
+      want = pkgs.writeText "screen-text-wants" ''
+        Quarterly planning review
+        Move the review to Thursday morning at ten
+        Owner: Joel
+      '';
+    in
+    pkgs.runCommand "screen-text-reads-a-screenshot" { nativeBuildInputs = [ pkgs.imagemagick ]; } ''
+      magick -size 1600x900 xc:white -font ${font} -fill black \
+        -pointsize 40 -annotate +80+120 'Quarterly planning review' \
+        -pointsize 24 -annotate +80+220 'Move the review to Thursday morning at ten' \
+        -annotate +1100+220 'Owner: Joel' \
+        screenshot.png
+      SCREEN_TEXT_DEVICE=CPU ${dictation}/bin/screen-text read ${models} screenshot.png > read.txt
+      if ! diff -u ${want} read.txt; then
+        echo "screen-text read the screenshot wrong"
+        exit 1
+      fi
+      touch $out
+    '';
+
   # clippy finds nothing in dictation, its tests included.
   dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
     pkgs.callPackage ./package.nix { }

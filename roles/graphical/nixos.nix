@@ -79,6 +79,7 @@
     homeModules.mpv
     homeModules.qt
     homeModules.quickshell
+    homeModules.screen-text
     homeModules.spotify
     homeModules.swayidle
     homeModules.swayimg

@@ -214,20 +214,25 @@ impl Core {
         Ok(core)
     }
 
-    /// The model in `xml`, its weights in the .bin beside it.
+    /// The model in `xml`, its weights in the .bin beside it; or an ONNX
+    /// model, which holds its weights itself.
     ///
     /// # Errors
     ///
     /// When either file can't be read as a model.
     pub fn read(&self, xml: &Path) -> Result<Model> {
         let xml_name = c_path(xml)?;
-        let bin_name = c_path(&xml.with_extension("bin"))?;
+        let bin_name = if xml.extension().is_some_and(|kind| kind == "onnx") {
+            None
+        } else {
+            Some(c_path(&xml.with_extension("bin"))?)
+        };
+        let bin_name = bin_name.as_deref().map_or(ptr::null(), CStr::as_ptr);
         let mut model = ptr::null_mut();
-        // SAFETY: the names outlive the call and the out pointer is valid.
+        // SAFETY: the names outlive the call, a null weights path asks for
+        // none, and the out pointer is valid.
         check(
-            unsafe {
-                ov_core_read_model(self.0, xml_name.as_ptr(), bin_name.as_ptr(), &raw mut model)
-            },
+            unsafe { ov_core_read_model(self.0, xml_name.as_ptr(), bin_name, &raw mut model) },
             &format!("reading {}", xml.display()),
         )?;
         Ok(Model(model))

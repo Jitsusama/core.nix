@@ -135,7 +135,7 @@ impl Settings {
 fn serve(socket: &Path, model: PathBuf, summarizer: PathBuf, calls: &Path) -> Result<(), String> {
     let settings = Settings::read(model, summarizer)?;
     let book = Arc::new(book::Shared::new(book::Book::read(calls)));
-    let listener = book::listen(socket)?;
+    let listener = dictation::daemon::listen(socket)?;
     let (jobs, heard) = mpsc::channel();
     {
         let (book, again) = (Arc::clone(&book), jobs.clone());
@@ -143,7 +143,7 @@ fn serve(socket: &Path, model: PathBuf, summarizer: PathBuf, calls: &Path) -> Re
     }
     {
         let book = Arc::clone(&book);
-        std::thread::spawn(move || book::answer_all(&book, &listener));
+        std::thread::spawn(move || dictation::daemon::answer_all(&book, &listener));
     }
     follow::follow(&book, calls, &jobs)
 }
