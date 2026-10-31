@@ -575,6 +575,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           "${googleWindow}"
           "%u"
         ];
+        # A source keeping a page for Grace, as a machine's own repository
+        # may bring one, silent until a test writes what it knows.
+        jitsusama.people.sources.pages = {
+          order = 30;
+          source = ./desktop/people-pages.qml;
+        };
         # Firmware's fwupd isn't in the VM, and would have nothing to say.
         jitsusama.quickshell.launcher.providers.firmware = {
           enable = lib.mkForce true;

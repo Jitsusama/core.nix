@@ -2,7 +2,7 @@
 // as the machine's own repository's sources may (Vault's), for
 // tests/people.qml: it knows Ada by her address, her team and her time
 // zone, and keeps a page for her alone, so People lists Open in Pages
-// for her and for nobody else.
+// for her, and is still finding out for Cal, so his stands dimmed.
 import qs
 import QtQuick
 
@@ -16,5 +16,9 @@ PersonSource {
 
     function page(person) {
         return person.emails.includes("ada@example.com") ? "https://pages.example.com/ada" : "";
+    }
+
+    function looking(person) {
+        return person.emails.includes("cal@example.com");
     }
 }

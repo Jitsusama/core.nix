@@ -28,7 +28,10 @@
 // its own. `page` is the link to their page in the source, for one that
 // keeps a page for each person, or "": People lists it as one row, Open
 // in the source, by the name it's `called`, after the ways to reach them
-// (VKCF3Z, a91b2722), so no source draws a page of its own. `favourite`
+// (VKCF3Z, a91b2722), so no source draws a page of its own; `looking`
+// says whether it's still finding out if it keeps one for them, as Vault
+// does while it's asked, so People holds that row's place, dimmed, and
+// nothing arrives late under the keys (VKCF3Z, 3bbad443). `favourite`
 // is the switch saying whether they're a favourite, for a source that
 // keeps favourites, or null. Someone it knows by no
 // address it gives by an `id` of its own instead, a person of its alone,
@@ -56,6 +59,10 @@ QtObject {
 
     function page(person) {
         return "";
+    }
+
+    function looking(person) {
+        return false;
     }
 
     function acts(person, provider) {

@@ -2362,16 +2362,25 @@ Scope {
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
         // A thing of its own stepped into from the top, as a program is, is
         // made again too, with everything it holds, so its Media and Sound
-        // say how its player and its streams stand now.
-        const top = from < 0 && held.length > 0 && !held[0].row.from && !held[0].row.category
-            && source.things.some(row => row.key === held[0].row.key);
+        // say how its player and its streams stand now. What the top found
+        // is one of the rows its source's search looks through
+        // (looksThrough), which can be more than its things: People lists
+        // none and finds anyone, so its things alone missed a person found
+        // by name, whose Write in Slack then never lit where it stood. Those
+        // are read only when its things don't hold the row, and only for a
+        // step stepped into from the top.
+        const fromTop = from < 0 && held.length > 0 && !held[0].row.from && !held[0].row.category;
+        const found = row => row.key === held[0].row.key;
+        const own = !fromTop ? [] : source.things.some(found) ? source.things
+            : source.looksThrough();
+        const top = fromTop && own.some(found);
         if (from < 0 && !top && !held.some(ofSource))
             return;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
             rows: Steady.kept(step.rows, members(step.row.category), steadyId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
-        const above = top ? source.things : from < 0 ? [] : source.everything();
+        const above = top ? own : from < 0 ? [] : source.everything();
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
             return;
         held = steps;
