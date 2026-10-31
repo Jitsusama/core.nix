@@ -697,7 +697,9 @@
     for the next start, which takes it back before the deadline, keeping its price and idle
     time, or gives it back, priced to then or its own idle delete; standing builders are
     named while they answer, their names asked of resolved itself so one gone can't hide
-    the rest, and only to builds that ask for them, never in the file every build reads; a
+    the rest, and only to builds that ask for them, never in the file every build reads,
+    while builders beside are named in that file while they answer, for their big work
+    alone, and never with the standing ones; a
     day's journal sums to its hours and cost, each at its price; and `there`
     sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, or, when none stands or none answers, builds nothing and exits

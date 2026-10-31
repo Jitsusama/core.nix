@@ -3,8 +3,8 @@
 //!
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
-//! PATH]`, or `nix-offload stand --standing PATH` to name standing
-//! builders alone and lend none, or `nix-offload report --rate DOLLARS` for
+//! PATH] [--beside PATH]`, or `nix-offload stand [--standing PATH]
+//! [--beside PATH]` to name standing builders alone and lend none, or `nix-offload report --rate DOLLARS` for
 //! today's line, or `nix-offload there [-L] [--keep-going] [--apply
 //! FUNCTION] [--out DIR] [--here] FLAKE ATTR...` to build a flake on the builder, or
 //! on a machine nearby for systems this one can't build, as src/there.rs
@@ -62,7 +62,10 @@
 //!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
-//! answer, so Nix never waits on one that's away.
+//! answer, so Nix never waits on one that's away. Those in the file
+//! `--beside` gives may take any of this machine's work, so they join
+//! /run/nix-offload/machines, for every build, beside the one lent, and
+//! only while they answer.
 
 mod changed;
 mod decide;
@@ -115,7 +118,8 @@ const USAGE: i32 = 64;
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
-                    [--standing PATH] | nix-offload stand --standing PATH \
+                    [--standing PATH] [--beside PATH] \
+                    | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
                     [--here] FLAKE ATTR... | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
@@ -153,6 +157,7 @@ struct Settings {
     hours: Hours,
     queue: PathBuf,
     standing: Option<PathBuf>,
+    beside: Option<PathBuf>,
     journal: PathBuf,
 }
 
@@ -217,11 +222,15 @@ fn main() -> ExitCode {
         return there(&arguments[1..]);
     }
     if arguments.first().map(String::as_str) == Some("stand") {
-        let Some(standing) = given("--standing") else {
-            eprintln!("nix-offload: stand needs --standing\n{USED}");
+        let (standing, beside) = (given("--standing"), given("--beside"));
+        if standing.is_none() && beside.is_none() {
+            eprintln!("nix-offload: stand needs --standing or --beside\n{USED}");
             return ExitCode::from(64);
+        }
+        let read = |path: Option<String>| {
+            path.map_or_else(Vec::new, |path| read_standing(Path::new(&path)))
         };
-        stand(&read_standing(Path::new(&standing)));
+        stand(read(standing), read(beside));
         return ExitCode::SUCCESS;
     }
     serving(&arguments, given)
@@ -483,6 +492,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 },
                 queue: runtime.join("jobs/queue.json"),
                 standing: given("--standing").map(PathBuf::from),
+                beside: given("--beside").map(PathBuf::from),
                 journal,
             });
             ExitCode::SUCCESS
@@ -511,16 +521,18 @@ fn read_standing(path: &Path) -> Vec<machines::Standing> {
     }))
 }
 
-/// Name the standing builders that answer, lending none, until told to end.
-fn stand(standing: &[machines::Standing]) {
+/// Name the standing builders, and those beside, that answer, lending
+/// none, until told to end.
+fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) {
     hear_stops();
     let mut machines = Machines::new(
         MACHINES.into(),
         WITH_STANDING.into(),
         STORE.into(),
         LENDING.into(),
-        standing.to_vec(),
-    );
+        standing,
+    )
+    .beside(beside);
     while !ENDING.load(Ordering::SeqCst) {
         machines.show(None);
         rest(TICK);
@@ -540,6 +552,12 @@ fn serve(settings: &Settings) {
         STORE.into(),
         LENDING.into(),
         standing,
+    )
+    .beside(
+        settings
+            .beside
+            .as_deref()
+            .map_or_else(Vec::new, read_standing),
     );
     machines.show(None);
     machines.asking(None);
@@ -1055,11 +1073,22 @@ fi
 exit 1
 "#;
 
-    fn holding(folder: &Path, journal: &str) -> (Settings, Machines) {
+    /// Write a script to run through `cp`, so no thread of this process ever
+    /// holds it open for writing: a test forking meanwhile would keep that
+    /// handle until its child execs, and a script run then is refused as busy
+    /// (ETXTBSY), which failed a run on 31 October.
+    fn executable(path: &Path, script: &str) {
         use std::os::unix::fs::PermissionsExt;
+        let draft = path.with_extension("draft");
+        fs::write(&draft, script).unwrap();
+        let copied = Command::new("cp").arg(&draft).arg(path).status().unwrap();
+        assert!(copied.success(), "copying {}", path.display());
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn holding(folder: &Path, journal: &str) -> (Settings, Machines) {
         let helper = folder.join("helper");
-        fs::write(&helper, HOLDS).unwrap();
-        fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&helper, HOLDS);
         fs::write(folder.join("journal.jsonl"), journal).unwrap();
         let settings = Settings {
             helper,
@@ -1071,6 +1100,7 @@ exit 1
             },
             queue: folder.join("queue.json"),
             standing: None,
+            beside: None,
             journal: folder.join("journal.jsonl"),
         };
         let file = |name: &str| folder.join(name);
