@@ -68,7 +68,8 @@ def sound(machine: BaseMachine) -> Sound:
 @pytest.fixture
 def call(sound: Sound) -> Iterator[Sound]:
     """Have the call program recording, until the test is done."""
-    sound.as_joel("systemd-run --user --unit=call ./zoom --record /dev/null")
+    # Collected, so a call that failed leaves nothing to stop the next one starting.
+    sound.as_joel("systemd-run --user --collect --unit=call ./zoom --record /dev/null")
     try:
         sound.machine.wait_until_succeeds(
             "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 pw-dump --no-colors'"
@@ -77,6 +78,10 @@ def call(sound: Sound) -> Iterator[Sound]:
         )
     except Exception:
         print(sound.as_joel(f"pw-dump --no-colors | jq -c {shlex.quote(NODES)}"))
+        print(sound.as_joel("wpctl status; pw-link -l; pw-metadata"))
+        print(
+            sound.as_joel("journalctl --user -u wireplumber -u pipewire-pulse -u call --no-pager")
+        )
         raise
     yield sound
     # A test may have ended the call itself.
