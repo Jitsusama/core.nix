@@ -1278,13 +1278,18 @@ def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) 
         )
 
     def now_reads(reads: str) -> None:
-        """Open Now and wait until its power profile row reads so, or is gone for nothing."""
+        """Open Now and wait until it holds the keys and its power profile row reads so.
+
+        Or is gone, for nothing. Now's rows can read so a frame before niri hands the launcher
+        the keys, and the Escape that closes it, sent then, went to the window underneath
+        (2026-10-31, at 3a350c6c: Escape 300 ms before the keys).
+        """
         machine.send_key("meta_l-o")
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now"] and listed(shown).startswith(reads)
-                if reads
-                else shown["held"] == ["now"] and listed(shown) == ""
+                shown["keys"]
+                and shown["held"] == ["now"]
+                and (listed(shown).startswith(reads) if reads else listed(shown) == "")
             )
         )
 
