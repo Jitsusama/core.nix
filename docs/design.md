@@ -677,8 +677,11 @@ works the same way everywhere.
   New Window, New Window Below, and its desktop entry's own actions such
   as Chrome's New Incognito Window), then its Recent, what it had open
   lately, newest first, each the thing it is (a file, a folder, a site),
-  then its other windows by title, its Notifications, newest first, its
-  Shortcuts, any part of its own, such as the theme, and Quit, asked once
+  led by what it has open now, which says so first at its right and
+  where it is after ("open in 2 windows · ~/Downloads"), so a side cut
+  short loses where and never the state, then its other windows by
+  title, its Notifications, newest first, its Shortcuts, any part of
+  its own, such as the theme, and Quit, asked once
   since a window may hold unsaved work. Media while it has a player
   (Play or Pause, Next, Previous, and what's playing) and Sound while it
   has a stream open (Muted, Louder, Quieter, and its volume as a

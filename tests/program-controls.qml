@@ -25,7 +25,8 @@
 // into reads them then, once each time the launcher opens, each site by
 // its title beside its host, opened by its own command, and Copy the Link
 // last. What it has open leads: every page open, one row a page newest
-// looked at first, saying it's open and in how many tabs, Return going to
+// looked at first, saying first that it's open and in how many tabs, then
+// its host, so a side cut short keeps the state, Return going to
 // it through its source's command and its window, Close It closing each of
 // its tabs and leaving the page where it was, dimmed, until the launcher
 // opens again; a page open is never listed again as closed. A tab the
@@ -296,10 +297,10 @@ ShellRoot {
             same("what's open first, one row a page, newest looked at first, then what was "
                 + "open, never a page open now nor one left out", names(sites),
                 `Open A, Older page, Another, Behind, Page ${reading}`);
-            same("each beside its host, saying it's open and in how many tabs",
+            same("each saying it's open and in how many tabs, then its host",
                 sites.map(row => row.side).join(" | "),
-                "open.example.com \u00b7 open in 2 tabs | other.example.net \u00b7 open "
-                + "| another.example.com \u00b7 open | behind.example.com \u00b7 open "
+                "open in 2 tabs \u00b7 open.example.com | open \u00b7 other.example.net "
+                + "| open \u00b7 another.example.com | open \u00b7 behind.example.com "
                 + "| example.org");
             same("each made as every site is, keyed by the page",
                 sites.map(row => `${row.component} ${row.key}`).join(" "),
@@ -339,7 +340,7 @@ ShellRoot {
             const shut = program("browser").verbs()[3].targets()[0];
             same("the page stays where it was, dimmed and said closed, holding only its link",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
-                "site:https://open.example.com/a true open.example.com \u00b7 closed | Copy the Link");
+                "site:https://open.example.com/a true closed \u00b7 open.example.com | Copy the Link");
             const copied = inside[3];
             same("Copy the Link copies its address", `${copied.verb} ${copied.copy}`,
                 "copy https://open.example.com/a");
@@ -408,11 +409,11 @@ ShellRoot {
             same("what it has open first, one row a file while its window is open, newest "
                 + "looked at first, then the list programs share, never a file open now",
                 names(files), "open.pdf, paper.pdf, notes.md, old.pdf");
-            same("each made as every file is, beside its folder, saying it's open, and in how many",
+            same("each made as every file is, saying it's open, and in how many, then its folder",
                 files.map(row => `${row.component} ${row.key} ${row.side}`).join(" | "),
-                `file file:${root.home}/open.pdf ~ \u00b7 open in 2 windows | file `
-                + `file:${root.home}/paper.pdf ~ \u00b7 open | file file:${root.home}/notes.md ~ `
-                + `\u00b7 open in 2 windows | file file:${root.home}/old.pdf ~`);
+                `file file:${root.home}/open.pdf open in 2 windows \u00b7 ~ | file `
+                + `file:${root.home}/paper.pdf open \u00b7 ~ | file file:${root.home}/notes.md `
+                + `open in 2 windows \u00b7 ~ | file file:${root.home}/old.pdf ~`);
             same("Return goes to one open, and opens one that was",
                 files.map(row => row.verb).join(" "), "go go go open");
             same("one in a window niri names holds Go To, then Copy the Path, and no Close It",
@@ -440,7 +441,7 @@ ShellRoot {
             const shut = recent.targets()[0];
             same("the file stays where it was, dimmed and said closed, holding only its path",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
-                `file:${root.home}/open.pdf true ~ \u00b7 closed | Copy the Path`);
+                `file:${root.home}/open.pdf true closed \u00b7 ~ | Copy the Path`);
             Qt.exit(0);
         } catch (error) {
             fail(error.message);
