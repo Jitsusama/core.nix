@@ -8,7 +8,7 @@
 // one goes once its check passes or its signal comes, its quest ends, its
 // owner takes it out or Joel says it's done; one is ready once its owner or
 // a verdict says so. Nothing goes by its age. Kept apart from Quickshell's
-// types, so the `waiting-on-you-is-true` check runs it in Qt's own engine
+// types, so the `needs-you-is-true` check runs it in Qt's own engine
 // (tests/waiting-on-you.qml).
 .pragma library
 

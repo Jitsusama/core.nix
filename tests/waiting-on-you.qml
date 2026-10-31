@@ -1,5 +1,5 @@
 // What only Joel can do, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `waiting-on-you-is-true` check copies Waiting.js
+// shell runs it in. The `needs-you-is-true` check copies Waiting.js
 // beside this file and runs `qml -platform offscreen waiting-on-you.qml`.
 // The files are those the agents kept on 2026-10-26, cut to what's read,
 // when Waiting on You counted eleven things and three were Joel's to do,

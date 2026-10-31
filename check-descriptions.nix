@@ -609,6 +609,13 @@
     mycelium reads it, in mycelium's words; one declaring nothing has no file, and agents in a
     realm it doesn't join are refused
   '';
+  needs-you-is-true = ''
+    over the agents' own files, Needs You holds now only what Joel can do now, a timed one first
+    and then the quickest, puts what he can't yet or has put off under Later, saying what each
+    waits for, keeps gone what he or the to do daemon found done, says when nothing watches one,
+    keeps nothing of an ended quest and drops nothing by its age, and counts a session's want as
+    his only while its quest has something ready or the question is his
+  '';
   neovim-binds-every-key = ''
     Neovim binds every key keys.nix names and only those, each action provided, in its scope's
     buffer or plugin window, completion and the command line included
@@ -1895,13 +1902,6 @@
   vm-wifi-joins = ''
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
     others' routing rules, keeps the card awake on the charger
-  '';
-  waiting-on-you-is-true = ''
-    over the agents' own files, Needs You holds now only what Joel can do now, a timed one first
-    and then the quickest, puts what he can't yet or has put off under Later, saying what each
-    waits for, keeps gone what he or the to do daemon found done, says when nothing watches one,
-    keeps nothing of an ended quest and drops nothing by its age, and counts a session's want as
-    his only while its quest has something ready or the question is his
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
