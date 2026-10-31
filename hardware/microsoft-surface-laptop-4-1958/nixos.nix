@@ -24,8 +24,8 @@
   # it has one, since a device the kernel found but no driver took works no
   # better than one that's gone. The battery, the charger, the keyboard and
   # the touchpad come through the Surface Aggregator, so those gone together
-  # mean the controller's drivers didn't bind. The microphones aren't here
-  # yet: their driver doesn't bind at boot.
+  # mean the controller's drivers didn't bind. The controller's fifth HID
+  # device isn't here, since nobody knows yet what it's for.
   jitsusama.devices.expected = {
     "Wi-Fi" = "/sys/bus/pci/drivers/iwlwifi/0000:02:00.0";
     "Wi-Fi's radio" = "/sys/class/ieee80211/phy*";
@@ -38,13 +38,27 @@
     "The screen's brightness" = "/sys/class/backlight/amdgpu_bl*";
     # The analog codec's controller; 03:00.1 is the GPU's, for HDMI and DP.
     "The speakers" = "/sys/bus/pci/drivers/snd_hda_intel/0000:03:00.6";
+    # The analog codec, the ALC274, which both the speakers and the
+    # microphones go through. Its card's number depends on which of the two
+    # controllers is found first.
+    "The microphones" = "/sys/bus/hdaudio/drivers/snd_hda_codec_alc269/hdaudioC*D0";
     "The keyboard" = "/sys/bus/surface_aggregator/drivers/surface_hid/01:15:02:01:00";
     "The touchpad" = "/sys/bus/surface_aggregator/drivers/surface_hid/01:15:02:03:00";
     # The panel, bound once the touchscreen's driver loads after boot.
     "The touchscreen" = "/sys/bus/spi/drivers/sl4a_spi_hid/spi-MSHW0231:00";
+    # The pen, which the touchscreen's driver presents as a HID device of
+    # its own, numbered in the order HID devices come.
+    "The pen" = "/sys/bus/hid/drivers/hid-generic/001C:045E:0C19.*";
     "The light sensor" = "/sys/bus/i2c/drivers/apds9960/i2c-MSHW0184:00";
     "The lid's switch" = "/sys/bus/platform/drivers/acpi-button/PNP0C0D:00";
-    "The camera" = "/sys/class/video4linux/video*";
+    # The power button, on Surface's button device MSHW0040, which gives the
+    # power key alone; the volume keys are on the keyboard. The kernel numbers
+    # the instance.
+    "The power button" = "/sys/bus/platform/drivers/gpio-keys/gpio-keys.*.auto";
+    # The front cameras are one USB device inside the laptop: the colour
+    # camera's first interface and the IR camera's.
+    "The camera" = "/sys/bus/usb/drivers/uvcvideo/3-3:1.0";
+    "The IR camera" = "/sys/bus/usb/drivers/uvcvideo/3-3:1.2";
     "The battery" = "/sys/class/power_supply/BAT1";
     "The charger" = "/sys/class/power_supply/ADP1";
     "The power profiles" =
