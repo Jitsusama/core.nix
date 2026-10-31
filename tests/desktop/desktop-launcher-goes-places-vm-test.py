@@ -3159,6 +3159,42 @@ def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
         desktop.as_account(f"echo '0 0' > {crowd}.new && mv {crowd}.new {crowd}")
 
 
+# How many of People's rows an opening may make with nothing typed: those
+# listed, a handful in the VM, never the crowd the daemon holds.
+PEOPLE_ROWS_MOST = 100
+
+
+def test_a_crowd_the_people_daemon_holds_is_found_by_a_search_and_never_held_by_the_shell(
+    desktop: Desktop,
+) -> None:
+    """A crowd the people daemon holds is found by a search, and never made rows of at opening.
+
+    People held all of Tuple's 7,731 contacts and made 23,276 rows at each opening on Joel's
+    machine, holding his first key a second (2026-10-31). The daemon holds the stand-in's
+    8,000 here, so the opening makes rows only for those listed, and a search asks the daemon.
+    """
+    machine = desktop.machine
+    since = desktop.mark()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Said once the opening has settled, a few seconds on.
+    opening = machine.wait_until_succeeds(
+        desktop.in_session(
+            f"journalctl --user --unit=quickshell --after-cursor={shlex.quote(since)}"
+            " --output=cat | grep -a -o 'opening made [0-9]* rows ([^)]*)' | tail -1 | grep ."
+        ),
+        timeout=dt.timedelta(seconds=30),
+    ).strip()
+    made = re.search(r"\bpeople (\d+)", opening)
+    assert made is None or int(made[1]) <= PEOPLE_ROWS_MOST, (
+        f"the opening made rows for the crowd: {opening}"
+    )
+    desktop.type_in("crowd person 4321")
+    desktop.launcher_until(lambda shown: "Crowd Person 4321" in shown["rows"])
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+
+
 @pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,

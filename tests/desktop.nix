@@ -592,6 +592,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           order = 31;
           source = ./desktop/people-crowd.qml;
         };
+        # And one whose crowd the people daemon holds, as Tuple's contacts
+        # are, none of them listed, so only a search finds one.
+        jitsusama.people.sources.roster = {
+          order = 32;
+          source = ./desktop/people-roster.qml;
+          daemon = [
+            (lib.getExe pkgs.bash)
+            "${./desktop/people-roster.sh}"
+          ];
+        };
         # A source ending each search, as Search Slack does, silent until a
         # test says what it ends with.
         jitsusama.quickshell.launcher.providers.search-ends = {
