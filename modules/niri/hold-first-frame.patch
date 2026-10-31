@@ -1,63 +1,31 @@
-diff --git a/niri-config/src/debug.rs b/niri-config/src/debug.rs
-index c0779a4..8773314 100644
---- a/niri-config/src/debug.rs
-+++ b/niri-config/src/debug.rs
-@@ -25,6 +25,7 @@ pub struct Debug {
-     pub honor_xdg_activation_with_invalid_serial: bool,
-     pub deactivate_unfocused_windows: bool,
-     pub skip_cursor_only_updates_during_vrr: bool,
-+    pub hold_first_frame_for_background: bool,
- }
- 
- #[derive(knuffel::Decode, Debug, Default, PartialEq)]
-@@ -71,6 +72,8 @@ pub struct DebugPart {
-     pub deactivate_unfocused_windows: Option<Flag>,
-     #[knuffel(child)]
-     pub skip_cursor_only_updates_during_vrr: Option<Flag>,
-+    #[knuffel(child)]
-+    pub hold_first_frame_for_background: Option<Flag>,
- }
- 
- impl MergeWith<DebugPart> for Debug {
-@@ -95,6 +98,7 @@ impl MergeWith<DebugPart> for Debug {
-             honor_xdg_activation_with_invalid_serial,
-             deactivate_unfocused_windows,
-             skip_cursor_only_updates_during_vrr,
-+            hold_first_frame_for_background,
-         );
- 
-         merge_clone_opt!((self, part), preview_render, render_drm_device);
-diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
-index e1ef640..4c26b62 100644
---- a/niri-config/src/lib.rs
-+++ b/niri-config/src/lib.rs
-@@ -2266,6 +2266,7 @@ mod tests {
-                 honor_xdg_activation_with_invalid_serial: false,
-                 deactivate_unfocused_windows: false,
-                 skip_cursor_only_updates_during_vrr: false,
-+                hold_first_frame_for_background: false,
-             },
-             workspaces: [
-                 Workspace {
 diff --git a/src/niri.rs b/src/niri.rs
-index ff041ec..cc04ec2 100644
+index ff041ec..54d061d 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
-@@ -186,6 +186,10 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
+@@ -186,6 +186,16 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
  
  const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
  
 +/// How long after starting an output's first frame may wait for a background
-+/// or overlay layer surface to map (debug.hold-first-frame-for-background).
++/// or overlay layer surface to map, when HOLD_FIRST_FRAME_VARIABLE is set.
 +const FIRST_FRAME_HOLD: Duration = Duration::from_secs(5);
++
++/// The environment variable that asks niri, as it starts, to hold each
++/// screen's first frame. It's read from the environment rather than the
++/// config, so a config never names what a niri started before this patch
++/// would refuse, as it reloads its config in place.
++const HOLD_FIRST_FRAME_VARIABLE: &str = "NIRI_HOLD_FIRST_FRAME";
 +
  // We'll try to send frame callbacks at least once a second. We'll make a timer that fires once a
  // second, so with the worst timing the maximum interval between two frame callbacks for a surface
  // should be ~1.995 seconds.
-@@ -221,6 +225,11 @@ pub struct Niri {
+@@ -221,6 +231,14 @@ pub struct Niri {
      /// Whether the at-startup=true window rules are active.
      pub is_at_startup: bool,
  
++    /// Whether niri was started asked to hold each screen's first frame.
++    pub holds_first_frames: bool,
++
 +    /// Whether an output's first frame may still wait for a background or
 +    /// overlay layer surface, so the screen keeps what the boot splash left
 +    /// on it until the desktop or greeter has drawn.
@@ -66,7 +34,7 @@ index ff041ec..cc04ec2 100644
      /// Clock for driving animations.
      pub clock: Clock,
  
-@@ -494,6 +503,8 @@ pub struct OutputState {
+@@ -494,6 +512,8 @@ pub struct OutputState {
      pub lock_render_state: LockRenderState,
      pub lock_surface: Option<LockSurface>,
      pub lock_color_buffer: SolidColorBuffer,
@@ -75,7 +43,7 @@ index ff041ec..cc04ec2 100644
      screen_transition: Option<ScreenTransition>,
      /// Damage tracker used for the debug damage visualization.
      pub debug_damage_tracker: OutputDamageTracker,
-@@ -2494,6 +2505,14 @@ impl Niri {
+@@ -2494,6 +2514,16 @@ impl Niri {
              )
              .unwrap();
  
@@ -87,18 +55,21 @@ index ff041ec..cc04ec2 100644
 +            })
 +            .unwrap();
 +
++        let holds_first_frames = std::env::var_os(HOLD_FIRST_FRAME_VARIABLE).is_some();
++
          drop(config_);
          let mut niri = Self {
              config,
-@@ -2508,6 +2527,7 @@ impl Niri {
+@@ -2508,6 +2538,8 @@ impl Niri {
              is_session_instance,
              start_time: Instant::now(),
              is_at_startup: true,
-+            holding_first_frames: true,
++            holds_first_frames,
++            holding_first_frames: holds_first_frames,
              clock: animation_clock,
  
              layout,
-@@ -2890,6 +2910,8 @@ impl Niri {
+@@ -2890,6 +2922,8 @@ impl Niri {
              lock_render_state,
              lock_surface: None,
              lock_color_buffer: SolidColorBuffer::new(size, CLEAR_COLOR_LOCKED),
@@ -107,12 +78,12 @@ index ff041ec..cc04ec2 100644
              screen_transition: None,
              debug_damage_tracker: OutputDamageTracker::from_output(&output),
          };
-@@ -4592,6 +4614,34 @@ impl Niri {
+@@ -4592,6 +4626,33 @@ impl Niri {
          }
      }
  
 +    /// Whether this output's first frame waits, as niri starts with
-+    /// debug.hold-first-frame-for-background on a screen of its own rather
++    /// HOLD_FIRST_FRAME_VARIABLE set on a screen of its own rather
 +    /// than in a window (winit): until a background or overlay
 +    /// layer surface maps on it (the desktop's wallpaper, or a greeter), for
 +    /// at most FIRST_FRAME_HOLD. Until then the screen keeps the boot
@@ -120,7 +91,6 @@ index ff041ec..cc04ec2 100644
 +    /// while the session locks, since locking needs a frame drawn.
 +    fn first_frame_held(&self, backend: &Backend, output: &Output) -> bool {
 +        if !self.holding_first_frames
-+            || !self.config.borrow().debug.hold_first_frame_for_background
 +            || matches!(backend, Backend::Winit(_))
 +            || !matches!(self.lock_state, LockState::Unlocked)
 +        {
@@ -142,7 +112,7 @@ index ff041ec..cc04ec2 100644
      fn redraw(&mut self, backend: &mut Backend, output: &Output) {
          let _span = tracy_client::span!("Niri::redraw");
  
-@@ -4610,7 +4660,7 @@ impl Niri {
+@@ -4610,7 +4671,7 @@ impl Niri {
          self.update_render_elements(Some(output));
  
          let mut res = RenderResult::Skipped;
@@ -151,12 +121,11 @@ index ff041ec..cc04ec2 100644
              let state = self.output_state.get_mut(output).unwrap();
              state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
              state.unfinished_animations_remain |=
-@@ -4638,7 +4688,24 @@ impl Niri {
+@@ -4638,7 +4699,23 @@ impl Niri {
          }
  
          let is_locked = self.is_locked();
-+        let held = self.config.borrow().debug.hold_first_frame_for_background
-+            && !matches!(backend, Backend::Winit(_));
++        let held = self.holds_first_frames && !matches!(backend, Backend::Winit(_));
          let state = self.output_state.get_mut(output).unwrap();
 +        if res != RenderResult::Skipped && !state.first_frame_shown {
 +            state.first_frame_shown = true;
@@ -178,22 +147,22 @@ index ff041ec..cc04ec2 100644
              // Update the redraw state on failed render.
 diff --git a/src/tests/first_frame.rs b/src/tests/first_frame.rs
 new file mode 100644
-index 0000000..7ceaa5e
+index 0000000..01a45d6
 --- /dev/null
 +++ b/src/tests/first_frame.rs
 @@ -0,0 +1,93 @@
-+use niri_config::Config;
 +use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 +use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::Anchor;
 +
 +use super::*;
 +use crate::tests::client::LayerConfigureProps;
 +
-+/// A niri holding its first frames, with one screen.
++/// A niri holding its first frames, as one started with
++/// HOLD_FIRST_FRAME_VARIABLE set is, with one screen.
 +fn holding() -> Fixture {
-+    let mut config = Config::default();
-+    config.debug.hold_first_frame_for_background = true;
-+    let mut f = Fixture::with_config(config);
++    let mut f = Fixture::new();
++    f.niri().holds_first_frames = true;
++    f.niri().holding_first_frames = true;
 +    f.add_output(1, (1920, 1080));
 +    redraw(&mut f);
 +    f

@@ -73,7 +73,8 @@
 
   # niri holds its first frame for the wallpaper, keeping on the screen what
   # the splash left, for no longer than its patch says
-  # (hold-first-frame.patch), and only with a picture to wait for. Plymouth
+  # (hold-first-frame.patch), and only with a picture to wait for, asked
+  # through the environment of niri's unit by the name the patch reads. Plymouth
   # quits after that, since the picture it left goes with it, and a niri
   # still holding would then show nothing at all.
   the-splash-outlasts-niris-hold =
@@ -84,21 +85,22 @@
           { jitsusama.login.account = "someone"; }
         ]).config;
       home = machine.home-manager.users.someone;
-      said = home.xdg.configFile."niri/theme.kdl".text;
-      line = lib.findFirst (lib.hasInfix "const FIRST_FRAME_HOLD") "" (
-        lib.splitString "\n" (builtins.readFile ../niri/hold-first-frame.patch)
-      );
+      unit = home.xdg.configFile."systemd/user/niri.service.d/hold-first-frame.conf" or { text = ""; };
+      patch = lib.splitString "\n" (builtins.readFile ../niri/hold-first-frame.patch);
+      line = lib.findFirst (lib.hasInfix "const FIRST_FRAME_HOLD") "" patch;
+      named = lib.any (lib.hasInfix ''const HOLD_FIRST_FRAME_VARIABLE: &str = "NIRI_HOLD_FIRST_FRAME";'') patch;
       hold = lib.toInt (lib.head (builtins.match ".*from_secs[(]([0-9]+)[)].*" line));
       quits = lib.toInt (
         lib.removeSuffix "s" machine.systemd.timers.plymouth-quit.timerConfig.OnActiveSec
       );
     in
     holds "the-splash-outlasts-niris-hold"
-      "Plymouth quits before niri's hold on its first frame can run out, or niri holds with no wallpaper to wait for."
+      "Plymouth quits before niri's hold on its first frame can run out, niri holds with no wallpaper to wait for, or its unit asks by a name the patch doesn't read."
       (
         hold < quits
+        && named
         &&
-          lib.hasInfix "hold-first-frame-for-background" said
+          lib.hasInfix "Environment=NIRI_HOLD_FIRST_FRAME=1" unit.text
           == (home.jitsusama.theme.wallpaper.desktop != null)
       );
 

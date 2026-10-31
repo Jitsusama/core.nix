@@ -534,6 +534,24 @@ def test_niri_held_each_screens_first_frame_for_the_desktop(booted: Screens) -> 
         ), f"niri never said it held {screen}'s first frame: {said}"
 
 
+def test_a_niri_from_before_the_hold_takes_the_settings_a_switch_brings(booted: Screens) -> None:
+    """A niri started before the hold came in takes the account's settings, as at a switch."""
+    older = "/etc/niri-before-the-hold/bin/niri"
+    # niri reads its settings again in place when a switch changes them, as validate reads them.
+    booted.machine.succeed(booted.in_niri(f"{older} validate -c ~/.config/niri/config.kdl"))
+    # The hold asked in the settings, as it once was, which that niri refused, every line of it.
+    refused = booted.machine.fail(
+        booted.in_niri(
+            "d=$(mktemp -d) && cp -L ~/.config/niri/*.kdl $d/ && chmod u+w $d/theme.kdl"
+            " && printf 'debug {\\n    hold-first-frame-for-background\\n}\\n' >> $d/theme.kdl"
+            f" && {older} validate -c $d/config.kdl 2>&1",
+        ),
+    )
+    assert "hold-first-frame-for-background" in refused, (
+        f"a niri from before the hold took a setting only the hold knows: {refused}"
+    )
+
+
 def test_desk_facts_says_what_the_screen_is_before_it_goes(booted: Screens) -> None:
     """Desk-facts says what the screen is before it goes."""
     booted.displays_say(named=True)
