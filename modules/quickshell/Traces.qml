@@ -76,33 +76,31 @@ Scope {
         return JSON.stringify(spans);
     }
 
-    // One opening sent to the collector, on a connection of its own made
-    // only to send it and let go after, or as soon as nothing answers: a
-    // socket refused once never tries again by itself (Daemon.qml), so one
-    // kept across openings would stop sending once the collector was down.
+    // One opening sent to the collector: connected only to send it, and
+    // dropped if nothing is listening.
+    property string sending: ""
+
     function send(each) {
-        sender.createObject(root, { line: `${JSON.stringify(Traces.request(each))}\n` });
+        sending = `${JSON.stringify(Traces.request(each))}\n`;
+        socket.connected = true;
     }
 
-    Component {
-        id: sender
+    Socket {
+        id: socket
 
-        Socket {
-            id: socket
-
-            required property string line
-
-            path: root.collector
-            connected: true
-            onConnectionStateChanged: {
-                if (!connected)
-                    return;
-                write(line);
-                flush();
-                connected = false;
-                socket.destroy();
-            }
-            onError: socket.destroy()
+        path: root.collector
+        connected: false
+        onConnectionStateChanged: {
+            if (!connected || root.sending === "")
+                return;
+            write(root.sending);
+            flush();
+            root.sending = "";
+            connected = false;
+        }
+        onError: {
+            root.sending = "";
+            connected = false;
         }
     }
 }
