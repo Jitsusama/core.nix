@@ -65,6 +65,8 @@ in
           lib.makeBinPath [
             pkgs.libnotify
             pkgs.pipewire
+            # wl-copy, which puts the line for a call's chat on the clipboard.
+            pkgs.wl-clipboard
             pkgs.xdg-utils
           ]
         }"

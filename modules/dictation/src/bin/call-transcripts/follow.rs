@@ -12,6 +12,11 @@
 //!
 //! A call rejoined, the same meeting started again, goes on in the same
 //! record and transcript, its takes timed from the first start.
+//!
+//! As a call starts, a notice offers the line for its chat (notices.rs),
+//! and its Stop Transcribing stops both recorders at once, keeping what's
+//! written. A call stopped isn't transcribed again if it's rejoined, since
+//! stopping is how Joel honours someone's asking him not to.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read};
@@ -31,7 +36,8 @@ use serde_json::Value;
 
 use crate::book::{Record, Shared, now};
 use crate::hear::Job;
-use crate::meeting;
+use crate::meeting::{self, Meeting};
+use crate::notices;
 
 /// How long a link asked for may take to show before it's asked again.
 const LINKING: Duration = Duration::from_secs(2);
@@ -49,6 +55,13 @@ struct Recording {
     asked: HashMap<(u64, u64), Instant>,
 }
 
+/// What the loop following calls is given: the graph as it changes, or
+/// Joel's Stop Transcribing for a call.
+enum Heard {
+    Graph(Value),
+    Stop(String),
+}
+
 /// Follows calls until PipeWire goes, for systemd to start it again.
 pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<(), String> {
     let mut dump = Command::new("pw-dump")
@@ -58,11 +71,12 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
         .map_err(|why| format!("pw-dump wouldn't start: {why}"))?;
     let out = dump.stdout.take().ok_or("pw-dump has no output")?;
     let (arrays, heard) = mpsc::channel();
+    let stops = arrays.clone();
     thread::spawn(move || {
         let read = serde_json::Deserializer::from_reader(BufReader::new(out)).into_iter::<Value>();
         for array in read {
             let Ok(array) = array else { break };
-            if arrays.send(array).is_err() {
+            if arrays.send(Heard::Graph(array)).is_err() {
                 break;
             }
         }
@@ -71,6 +85,10 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
     let mut graph = Graph::default();
     let mut call = Call::Off;
     let mut recording: Option<Recording> = None;
+    // The call on, by its record's key, recorded or not.
+    let mut on_call: Option<String> = None;
+    // The calls Joel stopped, never transcribed again while this runs.
+    let mut stopped: HashSet<String> = HashSet::new();
     let mut count = 0;
     loop {
         let wait = match (call.due(Instant::now()), &recording) {
@@ -79,21 +97,47 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
             (None, None) => Duration::from_secs(3600),
         };
         match heard.recv_timeout(wait) {
-            Ok(array) => graph.take(&array),
+            Ok(Heard::Graph(array)) => graph.take(&array),
+            Ok(Heard::Stop(key)) => {
+                if let Some(mut stopping) = recording.take_if(|now| now.key == key) {
+                    stopping.stop();
+                    eprintln!("call-transcripts: transcribing stopped, {key}");
+                    stopped.insert(key);
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
         match call.step(graph.call().is_some(), Instant::now()) {
             Some(Change::Started) => {
                 count += 1;
-                match start(book, calls, &runtime, jobs, count) {
-                    Ok(started) => recording = Some(started),
-                    Err(why) => eprintln!("call-transcripts: couldn't record the call: {why}"),
+                let at = now();
+                let on = meeting::on(&runtime, at);
+                let key = Record::key_for(on.event.as_deref(), on.person.as_deref(), at);
+                on_call = Some(key.clone());
+                if stopped.contains(&key) {
+                    eprintln!("call-transcripts: a call stopped is rejoined, {key}");
+                    continue;
+                }
+                let title = on.title.clone();
+                match start(book, calls, &key, on, at, jobs, count) {
+                    Ok(started) => {
+                        offer_line(&title, &key, &stops);
+                        recording = Some(started);
+                    }
+                    Err(why) => {
+                        eprintln!("call-transcripts: couldn't record the call: {why}");
+                        let why = format!("It couldn't be recorded: {why}");
+                        notices::show(&notices::not_transcribed(&title, &why), |_| {});
+                    }
                 }
             }
             Some(Change::Ended) => {
-                if let Some(ended) = recording.take() {
-                    end(book, ended);
+                if let Some(mut ended) = recording.take() {
+                    ended.stop();
+                }
+                if let Some(key) = on_call.take() {
+                    ended_at(book, &key);
                 }
             }
             None => {}
@@ -106,26 +150,43 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
     Err("pw-dump ended".to_owned())
 }
 
+/// Offers the line for the call's chat, quietly, as the call starts:
+/// clicking the card copies it, and Stop Transcribing stops the call's
+/// recorders.
+fn offer_line(title: &str, key: &str, stops: &Sender<Heard>) {
+    let (key, stops) = (key.to_owned(), stops.clone());
+    notices::show(
+        &notices::being_transcribed(title),
+        move |chosen| match chosen {
+            "stop" => {
+                let _ = stops.send(Heard::Stop(key));
+            }
+            "copy" | "default" => notices::copy_line(),
+            _ => {}
+        },
+    );
+}
+
 /// Starts recording a call, in a record of its own, or in the record of the
 /// same meeting when it's rejoined.
 fn start(
     book: &Shared,
     calls: &Path,
-    runtime: &Path,
+    key: &str,
+    on: Meeting,
+    at: u64,
     jobs: &Sender<Job>,
     count: u32,
 ) -> Result<Recording, String> {
-    let at = now();
-    let on = meeting::on(runtime, at);
-    let key = Record::key_for(on.event.as_deref(), on.person.as_deref(), at);
+    let key = key.to_owned();
     let mut record = book.lock().record(&key).cloned().unwrap_or_else(|| Record {
         key: key.clone(),
-        title: on.title.clone(),
+        folder: calls.join(meeting::folder(at, &on.title)),
+        title: on.title,
         started: at,
         ended: None,
-        event: on.event.clone(),
-        person: on.person.clone(),
-        folder: calls.join(meeting::folder(at, &on.title)),
+        event: on.event,
+        person: on.person,
         transcript: None,
         summary: None,
         transcribing: true,
@@ -133,21 +194,40 @@ fn start(
     record.ended = None;
     record.transcribing = true;
     let since = usize::try_from((at - record.started) / 1000).unwrap_or(0) * RATE;
-    book.lock().put(record);
-    let mine = Recorder::start(
+    book.lock().put(record.clone());
+    let recorders = Recorder::start(
         &format!("call-transcripts-mine-{count}"),
         &key,
         Side::Mine,
         since,
         jobs,
-    )?;
-    let theirs = Recorder::start(
-        &format!("call-transcripts-theirs-{count}"),
-        &key,
-        Side::Theirs,
-        since,
-        jobs,
-    )?;
+    )
+    .and_then(|mut mine| {
+        match Recorder::start(
+            &format!("call-transcripts-theirs-{count}"),
+            &key,
+            Side::Theirs,
+            since,
+            jobs,
+        ) {
+            Ok(theirs) => Ok((mine, theirs)),
+            // Joel's side alone would be half a call, heard as all of it.
+            Err(why) => {
+                mine.stop();
+                Err(why)
+            }
+        }
+    });
+    let (mine, theirs) = match recorders {
+        Ok(both) => both,
+        Err(why) => {
+            book.lock().put(Record {
+                transcribing: false,
+                ..record
+            });
+            return Err(why);
+        }
+    };
     eprintln!("call-transcripts: a call started, {key}");
     Ok(Recording {
         key,
@@ -157,18 +237,25 @@ fn start(
     })
 }
 
-/// Stops recording; what's heard after ends the transcript (hear.rs).
-fn end(book: &Shared, mut recording: Recording) {
-    recording.mine.stop();
-    recording.theirs.stop();
+impl Recording {
+    /// Stops both recorders; what's heard after ends the transcript
+    /// (hear.rs).
+    fn stop(&mut self) {
+        self.mine.stop();
+        self.theirs.stop();
+    }
+}
+
+/// Says in a call's record that it ended, now.
+fn ended_at(book: &Shared, key: &str) {
     let mut book = book.lock();
-    if let Some(record) = book.record(&recording.key).cloned() {
+    if let Some(record) = book.record(key).cloned() {
         book.put(Record {
             ended: Some(now()),
             ..record
         });
     }
-    eprintln!("call-transcripts: the call ended, {}", recording.key);
+    eprintln!("call-transcripts: the call ended, {key}");
 }
 
 /// Keeps each recorder linked to its side, and to nothing else.

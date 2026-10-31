@@ -38,6 +38,7 @@ mod book;
 mod follow;
 mod hear;
 mod meeting;
+mod notices;
 mod summary;
 
 use std::path::{Path, PathBuf};
@@ -137,8 +138,8 @@ fn serve(socket: &Path, model: PathBuf, summarizer: PathBuf, calls: &Path) -> Re
     let listener = book::listen(socket)?;
     let (jobs, heard) = mpsc::channel();
     {
-        let book = Arc::clone(&book);
-        std::thread::spawn(move || hear::hear(&settings, &book, &heard, &own_name()));
+        let (book, again) = (Arc::clone(&book), jobs.clone());
+        std::thread::spawn(move || hear::hear(&settings, &book, &heard, &again, &own_name()));
     }
     {
         let book = Arc::clone(&book);
