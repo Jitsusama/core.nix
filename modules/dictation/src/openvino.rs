@@ -6,11 +6,26 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 use std::ptr;
 
-/// Where dictation stands among the NPU's jobs, as OpenVINO's
+/// Where a job stands among the NPU's others, as OpenVINO's
 /// `MODEL_PRIORITY`. At the default, a short job can wait behind a long
-/// one: with Whisper busy, a camera's frames waited up to 36 ms. Live work on a call says HIGH and
-/// background work LOW, and dictation, which Joel waits on, sits between.
-pub const NPU_PRIORITY: &CStr = c"MEDIUM";
+/// one: with Whisper busy, a camera's frames waited up to 36 ms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Priority {
+    /// What Joel waits on, such as dictation's take.
+    Waited,
+    /// What nobody waits on, such as a call's transcript.
+    Background,
+}
+
+impl Priority {
+    /// The priority's name to OpenVINO. Live work on a call would say HIGH.
+    pub fn name(self) -> &'static CStr {
+        match self {
+            Self::Waited => c"MEDIUM",
+            Self::Background => c"LOW",
+        }
+    }
+}
 
 #[repr(C)]
 struct OvCore {
@@ -218,17 +233,17 @@ impl Core {
         Ok(Model(model))
     }
 
-    /// `model` compiled for `device`, such as NPU or CPU, saying
-    /// dictation's priority on the NPU, the one device it's for.
+    /// `model` compiled for `device`, such as NPU or CPU, saying its
+    /// `priority` on the NPU, the one device it's for.
     ///
     /// # Errors
     ///
     /// When the device is missing or can't run the model.
-    pub fn compile(&self, model: &Model, device: &str) -> Result<Compiled> {
+    pub fn compile(&self, model: &Model, device: &str, priority: Priority) -> Result<Compiled> {
         let name = c_string(device)?;
         let priority = [Property {
             key: c"MODEL_PRIORITY".as_ptr(),
-            value: NPU_PRIORITY.as_ptr().cast(),
+            value: priority.name().as_ptr().cast(),
         }];
         let properties: &[Property] = if device == "NPU" { &priority } else { &[] };
         let mut compiled = ptr::null_mut();

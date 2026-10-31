@@ -1004,9 +1004,11 @@ upstream as it is and the override can then come out.
 
 - **Sharing the NPU.** Every job on the NPU says its OpenVINO
   `MODEL_PRIORITY`: live work on a call HIGH, what Joel waits on, such as
-  dictation, MEDIUM, and background work LOW. With a camera's cut-out
-  every 33 ms, a noise suppressor every 8 ms and Whisper transcribing a
-  minute of speech all on the NPU at the default, the camera's frames
+  dictation, MEDIUM, and background work, such as a call's transcript,
+  LOW (`Priority` in `modules/dictation/src/openvino.rs`). With a
+  camera's cut-out every 33 ms, a noise suppressor every 8 ms and Whisper
+  transcribing a minute of speech all on the NPU at the default, the
+  camera's frames
   waited up to 36 ms behind Whisper, a frame late. With those priorities
   the frames' 99th percentile fell from 24.8 ms to 3.6 ms and the
   suppressor kept inside its 8 ms, while Whisper, at LOW, took 4.5 s for

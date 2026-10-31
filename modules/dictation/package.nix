@@ -1,5 +1,5 @@
-# dictation, built from this directory's crate with its tests run as it
-# builds, linked to OpenVINO's C API and GenAI's.
+# dictation and call-transcripts, built from this directory's crate with
+# its tests run as it builds, linked to OpenVINO's C API and GenAI's.
 {
   callPackage,
   lib,
@@ -27,7 +27,7 @@ rustPlatform.buildRustPackage {
   ];
   passthru = { inherit openvino-genai; };
   meta = {
-    description = "Types what's said into the focused window, Whisper on the NPU";
+    description = "Dictation and call transcripts, Whisper on the NPU";
     license = lib.licenses.mit;
     mainProgram = "dictation";
     platforms = lib.platforms.linux;
