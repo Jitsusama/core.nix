@@ -1,11 +1,12 @@
 # A paired Bluetooth keyboard types at the disk prompt of a machine
 # installed as a laptop is, with Secure Boot and measured boot. The laptop
 # pairs with a stand-in keyboard on a second machine, seals the pairing to
-# its TPM, and restarts; the keyboard types the passphrase at the prompt,
-# and the disk opens. The sealed pairing never holds the link key where the
-# ESP can be read, the laptop's address is the one it paired with, and a
-# seal that won't open leaves the prompt asking as it always has. The
-# script is bluetooth-disk-prompt-vm-test.py.
+# its TPM, and restarts; the prompt asks before the pairing is open, the
+# keyboard types the passphrase at it, and the disk opens. The sealed
+# pairing never holds the link key where the ESP can be read, the laptop's
+# address is the one it paired with, and a seal that won't open leaves the
+# prompt asking as it always has. The script is
+# bluetooth-disk-prompt-vm-test.py.
 #
 # The two machines' controllers are btvirt's, BlueZ's emulator, run by the
 # driver as a TCP server: each machine's second serial port is a QEMU
@@ -16,6 +17,11 @@
 let
   passphrase = "install-passphrase";
   port = 45550;
+
+  # Opening the sealed pairing takes a laptop's TPM about two seconds and
+  # the VM's software TPM far less, so a prompt that waited for it would go
+  # unseen. Here it takes this long, and the prompt has to ask well before.
+  unsealSeconds = 15;
 
   # btvirt is built only with BlueZ's tests, which nixpkgs leaves out. Its
   # server reads every client into one buffer and loses the start of a
@@ -86,7 +92,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # The controller on the serial port, which a laptop's own controller
       # doesn't need.
       boot.initrd.kernelModules = [ "hci_uart" ];
-      boot.initrd.systemd.storePaths = [ "${bluez}/bin/btattach" ];
+      boot.initrd.systemd.storePaths = [
+        "${bluez}/bin/btattach"
+        "${pkgs.coreutils}/bin/sleep"
+      ];
+      boot.initrd.systemd.services.bluetooth-pairing.serviceConfig.ExecStartPre =
+        "${pkgs.coreutils}/bin/sleep ${toString unsealSeconds}";
       boot.initrd.systemd.services.btattach = attachedToTheEnd bluez // {
         wantedBy = [ "sysinit.target" ];
         before = [ "bluetooth.service" ];
@@ -140,7 +151,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     pkgs.writeText "bluetooth-disk-prompt-values.json" (
       builtins.toJSON {
         btvirt = "${btvirt}/bin/btvirt";
-        inherit passphrase port;
+        inherit passphrase port unsealSeconds;
         qemuImg = "${nodes.laptop.virtualisation.qemu.package}/bin/qemu-img";
         image = "${diskoImages}/main.qcow2";
         real = "${toplevel}";

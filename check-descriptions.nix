@@ -1624,9 +1624,10 @@
   '';
   vm-bluetooth-types-at-the-disk-prompt = ''
     a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its
-    link key nowhere in the ESP; after a restart it types the passphrase at the disk prompt and the
-    disk opens, the laptop's address unchanged; with nothing sealed the pairings are skipped, and a
-    seal that won't open leaves the prompt asking for the passphrase
+    link key nowhere in the ESP; after a restart the prompt asks while the pairing is still being
+    opened, the keyboard types the passphrase at it and the disk opens, the laptop's address
+    unchanged; with nothing sealed the pairings are skipped, and a seal that won't open leaves the
+    prompt asking for the passphrase
   '';
   vm-boot-asks-in-the-theme = ''
     the splash asks for the disk, names a slow job, and lasts a restart to its end; a sign-in
