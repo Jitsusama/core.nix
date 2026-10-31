@@ -42,6 +42,10 @@ QtObject {
         holds("a stack of one doesn't turn", Stack.turned([1], 1), [1]);
         holds("an empty stack doesn't turn", Stack.turned([], -1), []);
 
+        holds("turning to one keeps the turn after it", Stack.turnedTo([1, 2, 3, 4], 3), [3, 4, 1, 2]);
+        holds("turning to the front leaves it", Stack.turnedTo([1, 2, 3], 1), [1, 2, 3]);
+        holds("turning to one not held leaves it", Stack.turnedTo([1, 2], 9), [1, 2]);
+
         holds("one brought forward leads the rest", Stack.forward([1, 2, 3], 3), [3, 1, 2]);
         holds("the front brought forward stays", Stack.forward([1, 2, 3], 1), [1, 2, 3]);
 
