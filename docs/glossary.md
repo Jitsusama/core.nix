@@ -211,7 +211,7 @@ or a copy, can be opened, copied or forgotten.
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `WhatsOn.qml` |
-| Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, asks, to do | `WaitingOnYou.qml` |
+| Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |

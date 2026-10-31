@@ -2348,11 +2348,11 @@ onLinux {
   # Needs You holds only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
   # tests/waiting-on-you.qml holds Waiting.js to the agents' own files.
-  waiting-on-you-is-true =
+  needs-you-is-true =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "waiting-on-you-is-true" { } ''
+    pkgs.runCommandLocal "needs-you-is-true" { } ''
       cp ${../../tests/waiting-on-you.qml} waiting-on-you.qml
       cp ${./Waiting.js} Waiting.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
