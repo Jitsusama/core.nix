@@ -211,15 +211,22 @@ fn day(seconds: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// Writes `name` in `dir` whole or not at all: made in a `.writing` folder
+/// beside it, then renamed in. The shell watches `dir`, so a file made and
+/// written there woke it for each step; made aside, only the rename is
+/// heard.
+fn write_aside(dir: &Path, name: &str, text: &str) -> std::io::Result<()> {
+    let writing = dir.join(".writing");
+    fs::create_dir_all(&writing)?;
+    let fresh = writing.join(format!("{name}.new"));
+    fs::write(&fresh, text)?;
+    fs::rename(&fresh, dir.join(name))
+}
+
 fn keep(window: &Window) {
     let dir = runtime();
-    let _ = fs::create_dir_all(&dir);
     let text = serde_json::to_string_pretty(window).expect("a window serialises");
-    let fresh = dir.join("status.json.new");
-    if fs::write(&fresh, text)
-        .and_then(|()| fs::rename(&fresh, dir.join("status.json")))
-        .is_err()
-    {
+    if write_aside(&dir, "status.json", &text).is_err() {
         eprintln!("couldn't write {}", dir.display());
     }
     let dir = history();
@@ -366,6 +373,28 @@ mod tests {
         assert_eq!(day(1_792_783_560), "2026-10-23");
         assert_eq!(day(1_792_800_000), "2026-10-24");
         assert_eq!(day(951_782_400), "2000-02-29");
+    }
+
+    // The status folder only ever holds the status and the folder it's
+    // written in, and that's left empty.
+    #[test]
+    fn the_status_is_written_aside() {
+        let dir = std::env::temp_dir().join(format!("lag-watch-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        write_aside(&dir, "status.json", "{}").unwrap();
+        write_aside(&dir, "status.json", "{\"a\":1}").unwrap();
+        let mut names: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, [".writing", "status.json"]);
+        assert_eq!(fs::read_dir(dir.join(".writing")).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_to_string(dir.join("status.json")).unwrap(),
+            "{\"a\":1}"
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
