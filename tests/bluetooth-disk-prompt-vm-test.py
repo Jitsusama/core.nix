@@ -49,6 +49,13 @@ def opened(machine: QemuMachine) -> None:
     machine.connect()
 
 
+def when(journal: str, message: str) -> float:
+    """Give the seconds since boot of the first line of a monotonic journal holding the message."""
+    line = next((line for line in journal.splitlines() if message in line), None)
+    assert line is not None, f"no {message!r} in this boot's journal"
+    return float(line.split("]", 1)[0].lstrip("[ "))
+
+
 def address(machine: QemuMachine) -> str:
     """Give the machine's controller's address, once BlueZ has it."""
     listed = machine.wait_until_succeeds("bluetoothctl list | grep -m1 Controller", timeout=SETTLE)
@@ -238,6 +245,18 @@ def test_the_laptop_keeps_the_address_it_paired_with(typed: tuple[QemuMachine, s
     """The laptop's address after the restart is the one the keyboard was paired with."""
     laptop, before = typed
     assert address(laptop) == before
+
+
+def test_the_prompt_asks_before_the_pairing_is_open(
+    typed: tuple[QemuMachine, str], values: dict[str, Any]
+) -> None:
+    """The disk's prompt asks while the TPM is still opening the pairing, waiting for none of it."""
+    laptop, _ = typed
+    journal = laptop.succeed("journalctl -b -o short-monotonic --no-hostname")
+    asked = when(journal, "Starting Cryptography Setup for system")
+    opened = when(journal, "Finished Opens the sealed Bluetooth pairings")
+    print(f"the prompt asked at {asked:.2f} s, the pairing opened at {opened:.2f} s")
+    assert asked < opened - values["unsealSeconds"] / 2
 
 
 # Last, since the seal it spoils stays spoiled until the pairing changes.
