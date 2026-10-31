@@ -2760,6 +2760,43 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
 
 
 @pytest.mark.usefixtures("google")
+def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_there(
+    desktop: Desktop,
+) -> None:
+    """A person's page still being found stands in its place, dimmed, and lights there."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    pages = "/run/user/1000/pages"
+    # The stand-in Pages source keeps a page for Grace and is still finding
+    # it (desktop/people-pages.qml).
+    desktop.as_account(f"echo looking > {pages}")
+    desktop.answer("grace hopper")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "person:grace@example.com"
+    )
+    desktop.step_in("ret")
+    # From the first rows inside her, Open in Pages stands after Write a
+    # Mail, dimmed and saying it's being looked for, rather than arriving
+    # at the end once found.
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Write a Mail"])
+    shown = desktop.showing()
+    assert shown["rows"][:2] == ["Write a Mail", "Open in Pages"], shown["rows"]
+    standing = shown["things"][1]
+    assert standing["gone"], standing
+    assert "looking in Pages" in standing["reads"], standing
+    desktop.as_account(f"echo found > {pages}")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:2] == ["Write a Mail", "Open in Pages"]
+            and not shown["things"][1]["gone"]
+        )
+    )
+    desktop.as_account(f"rm -f {pages}")
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,
 ) -> None:
