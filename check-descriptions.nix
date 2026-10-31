@@ -1622,9 +1622,6 @@
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
     above 100
   '';
-  update-to-main-has-git-to-fetch-with = ''
-    NixOS's update-to-main service has git on its path, which Nix runs to fetch the main it builds
-  '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
     restarts on a switch, the Mac's daemon names no store path, both start it from the running

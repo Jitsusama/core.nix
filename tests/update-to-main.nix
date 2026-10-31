@@ -62,6 +62,8 @@ let
 
     users.users.someone.isNormalUser = true;
     users.users.other.isNormalUser = true;
+    # The tests' own commands need git. It's on the system's path then, so
+    # Nix would find it there; a machine with none is the unit tests'.
     environment.systemPackages = [ pkgs.git ];
 
     # A test machine's disk was never made to boot from, so GRUB can't be

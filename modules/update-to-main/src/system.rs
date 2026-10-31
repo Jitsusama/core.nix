@@ -57,9 +57,17 @@ pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathB
     }
 }
 
-/// Nix, with the commands and flakes it's asked for.
+/// Nix, with the commands and flakes it's asked for, and root's git first
+/// on its path: Nix runs git to fetch a `git+file` input, as main and what
+/// it follows are, and the system's own path may hold none.
 fn nix(config: &Config) -> std::process::Command {
     let mut nix = run::command(&config.tools.nix, &config.state);
+    if let Some(git) = config.tools.git.parent() {
+        let rest = std::env::split_paths(run::PATH);
+        let path = std::env::join_paths(std::iter::once(git.to_path_buf()).chain(rest))
+            .unwrap_or_else(|_| run::PATH.into());
+        nix.env("PATH", path);
+    }
     nix.args(["--extra-experimental-features", "nix-command flakes"]);
     nix
 }
