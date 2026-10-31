@@ -12,6 +12,10 @@
 //! says. A build waiting for a builder says so in /run/nix-offload/wanted,
 //! which counts as queued work.
 //!
+//! `nix-offload relay --listen ADDRESS --to ADDRESS` passes connections on
+//! to a builder's tunnel, dialling it again while it closes before the
+//! builder speaks, as src/relay.rs says.
+//!
 //! Every 20 seconds it reads the machine queue. The moment a build or a VM
 //! check is queued or running, it asks the helper for a builder, names it
 //! `NAME<seconds>`, and writes the Nix machines line the helper gives into
@@ -73,6 +77,7 @@ mod decide;
 mod journal;
 mod machines;
 mod queue;
+mod relay;
 mod there;
 
 use std::io::{BufRead, BufReader};
@@ -125,6 +130,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--standing PATH] [--beside PATH] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
+                    | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
                     [--print-out-paths] [--here] FLAKE ATTR... \
@@ -226,6 +232,28 @@ fn main() -> ExitCode {
     };
     if arguments.first().map(String::as_str) == Some("there") {
         return there(&arguments[1..]);
+    }
+    if arguments.first().map(String::as_str) == Some("relay") {
+        let (Some(listen), Some(to)) = (given("--listen"), given("--to")) else {
+            eprintln!("nix-offload: relay needs --listen and --to\n{USED}");
+            return ExitCode::from(64);
+        };
+        let listener = match std::net::TcpListener::bind(&listen) {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("nix-offload: listening on {listen}: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        // Less than the 10 s ssh gives a server to answer, so a caller
+        // hung up on hears it before ssh gives up on its own.
+        relay::Relay {
+            to,
+            within: Duration::from_secs(9),
+            pause: Duration::from_millis(250),
+        }
+        .serve(&listener);
+        return ExitCode::SUCCESS;
     }
     if arguments.first().map(String::as_str) == Some("stand") {
         let (standing, beside) = (given("--standing"), given("--beside"));
