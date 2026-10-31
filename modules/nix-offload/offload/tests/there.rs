@@ -8,8 +8,9 @@ use std::process::{Command, Output};
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
-/// command) apart, prints what the `says` file beside it holds, and exits
-/// as the `status` file beside it says. Once a test writes
+/// command) apart, prints what the `says` file beside it holds and, on
+/// stderr, what the `complains` file holds, and exits as the `status` file
+/// beside it says. Once a test writes
 /// `refuses-name-only`, a command asking `--name-only` is refused with 64,
 /// as a changed-checks from before it was refuses it.
 const SSH: &str = r#"#!/bin/sh
@@ -26,6 +27,7 @@ esac
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
 [ -f "$here/says" ] && cat "$here/says"
+[ -f "$here/complains" ] && cat "$here/complains" >&2
 exit "$(cat "$here/status")"
 "#;
 
@@ -134,6 +136,28 @@ fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
             "copy --no-check-sigs --from {} /nix/store/aaaa-a\n",
             STORE.trim()
         )
+    );
+}
+
+// The builder's log and errors go on to the caller as they come, so a
+// build that fails says why rather than only that it did.
+#[test]
+fn printing_out_paths_passes_on_why_a_build_failed() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 1);
+    fs::write(
+        folder.path().join("complains"),
+        "error: builder for a failed\n",
+    )
+    .unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("error: builder for a failed"),
+        "{ran:?}"
     );
 }
 

@@ -817,7 +817,12 @@ fn brought_from(
     nix: &str,
 ) -> std::io::Result<std::process::ExitStatus> {
     use std::os::unix::process::ExitStatusExt;
-    let built = command.stdout(Stdio::piped()).output()?;
+    // output() would capture stderr too, and drop the builder's log and
+    // why a build failed, so it goes on to the caller as it comes.
+    let built = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .output()?;
     if !built.status.success() {
         return Ok(built.status);
     }
