@@ -9,7 +9,6 @@ comes from, and what's left.
 | ------------ | --------------------------------------------------------------- |
 | `nixos.nix`  | the laptop's settings: firmware, GPU, power, ports, sensors     |
 | `checks.nix` | what proves the patches and settings here                       |
-| `bluetooth-sits-out-hibernation.sh` | Bluetooth's driver off its chip while it hibernates |
 | `kernel/`    | every kernel patch, filed by where it stands upstream           |
 | `camera/`    | the colour and IR cameras' HAL, driver and pipeline              |
 | `sound/`     | the speakers' tuning and the microphones                        |
