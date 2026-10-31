@@ -2493,11 +2493,14 @@ Scope {
     // its keywords, beside its name or alone, is in the last tier, but for a
     // collection's own words, which are what it's called.
     // Rows gone since they were shown leave every step once a key searches
-    // afresh, so a refresh after it doesn't keep them on as gone again.
+    // afresh, so a refresh after it doesn't keep them on as gone again. A
+    // row its source draws dimmed stays where it stands: stepping into
+    // someone searches afresh, and Write in Slack's dimmed row, there until
+    // Slack answers, would otherwise leave and come back at the end.
     function forgetGone() {
-        if (held.some(step => step.rows.some(row => row.gone)))
+        if (held.some(step => step.rows.some(row => row.went)))
             held = held.map(step => Object.assign({}, step, {
-                rows: step.rows.filter(row => !row.gone)
+                rows: Steady.forgotten(step.rows)
             }));
     }
 

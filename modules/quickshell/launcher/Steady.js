@@ -10,8 +10,10 @@
 .pragma library
 
 // The rows as they read now, in the order of those shown: each row shown
-// as it is now, or as it was and `gone` where it's no longer there, then
-// each new one in its own order. A row is known by `id`; rows alike in it
+// as it is now, or as it was, `gone` and `went`, where it's no longer
+// there, then each new one in its own order. `went` tells a row that left
+// from one its source draws dimmed itself, gone but there, as Write in
+// Slack stands dimmed until Slack answers. A row is known by `id`; rows alike in it
 // pair off in their order, so two windows titled alike keep their places.
 function kept(shown, now, id) {
     const waiting = {};
@@ -31,7 +33,7 @@ function kept(shown, now, id) {
             taken[at] = true;
             out.push(now[at]);
         } else {
-            out.push(row.gone ? row : Object.assign({}, row, { gone: true }));
+            out.push(row.went ? row : Object.assign({}, row, { gone: true, went: true }));
         }
     }
     now.forEach((row, at) => {
@@ -40,6 +42,12 @@ function kept(shown, now, id) {
         }
     });
     return out;
+}
+
+// The rows without those that left since they were shown, as a key makes
+// the list afresh; a row its source draws dimmed stays where it stands.
+function forgotten(rows) {
+    return rows.filter(row => !row.went);
 }
 
 // Where the selection goes in them, from where it `was`: { row, at,

@@ -58,6 +58,21 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
+        // [what, the rows shown, the rows now, what's left once a key makes
+        // the list afresh]: Write in Slack's dimmed row, there until Slack
+        // answers, stands where it is through the search a step-in makes.
+        const forgets = [
+            ["a row that left is forgotten", "a b c", "c a", "a c"],
+            ["a row its source dims stays where it stands", "a b c", "a b- c", "a b- c"],
+            ["and is forgotten once it leaves", "a b- c", "a c", "a c"],
+            ["a row that left stays forgotten", "a b c", "a", "a"]
+        ];
+        for (const [what, shown, now, want] of forgets) {
+            const got = read(Steady.forgotten(Steady.kept(rows(shown), rows(now), id)));
+            if (got !== want)
+                failures.push(`${what}: "${got}", not "${want}"`);
+        }
+
         const after = rows("a b c d");
         // [what, the row it was on, where it was, the lowest it goes, where it goes]
         const selections = [
