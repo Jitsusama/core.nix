@@ -91,6 +91,10 @@ in
           "NIXPKGS_QT6_QML_IMPORT_PATH"
           ":"
           "${prev.callPackage ./maths/package.nix { }}/${prev.qt6.qtbase.qtQmlPrefix}"
+          "--prefix"
+          "NIXPKGS_QT6_QML_IMPORT_PATH"
+          ":"
+          "${prev.callPackage ./key-times/package.nix { }}/${prev.qt6.qtbase.qtQmlPrefix}"
         ];
       });
     })
