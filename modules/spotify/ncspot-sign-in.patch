@@ -13,6 +13,30 @@ index 18aabcb..0fef6ae 100644
  
  const SPOTIFY_AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
  const SPOTIFY_TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
+diff --git a/spotify_player/src/cli/handlers.rs b/spotify_player/src/cli/handlers.rs
+index 7c12725..538af72 100644
+--- a/spotify_player/src/cli/handlers.rs
++++ b/spotify_player/src/cli/handlers.rs
+@@ -192,8 +192,18 @@ pub fn handle_cli_subcommand(cmd: &str, args: &ArgMatches) -> Result<()> {
+             rt.block_on(crate::auth::prompt_for_user_token(&mut api_client, true))
+                 .context("authenticate Spotify Web API client")?;
+ 
++            // The streaming client's token alone is gone once this exits: signing a session in
++            // with it is what has librespot save the credentials it plays with.
+             let auth_config = AuthConfig::new(configs)?;
+-            crate::auth::get_creds(&auth_config, true, false)?;
++            let creds = crate::auth::get_creds(&auth_config, true, false)?;
++            rt.block_on(async {
++                let session = auth_config.session();
++                session.connect(creds, true).await?;
++                session.shutdown();
++                anyhow::Ok(())
++            })
++            .context("sign the streaming client in")?;
++            println!("Signed in to Spotify, for browsing and for playing.");
+             std::process::exit(0);
+         }
+         "generate" => {
 diff --git a/spotify_player/src/client/mod.rs b/spotify_player/src/client/mod.rs
 index 4ed6cb7..3c88df3 100644
 --- a/spotify_player/src/client/mod.rs
