@@ -2767,9 +2767,19 @@ def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     pages = "/run/user/1000/pages"
+
+    def say(said: str) -> None:
+        # Moved into place whole, since a file written where it's watched
+        # can be read empty between its truncating and its writing; and
+        # heard before anything is looked for, so a row that never lights
+        # isn't taken for a source that never heard.
+        since = desktop.mark()
+        desktop.as_account(f"echo {said} > {pages}.new && mv {pages}.new {pages}")
+        desktop.reported("pages ", lambda rest: rest == said, since)
+
     # The stand-in Pages source keeps a page for Grace and is still finding
     # it (desktop/people-pages.qml).
-    desktop.as_account(f"echo looking > {pages}")
+    say("looking")
     desktop.answer("grace hopper")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "person:grace@example.com"
@@ -2784,7 +2794,7 @@ def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_
     standing = shown["things"][1]
     assert standing["gone"], standing
     assert "looking in Pages" in standing["reads"], standing
-    desktop.as_account(f"echo found > {pages}")
+    say("found")
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:2] == ["Write a Mail", "Open in Pages"]
@@ -2872,12 +2882,13 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Its title finds the same row from anywhere, one on a shared drive saying
-    # only when it was opened.
+    # only when it was opened, which past midnight is yesterday.
     desktop.answer("team budget")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("is") == "gdoc:budget"
-            and re.fullmatch(r"\d\d:\d\d", str(shown["selected"].get("side", ""))) is not None
+            and re.fullmatch(r"\d\d:\d\d|yesterday", str(shown["selected"].get("side", "")))
+            is not None
         )
     )
     desktop.as_account("qs ipc call launcher toggle")

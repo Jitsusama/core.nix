@@ -35,6 +35,9 @@ PersonSource {
         if (now === said)
             return;
         said = now;
+        // Said, so a test that waits for a row to light knows whether it
+        // was heard at all.
+        Report.say(`pages ${now === "" ? "none" : now}`);
         place?.changed();
     }
 
@@ -45,7 +48,13 @@ PersonSource {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: source.heard(told.text().trim())
+        // A file read empty is one caught being written, so only a file
+        // that isn't there says it knows nothing.
+        onLoaded: {
+            const now = told.text().trim();
+            if (now !== "")
+                source.heard(now);
+        }
         onLoadFailed: source.heard("")
     }
 }
