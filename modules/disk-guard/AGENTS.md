@@ -109,8 +109,10 @@ or launchd, and [`home.nix`][2] the account's.
   again.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
   moment, half a minute after a root leaves, and two minutes after a process
-  holding paths ends. It deletes them oldest first, in a pass of their own
-  once something has let some go. While the disk is healthy it keeps what
+  holding paths ends, though on a healthy disk not until the last listing
+  has rested nine times its own length, so listing takes at most a tenth of
+  its time; under pressure it doesn't wait. It deletes them oldest first,
+  in a pass of their own once something has let some go. While the disk is healthy it keeps what
   was built in the last hour, up to 5% of the disk, unless a machine gives
   its own `garbage.keep` and `garbage.budget`. A path a running process
   holds, as a temporary root, a file it has open, or a name in its command

@@ -187,6 +187,12 @@ const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// at most every two.
 const ROOT_LEFT_GAP: f64 = 30.0;
 const HELD_ENDED_GAP: f64 = 120.0;
+/// How many times its own length a listing rests after it ends before
+/// something let go brings another on a healthy disk, so listing takes at
+/// most a tenth of the guard's time. A store of 400 GiB took 108 s and 75 s
+/// of CPU to list on 31 October, and roots left so often that one began as
+/// each ended, a core spent to free kilobytes. Under pressure, none.
+const LISTING_REST: f64 = 9.0;
 
 /// How often the guard looks for an owner that has ended: a tree's last
 /// holder, a quest finished or parked, a boot, or a guard with new rules.
@@ -293,6 +299,8 @@ pub struct Guard {
     listing_begun: Option<f64>,
     /// A listing under way on its own thread, and when it began.
     listing_out: Option<(f64, Listening)>,
+    /// When the last listing ended, and how long it took.
+    listing_ended: Option<(f64, f64)>,
     /// What a system daemon hears from user daemons.
     hearing: Option<Hearing>,
     /// For a user daemon, the filesystems the system daemon collects
@@ -619,6 +627,7 @@ impl Guard {
             listing,
             listing_path,
             listing_out: None,
+            listing_ended: None,
             hearing: None,
             collected_on: BTreeSet::new(),
             running: places.running.clone(),
@@ -1275,6 +1284,7 @@ impl Guard {
         };
         let begun = *begun;
         self.listing_out = None;
+        self.listing_ended = Some((now, (now - begun).max(0.0)));
         match heard {
             Ok(dead) => {
                 let listing = Listing {
@@ -1415,7 +1425,9 @@ impl Guard {
     }
 
     /// Begins listing Nix's garbage on its own thread when it's due: soon
-    /// after a root leaves or a process holding paths ends, six hours on
+    /// after a root leaves or a process holding paths ends, once the last
+    /// listing has rested its own length nine times over on a healthy disk
+    /// and at once under pressure, six hours on
     /// at a spare moment, or a day on whenever there's power, at idle
     /// priority; and at once when the store's filesystem is under pressure
     /// and the listing is an hour old.
@@ -1438,9 +1450,14 @@ impl Guard {
             LISTING_RETRY
         };
         let since = age(self.listing_begun);
-        let due = self.relist
-            || self.root_left && since >= ROOT_LEFT_GAP
-            || self.held_ended && since >= HELD_ENDED_GAP
+        let rested = pressed
+            || self
+                .listing_ended
+                .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
+        let due = rested
+            && (self.relist
+                || self.root_left && since >= ROOT_LEFT_GAP
+                || self.held_ended && since >= HELD_ENDED_GAP)
             || since >= retry
                 && if pressed {
                     listed >= LISTING_PRESSED
