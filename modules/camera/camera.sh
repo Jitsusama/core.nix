@@ -36,10 +36,13 @@ done
 # to a recording and back (camera.lua). A picture's frame is kept
 # uncompressed, since mpv waits on it and the JPEG made of it is what's
 # kept: compressed, a busy machine took seconds over each, and the keys
-# waited behind it.
+# waited behind it. The window opens once camera.lua has bound the keys,
+# which mpv waits for before it plays, and before the camera wakes: made
+# sooner, a key pressed as it appeared on a busy machine met no binding
+# and was lost.
 exec mpv "av://v4l2:$device" \
   --vo=gpu-next,wlshm --gpu-context=wayland \
-  --title=Camera --wayland-app-id=camera --force-window=immediate \
+  --title=Camera --wayland-app-id=camera --force-window=yes \
   --profile=low-latency --untimed --cache=no --hwdec=no --aid=no \
   --vf=hflip --osc=no --input-default-bindings=no \
   --keep-open=no --idle=yes --save-position-on-quit=no --resume-playback=no \
