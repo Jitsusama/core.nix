@@ -38,7 +38,7 @@
 // whose stands are keyed "<its name>:<id>", their key. `woken` is asked
 // each time the launcher opens, for a source that only follows what it
 // knows while someone might look. A source whose program the people
-// daemon runs and says everyone to, as Tuple's does, is `held`: it gives
+// daemon runs and says everyone to, as Tuple's does, `daemonHolds`: it gives
 // no `people` or `stands` of its own, and People reads from the daemon
 // only those it lists and those a search finds, never everyone, asking
 // `stood` how each stands from what the source told the daemon of them.
@@ -58,7 +58,7 @@ QtObject {
     property var people: []
     property var stands: ({})
     // Whether the people daemon holds who it knows, rather than `people`.
-    property bool held: false
+    property bool daemonHolds: false
     // The People place it's a source of, given as it's made.
     property var place: null
     // Its name as Joel reads it, in Open in it for a person's page.

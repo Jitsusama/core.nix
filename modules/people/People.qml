@@ -19,7 +19,7 @@
 // Their details, every address and each source's facts, are in the
 // drawer beside the row.
 //
-// A source the people daemon holds (`held`, as Tuple's is) is read from
+// A source the people daemon holds (`daemonHolds`, as Tuple's) is read from
 // the daemon, never held whole here: only those it lists with nothing
 // typed, watched as they change, and those a search finds, asked of the
 // daemon as each text is typed. Holding Tuple's 7,731 contacts here made
@@ -74,7 +74,7 @@ Provider {
     readonly property int revision: book.revision
 
     // The names of the sources the daemon holds.
-    readonly property var heldBy: sources.filter(source => source.held)
+    readonly property var heldBy: sources.filter(source => source.daemonHolds)
         .map(source => source.settings.name)
 
     // What the daemon's search last found, for the words asked, best
@@ -110,7 +110,7 @@ Provider {
     readonly property var fromDaemon: {
         const people = {};
         const stands = {};
-        for (const source of sources.filter(each => each.held)) {
+        for (const source of sources.filter(each => each.daemonHolds)) {
             const name = source.settings.name;
             people[name] = [];
             stands[name] = {};
@@ -163,13 +163,13 @@ Provider {
     // addresses made ready to match only when first searched.
     readonly property var persons: Person.merged(sources.map(source => ({
         name: source.settings.name,
-        people: source.held ? fromDaemon.people[source.settings.name] : source.people
+        people: source.daemonHolds ? fromDaemon.people[source.settings.name] : source.people
     })))
     readonly property var everyone: persons.map(person => made(person, Person.standing(person, [])))
 
     // How each stands, which changes often, read from every source in
     // order, so the first that says is believed.
-    readonly property var stands: sources.map(source => (source.held
+    readonly property var stands: sources.map(source => (source.daemonHolds
         ? fromDaemon.stands[source.settings.name] : source.stands))
 
     function standOf(person) {

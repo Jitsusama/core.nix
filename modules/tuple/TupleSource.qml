@@ -13,7 +13,7 @@ import QtQuick
 PersonSource {
     id: source
 
-    held: true
+    daemonHolds: true
 
     // Favourites changed here, by Tuple's id, until the daemon next says
     // anything, so a row moves at once rather than when Tuple tells it.
