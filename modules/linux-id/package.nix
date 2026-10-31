@@ -26,6 +26,9 @@ buildGoModule (finalAttrs: {
     # Refuses the throwaway credential Chrome asks for to see which key was
     # touched, which, answered, ends a passkey sign-in and its QR code.
     ./linux-id-refuses-chromes-probe.patch
+    # Asks again when another site, or another operation, asks within the
+    # five seconds an approval is kept for.
+    ./linux-id-asks-for-each-site.patch
   ];
 
   ldflags = [
