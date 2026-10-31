@@ -258,6 +258,11 @@ let
       inherit self pkgs;
     };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
+    # Only a running machine attaches a loop device, mounts it, and says
+    # whether Btrfs copies the image on write.
+    vm-cargo-builds-on-their-own-filesystem = import ./tests/cargo-builds.nix {
+      inherit self pkgs;
+    };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.
     vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
