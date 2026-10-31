@@ -1188,7 +1188,8 @@
     opened lately first, then its folders and files, then its filters, and answers what was picked;
     a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
     fetched before they're answered; saving there, its folders take the name, ask before replacing
-    one, and answer the path the place stages it at once its folder is made
+    one, and answer the path the place stages it at once its folder is made, marked beside it with
+    the program that asked
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

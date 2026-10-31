@@ -31,9 +31,12 @@
 // Replace It; Return makes the folder the place said to save in, here,
 // and then answers the path, which the place takes from there (VKCF3Z,
 // 2026-10-30). An ask from inside the shell for a local folder alone
-// (`local`) is given no places. The folder here a save last went to is
-// kept (`savedLastIn`), so a save asked from inside the shell can start
-// there.
+// (`local`) is given no places. A program's save staged there is marked
+// with who asked, its app id as niri knows it in `.<name>.from` beside
+// it, so the place can offer to go back to that program if the file
+// can't be taken (427IH3, 2026-10-31). The folder here a save last went
+// to is kept (`savedLastIn`), so a save asked from inside the shell can
+// start there.
 //
 // The answer goes back on the socket open-with listens on, as one line:
 // the paths picked, the filter in use and the option of each choice, or an
@@ -93,8 +96,8 @@ Provider {
     // Fetching what's kept elsewhere: how many are asked, how many are
     // here, and why one couldn't be, or nothing while none is.
     property var fetching: null
-    // Saving into a place kept elsewhere: the ask and the path, while the
-    // folder the path is in is made.
+    // Saving into a place kept elsewhere: the ask, the path and who asked,
+    // while the folder the path is in is made.
     property var staging: null
     // The folder here a save last went to, kept in a file (`savedIn`) so
     // a restart keeps it, or "" before any.
@@ -326,7 +329,7 @@ Provider {
     function stage(path) {
         if (asking === null || staging !== null)
             return;
-        staging = { reply: asking.reply, path: path };
+        staging = { reply: asking.reply, path: path, from: asking.from ?? "" };
         fetching = null;
         making.command = [settings.mkdir ?? "mkdir", "-p", "--", parentOf(path)];
         making.running = true;
@@ -341,6 +344,10 @@ Provider {
             fetching = { asked: 1, here: 0, why: "The folder to save it in couldn't be made." };
             changed();
             return;
+        }
+        if (was.from !== "") {
+            fromFile.path = `${parentOf(was.path)}/.${was.path.slice(was.path.lastIndexOf("/") + 1)}.from`;
+            fromFile.setText(was.from);
         }
         pick([was.path], true);
         launcher.open = false;
@@ -880,6 +887,23 @@ Provider {
         }
     }
 
+    // The program whose window had the keys as it asked, by its app id,
+    // or "" with none: the portal's own app id for a program run outside a
+    // sandbox is often empty, or a name niri doesn't know it by.
+    function askedFrom() {
+        return Niri.windows[Niri.current]?.app_id ?? "";
+    }
+
+    // Who asked for a save staged elsewhere, written beside it before the
+    // program is answered, so it's there before the file is.
+    FileView {
+        id: fromFile
+
+        preload: false
+        blockWrites: true
+        printErrors: false
+    }
+
     // Read once as the shell starts; this is its only writer.
     FileView {
         id: savedInFile
@@ -936,7 +960,7 @@ Provider {
             asked = null;
         }
         const first = asking === null;
-        asks = asks.concat([{ reply: reply, request: asked ?? {} }]);
+        asks = asks.concat([{ reply: reply, request: asked ?? {}, from: askedFrom() }]);
         if (asked === null || typeof asked !== "object")
             settle(reply, "");
         else if (first)
