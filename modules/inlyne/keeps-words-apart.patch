@@ -80,10 +80,10 @@ index 9225a45..3fecdd8 100644
                      style: BOLD ,
                      link: Some("#usage"),
 diff --git a/src/interpreter/tests.rs b/src/interpreter/tests.rs
-index 115f742..1017b1d 100644
+index 115f742..d2bf366 100644
 --- a/src/interpreter/tests.rs
 +++ b/src/interpreter/tests.rs
-@@ -320,6 +320,38 @@ fn elem_as_text_box(elem: &Element) -> Option<&TextBox> {
+@@ -320,6 +320,37 @@ fn elem_as_text_box(elem: &Element) -> Option<&TextBox> {
      }
  }
  
@@ -102,16 +102,15 @@ index 115f742..1017b1d 100644
 +    let said = said.join("\n");
 +    // Each pair is the last word of a line and the first of the next.
 +    for pair in [
-+        "wraps its paragraphs",
-+        "at eighty columns,",
-+        "so each line ends",
-+        "with a word that",
-+        "the next begins. The",
-+        "reader joins them",
-+        "with a space, as",
-+        "with emphasis at",
-+        "the edge and a link",
-+        "near the end. A hard",
++        "paragraphs at",
++        "columns, so",
++        "ends with",
++        "that the",
++        "The reader",
++        "them with",
++        "wraps with",
++        "emphasis at the edge",
++        "link near",
 +    ] {
 +        assert!(said.contains(pair), "{pair:?} isn't in what was read: {said}");
 +    }
