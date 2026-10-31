@@ -429,7 +429,6 @@ Provider {
     // is listed here itself, so its session's row would say the same thing
     // twice (2026-10-31: four items read as eight).
     readonly property var sessions: Sessions.wanting
-        .filter(session => session.presence?.wants?.kind !== "action")
     readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
     readonly property string first: sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
