@@ -5,6 +5,8 @@
 # (pinentry.rs), which asks the shell's prompt (SSH_ASKPASS). It confirms
 # presence only, never who's there, so a site that insists on knowing is
 # refused rather than told a lie, and the YubiKeys are that site's keys.
+# Chrome's probe of which key was touched it refuses without asking
+# (package.nix), so such a sign-in goes on to the phone or a YubiKey.
 #
 # It runs in every account. The signed-in account may make HID devices, as
 # linux-id needs to, so a program it runs could pose as a keyboard too.

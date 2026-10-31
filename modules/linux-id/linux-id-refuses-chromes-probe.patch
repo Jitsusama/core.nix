@@ -1,0 +1,86 @@
+Refuse Chrome's touch probe without asking
+
+When a request is one a key can't satisfy, Chrome sends it a
+MakeCredential for the relying party ".dummy" to see whether the person
+touches it. A passkey sign-in with no allow list is such a request for
+this key, since Chrome then requires user verification and pinentry
+confirms presence only. Answering the probe, which the verifier does
+after one prompt or none within its cache's five seconds, ends the whole
+request with a missing-verification error, and with it the phone's QR
+code and any other key.
+
+Chrome ignores a probe that fails at once (GetTouch in Chromium's
+device/fido/fido_device_authenticator.cc), so refuse it before asking.
+
+diff --git a/main.go b/main.go
+index b10a2a4..35f519a 100644
+--- a/main.go
++++ b/main.go
+@@ -560,6 +560,11 @@ func (s *server) handleGetInfo(ctx context.Context, token tokenResponder, evt fi
+ 	token.WriteCtap2Response(ctx, evt, ctap2.StatusOK, encoded)
+ }
+ 
++// chromeTouchProbeRPID is the relying party Chrome names when it creates a
++// credential only to see which key the person touches (kDummyRpID in
++// Chromium's device/fido/make_credential_task.cc).
++const chromeTouchProbeRPID = ".dummy"
++
+ // handleMakeCredential implements CTAP2 authenticatorMakeCredential (passkey registration).
+ func (s *server) handleMakeCredential(ctx context.Context, token tokenResponder, evt fidohid.AuthEvent, payload []byte) {
+ 	log.Print("got Ctap2Cmd MakeCredential")
+@@ -571,6 +576,17 @@ func (s *server) handleMakeCredential(ctx context.Context, token tokenResponder,
+ 		return
+ 	}
+ 
++	// Chrome asks every key for a touch, with a throwaway credential for this
++	// relying party, when a request is one the key can't satisfy, such as a
++	// passkey sign-in needing user verification. A touch ends the whole
++	// request, a phone's QR code with it, and Chrome ignores a refusal, so
++	// refuse it without asking.
++	if req.RP.ID == chromeTouchProbeRPID {
++		log.Print("MakeCredential: refused Chrome's touch probe without asking")
++		token.WriteCtap2Response(ctx, evt, ctap2.StatusOperationDenied, nil)
++		return
++	}
++
+ 	if len(req.ClientDataHash) != 32 {
+ 		log.Printf("MakeCredential: invalid clientDataHash length %d", len(req.ClientDataHash))
+ 		token.WriteCtap2Response(ctx, evt, ctap2.StatusInvalidCbor, nil)
+diff --git a/main_test.go b/main_test.go
+index a587395..5537f15 100644
+--- a/main_test.go
++++ b/main_test.go
+@@ -1195,6 +1195,33 @@ func TestMakeCredential_NilOptionsOK(t *testing.T) {
+ 	}
+ }
+ 
++// Chrome's touch probe is refused without asking, and a real registration
++// straight after it still asks: the refusal leaves nothing for the verifier's
++// cache to ride on.
++func TestMakeCredential_RefusesChromesTouchProbeWithoutAsking(t *testing.T) {
++	verifier := &fakeVerifier{nextResult: VerifyResult{OK: true}}
++	s := newTestServer(t, newCachingVerifier(verifier), &fakePinentry{})
++
++	resp := &fakeResponder{}
++	probe := makeMakeCredCBOR(t, ".dummy", "", "dummy", false, false)
++	s.handleMakeCredential(context.Background(), resp, fidohid.AuthEvent{}, probe)
++	if got := resp.lastCtap2().status; got != ctap2.StatusOperationDenied {
++		t.Fatalf("expected StatusOperationDenied (0x27) for Chrome's probe, got 0x%02x", got)
++	}
++	if verifier.callCount != 0 {
++		t.Fatalf("Chrome's probe asked the person %d times", verifier.callCount)
++	}
++
++	site := makeMakeCredCBOR(t, "site.example", "Site", "user", false, false)
++	s.handleMakeCredential(context.Background(), resp, fidohid.AuthEvent{}, site)
++	if got := resp.lastCtap2().status; got != ctap2.StatusOK {
++		t.Fatalf("expected StatusOK for a registration after the probe, got 0x%02x", got)
++	}
++	if verifier.callCount != 1 || verifier.prompts[0] != "FIDO2 Register: site.example" {
++		t.Fatalf("a registration after the probe wasn't asked once: %v", verifier.prompts)
++	}
++}
++
+ // MakeCredential with uv=true MUST be rejected when the verifier doesn't
+ // actually verify identity (e.g. pinentry-only mode).
+ func TestMakeCredential_UVRequestedButVerifierIsUPOnly(t *testing.T) {
