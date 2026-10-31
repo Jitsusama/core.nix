@@ -47,16 +47,24 @@ Provider {
         if (words === "" || !signedIn)
             return null;
         const key = "verb:slack:search";
-        return provider.entering(provider.thing({
+        const inside = () => provider.found(words);
+        // Return steps in by itself, having no act of its own, so the step
+        // holds the very row the launcher gave, knowing who ended the
+        // search with it; a `run` stepping in would hold one that doesn't,
+        // and the step wouldn't be made again once Slack answers.
+        return provider.thing({
             key: `${key}:${words.toLowerCase()}`,
             name: Words.name(key, "", { words: words }),
             glyph: Words.glyph(key),
             hue: "action",
             side: "",
             note: "",
+            verb: "more",
             // What's found inside are things with acts of their own.
-            nested: true
-        }), () => provider.found(words));
+            nested: true,
+            verbs: inside,
+            targets: inside
+        });
     }
 
     // A Slack message's words beside a row, and the sentences it tells in
