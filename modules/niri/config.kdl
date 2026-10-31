@@ -34,6 +34,13 @@ input {
         map-to-output "eDP-1"
     }
 
+    // A pen draws on that same panel. Unmapped, niri stretches it across
+    // every screen, not keeping the panel's shape, so a docked pen's tip
+    // and its pointer part.
+    tablet {
+        map-to-output "eDP-1"
+    }
+
     // Focus follows the pointer, as it did in i3, without scrolling the
     // view to reveal a window the pointer only grazes.
     focus-follows-mouse max-scroll-amount="0%"
