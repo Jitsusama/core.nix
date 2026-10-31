@@ -12,6 +12,37 @@
 let
   cfg = config.jitsusama.update-to-main;
   inherit (lib) mkOption types;
+
+  # Whose signatures on a main's head let it be built: the machine's own
+  # repository's, or a followed input's.
+  signers = {
+    ssh = mkOption {
+      type = types.listOf types.singleLineStr;
+      default = [ ];
+      description = ''
+        SSH signers whose signature on main's head lets it be built, as
+        lines of git's allowed-signers file: a principal, then the key.
+      '';
+      example = [ ''someone namespaces="git" ssh-ed25519 AAAA...'' ];
+    };
+    openpgp = mkOption {
+      type = types.listOf types.path;
+      default = [ ];
+      description = ''
+        OpenPGP public keys, each an armoured file, whose signature on
+        main's head lets it be built, such as the key a forge signs its
+        merges with.
+      '';
+    };
+  };
+  signersFor = given: {
+    ssh =
+      if given.ssh == [ ] then
+        null
+      else
+        pkgs.writeText "update-to-main-signers" (lib.concatLines given.ssh);
+    inherit (given) openpgp;
+  };
 in
 {
   options.jitsusama.update-to-main = {
@@ -30,25 +61,42 @@ in
       description = "The flake attribute of the machine's system in that repository.";
       example = "nixosConfigurations.laptop.config.system.build.toplevel";
     };
-    signers = {
-      ssh = mkOption {
-        type = types.listOf types.singleLineStr;
-        default = [ ];
-        description = ''
-          SSH signers whose signature on main's head lets it be built, as
-          lines of git's allowed-signers file: a principal, then the key.
-        '';
-        example = [ ''someone namespaces="git" ssh-ed25519 AAAA...'' ];
-      };
-      openpgp = mkOption {
-        type = types.listOf types.path;
-        default = [ ];
-        description = ''
-          OpenPGP public keys, each an armoured file, whose signature on
-          main's head lets it be built, such as the key a forge signs its
-          merges with.
-        '';
-      };
+    inherit signers;
+    follows = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            repository = mkOption {
+              type = types.str;
+              description = "The input's own repository, as git fetches it.";
+            };
+            branch = mkOption {
+              type = types.str;
+              default = "main";
+              description = "The branch whose head the input follows.";
+            };
+            inherit signers;
+          };
+        }
+      );
+      default = { };
+      description = ''
+        The flake's inputs, by their names in it, that follow their own
+        repository's main rather than where the flake's lock pins them:
+        each built at its main once one of its signers signed it and it
+        descends from the lock's commit and from what the machine last
+        followed. Main counts as moved when any of them moved.
+      '';
+    };
+    elsewhere = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Whether the machine builds only the light pieces of its system
+        itself, those nixpkgs marks to build where they're asked for,
+        leaving every other to the Nix daemon's builders and failing
+        rather than building one here when none takes it.
+      '';
     };
     hosted = mkOption {
       type = types.nullOr (
@@ -168,7 +216,11 @@ in
         assertion = cfg.hosted == null || (cfg.signers.ssh == [ ] && cfg.signers.openpgp == [ ]);
         message = "jitsusama.update-to-main.hosted trusts the host, so it takes no signers.";
       }
-    ];
+    ]
+    ++ lib.mapAttrsToList (name: follow: {
+      assertion = follow.signers.ssh != [ ] || follow.signers.openpgp != [ ];
+      message = "jitsusama.update-to-main.follows.${name} needs a signer, or nothing it follows is built.";
+    }) cfg.follows;
     jitsusama.update-to-main = {
       health = lib.mkBefore [
         [
@@ -194,15 +246,12 @@ in
             health_within = cfg.healthWithin;
             battery_floor = cfg.batteryFloor;
             group = "update-ask";
-            signers = {
-              ssh =
-                if cfg.signers.ssh == [ ] then
-                  null
-                else
-                  pkgs.writeText "update-to-main-signers" (lib.concatLines cfg.signers.ssh);
-              openpgp = cfg.signers.openpgp;
-            };
-            inherit (cfg) hosted;
+            signers = signersFor cfg.signers;
+            follows = lib.mapAttrs (_: follow: {
+              inherit (follow) repository branch;
+              signers = signersFor follow.signers;
+            }) cfg.follows;
+            inherit (cfg) hosted elsewhere;
             # The running system's path, so once it has switched the newest
             # update-to-main serves.
             program = "/run/current-system/sw/bin/update-to-main";

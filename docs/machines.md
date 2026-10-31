@@ -150,6 +150,25 @@ jitsusama.update-to-main = {
 };
 ```
 
+An input the machine should run at its own main, rather than wait for the
+flake's lock to move, is named in `follows` with its repository and
+signers. Root fetches that main, checks its signature and that it descends
+from the lock's commit and from what it last followed, and builds with the
+input overridden to it; an ask with main where it was builds again when a
+followed main moved. With `elsewhere = true`, the machine builds only the
+pieces nixpkgs marks light itself and sends every other to the Nix
+daemon's builders, failing rather than build one when none takes it:
+
+```nix
+jitsusama.update-to-main = {
+  follows.core = {
+    repository = "https://github.com/someone/core";
+    signers.openpgp = [ ./forge-merges.asc ];
+  };
+  elsewhere = true;
+};
+```
+
 ## Formatting and Linting
 
 A machine repository formats and lints its code as core does by giving

@@ -4,6 +4,7 @@
 //! any of it.
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -42,6 +43,13 @@ pub struct Config {
     /// over TLS, rather than what a signature vouches for: for a host whose
     /// merges aren't signed.
     pub hosted: Option<Hosted>,
+    /// The flake's inputs that follow their own repository's main, by
+    /// their names in the flake, rather than staying where its lock pins
+    /// them until the lock moves.
+    pub follows: BTreeMap<String, Follow>,
+    /// Whether the build leaves everything but what nixpkgs marks light to
+    /// the Nix daemon's builders, failing rather than building it here.
+    pub elsewhere: bool,
     /// Commands that each have to succeed once the switch is done, within
     /// `health_within` seconds, or the machine goes back.
     pub health: Vec<Vec<String>>,
@@ -95,6 +103,17 @@ pub struct Hosted {
     pub inputs: Vec<String>,
 }
 
+/// An input's own repository, whose main it follows once a key in
+/// `signers` signed it and it descends from what the lock and the machine
+/// last had.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Follow {
+    pub repository: String,
+    pub branch: String,
+    pub signers: Signers,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tools {
@@ -141,5 +160,15 @@ impl Config {
     /// The keyring holding only the PGP keys that count.
     pub fn keyring(&self) -> PathBuf {
         self.state.join("gnupg")
+    }
+
+    /// The folder root keeps each followed input's copy and keyring in.
+    pub fn follows_folder(&self) -> PathBuf {
+        self.state.join("follows")
+    }
+
+    /// The file holding the commit of each input it last followed.
+    pub fn followed_file(&self) -> PathBuf {
+        self.state.join("followed.json")
     }
 }

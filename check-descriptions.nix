@@ -1515,7 +1515,10 @@
     the update that runs, refuses any other ask, and serves on a socket only its group writes; and a
     hosted main, unsigned, is built from its flake's folder with root reading the account's
     checkout, fetched there first when it lacks main, its private inputs fetched by their locks,
-    refused when rewritten, and builds nothing without a token
+    refused when rewritten, and builds nothing without a token; and a followed input is built at
+    its own signed main past the lock, builds again when only it moved, and is refused unsigned or
+    behind its lock; and building elsewhere sends only the heavy pieces away and builds nothing
+    here without a builder
   '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
@@ -1831,8 +1834,10 @@
     with main where it was builds nothing; an account outside it can't ask, an unsigned main is
     refused, and a main the health check refuses is switched to and then gone back from; and a
     machine following its host's word builds main unsigned, root reading the objects someone
-    fetched into their checkout and the token asked as someone with none of root's groups, and
-    with no token builds nothing
+    fetched into their checkout and the token asked as someone with none of root's groups, with
+    no token builds nothing, and building elsewhere with no builders refuses a piece not marked
+    light; and a signed commit to a followed input's main alone moves the machine, an unsigned
+    one is refused
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in

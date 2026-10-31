@@ -5,7 +5,9 @@
 # commit chooses which system main is. machine trusts main by its signature;
 # hosted trusts what its repository names, reading its objects from
 # someone's checkout and asking for a token as someone, the flake in a
-# folder of the repository. The tests are update-to-main-vm-test.py, which
+# folder of the repository, and builds only light pieces itself, having no
+# builders; following's flake has an input, core, that follows its own
+# signed main, whose file names the system. The tests are update-to-main-vm-test.py, which
 # pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
@@ -89,6 +91,18 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         checkout = "/home/someone/machines";
         directory = "machine";
         token = [ "${token}" ];
+      };
+      elsewhere = true;
+    };
+  };
+
+  nodes.following = machine {
+    jitsusama.update-to-main = {
+      repository = "file:///srv/machines.git";
+      signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
+      follows.core = {
+        repository = "file:///srv/core.git";
+        signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
       };
     };
   };

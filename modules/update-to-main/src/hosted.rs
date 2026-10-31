@@ -8,7 +8,7 @@
 //! to the hash its lock names.
 
 use crate::config::{Config, Hosted};
-use crate::git;
+use crate::git::{self, Repo};
 use crate::run::{self, Account, Failure};
 use serde_json::Value;
 use std::fs;
@@ -28,13 +28,14 @@ const FETCH: &str =
 /// isn't there yet.
 pub fn head(config: &Config, hosted: &Hosted) -> Result<String, Failure> {
     let account = run::account(&hosted.user)?;
-    git::make_copy(config)?;
+    let main = Repo::main(config);
+    git::make_copy(&main)?;
     let token = token(hosted, &account)?;
     let head = ask(config, &token)?;
     borrow(config, hosted, &account)?;
-    if !git::has(config, &head) {
+    if !git::has(&main, &head) {
         fetch(config, hosted, &account)?;
-        if !git::has(config, &head) {
+        if !git::has(&main, &head) {
             return Err(Failure::new(format!(
                 "{} isn't in {} even after fetching main there",
                 git::short(&head),
@@ -81,7 +82,7 @@ fn token(hosted: &Hosted, account: &Account) -> Result<String, Failure> {
 /// Main's head as the host names it. The token goes to git in its
 /// environment, which only root reads, rather than in its arguments.
 fn ask(config: &Config, token: &str) -> Result<String, Failure> {
-    let mut command = git::git(config);
+    let mut command = git::git(&Repo::main(config));
     command
         .env("GIT_CONFIG_COUNT", "1")
         .env("GIT_CONFIG_KEY_0", "http.extraHeader")
@@ -155,7 +156,7 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
     let _ = fs::remove_dir_all(&source);
     let into = source.join(commit);
     fs::create_dir_all(&into).map_err(|e| Failure::new(format!("{}: {e}", into.display())))?;
-    let mut archive = git::git(config);
+    let mut archive = git::git(&Repo::main(config));
     archive.args(["archive", "--format=tar", commit]);
     if !hosted.directory.is_empty() {
         archive.args(["--", &hosted.directory]);
@@ -198,7 +199,7 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
 }
 
 /// An input's lock, by its name among the flake's own inputs.
-fn locked<'a>(lock: &'a Value, name: &str) -> Result<&'a Value, Failure> {
+pub fn locked<'a>(lock: &'a Value, name: &str) -> Result<&'a Value, Failure> {
     let missing = || Failure::new(format!("the flake's lock has no input {name}"));
     let root = lock["root"].as_str().ok_or_else(missing)?;
     let node = lock["nodes"][root]["inputs"][name]

@@ -2,6 +2,7 @@
 //! ending names the commit the machine runs after it, so whoever keeps the
 //! last answer knows it even after a rollback.
 
+use crate::follows::Followed;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,9 +24,18 @@ pub enum Line {
         /// What the switch restarted on its own, such as a Mac's Linux VM,
         /// so an asker knows what of theirs ended.
         restarted: Vec<String>,
+        /// The commit each input that follows its own main is at, when
+        /// any does.
+        #[serde(default, skip_serializing_if = "Followed::is_empty")]
+        followed: Followed,
     },
-    /// Main is the commit the machine last switched to; nothing was built.
-    Unchanged { commit: String },
+    /// Main, and each followed input's, is where the machine last switched
+    /// to; nothing was built.
+    Unchanged {
+        commit: String,
+        #[serde(default, skip_serializing_if = "Followed::is_empty")]
+        followed: Followed,
+    },
     /// It went wrong, and the machine is back on the commit it ran.
     Failed {
         commit: Option<String>,
