@@ -1,0 +1,289 @@
+diff --git a/niri-config/src/debug.rs b/niri-config/src/debug.rs
+index c0779a4..8773314 100644
+--- a/niri-config/src/debug.rs
++++ b/niri-config/src/debug.rs
+@@ -25,6 +25,7 @@ pub struct Debug {
+     pub honor_xdg_activation_with_invalid_serial: bool,
+     pub deactivate_unfocused_windows: bool,
+     pub skip_cursor_only_updates_during_vrr: bool,
++    pub hold_first_frame_for_background: bool,
+ }
+ 
+ #[derive(knuffel::Decode, Debug, Default, PartialEq)]
+@@ -71,6 +72,8 @@ pub struct DebugPart {
+     pub deactivate_unfocused_windows: Option<Flag>,
+     #[knuffel(child)]
+     pub skip_cursor_only_updates_during_vrr: Option<Flag>,
++    #[knuffel(child)]
++    pub hold_first_frame_for_background: Option<Flag>,
+ }
+ 
+ impl MergeWith<DebugPart> for Debug {
+@@ -95,6 +98,7 @@ impl MergeWith<DebugPart> for Debug {
+             honor_xdg_activation_with_invalid_serial,
+             deactivate_unfocused_windows,
+             skip_cursor_only_updates_during_vrr,
++            hold_first_frame_for_background,
+         );
+ 
+         merge_clone_opt!((self, part), preview_render, render_drm_device);
+diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
+index e1ef640..4c26b62 100644
+--- a/niri-config/src/lib.rs
++++ b/niri-config/src/lib.rs
+@@ -2266,6 +2266,7 @@ mod tests {
+                 honor_xdg_activation_with_invalid_serial: false,
+                 deactivate_unfocused_windows: false,
+                 skip_cursor_only_updates_during_vrr: false,
++                hold_first_frame_for_background: false,
+             },
+             workspaces: [
+                 Workspace {
+diff --git a/src/niri.rs b/src/niri.rs
+index ff041ec..cc04ec2 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -186,6 +186,10 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
+ 
+ const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
+ 
++/// How long after starting an output's first frame may wait for a background
++/// or overlay layer surface to map (debug.hold-first-frame-for-background).
++const FIRST_FRAME_HOLD: Duration = Duration::from_secs(5);
++
+ // We'll try to send frame callbacks at least once a second. We'll make a timer that fires once a
+ // second, so with the worst timing the maximum interval between two frame callbacks for a surface
+ // should be ~1.995 seconds.
+@@ -221,6 +225,11 @@ pub struct Niri {
+     /// Whether the at-startup=true window rules are active.
+     pub is_at_startup: bool,
+ 
++    /// Whether an output's first frame may still wait for a background or
++    /// overlay layer surface, so the screen keeps what the boot splash left
++    /// on it until the desktop or greeter has drawn.
++    pub holding_first_frames: bool,
++
+     /// Clock for driving animations.
+     pub clock: Clock,
+ 
+@@ -494,6 +503,8 @@ pub struct OutputState {
+     pub lock_render_state: LockRenderState,
+     pub lock_surface: Option<LockSurface>,
+     pub lock_color_buffer: SolidColorBuffer,
++    /// Whether a frame has been drawn on this output yet.
++    pub first_frame_shown: bool,
+     screen_transition: Option<ScreenTransition>,
+     /// Damage tracker used for the debug damage visualization.
+     pub debug_damage_tracker: OutputDamageTracker,
+@@ -2494,6 +2505,14 @@ impl Niri {
+             )
+             .unwrap();
+ 
++        event_loop
++            .insert_source(Timer::from_duration(FIRST_FRAME_HOLD), |_, _, state| {
++                state.niri.holding_first_frames = false;
++                state.niri.queue_redraw_all();
++                TimeoutAction::Drop
++            })
++            .unwrap();
++
+         drop(config_);
+         let mut niri = Self {
+             config,
+@@ -2508,6 +2527,7 @@ impl Niri {
+             is_session_instance,
+             start_time: Instant::now(),
+             is_at_startup: true,
++            holding_first_frames: true,
+             clock: animation_clock,
+ 
+             layout,
+@@ -2890,6 +2910,8 @@ impl Niri {
+             lock_render_state,
+             lock_surface: None,
+             lock_color_buffer: SolidColorBuffer::new(size, CLEAR_COLOR_LOCKED),
++            // A screen that comes once the hold is over isn't held.
++            first_frame_shown: !self.holding_first_frames,
+             screen_transition: None,
+             debug_damage_tracker: OutputDamageTracker::from_output(&output),
+         };
+@@ -4592,6 +4614,34 @@ impl Niri {
+         }
+     }
+ 
++    /// Whether this output's first frame waits, as niri starts with
++    /// debug.hold-first-frame-for-background on a screen of its own rather
++    /// than in a window (winit): until a background or overlay
++    /// layer surface maps on it (the desktop's wallpaper, or a greeter), for
++    /// at most FIRST_FRAME_HOLD. Until then the screen keeps the boot
++    /// splash's last frame rather than niri's bare backdrop. It never waits
++    /// while the session locks, since locking needs a frame drawn.
++    fn first_frame_held(&self, backend: &Backend, output: &Output) -> bool {
++        if !self.holding_first_frames
++            || !self.config.borrow().debug.hold_first_frame_for_background
++            || matches!(backend, Backend::Winit(_))
++            || !matches!(self.lock_state, LockState::Unlocked)
++        {
++            return false;
++        }
++        if self
++            .output_state
++            .get(output)
++            .is_none_or(|state| state.first_frame_shown)
++        {
++            return false;
++        }
++        !layer_map_for_output(output).layers().any(|surface| {
++            matches!(surface.layer(), Layer::Background | Layer::Overlay)
++                && self.mapped_layer_surfaces.contains_key(surface)
++        })
++    }
++
+     fn redraw(&mut self, backend: &mut Backend, output: &Output) {
+         let _span = tracy_client::span!("Niri::redraw");
+ 
+@@ -4610,7 +4660,7 @@ impl Niri {
+         self.update_render_elements(Some(output));
+ 
+         let mut res = RenderResult::Skipped;
+-        if self.monitors_active {
++        if self.monitors_active && !self.first_frame_held(backend, output) {
+             let state = self.output_state.get_mut(output).unwrap();
+             state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
+             state.unfinished_animations_remain |=
+@@ -4638,7 +4688,24 @@ impl Niri {
+         }
+ 
+         let is_locked = self.is_locked();
++        let held = self.config.borrow().debug.hold_first_frame_for_background
++            && !matches!(backend, Backend::Winit(_));
+         let state = self.output_state.get_mut(output).unwrap();
++        if res != RenderResult::Skipped && !state.first_frame_shown {
++            state.first_frame_shown = true;
++            if held {
++                let why = if self.holding_first_frames {
++                    "once a background or overlay surface mapped"
++                } else {
++                    "as its hold ran out"
++                };
++                info!(
++                    "{}: first frame drawn {why}, {} ms after starting",
++                    output.name(),
++                    self.start_time.elapsed().as_millis()
++                );
++            }
++        }
+ 
+         if res == RenderResult::Skipped {
+             // Update the redraw state on failed render.
+diff --git a/src/tests/first_frame.rs b/src/tests/first_frame.rs
+new file mode 100644
+index 0000000..7ceaa5e
+--- /dev/null
++++ b/src/tests/first_frame.rs
+@@ -0,0 +1,93 @@
++use niri_config::Config;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
++use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::Anchor;
++
++use super::*;
++use crate::tests::client::LayerConfigureProps;
++
++/// A niri holding its first frames, with one screen.
++fn holding() -> Fixture {
++    let mut config = Config::default();
++    config.debug.hold_first_frame_for_background = true;
++    let mut f = Fixture::with_config(config);
++    f.add_output(1, (1920, 1080));
++    redraw(&mut f);
++    f
++}
++
++/// Draws what's queued, as niri does after each turn of its loop; the
++/// fixture's loop turns niri's only when a client has said something.
++fn redraw(f: &mut Fixture) {
++    f.niri_state().refresh_and_flush_clients();
++}
++
++fn first_frame_shown(f: &mut Fixture) -> bool {
++    let output = f.niri_output(1);
++    f.niri().output_state[&output].first_frame_shown
++}
++
++/// Maps a layer surface covering the screen on the given layer.
++fn map_layer(f: &mut Fixture, layer: Layer) {
++    let id = f.add_client();
++    let created = f.client(id).create_layer(None, layer, "");
++    let surface = created.surface.clone();
++    created.set_configure_props(LayerConfigureProps {
++        anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top | Anchor::Bottom),
++        ..Default::default()
++    });
++    created.commit();
++    f.roundtrip(id);
++
++    let mapped = f.client(id).layer(&surface);
++    mapped.attach_new_buffer();
++    mapped.set_size(1920, 1080);
++    mapped.ack_last_and_commit();
++    f.double_roundtrip(id);
++    redraw(f);
++}
++
++#[test]
++fn a_held_screen_waits_for_a_background_surface() {
++    let mut f = holding();
++    assert!(!first_frame_shown(&mut f));
++
++    map_layer(&mut f, Layer::Top);
++    assert!(!first_frame_shown(&mut f), "a top surface ended the hold");
++
++    map_layer(&mut f, Layer::Background);
++    assert!(first_frame_shown(&mut f), "the background surface never ended the hold");
++}
++
++#[test]
++fn an_overlay_surface_ends_the_hold_as_a_greeter_would() {
++    let mut f = holding();
++    map_layer(&mut f, Layer::Overlay);
++    assert!(first_frame_shown(&mut f));
++}
++
++#[test]
++fn the_hold_runs_out() {
++    let mut f = holding();
++    assert!(!first_frame_shown(&mut f));
++
++    f.niri().holding_first_frames = false;
++    f.niri().queue_redraw_all();
++    redraw(&mut f);
++    assert!(first_frame_shown(&mut f));
++
++    // A screen plugged in later, as at a dock, is drawn at once.
++    f.add_output(2, (1920, 1080));
++    let docked = f.niri_output(2);
++    assert!(
++        f.niri().output_state[&docked].first_frame_shown,
++        "a screen that came after the hold was held"
++    );
++}
++
++#[test]
++fn nothing_waits_without_the_setting() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    redraw(&mut f);
++    assert!(first_frame_shown(&mut f));
++}
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index 92a4056..7c66de5 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -5,6 +5,7 @@ mod fixture;
+ mod server;
+ 
+ mod animations;
++mod first_frame;
+ mod floating;
+ mod fullscreen;
+ mod layer_shell;

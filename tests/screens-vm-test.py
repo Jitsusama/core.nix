@@ -516,6 +516,24 @@ def test_the_margin_shows_a_mark_and_dictation_listens_first(marked: Screens) ->
     marked.wait_for_surfaces("margin", "dictation")
 
 
+def test_niri_held_each_screens_first_frame_for_the_desktop(booted: Screens) -> None:
+    """Each screen's first frame was held for the wallpaper, or until niri's hold ran out."""
+    # niri's lines start with its time and level, in colour.
+    said = re.sub(
+        r"\x1b\[[0-9;]*m",
+        "",
+        booted.machine.succeed("journalctl -b -o cat | grep -a -F ': first frame drawn ' || true"),
+    )
+    print(said)
+    for screen in ("Virtual-1", "Virtual-2"):
+        assert re.search(
+            rf" {screen}: first frame drawn (once a background or overlay surface mapped"
+            r"|as its hold ran out), \d+ ms after starting$",
+            said,
+            re.MULTILINE,
+        ), f"niri never said it held {screen}'s first frame: {said}"
+
+
 def test_desk_facts_says_what_the_screen_is_before_it_goes(booted: Screens) -> None:
     """Desk-facts says what the screen is before it goes."""
     booted.displays_say(named=True)

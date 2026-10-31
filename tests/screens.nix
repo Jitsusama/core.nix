@@ -1,6 +1,7 @@
 # Boots the graphical role in a virtual machine with niri straight on its
 # screen, not nested in Cage as the desktop test runs it, so the screen can
-# really go and come back, as at an undock. The shell's surfaces must be
+# really go and come back, as at an undock. niri must first have held each
+# screen's first frame for the wallpaper. The shell's surfaces must be
 # there again after: the launcher, a notice that was up, the margin's marks
 # and dictation listening. Then the console is switched away and back, and
 # the machine sleeps as a laptop does and wakes at a key, and they must all

@@ -70,6 +70,17 @@
     # nothing plugged in, working for others, lit a panel nobody could
     # see. The patch (shut-lid-darkens-the-panel.patch) darkens it either
     # way; opening the lid lights it again.
+    #
+    # niri draws its first frame the moment it starts, its bare backdrop,
+    # so the boot splash's picture went dark for the second or more until
+    # the shell's wallpaper was drawn. The patch (hold-first-frame.patch,
+    # made on the rest) gives `debug { hold-first-frame-for-background; }`:
+    # on a screen of its own, not nested in a window, an output's first
+    # frame waits until a background or overlay layer surface maps on it,
+    # the wallpaper or the greeter, for at most 5 seconds, and never while
+    # the session locks, so the screen keeps what the splash left until
+    # then. Its tests run as niri builds, and the screens test, whose niri is
+    # on its screens as on a laptop, reads that it held.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -90,6 +101,7 @@
         })
         ./shut-lid-darkens-the-panel.patch
         ./srgb-gamut.patch
+        ./hold-first-frame.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
