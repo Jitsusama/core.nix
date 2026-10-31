@@ -61,6 +61,8 @@ in
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"
+        # The profile's last, for the program a summary opens in: xdg-open
+        # finds it by its desktop entry, which names it bare.
         "PATH=${
           lib.makeBinPath [
             pkgs.libnotify
@@ -69,7 +71,7 @@ in
             pkgs.wl-clipboard
             pkgs.xdg-utils
           ]
-        }"
+        }:${config.home.profileDirectory}/bin"
       ]
       ++ lib.optional (words != [ ]) "DICTATION_WORDS=${wordsFile}";
     };
