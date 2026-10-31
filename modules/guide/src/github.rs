@@ -3,7 +3,8 @@
 //! own screen says what to type where, then each key the account's
 //! modules mark for GitHub added as they say, as a login key or a signing
 //! key. Run as the account, signed in, since the installed guide runs at
-//! boot before there's a network (`guide github`).
+//! boot before there's a network: the first of `guide finish`'s steps
+//! (finish.rs).
 //!
 //! The sign-in is GitHub's command line's own (its OAuth app), so the token
 //! it gives is handed to gh, which keeps it: gh's git credential helper
@@ -87,7 +88,8 @@ impl Account {
         format!("{}/guide-github-code.json", self.runtime)
     }
 
-    fn given(&self) -> Given<'_> {
+    /// The account's own session, as gh and a machine's own checks need it.
+    pub(crate) fn given(&self) -> Given<'_> {
         let mut plain = vec![
             ("HOME", self.home.as_str()),
             ("XDG_RUNTIME_DIR", self.runtime.as_str()),
@@ -436,7 +438,7 @@ impl Step for AddKeys {
     }
 }
 
-/// Every step of `guide github`, in order.
+/// Every step of adding the account's keys to GitHub, in order.
 pub fn steps(account: &Account) -> Vec<Box<dyn Step>> {
     vec![
         Box::new(AskForCode {

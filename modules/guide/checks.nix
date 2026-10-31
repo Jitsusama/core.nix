@@ -28,7 +28,7 @@ onLinux {
   # The keys an account's modules name in the TPM reach what the installed
   # guide reads, each with its account and a comment saying whose and
   # where: tpm-signing's two and ssh-tpm-agent's login key, which
-  # tpm-signing brings. Each says how `guide github` adds it, titled by
+  # tpm-signing brings. Each says how `guide finish` adds it, titled by
   # the machine.
   the-guide-makes-the-keys-the-modules-name =
     let
@@ -97,6 +97,58 @@ onLinux {
           }
         ]
         && lib.any (check: lib.hasPrefix "Only one account" check.message) refused
+      );
+
+  # A step a machine's repo adds once someone is signed in reaches what
+  # `guide finish` reads, its check by the path of its program; one given
+  # GitHub's id, or another's, is refused.
+  the-guide-finishes-with-the-machines-own-steps =
+    let
+      check = pkgs.writeShellScriptBin "enrolled" "exit 0";
+      step = id: {
+        inherit id;
+        title = "Enrol this machine with work";
+        command = "enroll";
+        about = "It signs you in through the browser.";
+        done = check;
+      };
+      machine =
+        steps:
+        bareNixos [
+          self.nixosModules.disko
+          self.nixosModules.guide
+          { jitsusama.guide.onceSignedIn = steps; }
+        ];
+      facts =
+        # Read for what it says, the check's program's path among it.
+        builtins.fromJSON (
+          builtins.unsafeDiscardStringContext
+            (machine [ (step "enrol") ]).config.environment.etc."guide/machine.json".text
+        );
+      refused =
+        steps:
+        lib.any (
+          check: !check.assertion && lib.hasPrefix "Each of jitsusama.guide.onceSignedIn's" check.message
+        ) (machine steps).config.assertions;
+    in
+    holds "the-guide-finishes-with-the-machines-own-steps"
+      "`guide finish` doesn't see the steps a machine's repo adds, or two with one id aren't refused."
+      (
+        facts.once_signed_in == [
+          {
+            id = "enrol";
+            title = "Enrol this machine with work";
+            command = "enroll";
+            about = "It signs you in through the browser.";
+            done = "${check}/bin/enrolled";
+          }
+        ]
+        && refused [ (step "github-keys") ]
+        && refused [
+          (step "enrol")
+          (step "enrol")
+        ]
+        && !(refused [ (step "enrol") ])
       );
 
   # The guide's tests run as it builds: each step proven by observing it

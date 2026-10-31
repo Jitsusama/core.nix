@@ -1101,6 +1101,10 @@
     the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its
     CSME link
   '';
+  the-guide-finishes-with-the-machines-own-steps = ''
+    `guide finish` sees each step a machine's repo adds once someone is signed in, its check by
+    its program's path, and a step given GitHub's id or another's is refused
+  '';
   the-guide-keeps-one-accounts-spare-on-the-yubikeys = ''
     the installed guide keeps the spare SSH key of the one account `jitsusama.yubikeySpare` names
     on each YubiKey, and a machine where two accounts want one is refused

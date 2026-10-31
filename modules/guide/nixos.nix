@@ -130,7 +130,7 @@ in
               }
             );
             default = null;
-            description = "How `guide github` adds it to GitHub, or null to leave it off.";
+            description = "How `guide finish` adds it to GitHub, or null to leave it off.";
           };
         };
       }
@@ -143,6 +143,47 @@ in
     '';
   };
 
+  options.jitsusama.guide.onceSignedIn = lib.mkOption {
+    type = lib.types.listOf (
+      lib.types.submodule {
+        options = {
+          id = lib.mkOption {
+            type = lib.types.strMatching "[a-z][a-z0-9-]*";
+            description = "What the guide's logs name it by, kept for good.";
+          };
+          title = lib.mkOption {
+            type = lib.types.str;
+            description = "What it does, in one line of a person's words.";
+          };
+          command = lib.mkOption {
+            type = lib.types.str;
+            example = "enroll";
+            description = "What the person types for it, in another terminal.";
+          };
+          about = lib.mkOption {
+            type = lib.types.str;
+            description = "What it does, and what to look out for while it runs, in whole sentences.";
+          };
+          done = lib.mkOption {
+            type = lib.types.package;
+            description = ''
+              A program, run as the account, that exits 0 once the step is done,
+              printing what shows it, and otherwise prints what's still to do.
+              It only looks, since the guide runs it every few seconds.
+            '';
+          };
+        };
+      }
+    );
+    default = [ ];
+    description = ''
+      The machine's own steps once someone is signed in and online, which
+      `guide finish` walks after adding the account's keys to GitHub. Each is
+      a program of its own that the person runs in another terminal, such as
+      an employer's enrolment, and the guide goes on once its `done` says so.
+    '';
+  };
+
   config = {
     assertions = [
       {
@@ -151,6 +192,23 @@ in
           lib.concatMapStringsSep " and " (spare: spare.account) config.jitsusama.guide.spares
         } want to: set jitsusama.yubikeySpare = false for all but one.";
       }
+      (
+        let
+          ids = map (step: step.id) config.jitsusama.guide.onceSignedIn;
+          githubs = [
+            "github-code"
+            "github-sign-in"
+            "github-keys"
+          ];
+          all = ids ++ githubs;
+        in
+        {
+          assertion = lib.allUnique all;
+          message = "Each of jitsusama.guide.onceSignedIn's steps needs an id of its own, other than GitHub's (${lib.concatStringsSep ", " githubs}), and these are given twice: ${
+            lib.concatStringsSep ", " (lib.unique (lib.filter (id: lib.count (other: other == id) all > 1) ids))
+          }.";
+        }
+      )
     ];
 
     # Run by hand, the guide asks for root once through run0, which systemd
@@ -161,6 +219,15 @@ in
     environment.etc."guide/machine.json".text = builtins.toJSON {
       disk_name = config.jitsusama.disk.name;
       inherit (config.jitsusama.guide) keys spares;
+      once_signed_in = map (step: {
+        inherit (step)
+          id
+          title
+          command
+          about
+          ;
+        done = lib.getExe step.done;
+      }) config.jitsusama.guide.onceSignedIn;
     };
 
     # Every boot, before anyone signs in, the guide looks at the machine on
