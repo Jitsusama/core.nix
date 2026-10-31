@@ -51,6 +51,13 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+def test_throwaway_fails_open(desktop: Desktop) -> None:
+    """A throwaway that fails with the launcher open."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    raise AssertionError
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
