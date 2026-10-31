@@ -29,6 +29,18 @@ echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
 exit "$(cat "$here/status")"
 "#;
 
+/// Write a script to run through `cp`, so no thread of this process ever
+/// holds it open for writing: a test forking meanwhile would keep that
+/// handle until its child execs, and a script run then is refused as busy
+/// (ETXTBSY), which failed a run on 31 October.
+fn executable(path: &Path, script: &str) {
+    let draft = path.with_extension("draft");
+    fs::write(&draft, script).unwrap();
+    let copied = Command::new("cp").arg(&draft).arg(path).status().unwrap();
+    assert!(copied.success(), "copying {}", path.display());
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 /// nix as it builds here: it records its arguments and exits 0.
 const NIX: &str = r#"#!/bin/sh
 echo "$@" > "$(dirname "$0")/nix-was-given"
@@ -41,8 +53,7 @@ const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
 fn stand_ins(folder: &Path, status: u8) {
     for (name, script) in [("ssh", SSH), ("nix", NIX)] {
         let path = folder.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
     }
     fs::write(folder.join("status"), status.to_string()).unwrap();
 }
@@ -106,8 +117,7 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
     fs::create_dir(&bin).unwrap();
     for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
         let path = bin.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
     }
     fs::write(bin.join("status"), "0").unwrap();
     // A throwaway copy, as one cut from an archive is: git, but no
@@ -188,8 +198,7 @@ fn a_folders_ignored_files_stay_here_and_its_size_is_said() {
     fs::create_dir(&bin).unwrap();
     for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
         let path = bin.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
     }
     fs::write(bin.join("status"), "0").unwrap();
     let config = folder.path().join("gitconfig");
@@ -251,8 +260,7 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     );
     for (name, script) in [("ssh", NEARBY_SSH), ("nix", nix.as_str())] {
         let path = bin.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
     }
     fs::write(bin.join("status"), "0").unwrap();
     let copy = folder.path().join("copy");
@@ -357,8 +365,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     fs::create_dir(&bin).unwrap();
     for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
         let path = bin.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
     }
     fs::write(bin.join("status"), "0").unwrap();
     let zone = folder.path().join("zone");
@@ -458,8 +465,7 @@ fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     fs::create_dir(&bin).unwrap();
     for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
         let path = bin.join(name);
-        fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
     }
     fs::write(bin.join("status"), "0").unwrap();
     let config = folder.path().join("gitconfig");
@@ -547,8 +553,7 @@ impl Unpushed {
         fs::create_dir(&bin).unwrap();
         for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
             let path = bin.join(name);
-            fs::write(&path, script).unwrap();
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            executable(&path, script);
         }
         fs::write(bin.join("status"), "0").unwrap();
         let config = folder.path().join("gitconfig");

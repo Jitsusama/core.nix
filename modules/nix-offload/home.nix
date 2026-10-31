@@ -12,9 +12,24 @@ let
   cfg = config.jitsusama.nix-offload;
   offload = pkgs.callPackage ./offload/package.nix { };
   time = lib.types.strMatching "[0-2][0-9]:[0-5][0-9]";
-  standing = pkgs.writeText "nix-offload-standing" (
-    lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n") cfg.standing
-  );
+  builders =
+    name: list:
+    pkgs.writeText name (lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n") list);
+  standing = builders "nix-offload-standing" cfg.standing;
+  beside = builders "nix-offload-beside" cfg.beside;
+  builder = lib.types.submodule {
+    options = {
+      address = lib.mkOption {
+        type = lib.types.str;
+        description = "Where it answers, `host:port`, when it can be reached.";
+      };
+      line = lib.mkOption {
+        type = lib.types.str;
+        description = "Its Nix machines line.";
+      };
+    };
+  };
+  names = cfg.standing != [ ] || cfg.beside != [ ];
   sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
 in
 {
@@ -61,20 +76,7 @@ in
       description = "The time of day every builder is given back by.";
     };
     standing = lib.mkOption {
-      type = lib.types.listOf (
-        lib.types.submodule {
-          options = {
-            address = lib.mkOption {
-              type = lib.types.str;
-              description = "Where it answers, `host:port`, when it can be reached.";
-            };
-            line = lib.mkOption {
-              type = lib.types.str;
-              description = "Its Nix machines line.";
-            };
-          };
-        }
-      );
+      type = lib.types.listOf builder;
       default = [ ];
       description = ''
         Builders always there, such as other machines nearby, named while they
@@ -82,6 +84,16 @@ in
         every build: only one that names /run/nix-offload/machines-with-standing
         (`--builders @/run/nix-offload/machines-with-standing`) reaches them,
         beside any lent one, so a build of code they mustn't hold never does.
+      '';
+    };
+    beside = lib.mkOption {
+      type = lib.types.listOf builder;
+      default = [ ];
+      description = ''
+        Builders always there that may take any of this machine's work, such as
+        a second machine for the same work, named to every build beside any
+        lent one while they answer, for their big-parallel work alone, as the
+        lent one is. Never named with the standing builders.
       '';
     };
     nearby = lib.mkOption {
@@ -159,7 +171,7 @@ in
     };
   };
 
-  config = lib.mkIf (cfg.helper != null || cfg.standing != [ ] || sendsElsewhere) {
+  config = lib.mkIf (cfg.helper != null || names || sendsElsewhere) {
     home.packages = [ offload ];
 
     xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
@@ -183,23 +195,26 @@ in
       ) cfg.nearby;
     };
 
-    systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || cfg.standing != [ ]) {
+    systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || names) {
       Unit.Description = "Names this machine's builders, lending one while its queue has builds one could take";
       Service = {
         ExecStart = lib.concatStringsSep " " (
-          if cfg.helper == null then
-            [
-              (lib.getExe offload)
-              "stand --standing ${standing}"
-            ]
-          else
-            [
-              (lib.getExe offload)
-              "serve --helper ${cfg.helper} --prefix ${cfg.prefix} --rate ${cfg.rate}"
-              "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
-              "--deadline ${cfg.deadline}"
-            ]
-            ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
+          (
+            if cfg.helper == null then
+              [
+                (lib.getExe offload)
+                "stand"
+              ]
+            else
+              [
+                (lib.getExe offload)
+                "serve --helper ${cfg.helper} --prefix ${cfg.prefix} --rate ${cfg.rate}"
+                "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
+                "--deadline ${cfg.deadline}"
+              ]
+          )
+          ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
+          ++ lib.optional (cfg.beside != [ ]) "--beside ${beside}"
         );
         # Named here, since glibc without it reads a zone it can't find as
         # UTC, and says nothing.

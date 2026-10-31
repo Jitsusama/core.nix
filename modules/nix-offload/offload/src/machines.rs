@@ -4,7 +4,9 @@
 //!
 //! Standing builders are never offered to every build, since they may be
 //! machines whose owner wants only some work on them: a build of private
-//! code must never reach one by default.
+//! code must never reach one by default. Builders beside are the other
+//! kind, machines that may take any of this one's work, and are named to
+//! every build while they answer, for their big work, as the one lent is.
 
 use serde_json::{Value, json};
 use std::fs;
@@ -230,6 +232,7 @@ pub struct Machines {
     store: File,
     lending: File,
     standing: Vec<Standing>,
+    beside: Vec<Standing>,
 }
 
 impl Machines {
@@ -250,7 +253,16 @@ impl Machines {
             store: file(store),
             lending: file(lending),
             standing,
+            beside: Vec::new(),
         }
+    }
+
+    /// With `beside`, builders standing by whose owner lets them take any
+    /// of this machine's work, so they're named to every build while they
+    /// answer, and never to a build that asks for the standing ones.
+    #[must_use]
+    pub fn beside(self, beside: Vec<Standing>) -> Self {
+        Self { beside, ..self }
     }
 
     /// Say the builder being made, a line of its own, or nothing once it
@@ -260,9 +272,10 @@ impl Machines {
             .say(name.map_or_else(String::new, |name| format!("{name}\n")));
     }
 
-    /// Say the one lent to every build, for its big work, and it with the
-    /// standing builders that answer to a build that asks for them; and its
-    /// store, a line of its own, or nothing.
+    /// Say the one lent, and those beside that answer, to every build, each
+    /// for its big work; the one lent with the standing builders that
+    /// answer to a build that asks for them; and its store, a line of its
+    /// own, or nothing.
     pub fn show(&mut self, lending: Option<Lending>) {
         self.store.say(
             lending
@@ -277,7 +290,14 @@ impl Machines {
             .filter(|builder| answers(&builder.address))
             .map(|builder| builder.line.as_str());
         self.with_standing.say(text(answering, lent));
-        self.every.say(text(std::iter::empty(), lent));
+        let beside: Vec<String> = self
+            .beside
+            .iter()
+            .filter(|builder| answers(&builder.address))
+            .map(|builder| for_big_work(&builder.line))
+            .collect();
+        self.every
+            .say(text(beside.iter().map(String::as_str), lent));
     }
 }
 
@@ -439,6 +459,45 @@ mod tests {
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&asked), "");
+    }
+
+    // A machine whose owner lets it take any of this one's work, such as a
+    // second machine for the same work, is named to every build while it
+    // answers, for its big work alone as a lent one is, and never beside
+    // the standing builders, which take only what asks for them.
+    #[test]
+    fn a_builder_beside_is_named_to_every_build_for_its_big_work_while_it_answers() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let every = dir.path().join("machines");
+        let asked = dir.path().join("machines-with-standing");
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let mut machines = Machines::new(
+            every.clone(),
+            asked.clone(),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![],
+        )
+        .beside(vec![Standing {
+            address,
+            line: "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark".to_owned(),
+        }]);
+        let read = |path| fs::read_to_string(path).expect("read");
+        machines.show(Some(Lending {
+            line: "ssh-ng://lent",
+            store: None,
+        }));
+        assert_eq!(
+            read(&every),
+            "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark big-parallel -\n\
+             ssh-ng://lent\n"
+        );
+        assert_eq!(read(&asked), "ssh-ng://lent\n");
+        drop(listening);
+        machines.beside[0].address = "127.0.0.1:0".to_owned();
+        machines.show(None);
+        assert_eq!(read(&every), "");
     }
 
     #[test]
