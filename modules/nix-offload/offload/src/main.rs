@@ -555,7 +555,7 @@ fn serve(settings: &Settings) {
                 Some(seconds) => {
                     let lent = lend(settings, &mut machines, tick.now, seconds);
                     if lent.is_none() {
-                        not_before = decide::next_after(Event::Failed, tick.wants, now());
+                        not_before = decide::next_after(Event::Failed, tick.wants, 0, now());
                     }
                     lent
                 }
@@ -568,8 +568,9 @@ fn serve(settings: &Settings) {
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
                 match decide::give_back(settings.hours, tick, builder.used, gone) {
                     Some(event) => {
+                        let used = builder.used;
                         give_back(settings, &mut machines, builder, event);
-                        not_before = decide::next_after(event, tick.wants, now());
+                        not_before = decide::next_after(event, tick.wants, used, now());
                         None
                     }
                     None => Some(builder),
