@@ -1455,9 +1455,9 @@
     carries, as a trusted upgrade, and nothing for the TPM
   '';
   the-surface-watchdog-wakes-again = ''
-    the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run against
-    a stand-in of busctl, stops that watchdog before a sleep and starts it again after at the same
-    timeout, touching nothing when it isn't running
+    the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run with an
+    empty PATH against a stand-in of busctl, stops that watchdog before a sleep and starts it again
+    after at the same timeout, touching nothing when it isn't running
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
