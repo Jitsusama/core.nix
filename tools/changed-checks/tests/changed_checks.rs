@@ -45,10 +45,17 @@ esac
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
 /// derivations waits for another to be under way beside it before
-/// answering, and fails if none comes within ten seconds.
+/// answering, and fails if none comes within ten seconds. Asked how many
+/// checks each system has, it answers `systems.json`, or x86_64-linux's
+/// alone.
 const NIX: &str = r#"#!/bin/sh
 case "$1" in
   build) shift; echo "$@" >> "$STAND_IN/built"; exit 0 ;;
+esac
+case "$5" in
+  builtins.mapAttrs*)
+    cat "$STAND_IN/systems.json" 2>/dev/null || echo '{"x86_64-linux": 4}'
+    exit 0 ;;
 esac
 [ "$5" = builtins.currentSystem ] && { echo x86_64-linux; exit 0; }
 [ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
@@ -186,12 +193,12 @@ const BASE: &str = r#"{"a": "a.drv", "b": "b.drv", "gone": "g.drv", "vm-x": "v.d
 const WORKING: &str = r#"{"a": "a2.drv", "b": "b.drv", "new": "n.drv", "vm-x": "v2.drv"}"#;
 
 #[test]
-fn it_names_each_check_the_change_moved_and_builds_nothing_unasked() {
+fn asked_only_to_name_them_it_names_each_check_the_change_moved_and_builds_nothing() {
     let stand_in = StandIn::new("names");
     stand_in.checks("base", BASE);
     stand_in.checks("working", WORKING);
 
-    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--name-only"]);
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
@@ -203,24 +210,35 @@ fn it_names_each_check_the_change_moved_and_builds_nothing_unasked() {
 }
 
 #[test]
-fn asked_to_build_it_builds_what_was_added_and_changed_but_the_vm_tests() {
-    let stand_in = StandIn::new("builds");
-    stand_in.checks("base", BASE);
-    stand_in.checks("working", WORKING);
+fn by_default_or_asked_it_builds_what_was_added_and_changed_but_the_vm_tests() {
+    // A named check proves nothing until it's built: #1373 merged naming
+    // checks it never built.
+    for (label, arguments) in [
+        ("builds-unasked", &["--system", "x86_64-linux"][..]),
+        (
+            "builds",
+            &["--system", "x86_64-linux", "--build", "--no-vm"][..],
+        ),
+    ] {
+        let stand_in = StandIn::new(label);
+        stand_in.checks("base", BASE);
+        stand_in.checks("working", WORKING);
 
-    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+        let ran = stand_in.run(arguments);
 
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
-    let repo = stand_in.path("repo");
-    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
-    assert_eq!(
-        stand_in.built(),
-        format!("--no-link --keep-going -L {flake}.new {flake}.a\n")
-    );
-    let runs = stand_in.runs();
-    assert_eq!(runs.len(), 1, "one run logged: {runs:?}");
-    assert_eq!(runs[0]["built"]["checks"], 2, "{}", runs[0]);
-    assert_eq!(runs[0]["built"]["passed"], true, "{}", runs[0]);
+        assert!(ran.status.success(), "{arguments:?}: {}", text(&ran.stderr));
+        let repo = stand_in.path("repo");
+        let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+        assert_eq!(
+            stand_in.built(),
+            format!("--no-link --keep-going -L {flake}.new {flake}.a\n"),
+            "{arguments:?}"
+        );
+        let runs = stand_in.runs();
+        assert_eq!(runs.len(), 1, "one run logged: {runs:?}");
+        assert_eq!(runs[0]["built"]["checks"], 2, "{}", runs[0]);
+        assert_eq!(runs[0]["built"]["passed"], true, "{}", runs[0]);
+    }
 }
 
 #[test]
@@ -512,6 +530,29 @@ fn a_base_sharing_no_history_is_refused_as_asked_wrongly() {
 }
 
 #[test]
+fn unnamed_the_system_compared_is_the_one_with_the_most_checks() {
+    // A run on a Mac compared its own checks and passed over the checks
+    // about checks a repository held on Linux alone, as #1373 did.
+    let stand_in = StandIn::new("busiest");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::write(
+        stand_in.path("systems.json"),
+        r#"{"aarch64-darwin": 9, "x86_64-linux": 4}"#,
+    )
+    .expect("written");
+
+    let ran = stand_in.run(&["--name-only"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("comparing aarch64-darwin's checks"),
+        "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
 fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
     let stand_in = StandIn::new("misused");
 
@@ -519,4 +560,13 @@ fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
 
     assert_eq!(ran.status.code(), Some(64));
     assert!(text(&ran.stderr).starts_with("changed-checks: --bild isn't something it takes\n"));
+
+    let ran = stand_in.run(&["--build", "--name-only"]);
+
+    assert_eq!(ran.status.code(), Some(64));
+    assert!(
+        text(&ran.stderr).contains("--build and --name-only"),
+        "{}",
+        text(&ran.stderr)
+    );
 }

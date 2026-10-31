@@ -139,21 +139,24 @@ pub struct Wanted {
 }
 
 pub fn wanted(arguments: &[String]) -> Wanted {
-    let mut wanted = Wanted {
-        build: false,
-        vm: true,
-        system: None,
-    };
+    let (mut whole, mut no_vm, mut name_only, mut system) = (false, false, false, None);
     let mut words = arguments.iter();
     while let Some(word) = words.next() {
         match word.as_str() {
-            "--build" => wanted.build = true,
-            "--no-vm" => wanted.vm = false,
-            "--system" => wanted.system = words.next().cloned(),
+            "--build" => whole = true,
+            "--no-vm" => no_vm = true,
+            "--name-only" => name_only = true,
+            "--system" => system = words.next().cloned(),
             _ => {}
         }
     }
-    wanted
+    // As changed-checks reads them: it builds what it names unless only
+    // asked to name it, and VM tests only with --build and no --no-vm.
+    Wanted {
+        build: !name_only,
+        vm: whole && !no_vm,
+        system,
+    }
 }
 
 /// The checks to build from what changed-checks printed, a kind and a name
@@ -324,8 +327,24 @@ mod tests {
         assert_eq!(
             wanted(&[]),
             Wanted {
-                build: false,
+                build: true,
+                vm: false,
+                system: None
+            }
+        );
+        assert_eq!(
+            wanted(&words("--build")),
+            Wanted {
+                build: true,
                 vm: true,
+                system: None
+            }
+        );
+        assert_eq!(
+            wanted(&words("--name-only")),
+            Wanted {
+                build: false,
+                vm: false,
                 system: None
             }
         );

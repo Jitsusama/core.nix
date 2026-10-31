@@ -178,7 +178,8 @@
   '';
   changed-checks-names-what-moved = ''
     changed-checks names a check added, changed, removed or broken by its derivation, fails on a
-    broken one, builds those added and changed when asked, leaving out the VM tests with --no-vm,
+    broken one, builds those added and changed unless asked only to name them, the VM tests only
+    with --build and without --no-vm, compares the system with the most checks unless told one,
     sends a commit origin has to a lent builder to build by itself and anything else builds here,
     and evaluates a commit's checks once; where nix-offload takes it, the whole run goes to
     `there --changed` naming this machine's system, and it runs here with --here, a base of its

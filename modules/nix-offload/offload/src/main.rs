@@ -110,6 +110,9 @@ const LENDING: &str = "/run/nix-offload/lending";
 /// process waits on work done elsewhere.
 const ELSEWHERE: (&str, &str) = ("WORK_RUNS_ELSEWHERE", "1");
 
+/// What a program asked wrongly exits with, as sysexits.h numbers it.
+const USAGE: i32 = 64;
+
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--standing PATH] | nix-offload stand --standing PATH \
@@ -361,11 +364,17 @@ fn changed_somewhere(
         return Some(code);
     }
     let wanted = changed::wanted(arguments);
-    let evaluating: Vec<String> = arguments
+    // An evaluator only names; what it names is built as any `there` build
+    // is, since a machine that evaluates well may build slowly.
+    let mut evaluating: Vec<String> = arguments
         .iter()
-        .filter(|word| *word != "--build")
+        .filter(|word| *word != "--build" && *word != "--name-only")
         .cloned()
         .collect();
+    evaluating.push("--name-only".to_owned());
+    // A changed-checks from before --name-only refuses it, as usage, and
+    // without --build it only names anyway.
+    let older = &evaluating[..evaluating.len() - 1];
     let evaluators = fs::read_to_string(config().join("nix-offload/evaluators"))
         .map(|text| changed::evaluators(&text))
         .unwrap_or_default();
@@ -377,9 +386,15 @@ fn changed_somewhere(
         .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
     {
         eprintln!("nix-offload: evaluating on {}", evaluator.host);
-        let sending = changed::sending(source.clone(), &evaluating);
-        let (status, printed) = match changed::evaluated("ssh", &evaluator.host, &sending, scratch)
-        {
+        let ask = |words: &[String]| {
+            let sending = changed::sending(source.clone(), words);
+            changed::evaluated("ssh", &evaluator.host, &sending, scratch)
+        };
+        let asked = match ask(&evaluating) {
+            Ok((USAGE, _)) => ask(older),
+            asked => asked,
+        };
+        let (status, printed) = match asked {
             Ok((status, _)) if status == there::UNREACHED => continue,
             Ok(evaluated) => evaluated,
             Err(why) => {

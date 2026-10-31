@@ -9,7 +9,9 @@ use std::process::{Command, Output};
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
 /// command) apart, prints what the `says` file beside it holds, and exits
-/// as the `status` file beside it says.
+/// as the `status` file beside it says. Once a test writes
+/// `refuses-name-only`, a command asking `--name-only` is refused with 64,
+/// as a changed-checks from before it was refuses it.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -18,6 +20,9 @@ while [ "$#" -gt 2 ]; do
   shift
 done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
+case "$2" in
+  *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
+esac
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
 [ -f "$here/says" ] && cat "$here/says"
@@ -706,7 +711,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     let sent = given();
     assert_eq!(sent.lines().next(), Some("far"), "{sent}");
     assert!(
-        sent.contains("nix run .#changed-checks -- --no-vm --system x86_64-linux"),
+        sent.contains("nix run .#changed-checks -- --no-vm --system x86_64-linux --name-only"),
         "it evaluates and doesn't build: {sent}"
     );
     assert!(
@@ -716,6 +721,20 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     let built = fs::read_to_string(bin.join("nix-was-given")).unwrap();
     assert!(built.contains("checks.x86_64-linux.a"), "{built}");
     assert!(!built.contains("vm-b"), "no VM test was wanted: {built}");
+
+    // A commit's changed-checks from before --name-only refuses it, and
+    // without --build it only names anyway, so it's asked once without.
+    fs::write(bin.join("refuses-name-only"), "").unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = given();
+    assert!(
+        sent.contains("nix run .#changed-checks -- --no-vm --system x86_64-linux")
+            && !sent.contains("--name-only"),
+        "asked again without it: {sent}"
+    );
+    assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
+    fs::remove_file(bin.join("refuses-name-only")).unwrap();
 
     // Nowhere answers, so changed-checks is told to run here.
     drop(answering);
