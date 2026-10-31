@@ -34,6 +34,15 @@ let
 in
 {
   options.jitsusama.nix-offload = {
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = offload;
+      readOnly = true;
+      description = ''
+        nix-offload itself, for a helper to run its `relay` in front of a
+        tunnel it holds.
+      '';
+    };
     helper = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
