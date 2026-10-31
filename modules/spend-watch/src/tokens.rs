@@ -126,6 +126,25 @@ pub struct Inputs {
     pub top: Option<(String, Option<String>)>,
     /// How much the cap's count rose at each of its last runs.
     pub rises: Vec<f64>,
+    /// When a provider last refused a session for being over a cap, if
+    /// that's since the cap's reading and the session hasn't spent since.
+    pub refused: Option<f64>,
+}
+
+/// The last refusal since the cap's reading that its session hasn't got
+/// past: the tokens have run out whatever the forecast says, since the
+/// cap's next reading is up to an hour off.
+fn refused(history: &History, cap: &Cap, now: f64) -> Result<Option<f64>, String> {
+    history
+        .db
+        .query_row(
+            "SELECT MAX(r.at) FROM refusals r WHERE r.at > ?1 AND r.at <= ?2
+             AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.session = r.session
+             AND t.at > r.at AND t.at <= ?2)",
+            rusqlite::params![cap.at, now],
+            |row| row.get::<_, Option<f64>>(0),
+        )
+        .map_err(fail)
 }
 
 /// How many of the cap's last runs its rises are read from.
@@ -248,12 +267,14 @@ pub fn read(history: &History, now: f64, rate: Rate) -> Result<Option<Inputs>, S
         )
         .ok();
     let rises = rises(history, &cap, now)?;
+    let refused = refused(history, &cap, now)?;
     Ok(Some(Inputs {
         cap,
         rate,
         rolling,
         top,
         rises,
+        refused,
     }))
 }
 
@@ -294,8 +315,11 @@ fn minutes(seconds: f64) -> String {
         format!("About {} Hours", hours.round())
     } else if hours >= 0.75 {
         "About an Hour".into()
+    } else if seconds < 5.0 * 60.0 {
+        // Not a count ticking to nothing, since the run comes when it does.
+        "Under 5 Min".into()
     } else {
-        let five = ((seconds / 60.0 / 5.0).round() * 5.0).max(5.0);
+        let five = (seconds / 60.0 / 5.0).round() * 5.0;
         format!("About {five} Min")
     }
 }
@@ -378,25 +402,33 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
     let allowance = cap.allowance?;
     let used = cap.spent / allowance;
     let percent = format!("{:.0}% used", used * 100.0);
-    let over = cap.state == "refused" || cap.spent >= allowance;
+    let read_over = cap.state == "refused" || cap.spent >= allowance;
+    let over = read_over || inputs.refused.is_some();
     if !over && now - cap.at > STALE {
         return (used >= UNREAD_FROM).then(|| unread(inputs, zone, now));
     }
-    // The run at which it's reached, and the first after it back under if
-    // nothing more is spent from then.
+    // The run at which it's reached, and the first after it and after now
+    // back under if nothing more is spent from then. A refusal the cap's
+    // reading doesn't show yet came from the run the forecast says, or
+    // failing that the last run so far.
     let ahead = counts(inputs, now, None);
-    let reached = if over {
+    let forecast = ahead
+        .iter()
+        .position(|&(at, count)| at > cap.at && count >= allowance);
+    let reached = if read_over {
         Some(0)
+    } else if over {
+        forecast
+            .filter(|&run| ahead[run].0 <= now + HOUR)
+            .or_else(|| ahead.iter().rposition(|&(at, _)| at <= now))
     } else {
-        ahead
-            .iter()
-            .position(|&(at, count)| at > cap.at && count >= allowance)
+        forecast
     }?;
-    let runs_out = ahead[reached].0;
+    let runs_out = inputs.refused.unwrap_or(ahead[reached].0);
     let back = counts(inputs, now, Some(reached))
         .into_iter()
         .skip(reached + 1)
-        .find(|&(_, count)| count < allowance)
+        .find(|&(at, count)| at > now && count < allowance)
         .map(|(at, _)| at);
     let left = (runs_out - now).max(0.0);
     let level = if over {
@@ -516,7 +548,35 @@ mod tests {
             rolling: vec![rolled; AHEAD + 1],
             top: Some(("01a19269".into(), Some("QEST-20261025-5FWIUS".into()))),
             rises: Vec::new(),
+            refused: None,
         }
+    }
+
+    #[test]
+    fn a_refusal_is_out_whatever_the_forecast_says() {
+        // The forecast says the run at 06:02, but a session was refused at
+        // 05:30: out now, and back once what's counted at 06:02 rolls out.
+        let mut given = inputs(14_800.0, 300.0, 400.0);
+        given.rolling[1] = 0.0;
+        given.refused = Some(AT + 1680.0);
+        let now = AT + 1800.0;
+        let tokens = outlook(&given, Some(Level::Hour), &toronto(), now).unwrap();
+        assert_eq!(tokens.level, Level::Out);
+        assert_eq!(tokens.title, "Tokens Ran Out");
+        assert_eq!(tokens.runs_out, Some(AT + 1680.0));
+        assert_eq!(tokens.back, Some(AT + 2.0 * HOUR));
+        assert_eq!(tokens.value, "resets 07:02");
+        // With nothing forecast to reach it, back at the first run after.
+        let mut early = inputs(13_000.0, 300.0, 200.0);
+        early.refused = Some(AT + 1680.0);
+        let tokens = outlook(&early, None, &toronto(), now).unwrap();
+        assert_eq!(tokens.back, Some(AT + HOUR));
+    }
+
+    #[test]
+    fn under_five_minutes_it_says_under() {
+        let tokens = outlook(&inputs(14_800.0, 300.0, 0.0), None, &toronto(), AT + 3420.0);
+        assert_eq!(tokens.unwrap().title, "Tokens Run Out in Under 5 Min");
     }
 
     #[test]
@@ -664,7 +724,27 @@ mod tests {
         bill("meter", hour, 150.0);
         bill("meter", hour - 1, 240.0);
         bill("warehouse", hour - 168, 90.0);
+        history
+            .db
+            .execute_batch(&format!(
+                "INSERT INTO refusals VALUES ('gone', {r}, 'm', 'over your weekly cap');
+                 INSERT INTO refusals VALUES ('back', {r}, 'm', 'over your weekly cap');",
+                r = AT + 600.0
+            ))
+            .unwrap();
+        history
+            .db
+            .execute(
+                "INSERT INTO turns (session, at, hour, model, provider, kind, input, output,
+                 cache_read, cache_write, cache_write_long, cost, cost_cache_write,
+                 cost_output, rebuilt, rebuilt_cost) VALUES
+                 ('back', ?1, 0, 'm', 'p', 'k', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+                [AT + 900.0],
+            )
+            .unwrap_or_else(|error| panic!("a turn: {error}"));
         let read = read(&history, now, Rate::Live).unwrap().unwrap();
+        // One session got past its refusal and one didn't: out.
+        assert_eq!(read.refused, Some(AT + 600.0));
         assert_eq!(read.cap.name, "weekly");
         // The half hour so far and the later half of the hour before.
         assert!((read.rate - 270.0).abs() < 1e-9);
