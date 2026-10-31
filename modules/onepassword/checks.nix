@@ -45,11 +45,11 @@ onLinux {
 
   # The app answers its command-line tool only when the tool runs setgid in
   # the onepassword-cli group.
-  onepassword-answers-its-command-line =
+  onepassword-answers-op =
     let
       op = graphical.config.security.wrappers.op or { };
     in
-    holds "onepassword-answers-its-command-line"
+    holds "onepassword-answers-op"
       "1Password's command-line tool isn't setgid in the onepassword-cli group, so the app won't answer it."
       (op.group or null == "onepassword-cli" && op.setgid or false && !(op.setuid or false));
 }
