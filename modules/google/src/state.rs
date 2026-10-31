@@ -97,7 +97,7 @@ mod tests {
             "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
              \"documents\":[],\"heard\":null,\"fetched\":null,\
              \"meet\":{\"granted\":false,\"made\":null},\
-             \"drive\":{\"listings\":[],\"downloads\":[]}}\n"
+             \"drive\":{\"listings\":[],\"downloads\":[],\"uploads\":[]}}\n"
         );
     }
 }

@@ -33,8 +33,10 @@ onLinux {
   # wants Joel no more, mail read here and marked unread again wants him
   # again at once, the documents of each kind are told, Drive asked again
   # only after a while and kept while it fails, the shell asks only what's
-  # read strictly, and it hears the state on connecting and each change
-  # once. A stand-in on the machine answers for Google.
+  # read strictly, it hears the state on connecting and each change once,
+  # and a save staged by the picker goes up once it settles, as a new file
+  # and then new versions of it, never a second file for one it may not
+  # replace. A stand-in on the machine answers for Google.
   google-reads-the-calendar = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in google, its tests included.
   google-passes-clippy = passesClippy "google-passes-clippy" (pkgs.callPackage ./package.nix { });

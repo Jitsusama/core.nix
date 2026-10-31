@@ -32,6 +32,9 @@ pub const DOWNLOADS_KEPT: usize = 20;
 /// thousand files and the whole state is written on every change.
 pub const LISTINGS_KEPT: usize = 4;
 
+/// How many of the saves sent up lately are told, as downloads are.
+pub const UPLOADS_KEPT: usize = 20;
+
 /// Drive's type for a folder.
 const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Drive's type for a shortcut, which stands for the file it points at.
@@ -378,12 +381,51 @@ pub struct Downloaded {
     pub failed: Option<Failed>,
 }
 
-/// What's held of Drive's folders: the folders and the downloads asked
-/// lately, each newest first.
+/// A file Joel saved into Drive, as it stands: going up, then where it
+/// is in Drive or why it isn't.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Uploaded {
+    /// Where the picker staged it.
+    pub path: String,
+    /// The folder it goes into, as the shell names it.
+    pub folder: String,
+    pub name: String,
+    /// When it was sent, in milliseconds since the epoch, which tells one
+    /// save from the next of the same file.
+    pub asked: i64,
+    /// Drive's id for it, once it's up.
+    pub id: Option<String>,
+    /// Where Drive shows it in the browser, once it's up.
+    pub link: Option<String>,
+    pub failed: Option<Unsaved>,
+}
+
+/// Why a save couldn't go into Drive; its staged copy stays either way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Unsaved {
+    /// Nobody is signed in, or Google refused the sign-in: signing in
+    /// again from pi mends it.
+    SignedOut,
+    /// Drive couldn't be reached, or wouldn't answer; trying again may
+    /// work.
+    Unreachable,
+    /// Drive has no such folder, or not one Joel may add to.
+    Gone,
+    /// Joel's sign-in doesn't let this program replace that file: it
+    /// grants only the files it made, and this one it didn't.
+    ReplaceNotGranted,
+    /// The staged copy couldn't be read.
+    Unread,
+}
+
+/// What's held of Drive's folders: the folders, the downloads and the
+/// saves asked lately, each newest first.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Drive {
     pub listings: Vec<Listed>,
     pub downloads: Vec<Downloaded>,
+    pub uploads: Vec<Uploaded>,
 }
 
 #[cfg(test)]

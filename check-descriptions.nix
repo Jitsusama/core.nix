@@ -411,7 +411,10 @@
     few asked each told, folders first, a shortcut as what it points at, leaving out what it
     can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
     or save, Google's own kinds as their office program's file, never opening one that runs, each
-    download asked lately told, and a file cut short leaving nothing behind
+    download asked lately told, and a file cut short leaving nothing behind, and sends what Joel
+    saves through the picker up to Drive once it's written and left a moment, a new file and then
+    new versions of it, never a second file for one it may not replace, keeping each staged copy
+    and letting go of those sent a week ago
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units

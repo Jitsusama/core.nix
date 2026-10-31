@@ -12,7 +12,9 @@
 //! `{"list": {"folder": "root"}}`, by `root`, `shared`, `drives` or its
 //! id; and to download one of Drive's files to open, pick or save,
 //! `{"download": {"file": "…", "how": "pick"}}`, a save naming where as
-//! a fetch's does.
+//! a fetch's does; and to send a file staged in drive-saves up to Drive,
+//! `{"upload": {"path": "/…"}}`, as this program asks itself once the
+//! picker has written one (saves.rs).
 //!
 //! A line that isn't one of these is let go. The id goes into the path
 //! of a request to Google, so only the letters, digits and underscores
@@ -64,6 +66,8 @@ pub enum Ask {
         #[serde(default)]
         to: Option<String>,
     },
+    /// Send the file staged at `path` up to Drive.
+    Upload { path: String },
 }
 
 /// What a line asks, or none when it asks nothing this program does.
@@ -80,6 +84,8 @@ pub fn read(line: &str) -> Option<Ask> {
         // A meeting ends after it starts, and both are after 1970.
         Ask::Move { id, start, end } => named(id) && 0 < *start && start < end,
         Ask::Make {} => true,
+        // Which staged file it is, if any, is the saves' to say.
+        Ask::Upload { path } => Path::new(path).is_absolute(),
     };
     taken.then_some(ask)
 }
