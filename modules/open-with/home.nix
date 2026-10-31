@@ -7,7 +7,12 @@
 # recent-files' (recent-files.nix): on the path, for a program that adds
 # what it opens to it, as Neovim does, and read for each program's Recent
 # in the launcher, with what GIMP and Inkscape add to it themselves.
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   recent-files = pkgs.callPackage ./recent-files.nix { };
 in
@@ -27,6 +32,9 @@ in
       "list"
     ];
     kinds = "${pkgs.shared-mime-info}/share/mime";
+    # What makes the folder a file saved into a place kept elsewhere goes
+    # in, as Google's Drive stages one to upload.
+    mkdir = lib.getExe' pkgs.coreutils "mkdir";
   };
 
   home.packages = [ recent-files ];

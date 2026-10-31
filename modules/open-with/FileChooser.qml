@@ -25,7 +25,13 @@
 // home's files, apart, found by typing from any folder (VKCF3Z,
 // 2026-10-29). Their files are fetched before they're picked: the launcher
 // stays, its foot saying so, and closes once every path is here, or stays
-// saying why one couldn't be.
+// saying why one couldn't be. Saving, a folder there whose place gives
+// `saveTo` leads with the name, as a folder here does, what's typed
+// naming it instead, and a name already there (`names`) steps in to
+// Replace It; Return makes the folder the place said to save in, here,
+// and then answers the path, which the place takes from there (VKCF3Z,
+// 2026-10-30). An ask from inside the shell for a local folder alone
+// (`local`) is given no places.
 //
 // The answer goes back on the socket open-with listens on, as one line:
 // the paths picked, the filter in use and the option of each choice, or an
@@ -85,6 +91,9 @@ Provider {
     // Fetching what's kept elsewhere: how many are asked, how many are
     // here, and why one couldn't be, or nothing while none is.
     property var fetching: null
+    // Saving into a place kept elsewhere: the ask and the path, while the
+    // folder the path is in is made.
+    property var staging: null
     // Each kind of file by how it's named, and the kinds each is one of.
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
@@ -232,6 +241,7 @@ Provider {
     function chooser() {
         return {
             saving: saving || mode === "save-files",
+            local: request.local === true,
             folders: folders,
             changed: () => provider.changed(),
             wants: (name, mime) => provider.wants(name, mime),
@@ -242,6 +252,8 @@ Provider {
 
     function placesFor() {
         const asked = chooser();
+        if (asked.local)
+            return [];
         return (launcher?.sources ?? [])
             .filter(other => other !== provider && typeof other.chooserPlaces === "function")
             .reduce((rows, other) => rows.concat(other.chooserPlaces(asked)), []);
@@ -253,12 +265,86 @@ Provider {
     // asked for, else that there's nothing here.
     function folderElsewhere(fields) {
         elsewhere[fields.key] = { name: fields.name, folder: true };
-        const row = Files.elsewhere("folder", fields, thing, [], () => fields.inside());
+        const saves = saving && typeof fields.saveTo === "function";
+        const inside = !saves ? () => fields.inside() : () => {
+            const naming = provider.namingElsewhere(fields, request.name ?? "");
+            return provider.apart([naming ? [naming] : [], fields.inside()]);
+        };
+        const row = Files.elsewhere("folder", fields, thing, [], inside);
         Object.defineProperties(row, {
             title: { get: () => provider.titled(fields.name), enumerable: true },
             empty: { get: () => fields.empty?.() || "Nothing here.", enumerable: true }
         });
+        if (saves)
+            row.typed = letters => {
+                const naming = provider.namingElsewhere(fields, letters.trim());
+                return naming ? [naming] : [];
+            };
         return row;
+    }
+
+    // The row Return saves to in a folder kept elsewhere: the name given,
+    // or, one already there by that name, a file stepped into to Replace
+    // It first.
+    function namingElsewhere(fields, name) {
+        if (name === "" || name === "." || name === ".." || name.includes("/"))
+            return null;
+        const path = fields.saveTo(name);
+        if ((fields.names?.() ?? []).includes(name))
+            return Files.elsewhere("file", { key: `${fields.key}:${name}`, name: name, side: fields.name },
+                thing, [thing({
+                    key: `verb:file-chooser:replace:${path}`,
+                    name: Words.name("verb:file-chooser:replace"),
+                    verb: Words.verb("verb:file-chooser:replace"),
+                    glyph: Words.glyph("verb:file-chooser:replace"),
+                    hue: "action",
+                    stays: true,
+                    run: () => provider.stage(path)
+                })], () => []);
+        const row = thing({
+            key: `file-chooser:save:${path}`,
+            name: name,
+            verb: accept !== "" ? word("") : "save",
+            glyph: Words.glyph("path:file"),
+            hue: "program",
+            side: fields.name,
+            stays: true,
+            run: () => provider.stage(path)
+        });
+        Object.defineProperty(row, "note", { get: () => provider.fetchingSaid(), enumerable: true });
+        return row;
+    }
+
+    // Makes the folder a path kept elsewhere is saved in, then answers the
+    // path and closes the launcher; one that can't be made keeps the
+    // launcher, saying so.
+    function stage(path) {
+        if (asking === null || staging !== null)
+            return;
+        staging = { reply: asking.reply, path: path };
+        fetching = null;
+        making.command = [settings.mkdir ?? "mkdir", "-p", "--", parentOf(path)];
+        making.running = true;
+    }
+
+    function staged(code) {
+        const was = staging;
+        staging = null;
+        if (was === null || asking?.reply !== was.reply)
+            return;
+        if (code !== 0) {
+            fetching = { asked: 1, here: 0, why: "The folder to save it in couldn't be made." };
+            changed();
+            return;
+        }
+        pick([was.path]);
+        launcher.open = false;
+    }
+
+    Process {
+        id: making
+
+        onExited: code => provider.staged(code)
     }
 
     // A file kept elsewhere: fetched, then picked by Return, or marked
@@ -653,7 +739,9 @@ Provider {
     // starting in folder, titled as given, as Mail's Save a Copy does
     // (427IH3, 2026-10-29). It waits its turn behind the portal's asks, and
     // picked is called with the one path chosen, a name already there
-    // having been cleared to Replace It, or with none.
+    // having been cleared to Replace It, or with none. With `local`, only
+    // the folders here are offered, as Save a Copy of a file Drive
+    // wouldn't take asks.
     function chooseToSave(fields, picked) {
         shellAsked += 1;
         const first = asking === null;
@@ -663,7 +751,8 @@ Provider {
                 mode: "save",
                 title: String(fields.title ?? ""),
                 name: String(fields.name ?? ""),
-                folder: String(fields.folder ?? "")
+                folder: String(fields.folder ?? ""),
+                local: fields.local === true
             },
             picked: picked
         }]);
