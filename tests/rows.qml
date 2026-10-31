@@ -6,8 +6,10 @@
 // within the row and apart, however long either is, and a field's ghost or
 // hint stops at the field's end. A field's path keeps its steps whole
 // beside a long note, and a short note keeps to the field's right end
-// however wide a room it holds. Words that fit are left whole. It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// however wide a room it holds. Words that fit are left whole. Selected,
+// a row with both its name and what it is cut reads each on in turn, the
+// name first, never both moving at once. It exits 0 once every case holds,
+// and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 
@@ -33,6 +35,13 @@ ShellRoot {
             Choice { id: sideLong; name: "Weekly cap"; side: root.sentence; glyph: "$" }
             Choice { id: nameLong; name: root.long + root.long; side: "7.0× usual"; glyph: "$" }
             Choice { id: fits; name: "Today"; side: "$484 · usual"; glyph: "$" }
+            Choice {
+                id: taking
+                name: root.long + root.long
+                side: root.sentence
+                glyph: "$"
+                selected: true
+            }
             // A window: its title is what's looked for, so it keeps its room
             // and its program and place are cut first.
             Choice {
@@ -180,7 +189,7 @@ ShellRoot {
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
                 && Math.abs(note.to - right) <= 1, `${said(drawn(steadied, []))}, end ${right}`);
-            Qt.callLater(() => Qt.exit(0));
+            turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
             Qt.callLater(() => Qt.exit(1));
@@ -191,5 +200,54 @@ ShellRoot {
         interval: 500
         running: true
         onTriggered: root.check()
+    }
+
+    // Watches the selected row with both cut, a little faster than a
+    // frame's worth of rest, until its name has read on and then what it
+    // is has, and fails if both are off their start at once or either
+    // never moves.
+    Timer {
+        id: turns
+        interval: 50
+        repeat: true
+        property var rest: null
+        property bool named: false
+        property bool sided: false
+        property int left: 30000 / interval
+
+        function where() {
+            const texts = root.drawn(taking, []);
+            const name = texts.find(t => t.text === taking.name);
+            const side = texts.find(t => t.text === taking.side);
+            return { name: name.from, side: side.from };
+        }
+        function begin() {
+            turns.rest = turns.where();
+            turns.start();
+        }
+        onTriggered: {
+            const now = turns.where();
+            const nameMoved = now.name < turns.rest.name - 1;
+            const sideMoved = now.side < turns.rest.side - 1;
+            turns.left -= 1;
+            let failed = "";
+            if (nameMoved && sideMoved)
+                failed = "a row's name and what it is both moved at once";
+            else if (sideMoved && !turns.named)
+                failed = "what a row is read on before its name";
+            else if (turns.left === 0)
+                failed = `a cut row didn't read on in turn: name ${turns.named}, side ${sideMoved}`;
+            turns.named = turns.named || nameMoved;
+            turns.sided = turns.sided || sideMoved;
+            if (failed !== "") {
+                const from = JSON.stringify(turns.rest);
+                console.warn(`FAIL ${failed}: ${JSON.stringify(now)} from ${from}`);
+                turns.stop();
+                Qt.callLater(() => Qt.exit(1));
+            } else if (turns.named && turns.sided) {
+                turns.stop();
+                Qt.callLater(() => Qt.exit(0));
+            }
+        }
     }
 }

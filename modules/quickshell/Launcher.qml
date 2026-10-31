@@ -4028,6 +4028,8 @@ Scope {
                                 Choice {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
+                                    // Seen until the closing card has faded.
+                                    shown: card.opacity > 0
                                     fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
