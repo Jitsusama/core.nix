@@ -72,9 +72,12 @@ pub fn build(flake: &str, system: &str, checks: &[&str], journal: &Path) -> Resu
         .status()
         .map_err(|error| format!("running nix-offload: {error}"))?;
     // It refuses what it can't read as 64, its usage's status, which no
-    // build gives; one older than `there` refuses it so.
-    if status.code() == Some(USAGE) {
-        return Err("nix-offload couldn't take the build there".to_owned());
+    // build gives; one older than `there` refuses it so. One whose builder
+    // went before it took the build builds nothing, as 75.
+    match status.code() {
+        Some(USAGE) => return Err("nix-offload couldn't take the build there".to_owned()),
+        Some(UNSENT) => return Err("no builder took the build there".to_owned()),
+        _ => {}
     }
     let noted = fs::read_to_string(journal)
         .ok()
@@ -88,6 +91,9 @@ pub fn build(flake: &str, system: &str, checks: &[&str], journal: &Path) -> Resu
 
 /// The status nix-offload refuses its arguments with.
 const USAGE: i32 = 64;
+
+/// The status nix-offload builds nothing with when no builder took it.
+const UNSENT: i32 = 75;
 
 /// The journal's last line for a build of `flake`.
 fn last_of(journal: &str, flake: &str) -> Option<serde_json::Value> {
