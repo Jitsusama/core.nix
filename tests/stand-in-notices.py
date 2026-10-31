@@ -2,7 +2,9 @@
 
 It takes the notification server's name on the session bus and writes each
 notice it's asked to show to the file named first, its program, summary and
-body a line each.
+body a line each. A test chooses a notice's act, as a click would, with the
+stand-in's own Invoke: given a summary and an act, it says that act was
+invoked on the newest notice with that summary, and that it closed.
 """
 
 import asyncio
@@ -12,10 +14,15 @@ from typing import Annotated
 
 from dbus_fast.aio import MessageBus
 from dbus_fast.annotations import DBusDict, DBusInt32, DBusSignature, DBusStr, DBusUInt32
-from dbus_fast.service import ServiceInterface, dbus_method
+from dbus_fast.service import ServiceInterface, dbus_method, dbus_signal
 
 DBusStrs = Annotated[list[str], DBusSignature("as")]
 ServerInformation = Annotated[list[str], DBusSignature("ssss")]
+Invoked = Annotated[tuple[int, str], DBusSignature("us")]
+Closed = Annotated[tuple[int, int], DBusSignature("uu")]
+# Why a notice closed, by the specification's numbers.
+DISMISSED = 2
+CLOSED = 3
 
 
 class Notices(ServiceInterface):
@@ -25,6 +32,10 @@ class Notices(ServiceInterface):
         """Keep each notice in the file told."""
         super().__init__("org.freedesktop.Notifications")
         self.told = told
+        # Each notice's number, newest last for its summary, so an act
+        # chosen on one never answers another's wait.
+        self.shown: dict[str, int] = {}
+        self.count = 0
 
     @dbus_method(name="Notify")
     def notify(
@@ -38,15 +49,34 @@ class Notices(ServiceInterface):
         _hints: DBusDict,
         _timeout: DBusInt32,
     ) -> DBusUInt32:
-        """Keep the notice, and name it 1, as every one is."""
+        """Keep the notice, giving it a number of its own."""
         with self.told.open("a") as told:
             told.write(f"{app}\n{summary}\n{body}\n")
-        return 1
+        self.count += 1
+        self.shown[summary] = self.count
+        return self.count
+
+    @dbus_method(name="Invoke")
+    def invoke(self, summary: DBusStr, act: DBusStr) -> None:
+        """Choose an act on the newest notice with that summary, which then closes."""
+        notice = self.shown[summary]
+        self.action_invoked(notice, act)
+        self.notification_closed(notice, DISMISSED)
+
+    @dbus_signal(name="ActionInvoked")
+    def action_invoked(self, notice: int, act: str) -> Invoked:
+        """Say an act was chosen on a notice."""
+        return (notice, act)
+
+    @dbus_signal(name="NotificationClosed")
+    def notification_closed(self, notice: int, reason: int) -> Closed:
+        """Say a notice closed, and why."""
+        return (notice, reason)
 
     @dbus_method(name="GetCapabilities")
     def capabilities(self) -> DBusStrs:
-        """Say a notice may have a body."""
-        return ["body"]
+        """Say a notice may have a body and acts."""
+        return ["actions", "body"]
 
     @dbus_method(name="GetServerInformation")
     def server_information(self) -> ServerInformation:
@@ -54,8 +84,9 @@ class Notices(ServiceInterface):
         return ["stand-in", "core.nix", "1", "1.2"]
 
     @dbus_method(name="CloseNotification")
-    def close(self, _notice: DBusUInt32) -> None:
-        """Close nothing, since nothing is shown."""
+    def close(self, notice: DBusUInt32) -> None:
+        """Say the notice closed, since nothing is shown to close."""
+        self.notification_closed(notice, CLOSED)
 
 
 async def serve(told: Path) -> None:

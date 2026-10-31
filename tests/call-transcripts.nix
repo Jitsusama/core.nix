@@ -5,7 +5,10 @@
 # others answer, another program says something of its own meanwhile, and
 # Joel answers back; the transcript must hold the three turns in order and
 # nothing of the other program's. Then the call is summed up, and a notice
-# says so, which a stand-in for the shell's notices keeps. The voices are
+# says so, which a stand-in for the shell's notices keeps; a notice as the
+# call started offered the line for its chat. The next meeting is stopped
+# from that notice, chosen on the stand-in as a click would, and joined
+# again, which mustn't be recorded. The voices are
 # espeak-ng's, made as the test builds. The tests are
 # call-transcripts-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:

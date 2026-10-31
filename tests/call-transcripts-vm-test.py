@@ -20,8 +20,9 @@ if TYPE_CHECKING:
 # Where Joel's PipeWire and the daemon's socket are.
 RUNTIME = "/run/user/1000"
 SOCKET = f"{RUNTIME}/daemons/calls.sock"
-# The meeting on, as the google program writes it.
+# The meeting on, as the google program writes it, and the one after, which is stopped.
 MEETING = "Review Planning"
+STANDUP = "Standup"
 # How long the daemon has to answer, and to start and finish hearing the call.
 ANSWERS_WITHIN = timedelta(minutes=1)
 WRITTEN_WITHIN = timedelta(minutes=10)
@@ -67,6 +68,28 @@ class Joel:
         ]
         return records
 
+    def told(self) -> list[tuple[str, str, str]]:
+        """Give every notice raised, its program, heading and body, oldest first."""
+        lines = self.run(f"cat {TOLD}").splitlines()
+        return [(lines[at], lines[at + 1], lines[at + 2]) for at in range(0, len(lines), 3)]
+
+    def choose(self, heading: str, act: str) -> None:
+        """Choose an act on the newest notice with that heading, as a click would."""
+        self.run(
+            "busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications"
+            f" org.freedesktop.Notifications Invoke ss {shlex.quote(heading)} {act}"
+        )
+
+    def meeting_on(self, key: str, title: str) -> None:
+        """Write the meeting on now, for an hour, as the google program would."""
+        now = int(self.machine.succeed("date +%s%3N"))
+        meeting = {"id": key, "title": title, "start": now, "end": now + 3_600_000}
+        self.run(f"echo {shlex.quote(json.dumps({'meetings': [meeting]}))} > {RUNTIME}/google.json")
+
+    def record(self, key: str) -> dict[str, Any]:
+        """Give the daemon's record of one call."""
+        return next(record for record in self.calls() if record["key"] == key)
+
     def explain(self) -> None:
         """Print what PipeWire and the daemon said, for a test that failed."""
         print(self.run("pw-link -l || true"))
@@ -96,9 +119,7 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
     joel.wait_for("pw-cli ls Node | grep -q 'node.name = \"microphone\"'", ANSWERS_WITHIN)
     # PipeWire's PulseAudio server names a stream for the program that opened it.
     joel.run('cp "$(readlink -f "$(command -v pacat)")" zoom')
-    now = int(machine.succeed("date +%s%3N"))
-    meetings = {"meetings": [{"id": "e1", "title": MEETING, "start": now, "end": now + 3_600_000}]}
-    joel.run(f"echo {shlex.quote(json.dumps(meetings))} > {RUNTIME}/google.json")
+    joel.meeting_on("e1", MEETING)
     joel.run(f"systemd-run --user --unit=notices stand-in-notices {TOLD}")
     joel.wait_for("busctl --user status org.freedesktop.Notifications", ANSWERS_WITHIN)
     joel.run(
@@ -162,6 +183,30 @@ def summed(joel: Joel, call: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+@pytest.fixture(scope="module")
+def stopped(joel: Joel, summed: dict[str, Any]) -> dict[str, Any]:
+    """Join the next meeting and stop transcribing it from its notice, the call still on."""
+    heading = f"{STANDUP} Is Being Transcribed"
+    joel.meeting_on("e2", STANDUP)
+    try:
+        joel.run(
+            "systemd-run --user --collect --unit=call ./zoom --record --device=microphone /dev/null"
+        )
+        joel.wait_for(f"grep -qxF {shlex.quote(heading)} {TOLD}", ANSWERS_WITHIN)
+        joel.wait_for("pw-link -l | grep -qF call-transcripts-mine", ANSWERS_WITHIN)
+        joel.choose(heading, "stop")
+        joel.wait_for(
+            f'{joel.listing()} | jq -e \'.records[] | select(.key == "call:e2")'
+            " | .transcribing == false'",
+            ANSWERS_WITHIN,
+        )
+    except Exception:
+        joel.explain()
+        raise
+    assert summed["key"] == "call:e1"
+    return joel.record("call:e2")
+
+
 def transcript(joel: Joel, call: dict[str, Any]) -> str:
     """Give the call's transcript as written."""
     written = joel.run(f"cat {shlex.quote(call['transcript'])}")
@@ -212,7 +257,51 @@ def test_the_call_is_summed_up_beside_its_transcript(joel: Joel, summed: dict[st
 def test_a_notice_says_the_summary_is_ready(joel: Joel, summed: dict[str, Any]) -> None:
     """The notice comes from Calls, titled by the meeting, and opens with the summary."""
     joel.wait_for(f"grep -qxF 'Summary of {MEETING} Is Ready' {TOLD}", ANSWERS_WITHIN)
-    app, heading, first = joel.run(f"cat {TOLD}").splitlines()[:3]
+    [(app, _, first)] = [n for n in joel.told() if n[1] == f"Summary of {MEETING} Is Ready"]
     assert app == "Calls"
-    assert heading == f"Summary of {MEETING} Is Ready"
     assert first in summed["summary"]
+
+
+def test_a_call_starting_offers_the_line_for_its_chat(joel: Joel, call: dict[str, Any]) -> None:
+    """As the call started, one notice from Calls said so, with the line to tell the others."""
+    [(app, _, line)] = [n for n in joel.told() if n[1] == f"{MEETING} Is Being Transcribed"]
+    assert app == "Calls"
+    assert "Nothing is uploaded" in line
+    assert call["key"] == "call:e1"
+
+
+def test_stop_transcribing_stops_at_once_with_the_call_still_on(
+    joel: Joel, stopped: dict[str, Any]
+) -> None:
+    """Stopping from the notice lets both recorders go, though the call program still runs."""
+    assert stopped["transcribing"] is False
+    assert stopped["ended"] is None
+    joel.run("systemctl --user is-active call")
+    joel.wait_for("! pw-cli ls Node | grep -qF call-transcripts-", ANSWERS_WITHIN)
+
+
+def test_a_call_stopped_isnt_transcribed_again_once_rejoined(
+    joel: Joel, stopped: dict[str, Any]
+) -> None:
+    """The same meeting joined again after it ended is neither recorded nor announced."""
+    key = stopped["key"]
+    try:
+        joel.run("systemctl --user stop call")
+        joel.wait_for(
+            f"{joel.listing()} | jq -e '.records[] | select(.key == \"{key}\") | .ended != null'",
+            ANSWERS_WITHIN,
+        )
+        joel.run(
+            "systemd-run --user --collect --unit=call ./zoom --record --device=microphone /dev/null"
+        )
+        joel.wait_for(
+            "journalctl --user -u call-transcripts | grep -qF 'a call stopped is rejoined'",
+            ANSWERS_WITHIN,
+        )
+        joel.run("! pw-cli ls Node | grep -qF call-transcripts-")
+        assert len([n for n in joel.told() if n[1] == f"{STANDUP} Is Being Transcribed"]) == 1
+    except Exception:
+        joel.explain()
+        raise
+    finally:
+        joel.run("systemctl --user stop call || true")
