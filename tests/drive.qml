@@ -228,6 +228,14 @@ QtObject {
         check("a folder gone", failed("gone").body, "Menu.pdf: that folder is gone");
         check("a copy that couldn't be read", [failed("unread").body, failed("unread").acts],
             ["Menu.pdf couldn't be read, so nothing was saved", []]);
+        // Back to the program that saved it, only while it's open.
+        const unread = Object.assign({}, pdf, { failed: "unread" });
+        check("a copy that couldn't be read, its program open",
+            Saves.notice(unread, [], "Text Editor").acts,
+            [{ key: "go", name: "Go To Text Editor" }]);
+        check("only a copy that couldn't be read goes back to it",
+            Saves.notice(Object.assign({}, pdf, { failed: "gone" }), [], "Text Editor").acts
+                .map(act => act.name), ["Save a Copy"]);
 
         // A failure's notice, found to take back by its file alone.
         const told = { app: "Google Drive", summary: "Not Saved to Google Drive",

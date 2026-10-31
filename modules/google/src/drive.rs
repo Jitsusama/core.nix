@@ -398,6 +398,10 @@ pub struct Uploaded {
     /// Where Drive shows it in the browser, once it's up.
     pub link: Option<String>,
     pub failed: Option<Unsaved>,
+    /// The app id of the program that saved it, as the picker wrote it
+    /// beside the file, so a notice can take Joel back to it; none for a
+    /// save the shell made itself.
+    pub from: Option<String>,
 }
 
 /// Why a save couldn't go into Drive; its staged copy stays either way.

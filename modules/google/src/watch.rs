@@ -567,6 +567,7 @@ impl Watch {
                 id: None,
                 link: None,
                 failed: None,
+                from: saves::from(&staged.path),
             },
         );
         uploads.truncate(drive::UPLOADS_KEPT);

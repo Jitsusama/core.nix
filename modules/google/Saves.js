@@ -60,7 +60,10 @@ const failures = {
 
 // The notice a save is told as: { summary, body, acts, answers }, each act
 // { key, name }, answers true when it only answers what Joel just did.
-function notice(upload, listings) {
+// `program` names the program that saved it while one of its windows is
+// open, else "": a copy that couldn't be read is mended there, so it's
+// offered (VKCF3Z, b91d1b31).
+function notice(upload, listings, program = "") {
     if ((upload.failed ?? null) === null) {
         const place = where(upload, listings);
         return {
@@ -71,10 +74,12 @@ function notice(upload, listings) {
         };
     }
     const failure = failures[upload.failed] ?? failures.unreachable;
+    const back = upload.failed === "unread" && program !== ""
+        ? [{ key: "go", name: `Go To ${program}` }] : [];
     return {
         summary: unsent,
         body: `${upload.name}${failure.why}`,
-        acts: failure.acts,
+        acts: failure.acts.concat(back),
         answers: false
     };
 }
