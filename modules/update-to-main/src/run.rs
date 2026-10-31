@@ -37,6 +37,10 @@ pub fn command(program: &Path, home: &Path) -> Command {
             "/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         )
         .env("LANG", "C.UTF-8")
+        // Nix builds through the machine's daemon, as anyone else's do, so
+        // a build takes its builders, its place and its limits, rather than
+        // root building beside it.
+        .env("NIX_REMOTE", "daemon")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_TERMINAL_PROMPT", "0")

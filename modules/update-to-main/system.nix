@@ -106,6 +106,9 @@ in
           "nix-command"
           "store"
           "info"
+          # The daemon itself, which root would otherwise go round.
+          "--store"
+          "daemon"
         ]
       ];
       configFile = pkgs.writeText "update-to-main.json" (

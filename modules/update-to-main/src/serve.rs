@@ -199,6 +199,10 @@ fn start_again(program: &std::path::Path, heard: &Answer) {
     let _ = heard
         .grew
         .wait_timeout_while(said, HEARD_WITHIN, |s| s.hearing > 0);
+    eprintln!(
+        "starting {} again, from the system it switched to",
+        program.display()
+    );
     let error = Command::new(program)
         .args(std::env::args_os().skip(1))
         .exec();
