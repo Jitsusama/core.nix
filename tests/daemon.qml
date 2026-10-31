@@ -105,18 +105,20 @@ ShellRoot {
             holds: () => (root.answered?.records ?? []).some(record => record.key === root.hal)
                 && !(root.hal in listed.held)
         },
-        {
-            // The roster lets Ivy go once it's asked anything, as a get asks.
-            what: "one no source knows any more is let go",
-            run: () => people.get([root.ivy], 1000, null),
-            holds: () => !(root.ivy in people.held)
-        },
+
         {
             what: "a key watched ahead comes to be held, asked ahead",
             run: () => {
                 people.ahead = [root.ada];
             },
             holds: () => root.heldWay(root.ada) === "ahead"
+        },
+        {
+            // The roster lets Ivy go once it's asked anything, as the ask
+            // ahead for Ada asked it, and Slack's stand-in was never
+            // asked of her.
+            what: "one no source knows any more is let go",
+            holds: () => !(root.ivy in people.held)
         },
         {
             what: "a get is answered by its id, asked as a step-in",

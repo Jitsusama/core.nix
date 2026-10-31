@@ -159,6 +159,7 @@ Provider {
         if (heldBy.length === 0 || words === "" || words === seeking)
             return;
         seeking = words;
+        seekAt = Date.now();
         book.find({ ask: "search", kind: "person", words: words, limit: soughtMost }, answer => {
             if (seeking !== words)
                 return;
@@ -167,9 +168,16 @@ Provider {
                 return;
             }
             sought = { words: words, records: answer.records ?? [] };
-            foundMore();
+            foundMore(Date.now() - seekAt < freshFor);
         });
     }
+    property real seekAt: 0
+    // How soon an answer is ranked as the key's own search: it most often
+    // comes in 2 ms, before the key's first frame (427IH3, 2026-10-31).
+    readonly property int freshFor: 50
+
+    // How many it holds, for a test to bound.
+    onPersonsChanged: Report.say(`people holds ${persons.length}`)
 
     // Everyone shown, one person each: those the sources give, and those
     // read from the daemon; and each as a row, by key, its name and
