@@ -1,0 +1,30 @@
+diff --git a/spotify_player/src/auth.rs b/spotify_player/src/auth.rs
+index 18aabcb..0fef6ae 100644
+--- a/spotify_player/src/auth.rs
++++ b/spotify_player/src/auth.rs
+@@ -13,7 +13,9 @@ use sha2::{Digest as _, Sha256};
+ 
+ pub const SPOTIFY_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
+ pub const NCSPOT_CLIENT_ID: &str = "d420a117a32841c2b3474932e49fb54b";
+-pub const NCSPOT_REDIRECT_URI: &str = "http://127.0.0.1:8989/login";
++// ncspot's app takes only this address since 2026-09-28, and answers any other with "redirect_uri:
++// Not matching configuration".
++pub const NCSPOT_REDIRECT_URI: &str = "http://127.0.0.1:8989/ncspot_login";
+ 
+ const SPOTIFY_AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
+ const SPOTIFY_TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
+diff --git a/spotify_player/src/client/mod.rs b/spotify_player/src/client/mod.rs
+index 4ed6cb7..3c88df3 100644
+--- a/spotify_player/src/client/mod.rs
++++ b/spotify_player/src/client/mod.rs
+@@ -123,7 +123,9 @@ pub fn new_api_client() -> Result<WebApiClient> {
+         )?;
+         let client = rspotify::AuthCodePkceSpotify::with_config(
+             rspotify::Credentials { id, secret: None },
+-            build_oauth(configs.app_config.login_redirect_uri.clone()),
++            // ncspot's app answers only at its own address, whatever `login_redirect_uri` says,
++            // which stays for the streaming client's sign-in.
++            build_oauth(auth::NCSPOT_REDIRECT_URI.to_string()),
+             config,
+         )
+         .with_middleware(middleware);

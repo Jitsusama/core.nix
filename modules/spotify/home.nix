@@ -214,6 +214,16 @@ in
 
   programs.spotify-player = {
     enable = true;
+    # spotify-player signs in through ncspot's Spotify app, which since
+    # 2026-09-28 takes only http://127.0.0.1:8989/ncspot_login back, so its
+    # sign-in stopped at "redirect_uri: Not matching configuration". The
+    # patch (ncspot-sign-in.patch) asks for that address for ncspot's app
+    # alone, keeping /login for the streaming client's sign-in, which is
+    # Spotify's own app. Upstream's aome510/spotify-player#1108 changes only
+    # the first half; take this out once a release signs in.
+    package = pkgs.spotify-player.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./ncspot-sign-in.patch ];
+    });
     settings = {
       # A notice for every new track is one Joel didn't ask for.
       enable_notify = false;

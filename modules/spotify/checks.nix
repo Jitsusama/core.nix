@@ -75,4 +75,28 @@ onLinux {
         spotify_player -c config -C cache features
         touch $out
       '';
+
+  # spotify-player's sign-in asks ncspot's app to send Joel back to the one
+  # address that app takes. The sign-in prints where it sends him, then
+  # waits for Spotify's answer, which never comes here, so it's stopped.
+  spotify-player-signs-in-where-spotify-answers =
+    let
+      home = account graphical;
+      files = home.xdg.configFile;
+    in
+    pkgs.runCommandLocal "spotify-player-signs-in-where-spotify-answers"
+      { nativeBuildInputs = [ home.programs.spotify-player.package ]; }
+      ''
+        export HOME=$PWD BROWSER=true
+        mkdir config cache
+        cp ${files."spotify-player/app.toml".source} config/app.toml
+        said=$(timeout 10 spotify_player -c config -C cache authenticate 2>&1 < /dev/null || true)
+        # The address's query is in no set order.
+        asked=$(grep -F 'client_id=d420a117a32841c2b3474932e49fb54b' <<< "$said" || true)
+        if ! grep -q -E '[?&]redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A8989%2Fncspot_login(&|$)' <<< "$asked"; then
+          echo "spotify-player's sign-in asks ncspot's app for an address it doesn't take: $said" >&2
+          exit 1
+        fi
+        touch $out
+      '';
 }
