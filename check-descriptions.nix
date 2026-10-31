@@ -1286,10 +1286,10 @@
     choices that run its own command
   '';
   the-launcher-finds-the-people = ''
-    People with Tuple as its source lists favourites and those called lately, finds anyone as they
-    stand, calls, joins and favours them, steps in before calling, lists a source's page for them
-    after the ways to reach them with its facts in the drawer and the time where they are, and
-    never starts a stopped Tuple
+    People with Tuple as its source, read from the people daemon, lists favourites and those called
+    lately, finds anyone as they stand while holding only those listed and found, calls, joins and
+    favours them, steps in before calling, lists a source's page for them after the ways to reach
+    them with its facts in the drawer and the time where they are, and never asks Tuple itself
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
@@ -1505,8 +1505,9 @@
   '';
   the-shell-holds-a-daemons-records = ''
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
-    never waited on, one that starts is connected to by itself, keys watched ahead and a get's answer
-    land by key, and what was held stays through a gap
+    never waited on, one that starts is connected to by itself, a watch narrowed to those listed
+    holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
+    key, and what was held stays through a gap
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step

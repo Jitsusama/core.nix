@@ -1,58 +1,70 @@
 // Tuple as one of People's sources (PersonSource.qml): everyone Tuple
-// lists as a contact, by their email, as TuplePeople.qml follows them, and
-// how those Tuple knows stand: available, in a call, away or offline, its
-// favourites and those called lately listed with nothing typed. Its main
-// act calls one who isn't in a call and joins one who is, and its switch
-// keeps them a favourite or not. A contact with no email is still called
-// by Tuple's id for them, a person of Tuple's alone, since no other source
-// could say who they are.
+// lists as a contact, held by the people daemon (tuple-people people
+// says them to it, people.rs), so the shell reads only those Tuple lists
+// and those a search finds, and how each stands: available, in a call,
+// away or offline, its favourites and those called lately listed with
+// nothing typed. Its main act calls one who isn't in a call and joins
+// one who is, and its switch keeps them a favourite or not. A contact
+// with no email is still called by Tuple's id for them, a person of
+// Tuple's alone, since no other source could say who they are.
 import qs
 import QtQuick
 
 PersonSource {
     id: source
 
-    people: TuplePeople.everyone.map(person => person.email
-        ? { emails: [person.email], name: person.name }
-        : { emails: [], id: person.id, name: person.name })
+    daemonHolds: true
 
-    stands: {
-        const by = {};
-        for (const id in TuplePeople.standing) {
-            const person = TuplePeople.people[id];
-            if (!person)
-                continue;
-            const stood = TuplePeople.standing[id];
-            const how = TuplePeople.how(stood);
-            by[known(person)] = { said: how.said, order: how.order,
-                favourite: stood.favourite, recent: stood.recent };
+    // Favourites changed here, by Tuple's id, each { wanted, key }, so a
+    // row moves at once rather than when Tuple tells it: each is kept
+    // until the daemon's record says what was asked, or isn't held.
+    property var favoured: ({})
+
+    Connections {
+        target: source.place
+
+        function onRevisionChanged() {
+            const kept = {};
+            for (const id in source.favoured) {
+                const asked = source.favoured[id];
+                const entry = source.place.recordOf[asked.key]?.sources?.[source.settings.name];
+                if (entry && entry.favourite !== asked.wanted)
+                    kept[id] = asked;
+            }
+            source.favoured = kept;
         }
-        return by;
     }
 
-    // What People knows a contact as: their email, or Tuple's id for them.
-    function known(person) {
-        return person.email ? person.email.toLowerCase() : `${settings.name}:${person.id}`;
+    // What Tuple told the daemon of them, with a favourite changed here.
+    function standingOf(entry) {
+        const id = String(entry.id ?? "");
+        return id in favoured
+            ? Object.assign({}, entry, { favourite: favoured[id].wanted }) : entry;
     }
 
-    // The contact Tuple knows by one of a person's addresses, or as one of
-    // its own alone, or null.
-    function contact(person) {
-        return TuplePeople.everyone.find(each => person.emails.includes(known(each))
-            || person.key === known(each)) ?? null;
+    function stood(entry) {
+        const stands = standingOf(entry);
+        const how = TuplePeople.how(stands);
+        return { said: how.said, order: how.order, favourite: stands.favourite === true,
+            recent: stands.recent === true };
+    }
+
+    // The contact Tuple knows them as, or null.
+    function contact(person, provider) {
+        const entry = provider.entryOf(person, settings.name);
+        return entry ? standingOf(entry) : null;
     }
 
     function acts(person, provider) {
-        const theirs = contact(person);
+        const theirs = contact(person, provider);
         if (!theirs)
             return [];
-        const stood = TuplePeople.standingOf(theirs);
-        const busy = stood !== null && stood.status === "busy";
+        const busy = theirs.status === "busy";
         return [provider.thing({
             key: busy ? "verb:person:join" : "verb:person:call",
             name: Words.name(busy ? "verb:person:join" : "verb:person:call"),
             verb: Words.verb(busy ? "verb:person:join" : "verb:person:call"),
-            side: TuplePeople.how(stood).said,
+            side: TuplePeople.how(theirs).said,
             glyph: Words.glyph(busy ? "verb:person:join" : "verb:person:call"),
             hue: "action",
             main: true,
@@ -65,17 +77,27 @@ PersonSource {
     // Return flips it, keeping the launcher, its side and verb read as
     // they're shown, since thing() would copy them once.
     function favourite(person, provider) {
-        const theirs = contact(person);
+        const theirs = contact(person, provider);
         if (!theirs)
             return null;
-        const kept = () => TuplePeople.standingOf(theirs)?.favourite === true;
+        const id = String(theirs.id ?? "");
+        const kept = () => (id in source.favoured ? source.favoured[id].wanted
+            : theirs.favourite === true);
+        // The daemon's key for them: their address, or Tuple's id.
+        const key = theirs.email ? `person:${theirs.email.trim().toLowerCase()}`
+            : `person:${settings.name}:${id}`;
         const row = provider.thing({
             key: "verb:person:favourite",
             name: Words.name("verb:person:favourite"),
             glyph: Words.glyph("verb:person:favourite"),
             hue: "action",
             stays: true,
-            run: () => TuplePeople.favour(theirs, !kept())
+            run: () => {
+                const wanted = !kept();
+                TuplePeople.favour(theirs, wanted);
+                source.favoured = Object.assign({}, source.favoured,
+                    { [id]: { wanted: wanted, key: key } });
+            }
         });
         return Object.defineProperties(row, {
             side: { enumerable: true, get: () => (kept() ? "yes" : "no") },
@@ -84,9 +106,5 @@ PersonSource {
                 get: () => Words.verb("verb:person:favourite", kept() ? "favourite" : "")
             }
         });
-    }
-
-    function woken() {
-        TuplePeople.follow();
     }
 }

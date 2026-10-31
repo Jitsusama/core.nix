@@ -849,8 +849,9 @@ onLinux {
     '';
 
   # The shell holds a daemon's records over one connection (Daemon.qml),
-  # against the real people daemon with a source stood in for
-  # (tests/daemon-source.sh), started, stopped and started again by
+  # against the real people daemon with two sources stood in for, one
+  # asked (tests/daemon-source.sh) and one saying everyone unasked
+  # (tests/daemon-roster.sh), started, stopped and started again by
   # tests/daemon.qml.
   the-shell-holds-a-daemons-records =
     let
@@ -860,7 +861,9 @@ onLinux {
       mkdir -p runtime/daemons && chmod 700 runtime
       cat > sources.json <<EOF
       {"sources": [{"name": "slack",
-        "command": ["${lib.getExe pkgs.bash}", "${../../tests/daemon-source.sh}"]}]}
+        "command": ["${lib.getExe pkgs.bash}", "${../../tests/daemon-source.sh}"]},
+        {"name": "tuple",
+        "command": ["${lib.getExe pkgs.bash}", "${../../tests/daemon-roster.sh}"]}]}
       EOF
       cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/daemon.qml} shell.qml
@@ -1844,21 +1847,20 @@ onLinux {
       touch $out
     '';
 
-  # The launcher's People, with Tuple as its source, follows Tuple's
-  # contacts through the real tuple-people, which reads a stand-in for
-  # Tuple's follow here, and calls, joins or favours one (tests/people.qml),
-  # with niri stood in. Stopping the
-  # helper stops Tuple's follow, which writes only when someone's presence
-  # changes and so would never find out by itself. A listener stands in for
-  # the daemon's socket, and once it's stopped, leaving the socket's file
-  # as Tuple's daemon does, Tuple must not be run again, since any tuple
-  # command would start a daemon.
+  # The launcher's People, with Tuple as its source, reads Tuple's contacts
+  # from the real people daemon, which runs the real tuple-people reading
+  # a stand-in for Tuple's follow here, and calls, joins or favours one
+  # (tests/people.qml), with niri stood in. A listener stands in for
+  # Tuple's daemon's socket, and the shell never asks Tuple anything
+  # itself, since it reaches Tuple through niri alone.
   the-launcher-finds-the-people =
     let
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
       '';
+      report = singleton "Report.qml" "function say(text) {}";
+      people = pkgs.callPackage ../people/package.nix { };
       helper = pkgs.callPackage ./pi-helper.nix {
         name = "tuple-people";
         source = ../tuple/people.rs;
@@ -1892,38 +1894,17 @@ onLinux {
           + "\n"
         );
       # Tuple's follow says everyone, then again once Ada goes into a call,
-      # and goes on following. It waits as itself rather than as a sleep,
-      # so it's found by its name until it ends. Anything else asked of it
-      # is written down, since the shell asks Tuple through niri alone.
+      # and goes on following. Anything else asked of it is written down,
+      # since the shell asks Tuple through niri alone.
       tuple = pkgs.writeShellScriptBin "tuple" ''
         if [ "$*" != "--format json contacts follow" ]; then
           echo "$*" >> "$XDG_RUNTIME_DIR/asked"
           exit 0
         fi
-        echo followed >> "$XDG_RUNTIME_DIR/follows"
         cat ${snapshot "online"}
         while [ ! -e "$XDG_RUNTIME_DIR/next" ]; do sleep 0.1; done
         cat ${snapshot "busy"}
         while :; do sleep 1; done
-      '';
-      # Waits up to 2 s for Tuple's stand-in to be following, given yes, or
-      # to be gone, given no.
-      followed = pkgs.writeShellScript "followed" ''
-        for _ in $(seq 20); do
-          found=no
-          for cmdline in /proc/[0-9]*/cmdline; do
-            case "$(tr '\0' ' ' < "$cmdline" 2>/dev/null)" in
-              *${tuple}/bin/tuple*contacts*follow*) found=yes ;;
-            esac
-          done
-          [ "$found" = "$1" ] && exit 0
-          sleep 0.1
-        done
-        exit 1
-      '';
-      # Stops the daemon's stand-in, its socket's file left behind.
-      stop = pkgs.writeShellScript "stop-tuple" ''
-        kill "$(cat "$XDG_RUNTIME_DIR/daemon")"
       '';
     in
     pkgs.runCommandLocal "the-launcher-finds-the-people" { } ''
@@ -1941,27 +1922,29 @@ onLinux {
       cp ${../tuple/TupleSource.qml} launcher/people/tuple.qml
       cp ${../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../tuple/TuplePeople.qml} TuplePeople.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
+      cp ${report} Report.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       # Here is UTC, so how far a zone is from here is known.
       export TZ=UTC
-      export FOLLOWED=${followed} STOP_TUPLE=${stop} PATH=${helper}/bin:${tuple}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir $XDG_RUNTIME_DIR/daemons
       ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork,unlink-close=0 /dev/null &
-      echo $! > $XDG_RUNTIME_DIR/daemon
       while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
+      cat > sources.json <<EOF
+      {"sources": [{"name": "tuple",
+        "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]}]}
+      EOF
+      ${lib.getExe people} $XDG_RUNTIME_DIR/daemons/people.sock $PWD/sources.json &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       if [ -e $XDG_RUNTIME_DIR/asked ]; then
         echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
-      fi
-      if [ "$(wc -l < $XDG_RUNTIME_DIR/follows)" != 2 ]; then
-        echo "Tuple was followed $(wc -l < $XDG_RUNTIME_DIR/follows) times, not twice: a stopped Tuple was run"
-        exit 1
       fi
       touch $out
     '';

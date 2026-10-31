@@ -97,6 +97,7 @@ Scope {
             });
             source.answered.connect(() => root.reanswer(source));
             source.changed.connect(() => root.refreshed(source));
+            source.foundMore.connect(root.foundMore);
             source.thingsChanged.connect(root.stale);
             // Counted, so a closing can say which sources changed since
             // the last (madeSaid).
@@ -2158,9 +2159,13 @@ Scope {
     }
 
     function steadied(found) {
-        const renamed = matches.filter(row => !row.gone && onOffer(row.key)
+        // What ends a search comes after it all and is made again with it,
+        // so it's no row to hold in place: held, it stood dimmed above the
+        // one made again.
+        const shown = matches.filter(row => !row.endedBy);
+        const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        return Steady.kept(matches, found.concat(renamed), steadyId);
+        return Steady.kept(shown, found.concat(renamed), steadyId);
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -2459,6 +2464,20 @@ Scope {
     // it keeps the rows in their order itself and leaves the selection and
     // the list alone, rather than starting them afresh to be put back: the
     // rows are made once a refresh, not twice.
+    // A source's search found more once asked, as People's does when the
+    // people daemon answers, and only then, never on its other changes:
+    // what's typed is searched again, ranked as the key's own search when
+    // the answer came fresh, so soon that its first frame hardly showed
+    // without it, and otherwise in place, holding still what's shown.
+    function foundMore(fresh) {
+        if (!open || asking || typed.trim() === "")
+            return;
+        if (fresh)
+            search(typed);
+        else
+            reshow(held.length);
+    }
+
     function reshow(count) {
         const was = current >= 0 && selected ? steadyId(selected) : "";
         const at = current;

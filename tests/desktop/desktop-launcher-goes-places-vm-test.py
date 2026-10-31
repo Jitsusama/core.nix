@@ -3159,6 +3159,36 @@ def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
         desktop.as_account(f"echo '0 0' > {crowd}.new && mv {crowd}.new {crowd}")
 
 
+# How many people People may hold: those listed and those a search found, a
+# search answering at most 50, never the crowd the daemon holds.
+PEOPLE_HELD_MOST = 100
+
+
+def test_a_crowd_the_people_daemon_holds_is_found_by_a_search_and_never_held_by_the_shell(
+    desktop: Desktop,
+) -> None:
+    """A crowd the people daemon holds is found by a search, and never held by the shell.
+
+    People held all of Tuple's 7,731 contacts and made 23,276 rows at each opening on Joel's
+    machine, holding his first key a second (2026-10-31). The daemon holds the stand-in's
+    8,000 here, so People holds only those listed and those a search asks the daemon for.
+    """
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("crowd person 4321")
+    desktop.launcher_until(lambda shown: "Crowd Person 4321" in shown["rows"])
+    holds = desktop.as_account(
+        "journalctl --user --unit=quickshell --output=cat"
+        " | grep -a -o 'report\\[people holds [0-9]*' | tail -1"
+    )
+    held = re.search(r"(\d+)$", holds.strip())
+    assert held is not None, "People never said how many it holds"
+    assert int(held[1]) <= PEOPLE_HELD_MOST, f"People holds the crowd: {holds.strip()}"
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+
+
 @pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,

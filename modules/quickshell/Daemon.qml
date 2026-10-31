@@ -24,8 +24,13 @@ Scope {
 
     // Its socket, as the daemon's unit makes it.
     required property string socket
-    // The kind of record it holds, watched whole.
+    // The kind of record it holds, watched whole unless `watching` narrows
+    // it.
     required property string kind
+    // What narrows the watch of its kind, as the daemon reads it, such as
+    // `{ listed: true }` for only those a source lists, so a kind with
+    // thousands of records holds only the few shown with nothing typed.
+    property var watching: ({})
     // The keys to watch ahead, as the shell is about to need them; each
     // change sends the watch again, which replaces the one before.
     property var ahead: []
@@ -56,13 +61,31 @@ Scope {
     // (Slack's search), its records held as a get's are; `then` is given
     // the answer, or null when the daemon isn't there to ask.
     function ask(said, then) {
+        asked += 1;
+        sent(said, then, `ask-${asked}`);
+    }
+
+    // Asks for records only this answer needs, as a search does: they're
+    // given to `then` and never held, so searching thousands holds no more
+    // than what's listed. `then` is given null when the daemon isn't
+    // there to ask.
+    function find(said, then) {
+        asked += 1;
+        const id = `find-${asked}`;
+        apart[id] = true;
+        sent(said, then, id);
+    }
+
+    // The answers whose records aren't held, by id.
+    property var apart: ({})
+
+    function sent(said, then, id) {
         if (wire === null) {
+            delete apart[id];
             if (then)
                 then(null);
             return;
         }
-        asked += 1;
-        const id = `ask-${asked}`;
         if (then)
             awaited[id] = then;
         tell(Object.assign({}, said, { id: id }));
@@ -82,7 +105,7 @@ Scope {
     // Once connected: hello, every record of its kind, and those ahead.
     function greet() {
         tell({ id: "hello", ask: "hello", version: 1, client: "shell" });
-        tell({ id: "all", ask: "watch", kind: kind });
+        tell(Object.assign({ id: "all", ask: "watch", kind: kind }, watching));
         watchAhead();
     }
 
@@ -93,12 +116,21 @@ Scope {
     onAheadChanged: watchAhead()
 
     // Records said whole, each replacing what was held by its key, and
-    // keys the daemon says are gone taken out.
+    // keys the daemon says are gone taken out, whether in a gone list or
+    // as a record saying `gone`, as the people daemon tells of someone no
+    // source knows any more.
     function took(records, gone) {
         const keys = [];
         for (const record of records ?? []) {
             if (typeof record?.key !== "string")
                 continue;
+            if (record.gone === true) {
+                if (record.key in held) {
+                    delete held[record.key];
+                    keys.push(record.key);
+                }
+                continue;
+            }
             held[record.key] = record;
             keys.push(record.key);
         }
@@ -128,7 +160,10 @@ Scope {
             sources = answer.sources ?? {};
             return;
         }
-        took(answer.records ?? answer.changed, answer.gone);
+        if (answer.id in apart)
+            delete apart[answer.id];
+        else
+            took(answer.records ?? answer.changed, answer.gone);
         const then = awaited[answer.id];
         if (then) {
             delete awaited[answer.id];
@@ -171,6 +206,7 @@ Scope {
     function gone() {
         wire = null;
         state = "not answering";
+        apart = {};
         const waiting = awaited;
         awaited = {};
         for (const id in waiting)
