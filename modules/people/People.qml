@@ -118,7 +118,9 @@ Provider {
                 const entry = record.sources?.[name];
                 if (!entry)
                     continue;
-                const email = Person.address(entry.email);
+                // The daemon keeps someone by their address, in the key,
+                // or by the source's id for one who has none.
+                const email = Person.address(entry.email || addressOf(record.key));
                 const id = String(entry.id ?? "");
                 people[name].push(email !== ""
                     ? { emails: [email], name: entry.name ?? "", recent: entry.recent === true }
@@ -129,6 +131,13 @@ Provider {
         return { people: people, stands: stands };
     }
 
+    // The address a record's key holds, or "" for one kept by a source's
+    // id, as `person:tuple:108` is.
+    function addressOf(key) {
+        const kept = String(key).slice("person:".length);
+        return kept.includes("@") ? kept : "";
+    }
+
     // What a held source told the daemon of someone, or null.
     function entryOf(person, name) {
         const keys = person.emails.length > 0 ? person.emails.map(email => `person:${email}`)
@@ -136,7 +145,7 @@ Provider {
         for (const key of keys) {
             const entry = recordOf[key]?.sources?.[name];
             if (entry)
-                return entry;
+                return Object.assign({ email: addressOf(key) }, entry);
         }
         return null;
     }
