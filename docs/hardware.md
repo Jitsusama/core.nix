@@ -293,6 +293,22 @@ than swap. niri-off-cpu counts the buffers the shrinker keeps, so a trace
 says how much that is; past 1 GiB, making a read back cheaper is the way
 instead.
 
+### The GPU's Big Pages
+
+xe asks TTM's page pool for 2 MiB blocks where it can, and in 7.3 the
+pool tries that one size harder than the rest: where every other
+size skips reclaim, a 2 MiB try had the asking thread reclaim and compact
+for it, round after round, until neither made progress, and only then
+fall back to smaller pages. With memory fragmented under a load, niri's
+main thread stalled for 0.1 to 1.3 s at a time, each stall beside
+failing direct compaction and direct reclaim, and no huge-page fault.
+
+`kernel/local/ttm-pool-defers-big-pages.patch`, written here, has that
+try only wake kswapd, which wakes kcompactd, and fall back at once, as a
+huge page fault does with THP's defrag set to defer. The blocks are
+made in the background for the next buffer, and a buffer that misses
+one is made of smaller pages, as it was after the stall.
+
 ### The Boot Clock
 
 The firmware hands over to the boot loader at 400 MHz with HWP off, and holds
