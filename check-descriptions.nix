@@ -844,8 +844,8 @@
     clippy finds nothing in the people daemon or its tests
   '';
   people-runs-where-a-source-names-a-program = ''
-    the people daemon runs for Slack's source on the daemons' socket, restarting as the new one
-    after a switch, and doesn't run where no source names a program for it
+    the people daemon runs for Slack's and Tuple's sources on the daemons' socket, restarting as
+    the new one after a switch, and doesn't run where no source names a program for it
   '';
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's

@@ -3,7 +3,6 @@
 {
   account,
   bareNixos,
-  graphical,
   holds,
   lib,
   onLinux,
@@ -27,22 +26,26 @@ onLinux {
   # clippy finds nothing in the people daemon, its tests included.
   people-passes-clippy = passesClippy "people-passes-clippy" (pkgs.callPackage ./package.nix { });
   # The daemon runs wherever a source names a program for it, as Slack's
-  # does, on the socket the shell's daemons share, and not where none
-  # does, as on the example desktop, whose sources are QML alone.
+  # and Tuple's do, on the socket the shell's daemons share, and not where
+  # none does, as where Google's is the only source, being QML alone.
   people-runs-where-a-source-names-a-program =
     let
-      slack = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.slack ]; } ]);
+      with' = module: account (bareNixos [ { home-manager.sharedModules = [ module ]; } ]);
       # Home Manager keeps a unit's ExecStart as a list of its lines.
-      started = lib.concatStringsSep " " (
-        lib.toList (slack.systemd.user.services.people.Service.ExecStart or "")
-      );
+      started =
+        home:
+        lib.concatStringsSep " " (lib.toList (home.systemd.user.services.people.Service.ExecStart or ""));
+      runs =
+        home:
+        lib.hasInfix "%t/daemons/people.sock" (started home)
+        && home.systemd.user.services.people.Unit.X-SwitchMethod == "restart";
     in
     holds "people-runs-where-a-source-names-a-program"
-      "The people daemon doesn't run for Slack's source, or runs where no source names one."
+      "The people daemon doesn't run for Slack's or Tuple's source, or runs where no source names one."
       (
-        lib.hasInfix "%t/daemons/people.sock" started
-        && slack.systemd.user.services.people.Unit.X-SwitchMethod == "restart"
-        && !((account graphical).systemd.user.services ? people)
+        runs (with' self.homeModules.slack)
+        && runs (with' self.homeModules.tuple)
+        && !((with' self.homeModules.google).systemd.user.services ? people)
       );
   # One person per email address across every source, how each stands, who's
   # listed and in what order, the drawer's details and the order of their
