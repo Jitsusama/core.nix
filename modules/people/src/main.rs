@@ -343,6 +343,11 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             if let Some(keys) = &keys {
                 ask_ahead(&mut daemon, keys);
             }
+            // A watch asked again by its id replaces the one before, as the
+            // shell does each time the people it lists change.
+            daemon
+                .watches
+                .retain(|watch| !(watch.connection == connection && watch.id == id));
             daemon.watches.push(Watch {
                 connection,
                 id: id.clone(),
@@ -377,7 +382,8 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 .collect();
             json!({
                 "id": id, "version": VERSION, "state": "answering", "sources": sources,
-                "people": daemon.book.everyone().count(), "took": daemon.took,
+                "people": daemon.book.everyone().count(), "watching": daemon.watches.len(),
+                "took": daemon.took,
             })
         }
         Ask::UnknownKind { id, kind } => error(

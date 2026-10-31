@@ -195,6 +195,14 @@ fn a_watch_asks_ahead_says_what_is_held_and_gathers_a_burst_into_one_change() {
     let said = client.ask(&json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]}));
     assert_eq!(said["records"][0]["key"], "person:ada@example.com");
     assert_eq!(running.asked("slack").len(), 3);
+    // The same watch asked again by its id replaces the one before, and
+    // one unwatched is gone.
+    client.ask(&json!({"id": 1, "ask": "watch", "keys": ["person:grace@example.com"]}));
+    client.ask(&json!({"id": 2, "ask": "unwatch"}));
+    assert_eq!(
+        client.ask(&json!({"id": 3, "ask": "health"}))["watching"],
+        1
+    );
 }
 
 #[test]
