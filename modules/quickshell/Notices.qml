@@ -78,7 +78,11 @@ Singleton {
         "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true },
         // A firmware update fwupd offers (modules/firmware-notice), said
         // once a release, and missed until seen, since nothing else says it.
-        "firmware": { glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine" }
+        "firmware": { glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine" },
+        // What became of a save into Google Drive (modules/google's
+        // Saves.qml): one that failed is missed until seen, since the file
+        // waits on Joel, and one that went up answers what he did.
+        "google drive": { glyph: 0xf02b6, hue: "program" }
     })
 
     function sender(name) {
@@ -109,7 +113,10 @@ Singleton {
             hue: from.hue,
             urgent: urgent,
             held: held,
-            missed: counted && !from.answers,
+            // A sender whose every notice is missed can still send one that
+            // only answers what Joel just did, saying so with the x-answers
+            // hint, as a save Drive took does.
+            missed: counted && !from.answers && notification.hints?.["x-answers"] === undefined,
             read: false
         };
         // Live before it's kept, so it never reads as missed and gone from

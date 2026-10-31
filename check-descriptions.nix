@@ -1292,7 +1292,8 @@
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
     sent as a card on niri's notices layer, and what Super+Shift+N runs puts a critical one away
-    unread in the history
+    unread in the history; and Google Drive's notice that answers a save is kept unmissed, by its
+    x-answers hint, while its failure is missed
   '';
   the-notices-wait-while-joel-is-away = ''
     a notice that comes while nothing has been typed or moved stays on niri past the time its sender
@@ -1398,7 +1399,10 @@
     folder and download a file, a save alone saying where, and says how the newest download asked
     stands; and says a Drive file in the picker by its size and when it changed, or what Google's
     own kind comes as, picked by that name and kind, adopting its document row, with why a file or
-    a folder couldn't be had
+    a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
+    tells each settled since the shell started once, oldest first, by its folder's name, sent as an
+    answer with Open in Drive and failed with why and what mends it, and finds a failure's notice
+    by its file alone
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail

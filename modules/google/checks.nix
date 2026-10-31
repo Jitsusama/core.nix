@@ -60,8 +60,9 @@ onLinux {
     '';
 
   # The documents read from the program's file, which program opens each
-  # kind, what a document's row says and its details are Drive.js's, run in
-  # Qt's own engine (tests/drive.qml).
+  # kind, what a document's row says and its details are Drive.js's, and
+  # which saves into Drive are told and how is Saves.js's, run in Qt's own
+  # engine (tests/drive.qml).
   the-shell-reads-the-documents =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -72,6 +73,7 @@ onLinux {
       cp ${./Mail.js} Mail.js
       cp ${./Calendar.js} Calendar.js
       cp ${./Google.js} Google.js
+      cp ${./Saves.js} Saves.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

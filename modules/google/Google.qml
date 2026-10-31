@@ -43,10 +43,11 @@ Singleton {
     // Making a Meet meeting: whether Joel's sign-in grants it, and the one
     // last asked for, { asked, link, failed }, or null.
     property var meet: ({ granted: false, made: null })
-    // Drive's folders and downloads asked lately, each newest first: each
-    // folder's last listing { folder, asked, files, more, failed }, and
-    // each download { file, how, asked, path, failed }.
-    property var drive: ({ listings: [], downloads: [] })
+    // Drive's folders, downloads and saves lately, each newest first: each
+    // folder's last listing { folder, asked, files, more, failed }, each
+    // download { file, how, asked, path, failed }, and each save the picker
+    // staged { path, folder, name, asked, id, link, failed }.
+    property var drive: ({ listings: [], downloads: [], uploads: [] })
 
     // The person an address is, as People's row for them, from the
     // launcher's provider that knows people (People.qml's personOf), so a
@@ -79,6 +80,12 @@ Singleton {
     // `drive.listings`.
     function list(folder) {
         ask(Said.list(folder));
+    }
+
+    // Asks for a save the picker staged to be sent up again, as Try Again
+    // does once Drive couldn't be reached (Saves.qml).
+    function upload(path) {
+        ask(Said.upload(path));
     }
 
     function listing(folder, since) {
@@ -134,7 +141,7 @@ Singleton {
         heard = null;
         fetched = null;
         meet = { granted: false, made: null };
-        drive = { listings: [], downloads: [] };
+        drive = { listings: [], downloads: [], uploads: [] };
     }
 
     // Asks the program one thing, a line its ask.rs reads. It's running
