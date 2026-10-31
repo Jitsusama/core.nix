@@ -992,6 +992,9 @@
   spotify-player-accepts-its-configuration = ''
     spotify-player starts with its settings
   '';
+  spotify-player-signs-in-where-spotify-answers = ''
+    spotify-player's sign-in asks ncspot's Spotify app to answer at the one address that app takes
+  '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
   '';
