@@ -118,6 +118,11 @@
   bluetooth-keeps-its-power-limits = ''
     the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI
   '';
+  bluetooth-lets-a-hibernation-power-off = ''
+    the XPS 14's kernel thaws Bluetooth's chip after a hibernation's image is made with a plain
+    wake rather than a reset, so the power-off after finds it answering and the hibernation goes
+    through
+  '';
   bluetooth-links-passes-clippy = ''
     clippy finds nothing in bluetooth-links or its tests
   '';
@@ -144,10 +149,6 @@
     the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to
     the TPM under PCR 7, leaves out devices only seen in a scan, seals unchanged pairings once and
     changed ones again, and takes the keys off once unpaired
-  '';
-  bluetooth-sits-out-hibernation = ''
-    on the XPS 14, a hibernation takes Bluetooth's driver off its chip before the image is written
-    and gives the same chip its driver back after, and a suspend leaves the driver where it is
   '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and

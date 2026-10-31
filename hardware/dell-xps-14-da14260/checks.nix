@@ -32,36 +32,22 @@ let
   );
 in
 {
-  # Bluetooth's driver refused a hibernation's power-off, so the hook takes it
-  # off the chip first. Run against a stand-in of the driver's folder, a
-  # hibernation takes the chip off and puts the same chip back, and a
-  # suspend touches nothing, since the chip's sleep then works.
-  bluetooth-sits-out-hibernation =
+  # A hibernation's thaw once reset Bluetooth's chip and loaded its firmware
+  # afresh, so the power-off after found it still in its bootloader and
+  # refused, rolling the hibernation back with the laptop left on. Nothing
+  # takes the driver off the chip for it any more, so its thaw must be the
+  # plain wake btintel-pcie-pm makes it, and never the resume that resets.
+  bluetooth-lets-a-hibernation-power-off =
     let
-      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
-      hook = xps.config.environment.etc."systemd/system-sleep/bluetooth-sits-out-hibernation".source;
+      driver = "drivers/bluetooth/btintel_pcie.c";
     in
-    pkgs.runCommandLocal "bluetooth-sits-out-hibernation" { } ''
-      export SYSFS=$PWD/sys KEPT=$PWD/kept
-      driver=$SYSFS/bus/pci/drivers/btintel_pcie
-      mkdir -p "$driver/0000:00:14.7"
-      : >"$driver/bind"
-      : >"$driver/unbind"
-      fail() {
-        echo "$1" >&2
+    pkgs.runCommandLocal "bluetooth-lets-a-hibernation-power-off" { } ''
+      source=${kernelSource [ driver ]}/${driver}
+      if ! grep -q '\.thaw = btintel_pcie_thaw,' "$source" ||
+        grep -q '\.thaw = btintel_pcie_resume,' "$source"; then
+        echo "Bluetooth's thaw resets its chip, so a hibernation's power-off can be refused." >&2
         exit 1
-      }
-
-      ${hook} pre suspend
-      [ -s "$driver/unbind" ] && fail "A suspend took Bluetooth's driver off."
-
-      ${hook} pre hibernate
-      [ "$(cat "$driver/unbind")" = 0000:00:14.7 ] ||
-        fail "A hibernation left Bluetooth's driver on the chip."
-      ${hook} post hibernate
-      [ "$(cat "$driver/bind")" = 0000:00:14.7 ] ||
-        fail "Bluetooth's driver never came back after a hibernation."
-      [ -e "$KEPT" ] && fail "The list of chips taken off outlived the hibernation."
+      fi
       touch $out
     '';
 

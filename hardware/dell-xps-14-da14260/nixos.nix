@@ -96,13 +96,6 @@ in
     }
   ];
 
-  # Bluetooth's driver refused a hibernation's power-off on 2026-10-28, and
-  # the laptop stayed on in a bag; the script says why, and when it goes.
-  environment.etc."systemd/system-sleep/bluetooth-sits-out-hibernation".source =
-    pkgs.writeShellScript "bluetooth-sits-out-hibernation" (
-      builtins.readFile ./bluetooth-sits-out-hibernation.sh
-    );
-
   # The devices this laptop always has: every one a driver binds to, and each
   # light, sensor, control and setting those drivers give, so a kernel or
   # firmware change that loses one is named rather than found by chance.
