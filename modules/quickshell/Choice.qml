@@ -20,12 +20,15 @@
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
-import "Reading.js" as Reading
 
 Rectangle {
     id: row
 
     property bool selected: false
+    // Whether the row can be seen. A closed launcher only fades its card
+    // out, keeping its selection, so without this a cut row would read on
+    // unseen, drawing every frame of it while nothing is shown.
+    property bool shown: true
     property string glyph
     property color hue
     property string name
@@ -92,104 +95,34 @@ Rectangle {
         font.pointSize: Theme.mono.large
     }
 
-    // The name's room, which it's cut to. Selected, a name too long for
-    // it reads on: after a rest to read how it starts, it slides at a
-    // steady reading pace until its end shows, rests there, then glides
-    // back to its start and rests again, for as long as it's selected.
-    // Only the name moves, inside its own room, so nothing beside it does,
-    // and the row isn't any wider for it (Joel, 2026-10-25: titles "get
-    // elipsed really quick").
-    Item {
+    // Selected, a name too long for its room reads on (ReadsOn.qml), and
+    // so does what the row says at its right. With both cut they take
+    // turns, the name first, so only one thing moves at a time and each
+    // reads whole; given up by the selection, or no longer seen, both are
+    // back at their start at once.
+    readonly property bool reads: row.selected && row.shown
+    readonly property bool nameCut: nameBox.over > 0
+    readonly property bool sideCut: right.sided && sideText.over > 0
+    property bool sidesTurn: false
+    onReadsChanged: row.sidesTurn = false
+
+    // The name's room, which it's cut to.
+    ReadsOn {
         id: nameBox
         x: Theme.space.l + Theme.space.xxl
-        width: Math.max(0, Math.min(nameText.implicitWidth, row.ends - x - Theme.space.xxl
+        width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.xxl
             - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
                 + Theme.space.m)))
-        height: nameText.height
         anchors.verticalCenter: parent.verticalCenter
-        clip: scrolls
-
-        // How far past its room the name runs, when it does.
-        readonly property real over: Math.max(0, nameText.implicitWidth - width)
-        readonly property bool scrolls: row.selected && over > 0
-        // A reading pace of twelve characters a second, held between soft
-        // ends (Reading.js). A short rest to see how it starts, and a
-        // longer one at its end to read that (Joel, 2026-10-29: the slide
-        // stuttered, was too slow, and started and stopped abruptly).
-        readonly property real pace: 12 * figureFace.advanceWidth
-        readonly property var slide: Reading.slide(over, pace)
-        readonly property int restFirst: Math.round(500 * Theme.motion.slowdown)
-        readonly property int restLast: Math.round(1000 * Theme.motion.slowdown)
-
-        Text {
-            id: nameText
-            width: nameBox.scrolls ? implicitWidth : nameBox.width
-            text: row.name
-            textFormat: row.selected || row.quiet ? Text.PlainText : Text.StyledText
-            elide: nameBox.scrolls ? Text.ElideNone : Text.ElideRight
-            color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
-            font.family: Theme.mono.family
-            font.pointSize: Theme.mono.large
-            font.weight: row.selected ? Font.Medium : Font.Normal
-        }
-
-        // Animators, which move the name on the render thread, so the
-        // slide keeps every frame while the shell is busy making rows
-        // again, as it is each second in Machine (Joel, 2026-10-29:
-        // "scrolling long lines feels a bit janky"). An animator says the
-        // name's x back only when it stops, so each move runs on its own,
-        // the rests between them timed here, rather than looping in one
-        // group that would never say where the name rests.
-        onScrollsChanged: nameBox.scrolls ? nameBox.read() : nameBox.unread()
-        Component.onCompleted: {
-            if (nameBox.scrolls)
-                nameBox.read();
-        }
-        // Which move the rest ends in: out to the name's end, or back.
-        property bool outward: true
-        function read() {
-            nameBox.outward = true;
-            resting.interval = nameBox.restFirst;
-            resting.restart();
-        }
-        function unread() {
-            resting.stop();
-            slideOut.stop();
-            slideBack.stop();
-            nameText.x = 0;
-        }
-
-        Timer {
-            id: resting
-            onTriggered: (nameBox.outward ? slideOut : slideBack).start()
-        }
-        XAnimator {
-            id: slideOut
-            target: nameText
-            from: 0
-            to: -nameBox.over
-            duration: Math.round(1000 * Theme.motion.slowdown * nameBox.slide.seconds)
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: nameBox.slide.curve
-            onFinished: {
-                if (!nameBox.scrolls)
-                    return;
-                nameBox.outward = false;
-                resting.interval = nameBox.restLast;
-                resting.restart();
-            }
-        }
-        XAnimator {
-            id: slideBack
-            target: nameText
-            to: 0
-            duration: Theme.motion.medium
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.motion.curve
-            onFinished: {
-                if (nameBox.scrolls)
-                    nameBox.read();
-            }
+        text: row.name
+        format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
+        color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
+        weight: row.selected ? Font.Medium : Font.Normal
+        figure: figureFace.advanceWidth
+        reading: row.reads && !(row.sideCut && row.sidesTurn)
+        onThrough: {
+            if (row.sideCut)
+                row.sidesTurn = true;
         }
     }
 
@@ -239,7 +172,7 @@ Rectangle {
         // title is what Joel looks for, its program and place only help
         // (Joel, 2026-10-25: titles "get elipsed really quick").
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
-            row.width - nameBox.x - nameText.implicitWidth - 2 * Theme.space.xxl
+            row.width - nameBox.x - nameBox.implicitWidth - 2 * Theme.space.xxl
             - Theme.space.l - (row.detail === "" ? 0
                 : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
         // As wide as the widest beside a graph in the list, so the graphs
@@ -260,16 +193,21 @@ Rectangle {
             keys: row.chord
         }
 
-        Text {
+        // What the row is, cut to its share, reads on as the name does,
+        // after it.
+        ReadsOn {
             id: sideText
             anchors.right: parent.right
             visible: right.sided
             width: Math.min(implicitWidth, right.share)
-            elide: Text.ElideRight
             text: right.said
             color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
-            font.family: Theme.mono.family
-            font.pointSize: Theme.mono.large
+            figure: figureFace.advanceWidth
+            reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)
+            onThrough: {
+                if (row.nameCut)
+                    row.sidesTurn = false;
+            }
         }
     }
 

@@ -2075,6 +2075,7 @@ onLinux {
     pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
@@ -2104,6 +2105,7 @@ onLinux {
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml

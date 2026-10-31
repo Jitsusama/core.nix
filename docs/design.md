@@ -324,7 +324,12 @@ the render thread, so a busy shell never stutters it. Only the name
 moves, inside its own room, so nothing beside it does, and given up by
 the selection it's back at its start at once (Joel, 2026-10-25: titles
 "get elipsed really quick"; 2026-10-29: the slide stuttered, was too
-slow and started and stopped abruptly).
+slow and started and stopped abruptly). What a row says at its right,
+cut to its share, reads on the same way, by the same piece, and never
+opens the drawer to be read (VKCF3Z, 2026-10-30). With both cut they
+take turns, the name first and then what it says, so only one thing
+moves at a time. Nothing reads on unseen: a closed launcher keeps its
+selection, but its rows rest at their start until it opens again.
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a

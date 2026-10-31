@@ -1076,12 +1076,16 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
         )
     )
     desktop.photograph("launcher-runs")
-    # A fleet at work draws nothing while it's only looked at: what it says
-    # changes as its files do, not every frame.
-    draws_nothing_held_still(desktop, "Subagents", "a fleet at work")
+    # The fleet's own row says more than its share, so what it says reads on while selected, as
+    # a long name does (docs/design.md). That a fleet at work draws nothing while it's only
+    # looked at is held among its members, where the member at work shows below the way to
+    # the fleet's session, whose row isn't cut.
+    reads_on_beside(desktop, "paint-crew", "fleet \u00b7")
     # Stepped into, its members after the way to its session.
     desktop.step_in()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
+    # What a fleet says changes as its files do, not every frame.
+    draws_nothing_held_still(desktop, "a fleet", "its member at work")
     machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
@@ -1097,7 +1101,6 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
         )
     )
     desktop.photograph("launcher-run-members")
-    draws_nothing_held_still(desktop, "a fleet", "its member at work")
     # Its answer, read in a terminal named for the run and the member.
     machine.send_key("ret")
     reading = "paint-crew \u00b7 roller"
@@ -1120,6 +1123,8 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
         desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
         timeout=dt.timedelta(seconds=10),
     )
+    # Closed on the fleet's row, whose words read on while seen, the launcher draws nothing.
+    draws_nothing_held_still(desktop, "the closed launcher", "a row that reads on")
     desktop.as_account(
         "rm -rf ~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew"
     )
@@ -4841,12 +4846,47 @@ def drawn_held_still(desktop: Desktop) -> int:
     return frames() - began
 
 
+def reads_on_beside(desktop: Desktop, name: str, said: str) -> None:
+    """Hold that what the selected row says, cut to its share, moves while its name holds."""
+
+    def words() -> list[Json]:
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return next(row["words"] for row in laid["rows"] if row["selected"])
+
+    def at(drawn: list[Json], starting: str) -> float:
+        return float(next(word["x"] for word in drawn if word["text"].startswith(starting)))
+
+    first = words()
+    named = at(first, name)
+    seen = {at(first, said)}
+
+    def moved(_: bool) -> bool:
+        drawn = words()
+        assert at(drawn, name) == named, f"{name} moved while what it says read on: {drawn}"
+        seen.add(at(drawn, said))
+        return len(seen) > 1
+
+    retry(moved, timeout=dt.timedelta(seconds=30))
+
+
 def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:
     """Hold that the open launcher, left still on a row, draws at most the foot's minute."""
     # Counted before it's asserted: pytest's rewriting runs a walrus in an assert again for its
     # report (pytest-dev/pytest#14445), which would count four more seconds.
     drawn = drawn_held_still(desktop)
-    assert drawn <= 1, f"{who} drew {drawn} frames in three seconds left still on {on}"
+    if drawn <= 1:
+        return
+    # A selected row with words cut reads on, so the failure says which it holds.
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    selected = [
+        (word["text"], "cut" if word["cut"] else "whole")
+        for row in laid["rows"]
+        if row["selected"]
+        for word in row["words"]
+    ]
+    assert drawn <= 1, (
+        f"{who} drew {drawn} frames in three seconds left still on {on}, selecting {selected}"
+    )
 
 
 def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
