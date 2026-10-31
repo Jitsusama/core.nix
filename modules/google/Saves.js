@@ -81,8 +81,8 @@ function notice(upload, listings) {
 
 // Whether a notice in the history is the failure told of this save's file,
 // to take back once the file is up or kept elsewhere.
-function failedOf(notice, path) {
+function failedOf(told, path) {
     const name = path.slice(path.lastIndexOf("/") + 1);
-    return notice.app === "Google Drive" && notice.summary === unsent
-        && Object.values(failures).some(failure => notice.body === `${name}${failure.why}`);
+    return told.app === "Google Drive" && told.summary === unsent
+        && Object.values(failures).some(failure => told.body === `${name}${failure.why}`);
 }
