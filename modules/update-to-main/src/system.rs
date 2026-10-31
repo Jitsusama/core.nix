@@ -36,6 +36,11 @@ pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathB
     nix.args(["build", "--print-out-paths", "--out-link"])
         .arg(config.building_link())
         .args(overrides);
+    // What's left is built here with no builders, so a piece built from a
+    // kept one can't go to the daemon's.
+    if config.elsewhere {
+        nix.args(["--builders", ""]);
+    }
     let printed = run::output(nix, "building the system", [flake])?;
     let system = PathBuf::from(printed.lines().last().unwrap_or_default());
     let needs: &[&str] = match config.kind {
@@ -63,7 +68,11 @@ fn nix(config: &Config) -> std::process::Command {
 /// Nix daemon's builders, with no build here allowed, so it fails rather
 /// than compile here when none takes one. The light pieces, such as a
 /// written file or a folder of links, are left for the build here, as
-/// sending each one away would cost more than making it.
+/// sending each one away would cost more than making it. Kept pieces go
+/// first and only to their own builders. A piece built from one would
+/// carry it to whichever builder took it, so it stays for the build here,
+/// where the kept one now is: such pieces are a system's links, units and
+/// wrappers, not what compiles.
 fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result<(), Failure> {
     let mut listing = nix(config);
     listing
@@ -86,18 +95,47 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     }
     let mut show = nix(config);
     show.args(["derivation", "show"]);
-    let shown = run::output(show, "reading what the system needs", &needed)?;
-    let heavy = heavy(&shown)?;
-    if heavy.is_empty() {
-        return Ok(());
+    // What the needed pieces are built from is read only when some pieces
+    // are kept, since it's the whole system's graph.
+    if !config.kept.names.is_empty() {
+        show.arg("--recursive");
     }
-    let mut away = nix(config);
-    away.args(["build", "--no-link", "--max-jobs", "0"]);
-    run::output(
-        away,
-        "building the system on the machine's builders",
-        heavy.iter().map(|drv| format!("{drv}^*")),
-    )?;
+    let shown = run::output(show, "reading what the system needs", &needed)?;
+    let (kept, rest) = heavy(&pieces(&shown)?, &needed, &config.kept.names);
+    if !kept.is_empty() {
+        let Some(builders) = &config.kept.builders else {
+            return Err(Failure {
+                why: format!(
+                    "{} pieces may go only to builders of their own, and none are named",
+                    kept.len()
+                ),
+                lines: kept.iter().take(run::TAIL).cloned().collect(),
+            });
+        };
+        let mut apart = nix(config);
+        apart.args([
+            "build",
+            "--no-link",
+            "--max-jobs",
+            "0",
+            "--builders",
+            builders,
+        ]);
+        run::output(
+            apart,
+            "building the kept pieces on their own builders",
+            kept.iter().map(|drv| format!("{drv}^*")),
+        )?;
+    }
+    if !rest.is_empty() {
+        let mut away = nix(config);
+        away.args(["build", "--no-link", "--max-jobs", "0"]);
+        run::output(
+            away,
+            "building the system on the machine's builders",
+            rest.iter().map(|drv| format!("{drv}^*")),
+        )?;
+    }
     Ok(())
 }
 
@@ -121,10 +159,19 @@ fn to_build(said: &str) -> Vec<String> {
     needed
 }
 
-/// Of the derivations `nix derivation show` gave, the ones not marked to
-/// build where they're asked for, by their paths. Newer Nix keys them by
-/// name under `derivations`, older by path at the top.
-fn heavy(shown: &str) -> Result<Vec<String>, Failure> {
+/// What `nix derivation show` says of one derivation.
+struct Piece {
+    names: Vec<String>,
+    light: bool,
+    /// The derivations it's built from, by their paths.
+    inputs: Vec<String>,
+}
+
+/// The derivations `nix derivation show` gave, by their paths. Newer Nix
+/// keys them by name under `derivations` and lists what each is built from
+/// under `inputs.drvs`; older keys them by path at the top, under
+/// `inputDrvs`.
+fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
     let shown: serde_json::Value = serde_json::from_str(shown)
         .map_err(|e| Failure::new(format!("reading what the system needs: {e}")))?;
     let derivations = shown.get("derivations").unwrap_or(&shown);
@@ -133,15 +180,108 @@ fn heavy(shown: &str) -> Result<Vec<String>, Failure> {
         .ok_or_else(|| Failure::new("reading what the system needs: no derivations"))?;
     Ok(derivations
         .iter()
-        .filter(|(_, d)| d["env"]["preferLocalBuild"].as_str() != Some("1"))
-        .map(|(key, _)| {
-            if key.starts_with('/') {
-                key.clone()
-            } else {
-                format!("/nix/store/{key}")
-            }
+        .map(|(key, d)| {
+            let names = [&d["name"], &d["env"]["pname"]]
+                .iter()
+                .filter_map(|n| n.as_str())
+                .map(str::to_owned)
+                .collect();
+            let inputs = d["inputs"]["drvs"]
+                .as_object()
+                .or_else(|| d["inputDrvs"].as_object())
+                .map(|drvs| drvs.keys().map(|k| stored(k)).collect())
+                .unwrap_or_default();
+            let piece = Piece {
+                names,
+                light: d["env"]["preferLocalBuild"].as_str() == Some("1"),
+                inputs,
+            };
+            (stored(key), piece)
         })
         .collect())
+}
+
+/// A derivation's path, given by its path or its name in the store.
+fn stored(key: &str) -> String {
+    if key.starts_with('/') {
+        key.to_owned()
+    } else {
+        format!("/nix/store/{key}")
+    }
+}
+
+/// Of the needed derivations, the ones not marked to build where they're
+/// asked for: first those `kept` names, then those built from none of them.
+/// The ones built from a kept one are in neither.
+fn heavy(
+    pieces: &BTreeMap<String, Piece>,
+    needed: &[String],
+    kept: &[String],
+) -> (Vec<String>, Vec<String>) {
+    let mut known = BTreeMap::new();
+    let mut held = Vec::new();
+    let mut rest = Vec::new();
+    for drv in needed {
+        if pieces.get(drv).is_none_or(|p| p.light) {
+            continue;
+        }
+        if pieces.get(drv).is_some_and(|p| named(p, kept)) {
+            held.push(drv.clone());
+        } else if !is_kept(drv, pieces, kept, &mut known) {
+            rest.push(drv.clone());
+        }
+    }
+    (held, rest)
+}
+
+/// Whether a derivation is named by `kept` or built from one that is,
+/// remembering each answer in `known`, since the system's pieces share
+/// most of what they're built from.
+fn is_kept(
+    drv: &str,
+    pieces: &BTreeMap<String, Piece>,
+    kept: &[String],
+    known: &mut BTreeMap<String, bool>,
+) -> bool {
+    if kept.is_empty() {
+        return false;
+    }
+    if let Some(answer) = known.get(drv) {
+        return *answer;
+    }
+    let answer = pieces.get(drv).is_some_and(|piece| {
+        named(piece, kept)
+            || piece
+                .inputs
+                .iter()
+                .any(|input| is_kept(input, pieces, kept, known))
+    });
+    known.insert(drv.to_owned(), answer);
+    answer
+}
+
+/// Whether one of `kept`'s patterns names the piece.
+fn named(piece: &Piece, kept: &[String]) -> bool {
+    piece
+        .names
+        .iter()
+        .any(|name| kept.iter().any(|pattern| matches(pattern, name)))
+}
+
+/// Whether `name` is what `pattern` says, where `*` stands for any run of
+/// characters, none included.
+fn matches(pattern: &str, name: &str) -> bool {
+    match pattern.split_once('*') {
+        None => pattern == name,
+        Some((first, after)) => {
+            let Some(left) = name.strip_prefix(first) else {
+                return false;
+            };
+            (0..=left.len())
+                .filter(|&at| left.is_char_boundary(at))
+                .any(|at| matches(after, &left[at..]))
+        }
+    }
 }
 
 /// The system the profile points at, which the machine runs or boots.
@@ -308,6 +448,10 @@ mod tests {
         assert!(to_build("this path will be fetched:\n  /nix/store/c.drv\n").is_empty());
     }
 
+    fn every(shown: &str) -> Vec<String> {
+        pieces(shown).unwrap().into_keys().collect()
+    }
+
     #[test]
     fn only_what_nixpkgs_marks_light_stays_here() {
         let newer = r#"{"derivations": {
@@ -315,11 +459,72 @@ mod tests {
             "b-heavy.drv": {"env": {}},
             "c-heavy.drv": {"env": {"preferLocalBuild": ""}}}}"#;
         assert_eq!(
-            heavy(newer).unwrap(),
-            ["/nix/store/b-heavy.drv", "/nix/store/c-heavy.drv"]
+            heavy(&pieces(newer).unwrap(), &every(newer), &[]),
+            (
+                vec![],
+                vec![
+                    "/nix/store/b-heavy.drv".to_owned(),
+                    "/nix/store/c-heavy.drv".to_owned()
+                ]
+            )
         );
         let older = r#"{"/nix/store/d-heavy.drv": {"env": {}}}"#;
-        assert_eq!(heavy(older).unwrap(), ["/nix/store/d-heavy.drv"]);
+        assert_eq!(
+            heavy(&pieces(older).unwrap(), &every(older), &[]).1,
+            ["/nix/store/d-heavy.drv"]
+        );
+    }
+
+    #[test]
+    fn a_kept_piece_goes_apart_and_whatever_is_built_from_one_nowhere() {
+        // The secret piece is built already, so only what's built from it
+        // is needed, and a second one is needed too; what's built from the
+        // first, even at one remove, goes to no builder, and a piece built
+        // from none goes to the daemon's.
+        let newer = r#"{"derivations": {
+            "s-secret-1.0.drv": {"name": "secret-1.0", "env": {}},
+            "w-wrapper.drv": {"name": "wrapper", "env": {},
+                "inputs": {"drvs": {"s-secret-1.0.drv": {}}}},
+            "x-outer.drv": {"name": "outer", "env": {},
+                "inputs": {"drvs": {"w-wrapper.drv": {}, "o-open.drv": {}}}},
+            "o-open.drv": {"name": "open", "env": {}},
+            "t-secret-tool.drv": {"name": "secret-tool-2", "env": {}},
+            "l-links.drv": {"name": "links", "env": {"preferLocalBuild": "1"},
+                "inputs": {"drvs": {"x-outer.drv": {}}}}}}"#;
+        let needed: Vec<String> = [
+            "w-wrapper.drv",
+            "x-outer.drv",
+            "o-open.drv",
+            "t-secret-tool.drv",
+            "l-links.drv",
+        ]
+        .iter()
+        .map(|k| stored(k))
+        .collect();
+        let (kept, rest) = heavy(&pieces(newer).unwrap(), &needed, &["secret*".to_owned()]);
+        assert_eq!(kept, ["/nix/store/t-secret-tool.drv"]);
+        assert_eq!(rest, ["/nix/store/o-open.drv"]);
+        // Older Nix lists what a piece is built from by path, and a
+        // pattern may name a piece's pname alone.
+        let older = r#"{
+            "/nix/store/s-secret.drv": {"name": "other", "env": {"pname": "secret"}},
+            "/nix/store/w-wrapper.drv": {"name": "wrapper", "env": {},
+                "inputDrvs": {"/nix/store/s-secret.drv": ["out"]}}}"#;
+        let needed = ["/nix/store/s-secret.drv", "/nix/store/w-wrapper.drv"].map(str::to_owned);
+        let (kept, rest) = heavy(&pieces(older).unwrap(), &needed, &["secret".to_owned()]);
+        assert_eq!(kept, ["/nix/store/s-secret.drv"]);
+        assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn a_pattern_stands_for_any_run_where_it_says_so() {
+        assert!(matches("aquifer-link*", "aquifer-link-0.1.0"));
+        assert!(matches("aquifer-link*", "aquifer-link"));
+        assert!(matches("*-far", "aquifer-link-far"));
+        assert!(matches("a*b*c", "a-x-b-y-c"));
+        assert!(!matches("aquifer-link*", "an-aquifer-link"));
+        assert!(!matches("vault", "vault-people"));
+        assert!(!matches("a*c", "a-b"));
     }
 
     #[test]

@@ -161,7 +161,14 @@ from the lock's commit and from what it last followed, and builds with the
 input overridden to it; an ask with main where it was builds again when a
 followed main moved. With `elsewhere = true`, the machine builds only the
 pieces nixpkgs marks light itself and sends every other to the Nix
-daemon's builders, failing rather than build one when none takes it:
+daemon's builders, failing rather than build one when none takes it.
+
+Code that may go to some builders and not others is named in `kept`, by
+patterns over its pieces' names. Those pieces go only to `kept.builders`,
+and when it names none an update needing one fails. A piece built from a
+kept one, such as a wrapper, a unit or the system itself, would carry it
+to whichever builder took it, so it's built here, where the kept one now
+is, with no builders at all:
 
 ```nix
 jitsusama.update-to-main = {
@@ -170,6 +177,10 @@ jitsusama.update-to-main = {
     signers.openpgp = [ ./forge-merges.asc ];
   };
   elsewhere = true;
+  kept = {
+    names = [ "secret-tool" "secret-service*" ];
+    builders = "@/run/kept-builders";
+  };
 };
 ```
 

@@ -53,6 +53,9 @@ pub struct Config {
     /// Whether the build leaves everything but what nixpkgs marks light to
     /// the Nix daemon's builders, failing rather than building it here.
     pub elsewhere: bool,
+    /// Pieces built elsewhere only on builders of their own, never the
+    /// daemon's, with every piece built from one of them.
+    pub kept: Kept,
     /// Commands that each have to succeed once the switch is done, within
     /// `health_within` seconds, or the machine goes back.
     pub health: Vec<Vec<String>>,
@@ -70,6 +73,19 @@ pub struct Config {
     /// The system NixOS booted, whose kernel decides whether a new system
     /// can be switched to live.
     pub booted: PathBuf,
+}
+
+/// Pieces of the system that may go to some builders and not others, such
+/// as code that mustn't leave its owner's machines.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Kept {
+    /// Patterns over a derivation's name or its `pname`, where `*` stands
+    /// for any run of characters.
+    pub names: Vec<String>,
+    /// The builders they go to, as Nix's `builders` setting takes them;
+    /// none to build none of them, so an update needing one fails.
+    pub builders: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
