@@ -4,9 +4,19 @@
 # its package's, with two things it can be asked from outside its window,
 # which the launcher lists among its own actions: Quick Access, and Lock
 # 1Password, named as its key list names Ctrl+Shift+L. The system's half,
-# the app itself, is nixos.nix beside this.
-{ lib, pkgs, ... }:
+# the app itself, is nixos.nix beside this. Where the system has the app, it
+# starts with the session, without its window, as its own Start at Login
+# would, so its command-line tool and Chrome's extension find it after a
+# boot.
+{
+  lib,
+  pkgs,
+  osConfig ? { },
+  ...
+}:
 let
+  app = osConfig.programs._1password-gui or { };
+
   grouped = group: map (key: key // { inherit group; });
 
   keys =
@@ -97,6 +107,25 @@ in
   imports = [ ../keys/home.nix ];
 
   jitsusama.keys.onepassword = keys;
+
+  systemd.user.services.onepassword = lib.mkIf (app.enable or false) {
+    Unit = {
+      Description = "1Password, started with the session without its window";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = lib.escapeShellArgs [
+        (lib.getExe' app.package "1password")
+        "--silent"
+      ];
+      # Quitting it from its own menu ends it for the session; a crash
+      # starts it again.
+      Restart = "on-failure";
+      Slice = "app.slice";
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
 
   # The package's entry as it has it, which this one shadows, the account's
   # folder coming first. Its actions are written in their names' order, so

@@ -4,6 +4,7 @@
   account,
   graphical,
   holds,
+  lib,
   onLinux,
   pkgs,
   ...
@@ -29,6 +30,26 @@ onLinux {
         grep -a -q -- "\"$switch\"" ${app}/share/1password/resources/app.asar \
           || fail "1Password no longer takes $switch"
       done
+      touch $out
+    '';
+
+  # The session starts the system's own 1Password without its window, so
+  # its command-line tool and Chrome's extension find it after a boot,
+  # through a switch the installed 1Password still takes.
+  onepassword-starts-with-the-session =
+    let
+      service = (account graphical).systemd.user.services.onepassword or { };
+      package = graphical.config.programs._1password-gui.package;
+      started =
+        lib.toList (service.Service.ExecStart or [ ]) == [ "${lib.getExe' package "1password"} --silent" ]
+        && service.Install.WantedBy or [ ] == [ "graphical-session.target" ];
+      unstarted = ''fail "The session doesn't start the system's 1Password with --silent."'';
+    in
+    pkgs.runCommandLocal "onepassword-starts-with-the-session" { } ''
+      fail() { echo "$1"; exit 1; }
+      ${lib.optionalString (!started) unstarted}
+      grep -a -q -- '"--silent"' ${package}/share/1password/resources/app.asar \
+        || fail "1Password no longer takes --silent"
       touch $out
     '';
 }
