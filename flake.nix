@@ -487,12 +487,17 @@
         });
       });
 
-      # Some of a VM test's subtests as a build of their own, for
+      # The tools other machines run for a checkout: changed-checks, which
+      # `nix-offload there --changed` runs from the commit it sends; and some
+      # of a VM test's subtests as a build of their own, for
       # `run-subtests --there` to have built where its VM can run:
       # `subtests { check = "vm-..."; words = [ ... ]; }`, on Linux.
       legacyPackages = forEachSystem (
         pkgs:
-        pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+        {
+          changed-checks = pkgs.callPackage ./tools/changed-checks/package.nix { };
+        }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           subtests = import ./tools/run-subtests/subtests.nix {
             inherit pkgs;
             checks = self.checks.${pkgs.stdenv.hostPlatform.system};

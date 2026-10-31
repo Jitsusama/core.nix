@@ -9,7 +9,8 @@
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
 //!
-//! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--keep-base]`
+//! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--keep-base]
+//! [--here]`
 //!
 //! The working tree is read as Nix reads a git checkout, so a new file
 //! counts only once git knows it (`git add -N`). A change that only some
@@ -27,9 +28,17 @@
 //! calls clean is kept by its commit the same way. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
 //!
-//! While nix-offload lends a builder, a build is sent to it as a command
-//! naming a commit origin has, and the builder fetches that commit,
-//! evaluates the checks and builds them itself (`there.rs` says why).
+//! The whole run goes to another machine where nix-offload can send it
+//! (`nix-offload there --changed`): the lent builder, or a machine that
+//! evaluates with its builds sent on. Each evaluation here held about
+//! 4.8 GB and several cores of the person's machine. The far side runs
+//! the commit's own changed-checks with the same arguments and marked so
+//! it never sends itself on. With `--here`, a `--base` other than
+//! origin's main, which the far side wouldn't have, or nowhere to send it,
+//! it runs here. While nix-offload lends a builder, a build here is sent
+//! to it as a command naming a commit origin has, and the builder fetches
+//! that commit, evaluates the checks and builds them itself (`there.rs`
+//! says why).
 //!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
@@ -51,10 +60,24 @@ use runs::Run;
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
 
-const USED: &str =
-    "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--keep-base]";
+const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
+                    [--keep-base] [--here]";
+
+/// The base a run compares with unless told otherwise.
+const ORIGIN_MAIN: &str = "refs/remotes/origin/main";
+
+/// What `nix-offload there --changed` exits with when nowhere else took the
+/// run, so it runs here.
+const NOT_TAKEN: i32 = 75;
+
+/// Set on the far side's run, which runs there and never sends itself on.
+const HERE: &str = "CHANGED_CHECKS_HERE";
 
 /// What a run was asked for.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a flag of its own on the command line, set apart from the rest"
+)]
 struct Options {
     /// What the change is compared with, from its merge base.
     base: String,
@@ -66,17 +89,25 @@ struct Options {
     vm: bool,
     /// Whether to keep the base's derivations and compare nothing.
     keep_base: bool,
+    /// Whether to run here even where another machine could.
+    here: bool,
+    /// The arguments as given, for a run sent elsewhere.
+    given: Vec<String>,
 }
 
 impl Options {
     /// Read the command line's arguments, or say what's wrong with them.
-    fn parse(mut arguments: impl Iterator<Item = String>) -> Result<Self, String> {
+    fn parse(arguments: impl Iterator<Item = String>) -> Result<Self, String> {
+        let given: Vec<String> = arguments.collect();
+        let mut arguments = given.clone().into_iter();
         let mut options = Self {
-            base: "refs/remotes/origin/main".to_owned(),
+            base: ORIGIN_MAIN.to_owned(),
             system: None,
             build: false,
             vm: true,
             keep_base: false,
+            here: false,
+            given: Vec::new(),
         };
         while let Some(argument) = arguments.next() {
             let mut value = || {
@@ -90,9 +121,11 @@ impl Options {
                 "--build" => options.build = true,
                 "--no-vm" => options.vm = false,
                 "--keep-base" => options.keep_base = true,
+                "--here" => options.here = true,
                 _ => return Err(format!("{argument} isn't something it takes")),
             }
         }
+        options.given = given;
         Ok(options)
     }
 }
@@ -150,6 +183,9 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if !untracked.is_empty() {
         eprintln!("changed-checks: Nix doesn't read files git doesn't know:\n{untracked}");
     }
+    if let Some(code) = elsewhere(options, &root, &system)? {
+        return Ok(code);
+    }
     let mut noted = Run::new(&base, &system);
     let compared = compare(options, &flake, &base, &system, &mut noted);
     let log = state().join("changed-checks/runs.jsonl");
@@ -157,6 +193,46 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
     compared
+}
+
+/// The run sent to another machine by `nix-offload there --changed`, its
+/// exit, or none when it runs here: asked to, already the far side's, a
+/// base only this checkout may have, a nix-offload that doesn't take it,
+/// or nowhere that took it.
+fn elsewhere(options: &Options, root: &str, system: &str) -> Result<Option<ExitCode>, String> {
+    if options.here || env::var_os(HERE).is_some() || options.base != ORIGIN_MAIN {
+        return Ok(None);
+    }
+    let takes = Command::new("nix-offload")
+        .args(["there", "--takes"])
+        .stderr(std::process::Stdio::null())
+        .output();
+    let takes_it = takes.is_ok_and(|takes| {
+        takes.status.success()
+            && String::from_utf8_lossy(&takes.stdout)
+                .lines()
+                .any(|word| word == "changed")
+    });
+    if !takes_it {
+        return Ok(None);
+    }
+    let mut given = options.given.clone();
+    // The far side may be another system, which would name its own.
+    if options.system.is_none() {
+        given.extend(["--system".to_owned(), system.to_owned()]);
+    }
+    eprintln!("changed-checks: sending the run elsewhere; --here runs it on this machine");
+    let status = Command::new("nix-offload")
+        .args(["there", "--changed"])
+        .args(&given)
+        .current_dir(root)
+        .status()
+        .map_err(|error| format!("running nix-offload: {error}"))?;
+    Ok(match status.code() {
+        Some(NOT_TAKEN) => None,
+        Some(code) => Some(ExitCode::from(u8::try_from(code).unwrap_or(1))),
+        None => Some(ExitCode::FAILURE),
+    })
 }
 
 /// Compare the working tree's checks with the base's, noting in the run

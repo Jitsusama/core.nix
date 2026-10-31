@@ -65,6 +65,19 @@ adds a line to `~/.local/state/changed-checks/runs.jsonl` saying what each
 side's evaluation took, chunk by chunk, what it named, and what its build
 took, so these times are read from the runs rather than measured once.
 
+Wherever nix-offload can send it, the whole run leaves the machine, since
+each evaluation holds gigabytes and several cores beside the person's
+work: on 2026-10-30 every session changing core evaluated its own, a
+steady part of a load of 92 to 96. `nix-offload there --changed` sends
+the tree to the lent builder, which runs the commit's own changed-checks
+and builds what it names, or else to the first machine in
+`jitsusama.nix-offload.evaluators` that answers and takes the
+repository's GitHub owner, which only evaluates, and what it names is
+built as any `there` build is. The far side keeps
+each base's derivations as a run here would. `--here` runs it on this
+machine, as does a `--base` other than origin's main, or nowhere taking
+it.
+
 `--keep-going` lets every check finish when one fails, so the run names all
 the failures rather than the first. Determinate Nix needs it besides: when a
 check fails while others are still building, it cancels them and then aborts
