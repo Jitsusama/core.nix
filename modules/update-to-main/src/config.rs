@@ -62,7 +62,7 @@ pub struct Config {
 pub struct Signers {
     /// An allowed-signers file of SSH keys, as git reads one, or none.
     pub ssh: Option<PathBuf>,
-    /// OpenPGP public keys, each a file, such as GitHub's for its merges.
+    /// PGP public keys, each a file, such as GitHub's for its merges.
     pub openpgp: Vec<PathBuf>,
 }
 
@@ -101,7 +101,7 @@ impl Config {
         self.state.join("building")
     }
 
-    /// The keyring holding only the OpenPGP keys that count.
+    /// The keyring holding only the PGP keys that count.
     pub fn keyring(&self) -> PathBuf {
         self.state.join("gnupg")
     }

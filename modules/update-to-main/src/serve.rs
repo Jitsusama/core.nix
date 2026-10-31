@@ -54,7 +54,7 @@ pub fn serve(config: Config) -> Result<(), String> {
         let config = Arc::clone(&config);
         let current = Arc::clone(&current);
         thread::spawn(move || {
-            let _ = answer(&config, &current, stream);
+            let _ = answer(&config, &current, &stream);
         });
     }
     Ok(())
@@ -94,13 +94,13 @@ fn group_id(name: &str) -> Result<libc::gid_t, String> {
 fn answer(
     config: &Arc<Config>,
     current: &Arc<Mutex<Option<Arc<Answer>>>>,
-    stream: UnixStream,
+    stream: &UnixStream,
 ) -> io::Result<()> {
-    let asker = asker(&stream);
+    let asker = asker(stream);
     stream.set_read_timeout(Some(ASK_WITHIN))?;
     let mut ask = String::new();
-    BufReader::new((&stream).take(ASK_AT_MOST)).read_line(&mut ask)?;
-    let mut out = &stream;
+    BufReader::new(stream.take(ASK_AT_MOST)).read_line(&mut ask)?;
+    let mut out = stream;
     if ask.trim() != ASK {
         eprintln!("refused an ask from uid {asker}: {:?}", ask.trim());
         let refused = Line::Refused {
@@ -221,7 +221,8 @@ fn peer_uid(stream: &UnixStream) -> Option<libc::uid_t> {
         uid: 0,
         gid: 0,
     };
-    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let mut len = libc::socklen_t::try_from(std::mem::size_of::<libc::ucred>())
+        .expect("a ucred's size fits a socklen_t");
     // SAFETY: cred and len are valid for getsockopt to write.
     let done = unsafe {
         libc::getsockopt(

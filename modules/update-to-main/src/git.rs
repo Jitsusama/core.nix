@@ -12,7 +12,7 @@ const MAIN: &str = "refs/heads/main";
 
 /// The one signature state that counts: good, by a key trusted. For SSH
 /// that's a signer in the allowed-signers file, and `U` is a good signature
-/// by anyone else. For OpenPGP it's a key in root's keyring, each of which
+/// by anyone else. For PGP it's a key in root's keyring, each of which
 /// is trusted ultimately as it's imported.
 const GOOD: &str = "G";
 
@@ -67,7 +67,7 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     }
 }
 
-/// Puts the OpenPGP keys that count in root's keyring, made afresh each
+/// Puts the PGP keys that count in root's keyring, made afresh each
 /// time so a key taken out of the config stops counting.
 pub fn keyring(config: &Config) -> Result<(), Failure> {
     let keyring = config.keyring();
@@ -102,12 +102,15 @@ pub fn keyring(config: &Config) -> Result<(), Failure> {
         "listing the signers' keys",
         ["--batch", "--with-colons", "--list-keys"],
     )?;
-    let trust: String = listed
+    let trust = listed
         .lines()
         .filter_map(|l| l.strip_prefix("fpr:::::::::"))
         .filter_map(|l| l.split(':').next())
-        .map(|fpr| format!("{fpr}:6:\n"))
-        .collect();
+        .fold(String::new(), |mut trust, fpr| {
+            trust.push_str(fpr);
+            trust.push_str(":6:\n");
+            trust
+        });
     let trusted = keyring.join("trust");
     fs::write(&trusted, trust).map_err(|e| Failure::new(format!("{}: {e}", trusted.display())))?;
     let mut gpg = run::command(&config.tools.gpg, &config.state);

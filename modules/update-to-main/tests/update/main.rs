@@ -24,6 +24,17 @@ fn shell() -> String {
     std::env::var("STAND_IN_SHELL").unwrap_or_else(|_| "/bin/sh".to_owned())
 }
 
+/// A stand-in's first lines: its shell, and the tests' own path, since
+/// update-to-main runs what it runs with a path of the system's, which a
+/// build's sandbox doesn't have.
+fn stand_in_head() -> String {
+    format!(
+        "#!{}\nPATH='{}'",
+        shell(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
 fn program(name: &str) -> PathBuf {
     let path = std::env::var_os("PATH").expect("a PATH");
     std::env::split_paths(&path)
@@ -71,11 +82,12 @@ impl World {
         git(&origin, &["init", "--quiet", "--initial-branch=main"]);
 
         let sh = shell();
+        let head = stand_in_head();
         // nix build --print-out-paths --out-link LINK git+file://...&rev=REV#OUT
         write_program(
             &stand_ins.join("nix"),
             &format!(
-                "#!{sh}\nfor a; do flake=$a; done\nrev=${{flake##*rev=}}; rev=${{rev%%#*}}\n\
+                "{head}\nfor a; do flake=$a; done\nrev=${{flake##*rev=}}; rev=${{rev%%#*}}\n\
                  echo \"$rev\" >> {log}\n\
                  if [ -e {systems}/$rev.fails ]; then echo 'error: builder failed' >&2; exit 1; fi\n\
                  echo {systems}/$rev\n",
@@ -86,7 +98,7 @@ impl World {
         // nix-env --profile PROFILE --set SYSTEM
         write_program(
             &stand_ins.join("nix-env"),
-            &format!("#!{sh}\nln -sfn \"$4\" \"$2\"\n"),
+            &format!("{head}\nln -sfn \"$4\" \"$2\"\n"),
         );
         let config = Config {
             repository: format!("file://{}", origin.display()),
@@ -177,10 +189,10 @@ impl World {
             write_program(
                 &system.join("bin/switch-to-configuration"),
                 &format!(
-                    "#!{sh}\nhere=$(cd \"$(dirname \"$0\")/..\" && pwd)\n\
+                    "{head}\nhere=$(cd \"$(dirname \"$0\")/..\" && pwd)\n\
                      if [ -e \"$here/breaks\" ]; then echo 'activation failed' >&2; exit 1; fi\n\
                      ln -sfn \"$here\" {running}\necho \"restarting the following units: sshd.service\"\n",
-                    sh = shell(),
+                    head = stand_in_head(),
                     running = self.root.join("running").display()
                 ),
             );
@@ -522,7 +534,7 @@ fn a_new_kernel_is_left_for_the_next_boot() {
     // The stand-in's boot mode points the profile only, as NixOS's does.
     write_program(
         &system.join("bin/switch-to-configuration"),
-        &format!("#!{}\n[ \"$1\" = boot ] || exit 9\n", shell()),
+        &format!("{}\n[ \"$1\" = boot ] || exit 9\n", stand_in_head()),
     );
     let (_, ending) = world.update();
     assert_eq!(
@@ -572,8 +584,11 @@ fn asks_while_an_update_runs_join_it() {
     let nix = world.config.tools.nix.clone();
     let text = fs::read_to_string(&nix).unwrap();
     let waiting = text.replacen(
-        "\n",
-        &format!("\nwhile [ ! -e {} ]; do sleep 0.05; done\n", gate.display()),
+        "\nfor a;",
+        &format!(
+            "\nwhile [ ! -e {} ]; do sleep 0.05; done\nfor a;",
+            gate.display()
+        ),
         1,
     );
     write_program(&nix, &waiting);

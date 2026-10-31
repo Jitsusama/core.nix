@@ -88,7 +88,11 @@ mod tests {
 
     #[test]
     fn a_tail_keeps_the_last_lines_that_say_something() {
-        let said: String = (1..=30).map(|n| format!("{n}\n\n")).collect();
+        let said = (1..=30).fold(String::new(), |mut said, n| {
+            said.push_str(&n.to_string());
+            said.push_str("\n\n");
+            said
+        });
         let kept = tail(&said);
         assert_eq!(kept.len(), TAIL);
         assert_eq!(kept.first().map(String::as_str), Some("11"));
