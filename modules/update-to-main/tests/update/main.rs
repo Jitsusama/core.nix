@@ -522,16 +522,15 @@ fn checking_an_openpgp_signature_leaves_no_agent_running() {
     assert_eq!(world.update().1, done(&head));
     // The keyring is made afresh each time, so an agent left on it would
     // be one more left behind at every ask.
-    let keyring = world.config.keyring();
-    let agents = Command::new("pgrep")
-        .args(["-f", &format!("gpg-agent --homedir {}", keyring.display())])
+    let socket = Command::new(program("gpgconf"))
+        .arg("--homedir")
+        .arg(world.config.keyring())
+        .args(["--list-dirs", "agent-socket"])
         .output()
         .unwrap();
-    assert!(
-        agents.stdout.is_empty(),
-        "an agent still runs: {}",
-        String::from_utf8_lossy(&agents.stdout)
-    );
+    let socket = String::from_utf8_lossy(&socket.stdout).trim().to_owned();
+    assert!(!socket.is_empty(), "gpgconf names no agent socket");
+    assert!(!Path::new(&socket).exists(), "an agent still runs on {socket}");
 }
 
 #[test]
