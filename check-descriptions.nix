@@ -607,9 +607,9 @@
   '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
-    service on Linux signing in with the agents' key and an agent on a Mac whose sessions sign
-    commits with that key; one naming none runs it dialling nothing, and one in no realm has
-    neither a realm nor a node
+    service on Linux signing in with the agents' key, or the key its realm names, and an agent on a
+    Mac whose sessions sign commits with that key; one naming none runs it dialling nothing, and
+    one in no realm has neither a realm nor a node
   '';
   mycelium-keeps-each-realm-apart = ''
     a machine joining a further realm runs a node of its own for it, with its own state, mesh and
