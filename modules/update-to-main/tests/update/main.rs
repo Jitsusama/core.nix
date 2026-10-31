@@ -95,8 +95,8 @@ impl World {
         // build elsewhere first lists a light piece, a heavy one and a
         // wrapper built from a secret piece built already, and sends the
         // heavy ones away, which fails while no-builder is there; kept ones
-        // go to their own builders, failing while no-kept-builder is there,
-        // or are built here, small, which writes them in here. A system's
+        // go to their own builders, failing while no-kept-builder is there.
+        // Either may be built here, small, which writes them in here. A system's
         // build starts a call while call-starts is there. Each input
         // overridden is written down.
         write_program(
@@ -117,11 +117,11 @@ impl World {
                  \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}'\"$secret\"'}}}}'; exit 0;;\n\
-                 *' --builders @'*) if [ -e {no_kept_builder} ]; then \
+                 *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
+                 *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' eval '*) echo \"$UPDATE_TO_MAIN_LOCKED\" >> {fetched}; echo /nix/store/x-source; exit 0;;\n\
                  *' --no-link '*) echo \"$last\" >> {fetched}; exit 0;;\n\
                  esac\n\
@@ -172,7 +172,9 @@ impl World {
             hosted: None,
             follows: BTreeMap::new(),
             elsewhere: false,
+            builders: None,
             kept: Kept::default(),
+            here: None,
             health: vec![vec![
                 sh.clone(),
                 "-c".to_owned(),
@@ -1082,7 +1084,6 @@ fn a_kept_piece_goes_only_to_its_own_builders_and_what_is_built_from_one_stays()
     world.config.kept = Kept {
         names: vec!["secret*".to_owned()],
         builders: Some("@/etc/kept-builders".to_owned()),
-        here: None,
     };
     let head = world.signed("one");
     world.system(&head);
@@ -1111,7 +1112,6 @@ fn a_kept_piece_with_no_builders_of_its_own_builds_nothing() {
     world.config.kept = Kept {
         names: vec!["secret*".to_owned()],
         builders: None,
-        here: None,
     };
     let head = world.signed("one");
     world.system(&head);
@@ -1125,19 +1125,90 @@ fn a_kept_piece_with_no_builders_of_its_own_builds_nothing() {
     assert_eq!(world.builds(), 0);
 }
 
+/// Builds elsewhere, letting what its builders don't build be built here,
+/// small, under `below_load`.
+fn elsewhere_with_here(world: &mut World, below_load: f64) {
+    world.config.elsewhere = true;
+    world.config.here = Some(Here {
+        max_jobs: 1,
+        cores: 4,
+        below_load,
+    });
+}
+
 /// Keeps the secret pieces to builders of their own, which may be built
 /// here, small, under `below_load`.
 fn kept_with_here(world: &mut World, below_load: f64) {
-    world.config.elsewhere = true;
+    elsewhere_with_here(world, below_load);
     world.config.kept = Kept {
         names: vec!["secret*".to_owned()],
         builders: Some("@/etc/kept-builders".to_owned()),
-        here: Some(Here {
-            max_jobs: 1,
-            cores: 4,
-            below_load,
-        }),
     };
+}
+
+#[test]
+fn building_elsewhere_goes_to_the_builders_named() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    world.config.builders = Some("@/etc/builders-for-anything".to_owned());
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    assert!(
+        away.contains("--max-jobs 0 --builders @/etc/builders-for-anything"),
+        "{away}"
+    );
+    assert!(away.contains("/nix/store/b-heavy.drv^*"), "{away}");
+}
+
+#[test]
+fn a_piece_the_builders_dont_take_is_built_here_small() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, 1e9);
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let here = world.read("here");
+    assert!(here.contains("/nix/store/b-heavy.drv^*"), "{here}");
+    // The daemon's builders stay, for what only they take.
+    assert!(!here.contains("--builders"), "{here}");
+    assert!(here.contains("--max-jobs 1 --cores 4"), "{here}");
+}
+
+#[test]
+fn a_piece_built_here_keeps_the_builders_named() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, 1e9);
+    world.config.builders = Some("@/etc/builders-for-anything".to_owned());
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let here = world.read("here");
+    assert!(
+        here.contains("--builders @/etc/builders-for-anything --max-jobs 1 --cores 4"),
+        "{here}"
+    );
+}
+
+#[test]
+fn a_piece_the_builders_dont_take_waits_rather_than_build_here_under_load() {
+    let mut world = World::new();
+    // No load is below nothing.
+    elsewhere_with_here(&mut world, 0.0);
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Failed { why, lines, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    assert!(why.contains("on the machine's builders"), "{why}");
+    assert!(why.contains("not below 0, so they wait"), "{why}");
+    assert_eq!(lines, ["local builds are disabled"]);
+    assert_eq!(world.read("here"), "");
+    assert_eq!(world.builds(), 0);
 }
 
 #[test]

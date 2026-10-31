@@ -51,11 +51,18 @@ pub struct Config {
     /// them until the lock moves.
     pub follows: BTreeMap<String, Follow>,
     /// Whether the build leaves everything but what nixpkgs marks light to
-    /// the Nix daemon's builders, failing rather than building it here.
+    /// builders, failing rather than building it here unless `here` says.
     pub elsewhere: bool,
+    /// The builders the pieces built elsewhere go to, as Nix's `builders`
+    /// setting takes them; none for the Nix daemon's own.
+    pub builders: Option<String>,
     /// Pieces built elsewhere only on builders of their own, never the
     /// daemon's, with every piece built from one of them.
     pub kept: Kept,
+    /// When set, pieces built elsewhere that their builders didn't build
+    /// are built here, small and only while the machine is quiet, rather
+    /// than the update failing.
+    pub here: Option<Here>,
     /// Commands that each have to succeed once the switch is done, within
     /// `health_within` seconds, or the machine goes back.
     pub health: Vec<Vec<String>>,
@@ -89,12 +96,9 @@ pub struct Kept {
     /// The builders they go to, as Nix's `builders` setting takes them;
     /// none to build none of them, so an update needing one fails.
     pub builders: Option<String>,
-    /// When set, kept pieces their builders didn't build are built here,
-    /// small and only while the machine is quiet, rather than failing.
-    pub here: Option<Here>,
 }
 
-/// How small kept pieces are built here when their own builders don't.
+/// How small pieces are built here when their builders don't.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Here {
