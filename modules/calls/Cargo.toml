@@ -1,0 +1,26 @@
+# calls: what counts as a call on this machine, a program recording from a
+# microphone, as a library for what follows calls (pause-for-calls) and as
+# a-call-is-on, for what asks once (src/lib.rs says how).
+[package]
+name = "calls"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "a-call-is-on"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "a-call-is-on"
+path = "tests/a-call-is-on.rs"

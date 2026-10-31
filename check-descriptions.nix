@@ -174,6 +174,15 @@
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
+  calls-passes-clippy = ''
+    clippy finds nothing in calls or its tests
+  '';
+  calls-tells-a-call = ''
+    calls counts a call app's running recording as a call, leaving out PipeWire's filters,
+    dictation, the camera's videos and monitors; and a-call-is-on says a call is on once the same
+    recording goes on two seconds later in any account's PipeWire, none for a moment's recording or
+    with nobody logged in, and that it can't tell when a PipeWire won't answer
+  '';
   cargo-links-with-mold = ''
     cargo links an account's Rust builds with mold
   '';
@@ -789,9 +798,9 @@
     doesn't fit in an ellipsis
   '';
   pause-for-calls-follows-the-calls = ''
-    pause-for-calls counts a call app's running recording as a call, leaving out PipeWire's filters,
-    dictation, the camera's videos and monitors, pauses Spotify two seconds into a call and plays it
-    five seconds after, and finds each Spotify on the bus
+    pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five
+    seconds after, a moment's recording pausing nothing and a reconnect keeping the call, and finds
+    each Spotify on the bus
   '';
   pause-for-calls-passes-clippy = ''
     clippy finds nothing in pause-for-calls or its tests
@@ -1637,6 +1646,10 @@
     quest pi's sessions weigh goes in that quest's slice under jobs-work.slice at its weight for
     CPU and disk, which follows the file as it changes, and one naming none or an unlisted quest
     stays; two quests' work on one CPU shares it four to one by weight, and one alone takes it all
+  '';
+  vm-a-call-is-on-reads-every-account = ''
+    root's a-call-is-on says a call is on while a call program records in an account's PipeWire, and
+    none before it starts or once it ends
   '';
   vm-bluetooth-types-at-the-disk-prompt = ''
     a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its

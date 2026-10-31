@@ -266,6 +266,8 @@ let
       inherit self pkgs;
     };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
+    # Only a running PipeWire, another account's, shows root reads it.
+    vm-a-call-is-on-reads-every-account = import ./tests/calls.nix { inherit pkgs; };
     vm-pebble-speakers-are-tuned = import ./tests/pebble-x-plus.nix { inherit pkgs; };
     vm-mv7-voice-is-levelled = import ./tests/shure-mv7-voice.nix { inherit pkgs; };
     # Which input WirePlumber picks comes from the rank it gives each
@@ -865,6 +867,7 @@ gather (
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix
     ./modules/btrfs/checks.nix
+    ./modules/calls/checks.nix
     ./modules/camera/checks.nix
     ./modules/cargo/checks.nix
     ./modules/chrome/checks.nix
