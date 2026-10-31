@@ -516,6 +516,25 @@ fn a_main_signed_with_a_trusted_openpgp_key_is_switched_to() {
 }
 
 #[test]
+fn checking_an_openpgp_signature_leaves_no_agent_running() {
+    let world = World::new();
+    let (world, head) = openpgp_signed(world, "Merger");
+    assert_eq!(world.update().1, done(&head));
+    // The keyring is made afresh each time, so an agent left on it would
+    // be one more left behind at every ask.
+    let keyring = world.config.keyring();
+    let agents = Command::new("pgrep")
+        .args(["-f", &format!("gpg-agent --homedir {}", keyring.display())])
+        .output()
+        .unwrap();
+    assert!(
+        agents.stdout.is_empty(),
+        "an agent still runs: {}",
+        String::from_utf8_lossy(&agents.stdout)
+    );
+}
+
+#[test]
 fn a_main_signed_with_an_openpgp_key_it_wasnt_given_is_refused() {
     let world = World::new();
     let (mut world, _) = openpgp_signed(world, "Merger");
