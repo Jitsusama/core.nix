@@ -74,6 +74,7 @@
     homeModules.kitty
     homeModules.lag-watch
     homeModules.load-proof
+    homeModules.noise-cancelled
     homeModules.onepassword
     homeModules.open-with
     homeModules.mpv

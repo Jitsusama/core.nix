@@ -69,9 +69,11 @@ impl Call {
 }
 
 /// Programs that record from a microphone without being a call: PipeWire's
-/// own filters, dictation's recorder, the camera program's videos, and the
-/// shell's level meters.
-pub const NOT_CALLS: [&str; 6] = [
+/// own filters, dictation's recorder, the camera program's videos, the
+/// shell's level meters, and the noise-cancelled microphones, which hear a
+/// microphone only for the program recording from them.
+pub const NOT_CALLS: [&str; 7] = [
+    "noise-cancelled",
     "pipewire",
     "wireplumber",
     "pw-record",

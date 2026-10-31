@@ -38,6 +38,9 @@ let
 in
 runCommand "deepfilternet3-frame"
   {
+    # Its repository's recordings, a voice and the noise of a room, which
+    # the check of the noise-cancelled program cleans.
+    passthru = { inherit source; };
     # DeepFilterNet's logger asks git for the commit it runs from, and
     # copes with git saying it isn't in a repository but not with no git.
     nativeBuildInputs = [

@@ -277,6 +277,8 @@ let
     vm-a-call-is-on-reads-every-account = import ./tests/calls.nix { inherit pkgs; };
     # Only a running PipeWire with a call in it shows what's recorded of each side.
     vm-a-call-is-written-down = import ./tests/call-transcripts.nix { inherit self pkgs; };
+    # Only a running PipeWire shows a microphone offered, heard only while recorded.
+    vm-a-microphone-is-noise-cancelled = import ./tests/noise-cancelled.nix { inherit self pkgs; };
     vm-pebble-speakers-are-tuned = import ./tests/pebble-x-plus.nix { inherit pkgs; };
     vm-mv7-voice-is-levelled = import ./tests/shure-mv7-voice.nix { inherit pkgs; };
     # Which input WirePlumber picks comes from the rank it gives each
@@ -931,6 +933,7 @@ gather (
     ./modules/niri/checks.nix
     ./modules/nix-daemon/checks.nix
     ./modules/nix-offload/checks.nix
+    ./modules/noise-cancelled/checks.nix
     ./modules/onepassword/checks.nix
     ./modules/open-with/checks.nix
     ./modules/openssh/checks.nix
