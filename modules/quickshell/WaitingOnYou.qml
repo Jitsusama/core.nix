@@ -197,6 +197,9 @@ Singleton {
                     notice.dismiss();
                 }
             }
+            // And one already gone from the screen unseen, so it isn't
+            // counted missed once its item is done.
+            Notices.settleWaiting(standing);
             const waits = {};
             for (const item of root.items)
                 waits[root.identity(item)] = true;

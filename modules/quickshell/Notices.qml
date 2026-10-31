@@ -117,7 +117,10 @@ Singleton {
             // only answers what Joel just did, saying so with the x-answers
             // hint, as a save Drive took does.
             missed: counted && !from.answers && notification.hints?.["x-answers"] === undefined,
-            read: false
+            read: false,
+            // The Needs You item it says, if it's one (WaitingOnYou.qml), so
+            // it's settled with the item even once gone from the screen.
+            waits: String((notification.hints ?? {})["x-waiting"] ?? "")
         };
         // Live before it's kept, so it never reads as missed and gone from
         // the screen for the moment between, which would flash the margin.
@@ -198,6 +201,17 @@ Singleton {
     function mark(id, read) {
         history = history.map(notice => notice.id !== id ? notice
             : Object.assign({}, notice, { read: read }, read ? { missed: false } : {}));
+    }
+
+    // Marks read every notice of a Needs You item that no longer stands, so
+    // one that came and went unseen isn't missed once its item is done or
+    // gone: `standing` holds the items Joel can still do now.
+    function settleWaiting(standing) {
+        const stale = notice => notice.waits && !standing[notice.waits]
+            && (notice.missed || !notice.read);
+        if (history.some(stale))
+            history = history.map(notice => stale(notice)
+                ? Object.assign({}, notice, { read: true, missed: false }) : notice);
     }
 
     // Everything kept has been seen, though not necessarily read.
