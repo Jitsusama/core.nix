@@ -341,8 +341,7 @@ the change:
 
 When a change got there first, unlock with the YubiKey, then replace the
 policy and enrol the TPM again. The last command checks the new slot opens
-with the PIN without opening anything; this cryptsetup ignores
-`--external-tokens-path`, so systemd's token plugins go on the library path:
+with the PIN without opening anything:
 
 ```sh
 disk=/dev/disk/by-partlabel/system
@@ -353,8 +352,7 @@ sudo systemd-cryptenroll --unlock-fido2-device=auto --wipe-slot=tpm2 \
   --tpm2-pcrlock=/var/lib/systemd/pcrlock.json $disk
 sudo systemd-cryptenroll $disk   # the tpm2 line gives its slot
 sudo cryptsetup config $disk --key-slot <tpm2 slot> --priority prefer
-sudo env LD_LIBRARY_PATH=/run/current-system/sw/lib/cryptsetup \
-  cryptsetup open --test-passphrase --token-only --token-type systemd-tpm2 $disk
+sudo cryptsetup open --test-passphrase --token-only --token-type systemd-tpm2 $disk
 ```
 
 Anything else that makes the TPM refuse means the machine didn't boot what it

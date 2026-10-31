@@ -328,6 +328,9 @@
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
   '';
+  cryptsetup-finds-its-tokens = ''
+    the cryptsetup a person types reads a disk's YubiKey and TPM tokens through systemd's plugins
+  '';
   disks-go-by-their-name = ''
     a disk's partitions and open volume carry its name
   '';
