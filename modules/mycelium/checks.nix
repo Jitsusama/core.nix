@@ -191,7 +191,7 @@ in
   # the home realm's node alone, so nothing is heard twice.
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's quests and restore list from that realm's folders, or the machine's waiting and verdicts aren't served by the home realm's node alone."
+      "A realm's node doesn't serve its realm's quests and restore list from that realm's folders, or the machine's waiting, verdicts and queue aren't served by the home realm's node alone."
       (
         let
           state = "/home/someone/.local/state";
@@ -217,6 +217,17 @@ in
           verdict = {
             file = "${state}/mission/verdicts.json";
             records = "items";
+          };
+          job = {
+            file = "jobs/queue.json";
+            within = "runtime";
+            records = "jobs";
+            key = "id";
+          };
+          queue = {
+            file = "jobs/queue.json";
+            within = "runtime";
+            whole = true;
           };
         }
         &&

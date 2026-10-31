@@ -43,7 +43,8 @@
 #
 # Each node also serves the harness's files of its realm to whoever asks it,
 # as the launcher does, and hears each change: its quests and the sessions
-# to restore, and on the home realm's the machine's waiting and verdicts.
+# to restore, and on the home realm's the machine's waiting, verdicts and
+# queue.
 { mycelium }:
 {
   config,
@@ -222,8 +223,11 @@ let
   # The harness's files a realm's node serves whoever reads it, the
   # launcher first, each as a kind of records: the realm's quests and the
   # sessions to restore, and on the home realm's node the machine's
-  # waiting and verdicts, which no realm owns, so nothing is heard twice.
-  # A file not written yet is served as holding nothing.
+  # waiting, verdicts and queue, which no realm owns, so nothing is heard
+  # twice. The queue is in the login's runtime folder, which the node
+  # finds, as a Mac's differs by account: each job, and the queue whole as
+  # how the machine stands, named for it. A file not written yet is served
+  # as holding nothing.
   servesIn =
     realm:
     let
@@ -254,6 +258,17 @@ let
       verdict = {
         file = "${state}/mission/verdicts.json";
         records = "items";
+      };
+      job = {
+        file = "jobs/queue.json";
+        within = "runtime";
+        records = "jobs";
+        key = "id";
+      };
+      queue = {
+        file = "jobs/queue.json";
+        within = "runtime";
+        whole = true;
       };
     };
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
