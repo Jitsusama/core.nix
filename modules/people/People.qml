@@ -66,7 +66,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/people.sock`
         kind: "person"
-        watching: ({ listed: true })
+        watching: ({})
     }
 
     // Counts each change the daemon says, for a source that keeps
