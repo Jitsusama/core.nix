@@ -39,6 +39,16 @@
 //! "email":"address"},...]}`, written whole while a call is on, as it
 //! changes, and removed once there's none, or this ends. One left by an
 //! earlier run that was killed is removed as this starts.
+//!
+//! `tuple-people people` is Tuple's source for the people daemon, on
+//! People's line protocol: `{"roster":true}` first, since it says
+//! everyone unasked, then a line for each contact as it changes,
+//! `{"email","id","name","status","favourite","recent"}`, and
+//! `{"email","id","gone":true}` for one Tuple no longer lists. It runs
+//! as long as the daemon does, ending when its input does, and follows
+//! Tuple while Tuple's daemon answers, looking again every few seconds
+//! while it doesn't. Once Tuple stops, how anyone stands is no longer
+//! known, so each status goes back to unknown.
 
 use std::env;
 use std::fmt::Write as _;
@@ -404,6 +414,124 @@ trait Hears {
     fn heard(&mut self, line: &str) -> Vec<String>;
 }
 
+impl<T: Hears> Hears for &mut T {
+    fn heard(&mut self, line: &str) -> Vec<String> {
+        (**self).heard(line)
+    }
+}
+
+/// One contact as the people daemon holds it.
+#[derive(Debug, PartialEq)]
+struct Entry {
+    person: Person,
+    status: String,
+    favourite: bool,
+    recent: bool,
+}
+
+impl Entry {
+    /// Its line on People's protocol: what the daemon keeps under Tuple's
+    /// name, by their email, or by Tuple's id when there's none.
+    fn line(&self) -> String {
+        let mut out = String::from("{\"email\":");
+        quote(&mut out, &self.person.email);
+        _ = write!(out, ",\"id\":{},\"name\":", self.person.id);
+        quote(&mut out, &self.person.name);
+        out.push_str(",\"status\":");
+        quote(&mut out, &self.status);
+        _ = write!(
+            out,
+            ",\"favourite\":{},\"recent\":{}}}",
+            self.favourite, self.recent
+        );
+        out
+    }
+
+    fn gone(&self) -> String {
+        let mut out = String::from("{\"email\":");
+        quote(&mut out, &self.person.email);
+        _ = write!(out, ",\"id\":{},\"gone\":true}}", self.person.id);
+        out
+    }
+}
+
+/// Tuple's contacts for the people daemon, each said only as it changes,
+/// so a presence changing is one line rather than everyone again.
+#[derive(Default)]
+struct Roster {
+    /// Each contact as last said, by id, in Tuple's order.
+    said: Vec<Entry>,
+}
+
+impl Roster {
+    /// The lines for how everyone stands once Tuple has stopped: no
+    /// longer known, though who's a favourite or recent is kept, as Tuple
+    /// keeps it.
+    fn stopped(&mut self) -> Vec<String> {
+        let mut lines = Vec::new();
+        for entry in &mut self.said {
+            if entry.status != "unknown" {
+                "unknown".clone_into(&mut entry.status);
+                lines.push(entry.line());
+            }
+        }
+        lines
+    }
+}
+
+impl Hears for Roster {
+    fn heard(&mut self, line: &str) -> Vec<String> {
+        let Some(Value::List(items)) = Reader::parse(line) else {
+            return Vec::new();
+        };
+        let mut now = Vec::with_capacity(items.len());
+        for item in items {
+            let Value::Object(fields) = item else {
+                return Vec::new();
+            };
+            let (person, stands) = contact(fields);
+            let (status, favourite, recent) = stands.map_or_else(
+                || ("unknown".to_owned(), false, false),
+                |stands| (stands.status, stands.favourite, stands.recent),
+            );
+            now.push(Entry {
+                person,
+                status,
+                favourite,
+                recent,
+            });
+        }
+        let before: std::collections::HashMap<&str, &Entry> = self
+            .said
+            .iter()
+            .map(|entry| (entry.person.id.as_str(), entry))
+            .collect();
+        let kept: std::collections::HashSet<&str> =
+            now.iter().map(|entry| entry.person.id.as_str()).collect();
+        // Who's gone, and who's now known by another address, since the
+        // daemon keeps them by it.
+        let mut lines: Vec<String> = self
+            .said
+            .iter()
+            .filter(|entry| !kept.contains(entry.person.id.as_str()))
+            .chain(now.iter().filter_map(|entry| {
+                before
+                    .get(entry.person.id.as_str())
+                    .copied()
+                    .filter(|was| was.person.email != entry.person.email)
+            }))
+            .map(Entry::gone)
+            .collect();
+        lines.extend(
+            now.iter()
+                .filter(|entry| before.get(entry.person.id.as_str()) != Some(entry))
+                .map(Entry::line),
+        );
+        self.said = now;
+        lines
+    }
+}
+
 /// What was last said of Tuple's people, so only a change is said again.
 #[derive(Default)]
 struct Follower {
@@ -713,8 +841,63 @@ fn running(socket: &Path) -> bool {
     UnixStream::connect(socket).is_ok()
 }
 
+/// How long the people daemon's source waits to look for Tuple again.
+const LOOKS_AGAIN: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Tuple's source for the people daemon: says it's a roster, then follows
+/// Tuple's contacts whenever Tuple runs, until its input or output closes.
+fn roster(tuple: &str, socket: &Path) -> ExitCode {
+    // The daemon writes asks to every source; a roster needs none, so
+    // they're read and let go, and the end of them is the daemon's.
+    std::thread::spawn(|| {
+        let mut asked = io::stdin().lock();
+        let mut line = Vec::new();
+        while asked
+            .read_until(b'\n', &mut line)
+            .is_ok_and(|read| read > 0)
+        {
+            line.clear();
+        }
+        std::process::exit(0);
+    });
+    let mut out = io::stdout().lock();
+    let mut said = Roster::default();
+    if say(&mut out, &["{\"roster\":true}".to_owned()]).is_err() {
+        return ExitCode::SUCCESS;
+    }
+    loop {
+        if running(socket) {
+            follow(Command::new(tuple).args(ARGS), &mut said, &mut out);
+            let stopped = said.stopped();
+            if say(&mut out, &stopped).is_err() {
+                return ExitCode::SUCCESS;
+            }
+        }
+        std::thread::sleep(LOOKS_AGAIN);
+    }
+}
+
+/// Writes lines, flushed, or says the reader has gone.
+fn say(out: &mut impl Write, lines: &[String]) -> io::Result<()> {
+    lines
+        .iter()
+        .try_for_each(|line| writeln!(out, "{line}"))
+        .and_then(|()| out.flush())
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
+    if let [mode, tuple, socket] = args.as_slice()
+        && mode == "people"
+    {
+        // The daemon's sources are named before anyone's runtime folder is
+        // known, so a socket named alone is in it.
+        let socket = env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_default()
+            .join(socket);
+        return roster(tuple, &socket);
+    }
     let (calls, tuple, socket, file) = match args.as_slice() {
         [tuple, socket] => (false, tuple, socket, None),
         [mode, tuple, socket] if mode == "call" => (true, tuple, socket, None),
@@ -723,7 +906,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: tuple-people [call] <the tuple command> <its daemon's socket> \
+                "usage: tuple-people [call|people] <the tuple command> <its daemon's socket> \
                  [call: the file it's kept in]"
             );
             return ExitCode::from(2);
@@ -840,6 +1023,48 @@ mod tests {
             follower.heard(&snapshot(&changed)),
             ["{\"standing\":[[1,\"busy\",true,false],[3,\"offline\",true,false]]}"]
         );
+    }
+
+    #[test]
+    fn the_daemon_hears_each_contact_once_then_only_who_changed() {
+        let mut roster = Roster::default();
+        let ada = |status: &str| {
+            format!(
+                "{{\"email\":\"p1@example.com\",\"id\":1,\"name\":\"Ada Brook\",\
+                 \"status\":\"{status}\",\"favourite\":true,\"recent\":false}}"
+            )
+        };
+        let first = roster.heard(&snapshot(&usual()));
+        assert_eq!(first.len(), 3);
+        assert_eq!(first[0], ada("online"));
+        assert_eq!(
+            first[1],
+            "{\"email\":\"p2@example.com\",\"id\":2,\"name\":\"Ben Carrow\",\
+             \"status\":\"unknown\",\"favourite\":false,\"recent\":false}"
+        );
+        assert!(roster.heard(&snapshot(&usual())).is_empty());
+        // Ada busy is one line; Ben deleted is gone; Cal at a new address
+        // is gone from the old one and said at the new.
+        let changed = vec![
+            contact(1, "Ada Brook", "busy", true),
+            contact(3, "Cal Dunmore", "offline", true).replace("p3@", "cal@"),
+        ];
+        assert_eq!(
+            roster.heard(&snapshot(&changed)),
+            [
+                "{\"email\":\"p2@example.com\",\"id\":2,\"gone\":true}".to_owned(),
+                "{\"email\":\"p3@example.com\",\"id\":3,\"gone\":true}".to_owned(),
+                ada("busy"),
+                "{\"email\":\"cal@example.com\",\"id\":3,\"name\":\"Cal Dunmore\",\
+                 \"status\":\"offline\",\"favourite\":true,\"recent\":false}"
+                    .to_owned(),
+            ]
+        );
+        // Tuple stopped: nobody's standing is known, favourites kept.
+        let stopped = roster.stopped();
+        assert_eq!(stopped.len(), 2);
+        assert_eq!(stopped[0], ada("unknown"));
+        assert!(roster.stopped().is_empty());
     }
 
     #[test]
