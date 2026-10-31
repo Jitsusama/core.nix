@@ -43,7 +43,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::mel::{RATE, SAMPLES};
-use crate::whisper::Whisper;
+use crate::speech::Speech;
 
 const UNUSED: Duration = Duration::from_mins(10);
 // A chord let go sooner than this was a tap, which leaves it listening.
@@ -533,11 +533,11 @@ fn worker(
 ) -> Sender<Job> {
     let (jobs, work) = mpsc::channel::<Job>();
     thread::spawn(move || {
-        let mut whisper: Option<Whisper> = None;
-        let load = |whisper: &mut Option<Whisper>| -> Result<(), String> {
+        let mut whisper: Option<Speech> = None;
+        let load = |whisper: &mut Option<Speech>| -> Result<(), String> {
             if whisper.is_none() {
                 let started = Instant::now();
-                let mut loaded = Whisper::load(&model, &device, cache.as_deref(), &words)?;
+                let mut loaded = Speech::load(&model, &device, cache.as_deref(), &words)?;
                 loaded.warm()?;
                 eprintln!(
                     "dictation: loaded and warmed in {} ms",
@@ -563,7 +563,7 @@ fn worker(
                 Job::Prime => {
                     if whisper.is_none() {
                         let started = Instant::now();
-                        match Whisper::load(&model, &device, cache.as_deref(), &words) {
+                        match Speech::load(&model, &device, cache.as_deref(), &words) {
                             Ok(_) => eprintln!(
                                 "dictation: ready in {} ms",
                                 started.elapsed().as_millis()
@@ -580,12 +580,8 @@ fn worker(
                 Job::Transcribe(audio) => {
                     let result = load(&mut whisper).and_then(|()| {
                         let loaded = whisper.as_mut().ok_or("Whisper isn't loaded")?;
-                        let (text, timings) = loaded.transcribe(&audio)?;
-                        eprintln!(
-                            "dictation: {} ms heard; {}",
-                            audio.len() * 1000 / RATE,
-                            timings.describe(&loaded.device)
-                        );
+                        let (text, took) = loaded.transcribe(&audio)?;
+                        eprintln!("dictation: {} ms heard; {took}", audio.len() * 1000 / RATE);
                         Ok(text)
                     });
                     if events.send(Event::Heard(result)).is_err() {

@@ -7,10 +7,13 @@
 # (Dictation.qml), and while it listens or types a surface of its own at the
 # bottom centre says so (Speaking.qml), so what's heard is never heard unseen.
 #
-# The encoder runs on the NPU, whose plugin finds Level Zero only on the
-# library path; on a machine with no NPU it runs on the CPU, several times
-# slower. OpenVINO keeps what it compiles in the cache, which cuts the NPU's
-# compile from half a minute to a read.
+# Whisper runs whole on the NPU through GenAI's static pipeline
+# (src/genai.rs), whose plugin finds Level Zero only on the library path,
+# and whose tokenizer is a library GenAI looks for beside its own unless
+# it's named; on a machine with no NPU the encoder runs on the CPU and the
+# decoder after it, several times slower. What's compiled is kept in the
+# cache, so the NPU's compile, about 85 s under load, is paid once, and
+# later loads take about a second.
 #
 # Whisper writes a name it doesn't know as a word it does, Sarnia as
 # "Sanita", so the words Joel uses that it gets wrong are declared, and it
@@ -62,7 +65,7 @@ in
 
     systemd.user.services.dictation = {
       Unit = {
-        Description = "Dictation, Whisper's encoder on the NPU";
+        Description = "Dictation, Whisper on the NPU";
         # Stopped before a switch reloads the units, the shell's watch
         # starts it again through the socket at once, from the old unit,
         # and the switch's start then finds it running; restarted after the
@@ -75,6 +78,7 @@ in
         Environment = [
           "DICTATION_CACHE=%C/dictation"
           "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
+          "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
           "OV_NPU_LOG_LEVEL=LOG_ERROR"
           "PATH=${
             lib.makeBinPath [

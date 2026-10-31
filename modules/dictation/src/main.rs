@@ -25,9 +25,11 @@
 //! CPU), `DICTATION_CACHE` where OpenVINO keeps what it compiles, and
 //! `DICTATION_WORDS` a file of words Whisper should know, one a line.
 
+mod genai;
 mod mel;
 mod openvino;
 mod service;
+mod speech;
 mod vocab;
 mod wav;
 mod whisper;
@@ -36,7 +38,7 @@ mod words;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use whisper::Whisper;
+use speech::Speech;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -82,9 +84,9 @@ fn words() -> Result<String, String> {
 fn transcribe(model: &Path, file: &Path) -> Result<(), String> {
     let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
     let audio = wav::samples(&bytes)?;
-    let mut whisper = Whisper::load(model, &device(), cache().as_deref(), &words()?)?;
-    let (text, timings) = whisper.transcribe(&audio)?;
+    let mut speech = Speech::load(model, &device(), cache().as_deref(), &words()?)?;
+    let (text, took) = speech.transcribe(&audio)?;
     println!("{text}");
-    eprintln!("dictation: {}", timings.describe(&whisper.device));
+    eprintln!("dictation: {took}");
     Ok(())
 }

@@ -1,0 +1,88 @@
+Whisper's static pipeline on the NPU takes a prompt given when it's made
+
+The static pipeline, which the NPU runs when STATIC_PIPELINE is asked
+for, makes its first decoder take four tokens, the start of a
+transcription, and refuses initial_prompt and hotwords, so words a
+speaker uses that Whisper doesn't know can't be given to it there. (The
+NPU's other pipeline can't take one either: the plugin fixes its first
+step at four tokens.) A prompt given as a property when the pipeline is
+made is now measured then, the first decoder is made long enough for it
+and the start tokens together, and each take puts it before them as the
+other pipelines do. A prompt given only at a take is still refused when
+it doesn't fit.
+
+--- a/src/cpp/src/whisper/pipeline_static.hpp
++++ b/src/cpp/src/whisper/pipeline_static.hpp
+@@ -27,6 +27,9 @@
+ private:
+     WhisperInitializedModels m_models;
+     Sampler m_sampler;
++    // The most tokens the first decoder takes: the start tokens, and the
++    // prompt the pipeline was made with.
++    size_t m_max_prompt_len = 0;
+ };
+ 
+ }  // namespace genai
+--- a/src/cpp/src/whisper/pipeline_static.cpp
++++ b/src/cpp/src/whisper/pipeline_static.cpp
+@@ -14,6 +14,7 @@
+ #include "whisper/timestamps.hpp"
+ #include "whisper/whisper.hpp"
+ #include "whisper/config.hpp"
++#include "whisper/context_tokens.hpp"
+ #include "whisper/whisper_utils.hpp"
+ 
+ #include "openvino/core/layout.hpp"
+@@ -1044,6 +1045,8 @@
+ 
+ void erase_whisper_generation_config_keys(ov::AnyMap& config_map) {
+     config_map.erase("word_timestamps");
++    config_map.erase("initial_prompt");
++    config_map.erase("hotwords");
+ }
+ 
+ 
+@@ -1091,7 +1094,14 @@
+ 
+     // When word_timestamps is enabled, the decoder may receive tokens decoded from the entire audio chunk.
+     // We use max_sequence_length - 1 (447). Setting decoder_max_prompt_len to 448 leads to shape mismatch exception.
+-    const size_t decoder_max_prompt_len = m_generation_config.word_timestamps ? (max_sequence_length - 1) : MAX_PROMPT_LEN;
++    // A prompt given when the pipeline is made comes before the start tokens,
++    // so the first decoder is made long enough to take it too.
++    const auto prompt_len =
++        get_prompt_tokens(prepare_context_tokens(m_generation_config, m_tokenizer).first, m_generation_config, 0)
++            .size();
++    const size_t decoder_max_prompt_len =
++        m_generation_config.word_timestamps ? (max_sequence_length - 1) : MAX_PROMPT_LEN + prompt_len;
++    m_max_prompt_len = decoder_max_prompt_len;
+ 
+     add_attention_mask_input(decoder_model, true /* transform_cross_attn */, last_hidden_state_shape[1].get_length(), decoder_max_prompt_len);
+     // NB: Note, there is no need to transform cross attention for decoder_with_past_model
+@@ -1142,8 +1152,7 @@
+     auto start_time = std::chrono::steady_clock::now();
+     WhisperGenerationConfig config = utils::prepare_per_generate_config(m_generation_config, generation_config);
+ 
+-    OPENVINO_ASSERT(!config.initial_prompt.has_value(), "'initial_prompt' parameter is not supported on NPU device.");
+-    OPENVINO_ASSERT(!config.hotwords.has_value(), "'hotwords' parameter is not supported on NPU device.");
++    const auto context_tokens = prepare_context_tokens(config, m_tokenizer).first;
+ 
+     size_t max_new_tokens = config.get_max_new_tokens();
+ 
+@@ -1200,11 +1209,15 @@
+             result.language = sot_result.language;
+         }
+ 
+-        std::vector<int64_t> chunk_sot_tokens = sot_result.tokens;
+-        
++        std::vector<int64_t> chunk_sot_tokens = get_prompt_tokens(context_tokens, config, chunk_offset);
++        chunk_sot_tokens.insert(chunk_sot_tokens.end(), sot_result.tokens.begin(), sot_result.tokens.end());
++
+         if (!return_timestamps) {
+             chunk_sot_tokens.push_back(config.no_timestamps_token_id);
+         }
++        OPENVINO_ASSERT(chunk_sot_tokens.size() <= m_max_prompt_len,
++                        "On the NPU, 'initial_prompt' and 'hotwords' have to be given when the pipeline is made, "
++                        "and no longer then.");
+ 
+         SequenceGroup::Ptr sequence_group = std::make_shared<SequenceGroup>(0, chunk_sot_tokens, config);
+ 
