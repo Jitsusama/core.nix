@@ -849,6 +849,30 @@ fn a_hosted_main_the_checkout_lacks_is_fetched_there_first() {
 }
 
 #[test]
+fn a_hosted_checkout_only_its_accounts_git_reads_is_read_with_that_git() {
+    let mut world = World::hosted_from(World::new(), counted_token);
+    let head = world.hosted_commit("one", None);
+    let system = world.system(&head);
+    // Root's git refuses the checkout, as a stock git refuses a repository
+    // marked with an extension only the account's git knows, and reads
+    // everything else as git does.
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let root_git = world.root.join("stand-ins/root-git");
+    write_program(
+        &root_git,
+        &format!(
+            "{}\nif [ \"$PWD\" = '{}' ]; then\n  echo 'fatal: unknown repository extension found:' >&2\n  exit 128\nfi\nexec '{}' \"$@\"\n",
+            stand_in_head(),
+            checkout.display(),
+            program("git").display()
+        ),
+    );
+    world.config.tools.git = root_git;
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.running(), system);
+}
+
+#[test]
 fn a_hosted_main_with_no_token_builds_nothing() {
     let world = World::hosted_from(World::new(), |_| "echo no login >&2; exit 3".to_owned());
     let head = world.hosted_commit("one", None);

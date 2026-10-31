@@ -105,14 +105,12 @@ fn ask(config: &Config, token: &str) -> Result<String, Failure> {
         .ok_or_else(|| Failure::new(format!("the host names no {main}")))
 }
 
-/// Points root's copy at the checkout's objects, as the account finds them.
+/// Points root's copy at the checkout's objects, as the account finds them,
+/// with the account's own git: a checkout may need a git of its own to be
+/// read at all, as one marked with a repository extension the stock git
+/// doesn't know is. Its objects are ordinary, so root's git reads them.
 fn borrow(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Failure> {
-    let mut command = run::command_as(
-        config.tools.git.as_os_str(),
-        account,
-        &hosted.path,
-        &hosted.checkout,
-    );
+    let mut command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
     command.env("GIT_CONFIG_NOSYSTEM", "1");
     let common = run::output(
         command,
