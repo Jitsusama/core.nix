@@ -235,6 +235,8 @@ off.
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zram |
 | memory pressure | how long programs are waiting for memory | | PSI |
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
+| trace | one thing a program did, followed through its steps, each a span with a start and an end | | OpenTelemetry's traces |
+| collector | the program keeping the machine's traces, to read any moment back | telemetry, observability backend | `collector` |
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |

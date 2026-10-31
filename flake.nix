@@ -138,6 +138,7 @@
         cargo = ./modules/cargo/home.nix;
         chrome = ./modules/chrome/home.nix;
         claude = ./modules/claude/home.nix;
+        collector = ./modules/collector/home.nix;
         curl = ./modules/curl/home.nix;
         delta = ./modules/delta/home.nix;
         dictation = moduleFrom ./modules/dictation/home.nix { inherit (self.homeModules) quickshell; };
