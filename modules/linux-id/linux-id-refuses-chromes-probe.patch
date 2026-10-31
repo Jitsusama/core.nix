@@ -47,13 +47,13 @@ index b10a2a4..35f519a 100644
  		log.Printf("MakeCredential: invalid clientDataHash length %d", len(req.ClientDataHash))
  		token.WriteCtap2Response(ctx, evt, ctap2.StatusInvalidCbor, nil)
 diff --git a/main_test.go b/main_test.go
-index a587395..3efa0f5 100644
+index a587395..5537f15 100644
 --- a/main_test.go
 +++ b/main_test.go
-@@ -1197,6 +1197,33 @@ func TestMakeCredential_NilOptionsOK(t *testing.T) {
+@@ -1195,6 +1195,33 @@ func TestMakeCredential_NilOptionsOK(t *testing.T) {
+ 	}
+ }
  
- // MakeCredential with uv=true MUST be rejected when the verifier doesn't
- // actually verify identity (e.g. pinentry-only mode).
 +// Chrome's touch probe is refused without asking, and a real registration
 +// straight after it still asks: the refusal leaves nothing for the verifier's
 +// cache to ride on.
@@ -71,8 +71,8 @@ index a587395..3efa0f5 100644
 +		t.Fatalf("Chrome's probe asked the person %d times", verifier.callCount)
 +	}
 +
-+	real := makeMakeCredCBOR(t, "site.example", "Site", "user", false, false)
-+	s.handleMakeCredential(context.Background(), resp, fidohid.AuthEvent{}, real)
++	site := makeMakeCredCBOR(t, "site.example", "Site", "user", false, false)
++	s.handleMakeCredential(context.Background(), resp, fidohid.AuthEvent{}, site)
 +	if got := resp.lastCtap2().status; got != ctap2.StatusOK {
 +		t.Fatalf("expected StatusOK for a registration after the probe, got 0x%02x", got)
 +	}
@@ -81,6 +81,6 @@ index a587395..3efa0f5 100644
 +	}
 +}
 +
+ // MakeCredential with uv=true MUST be rejected when the verifier doesn't
+ // actually verify identity (e.g. pinentry-only mode).
  func TestMakeCredential_UVRequestedButVerifierIsUPOnly(t *testing.T) {
- 	verifier := &fakeVerifier{performsUV: false}
- 	s := newTestServer(t, verifier, &fakePinentry{})
