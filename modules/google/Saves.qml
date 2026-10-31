@@ -84,10 +84,9 @@ Singleton {
         if (chooser === null)
             return;
         const home = Quickshell.env("HOME") ?? "";
-        const last = typeof chooser.savedLastIn === "function" ? chooser.savedLastIn() : "";
         chooser.chooseToSave({
             name: path.slice(path.lastIndexOf("/") + 1),
-            folder: last || `${home}/Documents`,
+            folder: chooser.savedLastIn() || `${home}/Documents`,
             title: Words.name("verb:attachment:save"),
             local: true
         }, paths => {

@@ -92,10 +92,10 @@ QtObject {
         const drive = { listings, downloads };
         check("a folder listed and the downloads, read", Google.heard(JSON.stringify({
             account: "ready", meetings: [], drive
-        })).drive, drive);
+        })).drive, Object.assign({}, drive, { uploads: [] }));
         check("no Drive said, none held", Google.heard(JSON.stringify({
             account: "ready", meetings: []
-        })).drive, { listings: [], downloads: [] });
+        })).drive, { listings: [], downloads: [], uploads: [] });
         check("each folder asked together is found, none asked before", [
             Google.listing(drive, "drives", now),
             Google.listing(drive, "root", now),

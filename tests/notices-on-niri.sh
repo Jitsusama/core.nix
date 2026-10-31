@@ -64,6 +64,22 @@ notify-send --app-name="Google Drive" --hint=string:x-answers:save \
 says "report[shows card Saved to Google Drive]"
 notify-send --app-name="Google Drive" "Not Saved to Google Drive" "Notes.txt: Google signed out"
 says "report[shows card Not Saved to Google Drive]"
+# Read before Super+Shift+N below, which counts every missed one seen.
+answered='"summary":"Saved to Google Drive"[^}]*"missed":false'
+missed='"summary":"Not Saved to Google Drive"[^}]*"missed":true'
+held_apart=false
+for _ in $(seq "$saying"); do
+  kept=$(cat "$XDG_STATE_HOME"/quickshell/by-shell/*/notices.json 2> /dev/null || true)
+  if grep -q "$answered" <<< "$kept" && grep -q "$missed" <<< "$kept"; then
+    held_apart=true
+    break
+  fi
+  sleep 0.1
+done
+if [ "$held_apart" != true ]; then
+  echo "The history doesn't keep the answer unmissed and the failure missed: $kept" >&2
+  exit 1
+fi
 
 notify-send --urgency=critical Standup "in five minutes"
 says "report[shows card Standup]"
@@ -71,16 +87,10 @@ says "report[shows card Standup]"
 says "report[gone notifications]"
 # The history is written a moment after the cards go.
 unread='"summary":"Standup"[^}]*"read":false'
-answered='"summary":"Saved to Google Drive"[^}]*"missed":false'
-missed='"summary":"Not Saved to Google Drive"[^}]*"missed":true'
 for _ in $(seq "$saying"); do
   kept=$(cat "$XDG_STATE_HOME"/quickshell/by-shell/*/notices.json 2> /dev/null || true)
-  if grep -q "$unread" <<< "$kept" && grep -q "$answered" <<< "$kept" \
-    && grep -q "$missed" <<< "$kept"; then
-    exit 0
-  fi
+  grep -q "$unread" <<< "$kept" && exit 0
   sleep 0.1
 done
-echo "The history doesn't keep the notice put away unread, the answer unmissed and the" \
-  "failure missed: $kept" >&2
+echo "The notice put away isn't kept unread: $kept" >&2
 exit 1
