@@ -324,6 +324,20 @@ in
         whose sessions keep the harness's usual folders.
       '';
     };
+    signsInWith = lib.mkOption {
+      type = lib.types.nullOr name;
+      default = if agentsKey then "agent-signing" else null;
+      defaultText = lib.literalExpression ''"agent-signing", where the agents' key is served, else null'';
+      example = "work-link";
+      description = ''
+        The socket unit whose agent, at `<name>.sock` in the user's runtime
+        folder, holds the key the home realm's links sign in with on Linux,
+        or null for none. The agents' key by default; a key of the realm's
+        own (link-keys) lets the machines it links to pin it, which they
+        can't do to a key sessions use too. A Mac's node uses its login
+        session's agent.
+      '';
+    };
     alsoJoins = lib.mkOption {
       type = lib.types.attrsOf further;
       default = { };
@@ -433,7 +447,7 @@ in
     })
     (lib.mkIf (isLinux && serving) {
       systemd.user.services = {
-        mycelium = linuxNode (describe cfg.realm) node (if agentsKey then "agent-signing" else null);
+        mycelium = linuxNode (describe cfg.realm) node cfg.signsInWith;
       }
       // lib.mapAttrs' (
         realm: words:

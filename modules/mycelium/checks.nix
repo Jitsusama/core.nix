@@ -115,14 +115,18 @@ in
   # runs it dialling nothing, since its node still holds its sessions and
   # starts what others ask of it, and one in no realm has neither a realm
   # nor a node. On Linux the node signs in with the agents' key, which asks
-  # nothing; on a Mac what it starts signs commits with that key, since
-  # nobody at another machine can touch this one's sensor.
+  # nothing, unless its realm names a key of its own; on a Mac what it
+  # starts signs commits with that key, since nobody at another machine can
+  # touch this one's sensor.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && linuxAgent == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
+        &&
+          (linux (links // { signsInWith = "personal-link"; }))
+          .systemd.user.services.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/personal-link.sock" ]
         &&
           lib.drop 1 macNode == [
             "--realm"
