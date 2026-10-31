@@ -152,12 +152,16 @@
 
   # A sleep stops the watchdog's count, and its driver never starts it
   # again, so the hook stops it before each sleep and starts it after; the
-  # script says why.
+  # script says why. systemd-sleep runs it with a PATH that has no
+  # coreutils, so it brings its own.
   environment.etc."systemd/system-sleep/watchdog-wakes-again".source =
     let
       hook = pkgs.writeShellApplication {
         name = "watchdog-wakes-again";
-        runtimeInputs = [ config.systemd.package ];
+        runtimeInputs = [
+          config.systemd.package
+          pkgs.coreutils
+        ];
         text = builtins.readFile ./watchdog-wakes-again.sh;
       };
     in

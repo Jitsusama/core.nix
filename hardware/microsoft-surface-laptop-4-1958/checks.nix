@@ -132,7 +132,10 @@
   # systemd's runtime watchdog before each sleep and starts it after, at the
   # timeout systemd ran with. Run against a stand-in of busctl, a sleep with
   # the watchdog running stops and restarts it, and one without it touches
-  # nothing.
+  # nothing. The hook runs with an empty PATH, since systemd-sleep's has no
+  # coreutils and the hook's after half once failed there on cat. The
+  # stand-in needs cat and dirname too, so it finds them only through the
+  # PATH the hook makes.
   the-surface-watchdog-wakes-again =
     let
       surface = bareNixos [
@@ -161,18 +164,20 @@
       } >busctl
       chmod +x busctl
 
+      hook() { PATH=/var/empty ${hook} "$@"; }
+
       echo 30000000 >running
-      ${hook} pre suspend
+      hook pre suspend
       [ "$(cat set)" = 0 ] || fail "A sleep left the runtime watchdog running."
-      ${hook} post suspend
+      hook post suspend
       [ "$(cat set)" = "$(printf '0\n30000000')" ] ||
         fail "The runtime watchdog wasn't started again at its timeout after a sleep."
       [ -e kept ] && fail "The kept timeout outlived the sleep."
 
       rm set
       echo 0 >running
-      ${hook} pre hibernate
-      ${hook} post hibernate
+      hook pre hibernate
+      hook post hibernate
       [ -e set ] && fail "A sleep started a runtime watchdog that wasn't running."
       touch $out
     '';
