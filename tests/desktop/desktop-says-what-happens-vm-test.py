@@ -672,7 +672,9 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
                 "now": now,
                 "title": title,
                 "value": "resets 14:00",
-                "context": "at this hour's rate",
+                # As spend-watch words it (tokens.rs), so the photographs
+                # read as Joel's card will.
+                "context": "at $300 an hour · 92% used",
                 "quiet": {"title": title, "value": "resets 14:00", "context": ""},
                 "actions": [{"kind": "spends", "name": "See What Spends"}],
             }
@@ -702,6 +704,7 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
     now_down_to(desktop, "Tokens Run Out in About 14 Min")
     row = desktop.showing()["selected"] or {}
     assert "resets 14:00" in json.dumps(row), row
+    assert row.get("note") == "at $300 an hour \u00b7 92% used", row
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Once it no longer warns, its card is taken back.
