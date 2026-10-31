@@ -1204,9 +1204,14 @@ what they do, since they're what Joel presses.
 
 - **Where.** The reader, the notices on screen, the camera's viewfinder,
   and any list or page of ours with no field. A surface where letters
-  type, as the launcher's field does, takes no vi keys. Pickers that search
-  as you type have no mode, Joel's own Neovim's included, and a mode there
-  would cost the one Escape that closes them.
+  type, as the launcher's field does, keeps its keys for now: pickers that
+  search as you type have no mode, Joel's own Neovim's included, and a mode
+  there would cost the one Escape that closes them. How vi reaches the
+  launcher and the pickers waits on one control system for the whole
+  desktop, still to be designed, of which this is the seed.
+- **Keys come from one table.** Each surface reads its keys from one
+  table of key and act, never scattered through its code, so ? lists them
+  and the one control system can retune them later without a rewrite.
 - **First, on every such surface:**
   - **Moving:** h, j, k and l, as the arrows; gg and G to the first and
     last; Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen.
