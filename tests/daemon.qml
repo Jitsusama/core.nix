@@ -5,7 +5,8 @@
 // daemon running the client says it isn't answering and gives a get none
 // at once; once the daemon starts the client connects by itself and says
 // hello, which names the source; a watch narrowed to those listed holds
-// them alone; a search's answer is given to it and never held; the keys
+// them alone; a search's answer is given to it and never held; one no
+// source knows any more is let go; the keys
 // it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
 // daemon stopping is said, keeping what was held and giving a get none;
@@ -42,6 +43,7 @@ ShellRoot {
 
     readonly property string eli: "person:eli@example.com"
     readonly property string hal: "person:hal@example.com"
+    readonly property string ivy: "person:ivy@example.com"
 
     Process {
         id: running
@@ -89,7 +91,7 @@ ShellRoot {
         {
             what: "a watch narrowed to those listed holds them alone",
             holds: () => root.eli in listed.held && !(root.hal in listed.held)
-                && root.hal in people.held
+                && root.hal in people.held && root.ivy in people.held
         },
         {
             what: "a search's answer is given to it and never held",
@@ -102,6 +104,12 @@ ShellRoot {
             },
             holds: () => (root.answered?.records ?? []).some(record => record.key === root.hal)
                 && !(root.hal in listed.held)
+        },
+        {
+            // The roster lets Ivy go once it's asked anything, as a get asks.
+            what: "one no source knows any more is let go",
+            run: () => people.get([root.ivy], 1000, null),
+            holds: () => !(root.ivy in people.held)
         },
         {
             what: "a key watched ahead comes to be held, asked ahead",

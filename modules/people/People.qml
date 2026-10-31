@@ -152,20 +152,24 @@ Provider {
 
     // Asks the daemon for whoever the words find, once a text; the answer
     // comes within milliseconds and is searched as the rest are, so a
-    // search never waits on it.
+    // search never waits on it. With the daemon gone the text is asked
+    // again once it's back.
     function seek(typed) {
         const words = String(typed).trim().toLowerCase();
         if (heldBy.length === 0 || words === "" || words === seeking)
             return;
         seeking = words;
         book.find({ ask: "search", kind: "person", words: words, limit: soughtMost }, answer => {
-            if (answer !== null && seeking === words)
-                sought = { words: words, records: answer.records ?? [] };
+            if (seeking !== words)
+                return;
+            if (answer === null) {
+                seeking = "";
+                return;
+            }
+            sought = { words: words, records: answer.records ?? [] };
+            foundMore();
         });
     }
-
-    // Its search finds more once the daemon answers.
-    findsLater: true
 
     // Everyone shown, one person each: those the sources give, and those
     // read from the daemon; and each as a row, by key, its name and

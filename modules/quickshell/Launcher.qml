@@ -97,6 +97,7 @@ Scope {
             });
             source.answered.connect(() => root.reanswer(source));
             source.changed.connect(() => root.refreshed(source));
+            source.foundMore.connect(root.foundMore);
             source.thingsChanged.connect(root.stale);
             // Counted, so a closing can say which sources changed since
             // the last (madeSaid).
@@ -2381,9 +2382,8 @@ Scope {
             // home was first drawn from none, and a session can start while
             // home is shown.
             const home = typed.trim() === "" && collections.includes(source);
-            if (home || typed.trim() !== "" && (source.findsLater
-                || matches.some(row => row.endedBy === source
-                    || source.things.some(own => own.key === row.key)))) {
+            if (home || typed.trim() !== "" && matches.some(row => row.endedBy === source
+                || source.things.some(own => own.key === row.key))) {
                 reshow(0);
                 Report.say(`refreshed ${source.settings.name}`);
             }
@@ -2460,6 +2460,15 @@ Scope {
     // it keeps the rows in their order itself and leaves the selection and
     // the list alone, rather than starting them afresh to be put back: the
     // rows are made once a refresh, not twice.
+    // A source's search found more once asked, as People's does when the
+    // people daemon answers, within milliseconds of the key: what's typed
+    // is searched again in place, holding still what's shown, and only
+    // then, never on the source's other changes.
+    function foundMore() {
+        if (open && !asking && typed.trim() !== "")
+            reshow(held.length);
+    }
+
     function reshow(count) {
         const was = current >= 0 && selected ? steadyId(selected) : "";
         const at = current;

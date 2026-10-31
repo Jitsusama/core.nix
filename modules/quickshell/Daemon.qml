@@ -116,12 +116,21 @@ Scope {
     onAheadChanged: watchAhead()
 
     // Records said whole, each replacing what was held by its key, and
-    // keys the daemon says are gone taken out.
+    // keys the daemon says are gone taken out, whether in a gone list or
+    // as a record saying `gone`, as the people daemon tells of someone no
+    // source knows any more.
     function took(records, gone) {
         const keys = [];
         for (const record of records ?? []) {
             if (typeof record?.key !== "string")
                 continue;
+            if (record.gone === true) {
+                if (record.key in held) {
+                    delete held[record.key];
+                    keys.push(record.key);
+                }
+                continue;
+            }
             held[record.key] = record;
             keys.push(record.key);
         }

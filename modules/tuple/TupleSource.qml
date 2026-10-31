@@ -15,22 +15,31 @@ PersonSource {
 
     daemonHolds: true
 
-    // Favourites changed here, by Tuple's id, until the daemon next says
-    // anything, so a row moves at once rather than when Tuple tells it.
+    // Favourites changed here, by Tuple's id, each { wanted, key }, so a
+    // row moves at once rather than when Tuple tells it: each is kept
+    // until the daemon's record says what was asked, or isn't held.
     property var favoured: ({})
 
     Connections {
         target: source.place
 
         function onRevisionChanged() {
-            source.favoured = {};
+            const kept = {};
+            for (const id in source.favoured) {
+                const asked = source.favoured[id];
+                const entry = source.place.recordOf[asked.key]?.sources?.[source.settings.name];
+                if (entry && entry.favourite !== asked.wanted)
+                    kept[id] = asked;
+            }
+            source.favoured = kept;
         }
     }
 
     // What Tuple told the daemon of them, with a favourite changed here.
     function standingOf(entry) {
         const id = String(entry.id ?? "");
-        return id in favoured ? Object.assign({}, entry, { favourite: favoured[id] }) : entry;
+        return id in favoured
+            ? Object.assign({}, entry, { favourite: favoured[id].wanted }) : entry;
     }
 
     function stood(entry) {
@@ -72,7 +81,11 @@ PersonSource {
         if (!theirs)
             return null;
         const id = String(theirs.id ?? "");
-        const kept = () => (id in source.favoured ? source.favoured[id] : theirs.favourite === true);
+        const kept = () => (id in source.favoured ? source.favoured[id].wanted
+            : theirs.favourite === true);
+        // The daemon's key for them: their address, or Tuple's id.
+        const key = theirs.email ? `person:${theirs.email.trim().toLowerCase()}`
+            : `person:${settings.name}:${id}`;
         const row = provider.thing({
             key: "verb:person:favourite",
             name: Words.name("verb:person:favourite"),
@@ -82,7 +95,8 @@ PersonSource {
             run: () => {
                 const wanted = !kept();
                 TuplePeople.favour(theirs, wanted);
-                source.favoured = Object.assign({}, source.favoured, { [id]: wanted });
+                source.favoured = Object.assign({}, source.favoured,
+                    { [id]: { wanted: wanted, key: key } });
             }
         });
         return Object.defineProperties(row, {
