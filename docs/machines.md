@@ -136,11 +136,11 @@ lock. The machine then trusts the host and takes no signers:
 
 ```nix
 jitsusama.update-to-main = {
-  repository = "https://forge.example/someone/monorepo.git";
+  repository = "https://forge.example/someone/everything.git";
   output = "nixosConfigurations.laptop.config.system.build.toplevel";
   hosted = {
     user = "someone";
-    checkout = "/home/someone/monorepo";
+    checkout = "/home/someone/everything";
     directory = "machines";
     token = [ "/home/someone/bin/forge-token" ];
     inputs = [ "private-modules" ];
