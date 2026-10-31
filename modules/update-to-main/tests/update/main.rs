@@ -209,9 +209,7 @@ impl World {
     }
 
     fn builds(&self) -> usize {
-        fs::read_to_string(self.root.join("builds"))
-            .map(|s| s.lines().count())
-            .unwrap_or(0)
+        fs::read_to_string(self.root.join("builds")).map_or(0, |s| s.lines().count())
     }
 
     fn update(&self) -> (Vec<Line>, Line) {
@@ -383,7 +381,7 @@ fn a_main_signed_with_an_openpgp_key_it_wasnt_given_is_refused() {
     assert_eq!(world.builds(), 0);
 }
 
-/// Makes an OpenPGP key for `who`, gives it to the config as one that
+/// Makes a PGP key for `who`, gives it to the config as one that
 /// counts, and commits to main signed with it, as GitHub signs a merge.
 fn openpgp_signed(mut world: World, who: &str) -> (World, String) {
     let email = format!("{}@example.com", who.to_lowercase());
@@ -577,8 +575,8 @@ fn a_low_battery_starts_nothing() {
 #[test]
 fn asks_while_an_update_runs_join_it() {
     let world = World::new();
-    let head = world.signed("one");
-    world.system(&head);
+    let main = world.signed("one");
+    world.system(&main);
     // The build waits for a file, so both asks come while it runs.
     let gate = world.root.join("gate");
     let nix = world.config.tools.nix.clone();
@@ -603,18 +601,18 @@ fn asks_while_an_update_runs_join_it() {
         .map(|_| {
             let socket = socket.clone();
             thread::spawn(move || {
-                let mut heard = Vec::new();
-                let ending = ask::ask(&socket, &mut |l| heard.push(l.clone())).unwrap();
-                (heard, ending)
+                let mut told = Vec::new();
+                let ending = ask::ask(&socket, &mut |l| told.push(l.clone())).unwrap();
+                (told, ending)
             })
         })
         .collect();
     thread::sleep(std::time::Duration::from_millis(300));
     fs::write(&gate, "").unwrap();
     for asker in askers {
-        let (heard, ending) = asker.join().unwrap();
-        assert_eq!(heard.first(), Some(&Line::Fetching));
-        assert_eq!(ending, done(&head));
+        let (told, ending) = asker.join().unwrap();
+        assert_eq!(told.first(), Some(&Line::Fetching));
+        assert_eq!(ending, done(&main));
     }
     assert_eq!(world.builds(), 1);
 }

@@ -7,7 +7,7 @@
 //!   or already did, 1 when the update failed, 2 when it was refused and 3
 //!   when the daemon couldn't be asked or stopped answering.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use update_to_main::config::Config;
 use update_to_main::line::Line;
@@ -37,8 +37,8 @@ fn main() -> ExitCode {
                 }
             }
         }
-        ["ask"] => asked(PathBuf::from(SOCKET)),
-        ["ask", "--socket", file] => asked(PathBuf::from(file)),
+        ["ask"] => asked(Path::new(SOCKET)),
+        ["ask", "--socket", file] => asked(Path::new(file)),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(64)
@@ -46,8 +46,8 @@ fn main() -> ExitCode {
     }
 }
 
-fn asked(socket: PathBuf) -> ExitCode {
-    let ending = ask::ask(&socket, &mut |line| println!("{}", line.json()));
+fn asked(socket: &Path) -> ExitCode {
+    let ending = ask::ask(socket, &mut |line| println!("{}", line.json()));
     match ending {
         Ok(Line::Done { .. } | Line::Unchanged { .. }) => ExitCode::SUCCESS,
         Ok(Line::Failed { .. }) => ExitCode::from(1),
