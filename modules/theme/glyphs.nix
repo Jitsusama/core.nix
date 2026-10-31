@@ -370,6 +370,13 @@ in
     # A price tag.
     drawn = "M0 0H7L12 6L7 12H0Z M2 5H4V7H2Z";
   };
+  # A gauge reading low, as a car's fuel does: what's left before the
+  # limit, not what it costs.
+  tokens = {
+    glyph = nerd "f0875";
+    console = "T";
+    means = "the AI tokens run out soon at this rate, or have run out until they reset";
+  };
   # What a glance at the desktop reads each value by (the launcher's foot),
   # so a number says what it's of without a word.
   charge = {

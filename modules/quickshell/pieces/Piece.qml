@@ -43,6 +43,9 @@ Item {
     property string hint: value
     property string title: settings.label ?? ""
     property string context: ""
+    // What its notice says beneath its hint, when it arrives: its context,
+    // unless it says more there.
+    property string message: context
     property bool wants: false
     // How much it asks of Joel while it's true, which places its mark and
     // its colour: on air (`onAir`) while something of his reaches others,
@@ -113,6 +116,7 @@ Item {
             hint: "",
             title: "",
             context: "",
+            message: own.context ?? "",
             wants: wants,
             kind: kind,
             group: kind,

@@ -76,6 +76,8 @@ Singleton {
         // A meeting about to start (Starting.qml), with others in it.
         "calendar": { glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true },
         "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true },
+        // The AI tokens running out (pieces/Tokens.qml), the agents' own.
+        "tokens": { glyph: Theme.glyph.tokens.codePointAt(0), hue: "program", answers: true },
         // A firmware update fwupd offers (modules/firmware-notice), said
         // once a release, and missed until seen, since nothing else says it.
         "firmware": { glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine" },
@@ -134,6 +136,36 @@ Singleton {
             delete still[notice.id];
         resting = still;
         history = fresh([notice].concat(history.filter(kept => kept.id !== notice.id)));
+    }
+
+    // One said again in place, as an arrival is while its words follow the
+    // minutes (Arrivals.qml), keeps its place and whether it's read, with
+    // its new words.
+    function reword(id, summary, body) {
+        history = history.map(notice => notice.id !== id ? notice
+            : Object.assign({}, notice, { summary: summary, body: body }));
+    }
+
+    // The last one said again in place that tells something new, so the
+    // stack (Notifications.qml) brings it back to the front: { id, at }.
+    property var raised: null
+
+    // One said again in place that tells something new, as an arrival is
+    // as it steps down (Arrivals.qml), comes back to the screen unread,
+    // the same card rather than another.
+    function raise(id) {
+        history = history.map(notice => notice.id !== id ? notice
+            : Object.assign({}, notice, { read: false }));
+        raised = { id: id, at: Date.now() };
+    }
+
+    // One resting comes back to the screen.
+    function wake(id) {
+        if (id in resting) {
+            const others = Object.assign({}, resting);
+            delete others[id];
+            resting = others;
+        }
     }
 
     // One whose time on screen is up rests off it, still open.

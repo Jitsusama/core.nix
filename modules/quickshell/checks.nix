@@ -799,16 +799,26 @@ onLinux {
     touch $out
   '';
 
-  # The AI spend piece and the launcher's collection of it read what
-  # spend-watch writes, from a day of a session's turns on two models, and the states
-  # tests/spend.qml writes by hand, through Quickshell itself, with niri, do
-  # not disturb and the shortcuts stood in for.
+  # The AI spend piece, the tokens piece and the launcher's collection read
+  # what spend-watch writes, from a day of a session's turns on two models,
+  # and the states tests/spend.qml writes by hand, through Quickshell
+  # itself, with niri, do not disturb, the shortcuts and the sessions stood
+  # in for.
   the-shell-reads-the-spend-watch =
     let
       watch = pkgs.callPackage ../spend-watch/package.nix { };
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
+      '';
+      sessions = singleton "Sessions.qml" ''
+        property var running: [{
+          address: "ADDR1",
+          title: "The Launcher's Shape",
+          presence: { session: "s-running" }
+        }]
+        property string steered: ""
+        function steer(address, fields) { steered = address + " " + fields.act; }
       '';
       shortcuts = singleton "Shortcuts.qml" ''
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
@@ -827,6 +837,8 @@ onLinux {
       ${lib.getExe watch} --config config.json show collection > runtime/written/collection.json
       cp ${./pieces/Piece.qml} Piece.qml
       cp ${./pieces/Spend.qml} Spend.qml
+      cp ${./pieces/Tokens.qml} Tokens.qml
+      cp ${sessions} Sessions.qml
       cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -2289,9 +2301,10 @@ onLinux {
     '';
 
   # What comes true by itself is said once as a notice, and again only as
-  # it tells something new, its earlier notice taken back first, as
-  # tests/arrivals.qml holds Arrivals.qml to with the facts and the notices
-  # stood in, and notify-send writing down what it's asked to say.
+  # it tells something new, its earlier notice taken back first, and in new
+  # words in place, by its id, as tests/arrivals.qml holds Arrivals.qml to
+  # with the facts and the notices stood in, and notify-send writing down
+  # what it's asked to say and the id it gave.
   an-arrival-is-said-once-each-time =
     let
       facts = singleton "Facts.qml" "property var all: []";
@@ -2299,12 +2312,25 @@ onLinux {
         property var live: ({})
         property var history: []
         property var marked: []
+        property var reworded: []
+        property var raisedIds: []
         function mark(id, read) { marked = marked.concat([id]); }
+        function reword(id, summary, body) { reworded = reworded.concat([id]); }
+        function raise(id) { raisedIds = raisedIds.concat([id]); }
       '';
       options = singleton "Options.qml" "property bool reports: false";
       report = singleton "Report.qml" "function say(text) {}";
+      # A new notice's id is the next from 101, a replaced one keeps its own.
       notifySend = pkgs.writeShellScriptBin "notify-send" ''
-        printf '%s\n' "$*" >> "$XDG_RUNTIME_DIR/said"
+        next=$XDG_RUNTIME_DIR/next
+        id=$(( $(cat "$next" 2>/dev/null || echo 100) + 1 ))
+        replaced=""
+        for word in "$@"; do
+          case $word in --replace-id=*) replaced=''${word#--replace-id=} ;; esac
+        done
+        if [ -n "$replaced" ]; then id=$replaced; else echo "$id" > "$next"; fi
+        printf '%s =>%s\n' "$*" "$id" >> "$XDG_RUNTIME_DIR/said"
+        echo "$id"
       '';
     in
     pkgs.runCommandLocal "an-arrival-is-said-once-each-time" { } ''

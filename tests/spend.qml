@@ -12,8 +12,13 @@
 // cut into its rows, each with its footer, shows no amount while the screen
 // is shared, draws nothing from a file of another version, and puts a
 // finding that wants a look first, going to its session and stepping into
-// marking it expected. It exits 0 once every case holds, and otherwise 1,
-// saying which didn't.
+// marking it expected. The tokens piece (pieces/Tokens.qml), over the same
+// file, is there only while the watch's `tokens` warns: as the watch words
+// it, wanting Joel, said as it arrives and again as its level steps down,
+// with See What Spends and Pause for a session that's running and nothing
+// else; urgent in the alert colour once out; quiet while shared; saying
+// what can't be read; and gone while the watch has stopped. It exits 0
+// once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -64,12 +69,77 @@ ShellRoot {
         }]
     })
 
+    readonly property var running: ({
+        level: "hour",
+        now: false,
+        title: "Tokens Run Out in About 40 Min",
+        value: "resets 14:00",
+        context: "at this hour's rate \u00b7 62% used",
+        hint: "Tokens run out in about 40 min, at 14:00 they reset",
+        quiet: {
+            title: "Tokens Run Out Soon",
+            value: "resets 14:00",
+            context: "at this hour's rate",
+            hint: "Tokens run out soon"
+        },
+        actions: [
+            { kind: "spends", name: "See What Spends" },
+            { kind: "pause", name: "Pause 15J7N3", session: "s-running", quest: "Q" },
+            { kind: "pause", name: "Pause Gone", session: "s-gone", quest: "Q" },
+            { kind: "stop", name: "Stop" }
+        ]
+    })
+
     // Each case: what the watch wrote (null: nothing), whether the screen
-    // is shared, and what the piece makes of it.
+    // is shared, and what the piece makes of it, and the tokens piece where
+    // it says.
     readonly property var cases: [{
         what: "a watch that never wrote",
         status: null,
-        holds: piece => !piece.present && !piece.active
+        holds: piece => !piece.present && !piece.active,
+        tokens: piece => !piece.present && !piece.active
+    }, {
+        what: "tokens running out",
+        status: status({ tokens: root.running }),
+        holds: piece => piece.present,
+        tokens: piece => piece.present && piece.active && piece.wants && !piece.now
+            && piece.role === "warning" && piece.arrives && piece.withdraws
+            && piece.telling === "hour" && piece.title === "Tokens Run Out in About 40 Min"
+            && piece.value === "resets 14:00" && piece.context === "at this hour's rate \u00b7 62% used"
+            && piece.hint === piece.title
+            && piece.message === "resets 14:00 \u00b7 at this hour's rate \u00b7 62% used"
+            && piece.actions.map(action => action.name).join(", ")
+                === "See What Spends, Pause The Launcher's Shape"
+    }, {
+        what: "pausing the session that spends most",
+        status: status({ tokens: root.running }),
+        act: (piece, tokens) => tokens.actions[1].run(),
+        holds: piece => Sessions.steered === "ADDR1 pause"
+    }, {
+        what: "tokens running out, while sharing",
+        status: status({ tokens: root.running }),
+        sharing: true,
+        holds: piece => piece.present,
+        tokens: piece => piece.wants && piece.title === "Tokens Run Out Soon"
+            && piece.hint === "Tokens Run Out Soon" && !piece.message.includes("%")
+    }, {
+        what: "tokens that can't be read",
+        status: status({ tokens: Object.assign({}, root.running, { unread: "can't be read since 10:12" }) }),
+        holds: piece => piece.present,
+        tokens: piece => piece.wants && piece.context === "can't be read since 10:12"
+    }, {
+        what: "tokens out",
+        status: status({
+            tokens: Object.assign({}, root.running, { level: "out", now: true, title: "Tokens Ran Out" })
+        }),
+        holds: piece => piece.present,
+        tokens: piece => piece.now && piece.role === "alert" && piece.telling === "out"
+            && piece.title === "Tokens Ran Out" && piece.message.startsWith("resets 14:00")
+    }, {
+        what: "tokens while the watch has stopped",
+        status: status({ heartbeat: root.now - 600, tokens: root.running }),
+        holds: piece => piece.value === "not watching",
+        tokens: piece => !piece.present && !piece.active
     }, {
         // A day of logs and no feed: list prices are all there is, and a
         // day has no usual or forecast yet, so there's nothing to add.
@@ -129,6 +199,11 @@ ShellRoot {
         settings: ({ status: `${root.runtime}/status.json` })
     }
 
+    Tokens {
+        id: tokensPiece
+        settings: ({ status: `${root.runtime}/status.json` })
+    }
+
     Launcher.Spend {
         id: spend
         settings: ({ name: "spend" })
@@ -185,9 +260,9 @@ ShellRoot {
             const step = root.cases[root.at];
             if (step.act && !root.acted && piece.present) {
                 root.acted = true;
-                step.act(piece);
+                step.act(piece, tokensPiece);
             }
-            if (step.holds(piece)) {
+            if (step.holds(piece) && (step.tokens === undefined || step.tokens(tokensPiece))) {
                 stop();
                 if (++root.at === root.cases.length)
                     root.collect();
@@ -198,7 +273,10 @@ ShellRoot {
                 console.warn(`FAIL ${step.what}: present ${piece.present}, active ${piece.active},`
                     + ` role ${piece.role}, wants ${piece.wants}, value "${piece.value}",`
                     + ` hint "${piece.hint}", context "${piece.context}",`
-                    + ` actions ${piece.actions.map(action => action.name).join(", ")}`);
+                    + ` actions ${piece.actions.map(action => action.name).join(", ")};`
+                    + ` tokens present ${tokensPiece.present}, now ${tokensPiece.now},`
+                    + ` title "${tokensPiece.title}", context "${tokensPiece.context}",`
+                    + ` actions ${tokensPiece.actions.map(action => action.name).join(", ")}`);
                 Qt.exit(1);
             }
         }

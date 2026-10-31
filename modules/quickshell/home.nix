@@ -494,6 +494,7 @@ let
     disk = ./pieces/Disk.qml;
     lag = ./pieces/Lag.qml;
     spend = ./pieces/Spend.qml;
+    tokens = ./pieces/Tokens.qml;
     notices = ./pieces/Waiting.qml;
     quiet = ./pieces/DoNotDisturb.qml;
     microphone = ./pieces/Microphone.qml;
@@ -1336,6 +1337,17 @@ in
         sign = "agent";
         collapse = 5;
         mark = "spend";
+      };
+      # The AI tokens running out at this rate, or out until they reset,
+      # where spend-watch runs and only while it warns: said as a notice
+      # and listed in Now, and a glyph in the margin, beside the day's
+      # spend.
+      tokens = {
+        order = 51;
+        source = "tokens";
+        label = "tokens";
+        tier = "when";
+        mark = "tokens";
       };
       # How many pi sessions run and how many are working. It gives way
       # after the volume and the day's spend, which have homes elsewhere,
