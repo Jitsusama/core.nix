@@ -2372,16 +2372,16 @@ Scope {
         // A thing of its own stepped into from the top, as a program is, is
         // made again too, with everything it holds, so its Media and Sound
         // say how its player and its streams stand now. What the top found
-        // is one of the rows its source's search looks through
-        // (looksThrough), which can be more than its things: People lists
-        // none and finds anyone, so its things alone missed a person found
-        // by name, whose Write in Slack then never lit where it stood. Those
-        // are read only when its things don't hold the row, and only for a
-        // step stepped into from the top.
+        // is one of the rows its source's search finds (foundBy), which can
+        // be more than its things: People lists none and finds anyone, so
+        // its things alone missed a person found by name, whose Write in
+        // Slack then never lit where it stood. It's asked only when its
+        // things don't hold the row, and only for a step stepped into from
+        // the top.
         const fromTop = from < 0 && held.length > 0 && !held[0].row.from && !held[0].row.category;
         const found = row => row.key === held[0].row.key;
         const own = !fromTop ? [] : source.things.some(found) ? source.things
-            : source.looksThrough();
+            : source.foundBy(held[0].row.key);
         const top = fromTop && own.some(found);
         if (from < 0 && !top && !held.some(ofSource))
             return;

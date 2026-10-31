@@ -191,6 +191,13 @@ Scope {
         return everything();
     }
 
+    // The row its search finds by this key, as a list of it or none, for a
+    // refresh of one found at the top: among what it looks through, unless
+    // those aren't its rows, as People makes a row only for who's found.
+    function foundBy(key) {
+        return looksThrough().filter(row => row.key === key);
+    }
+
     // Makes ready the texts of one of those rows that its search reads, each
     // made as it's first read: its name, and its other words for one that
     // has them.

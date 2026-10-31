@@ -51,14 +51,54 @@ Provider {
         sources = made;
     }
 
-    // Everyone, one person each, joined again only when a source says who
-    // it knows again, which is seldom; and each as a row, by key, its name
-    // and addresses made ready to match only when first searched.
+    // Everyone, one person each, joined again whenever a source says who
+    // it knows again.
     readonly property var persons: Person.merged(sources.map(source => ({
         name: source.settings.name,
         people: source.people
     })))
-    readonly property var everyone: persons.map(person => made(person, Person.standing(person, [])))
+    // And each as what a search tests, { key, person, named, mailed }, with
+    // their name and addresses made ready to match only when first
+    // searched, and a row made only for someone a search keeps (rowOf).
+    // Tuple lists every contact, 7,731 on Joel's machine, and a row made
+    // for each, three times as Slack's answers came, was the JS heap's
+    // jump from 52 to 270 MB at the first opening after each start
+    // (2026-10-31, 07:36: "opening made 24183 rows (people 23272, ...)").
+    readonly property var everyone: persons.map(person => sought(person))
+
+    function sought(person) {
+        const entry = {
+            key: `person:${person.key}`,
+            person: person,
+            named: Fuzzy.letters([person.name.toLowerCase()]),
+            mailed: Fuzzy.letters([person.emails.join(" ")])
+        };
+        let prepared = null;
+        let also = null;
+        Object.defineProperty(entry, "prepared", {
+            enumerable: true,
+            get: () => prepared ?? (prepared = Fuzzy.kept(person.name))
+        });
+        Object.defineProperty(entry, "also", {
+            enumerable: true,
+            get: () => also ?? (also = Fuzzy.kept(person.emails.join(" ")))
+        });
+        return entry;
+    }
+
+    // The rows made of everyone for what searches kept, by key, kept in
+    // place while everyone is the same, so a person found again is the
+    // same row and a refresh finds it where it stood.
+    readonly property var rowsFound: ({ among: null, rows: ({}) })
+
+    function rowOf(entry) {
+        if (rowsFound.among !== everyone) {
+            rowsFound.among = everyone;
+            rowsFound.rows = Object.create(null);
+        }
+        return rowsFound.rows[entry.key]
+            ?? (rowsFound.rows[entry.key] = made(entry.person, Person.standing(entry.person, [])));
+    }
 
     // How each stands, which changes often, read from every source in
     // order, so the first that says is believed.
@@ -108,11 +148,11 @@ Provider {
             targets: () => provider.inside(person)
         });
         // Their addresses, made ready to match when first searched, as the
-        // name is, and kept while they read the same (Fuzzy.kept): everyone
-        // is made again whenever a source knows anyone anew, as each mail
-        // and meeting does, and making every address ready again was most
-        // of a first search's time, 408 ms of "ma" (2026-10-30), since
-        // nearly every address holds both letters.
+        // name is, and kept while they read the same (Fuzzy.kept): a source
+        // knowing anyone anew, as each mail and meeting does, makes the
+        // listed again, and making every address ready again was most of a
+        // first search's time, 408 ms of "ma" (2026-10-30), since nearly
+        // every address holds both letters.
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
@@ -126,10 +166,7 @@ Provider {
             enumerable: true,
             get: () => details ?? (details = Person.details(person, zone => provider.there(zone)))
         });
-        return Object.assign(row, {
-            named: Fuzzy.letters([person.name.toLowerCase()]),
-            mailed: Fuzzy.letters([person.emails.join(" ")])
-        });
+        return row;
     }
 
     // tzdata's zones, as Clocks reads them (Zones.js), read once when a
@@ -302,19 +339,18 @@ Provider {
         let grade = 3;
         const narrowing = lately.among === everyone && lately.typed !== null
             && String(typed).toLowerCase().startsWith(lately.typed);
-        for (const row of narrowing ? lately.found : everyone) {
-            const byName = (row.named & need) === need
-                ? Fuzzy.match(row.prepared, words, false) : missed;
-            const byAddress = (row.mailed & need) === need
-                ? Fuzzy.match(row.also, words, false) : missed;
+        for (const entry of narrowing ? lately.found : everyone) {
+            const byName = (entry.named & need) === need
+                ? Fuzzy.match(entry.prepared, words, false) : missed;
+            const byAddress = (entry.mailed & need) === need
+                ? Fuzzy.match(entry.also, words, false) : missed;
             const best = byName.score >= byAddress.score ? byName : byAddress;
             if (best.score < 0)
                 continue;
-            matched.push(row);
+            matched.push(entry);
             grade = Math.min(grade, best.grade);
-            const listed = rows[row.key];
-            found.push({ score: best.score, grade: best.grade, row: listed ?? row,
-                listed: listed !== undefined, at: found.length });
+            found.push({ score: best.score, grade: best.grade, entry: entry,
+                listed: rows[entry.key] !== undefined, at: found.length });
         }
         lately.typed = String(typed).toLowerCase();
         lately.among = everyone;
@@ -324,16 +360,27 @@ Provider {
         const kept = found.filter(each => each.grade === grade)
             .sort((a, b) => Number(b.listed) - Number(a.listed) || b.score - a.score
                 || a.at - b.at);
-        return { rows: kept.map(each => each.row), grade: grade };
+        return { rows: kept.map(each => rows[each.entry.key] ?? rowOf(each.entry)), grade: grade };
     }
 
     function everything() {
         return all;
     }
 
-    // A search looks through everyone, not only those listed.
+    // A search looks through everyone, not only those listed, testing the
+    // entries, whose texts are made ready while the launcher is closed.
     function looksThrough() {
         return everyone;
+    }
+
+    // Someone a search found, by key, as they're listed or else as a row
+    // made for them, for a refresh of one stepped into from the top.
+    function foundBy(key) {
+        const listed = known[key];
+        if (listed)
+            return [listed];
+        const entry = everyone.find(each => each.key === key);
+        return entry ? [rowOf(entry)] : [];
     }
 
     // A source that only follows what it knows while someone might look,
