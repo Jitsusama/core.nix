@@ -2761,6 +2761,7 @@ Scope {
         keyText = typed;
         keyWaits = true;
         keysWaiting += 1;
+        keysHeard.push(began);
     }
 
     function keyDrawn() {
@@ -2775,6 +2776,8 @@ Scope {
         keysWaiting = 0;
         if (keysFramed.length > keysKept)
             keysFramed.splice(0, keysFramed.length - keysKept);
+        if (keysHeard.length > keysKept)
+            keysHeard.splice(0, keysHeard.length - keysKept);
     }
 
     // When each of the last keys reached its frame, oldest first, for the
@@ -2786,6 +2789,14 @@ Scope {
     // changed in place.
     readonly property int keysKept: 300
     property var keysFramed: []
+    // When the shell's own handler took each of those keys, on the same
+    // clock, so the machine's load proof can time Joel's own keys from the
+    // handler to their frames with no keyboard of its own. It can't see
+    // the wait before the handler runs, a busy main thread's, nor niri's
+    // part (P9R1KI, 2026-10-30: "handler to frame, realtime clock"). A key
+    // is kept here once heard, so this runs ahead of the frames by the keys
+    // still waiting for one.
+    property var keysHeard: []
     property int keysTimed: 0
     property int keysWaiting: 0
 
@@ -3051,10 +3062,14 @@ Scope {
         }
 
         // When each of the last keys, typed or arrowed, reached its frame,
-        // as milliseconds since the epoch, oldest first, and how many keys
-        // have reached one since the shell started.
+        // and when the launcher's handler took it, as milliseconds since
+        // the epoch on the realtime clock, oldest first, a key at each
+        // place in both; and how many keys have reached a frame since the
+        // shell started.
         function framed(): string {
-            return JSON.stringify({ timed: root.keysTimed, frames: root.keysFramed });
+            return JSON.stringify({ timed: root.keysTimed, clock: "realtime",
+                heard: root.keysHeard.slice(0, root.keysFramed.length),
+                frames: root.keysFramed });
         }
 
         // How many frames the card has drawn since this was first asked,
