@@ -526,6 +526,10 @@
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
   '';
+  linux-builder-lets-in-only-the-keys-it-is-given = ''
+    a Mac's Linux VM given other machines' keys lets exactly those in as its builder beside the
+    Mac's own, and a VM given none is the very guest nixpkgs caches
+  '';
   load-proof-reads-its-signals = ''
     load-proof counts a refresh with the probe's frame ready and none shown as a frame niri missed,
     one that passed before the probe committed as the probe's own, none when a frame lands at every
