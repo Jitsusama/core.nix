@@ -4,16 +4,20 @@
 //! The origins are given rather than fixed, so the tests can ask a stand-in
 //! on this machine instead (`tests/stand_in.rs`).
 
+use std::fs::File;
+use std::path::Path;
 use std::time::Duration;
 
 use jiff::Timestamp;
 use serde_json::Value;
-use ureq::Agent;
+use ureq::typestate::WithBody;
+use ureq::{Agent, RequestBuilder};
 
 use crate::account::Account;
 use crate::calendar::Answer;
 use crate::drive;
 use crate::mail;
+use crate::saves;
 
 /// The most a file's answer may be: Gmail takes a file of 25 MB, which
 /// its base64 makes a third again.
@@ -77,6 +81,45 @@ fn refused(status: u16, what: &str) -> Refused {
 
 fn unreachable(error: &ureq::Error) -> Refused {
     Refused::Unreachable(format!("couldn't reach Google: {error}"))
+}
+
+/// How Drive took a file sent to it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Put {
+    /// It's in, by Drive's id, shown in the browser at `link`.
+    Done { id: String, link: Option<String> },
+    /// Drive has no such folder or file, or none Joel may see.
+    Gone,
+    /// Joel's sign-in doesn't grant it.
+    NotGranted,
+    /// The file to send couldn't be read.
+    Unread,
+}
+
+/// What a status other than success says of a file sent to Drive: a 403
+/// is a grant missing unless Drive says it's a limit, which passes.
+fn unput(status: u16, answer: &mut ureq::http::Response<ureq::Body>) -> Result<Put, Refused> {
+    match status {
+        404 => Ok(Put::Gone),
+        403 => {
+            let body: Value = answer.body_mut().read_json().unwrap_or(Value::Null);
+            let reason = body
+                .pointer("/error/errors/0/reason")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if reason.contains("RateLimit")
+                || reason.contains("rateLimit")
+                || reason.contains("Quota")
+            {
+                Err(Refused::Unreachable(format!(
+                    "Drive refused a save: {reason}"
+                )))
+            } else {
+                Ok(Put::NotGranted)
+            }
+        }
+        status => Err(refused(status, "a save")),
+    }
 }
 
 /// A fresh access token and when it stops working.
@@ -432,6 +475,88 @@ impl Google {
             404 => Ok(None),
             status => Err(refused(status, "a file's bytes")),
         }
+    }
+
+    /// Sends the file at `path` into Drive as a new file named `name` in
+    /// `folder`, `root` or a folder's or shared drive's id.
+    pub fn create(
+        &self,
+        token: &str,
+        folder: &str,
+        name: &str,
+        path: &Path,
+    ) -> Result<Put, Refused> {
+        let started = self
+            .agent
+            .post(format!("{}/upload/drive/v3/files", self.origins.api));
+        let about = serde_json::json!({ "name": name, "parents": [folder] });
+        self.put(token, started, &about, name, path)
+    }
+
+    /// Sends the file at `path` into Drive as a new version of the file
+    /// `id`, its name and folder as they were.
+    pub fn replace(&self, token: &str, id: &str, name: &str, path: &Path) -> Result<Put, Refused> {
+        let started = self
+            .agent
+            .patch(format!("{}/upload/drive/v3/files/{id}", self.origins.api));
+        self.put(token, started, &serde_json::json!({}), name, path)
+    }
+
+    /// Sends a file resumably: what it is first, then its bytes where
+    /// Drive says, read from disk as they go, so one of any size is never
+    /// held whole.
+    fn put(
+        &self,
+        token: &str,
+        started: RequestBuilder<WithBody>,
+        about: &Value,
+        name: &str,
+        path: &Path,
+    ) -> Result<Put, Refused> {
+        let Ok(file) = File::open(path) else {
+            return Ok(Put::Unread);
+        };
+        let mime = saves::mime(name);
+        let mut answer = started
+            .header("Authorization", &format!("Bearer {token}"))
+            .header("X-Upload-Content-Type", mime)
+            .query("uploadType", "resumable")
+            .query("supportsAllDrives", "true")
+            .query("fields", "id,webViewLink")
+            .send_json(about)
+            .map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if status != 200 {
+            return unput(status, &mut answer);
+        }
+        let session = answer
+            .headers()
+            .get("location")
+            .and_then(|at| at.to_str().ok())
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                Refused::Unreachable("Drive began a save without saying where".into())
+            })?;
+        let mut answer = self
+            .agent
+            .put(&session)
+            .header("Content-Type", mime)
+            .config()
+            .timeout_global(Some(DOWNLOAD_TAKES))
+            .build()
+            .send(file)
+            .map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if !matches!(status, 200 | 201) {
+            return unput(status, &mut answer);
+        }
+        let body: Value = answer.body_mut().read_json().unwrap_or(Value::Null);
+        let text = |field: &str| body.get(field).and_then(Value::as_str).map(str::to_owned);
+        Ok(Put::Done {
+            id: text("id")
+                .ok_or_else(|| Refused::Unreachable("Drive saved without an id".into()))?,
+            link: text("webViewLink"),
+        })
     }
 
     /// The inbox, for how many in it are unread.

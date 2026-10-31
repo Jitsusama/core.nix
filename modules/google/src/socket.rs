@@ -16,7 +16,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
@@ -37,13 +37,14 @@ pub struct Socket {
 impl Socket {
     /// Listens at `path`, replacing a socket an earlier run left there,
     /// and starts sending `first` to each shell that connects, leaving it
-    /// in `told` too. What the shells write comes out of the receiver, a
-    /// line each.
+    /// in `told` too. What the shells write is sent on `asks`, a line each,
+    /// beside whatever else asks this program.
     pub fn listen(
         path: &Path,
         told: &Path,
         first: String,
-    ) -> io::Result<(Socket, Receiver<String>)> {
+        asks: Sender<String>,
+    ) -> io::Result<Socket> {
         if path.exists() {
             fs::remove_file(path)?;
         }
@@ -56,14 +57,13 @@ impl Socket {
             })),
             told: Arc::new(told.to_owned()),
         };
-        let (asks, asked) = mpsc::channel();
         let accepting = socket.clone();
         thread::spawn(move || {
             for shell in listener.incoming().flatten() {
                 accepting.welcome(shell, &asks);
             }
         });
-        Ok((socket, asked))
+        Ok(socket)
     }
 
     fn welcome(&self, mut shell: UnixStream, asks: &Sender<String>) {
@@ -118,7 +118,19 @@ fn leave(told: &Path, line: &str) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc::{self, Receiver};
+
     use super::*;
+
+    /// Listens as the program does, with what the shells write on a
+    /// channel of the test's own.
+    fn listening(path: &Path, told: &Path) -> (Socket, Receiver<String>) {
+        let (asks, asked) = mpsc::channel();
+        (
+            Socket::listen(path, told, "first\n".into(), asks).unwrap(),
+            asked,
+        )
+    }
 
     fn folder(test: &str) -> std::path::PathBuf {
         let folder = std::env::temp_dir().join(format!("google-{test}-{}", std::process::id()));
@@ -131,7 +143,7 @@ mod tests {
         let folder = folder("asks");
         let path = folder.join("google.sock");
         let told = folder.join("google.json");
-        let (_socket, asked) = Socket::listen(&path, &told, "first\n".into()).unwrap();
+        let (_socket, asked) = listening(&path, &told);
         let mut shell = UnixStream::connect(&path).unwrap();
         shell.write_all(b"one\ntwo\n").unwrap();
         let timeout = Duration::from_secs(5);
@@ -145,7 +157,7 @@ mod tests {
         let folder = folder("socket");
         let path = folder.join("google.sock");
         let told = folder.join("google.json");
-        let (socket, _asked) = Socket::listen(&path, &told, "first\n".into()).unwrap();
+        let (socket, _asked) = listening(&path, &told);
         let mut lines = BufReader::new(UnixStream::connect(&path).unwrap()).lines();
         assert_eq!(lines.next().unwrap().unwrap(), "first");
         // A shell is welcomed under the lock that saying takes, so once it
@@ -162,7 +174,7 @@ mod tests {
         let path = folder.join("google.sock");
         let told = folder.join("google.json");
         fs::write(&told, "left by an earlier run\n").unwrap();
-        let (socket, _asked) = Socket::listen(&path, &told, "first\n".into()).unwrap();
+        let (socket, _asked) = listening(&path, &told);
         assert_eq!(fs::read_to_string(&told).unwrap(), "first\n");
         socket.say("second\n".into());
         assert_eq!(fs::read_to_string(&told).unwrap(), "second\n");

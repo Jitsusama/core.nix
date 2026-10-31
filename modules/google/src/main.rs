@@ -26,6 +26,11 @@
 //! (files.rs). One ask is done at a time, so a large download holds the
 //! next until it's written.
 //!
+//! What Joel saves into Drive through the picker is staged in the state
+//! home's google/drive-saves, which this program watches, sending each
+//! file up once it's written, and telling every shell how it went
+//! (saves.rs).
+//!
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
@@ -33,9 +38,10 @@
 //! as is the file's default, as pi's own is.
 
 use std::env;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -45,6 +51,7 @@ use google::api::{Google, Origins};
 use google::ask::{self, Ask};
 use google::files::Places;
 use google::mail::Tidy;
+use google::saves;
 use google::socket::Socket;
 use google::state::{Standing, State};
 use google::watch::Watch;
@@ -66,13 +73,21 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     let told = path.with_extension("json");
-    let (socket, asked) = match Socket::listen(&path, &told, State::default().line()) {
+    let (asks, asked) = mpsc::channel();
+    let socket = match Socket::listen(&path, &told, State::default().line(), asks.clone()) {
         Ok(listening) => listening,
         Err(error) => {
             eprintln!("<3>couldn't listen at {}: {error}", path.display());
             return ExitCode::FAILURE;
         }
     };
+    let staged = saves::root(env::var_os("XDG_STATE_HOME"), env::var_os("HOME"));
+    saves::prune(&staged, SystemTime::now());
+    // Without its watch, what Joel saves stays staged, to go up as the
+    // program next starts.
+    if let Err(error) = saves::watch(staged.clone(), asks) {
+        eprintln!("<4>couldn't watch Drive saves: {error}");
+    }
     let places = Places {
         kept: path.with_file_name("google-files"),
         saves: env::var_os("XDG_DOWNLOAD_DIR").map_or_else(
@@ -129,6 +144,13 @@ fn main() -> ExitCode {
                     Some(Ask::Download { file, how, to }) => {
                         socket.say(watch.downloading(&file, how, to, &now).line());
                         watch.download(&places, &now)
+                    }
+                    Some(Ask::Upload { path }) => {
+                        let Some(file) = saves::staged(&staged, Path::new(&path)) else {
+                            continue;
+                        };
+                        socket.say(watch.uploading(&file, &now).line());
+                        watch.upload(&now)
                     }
                     None => continue,
                 };

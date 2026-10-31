@@ -14,11 +14,12 @@ use jiff::{Timestamp, Zoned};
 use serde_json::Value;
 
 use crate::account::{self, Missing};
-use crate::api::{Google, MAKES_MEETINGS, Refused};
+use crate::api::{Google, MAKES_MEETINGS, Put, Refused};
 use crate::calendar::{self, Answer};
-use crate::drive::{self, Document, Downloaded, Folder, Kind, Listed, Unlisted};
+use crate::drive::{self, Document, Downloaded, Folder, Kind, Listed, Unlisted, Unsaved, Uploaded};
 use crate::files::{self, Failed, Fetched, Heard, How, Places};
 use crate::mail::{self, Bytes, Mail, Tidy};
+use crate::saves::{self, Staged};
 use crate::state::{Made, Standing, State};
 use crate::token::Keeper;
 
@@ -551,11 +552,123 @@ impl Watch {
         })
     }
 
+    /// Says the file staged at `staged` is going up to Drive, which
+    /// `upload` then does, so the shell can say so while it goes. The last
+    /// `UPLOADS_KEPT` sent are told, newest first.
+    pub fn uploading(&mut self, staged: &Staged, now: &Zoned) -> &State {
+        let uploads = &mut self.state.drive.uploads;
+        uploads.insert(
+            0,
+            Uploaded {
+                path: staged.path.display().to_string(),
+                folder: staged.folder.clone(),
+                name: staged.name.clone(),
+                asked: now.timestamp().as_millisecond(),
+                id: None,
+                link: None,
+                failed: None,
+            },
+        );
+        uploads.truncate(drive::UPLOADS_KEPT);
+        &self.state
+    }
+
+    /// Sends up the file `uploading` named last: a new version of the
+    /// file it went up as before, or of the one of that name its folder
+    /// held when last listed, as the picker's Replace It means, and else a
+    /// new file. Once it's up, its id is kept beside it.
+    pub fn upload(&mut self, now: &Zoned) -> &State {
+        let Some(asked) = self.state.drive.uploads.first().cloned() else {
+            return &self.state;
+        };
+        let path = PathBuf::from(&asked.path);
+        let found = self.uploaded(&asked, &path, now);
+        if let Ok((id, _)) = &found
+            && let Err(error) = saves::keep(&path, id)
+        {
+            eprintln!("<4>couldn't mark a Drive save as sent: {error}");
+        }
+        if let Some(first) = self.state.drive.uploads.first_mut() {
+            match found {
+                Ok((id, link)) => {
+                    first.id = Some(id);
+                    first.link = link;
+                }
+                Err(failed) => first.failed = Some(failed),
+            }
+        }
+        &self.state
+    }
+
+    fn uploaded(
+        &mut self,
+        asked: &Uploaded,
+        path: &Path,
+        now: &Zoned,
+    ) -> Result<(String, Option<String>), Unsaved> {
+        let listed = self
+            .state
+            .drive
+            .listings
+            .iter()
+            .find(|listed| listed.folder == asked.folder)
+            .and_then(|listed| {
+                listed
+                    .files
+                    .iter()
+                    .find(|file| file.name == asked.name && file.kind != drive::Is::Folder)
+            })
+            .map(|file| file.id.clone());
+        let before = saves::sent(path).or(listed);
+        let put = match before {
+            Some(id) => match self.sent(now, |google, token| {
+                google.replace(token, &id, &asked.name, path)
+            })? {
+                Put::NotGranted => return Err(Unsaved::ReplaceNotGranted),
+                // Gone from Drive since: it goes up anew.
+                Put::Gone => None,
+                put => Some(put),
+            },
+            None => None,
+        };
+        let put = match put {
+            Some(put) => put,
+            None => self.sent(now, |google, token| {
+                google.create(token, &asked.folder, &asked.name, path)
+            })?,
+        };
+        match put {
+            Put::Done { id, link } => Ok((id, link)),
+            Put::Gone | Put::NotGranted => Err(Unsaved::Gone),
+            Put::Unread => Err(Unsaved::Unread),
+        }
+    }
+
+    /// Asks as `asking` does, saying why a save didn't go up as a save's
+    /// failure.
+    fn sent(
+        &mut self,
+        now: &Zoned,
+        ask: impl Fn(&Google, &str) -> Result<Put, Refused>,
+    ) -> Result<Put, Unsaved> {
+        self.asking(now, ask).map_err(|looked| {
+            let failed = match looked {
+                Looked::Refused(Refused::Unreachable(_)) => Unsaved::Unreachable,
+                _ => Unsaved::SignedOut,
+            };
+            self.fell(looked, self.state.account);
+            failed
+        })
+    }
+
     /// What's held once Google didn't answer: nothing, for an account gone
     /// or signed out, since it may not be Joel's to see any more; what was
     /// held, standing as `unreachable` says, when Google couldn't be
     /// reached.
     fn fell(&mut self, looked: Looked, unreachable: Standing) {
+        // What Joel saved stays told, being his own files rather than the
+        // account's, so the shell can say why one didn't go up.
+        let uploads = std::mem::take(&mut self.state.drive.uploads);
         match looked {
             Looked::Missing => {
                 self.state = State::without(Standing::None);
@@ -570,6 +683,7 @@ impl Watch {
                 self.state.account = unreachable;
             }
         }
+        self.state.drive.uploads = uploads;
     }
 
     /// Asks Google as the account, with a token it'll take.

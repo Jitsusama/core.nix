@@ -12,9 +12,10 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
-use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted};
+use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted, Unsaved};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
+use google::saves;
 use google::state::Standing;
 use google::watch::Watch;
 use jiff::Zoned;
@@ -42,6 +43,7 @@ impl StandIn {
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let heard = Arc::new(Mutex::new(Vec::new()));
         let kept = Arc::clone(&heard);
+        let here = origin.clone();
         thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -71,10 +73,26 @@ impl StandIn {
                     authorization,
                     body,
                 });
+                // A save begun resumably is told where its bytes go, as
+                // Google tells it: a session named for the file replaced,
+                // or `created` for a new one.
+                let session = line
+                    .contains("uploadType=resumable")
+                    .then(|| {
+                        let path = line.split(' ').nth(1).unwrap_or("");
+                        let file = path.split('?').next().unwrap_or("");
+                        match file.strip_prefix("/upload/drive/v3/files/") {
+                            Some(id) => id.to_owned(),
+                            None => "created".to_owned(),
+                        }
+                    })
+                    .filter(|_| status == 200)
+                    .map(|id| format!("Location: {here}/upload/session/{id}\r\n"))
+                    .unwrap_or_default();
                 let mut stream = stream;
                 write!(
                     stream,
-                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n\
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n{session}\
                      Content-Length: {}\r\nConnection: close\r\n\r\n{reply}",
                     reply.len()
                 )
@@ -1285,4 +1303,112 @@ fn no_file_is_no_account_and_google_is_never_asked() {
     );
     assert_eq!(watch.look(&now()).account, Standing::None);
     assert!(stand_in.heard().is_empty());
+}
+
+/// Drive taking saves: a new file in My Drive, a new version of one this
+/// program made, and refusing to replace one it didn't, or to add to a
+/// folder that's gone; a folder's listing is the one `folders` gives.
+fn saving(path: &str, body: &str) -> (u16, String) {
+    let done = |id: &str| {
+        (
+            200,
+            format!(r#"{{"id": "{id}", "webViewLink": "https://x/{id}"}}"#),
+        )
+    };
+    match path.split_once('?').map_or(path, |(start, _)| start) {
+        "POST /upload/drive/v3/files" if body.contains("gone1") => (404, "{}".into()),
+        "POST /upload/drive/v3/files" | "PATCH /upload/drive/v3/files/new1" => (200, "{}".into()),
+        "PATCH /upload/drive/v3/files/pdf1" => (
+            403,
+            r#"{"error": {"errors": [{"reason": "appNotAuthorizedToFile"}]}}"#.into(),
+        ),
+        "PUT /upload/session/created HTTP/1.1" | "PUT /upload/session/new1 HTTP/1.1" => {
+            done("new1")
+        }
+        _ => folders(path, body),
+    }
+}
+
+#[test]
+fn a_save_goes_up_once_as_a_new_file_then_a_new_version_never_a_second_file() {
+    let stand_in = StandIn::new(saving);
+    let path = credentials("saves", now().timestamp().as_millisecond() + 3_600_000);
+    let root = path.with_file_name("drive-saves");
+    fs::create_dir_all(root.join("root")).unwrap();
+    fs::create_dir_all(root.join("gone1")).unwrap();
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let save = |watch: &mut Watch, at: &str, bytes: &str| {
+        let staged = saves::staged(&root, &root.join(at)).unwrap();
+        fs::write(&staged.path, bytes).unwrap();
+        let going = watch.uploading(&staged, &now()).drive.uploads[0].clone();
+        assert_eq!((going.id, going.failed), (None, None));
+        let done = watch.upload(&now()).drive.uploads[0].clone();
+        assert_eq!((done.folder, done.name), (staged.folder, staged.name));
+        (done.id, done.link, done.failed)
+    };
+    // A new file, named and placed as staged, its bytes sent where Drive
+    // said, and its id kept beside the staged copy.
+    let notes = root.join("root/Notes.txt");
+    assert_eq!(
+        save(&mut watch, "root/Notes.txt", "notes"),
+        (Some("new1".into()), Some("https://x/new1".into()), None)
+    );
+    assert_eq!(saves::sent(&notes).as_deref(), Some("new1"));
+    assert!(!saves::waiting(&notes));
+    let heard = stand_in.heard();
+    let lines: Vec<&str> = heard.iter().map(|heard| heard.line.as_str()).collect();
+    assert!(
+        lines[0].starts_with("POST /upload/drive/v3/files?"),
+        "{lines:?}"
+    );
+    assert!(
+        lines[0].contains("uploadType=resumable") && lines[0].contains("supportsAllDrives=true")
+    );
+    let about: serde_json::Value = serde_json::from_str(&heard[0].body).unwrap();
+    assert_eq!(
+        about,
+        serde_json::json!({ "name": "Notes.txt", "parents": ["root"] })
+    );
+    assert_eq!(heard[0].authorization, "Bearer pis");
+    assert_eq!(
+        (lines[1], heard[1].body.as_str()),
+        ("PUT /upload/session/created HTTP/1.1", "notes")
+    );
+    // Saved again, it's a new version of the same file.
+    assert_eq!(
+        save(&mut watch, "root/Notes.txt", "more notes")
+            .0
+            .as_deref(),
+        Some("new1")
+    );
+    let heard = stand_in.heard();
+    assert!(
+        heard[2]
+            .line
+            .starts_with("PATCH /upload/drive/v3/files/new1?")
+    );
+    assert_eq!(heard[3].body, "more notes");
+    assert_eq!(heard.len(), 4, "{heard:?}");
+    // A name the folder already holds, as the picker's Replace It, is a
+    // new version of that file, which this program didn't make: refused,
+    // and never sent as a second file.
+    watch.list("root", &now());
+    let replaced = save(&mut watch, "root/menu.pdf", "menu");
+    assert_eq!(replaced, (None, None, Some(Unsaved::ReplaceNotGranted)));
+    assert_eq!(saves::sent(&root.join("root/menu.pdf")), None);
+    let heard = stand_in.heard();
+    assert!(
+        heard
+            .last()
+            .unwrap()
+            .line
+            .starts_with("PATCH /upload/drive/v3/files/pdf1?")
+    );
+    // A folder gone from Drive is said so, its copy kept to save elsewhere.
+    assert_eq!(save(&mut watch, "gone1/x.txt", "x").2, Some(Unsaved::Gone));
+    assert!(root.join("gone1/x.txt").exists());
+    // Every save is told, newest first.
+    let told = watch.list("root", &now()).drive.uploads.clone();
+    let names: Vec<&str> = told.iter().map(|told| told.name.as_str()).collect();
+    assert_eq!(names, ["x.txt", "menu.pdf", "Notes.txt", "Notes.txt"]);
 }
