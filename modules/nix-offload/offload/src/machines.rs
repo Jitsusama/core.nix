@@ -42,17 +42,8 @@ const VM: [&str; 2] = ["kvm", "nixos-test"];
 /// its URI, so the lines share one set. A line supporting none of them is
 /// kept as it is.
 pub fn for_big_work(line: &str) -> String {
-    let mut fields: Vec<&str> = line.split_whitespace().collect();
-    if fields.len() < 8 {
-        fields.resize(8, "-");
-    }
+    let (fields, offered) = offering(line);
     let supported: Vec<&str> = fields[5].split(',').collect();
-    let offered = supported
-        .iter()
-        .filter(|feature| !VM.contains(feature))
-        .copied()
-        .collect::<Vec<_>>()
-        .join(",");
     let lines: Vec<String> = BIG
         .iter()
         .filter(|kind| supported.contains(kind))
@@ -68,6 +59,30 @@ pub fn for_big_work(line: &str) -> String {
     } else {
         lines.join("\n")
     }
+}
+
+/// A lent builder's machines line with nothing mandatory, so Nix sends it
+/// any piece that asks for nothing it lacks, still offering nothing a VM
+/// test needs.
+pub fn for_any_work(line: &str) -> String {
+    let (mut fields, offered) = offering(line);
+    fields[5] = &offered;
+    fields[6] = "-";
+    fields.join(" ")
+}
+
+/// A line's eight fields, and the features it supports less a VM test's.
+fn offering(line: &str) -> (Vec<&str>, String) {
+    let mut fields: Vec<&str> = line.split_whitespace().collect();
+    if fields.len() < 8 {
+        fields.resize(8, "-");
+    }
+    let offered = fields[5]
+        .split(',')
+        .filter(|feature| !VM.contains(feature))
+        .collect::<Vec<_>>()
+        .join(",");
+    (fields, offered)
 }
 
 /// A builder always there to lend, such as another machine at home, named
@@ -236,6 +251,9 @@ pub struct Machines {
     /// Where the builders beside that answer are named alone, once
     /// `beside` gives it.
     alone: Option<File>,
+    /// Where the one lent is named for any work, once `for_anything`
+    /// gives it.
+    anything: Option<File>,
 }
 
 impl Machines {
@@ -258,6 +276,22 @@ impl Machines {
             standing,
             beside: Vec::new(),
             alone: None,
+            anything: None,
+        }
+    }
+
+    /// With `anything`, the one lent named alone with nothing mandatory,
+    /// for a build that may send any public piece away rather than build
+    /// it here, such as one with no local jobs; empty while none is lent.
+    /// Never a builder beside or standing: only some work may reach them.
+    #[must_use]
+    pub fn for_anything(self, anything: PathBuf) -> Self {
+        Self {
+            anything: Some(File {
+                path: anything,
+                written: None,
+            }),
+            ..self
         }
     }
 
@@ -295,6 +329,10 @@ impl Machines {
                 .and_then(|lending| lending.store)
                 .map_or_else(String::new, |store| format!("{store}\n")),
         );
+        if let Some(anything) = &mut self.anything {
+            let any = lending.map(|lending| for_any_work(lending.line));
+            anything.say(text(std::iter::empty(), any.as_deref()));
+        }
         let lent = lending.map(|lending| for_big_work(lending.line));
         let lent = lent.as_deref();
         let answering = self
@@ -525,6 +563,48 @@ mod tests {
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&alone), "");
+    }
+
+    // A build that may go anywhere public, such as a machine's update
+    // built with no local jobs, reads the one lent with nothing
+    // mandatory, so it takes any piece; never a builder beside or
+    // standing, which only some work may reach.
+    #[test]
+    fn a_lent_builder_is_named_for_any_work_to_builds_that_ask() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let anything = dir.path().join("machines-for-anything");
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let mut machines = Machines::new(
+            dir.path().join("machines"),
+            dir.path().join("machines-with-standing"),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![Standing {
+                address: address.clone(),
+                line: "ssh-ng://home".to_owned(),
+            }],
+        )
+        .beside(
+            dir.path().join("machines-beside"),
+            vec![Standing {
+                address,
+                line: "ssh-ng://work x86_64-linux - 8 1 big-parallel".to_owned(),
+            }],
+        )
+        .for_anything(anything.clone());
+        let read = |path| fs::read_to_string(path).expect("read");
+        machines.show(Some(Lending {
+            line: "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark - KEY",
+            store: None,
+        }));
+        assert_eq!(
+            read(&anything),
+            "ssh-ng://lent x86_64-linux /key 8 1 big-parallel,benchmark - KEY\n"
+        );
+        machines.show(None);
+        assert_eq!(read(&anything), "", "emptied while none is lent");
+        drop(listening);
     }
 
     #[test]

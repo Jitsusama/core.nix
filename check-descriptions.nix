@@ -713,7 +713,9 @@
     the rest, and only to builds that ask for them, never in the file every build reads,
     while builders beside are named in that file while they answer, for their big work
     alone, and never with the standing ones, and alone as themselves in a file of their
-    own that's empty while none answers; a
+    own that's empty while none answers; the one lent is also named alone with nothing
+    mandatory, still offering nothing a VM test needs, in a file for builds that may send
+    any piece away, never with a builder beside or standing, and emptied while none is lent; a
     day's journal sums to its hours and cost, each at its price; and `there`
     sends a flake's build to the lent builder as one command, returning its status and
     journalling what ssh sent, or, when none stands or none answers, builds nothing and exits
