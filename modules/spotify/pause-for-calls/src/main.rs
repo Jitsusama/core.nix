@@ -9,7 +9,8 @@
 //! It reads `pw-dump --monitor`, which prints PipeWire's whole graph as a
 //! JSON array at the start and then an array of what changed for each
 //! change, and keeps which nodes are a program recording from a
-//! microphone. A call is on once one has been running for two seconds, so
+//! microphone, as modules/calls counts them. A call is on once one has been
+//! running for two seconds, so
 //! a browser opening the microphone for a moment pauses nothing, and over
 //! once none has for five, so a call app reconnecting doesn't restart the
 //! music. At a call's start it pauses each Spotify that's playing, through
@@ -18,74 +19,20 @@
 //! himself in the meantime is left as he left it. It ends when PipeWire
 //! goes, for systemd to start it again.
 
+use calls::{Recording, STARTS_AFTER};
 use serde_json::Value;
-use std::collections::HashSet;
 use std::io::BufReader;
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How long a program has to record before it counts as a call.
-const STARTS_AFTER: Duration = Duration::from_secs(2);
-
 /// How long the recording has to stop before the call counts as over.
 const ENDS_AFTER: Duration = Duration::from_secs(5);
-
-/// Programs that record from a microphone without being a call: PipeWire's
-/// own filters, dictation's recorder, the camera program's videos, and the
-/// shell's level meters.
-const NOT_CALLS: [&str; 6] = [
-    "pipewire",
-    "wireplumber",
-    "pw-record",
-    "pw-cat",
-    "ffmpeg",
-    "quickshell",
-];
 
 /// The start of each Spotify's name on the session bus: its own client's,
 /// and spotify-player's.
 const SPOTIFY: &str = "org.mpris.MediaPlayer2.spotify";
-
-/// Whether a node, as pw-dump prints it, is a program recording from a
-/// microphone right now.
-fn records(node: &Value) -> bool {
-    let info = &node["info"];
-    let props = &info["props"];
-    let text = |key: &str| props[key].as_str().unwrap_or_default();
-    node["type"] == "PipeWire:Interface:Node"
-        && text("media.class") == "Stream/Input/Audio"
-        && info["state"] == "running"
-        && props["stream.capture.sink"] != true
-        && !text("application.process.binary").is_empty()
-        && !NOT_CALLS.contains(&text("application.process.binary"))
-}
-
-/// The nodes recording from a microphone, kept up to date from pw-dump's
-/// arrays: each object it prints is the whole of what changed, and one
-/// printed with no info is gone.
-#[derive(Default)]
-struct Recording(HashSet<u64>);
-
-impl Recording {
-    fn take(&mut self, array: &Value) {
-        for node in array.as_array().into_iter().flatten() {
-            let Some(id) = node["id"].as_u64() else {
-                continue;
-            };
-            if records(node) {
-                self.0.insert(id);
-            } else if node["info"].is_null() || node["type"] == "PipeWire:Interface:Node" {
-                self.0.remove(&id);
-            }
-        }
-    }
-
-    fn any(&self) -> bool {
-        !self.0.is_empty()
-    }
-}
 
 /// What a call's start or end asks of Spotify.
 #[derive(Debug, PartialEq, Eq)]
@@ -247,59 +194,6 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    fn node(id: u64, binary: &str, state: &str) -> Value {
-        json!({
-            "id": id,
-            "type": "PipeWire:Interface:Node",
-            "info": {
-                "state": state,
-                "props": {
-                    "media.class": "Stream/Input/Audio",
-                    "application.process.binary": binary,
-                }
-            }
-        })
-    }
-
-    #[test]
-    fn a_call_app_recording_is_seen_and_goes_when_it_stops() {
-        let mut recording = Recording::default();
-        recording.take(&json!([node(40, "slack", "running")]));
-        assert!(recording.any());
-        recording.take(&json!([node(40, "slack", "idle")]));
-        assert!(!recording.any(), "an idle stream isn't recording");
-        recording.take(&json!([node(41, "chrome", "running")]));
-        recording.take(&json!([{ "id": 41, "info": null }]));
-        assert!(!recording.any(), "a node gone isn't recording");
-    }
-
-    #[test]
-    fn what_records_without_being_a_call_is_left_out() {
-        let mut recording = Recording::default();
-        recording.take(&json!([
-            node(1, "pipewire", "running"),
-            node(2, "pw-record", "running"),
-            node(3, "ffmpeg", "running"),
-            node(4, "", "running"),
-        ]));
-        let mut monitor = node(5, "pavucontrol", "running");
-        monitor["info"]["props"]["stream.capture.sink"] = json!(true);
-        recording.take(&json!([monitor]));
-        let mut playing = node(6, "spotify", "running");
-        playing["info"]["props"]["media.class"] = json!("Stream/Output/Audio");
-        recording.take(&json!([playing]));
-        assert!(!recording.any());
-    }
-
-    #[test]
-    fn another_kind_of_object_leaves_a_node_be() {
-        let mut recording = Recording::default();
-        recording.take(&json!([node(7, "zoom", "running")]));
-        recording.take(&json!([{ "id": 7, "type": "PipeWire:Interface:Link", "info": {} }]));
-        assert!(recording.any());
-    }
 
     #[test]
     fn a_call_pauses_after_two_seconds_and_plays_five_after_it_ends() {

@@ -10,10 +10,8 @@
   ...
 }:
 onLinux {
-  # pause-for-calls' tests run as it builds: a call app's running
-  # recording is seen and goes when it idles or its node does, while
-  # PipeWire's own filters, dictation's recorder, the camera's videos, a
-  # sink's monitor and playback are left out; a call pauses Spotify after
+  # pause-for-calls' tests run as it builds, what counts as a call being
+  # modules/calls' and tested there: a call pauses Spotify after
   # two seconds of recording, once, and plays it five seconds after the
   # recording stops, a moment of recording pausing nothing and a reconnect
   # keeping the call; and each Spotify is found among the bus's names.
