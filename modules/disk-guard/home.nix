@@ -63,6 +63,7 @@ let
   merged = pkgs.callPackage ./merged-on-github.nix { gh = config.programs.gh.package; };
 
   podman = osConfig.virtualisation.podman or { };
+  cargoBuilds = osConfig.jitsusama.cargo.builds.folder or null;
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
 
   # A Mac's Nix, as its machine's guard finds it (darwin.nix): nix-darwin's
@@ -150,6 +151,20 @@ in
           roots = [ cacheHome ];
           depth = 1;
         };
+        # Each workspace's intermediates, on the filesystem cargo has to
+        # itself where a machine gives it one, in a folder named by two
+        # levels of a hash of where the workspace is. Each is judged as a
+        # target is, by its checkout and whether any process holds it.
+        cargo-builds = lib.mkDefault (
+          if cargoBuilds == null then
+            null
+          else
+            {
+              kind = "cargo";
+              roots = [ "${cargoBuilds}/${config.home.username}" ];
+              depth = 2;
+            }
+        );
         installs = lib.mkDefault {
           kind = "installs";
           roots = checkouts;

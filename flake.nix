@@ -254,6 +254,7 @@
         bluetooth-links = ./modules/bluetooth-links/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
+        cargo = ./modules/cargo/nixos.nix;
         chrome = ./modules/chrome/nixos.nix;
         console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;

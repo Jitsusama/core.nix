@@ -187,6 +187,11 @@
     recording goes on two seconds later in any account's PipeWire, none for a moment's recording or
     with nobody logged in, and that it can't tell when a PipeWire won't answer
   '';
+  cargo-builds-on-their-own-filesystem = ''
+    a workstation account's cargo keeps each workspace's intermediates in its folder on the
+    builds' own filesystem, the disk guard collects there two levels down, and the machine
+    mounts it
+  '';
   cargo-links-with-mold = ''
     cargo links an account's Rust builds with mold
   '';
@@ -1724,6 +1729,12 @@
     closes the other; and with no extension asked, chrome-recent-sites reads two pages it
     opened from the session file it writes, each with its address, in one window with one in
     front, looked at lately
+  '';
+  vm-cargo-builds-on-their-own-filesystem = ''
+    on a Btrfs disk, cargo's image is made without copy-on-write at the size asked, attached with
+    direct IO and mounted ext4 with a folder each account alone reads; what's built in it is kept
+    across a detach and attach, a reload leaves a build working in it, and an image past
+    repairing is made again
   '';
   vm-checks-go-first = ''
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,

@@ -15,6 +15,7 @@
   imports = [
     nixosModules.base
     nixosModules.btrfs
+    nixosModules.cargo
     nixosModules.coredump
     nixosModules.device-check
     nixosModules.disk-guard
