@@ -130,6 +130,21 @@ jitsusama.update-to-main = {
 };
 ```
 
+Nobody being at it, an update mustn't cut what the machine is busy with,
+such as a call. Each of `refuseWhile`'s commands, the machine's own, is
+asked before an update starts and again before it switches, and while one
+succeeds the ask is refused; a command that can't tell counts as busy.
+What was built stays, so the next ask switches at once:
+
+```nix
+jitsusama.update-to-main.refuseWhile = [
+  {
+    command = [ "/run/current-system/sw/bin/a-call-is-on" ];
+    why = "a call is on";
+  }
+];
+```
+
 A repository whose host signs nothing is followed by what the host names
 instead. With `hosted` set, root asks the host for main over TLS with a
 token the account's `token` command prints, reads that commit's objects from
@@ -168,7 +183,9 @@ patterns over its pieces' names. Those pieces go only to `kept.builders`,
 and when it names none an update needing one fails. A piece built from a
 kept one, such as a wrapper, a unit or the system itself, would carry it
 to whichever builder took it, so it's built here, where the kept one now
-is, with no builders at all:
+is, with no builders at all. With `kept.here` set, kept pieces their own
+builders don't build are built here instead, a few cores at a time and
+only while the load is below `kept.here.belowLoad`:
 
 ```nix
 jitsusama.update-to-main = {
@@ -180,6 +197,7 @@ jitsusama.update-to-main = {
   kept = {
     names = [ "secret-tool" "secret-service*" ];
     builders = "@/run/kept-builders";
+    here.belowLoad = 30;
   };
 };
 ```

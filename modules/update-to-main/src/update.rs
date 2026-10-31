@@ -1,11 +1,13 @@
-//! One update, from an ask to its ending: refuse on a low battery, fetch
+//! One update, from an ask to its ending: refuse on a low battery or while
+//! the machine is busy with something an update mustn't cut, fetch
 //! main, check it descends from what the machine last switched to and is
 //! signed by a key that counts, or is what its host names, fetch and check
 //! each input that follows its own main, build it, switch, check the
 //! machine is whole, and go back to the system it left if anything after
-//! the switch's start fails. Each step is told as it starts.
+//! the switch's start fails. Busy is asked again before the switch, since a
+//! call may start while the build runs. Each step is told as it starts.
 
-use crate::config::{Config, Kind};
+use crate::config::{Busy, Config, Kind};
 use crate::follows;
 use crate::git::{self, Repo};
 use crate::hosted;
@@ -14,12 +16,21 @@ use crate::power::{self, Power};
 use crate::run::Failure;
 use crate::system;
 use std::fs;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// How long a busy command has to answer before it counts as busy.
+const BUSY_WITHIN: Duration = Duration::from_secs(30);
+
+/// How often a busy command is looked at while it runs.
+const BUSY_EVERY: Duration = Duration::from_millis(100);
 
 /// Runs one update, telling `tell` each step as it starts, and gives its
 /// ending.
 pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     let last = last(config);
-    if let Some(why) = too_low(config) {
+    if let Some(why) = too_low(config).or_else(|| busy(config)) {
         return Line::Refused { commit: last, why };
     }
     tell(&Line::Fetching);
@@ -82,6 +93,10 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
         Ok(built) => built,
         Err(failure) => return failed(last, failure),
     };
+    // What was built stays in the store, so the next ask switches at once.
+    if let Some(why) = busy(config) {
+        return Line::Refused { commit: last, why };
+    }
 
     tell(&Line::Switching {
         commit: head.clone(),
@@ -167,6 +182,50 @@ fn too_low(config: &Config) -> Option<String> {
             config.battery_floor
         )),
         _ => None,
+    }
+}
+
+/// What the machine is busy with, when any of its busy commands says so.
+fn busy(config: &Config) -> Option<String> {
+    config.refuse_while.iter().find_map(is_busy)
+}
+
+fn is_busy(busy: &Busy) -> Option<String> {
+    let (program, args) = busy.command.split_first()?;
+    let unsure = |why: String| Some(format!("it can't tell whether {}: {why}", busy.why));
+    let mut child = match Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => return unsure(format!("{program}: {e}")),
+    };
+    let deadline = Instant::now() + BUSY_WITHIN;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return match status.code() {
+                    Some(0) => Some(busy.why.clone()),
+                    Some(1) => None,
+                    _ => unsure(format!("`{}` ended {status}", busy.command.join(" "))),
+                };
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(BUSY_EVERY),
+            Ok(None) => {
+                // It's past answering; what it was doing no longer matters.
+                let _ = child.kill();
+                let _ = child.wait();
+                return unsure(format!(
+                    "`{}` didn't answer within {} s",
+                    busy.command.join(" "),
+                    BUSY_WITHIN.as_secs()
+                ));
+            }
+            Err(e) => return unsure(e.to_string()),
+        }
     }
 }
 

@@ -121,6 +121,69 @@ in
           piece fails and the machine stays as it is.
         '';
       };
+      here = mkOption {
+        type = types.nullOr (
+          types.submodule {
+            options = {
+              maxJobs = mkOption {
+                type = types.ints.positive;
+                default = 1;
+                description = "How many kept pieces build here at once.";
+              };
+              cores = mkOption {
+                type = types.ints.positive;
+                default = 4;
+                description = "How many cores each may use.";
+              };
+              belowLoad = mkOption {
+                type = types.numbers.positive;
+                description = ''
+                  The minute's load average they build under; at it or above,
+                  or when it can't be read, the update fails and the machine
+                  stays as it is.
+                '';
+              };
+            };
+          }
+        );
+        default = null;
+        example = {
+          belowLoad = 30;
+        };
+        description = ''
+          When set, kept pieces their own builders don't build, because
+          none are named or none answers, are built here instead, small and
+          only while the machine is quiet, rather than the update failing.
+        '';
+      };
+    };
+    refuseWhile = mkOption {
+      type = types.listOf (
+        types.submodule {
+          options = {
+            command = mkOption {
+              type = types.nonEmptyListOf types.str;
+              description = ''
+                Run as root, it succeeds while the machine is busy and exits 1
+                while it isn't, within 30 seconds. Anything else counts as
+                busy, since it couldn't tell.
+              '';
+            };
+            why = mkOption {
+              type = types.str;
+              example = "a call is on";
+              description = "What the machine is busy with, as the refusal says it.";
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        What the machine may be busy with when an update mustn't start or
+        switch, such as a call a switch would cut. Each is asked before the
+        update starts and again before it switches; while one is busy the
+        ask is refused, and what was built stays for the next one.
+      '';
     };
     hosted = mkOption {
       type = types.nullOr (
@@ -279,7 +342,20 @@ in
               inherit (follow) repository branch;
               signers = signersFor follow.signers;
             }) cfg.follows;
-            inherit (cfg) hosted elsewhere kept;
+            inherit (cfg) hosted elsewhere;
+            kept = {
+              inherit (cfg.kept) names builders;
+              here =
+                if cfg.kept.here == null then
+                  null
+                else
+                  {
+                    max_jobs = cfg.kept.here.maxJobs;
+                    inherit (cfg.kept.here) cores;
+                    below_load = cfg.kept.here.belowLoad;
+                  };
+            };
+            refuse_while = cfg.refuseWhile;
             # The running system's path, so once it has switched the newest
             # update-to-main serves.
             program = "/run/current-system/sw/bin/update-to-main";

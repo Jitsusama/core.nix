@@ -103,29 +103,7 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     let shown = run::output(show, "reading what the system needs", &needed)?;
     let (kept, rest) = heavy(&pieces(&shown)?, &needed, &config.kept.names);
     if !kept.is_empty() {
-        let Some(builders) = &config.kept.builders else {
-            return Err(Failure {
-                why: format!(
-                    "{} pieces may go only to builders of their own, and none are named",
-                    kept.len()
-                ),
-                lines: kept.iter().take(run::TAIL).cloned().collect(),
-            });
-        };
-        let mut apart = nix(config);
-        apart.args([
-            "build",
-            "--no-link",
-            "--max-jobs",
-            "0",
-            "--builders",
-            builders,
-        ]);
-        run::output(
-            apart,
-            "building the kept pieces on their own builders",
-            kept.iter().map(|drv| format!("{drv}^*")),
-        )?;
+        build_kept(config, &kept)?;
     }
     if !rest.is_empty() {
         let mut away = nix(config);
@@ -137,6 +115,71 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
         )?;
     }
     Ok(())
+}
+
+/// Builds the kept pieces on their own builders, or, when those don't and
+/// the machine may, here, small and only while it's quiet.
+fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
+    let outputs = || kept.iter().map(|drv| format!("{drv}^*"));
+    let apart = match &config.kept.builders {
+        Some(builders) => {
+            let mut apart = nix(config);
+            apart.args([
+                "build",
+                "--no-link",
+                "--max-jobs",
+                "0",
+                "--builders",
+                builders,
+            ]);
+            match run::output(
+                apart,
+                "building the kept pieces on their own builders",
+                outputs(),
+            ) {
+                Ok(_) => return Ok(()),
+                Err(failure) => failure,
+            }
+        }
+        None => Failure {
+            why: format!(
+                "{} pieces may go only to builders of their own, and none are named",
+                kept.len()
+            ),
+            lines: kept.iter().take(run::TAIL).cloned().collect(),
+        },
+    };
+    let Some(here) = &config.kept.here else {
+        return Err(apart);
+    };
+    let busy = match load() {
+        Some(load) if load < here.below_load => None,
+        Some(load) => Some(format!(
+            "the load here is {load:.1}, not below {}",
+            here.below_load
+        )),
+        None => Some("the load here can't be read".to_owned()),
+    };
+    if let Some(busy) = busy {
+        return Err(Failure {
+            why: format!("{}, and {busy}, so they wait", apart.why),
+            lines: apart.lines,
+        });
+    }
+    let mut local = nix(config);
+    local.args(["build", "--no-link", "--builders", ""]);
+    local.args(["--max-jobs", &here.max_jobs.to_string()]);
+    local.args(["--cores", &here.cores.to_string()]);
+    run::output(local, "building the kept pieces here", outputs()).map(|_| ())
+}
+
+/// The machine's load averaged over the last minute, when it can be read.
+fn load() -> Option<f64> {
+    let mut loads = [0.0_f64; 1];
+    // SAFETY: getloadavg writes at most as many samples as it's given room
+    // for, here one.
+    let read = unsafe { libc::getloadavg(loads.as_mut_ptr(), 1) };
+    (read == 1).then_some(loads[0])
 }
 
 /// The derivations a dry run says it would build, by their paths.
