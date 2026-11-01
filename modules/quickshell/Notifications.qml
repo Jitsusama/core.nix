@@ -576,6 +576,20 @@ Scope {
         function seen(): void {
             Notices.seen();
         }
+
+        // The ids of the cards whose offers run past their line, which
+        // none does: the tests read it, as no photograph says it.
+        function spilled(): string {
+            return JSON.stringify(root.spilling);
+        }
+    }
+
+    // The cards whose offers run past their line, by id.
+    property var spilling: []
+
+    function spilt(id, spills) {
+        const rest = spilling.filter(one => one !== id);
+        spilling = spills ? rest.concat([id]) : rest;
     }
 
     // A keyboard's Do Not Disturb key holds notices until it's pressed
@@ -1013,8 +1027,21 @@ Scope {
                             // of these.
                             readonly property var offers: root.offers(card.modelData)
                             visible: offers.length > 0 && !card.keys
+                            // What the offers may take: the line, short of
+                            // the chord on its right. An offer's name can be
+                            // a session's whole title, which ran past the
+                            // card to the screen's edge (Joel, 2026-11-01).
+                            readonly property real room: width - reaching.implicitWidth
+                                - Theme.space.m
+
+                            // Whether they reach past their room anyway,
+                            // said for the tests (notices.spilled).
+                            readonly property bool spills: visible
+                                && offered.width > room + 0.5
+                            onSpillsChanged: root.spilt(card.modelData.id, spills)
 
                             Row {
+                                id: offered
                                 anchors.bottom: parent.bottom
                                 spacing: Theme.space.m
 
@@ -1028,14 +1055,23 @@ Scope {
                                         id: offer
                                         required property var modelData
                                         required property int index
+                                        // What the offers before it left,
+                                        // which its name is cut to; one
+                                        // left too little to say a word in
+                                        // isn't shown, as the keys still
+                                        // offer it among the verbs.
+                                        readonly property real spare: offering.room - x
+                                            - offerMark.implicitWidth - face.spacing
                                         width: face.width
                                         height: face.height
+                                        visible: spare >= 2 * root.line
 
                                         Row {
                                             id: face
                                             spacing: Theme.space.s
 
                                             Text {
+                                                id: offerMark
                                                 height: root.line
                                                 verticalAlignment: Text.AlignVCenter
                                                 text: Theme.glyph.offer
@@ -1045,9 +1081,12 @@ Scope {
                                             }
 
                                             Text {
+                                                width: Math.min(implicitWidth,
+                                                    Math.max(offer.spare, 0))
                                                 height: root.line
                                                 verticalAlignment: Text.AlignVCenter
                                                 text: offer.modelData.text
+                                                elide: Text.ElideRight
                                                 color: Theme.text
                                                 font.family: Theme.sans.family
                                                 font.pointSize: Theme.sans.body
@@ -1066,6 +1105,7 @@ Scope {
                             }
 
                             Text {
+                                id: reaching
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
                                 height: root.line
