@@ -10,8 +10,12 @@ three go in one atomic commit, so it costs nothing to draw. An output
 whose primaries are sRGB's already, or whose EDID gives none, is left
 as it is.
 
+A gamma-control client's step, such as a night light's glide, changes the
+ramp alone, so it sets GAMMA_LUT alone: the degamma curve and the matrix
+are set again only when the matrix changes.
+
 diff --git a/docs/wiki/Configuration:-Outputs.md b/docs/wiki/Configuration:-Outputs.md
-index 73a0220..4ae91ba 100644
+index 73a0220..0113813 100644
 --- a/docs/wiki/Configuration:-Outputs.md
 +++ b/docs/wiki/Configuration:-Outputs.md
 @@ -225,6 +225,24 @@ output "HDMI-A-1" {
@@ -97,7 +101,7 @@ index 5d6565f..ca9305a 100644
              scale: None,
              transform: Transform::Normal,
 diff --git a/src/backend/tty.rs b/src/backend/tty.rs
-index 741f218..46744f9 100644
+index 0f61eb7..3b6f2be 100644
 --- a/src/backend/tty.rs
 +++ b/src/backend/tty.rs
 @@ -70,6 +70,8 @@ use crate::render_helpers::renderer::AsGlesRenderer;
@@ -109,7 +113,7 @@ index 741f218..46744f9 100644
  const SUPPORTED_COLOR_FORMATS: [Fourcc; 4] = [
      Fourcc::Xrgb8888,
      Fourcc::Xbgr8888,
-@@ -399,6 +401,26 @@ struct GammaProps {
+@@ -399,6 +401,29 @@ struct GammaProps {
      gamma_lut: property::Handle,
      gamma_lut_size: property::Handle,
      previous_blob: Option<NonZeroU64>,
@@ -133,10 +137,13 @@ index 741f218..46744f9 100644
 +    ctm: property::Handle,
 +    degamma_blob: Option<NonZeroU64>,
 +    ctm_blob: Option<NonZeroU64>,
++    /// The sRGB matrix the degamma curve and colour matrix were last set for,
++    /// none for neither: none at all until they're first set.
++    set_for: Option<Option<gamut::Matrix>>,
  }
  
  struct ConnectorProperties<'a> {
-@@ -1322,10 +1344,21 @@ impl Tty {
+@@ -1322,10 +1347,21 @@ impl Tty {
              .map_err(|err| debug!("couldn't get gamma properties: {err:?}"))
              .ok();
  
@@ -160,7 +167,7 @@ index 741f218..46744f9 100644
              set_gamma_for_crtc(&device.drm, crtc, None)
          };
          if let Err(err) = res {
-@@ -2432,6 +2465,20 @@ impl Tty {
+@@ -2422,6 +2458,20 @@ impl Tty {
  
                  let change_mode = surface.compositor.pending_mode() != mode;
  
@@ -181,7 +188,7 @@ index 741f218..46744f9 100644
                  let vrr_enabled = surface.compositor.vrr_enabled();
                  let change_always_vrr = vrr_enabled != config.is_vrr_always_on();
                  let is_on_demand_vrr = config.is_vrr_on_demand();
-@@ -2596,6 +2643,9 @@ impl GammaProps {
+@@ -2586,6 +2636,9 @@ impl GammaProps {
      fn new(device: &DrmDevice, crtc: crtc::Handle) -> anyhow::Result<Self> {
          let mut gamma_lut = None;
          let mut gamma_lut_size = None;
@@ -191,7 +198,7 @@ index 741f218..46744f9 100644
  
          let props = device
              .get_properties(crtc)
-@@ -2609,21 +2659,21 @@ impl GammaProps {
+@@ -2599,21 +2652,21 @@ impl GammaProps {
                  continue;
              };
  
@@ -221,7 +228,7 @@ index 741f218..46744f9 100644
                  _ => (),
              }
          }
-@@ -2631,11 +2681,26 @@ impl GammaProps {
+@@ -2621,11 +2674,27 @@ impl GammaProps {
          let gamma_lut = gamma_lut.context("missing GAMMA_LUT property")?;
          let gamma_lut_size = gamma_lut_size.context("missing GAMMA_LUT_SIZE property")?;
  
@@ -232,6 +239,7 @@ index 741f218..46744f9 100644
 +                ctm,
 +                degamma_blob: None,
 +                ctm_blob: None,
++                set_for: None,
 +            }),
 +            _ => None,
 +        };
@@ -248,7 +256,7 @@ index 741f218..46744f9 100644
          })
      }
  
-@@ -2648,26 +2713,64 @@ impl GammaProps {
+@@ -2638,26 +2707,64 @@ impl GammaProps {
      fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> anyhow::Result<()> {
          let _span = tracy_client::span!("GammaProps::set_gamma");
  
@@ -328,7 +336,7 @@ index 741f218..46744f9 100644
                  .map(|((&red, &green), &blue)| drm_color_lut {
                      red,
                      green,
-@@ -2675,40 +2778,57 @@ impl GammaProps {
+@@ -2665,40 +2772,62 @@ impl GammaProps {
                      reserved: 0,
                  })
                  .collect::<Vec<_>>();
@@ -342,7 +350,13 @@ index 741f218..46744f9 100644
              None
          };
  
--        {
++        let mut sets = vec![(self.gamma_lut, blob, "GAMMA_LUT")];
++        let mut colour_blobs = None;
++        if let Some(colour) = self
++            .colour
++            .as_ref()
++            .filter(|colour| gamut::colour_changes(colour.set_for, srgb))
+         {
 -            let _span = tracy_client::span!("set_property");
 -
 -            let blob = blob.map(NonZeroU64::get).unwrap_or(0);
@@ -351,9 +365,6 @@ index 741f218..46744f9 100644
 -                    self.crtc,
 -                    self.gamma_lut,
 -                    property::Value::Blob(blob).into(),
-+        let mut sets = vec![(self.gamma_lut, blob, "GAMMA_LUT")];
-+        let mut colour_blobs = None;
-+        if let Some(colour) = &self.colour {
 +            let made = if let Some(matrix) = srgb {
 +                let size = get_drm_property(device, self.crtc, colour.degamma_lut_size)
 +                    .context("missing DEGAMMA_LUT_SIZE property")?;
@@ -409,10 +420,11 @@ index 741f218..46744f9 100644
 +        if let (Some(colour), Some((degamma, ctm))) = (&mut self.colour, colour_blobs) {
 +            replace_blob(device, &mut colour.degamma_blob, degamma);
 +            replace_blob(device, &mut colour.ctm_blob, ctm);
++            colour.set_for = Some(srgb);
          }
  
          Ok(())
-@@ -2717,16 +2837,107 @@ impl GammaProps {
+@@ -2707,16 +2836,107 @@ impl GammaProps {
      fn restore_gamma(&self, device: &DrmDevice) -> anyhow::Result<()> {
          let _span = tracy_client::span!("GammaProps::restore_gamma");
  
@@ -529,7 +541,7 @@ index 741f218..46744f9 100644
      }
  }
  
-@@ -3221,10 +3432,7 @@ fn pick_mode(
+@@ -3211,10 +3431,7 @@ fn pick_mode(
      mode.map(|m| (*m, fallback))
  }
  
@@ -541,7 +553,7 @@ index 741f218..46744f9 100644
      let (_, info, value) =
          find_drm_property(device, connector, "EDID").context("no EDID property")?;
      let blob = info
-@@ -3232,9 +3440,16 @@ fn get_edid_info(
+@@ -3222,9 +3439,16 @@ fn get_edid_info(
          .convert_value(value)
          .as_blob()
          .context("EDID was not blob type")?;
@@ -562,10 +574,10 @@ index 741f218..46744f9 100644
  
 diff --git a/src/backend/tty/gamut.rs b/src/backend/tty/gamut.rs
 new file mode 100644
-index 0000000..2c41ea8
+index 0000000..5216ce6
 --- /dev/null
 +++ b/src/backend/tty/gamut.rs
-@@ -0,0 +1,416 @@
+@@ -0,0 +1,440 @@
 +//! Showing sRGB on a wide-gamut screen as sRGB.
 +//!
 +//! niri draws in sRGB and sends it to the screen as it is, so a panel whose
@@ -665,6 +677,14 @@ index 0000000..2c41ea8
 +            .all(|value| value.abs() <= 2.)
 +            .then_some(matrix)
 +    }
++}
++
++/// Whether the degamma curve and colour matrix need setting to hold a screen
++/// to `wanted`, given what they were last set for: none until they're first
++/// set. A gamma control client's every step changes the gamma curve alone, so
++/// it sets that alone, rather than the screen's whole colour pipeline again.
++pub fn colour_changes(set_for: Option<Option<Matrix>>, wanted: Option<Matrix>) -> bool {
++    set_for != Some(wanted)
 +}
 +
 +/// Whether a matrix from sRGB is near enough the identity that it would
@@ -859,6 +879,22 @@ index 0000000..2c41ea8
 +                );
 +            }
 +        }
++    }
++
++    #[test]
++    fn the_colour_is_set_the_first_time_and_when_it_changes() {
++        let matrix = PANEL.srgb_to_screen().unwrap();
++        assert!(colour_changes(None, None), "never set, so a stale one stays");
++        assert!(colour_changes(None, Some(matrix)));
++        assert!(colour_changes(Some(None), Some(matrix)));
++        assert!(colour_changes(Some(Some(matrix)), None));
++    }
++
++    #[test]
++    fn a_gamma_step_leaves_the_colour_as_it_was() {
++        let matrix = PANEL.srgb_to_screen().unwrap();
++        assert!(!colour_changes(Some(Some(matrix)), Some(matrix)));
++        assert!(!colour_changes(Some(None), None));
 +    }
 +
 +    #[test]
