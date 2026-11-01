@@ -263,6 +263,19 @@
         touch $out
       '';
 
+  # The patched provider hands pi a call to one of pi's tools that isn't
+  # loaded, for pi to answer as not found, and a broken relayed stream says
+  # what broke it.
+  pi-answers-a-tool-it-has-not-loaded =
+    pkgs.runCommandLocal "pi-answers-a-tool-it-has-not-loaded" { }
+      ''
+        ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
+          ${../../tests/pi-answers-a-tool-it-has-not-loaded.mjs} ${
+            import ./claude-provider.nix { inherit pkgs; }
+          }
+        touch $out
+      '';
+
   # A machine on the Claude plan has one pi, on it: the provider is an
   # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
   # is the one it drives, and there is no pi-claude beside it. The Ask row

@@ -1,0 +1,205 @@
+Hand pi a call to one of its own tools that isn't loaded, and say what
+broke a relayed stream.
+
+A model that reaches for a pi tool it has only read about (one loaded on
+demand, such as jobs) started a tool call pi's translator refused by
+throwing. The relay caught it and kept only the error's class, so the turn
+ended as "relay failure Error" and Claude Code's retry was denied: every
+turn the model reached for the tool, with nothing naming it. Every other
+provider hands such a call to pi, which answers "Tool jobs not found" and
+the model goes on. So a call in pi's namespace goes to pi whether or not
+the tool is active, a tool outside it still ends the turn, and a relay
+failure carries its message.
+
+diff --git a/src/claude-cli.ts b/src/claude-cli.ts
+index 0276a97..ca59854 100644
+--- a/src/claude-cli.ts
++++ b/src/claude-cli.ts
+@@ -1030,8 +1030,10 @@ class ClaudeProcess {
+ 
+       for (const block of message.content) {
+         if (block.type !== "tool_use") continue;
+-        if (!block.name.startsWith(TOOL_PREFIX) || !input.toolNames.has(block.name.slice(TOOL_PREFIX.length))) {
+-          throw new Error("Claude Code returned a tool outside Pi's current tool inventory");
++        // A pi tool not active now is pi's to answer as not found; only one
++        // outside pi's namespace, Claude Code's own, ends the turn.
++        if (!block.name.startsWith(TOOL_PREFIX)) {
++          throw new Error(`Claude Code returned a tool outside Pi's namespace: ${block.name}`);
+         }
+       }
+ 
+diff --git a/src/stream.ts b/src/stream.ts
+index 088d7f3..89a8b9d 100644
+--- a/src/stream.ts
++++ b/src/stream.ts
+@@ -142,8 +142,9 @@ function nativeContent(content: NativeContentBlock[], toolNames: Set<string>): A
+       });
+     } else if (block.type === "tool_use") {
+       if (!block.name.startsWith(TOOL_PREFIX)) throw new Error(`Claude Code returned unexpected tool ${block.name}`);
++      // A pi tool not active now (one loaded on demand, say) goes to pi,
++      // which answers it as not found, as it does on every other provider.
+       const name = block.name.slice(TOOL_PREFIX.length);
+-      if (!toolNames.has(name)) throw new Error(`Claude Code returned unavailable tool ${name}`);
+       converted.push({ type: "toolCall", id: block.id, name, arguments: block.input as never });
+     }
+   }
+@@ -241,7 +242,6 @@ class EventTranslator {
+     } else if (native.type === "tool_use") {
+       if (!native.name.startsWith(TOOL_PREFIX)) throw new Error(`Claude Code returned unexpected tool ${native.name}`);
+       const name = native.name.slice(TOOL_PREFIX.length);
+-      if (!this.toolNames.has(name)) throw new Error(`Claude Code returned unavailable tool ${name}`);
+       this.output.content.push({
+         type: "toolCall",
+         id: native.id,
+diff --git a/src/turn-relay.ts b/src/turn-relay.ts
+index 08ec86e..ace3f6a 100644
+--- a/src/turn-relay.ts
++++ b/src/turn-relay.ts
+@@ -323,7 +323,10 @@ export class TurnRelay {
+       if (this.status === 200) this.capture.finish();
+       response.end();
+     } catch (error) {
+-      this.failure = error instanceof Error ? error.name : "UnknownError";
++      // The cause, not only its class: a plain Error thrown while streaming
++      // (by pi's own translator, say) otherwise reads as "relay failure Error".
++      this.failure =
++        error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 300) : String(error).slice(0, 300);
+       if (!response.headersSent) response.writeHead(this.cancelled ? 499 : 502).end();
+       else response.destroy();
+     } finally {
+diff --git a/tests/unavailable-tool.test.ts b/tests/unavailable-tool.test.ts
+new file mode 100644
+index 0000000..9a28116
+--- /dev/null
++++ b/tests/unavailable-tool.test.ts
+@@ -0,0 +1,130 @@
++import assert from "node:assert/strict";
++import * as http from "node:http";
++import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import type { AssistantMessage, Model, TranscriptContext } from "@earendil-works/pi-ai";
++import { closeClaudeProcesses } from "../src/claude-cli.ts";
++import { streamClaudeCode } from "../src/stream.ts";
++import { TurnRelay } from "../src/turn-relay.ts";
++
++// A model that reaches for a pi tool it read about but that isn't loaded (a
++// tool loaded on demand, say) used to end its turn with "relay failure Error",
++// on every turn it reached for it, with nothing saying which tool.
++
++test("a relay failure says what was thrown, not only its class", async () => {
++  const upstream = http.createServer(async (request, response) => {
++    for await (const _chunk of request);
++    response.writeHead(200, { "content-type": "text/event-stream" });
++    const usage = { input_tokens: 2, output_tokens: 1 };
++    response.end(
++      [
++        { type: "message_start", message: { id: "m1", role: "assistant", content: [], usage } },
++        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
++      ]
++        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
++        .join(""),
++    );
++  });
++  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", () => resolve()));
++  const address = upstream.address();
++  if (!address || typeof address === "string") throw new Error("missing address");
++  const relay = new TurnRelay(`http://127.0.0.1:${address.port}`, 5_000, (event) => {
++    if (event.type === "content_block_start") throw new Error("Claude Code returned unavailable tool jobs");
++  });
++
++  try {
++    const baseUrl = await relay.start();
++    // The relay drops the connection as it fails, as it did under Claude Code.
++    await fetch(`${baseUrl}/v1/messages`, { method: "POST", body: "{}" })
++      .then((response) => response.text())
++      .catch(() => "");
++    await relay.settled();
++
++    assert.equal(relay.failure, "Error: Claude Code returned unavailable tool jobs");
++  } finally {
++    await relay.close();
++    await new Promise<void>((resolve) => upstream.close(() => resolve()));
++  }
++});
++
++test("a call to a pi tool not loaded now goes to pi to answer", async () => {
++  const root = await mkdtemp(join(tmpdir(), "pi-claude-code-unloaded-"));
++  const executable = join(root, "fake-claude.mjs");
++  await writeFile(
++    executable,
++    `#!/usr/bin/env node
++import readline from "node:readline";
++if (process.argv.includes("auth") && process.argv.includes("status")) {
++  console.log(JSON.stringify({loggedIn: true, authMethod: "claude.ai", subscriptionType: "test"}));
++  process.exit(0);
++}
++const input = readline.createInterface({input: process.stdin, crlfDelay: Infinity});
++for await (const line of input) {
++  const frame = JSON.parse(line);
++  if (frame.type !== "user") continue;
++  const usage = {input_tokens: 3, output_tokens: 24, cache_read_input_tokens: 0, cache_creation_input_tokens: 0};
++  const content = [{type: "tool_use", id: "toolu_jobs", name: "mcp__pi__jobs", input: {action: "list"}}];
++  const events = [
++    {type: "message_start", message: {id: "m_jobs", role: "assistant", content: [], usage}},
++    {type: "content_block_start", index: 0, content_block: {type: "tool_use", id: "toolu_jobs", name: "mcp__pi__jobs", input: {}}},
++    {type: "content_block_delta", index: 0, delta: {type: "input_json_delta", partial_json: '{"action":"list"}'}},
++    {type: "content_block_stop", index: 0},
++    {type: "message_delta", delta: {stop_reason: "tool_use"}, usage},
++    {type: "message_stop"}
++  ];
++  for (const event of events) console.log(JSON.stringify({type: "stream_event", event}));
++  console.log(JSON.stringify({type: "assistant", message: {id: "m_jobs", role: "assistant", content, stop_reason: "tool_use", usage}}));
++  console.log(JSON.stringify({type: "result", subtype: "error_max_turns", is_error: true, usage}));
++}
++`,
++    "utf8",
++  );
++  await chmod(executable, 0o755);
++  const model = {
++    id: "claude-sonnet-5",
++    name: "Sonnet",
++    api: "claude-code",
++    provider: "claude-code",
++    baseUrl: "",
++    input: ["text"],
++    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
++    reasoning: false,
++    contextWindow: 200_000,
++    maxTokens: 8_000,
++  } as unknown as Model<any>;
++  const bash = {
++    name: "bash",
++    description: "Run a command",
++    parameters: { type: "object", properties: { command: { type: "string" } } },
++  };
++  const context = {
++    messages: [
++      { role: "system", content: "system", toolsAdded: [bash], timestamp: 0 },
++      { role: "user", content: "status?", timestamp: 1 },
++    ],
++  } as unknown as TranscriptContext;
++
++  try {
++    const stream = streamClaudeCode(model, context, {
++      env: { PI_CLAUDE_CODE_COMMAND: executable },
++      cwd: await realpath(root),
++    } as never);
++    let ended: AssistantMessage | undefined;
++    for await (const event of stream) {
++      if (event.type === "done") ended = event.message;
++      if (event.type === "error") ended = event.error;
++    }
++
++    assert.equal(ended?.errorMessage, undefined);
++    assert.equal(ended?.stopReason, "toolUse");
++    assert.deepEqual(
++      ended?.content.map((block) => (block.type === "toolCall" ? [block.name, block.arguments] : block.type)),
++      [["jobs", { action: "list" }]],
++    );
++  } finally {
++    await closeClaudeProcesses();
++    await rm(root, { recursive: true, force: true });
++  }
++});

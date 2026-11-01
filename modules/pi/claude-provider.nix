@@ -8,7 +8,10 @@
 # Patched so a used-up plan limit says so plainly: which limit, when it
 # resets, and that nothing went to extra usage, where Claude Code says only
 # "You've hit your usage limit". And so a question waits on one start of
-# Claude Code rather than several, its login is asked once a minute.
+# Claude Code rather than several, its login is asked once a minute. And so
+# a call to a pi tool that isn't loaded is pi's to answer as not found, as
+# on every other provider, rather than ending the turn as "relay failure
+# Error" each time the model reaches for it.
 { pkgs }:
 pkgs.applyPatches {
   name = "pi-claude-code";
@@ -21,5 +24,6 @@ pkgs.applyPatches {
   patches = [
     ./claude-plan-limit.patch
     ./claude-login-once.patch
+    ./claude-unloaded-tool.patch
   ];
 }
