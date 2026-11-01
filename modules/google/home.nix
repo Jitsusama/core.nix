@@ -232,7 +232,7 @@ in
         ExecStopPost = lib.concatStringsSep " " [
           "${pkgs.coreutils}/bin/rm -rf"
           "%t/google.json"
-          "%t/google.json.new"
+          "%t/.writing/google.json.new"
           "%t/google-files"
         ];
       };

@@ -7,7 +7,10 @@
 //! watches for what it shows: a file that isn't there is no account, said
 //! without the shell trying a socket nobody listens on. It's replaced
 //! whole each time, through a new file renamed over it, so it's never read
-//! half written.
+//! half written. The new file is made in a `.writing` folder beside it:
+//! the shell watches the folder the file is in, and a file made and
+//! written there woke it three times a minute more than the rename alone
+//! (2026-10-31).
 //!
 //! A shell that stops reading is let go after a second rather than holding
 //! everyone else up; it connects again when it restarts.
@@ -108,10 +111,20 @@ impl Socket {
     }
 }
 
-/// Leaves `line` in the file `told`, replacing it whole.
+/// Leaves `line` in the file `told`, replacing it whole, written first in
+/// the `.writing` folder beside it, where nobody watches.
 fn leave(told: &Path, line: &str) -> io::Result<()> {
-    let mut new = told.as_os_str().to_owned();
+    let (Some(folder), Some(name)) = (told.parent(), told.file_name()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no file to leave it in",
+        ));
+    };
+    let writing = folder.join(".writing");
+    fs::create_dir_all(&writing)?;
+    let mut new = name.to_owned();
     new.push(".new");
+    let new = writing.join(new);
     fs::write(&new, line)?;
     fs::rename(&new, told)
 }
@@ -182,7 +195,24 @@ mod tests {
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect();
-        assert_eq!(left.len(), 2, "{left:?}");
+        assert_eq!(left.len(), 3, "{left:?}");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn the_file_is_written_where_nobody_watches_then_renamed_in() {
+        let folder = folder("aside");
+        let path = folder.join("google.sock");
+        let told = folder.join("google.json");
+        let (socket, _asked) = listening(&path, &told);
+        socket.say("second\n".into());
+        let mut left: Vec<_> = fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(left, [".writing", "google.json", "google.sock"]);
+        assert_eq!(fs::read_dir(folder.join(".writing")).unwrap().count(), 0);
         std::fs::remove_dir_all(&folder).unwrap();
     }
 }
