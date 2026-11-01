@@ -281,12 +281,26 @@ fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
                 .unwrap_or_default();
             let piece = Piece {
                 names,
-                light: d["env"]["preferLocalBuild"].as_str() == Some("1"),
+                light: is_light(d),
                 inputs,
             };
             (stored(key), piece)
         })
         .collect())
+}
+
+/// Whether nixpkgs marks a derivation to build where it's asked for: in
+/// its environment as `"1"`, or, when its attributes are structured, as
+/// writeText's are, as `true` among them. Newer Nix shows those under
+/// `structuredAttrs`; older keeps them as JSON text in `env.__json`.
+fn is_light(derivation: &serde_json::Value) -> bool {
+    let env = &derivation["env"];
+    let structured = env["__json"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .unwrap_or_else(|| derivation["structuredAttrs"].clone());
+    env["preferLocalBuild"].as_str() == Some("1")
+        || structured["preferLocalBuild"].as_bool() == Some(true)
 }
 
 /// A derivation's path, given by its path or its name in the store.
@@ -560,6 +574,24 @@ mod tests {
         assert_eq!(
             heavy(&pieces(older).unwrap(), &every(older), &[]).1,
             ["/nix/store/d-heavy.drv"]
+        );
+    }
+
+    #[test]
+    fn a_piece_with_structured_attributes_marked_light_stays_here() {
+        // As nixpkgs' writeText writes a unit file now: its attributes are
+        // JSON, so the mark is a boolean there and its env holds only `out`.
+        let shown = r#"{"derivations": {
+            "a-unit.drv": {"env": {"out": "/1rz4g4z"},
+                "structuredAttrs": {"preferLocalBuild": true}},
+            "b-heavy.drv": {"env": {"out": "/1rz4g4z"},
+                "structuredAttrs": {"preferLocalBuild": false}},
+            "c-older-unit.drv": {"env": {"out": "/1rz4g4z",
+                "__json": "{\"preferLocalBuild\":true}"}}}}"#;
+        assert_eq!(
+            heavy(&pieces(shown).unwrap(), &every(shown), &[]).1,
+            ["/nix/store/b-heavy.drv"],
+            "a light piece with structured attributes is left for the build here"
         );
     }
 
