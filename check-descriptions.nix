@@ -1942,8 +1942,9 @@
     libvirt's daemon stops at once, its udev thread starved
   '';
   vm-lid-stays-at-the-desk = ''
-    a shut lid sleeps with no monitor, keeps running with one plugged in whose screen is off,
-    holding one lock through the card's changes, and sleeps once it's unplugged
+    a shut lid keeps running on the charger and sleeps once it's unplugged; on battery it sleeps
+    with no monitor, keeps running with one plugged in whose screen is off, holding one lock
+    through the card's changes, and sleeps once it's unplugged
   '';
   vm-loopback-says-who-holds-it = ''
     a loopback camera's file names each program another account holds it with, not its relay's unit

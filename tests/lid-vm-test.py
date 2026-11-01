@@ -54,6 +54,11 @@ class Laptop:
         """Shut the stand-in lid, or open it."""
         self.machine.succeed(f"echo {int(shut)} > /sys/module/stand_in_lid/parameters/shut")
 
+    def charger(self, *, plugged: bool) -> None:
+        """Plug the stand-in charger in, or unplug it, as its driver would say."""
+        state = "on" if plugged else "off"
+        self.machine.succeed(f"echo {state} > /sys/module/test_power/parameters/ac_online")
+
     def monitor(self, status: str) -> None:
         """Write the monitor's connector as connected or disconnected, as the card would."""
         self.machine.succeed(
@@ -72,6 +77,7 @@ def laptop(machine: BaseMachine) -> Laptop:
     machine.wait_for_unit("multi-user.target")
     machine.succeed(
         "test -e /sys/class/drm/card0",
+        "grep -qx Discharging /sys/class/power_supply/test_battery/status",
         "mkdir -p /run/stand-in-drm/card0-eDP-1 /run/stand-in-drm/card0-DP-5",
         "echo connected > /run/stand-in-drm/card0-eDP-1/status",
     )
@@ -101,6 +107,24 @@ def test_a_laptop_shut_with_no_monitor_sleeps(laptop: Laptop) -> None:
     # the lid opens. The file is cleared once logind has seen the lid
     # open and isn't preparing to sleep, and no sleep is queued or
     # running.
+    laptop.machine.wait_until_succeeds(OPENED, timeout=OPENING)
+    laptop.machine.wait_until_succeeds(SETTLED, timeout=FALLING_ASLEEP)
+    laptop.machine.succeed("rm /run/suspended")
+
+
+def test_a_laptop_shut_on_the_charger_keeps_running(laptop: Laptop) -> None:
+    """A laptop shut on the charger keeps running, with no monitor."""
+    laptop.charger(plugged=True)
+    laptop.lid(shut=True)
+    laptop.machine.sleep(LOOKING)
+    laptop.machine.fail(ASLEEP)
+
+
+def test_unplugging_the_charger_with_the_lid_shut_sleeps(laptop: Laptop) -> None:
+    """Unplugging the charger with the lid still shut sleeps, as in a bag."""
+    laptop.charger(plugged=False)
+    laptop.machine.wait_until_succeeds(ASLEEP, timeout=FALLING_ASLEEP)
+    laptop.lid(shut=False)
     laptop.machine.wait_until_succeeds(OPENED, timeout=OPENING)
     laptop.machine.wait_until_succeeds(SETTLED, timeout=FALLING_ASLEEP)
     laptop.machine.succeed("rm /run/suspended")

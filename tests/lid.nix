@@ -1,9 +1,14 @@
-# Shuts a virtual machine's lid, with and without a monitor plugged in, and
-# watches what logind does. The machine has no monitor, so it reads the
+# Shuts a virtual machine's lid, on battery and on the charger, with and
+# without a monitor plugged in, and watches what logind does. Its battery
+# and charger are the kernel's test_power, which starts it on battery here,
+# since logind counts a machine with no power supply as on the charger. The
+# machine has no monitor, so it reads the
 # graphics card's connectors from a stand-in directory, where a test writes
 # a monitor's connector plugged in or not, then says so as the card would,
 # with a change on the card. Its sleep stands in too, leaving a file for
-# the test to find and returning at once. Shut with no monitor, it sleeps;
+# the test to find and returning at once. Shut on the charger, it keeps
+# running, and unplugging the charger with the lid still shut puts it to
+# sleep. On battery: shut with no monitor, it sleeps;
 # shut with a monitor plugged in whose screen is off, which logind doesn't
 # count, it keeps running, holding one lock through the card's changes;
 # and unplugging that monitor with the lid still shut puts it to sleep. The
@@ -20,7 +25,14 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-lid { })
       ];
-      boot.kernelModules = [ "stand-in-lid" ];
+      boot.kernelModules = [
+        "stand-in-lid"
+        "test_power"
+      ];
+      # Its USB supply would count as a charger too.
+      boot.extraModprobeConfig = ''
+        options test_power ac_online=off usb_online=off
+      '';
 
       # The connectors, as udev gives lid-docked them.
       services.udev.extraRules = ''
