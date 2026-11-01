@@ -881,6 +881,10 @@
     pi-ask's one tool lists the launcher's places and actions and runs one, passing on what was
     done, or that a disruptive one only waits for Return
   '';
+  pi-answers-a-tool-it-has-not-loaded = ''
+    on Claude Code's provider, a call to one of pi's tools that isn't loaded goes to pi to answer as
+    not found rather than ending the turn, and a broken relayed stream says what broke it
+  '';
   pi-asks-claude-code-its-login-once = ''
     pi starts Claude Code to ask for its login once for any number of asks within a minute, so a
     question waits on one start of it rather than several, and asks again while it isn't
