@@ -1403,7 +1403,19 @@ mod tests {
         let path = socket("left");
         drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
         assert!(path.exists());
-        assert!(!running(&path));
+        // Other tests start programs meanwhile, and a child holds a copy of
+        // the listener from its fork until it execs, which answers a
+        // connection for that moment (a build saw it once, 2026-11-01). So
+        // the socket must stop answering soon, rather than at once.
+        use std::time::{Duration, Instant};
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while running(&path) {
+            assert!(
+                Instant::now() < deadline,
+                "the socket still answers 5 s after its daemon stopped"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
         fs::remove_file(&path).unwrap();
     }
 
