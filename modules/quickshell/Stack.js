@@ -27,6 +27,17 @@ function turned(stack, by) {
     return by > 0 ? stack.slice(1).concat(stack.slice(0, 1)) : stack.slice(-1).concat(stack.slice(0, -1));
 }
 
+// The stack turned until one is at the front, as turning by the keys
+// would bring it, so the rest keep their turn after it. One it doesn't
+// hold leaves it as it is.
+function turnedTo(stack, id) {
+    const at = stack.indexOf(id);
+    if (at < 1) {
+        return stack;
+    }
+    return stack.slice(at).concat(stack.slice(0, at));
+}
+
 // The stack with one brought to the front, the rest as they were.
 function forward(stack, id) {
     return [id].concat(stack.filter((other) => other !== id));

@@ -8,10 +8,11 @@
 //
 // Super+N gives the stack the keys while there are notices, and opens the
 // history in the launcher when there are none or it's pressed again. The
-// keys are the launcher's (`pressed` says what each does): Return does the
-// front one, and the right arrow steps into its verbs, the same ones its
-// past self has in the history. While the stack holds them, the front
-// card's footer shows them where it said when the notice came.
+// keys are vi's, beside the arrows (NoticeKeys.js holds them, `pressed`
+// does them): Return does the front one, and l or the right arrow steps
+// into its verbs, the same ones its past self has in the history. While
+// the stack holds them, the front card's footer shows them where it said
+// when the notice came.
 //
 // The notices sit a step inside the window under the top right corner, so
 // a notice lies on one window rather than across a border, or a step inside
@@ -44,6 +45,7 @@ import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
 import "Levels.js" as Levels
+import "NoticeKeys.js" as NoticeKeys
 import "Stack.js" as Stack
 import "launcher/Notice.js" as Notice
 
@@ -199,11 +201,14 @@ Scope {
     }
     onHoldingChanged: {
         stepped = false;
+        standing = NoticeKeys.rest();
         stood = 0;
         Qt.callLater(stands);
         Report.say(holding ? "holds notices" : "lets notices go");
     }
     onSteppedChanged: if (!stepped) Report.say("notice back")
+    // Which comes to the front as the keys turn the stack.
+    onFrontChanged: if (holding && front) Report.say(`notice front ${front.summary}`)
     onAwayChanged: Report.say(away ? "away" : "back")
 
     IdleMonitor {
@@ -368,66 +373,133 @@ Scope {
         }
     }
 
-    // Turns the stack, so the next comes to the front, or the one before.
+    // Turns the stack, so the next comes to the front, or the one before,
+    // by as many as asked.
     function turn(by) {
         // A stack of one or none is left alone, so nothing it binds to moves.
-        if (shown.length > 1)
-            order = Stack.turned(shown, by);
+        if (shown.length < 2)
+            return;
+        let turned = shown;
+        for (let step = 0; step < Math.abs(by) % shown.length; step++)
+            turned = Stack.turned(turned, by);
+        order = turned;
     }
 
-    // The keys while the stack holds them, as the launcher's are: Return
-    // does the front one, the right arrow steps into its verbs, where Up
-    // and Down choose one and the left arrow or Escape steps back, and
-    // otherwise Up and Down move through the stack. Delete or Backspace
-    // lets it go and with Shift all of them, the chord that opened the
-    // stack hands on to the history (niri's, to `take` below), and Escape
-    // gives the keys back. Tab does nothing, being only for completing.
+    // Turns the stack to the newest, or to the oldest, or to the one a
+    // count numbers, the newest first, as vi's gg, G and 3G go to a line.
+    function turnTo(newest, count) {
+        const ages = shown.slice()
+            .sort((a, b) => (root.arrived[b] ?? 0) - (root.arrived[a] ?? 0));
+        const at = count > 0 ? Math.min(count, ages.length) - 1 : newest ? 0 : ages.length - 1;
+        if (ages.length > 1)
+            order = Stack.turnedTo(shown, ages[at]);
+    }
+
+    // Where the keys stand between presses: a count, or a key waiting for
+    // its second, as dd's first d.
+    property var standing: NoticeKeys.rest()
+
+    // The keys while the stack holds them, from their one table
+    // (NoticeKeys.js): j and k, as the arrows, turn through the stack, l
+    // steps into the front one's verbs, where j and k choose one and h
+    // steps back, and Return does it, or the front one; gg and G turn to
+    // the newest and the oldest, or choose the first and last verb; dd or
+    // Delete lets the front one go, and DD or Shift+Delete all of them; a
+    // count goes before any of them; q gives the keys back, and Escape
+    // cancels what's begun, then steps back, then gives the keys back. The
+    // chord that opened the stack hands on to the history (niri's, to
+    // `take` below). Tab does nothing, being only for completing.
     function pressed(event) {
-        const all = (event.modifiers & Qt.ShiftModifier) !== 0;
-        switch (event.key) {
-        case Qt.Key_Return:
-        case Qt.Key_Enter:
-            run((event.modifiers & Qt.ControlModifier) !== 0);
+        const read = NoticeKeys.read(standing, named(event));
+        standing = read.standing;
+        if (!read.ours)
+            return;
+        event.accepted = true;
+        const by = Math.max(read.count, 1);
+        switch (read.act) {
+        case "run":
+        case "runAndClose":
+            run(read.act === "runAndClose");
             break;
-        case Qt.Key_Right:
+        case "into":
             if (!stepped && verbs.length > 0) {
                 chosen = 0;
                 stepped = true;
                 Report.say(`notice verb ${verbs[0].name}`);
             }
             break;
-        case Qt.Key_Left:
+        case "out":
             stepped = false;
             break;
-        case Qt.Key_Down:
+        case "next":
             if (stepped)
-                chosen = Math.min(chosen + 1, verbs.length - 1);
+                chosen = Math.min(chosen + by, verbs.length - 1);
             else
-                turn(1);
+                turn(by);
             break;
-        case Qt.Key_Up:
+        case "previous":
             if (stepped)
-                chosen = Math.max(chosen - 1, 0);
+                chosen = Math.max(chosen - by, 0);
             else
-                turn(-1);
+                turn(-by);
             break;
-        case Qt.Key_Delete:
-        case Qt.Key_Backspace:
-            if (all)
-                putAway();
-            else if (front)
-                front.dismiss();
+        case "newest":
+        case "oldest":
+            if (stepped)
+                chosen = read.count > 0 ? Math.min(read.count, verbs.length) - 1
+                    : read.act === "newest" ? 0 : verbs.length - 1;
+            else
+                turnTo(read.act === "newest", read.count);
             break;
-        case Qt.Key_Escape:
+        case "forget":
+            forget(by);
+            break;
+        case "forgetAll":
+            putAway();
+            break;
+        case "close":
+            holding = false;
+            break;
+        case "back":
             if (stepped)
                 stepped = false;
             else
                 holding = false;
             break;
-        default:
-            return;
         }
-        event.accepted = true;
+    }
+
+    // A key as the table names it (NoticeKeys.js): a modifier, then the
+    // letter it typed, or else its name, Shift unnamed beside a letter.
+    readonly property var keyNames: ({
+        [Qt.Key_Return]: "Return",
+        [Qt.Key_Enter]: "Enter",
+        [Qt.Key_Delete]: "Delete",
+        [Qt.Key_Backspace]: "Backspace",
+        [Qt.Key_Escape]: "Escape",
+        [Qt.Key_Left]: "Left",
+        [Qt.Key_Up]: "Up",
+        [Qt.Key_Right]: "Right",
+        [Qt.Key_Down]: "Down"
+    })
+    function named(event) {
+        const control = (event.modifiers & Qt.ControlModifier) !== 0;
+        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
+        // With Ctrl a letter types a control character, so it goes by name.
+        const letter = !control && /^[!-~]$/.test(event.text) ? event.text : "";
+        const name = letter || (keyNames[event.key] ?? "");
+        if (name === "")
+            return "";
+        return (control ? "Ctrl+" : "") + (shift && !letter ? "Shift+" : "") + name;
+    }
+
+    // Lets the front one go, or as many from the front as a count says, as
+    // vi's 3dd deletes three lines.
+    function forget(count) {
+        const going = shown.slice(0, count);
+        for (const notification of server.trackedNotifications.values
+            .filter(notification => going.includes(notification.id)))
+            notification.dismiss();
     }
 
     function putAway() {

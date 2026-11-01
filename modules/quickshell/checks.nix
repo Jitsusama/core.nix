@@ -2454,6 +2454,23 @@ onLinux {
       touch $out
     '';
 
+  # The notices' stack takes vi's keys beside the arrows, from one table,
+  # as tests/notice-keys.qml holds NoticeKeys.js to: sequences, counts, and
+  # an Escape that cancels what's begun before it steps out.
+  the-notices-take-vi-keys =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-notices-take-vi-keys" { } ''
+      cp ${../../tests/notice-keys.qml} notice-keys.qml
+      cp ${./NoticeKeys.js} NoticeKeys.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-keys.qml
+      touch $out
+    '';
+
   # A piece standing for several things is a fact for each, known by its
   # own mark, as tests/facts.qml holds Facts.js to.
   a-piece-may-stand-for-several =

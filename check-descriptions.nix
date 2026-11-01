@@ -1430,6 +1430,10 @@
     unread in the history; and Google Drive's notice that answers a save is kept unmissed, by its
     x-answers hint, while its failure is missed
   '';
+  the-notices-take-vi-keys = ''
+    the notices' stack reads vi's keys beside the arrows from one table: dd and gg as sequences,
+    counts before a motion, and an Escape that cancels what's begun before it steps out
+  '';
   the-notices-wait-while-joel-is-away = ''
     a notice that comes while nothing has been typed or moved stays on niri past the time its sender
     gave it, never counting down

@@ -262,6 +262,63 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
     )
 
 
+def test_the_held_notices_take_vis_keys(desktop: Desktop) -> None:
+    """The held notices take vi's keys, as design.md's Vi's Keys sets them out.
+
+    j and k turn the cards, gg and G turn to the newest and the oldest, a count goes before a
+    motion, dd forgets the front one, l and h step into its acts and out, where gg and G
+    choose the first and last, q gives the keys back, Escape cancels a count, and DD forgets
+    them all. Each key's act is told by what the stack says it did.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # They stay a minute, so they're all still there when the keys come, the oldest in front.
+    for summary in ["Alpha", "Bravo", "Charlie"]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    turns = [
+        (["j"], "Bravo"),
+        (["k"], "Alpha"),
+        (["g", "g"], "Charlie"),
+        (["shift-g"], "Alpha"),
+        (["2", "j"], "Charlie"),
+        # Forgetting the front one brings the next one round.
+        (["d", "d"], "Alpha"),
+    ]
+    for keys, front in turns:
+        with desktop.told(f"notice front {front}"):
+            for key in keys:
+                machine.send_key(key)
+    # It offers nothing, so forgetting it leads its acts and copying it ends them.
+    steps = [
+        ("l", "notice verb Forget It"),
+        ("shift-g", "notice verb Copy What It Said"),
+        ("g g", "notice verb Forget It"),
+        ("j", "notice verb Read"),
+        ("h", "notice back"),
+        ("q", "lets notices go"),
+    ]
+    for typed, said in steps:
+        with desktop.told(said):
+            for key in typed.split():
+                machine.send_key(key)
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    # Four turns of two cards would leave Alpha in front, so Bravo coming shows the count
+    # went with Escape.
+    with desktop.told("notice front Bravo"):
+        for key in ["4", "esc", "j"]:
+            machine.send_key(key)
+    with desktop.told("lets notices go"):
+        machine.send_key("shift-d")
+        machine.send_key("shift-d")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
+
+
 def test_a_click_on_a_notices_action_does_it_and_anywhere_else_puts_it_away(
     desktop: Desktop,
 ) -> None:

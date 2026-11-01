@@ -70,6 +70,7 @@ let
     "Devices.js"
     "Facts.js"
     "Stack.js"
+    "NoticeKeys.js"
     "Notifications.qml"
     "Music.qml"
     "Music.js"
