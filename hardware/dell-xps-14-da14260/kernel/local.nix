@@ -108,6 +108,15 @@
       patch = ./local/edp-reads-display-control-awake.patch;
     }
     {
+      # A monitor on the dock started in limited RGB range, and the
+      # compositor's first frame asked for full range, a full modeset, so
+      # the monitor went black once to retrain at every docked start. A
+      # monitor that can select its range now starts in full range.
+      # Written here; the patch says why.
+      name = "dp-full-range-when-selectable";
+      patch = ./local/dp-full-range-when-selectable.patch;
+    }
+    {
       # The EC sends an event Dell's driver has no key for about hourly,
       # and each one logged an unknown key. Nothing acts on it; written
       # here, and the patch says what's known of it.

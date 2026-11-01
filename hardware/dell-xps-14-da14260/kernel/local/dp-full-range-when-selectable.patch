@@ -1,0 +1,35 @@
+drm/i915/dp: give full RGB range to a sink that can select it
+
+With Broadcast RGB left at Automatic, intel_dp_limited_color_range()
+sends limited range for every CEA mode, such as 3840x2160 at 60 Hz, as
+CEA-861 sets as the default. A compositor that asks for full range at
+start then changes the pipe's range, which is a full modeset, and a
+monitor on the dock drops its picture and retrains at the compositor's
+first frame: the screen goes black once at every docked start.
+
+A sink whose EDID's video capability block says its RGB quantization
+range is selectable follows the range the MSA or the VSC SDP signals,
+so full range shows correctly on it from the start. Give it full range
+under Automatic, so the boot's console and the compositor agree and its
+first commit changes nothing. A sink that can't select keeps CEA's
+default, and Full and Limited still force the range as before.
+
+diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/display/intel_dp.c
+--- a/drivers/gpu/drm/i915/display/intel_dp.c
++++ b/drivers/gpu/drm/i915/display/intel_dp.c
+@@ -2986,7 +2986,15 @@
+ 		 * See:
+ 		 * CEA-861-E - 5.1 Default Encoding Parameters
+ 		 * VESA DisplayPort Ver.1.2a - 5.1.1.1 Video Colorimetry
++		 *
++		 * A sink whose EDID says its RGB range is selectable follows
++		 * the range the MSA or VSC SDP signals, so give it full range,
++		 * as a compositor asking for it would. Otherwise the first
++		 * commit that asks for full range is a full modeset, and the
++		 * monitor drops its picture to retrain.
+ 		 */
++		if (conn_state->connector->display_info.rgb_quant_range_selectable)
++			return false;
+ 		return crtc_state->pipe_bpp != 18 &&
+ 			drm_default_rgb_quant_range(adjusted_mode) ==
+ 			HDMI_QUANTIZATION_RANGE_LIMITED;
