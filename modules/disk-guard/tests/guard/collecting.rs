@@ -15,6 +15,16 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+/// How long a wait on the stand-ins may run before it fails. The guard
+/// starts every command at idle priority, and a test asserts it, so beside
+/// builds at normal priority each stand-in gets a sliver of a core: on 31
+/// October, on a builder at load 97 to 135 on 32 cores, waits of 10 and 30
+/// seconds ran out, though every one passes in under a second here. The
+/// waits end as soon as what they wait on is seen, so this costs only a
+/// test that really hangs, which it fails as the guard's own command
+/// timeout would.
+const AT_IDLE: Duration = Duration::from_secs(300);
+
 const CALM: Senses = Senses {
     power: Power {
         on_charger: true,
@@ -307,11 +317,7 @@ impl Store {
     fn step_until(&self, guard: &mut Guard, done: impl Fn(&Store) -> bool) {
         let started = Instant::now();
         while !done(self) {
-            assert!(
-                started.elapsed() < Duration::from_secs(30),
-                "{:?}",
-                self.log()
-            );
+            assert!(started.elapsed() < AT_IDLE, "{:?}", self.log());
             guard.step(&tick(), &CALM).unwrap();
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -543,7 +549,7 @@ fn step_later_until(
     let started = Instant::now();
     while !done(store, at.wall) {
         assert!(
-            started.elapsed() < Duration::from_secs(10),
+            started.elapsed() < AT_IDLE,
             "{seconds} s on: {:?}",
             store.log()
         );
@@ -983,21 +989,13 @@ fn a_run_stops_when_the_moment_ends_and_isnt_counted_done() {
     store.step_until(&mut guard, |store| !store.linked().is_empty());
     let started = Instant::now();
     while !store.linked().contains(&"stopped".to_owned()) {
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "{:?}",
-            store.linked()
-        );
+        assert!(started.elapsed() < AT_IDLE, "{:?}", store.linked());
         steps(&mut guard, &SAVING);
     }
     // The run is at idle priority, so on a busy machine it can be a while
     // between saying it stopped and exiting, which is when it's journaled.
     while store.deduped().is_empty() {
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "{:?}",
-            store.linked()
-        );
+        assert!(started.elapsed() < AT_IDLE, "{:?}", store.linked());
         steps(&mut guard, &SAVING);
     }
     let stopped = store.deduped();
