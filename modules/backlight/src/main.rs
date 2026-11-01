@@ -500,7 +500,7 @@ impl Backlight<'_> {
     /// brightness the screen already has. The keyboard's level isn't read
     /// here: on a Dell each read is a firmware call, which fails under a
     /// build's memory pressure, and the light sensor reports ten times a
-    /// second. It's read when a step is due (keyboard_step), which is where
+    /// second. It's read when a step is due (`keyboard_step`), which is where
     /// a level Joel set with the key has to win.
     fn heard(&mut self, lux: f64) {
         let shown = self.screen.level_of(self.seen);
