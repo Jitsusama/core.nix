@@ -780,6 +780,61 @@ fn a_beat_rewrites_the_status_last_written_with_a_fresh_heartbeat() {
     );
 }
 
+/// A disk's estimates are remade from its fill's trend at every step, and
+/// written each time they woke the desktop 26 times a minute for figures
+/// it showed no differently (2026-10-31). They're news only once they
+/// move far, or come or go.
+#[test]
+fn a_status_whose_estimates_only_drift_is_no_news() {
+    use disk_guard::daemon::{FilesystemStatus, Status, news};
+    let now = 1_000_000.0;
+    let disk = |forecast: Option<f64>, fill: f64, full_in: f64, says: &str| FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast,
+        fill_per_hour: Some(fill),
+        full_at: Some(now + full_in),
+        says: says.to_string(),
+        exhausted: false,
+    };
+    let status = |one: FilesystemStatus, heartbeat: f64| Status {
+        version: 2,
+        heartbeat,
+        says: one.says.clone(),
+        filesystems: vec![one],
+        cleared: Vec::new(),
+        last: None,
+        frozen: Vec::new(),
+        writer: None,
+        notice: None,
+        holders: Vec::new(),
+        holders_at: None,
+    };
+    let said = "The disk has room.";
+    let written = status(
+        disk(Some(507_791.0), 205_352_626.0, 9_000_000.0, said),
+        now - 5.0,
+    );
+    let drifted = status(disk(Some(508_357.0), 205_124_083.0, 9_000_817.0, said), now);
+    assert!(!news(&written, &drifted, now), "half a percent is no news");
+    let moved = status(disk(Some(400_000.0), 205_124_083.0, 9_000_817.0, said), now);
+    assert!(
+        news(&written, &moved, now),
+        "a forecast a fifth sooner is news"
+    );
+    let gone = status(disk(None, 205_124_083.0, 9_000_817.0, said), now);
+    assert!(news(&written, &gone, now), "a forecast that goes is news");
+    let told = status(
+        disk(Some(508_357.0), 205_124_083.0, 9_000_817.0, "Now full."),
+        now,
+    );
+    assert!(news(&written, &told, now), "what's said is news");
+}
+
 #[test]
 fn pretending_free_space_bands_the_preview() {
     let home = Home::new();

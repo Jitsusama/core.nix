@@ -158,6 +158,12 @@ fn thaw(
 /// How often the status file is written when nothing in it has changed,
 /// so its heartbeat says the guard is alive.
 const HEARTBEAT_EVERY: f64 = 30.0;
+/// How far, as a share of itself, a forecast or the time until full may
+/// move before it's written ahead of the heartbeat. Each is remade from
+/// the fill's trend at every step, so it moves a little every few
+/// seconds; written each time, the desktop woke 26 times a minute to
+/// read figures it showed no differently (2026-10-31).
+const ESTIMATE_DRIFT: f64 = 0.1;
 
 /// What the garbage's commands and candidates are named for.
 const GARBAGE: &str = "garbage";
@@ -2366,11 +2372,7 @@ impl Guard {
         // for minutes, and a status written old reads as a guard stopped.
         status.heartbeat = wall_now();
         let unchanged = self.written.as_ref().is_some_and(|(at, written)| {
-            now - at < HEARTBEAT_EVERY
-                && Status {
-                    heartbeat: status.heartbeat,
-                    ..written.clone()
-                } == status
+            now - at < HEARTBEAT_EVERY && !news(written, &status, now)
         });
         if unchanged {
             return Ok(());
@@ -2386,6 +2388,48 @@ impl Guard {
         self.written = Some((now, status));
         Ok(())
     }
+}
+
+/// Whether a status says something the one written didn't, beyond its
+/// beats: the heartbeat, each disk's fill rate, and its forecast and time
+/// until full while each is within `ESTIMATE_DRIFT` of what was written.
+/// A forecast that comes or goes is news, and so is anything said in
+/// words, which is how a reader sees a forecast cross into another span.
+pub fn news(written: &Status, status: &Status, now: f64) -> bool {
+    let near = |was: Option<f64>, is: Option<f64>| match (was, is) {
+        (None, None) => true,
+        (Some(was), Some(is)) => (was - is).abs() <= ESTIMATE_DRIFT * was.abs().max(is.abs()),
+        _ => false,
+    };
+    let left = |full_at: Option<f64>| full_at.map(|at| at - now);
+    let drifted = written.filesystems.len() != status.filesystems.len()
+        || written
+            .filesystems
+            .iter()
+            .zip(&status.filesystems)
+            .any(|(was, is)| {
+                !near(was.forecast, is.forecast) || !near(left(was.full_at), left(is.full_at))
+            });
+    if drifted {
+        return true;
+    }
+    // The status as written, carrying the estimates it had then.
+    let steady = Status {
+        heartbeat: written.heartbeat,
+        filesystems: written
+            .filesystems
+            .iter()
+            .zip(&status.filesystems)
+            .map(|(was, is)| FilesystemStatus {
+                forecast: was.forecast,
+                fill_per_hour: was.fill_per_hour,
+                full_at: was.full_at,
+                ..is.clone()
+            })
+            .collect(),
+        ..status.clone()
+    };
+    steady != *written
 }
 
 /// Marks a status's holders with the keeps and clears in `state` as they
