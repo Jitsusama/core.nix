@@ -77,6 +77,13 @@ in
     ];
   };
 
+  # Search Slack for ‹words›, the act ending every search while Slack is
+  # signed in, asked of Slack's daemon once Joel steps in (SlackSearch.qml).
+  jitsusama.quickshell.launcher.providers.slack-search = {
+    order = 51;
+    source = ./SlackSearch.qml;
+  };
+
   # What in Slack wants Joel, kept in the runtime folder's
   # slack-unreads.json for Now's Slack piece: direct messages with
   # unreads, mentions of him and his mentions in threads, read only, and

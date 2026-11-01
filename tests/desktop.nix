@@ -146,6 +146,12 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-google.py);
 
+  # Stands in for Slack's daemon, which would ask Slack, on its socket
+  # (desktop/stand-in-slack.py).
+  standInSlack = pkgs.writers.writePython3 "stand-in-slack" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-slack.py);
+
   # Google's own pages' window, as jitsusama.google.window opens one: what
   # it was asked to open, written down, since the VM has no browser.
   googleWindow = pkgs.writeShellScript "google-window" ''
@@ -653,6 +659,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           order = 990;
           source = ./desktop/search-ends.qml;
         };
+        # Slack's daemon, for the Search Slack that Slack's module brings
+        # where it's imported, as a stand-in the test starts when it wants
+        # it; Search Slack is offered only while it runs, so no other
+        # test's search ends with it.
+        systemd.user.services.slack-stand-in.Service.ExecStart = "${standInSlack} %t/daemons/slack.sock";
         # Firmware's fwupd isn't in the VM, and would have nothing to say.
         jitsusama.quickshell.launcher.providers.firmware = {
           enable = lib.mkForce true;

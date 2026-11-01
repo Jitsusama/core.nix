@@ -5282,6 +5282,132 @@ def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
     assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
+@pytest.fixture
+def slack(desktop: Desktop) -> Iterator[str]:
+    """Start the stand-in Slack daemon for one test, and stop it after, giving its runtime folder.
+
+    The launcher offers Search Slack only while Slack's daemon answers, so no other test's
+    search ends with it. The shell looks for the daemon every 2 seconds, so this yields only
+    once the shell has said hello to it.
+    """
+    runtime = "/run/user/1000"
+    kept = f"{runtime}/slack-searched {runtime}/slack-answers {runtime}/slack-hellos"
+    desktop.as_account(f"rm -f {kept}")
+    desktop.as_account("systemctl --user start slack-stand-in.service")
+    desktop.machine.wait_until_succeeds(f"test -s {runtime}/slack-hellos", timeout=30)
+    yield runtime
+    desktop.as_account("systemctl --user stop slack-stand-in.service")
+    desktop.as_account(f"rm -f {kept}")
+
+
+def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_place(
+    desktop: Desktop, slack: str
+) -> None:
+    """Search Slack ends a search; Return asks Slack once, the first message lighting in place."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    searched = f"{slack}/slack-searched"
+    search = "Search Slack for launcher"
+    desktop.answer("launcher")
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == [search])
+    # Nothing is asked of Slack as Joel types, since Slack allows a grid
+    # only a few searches a minute.
+    machine.fail(f"test -e {searched}")
+    desktop.down_to(search)
+    desktop.step_in("ret")
+    # Return steps in at once, a dimmed Slack Message holding the first
+    # message's place while Slack is asked, and asks it once.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Slack Message"]
+            and shown["things"][0]["gone"]
+            and (shown["selected"] or {}).get("side") == "searching Slack"
+        )
+    )
+    assert machine.succeed(f"cat {searched}") == "launcher\n"
+    desktop.as_account(f"touch {slack}/slack-answers")
+    # The first lights where the stand-in stood, selected, and the rest
+    # follow it: where each is beside it, who said it and when below.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["The launcher is fast", "Launcher notes for Friday"]
+            and not shown["things"][0]["gone"]
+            and (shown["selected"] or {}).get("name") == "The launcher is fast"
+        )
+    )
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "#launcher", selected
+    assert selected["note"].startswith("ada \u00b7 "), selected["note"]
+    assert selected["drawer"]["body"] == "The launcher is fast\nand never waits", selected
+    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("note", "").startswith("You \u00b7 ")
+    )
+    machine.send_key("up")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "The launcher is fast"
+    )
+    # Inside, Open in Slack, whose drawer holds the messages around it once
+    # asked, only Joel's named, then the link to copy last.
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Open in Slack", "Copy the Link"]
+            and ((shown["selected"] or {}).get("drawer") or {}).get("body")
+            == "You: Is the launcher fast yet?\n\nThe launcher is fast"
+        )
+    )
+    # Stepping out and in again asks Slack nothing more.
+    machine.send_key("left")
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == [search])
+    desktop.down_to(search)
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["The launcher is fast"])
+    assert machine.succeed(f"cat {searched}") == "launcher\n"
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_search_slack_says_when_slack_finds_nothing_or_is_too_busy_to_search(
+    desktop: Desktop, slack: str
+) -> None:
+    """Search Slack says nothing was found in a sentence, and a busy Slack over Try Again."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.as_account(f"touch {slack}/slack-answers")
+    desktop.answer("quokka")
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Search Slack for quokka"])
+    desktop.down_to("Search Slack for quokka")
+    desktop.step_in("ret")
+    # Nothing found is a sentence where the first message would be, dimmed,
+    # with no act under it.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Nothing in Slack says quokka."] and shown["things"][0]["gone"]
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.answer("busy")
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Search Slack for busy"])
+    desktop.down_to("Search Slack for busy")
+    desktop.step_in("ret")
+    # Too busy says so where the first message would be, over Try Again,
+    # which asks Slack again and keeps the selection.
+    desktop.launcher_until(
+        lambda shown: shown["rows"][-2:] == ["Slack is busy; try again in a minute.", "Try Again"]
+    )
+    desktop.down_to("Try Again")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"test $(grep -cx busy {slack}/slack-searched) = 2", timeout=dt.timedelta(seconds=30)
+    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Try Again")
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
