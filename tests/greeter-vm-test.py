@@ -20,8 +20,10 @@ import pytest
 if TYPE_CHECKING:
     from test_driver.machine import BaseMachine, QemuMachine
 
-# How long the boot may take to reach the greeter, and a step within it.
-BOOTING = timedelta(seconds=120)
+# How long the boot may take to reach the greeter, and a step within it. The
+# boot takes 90 s on a quiet builder and 165 s on a busy one, and the wait ends
+# as soon as it's there, so the bound is well past either.
+BOOTING = timedelta(seconds=600)
 STEP = timedelta(seconds=60)
 # How many mounts the burst makes, past systemd's limit on changes to the mount table.
 BURST = 12
