@@ -83,43 +83,11 @@ Scope {
     // Connected once made, since one refused while it's still being made
     // couldn't be let go (FileChooser.qml).
     function send(each) {
-        unsent = unsent.concat([`${JSON.stringify(Traces.request(each))}\n`]);
-        // Not preloaded, a reload only marks the file stale: asking for its
-        // text is what starts the look, off the main thread, answered by
-        // loaded or loadFailed. One already under way answers for this too.
-        listening.reload();
-        listening.text();
-    }
-
-    // The lines waiting on the look at the collector's socket.
-    property var unsent: []
-
-    // Whether the collector's socket is there, looked at as each opening is
-    // sent: a connection to none warns in the journal, and the collector
-    // being down isn't a fault of the shell's (Joel, 2026-10-29: "gracefully
-    // handle them being down"). A socket isn't a file, so it fails to load as
-    // one; a path with nothing there fails as not found, and the lines go. A
-    // single stat each, watching nothing. Nothing here may start another
-    // look from loaded or loadFailed: the one finishing would drop it.
-    FileView {
-        id: listening
-
-        path: root.collector
-        preload: false
-        printErrors: false
-        onLoadFailed: error => root.sendOrDrop(error === FileViewError.NotAFile)
-        onLoaded: root.sendOrDrop(false)
-    }
-
-    function sendOrDrop(there) {
-        const lines = unsent;
-        unsent = [];
-        if (!there)
-            return;
-        for (const line of lines) {
-            const made = sender.createObject(root, { line, path: root.collector });
-            made.connected = true;
-        }
+        const made = sender.createObject(root, {
+            line: `${JSON.stringify(Traces.request(each))}\n`,
+            path: root.collector
+        });
+        made.connected = true;
     }
 
     Component {
