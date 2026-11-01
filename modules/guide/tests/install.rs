@@ -1950,7 +1950,7 @@ fn a_firmware_in_setup_mode_gets_the_keys_readied_inside_the_installed_system() 
         stand_in
             .calls
             .iter()
-            .any(|call| call == &format!("nixos-enter --root /mnt -c {program}")),
+            .any(|call| call == &format!("nixos-enter --root /mnt -c {program} {{PATH}}")),
         "{:#?}",
         stand_in.calls
     );
