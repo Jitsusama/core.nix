@@ -165,7 +165,15 @@ async fn lid_moved(lid: &mut Option<Pin<Box<PropertyStream<'_, bool>>>>) -> zbus
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    match run().await {
+    let ran = if env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--keeps-the-open-level")
+    {
+        keep_the_open_level().await
+    } else {
+        run().await
+    };
+    match ran {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("<3>{error}");
@@ -347,12 +355,6 @@ async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    if env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "--keeps-the-open-level")
-    {
-        return keep_the_open_level().await;
-    }
     let standard = env::args_os()
         .nth(1)
         .ok_or("usage: backlight <standard curve>")?;
