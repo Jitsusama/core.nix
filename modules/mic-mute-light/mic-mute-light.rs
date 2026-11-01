@@ -12,7 +12,11 @@
 //! change, and after an array that touches a mute or the default source it
 //! asks `wpctl` whether the default source is muted. It sets the light
 //! through logind with `brightnessctl`, as the person at the seat may, and
-//! only when that changes. It sleeps on the pipe between changes, so it
+//! only when that changes. Setting it can fail for a moment while the
+//! person's session starts at a boot, so a light it couldn't set is asked
+//! after again at the next array of any kind, rather than left wrong until
+//! the mute next changes. It sleeps on
+//! the pipe between changes, so it
 //! costs nothing while nothing changes, and it ends when PipeWire goes, for
 //! systemd to start it again.
 //!
@@ -34,6 +38,12 @@ fn ends_an_array(line: &str) -> bool {
 /// node's mute, or which source is the default.
 fn touches_the_mute(line: &str) -> bool {
     line.contains("\"mute\"") || line.contains("default.audio.source")
+}
+
+/// Whether an array's end calls for asking after the mute: it touched
+/// the mute, or the light has yet to be set.
+fn asks_again(touched: bool, lit: Option<bool>) -> bool {
+    touched || lit.is_none()
 }
 
 /// Whether `wpctl get-volume` said the source is muted.
@@ -104,11 +114,11 @@ fn main() -> ExitCode {
     for line in BufReader::new(out).lines() {
         let Ok(line) = line else { break };
         touched |= touches_the_mute(&line);
-        if ends_an_array(&line) && touched {
+        if ends_an_array(&line) && asks_again(touched, lit) {
             touched = false;
             let now = source_muted();
-            if lit != Some(now) && set_light(now) {
-                lit = Some(now);
+            if lit != Some(now) {
+                lit = set_light(now).then_some(now);
             }
         }
     }
@@ -140,6 +150,13 @@ mod tests {
         assert!(!touches_the_mute(
             "        \"key\": \"default.audio.sink\","
         ));
+    }
+
+    #[test]
+    fn a_light_not_yet_set_is_asked_after_at_any_array() {
+        assert!(asks_again(false, None));
+        assert!(asks_again(true, Some(false)));
+        assert!(!asks_again(false, Some(true)));
     }
 
     #[test]

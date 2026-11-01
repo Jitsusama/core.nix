@@ -1454,7 +1454,8 @@
   '';
   the-mic-mute-light-follows-the-mute = ''
     `mic-mute-light` asks after the mute only once a change to a mute or the default source has
-    ended, and lights the light for a muted source alone
+    ended, or after any change while the light has yet to be set, and lights the light for a
+    muted source alone
   '';
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
