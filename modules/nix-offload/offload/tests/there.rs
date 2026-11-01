@@ -131,6 +131,79 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
 }
 
 #[test]
+fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
+    // A build tool's targets come as derivations evaluated here, with no
+    // flake a builder could fetch, so they're copied up and built there.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    // A machine nearby that takes anything at all is never given them:
+    // they may hold what only the builder is let build.
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/nearby"),
+        format!("{} near x86_64-linux *\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", "/nix/store/aaaa-x.drv"])
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                folder.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
+        format!(
+            "copy --to {} --derivation /nix/store/aaaa-x.drv\n",
+            STORE.trim()
+        )
+    );
+    assert_eq!(
+        given_to(folder.path()),
+        "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n"
+    );
+
+    // One that can't be copied up isn't built anywhere unasked.
+    fs::write(folder.path().join("nix-status"), "1").unwrap();
+    fs::remove_file(folder.path().join("ssh-was-given")).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "/nix/store/aaaa-x.drv"])
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                folder.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        !folder.path().join("ssh-was-given").exists(),
+        "not built there"
+    );
+}
+
+#[test]
 fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
@@ -802,7 +875,7 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\n"
+        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\nderivation\n"
     );
 }
 
