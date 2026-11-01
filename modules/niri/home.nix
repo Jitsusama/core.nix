@@ -147,6 +147,29 @@ in
         '';
       };
 
+  options.jitsusama.niri.fullRangeWhenSelectable = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = ''
+      Whether niri sends full-range RGB to a screen whose EDID says it
+      takes either range, rather than the limited range the driver sends at
+      a TV mode, which shows grey blacks on a monitor that reads full
+      (nixos.nix's full-range-when-selectable.patch). A screen that says
+      nothing of its range is left to the driver.
+    '';
+  };
+
+  # Asked through the environment, as the first frame's hold is, and the
+  # greeter's niri the same way (../greetd/nixos.nix).
+  config.xdg.configFile."systemd/user/niri.service.d/full-range.conf" =
+    lib.mkIf (config.jitsusama.niri.fullRangeWhenSelectable && pkgs.stdenv.hostPlatform.isLinux)
+      {
+        text = ''
+          [Service]
+          Environment=NIRI_FULL_RANGE_WHEN_SELECTABLE=1
+        '';
+      };
+
   # The touchscreen's swipes, which niri does itself (nixos.nix's patch), as
   # the touchpad's: three fingers move the columns and the workspaces the way
   # the content moves under them, four up open the overview and four down

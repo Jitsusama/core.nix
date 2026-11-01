@@ -82,6 +82,13 @@
     # the session locks, so the screen keeps what the splash left until
     # then. Its tests run as niri builds, and the screens test, whose niri is
     # on its screens as on a laptop, reads that it held.
+    #
+    # The driver sends a monitor limited-range RGB at a TV mode, such as
+    # 3840x2160 at 60 Hz, and one reading full range shows grey blacks. The
+    # patch (full-range-when-selectable.patch, made on the rest) sends full
+    # range to a screen whose EDID says its range is selectable, when niri
+    # starts with NIRI_FULL_RANGE_WHEN_SELECTABLE set, which home.nix sets;
+    # any other screen is left to the driver.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -103,6 +110,7 @@
         ./shut-lid-darkens-the-panel.patch
         ./srgb-gamut.patch
         ./hold-first-frame.patch
+        ./full-range-when-selectable.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

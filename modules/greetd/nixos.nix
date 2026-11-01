@@ -67,6 +67,10 @@ let
   # wallpaper (../niri/home.nix), which the greeter's niri is asked through
   # its environment as the session's is, so the greeter ends it.
   holds = lib.attrByPath [ "jitsusama" "niri" "holdFirstFrame" ] false home;
+  # And whether it sends full-range RGB to a screen that takes it, which
+  # the greeter's niri is asked the same way, so the greeter's blacks are
+  # the desktop's.
+  fullRange = lib.attrByPath [ "jitsusama" "niri" "fullRangeWhenSelectable" ] false home;
 
   # Every account that can sign in, the machine's own first, each called by
   # the first word of its description.
@@ -139,6 +143,7 @@ let
       ])
       "compositor=(${lib.escapeShellArgs cfg.compositor}) niri_config=${compositor}/config.kdl"
       (lib.optionalString holds "export NIRI_HOLD_FIRST_FRAME=1")
+      (lib.optionalString fullRange "export NIRI_FULL_RANGE_WHEN_SELECTABLE=1")
       "tuigreet=(${lib.escapeShellArgs tuigreet})"
       (builtins.readFile ./greeter.sh)
     ]
