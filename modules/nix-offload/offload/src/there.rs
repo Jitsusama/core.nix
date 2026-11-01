@@ -340,7 +340,7 @@ pub fn run(
             // Copied to each builder that stands, since one stood again
             // after a loss holds none of them.
             if asked.derivations
-                && let Err(why) = up(asked, &lent.store, nix)
+                && let Err(why) = up(asked, &lent, scratch, [ssh, nix])
             {
                 break Err(why);
             }
@@ -375,18 +375,30 @@ pub fn run(
 }
 
 /// Copies the derivations asked for, and what they're built from, into the
-/// builder's `store`, which builds only what it holds. Each of those is
-/// named by its contents, so the builder takes them unsigned.
-fn up(asked: &Asked, store: &str, nix: &str) -> Result<(), String> {
+/// builder's store, which builds only what it holds. The builder is asked
+/// once which of them it lacks, and only those go: `nix copy` asks it
+/// path by path, and through the tunnel that took 79 s on 1 November for
+/// the 710 a one-line build needs, every one already there, against 4 s
+/// asked once. Without an answer they go the slow way. Each is named by
+/// its contents, so the builder takes them unsigned.
+fn up(asked: &Asked, lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) -> Result<(), String> {
+    let paths: Vec<&str> = asked
+        .attributes
+        .iter()
+        .map(|path| path.split('^').next().unwrap_or(path))
+        .collect();
+    let mut copying = Command::new(nix);
+    match closure(&paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
+        Some(lacking) if lacking.is_empty() => return Ok(()),
+        Some(lacking) => copying
+            .args(["copy", "--no-recursive", "--to", &lent.store])
+            .args(lacking),
+        None => copying
+            .args(["copy", "--to", &lent.store, "--derivation"])
+            .args(&paths),
+    };
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
-    let copied = Command::new(nix)
-        .args(["copy", "--to", store, "--derivation"])
-        .args(
-            asked
-                .attributes
-                .iter()
-                .map(|path| path.split('^').next().unwrap_or(path)),
-        )
+    let copied = copying
         .env("TMPDIR", "/tmp")
         .status()
         .map_err(|error| format!("couldn't run {nix}: {error}"))?;
@@ -395,6 +407,61 @@ fn up(asked: &Asked, store: &str, nix: &str) -> Result<(), String> {
     } else {
         Err("the derivations couldn't be copied up to the builder".to_owned())
     }
+}
+
+/// Every path the derivations at `paths` are built from, themselves
+/// among them, as this machine's store has them.
+fn closure(paths: &[&str], nix: &str) -> Option<Vec<String>> {
+    let listed = Command::new(nix)
+        .args(["path-info", "--recursive", "--derivation"])
+        .args(paths)
+        .stderr(Stdio::inherit())
+        .output()
+        .ok()
+        .filter(|listed| listed.status.success())?;
+    let mut closure: Vec<String> = String::from_utf8_lossy(&listed.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    for path in paths {
+        if !closure.iter().any(|had| had == path) {
+            closure.push((*path).to_owned());
+        }
+    }
+    Some(closure)
+}
+
+/// What the builder is asked, with the paths on its standard input: those
+/// its store lacks, a line each.
+const LACKING: &str = "xargs -r nix-store --check-validity --print-invalid";
+
+/// Which of `paths` the lent builder lacks, asked in one go, or none when
+/// it couldn't say. They go as a file, since a closure of thousands would
+/// fill a pipe while the answer waits to be read.
+fn lacking(lent: &Builder, paths: &[String], scratch: &Path, ssh: &str) -> Option<Vec<String>> {
+    let (mut command, known, said) = reach(lent, scratch, ssh).ok()?;
+    let asking = mine(scratch, "asking");
+    let answer = fs::write(&asking, paths.join("\n") + "\n")
+        .and_then(|()| fs::File::open(&asking))
+        .and_then(|asked| {
+            command
+                .arg(&lent.host)
+                .arg(LACKING)
+                .stdin(asked)
+                .stderr(Stdio::inherit())
+                .output()
+        });
+    for file in [&asking, &known, &said] {
+        let _ = fs::remove_file(file);
+    }
+    let answer = answer.ok().filter(|answer| answer.status.success())?;
+    Some(
+        String::from_utf8_lossy(&answer.stdout)
+            .lines()
+            .filter(|line| line.starts_with("/nix/store/"))
+            .map(str::to_owned)
+            .collect(),
+    )
 }
 
 /// What `there` exits with when no builder took a build and it wasn't
@@ -849,22 +916,7 @@ pub fn on(
     scratch: &Path,
     ssh: &str,
 ) -> Result<Ran, String> {
-    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
-    let known = mine(scratch, "known");
-    let said = mine(scratch, "ssh.log");
-    let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
-    let mut command = reaching(ssh, &said);
-    if let Some(key) = &lent.key {
-        command.args(["-o", "IdentitiesOnly=yes", "-i", key]);
-    }
-    if let Some(host_key) = &lent.host_key {
-        fs::write(&known, format!("{alias} {host_key}\n"))
-            .map_err(|error| format!("{}: {error}", known.display()))?;
-        command
-            .args(["-o", "StrictHostKeyChecking=yes", "-o"])
-            .arg(format!("UserKnownHostsFile={}", known.display()))
-            .args(["-o", &format!("HostKeyAlias={alias}")]);
-    }
+    let (mut command, known, said) = reach(lent, scratch, ssh)?;
     eprintln!("nix-offload: building on the lent builder");
     command.arg(&lent.host).arg(far(&sending.command));
     if let Some(bundle) = &sending.bundle {
@@ -886,6 +938,29 @@ pub fn on(
         status: status.code().unwrap_or(UNREACHED),
         sent,
     })
+}
+
+/// ssh to the lent builder with its key and host key, as every command
+/// sent there goes, and the two files it writes in `scratch`, the host
+/// key and ssh's log, to remove once it's run.
+fn reach(lent: &Builder, scratch: &Path, ssh: &str) -> Result<(Command, PathBuf, PathBuf), String> {
+    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+    let known = mine(scratch, "known");
+    let said = mine(scratch, "ssh.log");
+    let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
+    let mut command = reaching(ssh, &said);
+    if let Some(key) = &lent.key {
+        command.args(["-o", "IdentitiesOnly=yes", "-i", key]);
+    }
+    if let Some(host_key) = &lent.host_key {
+        fs::write(&known, format!("{alias} {host_key}\n"))
+            .map_err(|error| format!("{}: {error}", known.display()))?;
+        command
+            .args(["-o", "StrictHostKeyChecking=yes", "-o"])
+            .arg(format!("UserKnownHostsFile={}", known.display()))
+            .args(["-o", &format!("HostKeyAlias={alias}")]);
+    }
+    Ok((command, known, said))
 }
 
 /// Runs `command`, unpacking the tarball it writes into `out`, and gives

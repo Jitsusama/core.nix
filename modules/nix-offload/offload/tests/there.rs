@@ -8,11 +8,11 @@ use std::process::{Command, Output};
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
-/// command) apart, prints what the `says` file beside it holds and, on
-/// stderr, what the `complains` file holds, and exits as the `status` file
-/// beside it says. Once a test writes
-/// `refuses-name-only`, a command asking `--name-only` is refused with 64,
-/// as a changed-checks from before it was refuses it.
+/// command) apart, each command after the last in `ssh-commands`, prints
+/// what the `says` file beside it holds and, on stderr, what the
+/// `complains` file holds, and exits as the `status` file beside it says.
+/// Once a test writes `refuses-name-only`, a command asking `--name-only`
+/// is refused with 64, as a changed-checks from before it was refuses it.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -21,6 +21,7 @@ while [ "$#" -gt 2 ]; do
   shift
 done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
+printf '%s\n' "$2" >> "$here/ssh-commands"
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
 esac
@@ -139,6 +140,8 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
     stand_ins(folder.path(), 0);
+    // The builder is asked once which it lacks, and says this one.
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
     // A machine nearby that takes anything at all is never given them:
     // they may hold what only the builder is let build.
     let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -168,9 +171,14 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     assert_eq!(
         fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
         format!(
-            "copy --to {} --derivation /nix/store/aaaa-x.drv\n",
+            "copy --no-recursive --to {} /nix/store/aaaa-x.drv\n",
             STORE.trim()
         )
+    );
+    let commands = fs::read_to_string(folder.path().join("ssh-commands")).unwrap();
+    assert_eq!(
+        commands.lines().next(),
+        Some("xargs -r nix-store --check-validity --print-invalid")
     );
     assert_eq!(
         given_to(folder.path()),
@@ -200,6 +208,14 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     assert!(
         !folder.path().join("ssh-was-given").exists(),
         "not built there"
+    );
+    // With no closure to ask about, it tried copying them whole.
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
+        format!(
+            "copy --to {} --derivation /nix/store/aaaa-x.drv\n",
+            STORE.trim()
+        )
     );
 }
 
