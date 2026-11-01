@@ -523,7 +523,9 @@ impl Direction {
     /// not only under half: at home on 31 October a download at its floor
     /// carried 57% to 75% of it through a queue of up to 259 ms, too full
     /// to be thin and too thin to be busy at the floor, so nothing gave.
-    /// Gives whether it cut.
+    /// It swung from 59% to 99% from step to step, too, and each step over
+    /// three quarters began the count again, so live such a step only adds
+    /// no time. Gives whether it cut.
     fn thin(
         &mut self,
         s: &Settings,
@@ -543,7 +545,12 @@ impl Direction {
         let gone = self.thin_last.is_some_and(|at| now - at > s.thin_gap_s);
         let steady =
             live || carried >= self.thin_most * STEADY && carried * STEADY <= self.thin_least;
-        if !thin || gone || !steady {
+        let over = if live {
+            held_here || gone
+        } else {
+            !thin || gone || !steady
+        };
+        if over {
             self.thin_for = 0.0;
             self.thin_most = 0.0;
             self.thin_least = f64::INFINITY;
@@ -1544,7 +1551,7 @@ mod tests {
         let (mut at, mut queue_kbit, mut most) = (0.0_f64, 0.0_f64, 0);
         let (mut steps, mut queued) = (0_u32, 0_u32);
         while at < 240.0 {
-            let share = 55_000.0 + 12_000.0 * (at * 1.3).sin() * (at * 0.31).cos();
+            let share = 60_000.0 + 15_000.0 * (at * 1.3).sin() * (at * 0.31).cos();
             let offered = float(c.down.rate) * 1.05;
             queue_kbit = (queue_kbit + (offered - share) * 0.2).clamp(0.0, share * 0.4);
             let received = if queue_kbit > 0.0 { share } else { offered };
