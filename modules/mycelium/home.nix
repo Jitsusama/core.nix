@@ -23,7 +23,11 @@
 # prompt, its host key pinned. On Linux the node signs in with the agents'
 # key from the TPM (../tpm-signing), which asks nothing, so the far machine
 # authorizes that key: Joel's own asks for its PIN, and the node dialling at
-# login would hold every agent's signature up until he answered.
+# login would hold every agent's signature up until he answered. On a Mac it
+# signs in with the agents' key from the Secure Enclave
+# (../secure-enclave-signing), by the options that module gives for it, so
+# the far machine authorizes that key too, and the login session's agent,
+# which may ask for an approval, is never asked.
 #
 # A machine also declares what its node can't measure of it, for work to be
 # placed by: the networks work there always reaches, a probe for each it
@@ -54,6 +58,7 @@
 }:
 let
   cfg = config.jitsusama.mycelium;
+  inherit (config.jitsusama.signing) signer;
   package = mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
   linking = cfg.links != [ ];
@@ -212,6 +217,12 @@ let
       "node"
     ]
     ++ apart
+    ++ lib.optionals (isDarwin && signer != null) (
+      lib.concatMap (option: [
+        "--ssh-option"
+        option
+      ]) signer.agentSshOptions
+    )
     ++ lib.concatMap (machine: [
       "--ssh"
       machine
@@ -326,6 +337,8 @@ let
   describe = realm: "Carries the harness mesh between the machines of the ${realm} realm";
 in
 {
+  imports = [ ../signing/home.nix ];
+
   options.jitsusama.mycelium = {
     realm = lib.mkOption {
       type = lib.types.nullOr name;

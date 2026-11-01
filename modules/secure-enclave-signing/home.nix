@@ -65,6 +65,15 @@ in
     agentKey = handle "agent-signing";
     makesKeys = "se-keys";
     environment.SSH_SK_PROVIDER = "\${SSH_SK_PROVIDER:-${provider}}";
+    # The handle signs a login as it signs a commit, through the same
+    # library and with no agent: 1Password's, which the Mac's ssh asks first,
+    # would ask for approval nobody is there to give.
+    agentSshOptions = [
+      "SecurityKeyProvider=${provider}"
+      "IdentityAgent=none"
+      "IdentitiesOnly=yes"
+      "IdentityFile=${handle "agent-signing"}"
+    ];
   };
 
   home.packages = [ seKeys ];

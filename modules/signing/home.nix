@@ -112,6 +112,17 @@ in
                 another variable.
               '';
             };
+            agentSshOptions = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "IdentityFile=/home/someone/.ssh/agent-signing" ];
+              description = ''
+                The options, as ssh's -o takes them, that sign a login in with
+                the agents' key and nothing else, for what dials out with nobody
+                at the keyboard, such as mycelium's node on a Mac. Empty where
+                the key is served by an agent the login already reaches.
+              '';
+            };
             agentEnvironment = lib.mkOption {
               type = lib.types.attrsOf lib.types.str;
               default = { };

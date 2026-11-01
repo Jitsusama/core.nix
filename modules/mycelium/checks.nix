@@ -37,6 +37,12 @@ let
   linuxNode = toString (linux links).systemd.user.services.mycelium.Service.ExecStart;
   linuxAgent = (linux links).systemd.user.services.mycelium.Service.Environment;
   macNode = (mac links).launchd.agents.mycelium.config.ProgramArguments;
+  # A Mac workstation signs its commits from the Secure Enclave, so its node
+  # signs its links in with the same key, each option after its own flag.
+  enclaveOptions = lib.concatMap (option: [
+    "--ssh-option"
+    option
+  ]) (mac links).jitsusama.signing.signer.agentSshOptions;
   answering = linux { realm = "personal"; };
   apart = linux { };
 
@@ -133,6 +139,7 @@ in
             "personal"
             "node"
           ]
+          ++ enclaveOptions
           ++ ssh
           ++ [
             "--serves"
@@ -149,6 +156,35 @@ in
         && answering.home.sessionVariables.MYCELIUM_REALM == "personal"
         && !(apart.home.sessionVariables ? MYCELIUM_REALM)
         && lib.any (package: (package.pname or "") == "mycelium") apart.home.packages
+      );
+
+  # A Mac's node signs its links in with the agents' key from the Secure
+  # Enclave, through that key's own library and no agent, since the login
+  # session's one may ask for an approval nobody is there to give; one
+  # without that key's module passes no such options, and Linux's node never
+  # does.
+  mycelium-signs-a-macs-links-with-the-enclave =
+    holds "mycelium-signs-a-macs-links-with-the-enclave"
+      "A Mac's node signs its links in through whatever agent the login holds, or not with the agents' key from the Secure Enclave, a Mac without that key's module is given options for it, or Linux's node is given a Mac's options."
+      (
+        let
+          enclave = {
+            home-manager.sharedModules = [ self.homeModules.secure-enclave-signing ];
+          };
+          withEnclave =
+            (bareDarwin [
+              self.darwinModules.workstation
+              enclave
+              { home-manager.users.someone.jitsusama.mycelium = links; }
+            ]).config.home-manager.users.someone;
+          words = withEnclave.launchd.agents.mycelium.config.ProgramArguments;
+        in
+        lib.elem "IdentityFile=/Users/someone/.ssh/agent-signing" words
+        && lib.elem "SecurityKeyProvider=/usr/lib/ssh-keychain.dylib" words
+        && lib.elem "IdentityAgent=none" words
+        && lib.elem "IdentitiesOnly=yes" words
+        && lib.elem "--ssh-option" words
+        && !(lib.elem "--ssh-option" (lib.splitString " " (toString linuxNode)))
       );
 
   # A machine joining a further realm runs a node of its own for it, apart
@@ -178,7 +214,10 @@ in
           toString bothLinux.mycelium.Service.ExecStart
         )
         && bothLinux.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
-        && lib.hasInfix "/.local/state/pi/agentic-harness.pi/realms/other/steer --ssh two --serves " (
+        && lib.hasInfix "/.local/state/pi/agentic-harness.pi/realms/other/steer --ssh-option " (
+          toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
+        )
+        && lib.hasInfix " --ssh two --serves " (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )
         && (linux both).home.sessionVariables.PI_HOME_REALM == "home"
