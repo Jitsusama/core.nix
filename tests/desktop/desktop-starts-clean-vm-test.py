@@ -661,6 +661,35 @@ def test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows(desktop: D
     assert opening.get("launcher", 0) > 0, f"the launcher opened without a frame: {opening}"
 
 
+def test_the_closed_launcher_draws_nothing_as_the_time_it_would_show_turns(
+    desktop: Desktop,
+) -> None:
+    """The closed launcher draws nothing as a minute turns, though its foot says the time.
+
+    Qt draws a window for any change inside it, clear or hidden alike, so the closed
+    launcher drew a frame nobody saw each time its foot's facts changed: the time each
+    minute, the lag, the volume (2026-11-01). The margin's clock is seen, so it may draw.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    machine.wait_until_succeeds("test $(date +%S) -ge 45", timeout=timedelta(seconds=70))
+    desktop.as_account("qs ipc call frames start")
+    # The span measured, across the turn of the minute, not a wait for something to happen.
+    machine.sleep(duration=timedelta(seconds=QUIET))
+    frames = json.loads(desktop.as_account("qs ipc call frames said"))
+    print(f"frames in {QUIET} s across a minute: {frames}")
+    assert "launcher" not in frames, f"the closed launcher drew as the minute turned: {frames}"
+    # And it says the time it's now as it opens, in the opening's own report, which is made
+    # before anything else follows the opening. The minute has 45 s left to turn in.
+    now = desktop.as_account("date +%H:%M").strip()
+    since = desktop.mark()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.reported("stands ", lambda rest: now in rest, since)
+    desktop.launcher_ready()
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+
+
 def test_the_shell_draws_nothing_behind_the_lock(desktop: Desktop) -> None:
     """The shell draws no frame of its own windows while the lock covers them.
 
