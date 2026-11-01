@@ -9,6 +9,8 @@
 
 use dictation::language::LanguageModel;
 
+use crate::said;
+
 /// The most of a transcript one prompt holds, in characters. English runs
 /// about four characters a token, so this is about 600 of the 1024 tokens
 /// the NPU reads, leaving room for what it's asked and a word that's
@@ -20,15 +22,52 @@ const PART_CHARS: usize = 2400;
 /// somehow stop getting shorter.
 const ROUNDS: usize = 4;
 
-/// The summary of the call titled `title` that `transcript` writes down.
+/// A summary as written, kept or not.
+pub enum Summed {
+    /// It names only what the call does.
+    Kept(String),
+    /// Written twice, it named what the call never did each time, these.
+    Strayed(Vec<String>),
+}
+
+/// The summary of the call titled `title` that `transcript` writes down,
+/// naming only what the call does. One naming what the call never did
+/// is written once more, told not to name it, and given up on if it
+/// still does; each such summary is logged, since nothing else keeps it,
+/// to tell a made-up name from a word the check mistook for one.
 ///
 /// # Errors
 ///
 /// When the model fails to answer.
-pub fn summarize(
+pub fn grounded(
     model: &mut LanguageModel,
     title: &str,
     transcript: &str,
+) -> Result<Summed, String> {
+    let mut strays = Vec::new();
+    for _ in 0..2 {
+        let written = summarize(model, title, transcript, &strays)?;
+        let named = said::strays(&written, transcript);
+        if named.is_empty() {
+            return Ok(Summed::Kept(written));
+        }
+        eprintln!(
+            "call-transcripts: a summary named {}, which the call never did:\n{written}",
+            named.join(", ")
+        );
+        strays.extend(named);
+    }
+    Ok(Summed::Strayed(strays))
+}
+
+/// The summary of the call titled `title` that `transcript` writes down,
+/// told not to name what `strays` holds, which an earlier summary named
+/// and the call never did.
+fn summarize(
+    model: &mut LanguageModel,
+    title: &str,
+    transcript: &str,
+    strays: &[String],
 ) -> Result<String, String> {
     let mut texts = parts(transcript, PART_CHARS);
     let mut from = From::Transcript;
@@ -45,7 +84,7 @@ pub fn summarize(
         texts = parts(&notes.join("\n\n"), PART_CHARS);
         from = From::Notes;
     }
-    model.answer(&summary_of(title, from, &texts.join("\n\n")))
+    model.answer(&summary_of(title, from, &texts.join("\n\n"), strays))
 }
 
 /// What a prompt gives the model to read.
@@ -73,13 +112,21 @@ fn named(title: &str) -> String {
     }
 }
 
-fn summary_of(title: &str, from: From, text: &str) -> String {
+fn summary_of(title: &str, from: From, text: &str, strays: &[String]) -> String {
+    let unsaid = if strays.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " The call never mentions {}, so don't either.",
+            strays.join(" or ")
+        )
+    };
     format!(
         "Below is {} of {}. Write a short summary of it for Joel, who was on the call. Start \
          with a sentence or two saying what it was about. Then list, as bullets, what was \
-         decided and what anyone said they would do, naming who. Use only what the call says, \
-         and leave out a list that would be empty. Write only the summary, with no note of \
-         your own.\n\n{text}",
+         decided and what anyone said they would do, naming who. Say only what the call \
+         says, and name nothing it doesn't name.{unsaid} If nothing was decided or promised, \
+         stop after those sentences. Write only the summary, with no note of your own.\n\n{text}",
         from.what(),
         named(title),
     )

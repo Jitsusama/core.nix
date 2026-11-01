@@ -167,6 +167,55 @@
         touch $out
       '';
 
+  # A call writes down only what was said. Joel's side is a quiet room, a
+  # second of loud noise with no speech in it, then his question; the far
+  # end's is silence with a click. Dictation's words are set, as they are
+  # on a machine that has them, since Whisper told them writes them back
+  # for a take with no speech, as a real call's did. One turn, Joel's
+  # question, with none of those words and no "[static]" for the noise,
+  # proves the noise and the silence gave none.
+  call-transcripts-writes-only-what-was-said =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./model.nix { };
+      words = pkgs.writeText "dictation-words" "Quorvex\nTallimander\n";
+    in
+    pkgs.runCommand "call-transcripts-writes-only-what-was-said"
+      {
+        nativeBuildInputs = [
+          pkgs.espeak-ng
+          pkgs.sox
+        ];
+      }
+      ''
+        espeak-ng -v en-us -s 160 -w said.wav "Can we move the review to Thursday?"
+        sox said.wav -r 16000 -c 1 -b 16 ask.wav
+        made() { sox -R -n -r 16000 -c 1 -b 16 "$@"; }
+        made room.wav synth 4 pinknoise vol 0.001
+        made noise.wav synth 1 pinknoise vol 0.03
+        made click.wav synth 0.02 square 1000 vol 0.3
+        made silence.wav trim 0 5
+        sox room.wav noise.wav room.wav ask.wav room.wav mine.wav
+        sox silence.wav click.wav silence.wav silence.wav theirs.wav
+        DICTATION_DEVICE=CPU DICTATION_WORDS=${words} ${dictation}/bin/call-transcripts \
+          transcribe ${model} mine.wav theirs.wav > transcript.md
+        cat transcript.md
+        if grep -qiE 'quorvex|tallimander' transcript.md; then
+          echo "Whisper wrote dictation's words, which nobody said"
+          exit 1
+        fi
+        if grep -qE '[][()]' transcript.md; then
+          echo "the transcript says what the noise sounded like, which nobody said"
+          exit 1
+        fi
+        grep '^\*\*' transcript.md > said
+        if [ "$(wc -l < said)" != 1 ] || grep -q '^\*\*Others\*\*' said || ! grep -qi review said; then
+          echo "the transcript isn't Joel's question alone"
+          exit 1
+        fi
+        touch $out
+      '';
+
   # screen-text reads a screenshot's words: a picture drawn as the check
   # builds, wider and taller than the detector's tile, holds a heading,
   # then a row of two lines apart, the first across where two tiles

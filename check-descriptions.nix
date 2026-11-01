@@ -179,6 +179,11 @@
     a call's two recorded sides come out as one transcript, cut at each side's pauses, in the order
     they spoke, each turn with its speaker and its time in the call
   '';
+  call-transcripts-writes-only-what-was-said = ''
+    a call writes down only what was said: a loud noise with no speech in it and a silent far end
+    give no turn and no bracketed sound, and none of the words dictation is told, which Whisper
+    writes back for no speech
+  '';
   calls-passes-clippy = ''
     clippy finds nothing in calls or its tests
   '';
