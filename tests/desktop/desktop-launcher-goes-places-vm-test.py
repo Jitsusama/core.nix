@@ -3101,6 +3101,64 @@ def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: Desktop) -> None:
+    """An opening is traced, a span a step with where its first row lay, and sent as it closes.
+
+    Joel saw a void above a menu's first row under load, and asked that the shell trace itself
+    (2026-10-31). Each opening is a trace: a step into Machine and the step back home are spans
+    under it, each ended as its list settled, holding where the first row lay. As it closes the
+    opening is sent whole, one line, to the collector.
+    """
+    machine = desktop.machine
+    heard = "$XDG_RUNTIME_DIR/collector/heard.jsonl"
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # First an opening with no collector listening, its send refused, as
+    # when the collector is down: what's sent after it still arrives.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.as_account("systemctl --user start stand-in-collector")
+    try:
+        machine.wait_until_succeeds(
+            desktop.in_session("test -S $XDG_RUNTIME_DIR/collector/lines.sock"),
+            timeout=dt.timedelta(seconds=10),
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.down_to("Machine")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Machine"])
+        machine.send_key("left")
+        desktop.launcher_until(lambda shown: shown["held"] == [])
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+        opening = [span for span in spans if span["name"] == "open"][-1]
+        mine = [span for span in spans if span["trace"] == opening["trace"]]
+        assert opening["end"] is not None, opening
+        steps = [span for span in mine if span["name"] == "step"]
+        backs = [span for span in mine if span["name"] == "back"]
+        assert [span["about"]["into"] for span in steps] == ["category:computer"], mine
+        assert len(backs) == 1, mine
+        for span in steps + backs:
+            assert span["parent"] == opening["span"], span
+            assert span["end"] is not None, span
+            assert span["about"]["firstAt"] == 0, span
+        # Sent whole as it closed: one line, its trace's spans in it.
+        line = machine.wait_until_succeeds(
+            desktop.in_session(f"grep -a {opening['trace']} {heard} | tail -1 | grep ."),
+            timeout=dt.timedelta(seconds=10),
+        )
+        sent = json.loads(line)["resourceSpans"][0]
+        service = sent["resource"]["attributes"][0]["value"]["stringValue"]
+        assert service == "launcher", sent["resource"]
+        names = sorted(span["name"] for span in sent["scopeSpans"][0]["spans"])
+        assert {"open", "step", "back"} <= set(names), names
+    finally:
+        desktop.as_account("systemctl --user stop stand-in-collector")
+
+
 # About as many people as Tuple lists on Joel's machine, said anew every
 # 0.3 s to load the shell as Slack's answers do People.
 CROWD_LOAD = 8000

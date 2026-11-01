@@ -134,6 +134,12 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-ask.py);
 
+  # Stands in for the collector, keeping each line the launcher sends it
+  # (desktop/stand-in-collector.py).
+  standInCollector = pkgs.writers.writePython3 "stand-in-collector" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-collector.py);
+
   # Stands in for the google program, which would ask Google, on its socket
   # (desktop/stand-in-google.py).
   standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
@@ -600,6 +606,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The google program would ask Google, as an account nobody signed
         # in to in the VM; the test starts the stand-in when it wants it.
         systemd.user.services.google.Service.ExecStart = lib.mkForce "${standInGoogle} %t/google.sock";
+        # The collector where the launcher's traces are tested, started by
+        # the test that reads what it was sent.
+        systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {
+          Service.ExecStart = "${standInCollector}";
+        };
         jitsusama.google.window = [
           "${googleWindow}"
           "%u"
