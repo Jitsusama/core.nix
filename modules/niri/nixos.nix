@@ -77,8 +77,10 @@
     # made on the rest) holds it when niri starts with NIRI_HOLD_FIRST_FRAME
     # set, which home.nix sets, never through the config, which a running
     # niri older than the patch would refuse whole: on a screen of its own, not nested in a window, an output's first
-    # frame waits until a background or overlay layer surface maps on it,
-    # the wallpaper or the greeter, for at most 5 seconds, and never while
+    # frame waits until a background or overlay layer surface covering it
+    # maps, the wallpaper or the greeter, for at most 5 seconds; a smaller
+    # one, such as the closed launcher's single pixel or the margin's strip,
+    # would show the bare backdrop around it, so it doesn't count. Never while
     # the session locks, so the screen keeps what the splash left until
     # then. Its tests run as niri builds, and the screens test, whose niri is
     # on its screens as on a laptop, reads that it held.

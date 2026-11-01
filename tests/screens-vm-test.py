@@ -527,7 +527,7 @@ def test_niri_held_each_screens_first_frame_for_the_desktop(booted: Screens) -> 
     print(said)
     for screen in ("Virtual-1", "Virtual-2"):
         assert re.search(
-            rf" {screen}: first frame drawn (once a background or overlay surface mapped"
+            rf' {screen}: first frame drawn (once "wallpaper" covered it'
             r"|as its hold ran out), \d+ ms after starting$",
             said,
             re.MULTILINE,
