@@ -11,8 +11,16 @@ publish = false
 # What counts as a call, and when one starts and ends, kept in one place
 # for everything that follows calls; call-transcripts is one.
 calls = { path = "../calls" }
+# The noise-cancelled microphone is a PipeWire client of its own, so
+# nothing slow runs on PipeWire's real-time thread. Asking for 1.2's
+# interface gives it what a stream asks for each cycle and target.object;
+# nixpkgs' PipeWire is 1.6.
+pipewire = { version = "0.10", features = ["v1_2_0"] }
 # Screenshots are PNGs, which screen-text reads the words of.
 png = "0.18"
+# The noise-cancelled microphone hands sound between PipeWire's real-time
+# thread and its denoiser through rings that never lock or allocate.
+rtrb = "0.4"
 serde_json = "1.0"
 
 [dev-dependencies]

@@ -803,6 +803,15 @@
     other senses and the renames still waiting that tests/names-kept.nix keeps, each printed with
     its word, and the check refuses a stand-in name breaking each of its rules
   '';
+  noise-cancelled-cleans-a-noisy-clip = ''
+    a person's voice recorded over a room's noise comes out of the noise-cancelled denoiser, on
+    the CPU, with the noise past it at least 10 dB quieter and the voice within 6 dB of how it
+    was spoken
+  '';
+  noise-cancelled-switches-to-the-new-one = ''
+    a switch restarts noise-cancelled after it reloads the units, so the microphones offered are
+    never the old program's
+  '';
   nothing-names-its-own-look = ''
     no module but the theme's names a colour or a face
   '';
@@ -1771,6 +1780,12 @@
     notice from Calls says the meeting's summary is ready; a notice raised as the call started
     offers the line for its chat, and the next meeting, stopped from that notice's Stop
     Transcribing, lets its recorders go with the call still on and isn't recorded once rejoined
+  '';
+  vm-a-microphone-is-noise-cancelled = ''
+    a microphone in Joel's PipeWire is offered a second time as "its name, Noise Cancelled",
+    heard only while something records from that one and with no model loaded before; recorded
+    beside the microphone itself, its noise comes out at least 10 dB quieter and its voice within
+    10 dB, and once the recording stops the program says it rests and stops hearing it
   '';
   vm-bluetooth-types-at-the-disk-prompt = ''
     a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its

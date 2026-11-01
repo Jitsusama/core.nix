@@ -269,6 +269,37 @@ impl Core {
         )?;
         Ok(Compiled(compiled))
     }
+
+    /// `model` compiled for the CPU to run on one thread, for a model run
+    /// often on little at a time, as a microphone's every frame is, where
+    /// spreading each run across every core costs more than it saves.
+    ///
+    /// # Errors
+    ///
+    /// When the CPU can't run the model.
+    pub fn compile_on_one_thread(&self, model: &Model) -> Result<Compiled> {
+        let properties = [Property {
+            key: c"INFERENCE_NUM_THREADS".as_ptr(),
+            value: c"1".as_ptr().cast(),
+        }];
+        let mut compiled = ptr::null_mut();
+        // SAFETY: the model is alive, the properties' strings are static and
+        // counted, and the out pointer is valid.
+        check(
+            unsafe {
+                ov_core_compile_model_props(
+                    self.0,
+                    model.0,
+                    c"CPU".as_ptr(),
+                    properties.len(),
+                    properties.as_ptr(),
+                    &raw mut compiled,
+                )
+            },
+            "compiling for the CPU on one thread",
+        )?;
+        Ok(Compiled(compiled))
+    }
 }
 
 /// A model as read, before it's compiled.
@@ -453,6 +484,16 @@ impl Request {
             status
         };
         check(status, &format!("setting {}", name.to_string_lossy()))
+    }
+
+    /// Reads the f32 output `name` of the last run, as `run` reads the one
+    /// it's given, for a model with more than one output wanted.
+    ///
+    /// # Errors
+    ///
+    /// When the output isn't there or isn't a float.
+    pub fn output(&self, name: &str, tail: Option<usize>) -> Result<(Vec<i64>, Vec<f32>)> {
+        self.read(name, tail)
     }
 
     fn read(&self, name: &str, tail: Option<usize>) -> Result<(Vec<i64>, Vec<f32>)> {

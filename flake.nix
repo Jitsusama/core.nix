@@ -181,6 +181,7 @@
         niri = ./modules/niri/home.nix;
         nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
+        noise-cancelled = ./modules/noise-cancelled/home.nix;
         onepassword = ./modules/onepassword/home.nix;
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
