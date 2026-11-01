@@ -444,7 +444,7 @@ Singleton {
         screensWaiting = screensWaiting.concat([then]);
         if (screensWaiting.length > 1)
             return;
-        screensPatience.restart();
+        // Throwaway: no patience.
         Niri.request("Outputs", answer => {
             if (answer?.Outputs)
                 screens = Places.screensOf(answer.Outputs);
