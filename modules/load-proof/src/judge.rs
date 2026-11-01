@@ -7,7 +7,9 @@
 //! are the load proof's (PLAN-20261025-H5CHVF):
 //!
 //! - a call's p95 round trip within 10 ms of idle's, and none lost that
-//!   idle didn't lose;
+//!   idle didn't lose; and whatever idle did, a p95 no longer than 300 ms
+//!   and no more than 1% lost, since an idle that was poor itself proves
+//!   nothing about a call;
 //! - no sound that misses a turn;
 //! - niri missing no more frames than idle;
 //! - a key's echo p99 within 2 ms of idle's, and none over 16 ms;
@@ -18,6 +20,12 @@ use std::fmt::Write;
 
 /// A call's p95 round trip may grow this much under load, in ms.
 const CALL_MARGIN: f64 = 10.0;
+/// The longest p95 round trip a call bears, in ms: ITU-T G.114 accepts a
+/// one-way delay of 150 ms for nearly every call.
+const CALL_WORST: f64 = 300.0;
+/// The most of a call's packets that may go missing, as a share: about
+/// where a voice codec stops sounding clear.
+const CALL_LOSS: f64 = 0.01;
 /// A key's p99 echo may grow this much under load, in ms.
 const KEYS_MARGIN: f64 = 2.0;
 /// No key's echo may take longer than a frame at 60 Hz, in ms.
@@ -79,12 +87,20 @@ pub fn judge(idle: &Reading, loaded: &Reading) -> Vec<String> {
         match word {
             "calls" => {
                 let (was, now) = (figure(idle, "p95"), figure(loaded, "p95"));
+                // Each figure is said once: against idle, or else against
+                // what a call bears, which a poor idle may have passed.
                 if !within(now, was + CALL_MARGIN) {
                     let _ = write!(says, "p95 {now:.1} ms against {was:.1} ms idle; ");
+                } else if !within(now, CALL_WORST) {
+                    let _ = write!(says, "p95 {now:.1} ms, past {CALL_WORST} ms; ");
                 }
                 let (was, now) = (figure(idle, "lost"), figure(loaded, "lost"));
+                let calls = figure(loaded, "calls");
                 if !within(now, was) {
                     let _ = write!(says, "{now} lost against {was} idle; ");
+                } else if !within(now, calls * CALL_LOSS) {
+                    let share = CALL_LOSS * 100.0;
+                    let _ = write!(says, "{now} lost of {calls}, past {share}%; ");
                 }
             }
             "sound" => {
@@ -204,6 +220,19 @@ saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
                 "keys: p99 2.70 ms against 0.60 ms idle; worst 17.0 ms",
                 "save: p99 288.0 ms against 9.0 ms idle",
             ]
+        );
+    }
+
+    #[test]
+    fn a_call_past_what_a_call_bears_fails_however_bad_idle_was() {
+        let poor = IDLE.replace(
+            "calls 1500 lost 0 p50 20.50 ms p95 23.00 ms",
+            "calls 1500 lost 60 p50 118.00 ms p95 330.00 ms",
+        );
+        let loaded = poor.replace("p95 330.00", "p95 335.00");
+        assert_eq!(
+            judge(&read(&poor), &read(&loaded)),
+            ["call: p95 335.0 ms, past 300 ms; 60 lost of 1500, past 1%"]
         );
     }
 
