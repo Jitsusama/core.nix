@@ -3032,23 +3032,6 @@ Scope {
     // at once, so nothing waits on it.
     property string parting: ""
     property bool fading: false
-
-    // Whether the card is seen: open, or leaving with a parting word. Qt
-    // draws a window for any change inside it, clear or hidden alike, so
-    // what the card reads live follows only while it's seen, and catches up
-    // as it opens. Closed, the foot's facts changing (the time, the lag,
-    // the volume) drew the launcher a frame each that nobody saw
-    // (2026-11-01).
-    readonly property bool cardSeen: open || parting !== ""
-
-    // What the closed card held, brought up to now as it opens. The
-    // bindings holding it follow cardSeen only once the opening's handler
-    // is done, and that handler reports what the foot says.
-    function footCatchUp() {
-        standing.facts = standing.factsNow;
-        foot.said = foot.saidNow;
-        foot.told = foot.toldNow;
-    }
     function leaveSaying(word) {
         parting = word;
         fading = false;
@@ -3456,7 +3439,6 @@ Scope {
             partingLater.stop();
             fading = false;
             parting = "";
-            footCatchUp();
             footReset();
             footStage = 0;
             factsWidest = {};
@@ -4216,28 +4198,9 @@ Scope {
                         readonly property var choice: root.selected ?? root.asking
                         // A parting word stands where Return was, its
                         // mark in the success colour.
-                        readonly property var toldNow: root.parting !== ""
+                        readonly property var told: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : root.keysFor(choice)
-                        // As the card last showed them, while it's closed
-                        // (root.cardSeen).
-                        property var told: []
-
-                        Binding {
-                            target: foot
-                            property: "told"
-                            value: foot.toldNow
-                            when: root.cardSeen
-                            restoreMode: Binding.RestoreNone
-                        }
-
-                        Binding {
-                            target: foot
-                            property: "said"
-                            value: foot.saidNow
-                            when: root.cardSeen
-                            restoreMode: Binding.RestoreNone
-                        }
                         // As the foot says them: Return last, at the right
                         // end, the rest before it. Return first, in a place
                         // kept for the widest set, left holes after the keys
@@ -4259,10 +4222,8 @@ Scope {
                         // The room the left has, short of the keys.
                         readonly property real room: keysFrom - Theme.space.xl - Theme.space.l
 
-                        // As the card last showed it, while it's closed.
-                        property string said: ""
                         // An answer's footer says where it came from.
-                        readonly property string saidNow: {
+                        readonly property string said: {
                             if (!choice)
                                 return "";
                             if (choice.state)
@@ -4312,10 +4273,7 @@ Scope {
                         Row {
                             id: standing
 
-                            // Each as it is now, its colour's facts too, so
-                            // one held while the card is closed says what
-                            // it said rather than reading its piece.
-                            readonly property var factsNow: Facts.all
+                            readonly property var facts: Facts.all
                                 .filter(fact => fact.entry.tier !== "when" && fact.piece
                                     && fact.piece.present && fact.piece.value !== "")
                                 .map(fact => ({
@@ -4323,23 +4281,10 @@ Scope {
                                     sign: fact.piece.sign !== "" ? Theme.glyph[fact.piece.sign] ?? "" : "",
                                     glance: fact.piece.glance ?? "",
                                     least: fact.piece.least ?? "",
-                                    wants: !!fact.piece.wants,
-                                    role: fact.piece.role ?? "text",
-                                    hue: fact.piece.hue ?? ""
+                                    piece: fact.piece
                                 }))
                                 // The network's glyph alone says all is well.
                                 .filter(fact => fact.sign !== "" || fact.glance !== "")
-                            // As the card last showed them, while it's
-                            // closed (root.cardSeen).
-                            property var facts: []
-
-                            Binding {
-                                target: standing
-                                property: "facts"
-                                value: standing.factsNow
-                                when: root.cardSeen
-                                restoreMode: Binding.RestoreNone
-                            }
 
                             // Read no longer than the shortest they've had to
                             // since the launcher opened (root.footStage), so
@@ -4411,9 +4356,9 @@ Scope {
                                     text: modelData.said
                                     textFormat: Text.PlainText
                                     // As the margin's mark wears it (Margin.qml).
-                                    color: !modelData.wants ? Theme.muted
-                                        : modelData.role !== "text" ? Theme[modelData.role]
-                                        : Theme[modelData.hue]
+                                    color: !modelData.piece.wants ? Theme.muted
+                                        : modelData.piece.role !== "text" ? Theme[modelData.piece.role]
+                                        : Theme[modelData.piece.hue]
                                     font: measure.font
                                 }
                             }
