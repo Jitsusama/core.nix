@@ -36,6 +36,9 @@
     low is a thing of its own, keyed by its address, signed by its name and drawn by its kind's
     glyph, wanting Joel now only at the critical mark
   '';
+  a-mac-sshd-lets-a-gone-caller-go = ''
+    every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -1147,6 +1150,9 @@
   '';
   spotify-player-signs-in-where-spotify-answers = ''
     spotify-player's sign-in asks ncspot's Spotify app to answer at the one address that app takes
+  '';
+  sshd-lets-a-gone-caller-go = ''
+    every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
   stands-alone = ''
     nothing here names a machine, its repository or employer
