@@ -250,7 +250,7 @@ Singleton {
     // it and exits at once, so it starts under its own id, with its quest
     // loaded as start() loads one, since only a record brings one back.
     function reopened(one, cwd) {
-        const fresh = one.fresh === true;
+        const fresh = false;
         const quest = fresh && typeof one.quest === "string" && one.quest !== ""
             ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd]
