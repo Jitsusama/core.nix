@@ -79,7 +79,7 @@ index 0473e45..2db00c2 100644
              lines_to_scroll,
              font_opts,
 diff --git a/src/opts/tests/parse.rs b/src/opts/tests/parse.rs
-index 5011738..6ab5508 100644
+index 5011738..26bce87 100644
 --- a/src/opts/tests/parse.rs
 +++ b/src/opts/tests/parse.rs
 @@ -35,6 +35,7 @@ impl Opts {
@@ -111,7 +111,7 @@ index 5011738..6ab5508 100644
 +                .into_view()
 +                .unwrap(),
 +            config,
-+            Some(ResolvedTheme::Light),
++            None,
 +        )
 +        .unwrap(),
 +        Opts {
