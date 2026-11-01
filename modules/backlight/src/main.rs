@@ -46,11 +46,17 @@
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
 //! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
+//!
+//! Usage: backlight --keeps-the-open-level <saver>, as root. It keeps the
+//! panel's saved level current while the lid is open (keep.rs), running the
+//! saver with the backlight's systemd-backlight instance each time the
+//! brightness holds after a change.
 
 mod ask;
 mod curve;
 mod facts;
 mod follow;
+mod keep;
 mod keyboard;
 mod light;
 mod monitor;
@@ -65,7 +71,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 use std::time::Instant;
 
 use tokio::sync::watch;
@@ -159,7 +165,15 @@ async fn lid_moved(lid: &mut Option<Pin<Box<PropertyStream<'_, bool>>>>) -> zbus
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    match run().await {
+    let ran = if env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--keeps-the-open-level")
+    {
+        keep_the_open_level().await
+    } else {
+        run().await
+    };
+    match ran {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("<3>{error}");
@@ -313,6 +327,31 @@ fn write_whole(path: &Path, text: &str) -> io::Result<()> {
     let writing = path.with_extension("writing");
     fs::write(&writing, text)?;
     fs::rename(&writing, path)
+}
+
+/// Keeps the panel's saved level current while the lid is open, through the
+/// saver the command line names (keep.rs).
+async fn keep_the_open_level() -> Result<(), Box<dyn Error>> {
+    let saver = env::args_os()
+        .nth(2)
+        .ok_or("usage: backlight --keeps-the-open-level <saver>")?;
+    let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
+        eprintln!("<5>this machine has no backlight to keep");
+        return Ok(());
+    };
+    let instance = format!("backlight:{}", screen.name);
+    let mut watch = screen.watch()?;
+    keep::keep(
+        keep::HOLD,
+        async || watch.changed().await,
+        || match Command::new(&saver).arg(&instance).status() {
+            Ok(status) if status.success() => (),
+            Ok(status) => eprintln!("<4>saving {instance} ended {status}"),
+            Err(error) => eprintln!("<4>can't save {instance}: {error}"),
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {

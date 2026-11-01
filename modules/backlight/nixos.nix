@@ -8,7 +8,10 @@
 # timer.
 # systemd-backlight's units save each level at shutdown, but the screen's
 # only while the lid is open (saves-while-open.sh), since a shut lid's panel
-# reads dark and the next boot would come up at it. The session's bus starts
+# reads dark and the next boot would come up at it, and a root service keeps
+# the screen's saved level current while the lid is open through the same
+# saver, so a shutdown with the lid shut loses nothing set since. The
+# session's bus starts
 # the program that warms the built-in panel when the daemon first asks it.
 { config, pkgs, ... }:
 let
@@ -81,6 +84,24 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = "${config.systemd.package}/bin/udevadm trigger --action=change --subsystem-match=iio";
+    };
+  };
+
+  # Saving only at shutdown lost every level set since the last shutdown with
+  # the lid open, for a machine shut down with it shut. So the panel's saved
+  # level is kept current too, through the same saver, each time its
+  # brightness holds after a change (src/keep.rs).
+  systemd.services.backlight-keeps-the-open-level = {
+    description = "Keeps the panel's saved brightness current while the lid is open";
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      ExecStart = "${
+        pkgs.callPackage ./package.nix { }
+      }/bin/backlight --keeps-the-open-level ${savesWhileOpen}/bin/saves-while-open";
+      Restart = "on-failure";
+      ProtectHome = true;
+      PrivateNetwork = true;
+      PrivateTmp = true;
     };
   };
 

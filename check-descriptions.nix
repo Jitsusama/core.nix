@@ -1497,6 +1497,10 @@
     the prompt starts only git-engine and its mkfifo, then forks nothing across prompts in and out
     of a repository, reftable included
   '';
+  the-screen-keeps-its-level-as-it-changes = ''
+    the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
+    saver, so a shutdown with the lid shut loses nothing set since
+  '';
   the-screen-keeps-its-level-while-the-lid-is-shut = ''
     a shutdown with the lid shut keeps the screen's brightness saved while it was open, so the
     next boot doesn't come up dark, and a keyboard's light is saved either way
