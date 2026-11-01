@@ -7,10 +7,10 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] FLAKE ATTR...` to build a flake on the
-//! builder, or on a machine nearby for systems this one can't build, as src/there.rs
-//! says. A build waiting for a builder says so in /run/nix-offload/wanted,
-//! which counts as queued work.
+//! [--print-out-paths] [--here] (FLAKE ATTR... | DRV...)` to build a flake, or
+//! derivations, on the builder, or on a machine nearby for systems this
+//! one can't build, as src/there.rs says. A build waiting for a builder
+//! says so in /run/nix-offload/wanted, which counts as queued work.
 //!
 //! `nix-offload relay --listen ADDRESS --to ADDRESS` passes connections on
 //! to a builder's tunnel, dialling it again while it closes before the
@@ -139,7 +139,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--print-out-paths] [--here] FLAKE ATTR... \
+                    [--print-out-paths] [--here] (FLAKE ATTR... | DRV...) \
                     | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
@@ -309,7 +309,7 @@ fn there(arguments: &[String]) -> ExitCode {
         return changed_there(rest);
     }
     let Some(asked) = there::asked(arguments) else {
-        eprintln!("nix-offload: there takes a flake and its attributes\n{USED}");
+        eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
         return ExitCode::from(64);
     };
     // A test names its own folder, as changed-checks lets one.

@@ -1,7 +1,7 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] FLAKE ATTR...`: builds a flake's attributes on the lent
-//! builder by sending it a command, or here with `--here` when none takes
-//! it.
+//! [--print-out-paths] [--here] FLAKE ATTR...`, or `DRV...` in place of the flake and
+//! its attributes: builds a flake's attributes on the lent builder by
+//! sending it a command, or here with `--here` when none takes it.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -27,6 +27,12 @@
 //! from wherever it was built, and prints its paths as `nix build` does,
 //! so a system built elsewhere can be sent on or switched to.
 //! `there --takes` says which of these it takes, a word a line.
+//!
+//! Derivations, given by their paths in place of a flake and its
+//! attributes, are what a build tool that evaluates its own targets
+//! hands on. No machine could fetch them, so they're copied up to the
+//! lent builder with what they're built from, a few megabytes, and built
+//! there, never on a machine nearby.
 //!
 //! An attribute for a system a machine nearby takes, named by its second
 //! word as in `checks.aarch64-darwin.x`, goes to that machine instead
@@ -66,6 +72,8 @@ pub struct Asked {
     /// Whether it may build here when no builder takes it, as `--here`
     /// says.
     here: bool,
+    /// Whether the attributes are derivations' paths, with no flake.
+    derivations: bool,
 }
 
 /// Reads `there`'s arguments: its flags, in any place, then the flake and
@@ -93,6 +101,19 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             word => words.push(word.to_owned()),
         }
     }
+    if words.first().is_some_and(|word| derivation(word)) {
+        let whole = words.iter().all(|word| derivation(word));
+        return (whole && apply.is_none() && out.is_none()).then(|| Asked {
+            flake: String::new(),
+            attributes: words,
+            flags,
+            apply,
+            out,
+            print,
+            here,
+            derivations: true,
+        });
+    }
     let (flake, attributes) = words.split_first()?;
     let one = attributes.len() == 1;
     let alone = one || (apply.is_none() && out.is_none());
@@ -104,7 +125,19 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         out,
         print,
         here,
+        derivations: false,
     })
+}
+
+/// Whether `word` is a derivation's path in the store, with `^` and the
+/// outputs wanted or without.
+fn derivation(word: &str) -> bool {
+    let path = word.split('^').next().unwrap_or(word);
+    // A store path's name is exact, so `.DRV` names no derivation.
+    path.starts_with("/nix/store/")
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension == "drv")
 }
 
 impl Asked {
@@ -119,6 +152,7 @@ impl Asked {
             out: self.out.clone(),
             print: self.print,
             here: self.here,
+            derivations: self.derivations,
         }
     }
 
@@ -140,6 +174,17 @@ impl Asked {
         }
         words.extend(self.flags.iter().cloned());
         match &self.apply {
+            // A derivation named alone is built whole, as `nix build` takes
+            // one only with the outputs it's to build.
+            _ if self.derivations => {
+                words.extend(self.attributes.iter().map(|path| {
+                    if path.contains('^') {
+                        path.clone()
+                    } else {
+                        format!("{path}^*")
+                    }
+                }));
+            }
             Some(function) => {
                 if !locked {
                     words.push("--impure".to_owned());
@@ -273,6 +318,10 @@ pub fn run(
         return unsent(asked, nix, "no builder is lent");
     };
     let reached = match folder_of(&asked.flake) {
+        _ if asked.derivations => Ok(Sending {
+            command: asked.command(),
+            bundle: None,
+        }),
         None => Ok(Sending {
             command: asked.command(),
             bundle: None,
@@ -288,6 +337,13 @@ pub fn run(
     };
     let reached = reached.and_then(|sending| {
         let ran = loop {
+            // Copied to each builder that stands, since one stood again
+            // after a loss holds none of them.
+            if asked.derivations
+                && let Err(why) = up(asked, &lent.store, nix)
+            {
+                break Err(why);
+            }
             let bring = match (&asked.out, asked.print) {
                 (Some(out), _) => Bring::Folder(out),
                 (None, true) => Bring::Store(nix),
@@ -315,6 +371,29 @@ pub fn run(
         Ok(ran) if ran.status != UNREACHED => ran,
         Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
         Err(error) => unsent(asked, nix, &error),
+    }
+}
+
+/// Copies the derivations asked for, and what they're built from, into the
+/// builder's `store`, which builds only what it holds. Each of those is
+/// named by its contents, so the builder takes them unsigned.
+fn up(asked: &Asked, store: &str, nix: &str) -> Result<(), String> {
+    // ssh's control socket goes in TMPDIR, as when what's built comes back.
+    let copied = Command::new(nix)
+        .args(["copy", "--to", store, "--derivation"])
+        .args(
+            asked
+                .attributes
+                .iter()
+                .map(|path| path.split('^').next().unwrap_or(path)),
+        )
+        .env("TMPDIR", "/tmp")
+        .status()
+        .map_err(|error| format!("couldn't run {nix}: {error}"))?;
+    if copied.success() {
+        Ok(())
+    } else {
+        Err("the derivations couldn't be copied up to the builder".to_owned())
     }
 }
 
@@ -555,8 +634,16 @@ impl Source {
 /// folder no commit names, `--changed`, changed-checks run elsewhere,
 /// `--here`, a build no builder took made here, and `--print-out-paths`,
 /// what was built brought into this store.
-pub const TAKES: [&str; 8] = [
-    "tree", "apply", "out", "wants", "folder", "changed", "here", "print",
+pub const TAKES: [&str; 9] = [
+    "tree",
+    "apply",
+    "out",
+    "wants",
+    "folder",
+    "changed",
+    "here",
+    "print",
+    "derivation",
 ];
 
 /// The ref a bundle carries its commit under, here only while it's made.
@@ -1064,8 +1151,9 @@ pub fn shared<'a>(
     answers: impl Fn(&str) -> bool,
 ) -> (Vec<(&'a Nearby, Asked)>, Option<Asked>) {
     // An applied function or an output copied back goes the lent way,
-    // which knows them.
-    if asked.apply.is_some() || asked.out.is_some() {
+    // which knows them, and derivations too: they may hold what only the
+    // lent builder may build.
+    if asked.apply.is_some() || asked.out.is_some() || asked.derivations {
         return (
             Vec::new(),
             Some(asked.with(&asked.flake, asked.attributes.clone())),
@@ -1492,8 +1580,23 @@ mod tests {
                 out: None,
                 print: false,
                 here: false,
+                derivations: false,
             })
         );
+    }
+
+    #[test]
+    fn derivations_are_asked_for_by_their_paths_whole_unless_they_name_outputs() {
+        // A build tool's own targets come evaluated, as derivations.
+        let both = asked(&words("-L /nix/store/aaaa-x.drv /nix/store/bbbb-y.drv^out")).unwrap();
+        assert_eq!(
+            both.build(),
+            words("build --no-link -L /nix/store/aaaa-x.drv^* /nix/store/bbbb-y.drv^out")
+        );
+        assert_eq!(asked(&words("/nix/store/aaaa-x.drv checks.x.a")), None);
+        assert_eq!(asked(&words("--apply f /nix/store/aaaa-x.drv")), None);
+        assert_eq!(asked(&words("--out /o /nix/store/aaaa-x.drv")), None);
+        assert_eq!(asked(&words("/nix/store/aaaa-x")), None);
     }
 
     #[test]
