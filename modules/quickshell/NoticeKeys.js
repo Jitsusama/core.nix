@@ -25,9 +25,10 @@ const table = [
     // Forgetting is a card's ending act, as vi's dd deletes a line.
     // Backspace too, since the cards' footers have named it from the start.
     { act: "forget", keys: [["d", "d"], "Delete", "Backspace"] },
-    // With Shift, all of them. DD is ours: D deletes to the line's end in
-    // vi, which a stack has no use for.
-    { act: "forgetAll", keys: [["D", "D"], "Shift+Delete", "Shift+Backspace"] },
+    // All of them, as vi's dG deletes from here to the last line: the
+    // front card is the first and the stack runs on to the oldest. Shift
+    // with Delete or Backspace does the same, and neither asks.
+    { act: "forgetAll", keys: [["d", "G"], "Shift+Delete", "Shift+Backspace"] },
     // The newest and the oldest, as vi's first and last lines.
     { act: "newest", keys: [["g", "g"]] },
     { act: "oldest", keys: ["G"] },
@@ -58,8 +59,8 @@ function begins(sequence, typed) {
 // whether the key was the stack's at all. Escape always cancels what's in
 // progress before it steps out of anything.
 function read(standing, key) {
-    // A key with no name, as Shift pressed on its own for the second D of
-    // DD, changes nothing, so a sequence or count begun carries on past it.
+    // A key with no name, as Shift pressed on its own for the G of dG,
+    // changes nothing, so a sequence or count begun carries on past it.
     if (key === "") {
         return { act: "", count: 0, standing, ours: false };
     }

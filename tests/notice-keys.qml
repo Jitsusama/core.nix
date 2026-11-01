@@ -49,8 +49,9 @@ QtObject {
             ["Return runs, and with Ctrl closes", ["Return", "Ctrl+Return"], ["run", "runAndClose"]],
             ["dd forgets, as Delete and Backspace", ["d", "d", "Delete", "Backspace"],
                 ["forget", "forget", "forget"]],
-            ["DD forgets all, as Shift+Delete", ["D", "D", "Shift+Delete"],
+            ["dG forgets all, as Shift+Delete", ["d", "G", "Shift+Delete"],
                 ["forgetAll", "forgetAll"]],
+            ["DD is no key of vi's", ["D", "D"], []],
             ["gg goes to the newest and G the oldest", ["g", "g", "G"], ["newest", "oldest"]],
             ["q closes", ["q"], ["close"]],
             ["a count goes before a motion", ["5", "j", "1", "2", "k"], ["5next", "12previous"]],
@@ -61,8 +62,8 @@ QtObject {
             ["Escape cancels a count, then steps out", ["4", "Escape", "j", "Escape"],
                 ["next", "back"]],
             ["Escape cancels a key waiting for its second", ["g", "Escape", "g"], []],
-            // Shift pressed for the second D is a key of its own, with no name.
-            ["a key with no name changes nothing", ["D", "", "D", "3", "", "j"],
+            // Shift pressed for dG's G is a key of its own, with no name.
+            ["a key with no name changes nothing", ["d", "", "G", "3", "", "j"],
                 ["forgetAll", "3next"]]
         ];
         for (const [what, keys, want] of doing)
