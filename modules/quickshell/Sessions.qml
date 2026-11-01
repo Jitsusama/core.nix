@@ -186,7 +186,7 @@ Singleton {
         }
         lookFor([cwd, asked.folder], there => {
             if (there[0]) {
-                reopened(asked.id, cwd);
+                reopened({ id: asked.id }, cwd);
                 return;
             }
             if (there[1])
@@ -244,11 +244,19 @@ Singleton {
     }
 
     // Opens a closed session again where it left off, in a window of its
-    // own in `cwd`, held as every start is.
-    function reopened(id, cwd) {
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd,
-            "zsh", "-lic", held(`pi --session ${id}`)]);
-        Report.say(`resumed session ${id}`);
+    // own in `cwd`, held as every start is. One pi never saved, as it
+    // saves none before its first answer, is `fresh` in restore.json
+    // (85PKB2, 2026-11-01 [e51c350d]): `pi --session` finds no record of
+    // it and exits at once, so it starts under its own id, with its quest
+    // loaded as start() loads one, since only a record brings one back.
+    function reopened(one, cwd) {
+        const fresh = one.fresh === true;
+        const quest = fresh && typeof one.quest === "string" && one.quest !== ""
+            ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd]
+            .concat(quest, ["zsh", "-lic",
+                held(fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`)]));
+        Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
     }
 
     // The sessions the last boot's end took away, to reopen after a cold
@@ -347,7 +355,7 @@ Singleton {
         }
         lookFor([lost.cwd], there => {
             if (there[0])
-                reopened(lost.id, lost.cwd);
+                reopened(lost, lost.cwd);
             else
                 gone?.(lost.cwd, "");
         });
@@ -427,14 +435,32 @@ Singleton {
     // Each connector's screen as niri describes it (Places.js), asked for
     // as places are kept and as they're reopened, since a dock or a boot
     // can move a screen to another connector. Kept as last said when niri
-    // doesn't answer.
+    // doesn't answer. niri never answers a request it refused, nor one
+    // sent on a connection that closed, so Reopen Them All waits no more
+    // than screensPatience on it, rather than never reopening at all.
     property var screens: ({})
+    property var screensWaiting: []
     function lookAtScreens(then) {
+        screensWaiting = screensWaiting.concat([then]);
+        if (screensWaiting.length > 1)
+            return;
+        screensPatience.restart();
         Niri.request("Outputs", answer => {
             if (answer?.Outputs)
                 screens = Places.screensOf(answer.Outputs);
-            then();
+            screensLooked();
         });
+    }
+    function screensLooked() {
+        screensPatience.stop();
+        const waiting = screensWaiting;
+        screensWaiting = [];
+        waiting.forEach(then => then());
+    }
+    Timer {
+        id: screensPatience
+        interval: 2000
+        onTriggered: root.screensLooked()
     }
     function keepArrangement() {
         if (bootId === "")
@@ -612,7 +638,8 @@ Singleton {
         const given = listed.filter(one => one !== null && typeof one === "object"
             && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
             && typeof one.cwd === "string" && one.cwd.startsWith("/"))
-            .map(one => ({ id: String(one.id), cwd: one.cwd }));
+            .map(one => ({ id: String(one.id), cwd: one.cwd, fresh: one.fresh === true,
+                quest: typeof one.quest === "string" ? one.quest : "" }));
         if (given.length === 0)
             return "refused: no session with an id and a folder";
         console.info(`sessions: reopening ${given.length} handed over`);
@@ -654,7 +681,7 @@ Singleton {
             reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
                 into: next.at ? root.into(next.at) : null, opened: null };
             reopenStartedAt = Date.now();
-            reopened(next.one.id, next.one.cwd);
+            reopened(next.one, next.one.cwd);
             reopenPatience.restart();
         });
     }
