@@ -379,6 +379,27 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
+def test_a_notices_offers_keep_to_its_card_however_long_their_names(desktop: Desktop) -> None:
+    """A notice's offers keep to its card, however long their names.
+
+    The tokens warning offers to pause the session spending most by its whole title, which ran
+    past the card to the screen's edge (Joel, 2026-11-01).
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    with desktop.told("shows card Tokens Run Out in About 3 Hours"):
+        desktop.as_account(
+            "notify-send --expire-time=60000 --action=0='See What Spends'"
+            " --action=1='Pause One Log Writes: Every PR and CI Write Costs Only Its Change'"
+            " 'Tokens Run Out in About 3 Hours' 'resets 22:03' > /tmp/answer 2>&1 < /dev/null &"
+        )
+    spilled = json.loads(desktop.as_account("qs ipc call notices spilled"))
+    assert spilled == [], f"the offers of {spilled} ran past their card"
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
+    desktop.as_account("qs ipc call notices seen")
+
+
 def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_launcher(
     desktop: Desktop,
 ) -> None:
