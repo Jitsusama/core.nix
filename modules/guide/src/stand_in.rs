@@ -205,12 +205,12 @@ impl Machine for StandIn {
         // A cryptsetup without systemd's plugins passes over every token
         // and answers as if it had tried, so a step that leaves them out
         // would pass here and do nothing on a machine.
+        let plugins = given.plain.iter().any(|&(name, value)| {
+            name == "LD_LIBRARY_PATH" && Path::Tokens.value() == Some(value)
+        });
         if program == Program::Tool(Tool::Cryptsetup)
             && args.contains(&"--token-only")
-            && !given
-                .plain
-                .iter()
-                .any(|&(name, value)| name == "LD_LIBRARY_PATH" && Path::Tokens.value() == Some(value))
+            && !plugins
         {
             return Err(Fault::Unscripted {
                 call: format!("{call} without systemd's token plugins"),
