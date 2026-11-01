@@ -1,5 +1,5 @@
 diff --git a/src/niri.rs b/src/niri.rs
-index ff041ec..cd15028 100644
+index ff041ec..d6b0a59 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
 @@ -186,6 +186,16 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
@@ -78,7 +78,7 @@ index ff041ec..cd15028 100644
              screen_transition: None,
              debug_damage_tracker: OutputDamageTracker::from_output(&output),
          };
-@@ -4592,6 +4626,49 @@ impl Niri {
+@@ -4592,6 +4626,51 @@ impl Niri {
          }
      }
  
@@ -114,7 +114,8 @@ index ff041ec..cd15028 100644
 +    fn covering_surface(&self, output: &Output) -> Option<String> {
 +        let size = output_size(output).to_i32_round::<i32>();
 +        let map = layer_map_for_output(output);
-+        map.layers()
++        let covering = map
++            .layers()
 +            .filter(|surface| matches!(surface.layer(), Layer::Background | Layer::Overlay))
 +            .filter(|surface| self.mapped_layer_surfaces.contains_key(*surface))
 +            .find(|surface| {
@@ -122,13 +123,14 @@ index ff041ec..cd15028 100644
 +                    geo.loc == Point::default() && geo.size.w >= size.w && geo.size.h >= size.h
 +                })
 +            })
-+            .map(|surface| surface.namespace().to_owned())
++            .map(|surface| surface.namespace().to_owned());
++        covering
 +    }
 +
      fn redraw(&mut self, backend: &mut Backend, output: &Output) {
          let _span = tracy_client::span!("Niri::redraw");
  
-@@ -4610,7 +4687,7 @@ impl Niri {
+@@ -4610,7 +4689,7 @@ impl Niri {
          self.update_render_elements(Some(output));
  
          let mut res = RenderResult::Skipped;
@@ -137,7 +139,7 @@ index ff041ec..cd15028 100644
              let state = self.output_state.get_mut(output).unwrap();
              state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
              state.unfinished_animations_remain |=
-@@ -4638,7 +4715,29 @@ impl Niri {
+@@ -4638,7 +4717,29 @@ impl Niri {
          }
  
          let is_locked = self.is_locked();
