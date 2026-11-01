@@ -9,6 +9,7 @@
 
 use crate::config::{Config, FeedConfig};
 use crate::feed::{self, Pace};
+use crate::findings::{Finding, Severity};
 use crate::history::History;
 use crate::notices::{self, Buses, Desk};
 use crate::picture::Picture;
@@ -340,6 +341,27 @@ pub fn catch_up(history: &History, config: &Config) -> Result<(), String> {
     }
 }
 
+/// What of `findings` the margin and notices hear, while the tokens'
+/// warning watches the cap whose findings' keys start `watched`. That cap
+/// speaks only through the warning, so its own findings stay out: one
+/// warning, said once. What the provider's meter says beside it is only a
+/// note, which asks for no look: on 31 October the meter sat five hours
+/// past its budget with nothing refused, while the cap's count refused.
+/// The collection keeps them all.
+fn heard(findings: &[Finding], watched: Option<&str>) -> Vec<Finding> {
+    findings
+        .iter()
+        .filter(|finding| !watched.is_some_and(|key| finding.key.starts_with(key)))
+        .cloned()
+        .map(|mut finding| {
+            if watched.is_some() && finding.detector == "said" {
+                finding.severity = finding.severity.min(Severity::Note);
+            }
+            finding
+        })
+        .collect()
+}
+
 /// One whole pass: how things stand, what's found, what the shell shows
 /// and what's said.
 pub fn pass(
@@ -352,24 +374,13 @@ pub fn pass(
     let picture = Picture::read(history, config, now)?;
     let raised = crate::detect::all(&picture, history, config)?;
     let findings = crate::findings::settle(history, &raised, now)?;
-    // The cap the tokens' warning watches speaks only through it, so its
-    // own findings stay out of the margin and out of notices: one warning,
-    // said once. The collection keeps them all.
     let inputs = crate::tokens::read(history, now, crate::tokens::Rate::Live)?;
     let tokens = inputs
         .as_ref()
         .and_then(|inputs| crate::tokens::outlook(inputs, writer.tokens, &picture.zone, now));
     writer.tokens = tokens.as_ref().map(|tokens| tokens.level);
     let watched = inputs.as_ref().map(crate::tokens::key);
-    let said: Vec<crate::findings::Finding> = findings
-        .iter()
-        .filter(|finding| {
-            !watched
-                .as_ref()
-                .is_some_and(|key| finding.key.starts_with(key))
-        })
-        .cloned()
-        .collect();
+    let said = heard(&findings, watched.as_deref());
     let mut shown = status::status(&picture, &said);
     shown.tokens = tokens;
     writer.write(
@@ -739,6 +750,50 @@ fn take(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn found(key: &str, detector: &str) -> Finding {
+        Finding {
+            key: key.into(),
+            detector: detector.into(),
+            severity: Severity::Warning,
+            title: String::new(),
+            detail: String::new(),
+            dollars: 0.0,
+            surprise: 1.0,
+            badge: String::new(),
+            note: String::new(),
+            session: None,
+            quest: None,
+            action: None,
+            cap: false,
+            started: 0.0,
+            marked: false,
+        }
+    }
+
+    // On 31 October the provider's meter sat five hours past its budget
+    // with nothing refused, while the cap's own count was what refused.
+    #[test]
+    fn a_watched_cap_speaks_alone_and_the_meter_beside_it_only_notes() {
+        let findings = [
+            found("cap:proxy:week:near", "caps"),
+            found("said:0123", "said"),
+            found("burn:x", "burn"),
+        ];
+        let kept: Vec<(String, Severity)> = heard(&findings, Some("cap:proxy:week:"))
+            .into_iter()
+            .map(|finding| (finding.key, finding.severity))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                ("said:0123".to_owned(), Severity::Note),
+                ("burn:x".to_owned(), Severity::Warning)
+            ]
+        );
+        // With no cap watched, the meter is all there is to go on.
+        assert_eq!(heard(&findings, None)[1].severity, Severity::Warning);
+    }
 
     // Five seconds first, as the contract says, doubling while a feed
     // keeps stopping quickly, and five again after one that ran a while.
