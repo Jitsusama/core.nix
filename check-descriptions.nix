@@ -1407,6 +1407,11 @@
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
     typical key under five milliseconds
   '';
+  the-launcher-traces-each-opening = ''
+    each opening of the launcher is a trace whose steps, backs, acts and searches are spans under
+    it, a void above a list's first row is told from a list scrolled down, and the whole is sent
+    in OTLP's JSON mapping
+  '';
   the-litra-follows-the-cameras = ''
     `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
     by a whole file naming a program

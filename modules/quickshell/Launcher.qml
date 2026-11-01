@@ -2207,6 +2207,7 @@ Scope {
     function enter(row) {
         if (!row || row.gone)
             return false;
+        traces.began("step", { into: row.key ?? "", depth: held.length });
         // A step is timed to its frame as a key is, named by the arrow and
         // the row, so a slow place shows in the journal and the trials
         // (Joel, 2026-10-28: "programs from the main launcher screen takes
@@ -2539,6 +2540,7 @@ Scope {
         // A thing landed in from a search goes back to the search, past the
         // collection it was found in.
         const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
+        traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
         const left = held[held.length - steps];
         held = held.slice(0, -steps);
         restart(left.typed);
@@ -2580,6 +2582,26 @@ Scope {
         id: trials
     }
 
+    Traces {
+        id: traces
+    }
+
+    // The list has settled: the spans waiting on it end, with how it's laid.
+    function settledNow() {
+        traces.settled(laidNow());
+    }
+
+    // Where the list lays its rows now, for the spans waiting on it to
+    // settle: its first row's place below its top (0 at rest, less once
+    // scrolled, null when not drawn), where it's scrolled to and how tall
+    // what it holds is.
+    function laidNow() {
+        const first = list.itemAtIndex(0);
+        return { firstAt: first ? Math.round(first.y - list.contentY) : null,
+            contentY: Math.round(list.contentY), contentHeight: Math.round(list.contentHeight),
+            rows: matches.length, depth: held.length };
+    }
+
     // Every choice the words find (Fuzzy.js says how), in Rank.js's order:
     // what's latched for what's typed, then by tier, then what was picked
     // for it, what's picked most and the better match. One found only with
@@ -2599,8 +2621,12 @@ Scope {
 
     function search(letters) {
         const searchBegan = Date.now();
-        if (!steadying)
+        // Only what's typed is a search of its own; a list said again in
+        // place is a refresh. Its letters are counted, never kept.
+        if (!steadying) {
             forgetGone();
+            traces.began("search", { letters: letters.length, depth: held.length });
+        }
         const narrowing = typed !== "" && letters.startsWith(typed);
         // Inside a step, the row selected as what's typed is taken away,
         // to stay on.
@@ -2945,6 +2971,7 @@ Scope {
         // Its thing has gone, so there's nothing left to do it to.
         if (choice.gone)
             return;
+        traces.began("act", { key: choice.key ?? "", depth: held.length });
         // A command puts its start in the field, to be finished there.
         if (choice.start !== undefined) {
             fill(choice.start);
@@ -3157,6 +3184,13 @@ Scope {
         function frames(): string {
             root.framesCounted = true;
             return String(root.framesDrawn);
+        }
+
+        // The spans of the last openings (Traces.qml), oldest first, as
+        // JSON: each opening, and each step, back, act and search in it
+        // with where its list laid its first row.
+        function traced(): string {
+            return traces.traced();
         }
     }
 
@@ -3445,6 +3479,10 @@ Scope {
 
     onOpenChanged: {
         madeSince(open ? "opening" : "closing");
+        if (open)
+            traces.opened({});
+        else
+            traces.closed({ depth: held.length, rows: matches.length });
         if (open) {
             // Joined whole each time it opens, stale or not: a
             // collection's count reads live state (Agents' sessions, the
@@ -3986,6 +4024,7 @@ Scope {
                                         list.pick(false);
                                     else if (picking.to !== list.fillAt(root.current))
                                         list.pick(true);
+                                    Qt.callLater(root.settledNow);
                                     return;
                                 }
                                 list.typedWas = root.typed;
@@ -3995,6 +4034,7 @@ Scope {
                                 scrolling.complete();
                                 list.pick(false);
                                 Qt.callLater(() => list.settled = true);
+                                Qt.callLater(root.settledNow);
                             }
 
                             // Where the selection is drawn, set by pick

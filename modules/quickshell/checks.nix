@@ -559,6 +559,24 @@ onLinux {
       touch $out
     '';
 
+  # Each opening of the launcher is a trace: its steps, backs, acts and
+  # searches spans under it, a void above a list's first row told from a
+  # list scrolled down, and the whole sent in OTLP's JSON mapping, as
+  # tests/traces.qml holds launcher/Traces.js to it in Qt's own engine.
+  the-launcher-traces-each-opening =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-traces-each-opening" { } ''
+      cp ${../../tests/traces.qml} traces.qml
+      cp ${./launcher/Traces.js} Traces.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml traces.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
