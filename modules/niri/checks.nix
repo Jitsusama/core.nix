@@ -92,6 +92,24 @@ onLinux {
         && lib.elem "srgb-gamut" home.jitsusama.niri.outputs."eDP-1"
       );
 
+  # niri's unit asks for full-range RGB on a screen that takes it by the
+  # name full-range-when-selectable.patch reads, so the ask isn't lost to a
+  # rename on either side.
+  niri-is-asked-for-full-range =
+    let
+      unit =
+        (account graphical).xdg.configFile."systemd/user/niri.service.d/full-range.conf" or {
+          text = "";
+        };
+      patch = builtins.readFile ./full-range-when-selectable.patch;
+    in
+    holds "niri-is-asked-for-full-range"
+      "niri's unit doesn't ask for full-range RGB, or asks by a name full-range-when-selectable.patch doesn't read."
+      (
+        lib.hasInfix ''var_os("NIRI_FULL_RANGE_WHEN_SELECTABLE")'' patch
+        && lib.hasInfix "Environment=NIRI_FULL_RANGE_WHEN_SELECTABLE=1" unit.text
+      );
+
   # niri reads its settings again in place when a switch changes them, and
   # refuses all of them for one it doesn't know. The niri running through a
   # switch is the one the machine booted, from before the switch, so a

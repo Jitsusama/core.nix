@@ -1,0 +1,198 @@
+tty: send full-range RGB to a screen that says it takes it
+
+The driver's Broadcast RGB, left at Automatic, sends limited-range RGB
+for a TV mode such as 3840x2160 at 60 Hz, and a monitor reading full
+range shows its blacks grey. With NIRI_FULL_RANGE_WHEN_SELECTABLE=1 in
+its environment, niri sets Broadcast RGB to Full on a connector whose
+EDID says, in a CTA video capability block, that its RGB range is
+selectable, so the AVI infoframe tells the screen it's sent full range.
+A screen that says nothing, such as a TV that wants limited range, is
+left at Automatic. It's asked through the environment rather than the
+config, so a config written for this niri still parses in one without
+the patch.
+
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 3b6f2be..1739ef8 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -71,6 +71,7 @@ use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+ use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
+ 
+ mod gamut;
++mod range;
+ 
+ const SUPPORTED_COLOR_FORMATS: [Fourcc; 4] = [
+     Fourcc::Xrgb8888,
+@@ -1333,6 +1334,17 @@ impl Tty {
+                 Err(err) => debug!("couldn't reset HDR properties: {err:?}"),
+             }
+ 
++            if full_range_wanted() {
++                match full_range_where_selectable(&device.drm, &props) {
++                    Ok(true) => info!(
++                        "output {connector_name:?}: sending full-range RGB, as its EDID \
++                         says it takes either range"
++                    ),
++                    Ok(false) => (),
++                    Err(err) => debug!("couldn't set the RGB range: {err:?}"),
++                }
++            }
++
+             match get_panel_orientation(&props) {
+                 Ok(x) => orientation = Some(x),
+                 Err(err) => {
+@@ -3486,6 +3498,44 @@ impl<'a> ConnectorProperties<'a> {
+     }
+ }
+ 
++/// Whether a screen whose EDID says it takes either RGB range is sent full
++/// range. Asked for through `NIRI_FULL_RANGE_WHEN_SELECTABLE=1`, read at start,
++/// so a config written for this niri still parses in one without the patch.
++fn full_range_wanted() -> bool {
++    std::env::var_os("NIRI_FULL_RANGE_WHEN_SELECTABLE").is_some_and(|v| v == "1")
++}
++
++/// Sets the connector's `Broadcast RGB` to Full when the screen's EDID says it
++/// takes either range. The driver's Automatic sends limited range for a TV
++/// mode such as 3840x2160 at 60 Hz, which a monitor reading full range shows
++/// with grey blacks. It says whether it set it.
++fn full_range_where_selectable(
++    device: &DrmDevice,
++    props: &ConnectorProperties,
++) -> anyhow::Result<bool> {
++    let edid = get_edid(device, props.connector)?;
++    if !range::rgb_range_selectable(&edid) {
++        return Ok(false);
++    }
++    let (info, value) = props.find(c"Broadcast RGB")?;
++    let property::ValueType::Enum(values) = info.value_type() else {
++        bail!("wrong property type")
++    };
++    let (_, enums) = values.values();
++    let full = enums
++        .iter()
++        .find(|e| e.name() == c"Full")
++        .context("no Full range")?
++        .value();
++    if *value != full {
++        props
++            .device
++            .set_property(props.connector, info.handle(), full)
++            .context("error setting property")?;
++    }
++    Ok(true)
++}
++
+ const DRM_MODE_COLORIMETRY_DEFAULT: u64 = 0;
+ 
+ fn reset_hdr(props: &ConnectorProperties) -> anyhow::Result<()> {
+diff --git a/src/backend/tty/range.rs b/src/backend/tty/range.rs
+new file mode 100644
+index 0000000..91960d6
+--- /dev/null
++++ b/src/backend/tty/range.rs
+@@ -0,0 +1,104 @@
++//! Whether a screen takes full-range RGB, from its EDID.
++//!
++//! A TV mode, such as 3840x2160 at 60 Hz, gets limited-range RGB from the
++//! driver unless it's told otherwise, and a monitor that reads full range
++//! then shows blacks as grey. A screen whose EDID says, in a CTA video
++//! capability block, that its RGB range is selectable reads the AVI
++//! infoframe that says which range it's sent, so it can be sent full. One
++//! that says nothing, such as a TV that wants limited range, is left to the
++//! driver.
++
++/// Whether an EDID says its screen's RGB quantization range is selectable.
++pub fn rgb_range_selectable(edid: &[u8]) -> bool {
++    let Ok(info) = libdisplay_info::info::Info::parse_edid(edid) else {
++        return false;
++    };
++    let Some(edid) = info.edid() else {
++        return false;
++    };
++    edid.extensions().iter().any(|extension| {
++        libdisplay_info::cta::CTA::from_extension(extension).is_some_and(|cta| {
++            cta.data_blocks().iter().any(|block| {
++                block
++                    .video_cap()
++                    .is_some_and(|cap| cap.selectable_rgb_quantization_range)
++            })
++        })
++    })
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    /// The XPS 14 DA14260's OLED panel's EDID, read from its connector: a
++    /// base block and a DisplayID extension, with no CTA block.
++    const PANEL: [u8; 256] = [
++        0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x30, 0xe4, 0xc6, 0x07,
++        0x00, 0x00, 0x00, 0x00, 0x00, 0x23, 0x01, 0x04, 0xb5, 0x1e, 0x13, 0x78,
++        0x07, 0x9a, 0xe5, 0xb0, 0x4f, 0x3d, 0xb8, 0x22, 0x0b, 0x50, 0x54, 0x00,
++        0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
++        0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x52,
++        0x57, 0x32, 0x34, 0x47, 0x81, 0x31, 0x34, 0x30, 0x57, 0x54, 0x32, 0x0a,
++        0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x0c, 0x28, 0x00, 0x01, 0x00,
++        0x00, 0x2b, 0x01, 0x0a, 0x20, 0x20, 0x01, 0x3f, 0x70, 0x20, 0x79, 0x02,
++        0x00, 0x20, 0x00, 0x0c, 0x3c, 0xe6, 0x24, 0xc6, 0x07, 0x00, 0x00, 0x00,
++        0x00, 0x00, 0x19, 0x00, 0x21, 0x00, 0x1d, 0xc8, 0x0b, 0x5d, 0x07, 0x40,
++        0x0b, 0x08, 0x07, 0x88, 0x06, 0x6b, 0x4f, 0xd7, 0x93, 0xb8, 0x2d, 0x82,
++        0x0b, 0x02, 0x45, 0x54, 0x40, 0x5e, 0x1a, 0x60, 0x18, 0x10, 0x23, 0x78,
++        0x26, 0x00, 0x09, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0x00, 0x00,
++        0x22, 0x00, 0x28, 0x03, 0xb0, 0x0a, 0x85, 0x3f, 0x0b, 0x9f, 0x00, 0x2f,
++        0x80, 0x1f, 0x00, 0x07, 0x07, 0x77, 0x00, 0x5b, 0x00, 0x07, 0x00, 0x03,
++        0xb0, 0x0a, 0x85, 0x3f, 0x0b, 0x9f, 0x00, 0x2f, 0x80, 0x1f, 0x00, 0x07,
++        0x07, 0xf7, 0x07, 0x1b, 0x06, 0x07, 0x00, 0x2b, 0x00, 0x06, 0x27, 0x00,
++        0x14, 0x77, 0x00, 0x00, 0x2e, 0x00, 0x06, 0x00, 0x4d, 0x40, 0x5e, 0x40,
++        0x5e, 0x00, 0x2a, 0x90,
++    ];
++
++    /// The panel's base block with one CTA extension holding a video
++    /// capability block, whose RGB range is selectable or not.
++    fn with_video_capability(selectable: bool) -> Vec<u8> {
++        let mut base = PANEL[..128].to_vec();
++        base[126] = 1;
++        base[127] = checksum(&base[..127]);
++        let mut cta = vec![0u8; 128];
++        cta[0] = 0x02;
++        cta[1] = 0x03;
++        // An extended tag block of two bytes: tag 0, the video capability
++        // block, whose bit 6 says the RGB range is selectable.
++        let block = [0xe2, 0x00, if selectable { 0x40 } else { 0x00 }];
++        // Where the data blocks end: after the four bytes of the header.
++        cta[2] = 7;
++        cta[4..4 + block.len()].copy_from_slice(&block);
++        cta[127] = checksum(&cta[..127]);
++        base.extend(cta);
++        base
++    }
++
++    fn checksum(bytes: &[u8]) -> u8 {
++        bytes
++            .iter()
++            .fold(0u8, |sum, &byte| sum.wrapping_add(byte))
++            .wrapping_neg()
++    }
++
++    #[test]
++    fn a_screen_that_says_its_range_is_selectable_is_sent_full() {
++        assert!(rgb_range_selectable(&with_video_capability(true)));
++    }
++
++    #[test]
++    fn a_screen_that_says_nothing_of_its_range_is_left_alone() {
++        assert!(!rgb_range_selectable(&with_video_capability(false)));
++        assert!(!rgb_range_selectable(&PANEL));
++    }
++
++    #[test]
++    fn an_edid_that_cant_be_read_is_left_alone() {
++        assert!(!rgb_range_selectable(&[]));
++        assert!(!rgb_range_selectable(&[0u8; 128]));
++    }
++}

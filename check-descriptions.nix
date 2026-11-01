@@ -716,6 +716,9 @@
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
   '';
+  niri-is-asked-for-full-range = ''
+    niri's unit asks for full-range RGB on a screen whose EDID takes it, by the name its patch reads
+  '';
   niri-names-each-screen-once = ''
     niri's config names each screen in one output block, the panel's holding srgb-gamut, and refuses a
     second block for a screen, which niri would ignore
