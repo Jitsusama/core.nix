@@ -95,7 +95,7 @@ fn the_check_runs_as_the_account_not_as_root() {
     let mut stand_in = StandIn::new();
     stand_in.answers(Program::Carried(DONE), &[], 0, "done\n", "");
     step(enrol()).observe(&mut stand_in).unwrap();
-    assert_eq!(stand_in.calls, [DONE]);
+    assert_eq!(stand_in.calls, [format!("{DONE} {{HOME XDG_RUNTIME_DIR}}")]);
 }
 
 #[test]
