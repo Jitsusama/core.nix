@@ -18,7 +18,12 @@
 # the lock, and the lid suspends the laptop on battery as it would anywhere
 # else. A
 # suspend asked for, from the power key or the shell, isn't held.
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   docked = pkgs.callPackage ./docked/package.nix { };
 in
@@ -28,6 +33,13 @@ in
     HandleLidSwitch = "suspend";
     HandleLidSwitchExternalPower = "ignore";
   };
+  # A switch that changes them reloads logind, which reads them again with
+  # every session kept. NixOS marks logind to reload rather than restart,
+  # since a restart would end the sessions, but gives it nothing to reload
+  # on, so a switch left the old settings running until the next boot.
+  systemd.services.systemd-logind.reloadTriggers = [
+    config.environment.etc."systemd/logind.conf".source
+  ];
 
   # Root's, since logind gives the lid's lock to a service with no session
   # only when it's root's.
