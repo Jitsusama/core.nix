@@ -21,8 +21,10 @@ pragma ComponentBehavior: Bound
 // each says its machine, after this machine's; Go To joins one by the
 // words its node gives; one out of reach stays, saying so, and isn't
 // joined; one last heard of before this boot is passed over; and a steer
-// to one goes through the node, its refusal said. It exits 0 once every
-// case holds, and otherwise 1, saying which didn't.
+// to one goes through the node, its refusal said. While the node answers,
+// the presence folder isn't watched; once it's lost, what it said stays
+// shown until the folder is read. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -73,6 +75,8 @@ ShellRoot {
                 ended();
             else if (stage === "node")
                 watched();
+            else if (stage === "lost")
+                lost();
         } catch (error) {
             fail(error.message);
         }
@@ -259,8 +263,8 @@ ShellRoot {
                     root.expect("the node is asked with the steer",
                         text.startsWith("--realm harbour steer FARAWY\n{")
                         && text.includes('"act":"pause"'), text);
-                    console.log("a session is known by its own record");
-                    Qt.callLater(() => Qt.exit(0));
+                    root.stage = "unwatched";
+                    watches.running = true;
                 } catch (error) {
                     root.fail(error.message);
                 }
@@ -270,6 +274,42 @@ ShellRoot {
     function steeredBy() {
         steerSaid.running = true;
     }
+
+    // While the node answers, the shell holds no watch on the presence
+    // folder, which is written as often as any session changes: counted
+    // among the inotify watches the shell, this process's parent, holds.
+    Process {
+        id: watches
+        command: ["sh", "-c", 'i=$(printf "%x" "$(stat -c %i "$1")");'
+            + ' cat /proc/"$PPID"/fdinfo/* 2>/dev/null | grep -c " ino:$i " || true', "count",
+            `${root.state}/pi/agentic-harness.pi/mesh-workflow/presence`]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.expect("the presence folder isn't watched while the node answers",
+                        text.trim() === "0", `${text.trim()} watches`);
+                    root.stage = "lost";
+                    node.active = false;
+                    root.answering.connected = false;
+                } catch (error) {
+                    root.fail(error.message);
+                }
+            }
+        }
+    }
+
+    // A node lost leaves what it said shown until the folder says it all,
+    // never a moment with no sessions, then the folder's alone.
+    function lost() {
+        expect("a node lost leaves no moment with no sessions", addresses() !== "", "none");
+        if (addresses() !== "NOWIN6")
+            return;
+        console.log("a session is known by its own record");
+        Qt.callLater(() => Qt.exit(0));
+    }
+
+    // The node's end of the shell's watch, so the node can be lost.
+    property var answering: null
 
     Connections {
         target: Sessions
@@ -287,6 +327,7 @@ ShellRoot {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/harbour.sock`
         handler: Socket {
             id: asked
+            Component.onCompleted: root.answering = asked
             parser: SplitParser {
                 onRead: line => {
                     // Asked as mycelium's node takes a watch, its groups, if

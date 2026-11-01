@@ -603,11 +603,16 @@ WAKEUPS_A_SECOND = 5
 
 
 def woken(desktop: Desktop, pid: str) -> dict[str, int]:
-    """Give how often each of the shell's threads has switched off its processor, by its name."""
+    """Give how often each of the shell's threads has switched off its processor, by its name.
+
+    A thread that ends while they're read, as a render thread does as the screens go off, is
+    left out rather than failing the read.
+    """
     said = desktop.as_account(
         f"for t in /proc/{pid}/task/*; do"
-        ' printf \'%s %s \' "$(cat $t/comm)" "${t##*/}";'
-        " awk '/ctxt_switches/ { n += $2 } END { print n }' $t/status; done"
+        " n=$(awk '/ctxt_switches/ { n += $2 } END { print n }' $t/status 2>/dev/null)"
+        ' && name=$(cat $t/comm 2>/dev/null) && [ -n "$n" ]'
+        ' && printf \'%s %s %s\\n\' "$name" "${t##*/}" "$n"; done; true'
     )
     threads: dict[str, int] = {}
     for line in said.splitlines():
@@ -678,6 +683,78 @@ def test_the_shell_draws_nothing_behind_the_lock(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call lock release")
     # The lock is a window of its own, which doesn't count its frames.
     assert frames == {}, f"windows drew in {QUIET_LOCKED} s behind the lock: {frames}"
+
+
+# The status files a working machine's writers rewrite, and how often one of them is: lag-watch,
+# the account's disk guard and spend-watch each every ten seconds, 18 writes a minute in all.
+# Joel's machine wrote about 22 a minute to the files the shell reads on 2026-10-31, once the
+# presence folder and the disk guard's drifting estimates are left out, as the shell and #1495
+# leave them.
+REWRITTEN = (
+    "$XDG_RUNTIME_DIR/lag-watch/status.json",
+    "$XDG_RUNTIME_DIR/disk-guard/status.json",
+    "$XDG_RUNTIME_DIR/spend-watch/status.json",
+)
+REWRITE_EVERY = 10
+# The threads that only draw: Qt's render loop, and the software rasteriser the VM draws with.
+DRAWING = ("QSGRenderThread ", "llvmpipe-")
+
+
+def test_the_shell_barely_wakes_behind_the_lock_as_its_files_are_written(
+    desktop: Desktop,
+) -> None:
+    """The shell, every thread of it, wakes under five times a second behind the lock.
+
+    Its files are written meanwhile as a working machine's are. Each read of one logged four
+    lines nobody reads, as Quickshell kept every debug line of its own in its log file, each
+    waking its logging thread: two of the locked shell's 14 wakes a second (2026-10-31).
+
+    Idle turns Joel's screens off once it has locked, so nothing draws there. The VM's niri
+    runs in a window of cage's and can't turn its screen off, so the lock goes on drawing its
+    prompt's cursor here. So the threads that only draw are left out of the count: what the
+    shell draws is held apart, by the subtests counting its frames.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    files = " ".join(REWRITTEN)
+    # The first lock of a shell makes its window, which a loaded host can take past the
+    # three seconds lock-screen waits for it.
+    machine.wait_until_succeeds(desktop.in_session("lock-screen"), timeout=GOING)
+    desktop.as_account(
+        f"systemd-run --user --collect --unit=rewrites rewrites {REWRITE_EVERY} {files}"
+    )
+    try:
+        machine.sleep(duration=timedelta(seconds=3))
+        before = woken(desktop, pid)
+        # The span measured, not a wait for something to happen.
+        machine.sleep(duration=timedelta(seconds=QUIET))
+        after = woken(desktop, pid)
+    finally:
+        desktop.as_account("systemctl --user stop rewrites")
+        desktop.as_account("qs ipc call lock release")
+    rates = {
+        thread: round((count - before.get(thread, 0)) / QUIET, 1)
+        for thread, count in after.items()
+        if count > before.get(thread, 0)
+    }
+    print(f"wakeups a second behind the lock, by thread: {rates}")
+    woke = round(sum(rate for thread, rate in rates.items() if not thread.startswith(DRAWING)), 1)
+    assert woke < WAKEUPS_A_SECOND, f"the shell woke {woke} times a second: {rates}"
+    # The shell's own log, found by its process, each line counted by its level and category.
+    # qs colours what it reads out even into a pipe, which set its colours between a line's
+    # level and category, so a search for the two together never found one.
+    kept = desktop.as_account(
+        f"qs log --no-color -r '*=true' $XDG_RUNTIME_DIR/quickshell/by-pid/{pid}/log.qslog"
+        " | sed 's/^ *//' | cut -d: -f1 | sort | uniq -c | sort -rn"
+    )
+    print(f"what the shell's log kept, by level and category:\n{kept}")
+    reads = sum(
+        int(line.split()[0])
+        for line in kept.splitlines()
+        if line.split()[1:] == ["DEBUG", "quickshell.io.fileview"]
+    )
+    assert reads == 0, f"the shell kept {reads} lines of its files' reads"
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:

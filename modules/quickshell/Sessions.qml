@@ -1151,6 +1151,8 @@ Singleton {
                     });
             }
         } else {
+            if (!folderRead())
+                return;
             for (const file of Object.keys(records).sort()) {
                 const presence = records[file];
                 if ((presence.addresses ?? []).length > 0 && alive(presence.owner))
@@ -1445,24 +1447,43 @@ Singleton {
         relive();
     }
 
-    FolderListModel {
-        id: presences
-        folder: `file://${root.state}/mesh-workflow/presence`
-        showDirs: false
-        nameFilters: ["*.json"]
-    }
-
     // Each record is read from its file, watched, only while the folder is
     // where sessions are known from: while the node answers, it carries
     // every record itself, so a watcher per session would only cost the
     // shell a file each (the 2026-10-29 crash came of readers per
     // session). A node lost makes them once, as many as there are records.
+    // The folder isn't watched either then, since every session's record
+    // is written there as often as it changes: fifteen times a minute woke
+    // the shell for a folder nothing read (2026-10-31).
     readonly property bool fromFolder: node === null
         || !Object.values(node).every(session => session.presence)
+    LazyLoader {
+        id: presenceFolder
+        active: root.fromFolder
+
+        FolderListModel {
+            folder: `file://${root.state}/mesh-workflow/presence`
+            showDirs: false
+            nameFilters: ["*.json"]
+            onStatusChanged: root.relive()
+        }
+    }
+    // Whether every record in the folder is read, so a node lost leaves
+    // what it said shown until the folder says it all, never a moment with
+    // no sessions while the folder is listed.
+    function folderRead() {
+        const listing = presenceFolder.item;
+        return listing !== null && listing.status === FolderListModel.Ready
+            && presenceViews.count === listing.count;
+    }
     Instantiator {
-        model: root.fromFolder ? presences : null
+        id: presenceViews
+        model: root.fromFolder ? presenceFolder.item : null
         // A session that ends takes its file with it, and its state goes too.
         onObjectRemoved: (index, object) => root.forget(object.path)
+        // A record may be read before it's counted, so the last is shown
+        // once it is.
+        onCountChanged: root.relive()
 
         FileView {
             required property string filePath
