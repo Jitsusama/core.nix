@@ -3456,7 +3456,6 @@ Scope {
             partingLater.stop();
             fading = false;
             parting = "";
-            footCatchUp();
             footReset();
             footStage = 0;
             factsWidest = {};
