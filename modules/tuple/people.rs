@@ -1400,6 +1400,7 @@ mod tests {
 
     #[test]
     fn the_socket_a_stopped_daemon_left_is_not_running() {
+        use std::time::{Duration, Instant};
         let path = socket("left");
         drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
         assert!(path.exists());
@@ -1407,7 +1408,6 @@ mod tests {
         // the listener from its fork until it execs, which answers a
         // connection for that moment (a build saw it once, 2026-11-01). So
         // the socket must stop answering soon, rather than at once.
-        use std::time::{Duration, Instant};
         let deadline = Instant::now() + Duration::from_secs(5);
         while running(&path) {
             assert!(
