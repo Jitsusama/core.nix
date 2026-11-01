@@ -188,6 +188,10 @@ struct Lent {
     rate: Option<u64>,
     since: u64,
     used: u64,
+    /// When the time it was asked to live runs out, in seconds since the
+    /// epoch, so one that ran out while the machine slept isn't taken for
+    /// lost.
+    ends: u64,
 }
 
 impl Lent {
@@ -629,7 +633,8 @@ fn serve(settings: &Settings) {
                 Some(seconds) => {
                     let lent = lend(settings, &mut machines, tick.now, seconds);
                     if lent.is_none() {
-                        not_before = decide::next_after(Event::Failed, tick.wants, 0, now());
+                        not_before =
+                            decide::next_after(Event::Failed, tick.wants, 0, u64::MAX, now());
                     }
                     lent
                 }
@@ -640,11 +645,11 @@ fn serve(settings: &Settings) {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
-                match decide::give_back(settings.hours, tick, builder.used, gone) {
+                match decide::give_back(settings.hours, tick, builder.used, builder.ends, gone) {
                     Some(event) => {
-                        let used = builder.used;
+                        let (used, ends) = (builder.used, builder.ends);
                         give_back(settings, &mut machines, builder, event);
-                        not_before = decide::next_after(event, tick.wants, used, now());
+                        not_before = decide::next_after(event, tick.wants, used, ends, now());
                         None
                     }
                     None => Some(builder),
@@ -735,6 +740,7 @@ fn ask(
                 rate,
                 since: now,
                 used: self::now(),
+                ends: now + left,
             })
         }
         _ if ENDING.load(Ordering::SeqCst) => {
@@ -836,6 +842,7 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
         rate: rate.or(left.rate),
         since: left.asked,
         used: ended.at,
+        ends: now() + u64::from(settings.hours.deadline - into_day),
     })
 }
 
