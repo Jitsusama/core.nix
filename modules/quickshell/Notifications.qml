@@ -404,7 +404,7 @@ Scope {
     // steps into the front one's verbs, where j and k choose one and h
     // steps back, and Return does it, or the front one; gg and G turn to
     // the newest and the oldest, or choose the first and last verb; dd or
-    // Delete lets the front one go, and DD or Shift+Delete all of them; a
+    // Delete lets the front one go, and dG or Shift+Delete all of them; a
     // count goes before any of them; q gives the keys back, and Escape
     // cancels what's begun, then steps back, then gives the keys back. The
     // chord that opened the stack hands on to the history (niri's, to

@@ -267,7 +267,7 @@ def test_the_held_notices_take_vis_keys(desktop: Desktop) -> None:
 
     j and k turn the cards, gg and G turn to the newest and the oldest, a count goes before a
     motion, dd forgets the front one, l and h step into its acts and out, where gg and G
-    choose the first and last, q gives the keys back, Escape cancels a count, and DD forgets
+    choose the first and last, q gives the keys back, Escape cancels a count, and dG forgets
     them all. Each key's act is told by what the stack says it did.
     """
     machine = desktop.machine
@@ -312,8 +312,8 @@ def test_the_held_notices_take_vis_keys(desktop: Desktop) -> None:
         for key in ["4", "esc", "j"]:
             machine.send_key(key)
     with desktop.told("lets notices go"):
-        machine.send_key("shift-d")
-        machine.send_key("shift-d")
+        machine.send_key("d")
+        machine.send_key("shift-g")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
     )
