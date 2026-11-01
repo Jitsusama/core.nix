@@ -1469,6 +1469,9 @@
     the XPS 14's kernel leaves the panel's self refresh and frame buffer compression off, since
     PSR2, PSR1 and compression each set the screen flashing after a replug or a lid-shut boot
   '';
+  the-panel-is-asked-until-it-agrees = ''
+    the XPS 14's kernel reads the panel's eDP display control until two reads agree
+  '';
   the-panel-knows-its-luminance = ''
     the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block
   '';

@@ -777,6 +777,15 @@ holds the driver to VESA's controls, which take luminance when the panel
 offers it. `edp-wakes-the-panel`, from linux-next, wakes the panel before
 the read, but a boot with a monitor on USB-C still read it wrong.
 
+On 2026-10-31 a boot docked with the lid shut read the revision right and
+the luminance bits wrong: `max_brightness` read 65535, VESA's 16-bit
+brightness at 0x722, and the panel flickered from the lid's opening through
+a warm reboot, until a boot that read 400. The panel had been woken just
+before, since the firmware never lit it. `edp-reads-display-control-awake`,
+written here, reads the block until two reads 10 ms apart agree, and says at
+notice level what the first read gave when the last differs, so the next
+such boot shows whether waiting was the cure.
+
 ### The Touchpad's Click
 
 The touchpad is a `2C2F` haptic pad on `hid-multitouch`: it has no button,
