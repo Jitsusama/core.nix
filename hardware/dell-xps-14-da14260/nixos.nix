@@ -154,8 +154,10 @@ in
   jitsusama.keyboard.builtIn = [ "0001:0001" ];
 
   # Its firmware's boot menu and setup, for the guide to say when a stick is
-  # written for it.
-  jitsusama.firmware.startFromStick = "Press F12 as it starts, and pick the stick from the boot menu.";
+  # written for it. One press of F12 can miss the moment it's read; pressed
+  # over and over it worked docked or not, without Fn (2026-11-01). Its
+  # Thunderbolt boot is off, so it starts nothing plugged into a dock.
+  jitsusama.firmware.startFromStick = "Plug it into the laptop itself, not a dock. Press power, then tap F12 on the laptop's own keyboard over and over, without Fn, until the boot menu shows, and pick the stick.";
   jitsusama.firmware.clearSecureBootKeys = "Press F2 as it starts. Under Secure Boot, Expert Key Management, choose custom mode and delete all keys, then turn Secure Boot on.";
 
   # The Arc GPU. Its driver takes the firmware framebuffer's card away as it
