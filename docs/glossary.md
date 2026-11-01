@@ -157,7 +157,7 @@ be read, marked unread and archived.
 | Google account | the account Joel's mail and calendar are kept in, which the desktop's own program holds | | the `google` program |
 | mail | Joel's messages in his Google account, and the place in Programs holding them | | Gmail |
 | wants you | mail waiting on Joel's answer | | |
-| unread | mail Joel hasn't opened yet | | |
+| unread | mail Joel hasn't opened yet, or a Slack conversation with messages he hasn't read, which Slack's program lists as its Unread | | |
 | read | mail Joel has opened | | |
 | archive | taking mail out of the inbox, kept where it's found again | | |
 | calendar | Joel's meetings in his Google account, and the place in Programs holding them | | Google Calendar |

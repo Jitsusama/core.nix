@@ -1,10 +1,12 @@
 //! slack-unreads CREDENTIALS FILE SOCKET WAITING [ORIGIN [PACE]]
 //!
-//! What in Slack wants Joel, kept in FILE for the shell's Now (lib's
-//! `unreads` says what it is and how it's read): Slack is asked every
-//! half minute, and FILE is written whole, through a file beside it, only
-//! when what it says changes, or every five minutes so the shell can tell
-//! a quiet Slack from this program gone. Slack refusing the sign-in is
+//! What in Slack is unread and what Joel read last, kept in FILE for the
+//! shell's Now and Slack's program (lib's `unreads` says what it is and
+//! how it's read): Slack is asked every half minute, and FILE is written
+//! whole only when what it says changes, or every five minutes so the
+//! shell can tell a quiet Slack from this program gone. It's written in a
+//! `.writing` folder beside FILE and renamed in, so a shell watching
+//! FILE's folder hears one change. Slack refusing the sign-in is
 //! said at once; Slack out of reach only once two asks in a row have
 //! failed, so one lost answer doesn't blank the count. With no sign-in in
 //! CREDENTIALS, the harness's file, FILE is taken away and nothing is
@@ -30,7 +32,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use slack_people::unreads::{Counted, Kind, Said, State, Unread, due, link, sign_in_waits};
+use slack_people::unreads::{
+    Conversation, Counted, Counts, Kind, Said, State, due, link, sign_in_waits,
+};
 use slack_people::{Account, Refused, Slack};
 
 /// How often Slack is asked, unless a test says otherwise.
@@ -82,29 +86,33 @@ fn main() {
         let checked = millis();
         let asked = slack
             .counts(&account)
-            .and_then(|counted| named(&slack, &account, &mut names, counted));
+            .and_then(|Counts { unread, recent }| {
+                Ok((
+                    named(&slack, &account, &mut names, unread)?,
+                    named(&slack, &account, &mut names, recent)?,
+                ))
+            });
+        let none = |state| Said {
+            checked,
+            state,
+            conversations: Vec::new(),
+            recent: Vec::new(),
+        };
         let said = match asked {
-            Ok(conversations) => {
+            Ok((conversations, recent)) => {
                 misses = 0;
                 Some(Said {
                     checked,
                     state: State::Ok,
                     conversations,
+                    recent,
                 })
             }
-            Err(Refused::SignedOut) => Some(Said {
-                checked,
-                state: State::SignedOut,
-                conversations: Vec::new(),
-            }),
+            Err(Refused::SignedOut) => Some(none(State::SignedOut)),
             Err(Refused::Unreachable(why)) => {
                 eprintln!("<4>{why}");
                 misses += 1;
-                (misses >= MISSES).then(|| Said {
-                    checked,
-                    state: State::Unreachable,
-                    conversations: Vec::new(),
-                })
+                (misses >= MISSES).then(|| none(State::Unreachable))
             }
         };
         match said.as_ref().map(|said| said.state) {
@@ -145,44 +153,57 @@ fn alive() {
     }
 }
 
-/// Each conversation that wants Joel, named, each name asked once a run;
-/// one Slack won't name now is said as Slack's, and asked again next time.
+/// Each conversation, named, each name asked once a run. One that wants
+/// Joel that Slack won't name now is said as Slack's, so its count isn't
+/// lost; any other is left out until it's named, so neither Unread nor
+/// Recent lists a row nobody can tell apart. Both are asked again next
+/// time. Slack too busy to name one is said once a round, not once a
+/// conversation, so a first round naming dozens doesn't flood the
+/// journal.
 fn named(
     slack: &Slack,
     account: &Account,
     names: &mut HashMap<String, String>,
     counted: Vec<Counted>,
-) -> Result<Vec<Unread>, Refused> {
-    counted
-        .into_iter()
-        .map(|counted| {
-            let name = match counted.kind {
-                Kind::Thread => "Threads".to_owned(),
-                _ => match names.get(&counted.id) {
-                    Some(name) => name.clone(),
-                    None => match slack.called(account, &counted.id) {
-                        Ok(name) if !name.is_empty() => {
-                            names.insert(counted.id.clone(), name.clone());
-                            name
-                        }
-                        Ok(_) => "Slack".to_owned(),
-                        Err(Refused::SignedOut) => return Err(Refused::SignedOut),
-                        Err(Refused::Unreachable(why)) => {
-                            eprintln!("<4>{why}");
-                            "Slack".to_owned()
-                        }
-                    },
+) -> Result<Vec<Conversation>, Refused> {
+    let mut unnamed = None;
+    let mut listed = Vec::new();
+    for counted in counted {
+        let name = match counted.kind {
+            Kind::Thread => Some("Threads".to_owned()),
+            _ => match names.get(&counted.id) {
+                Some(name) => Some(name.clone()),
+                None => match slack.called(account, &counted.id) {
+                    Ok(name) if !name.is_empty() => {
+                        names.insert(counted.id.clone(), name.clone());
+                        Some(name)
+                    }
+                    Ok(_) => None,
+                    Err(Refused::SignedOut) => return Err(Refused::SignedOut),
+                    Err(Refused::Unreachable(why)) => {
+                        unnamed.get_or_insert(why);
+                        None
+                    }
                 },
-            };
-            Ok(Unread {
-                link: link(&account.team, &counted),
-                id: counted.id,
-                name,
-                kind: counted.kind,
-                count: counted.count,
-            })
-        })
-        .collect()
+            },
+        };
+        let name = match name {
+            Some(name) => name,
+            None if counted.kind.wants() => "Slack".to_owned(),
+            None => continue,
+        };
+        listed.push(Conversation {
+            link: link(&account.team, &counted),
+            id: counted.id,
+            name,
+            kind: counted.kind,
+            count: counted.count,
+        });
+    }
+    if let Some(why) = unnamed {
+        eprintln!("<4>{why}");
+    }
+    Ok(listed)
 }
 
 /// Asks Joel to sign in again in Needs You, or stops asking, writing or
@@ -214,11 +235,18 @@ fn write(file: &Path, said: &Said) -> std::io::Result<()> {
     )
 }
 
-/// Writes `text` beside `file` and then over it, so no reader sees half.
+/// Writes `text` in a `.writing` folder beside `file` and then renames it
+/// over `file`, so no reader sees half, and a shell watching the folder
+/// hears only the rename (#1515 does the same for Google's).
 fn whole(file: &Path, text: &str) -> std::io::Result<()> {
-    let beside = file.with_extension("new");
-    std::fs::write(&beside, text)?;
-    std::fs::rename(&beside, file)
+    let aside = file
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(".writing");
+    std::fs::create_dir_all(&aside)?;
+    let writing = aside.join(file.file_name().unwrap_or_default());
+    std::fs::write(&writing, text)?;
+    std::fs::rename(&writing, file)
 }
 
 /// Now, in milliseconds since the epoch.

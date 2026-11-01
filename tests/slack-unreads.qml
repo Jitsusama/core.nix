@@ -1,8 +1,9 @@
 // What in Slack wants Joel, as Now's Slack piece says it, run in Qt's own
 // JavaScript engine, the one the shell runs it in: a count shown only
 // while Slack answered and the file is fresh, why there's none when it
-// isn't, said on Slack's program rather than in Now, and each
-// conversation's words. The `slack-says-only-whats-current`
+// isn't, said on Slack's program rather than in Now, a channel merely
+// unread kept for Slack's Unread but never counted in Now, Recent, and
+// each conversation's words. The `slack-says-only-whats-current`
 // check copies SlackUnreads.js beside this file and runs
 // `qml -platform offscreen slack-unreads.qml`.
 import QtQuick
@@ -38,8 +39,13 @@ QtObject {
             link: "slack://channel?team=T1&id=C1" };
         const threads = { id: "threads", name: "Threads", kind: "thread", count: 3,
             link: "slack://open?team=T1" };
-        const file = (state, conversations) => JSON.stringify({
-            checked: checked, state: state, conversations: conversations });
+        const random = { id: "C9", name: "#random", kind: "unread", count: 0,
+            link: "slack://channel?team=T1&id=C9" };
+        const read = { id: "C8", name: "#launcher", kind: "channel", count: 0,
+            link: "slack://channel?team=T1&id=C8" };
+        const file = (state, conversations, recent) => JSON.stringify({
+            checked: checked, state: state, conversations: conversations,
+            recent: recent });
 
         // What isn't slack-unreads' file is no file at all.
         check("no file", Unreads.read(""), null);
@@ -50,6 +56,22 @@ QtObject {
         const kept = Unreads.read(file("ok", [ada, Object.assign({}, deploys, { count: 0 }),
             { id: "C2", name: "#nolink", kind: "mention", count: 1 }, null]));
         check("what's kept", kept.conversations.map(one => one.id), ["D1"]);
+        check("no recent is none", kept.recent, []);
+        // A channel merely unread has no count, and is kept all the same.
+        const all = Unreads.read(file("ok", [ada, deploys, threads, random], [read, null]));
+        check("merely unread kept", all.conversations.map(one => one.id),
+            ["D1", "C1", "threads", "C9"]);
+        check("recent kept", all.recent.map(one => one.id), ["C8"]);
+        // Now says only what wants Joel, so a channel merely unread is
+        // neither counted nor named there, nor lists Slack alone.
+        check("wants", all.conversations.map(Unreads.wants), [true, true, true, false]);
+        check("merely unread uncounted", Unreads.value(all, "ok"), "6 to read");
+        check("merely unread unnamed in Now", Unreads.context(all, "ok"),
+            "Ada Lovelace, #deploys and 1 more");
+        check("named in Unread", Unreads.context(all, "ok", true),
+            "Ada Lovelace, #deploys and 2 more");
+        check("merely unread wants nothing",
+            Unreads.shown(Unreads.read(file("ok", [random], [])), "ok"), false);
 
         const ok = Unreads.read(file("ok", [ada, deploys, threads]));
         const quiet = Unreads.read(file("ok", []));
@@ -107,6 +129,9 @@ QtObject {
         check("a direct message", Unreads.note(ada), "a direct message");
         check("a mention", Unreads.note(deploys), "mentions you");
         check("threads", Unreads.note(threads), "replies in threads");
+        check("nothing beside one uncounted", Unreads.beside(random), "");
+        check("a channel merely unread", Unreads.note(random), "a channel");
+        check("a channel read", Unreads.note(read), "a channel");
 
         for (const failure of failures)
             console.warn(failure);

@@ -1,8 +1,12 @@
-//! What in Slack wants Joel, for the shell's Now (15J7N3's piece reads it):
+//! What in Slack is unread, for the shell's Now and Slack's own Unread:
 //! each direct message with unreads, by how many; each channel or group
-//! where he's mentioned, by how many times; and his mentions in threads,
-//! as one. A channel with unreads but no mention of him doesn't want him,
-//! so it isn't said.
+//! where he's mentioned, by how many times; his mentions in threads, as
+//! one; and after them each channel merely unread, with no mention of
+//! him. The first three want Joel, so Now says them (15J7N3's piece); a
+//! channel merely unread doesn't, so only Slack's Unread lists it (VKCF3Z,
+//! d7c0f933). Slack gives no count of a channel's unreads without a
+//! mention, so it's said with none. Beside them, Slack's Recent: the nine
+//! conversations he read last.
 //!
 //! It's read from `client.counts`, which is what Slack's own client asks
 //! and what a grid answers to the browser's sign-in the harness keeps,
@@ -16,16 +20,23 @@ use serde_json::{Value, json};
 use crate::{Account, Refused, Slack};
 
 /// What the shell is told, as one JSON document: when it was last asked,
-/// how asking went, and what wants Joel, only while asking went well, so
-/// an old count is never shown as a current one.
+/// how asking went, what's unread and what he read last, only while
+/// asking went well, so an old count is never shown as a current one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Said {
     /// When Slack last answered, or was last asked when it didn't, in
     /// milliseconds since the epoch.
     pub checked: u64,
     pub state: State,
-    pub conversations: Vec<Unread>,
+    /// What's unread, those wanting Joel first.
+    pub conversations: Vec<Conversation>,
+    /// What he read last, newest first, at most `RECENT`.
+    pub recent: Vec<Conversation>,
 }
+
+/// How many conversations Slack's Recent holds, as every program's does,
+/// so 1 to 9 pick one.
+pub const RECENT: usize = 9;
 
 /// How asking Slack went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -38,9 +49,9 @@ pub enum State {
     Unreachable,
 }
 
-/// One conversation that wants Joel.
+/// One conversation, as the shell lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Unread {
+pub struct Conversation {
     pub id: String,
     pub name: String,
     pub kind: Kind,
@@ -59,9 +70,21 @@ pub enum Kind {
     Mention,
     /// His mentions in threads, all together.
     Thread,
+    /// A channel with unreads but no mention of him, with no count, since
+    /// Slack gives none.
+    Unread,
+    /// A channel he read lately, as Recent lists it.
+    Channel,
 }
 
-/// A conversation `client.counts` says wants Joel, not yet named.
+impl Kind {
+    /// Whether it wants Joel, as Now lists only those that do.
+    pub fn wants(self) -> bool {
+        matches!(self, Kind::Dm | Kind::Mention | Kind::Thread)
+    }
+}
+
+/// A conversation `client.counts` names, not yet named.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Counted {
     pub id: String,
@@ -69,26 +92,43 @@ pub struct Counted {
     pub count: u64,
 }
 
-/// What wants Joel in an answer of `client.counts`, direct messages first,
-/// then channels, then threads, each newest first by its latest message
-/// (VKCF3Z, f0c8ef61). Slack's `latest` is a timestamp of fixed width,
-/// seconds and microseconds, so it sorts as text.
+/// What's unread and what he read last, as `client.counts` says them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Counts {
+    pub unread: Vec<Counted>,
+    pub recent: Vec<Counted>,
+}
+
+/// What's unread in an answer of `client.counts`: direct messages first,
+/// then channels mentioning him, then threads, then channels merely
+/// unread, each newest first by its latest message (VKCF3Z, f0c8ef61 and
+/// d7c0f933); and the conversations he read last, newest first. Slack's
+/// `latest` and `last_read` are timestamps of fixed width, seconds and
+/// microseconds, so they sort as text.
 ///
 /// # Errors
 ///
 /// Slack's refusal, as the sign-in being refused or Slack being out of
 /// reach.
-pub fn counted(said: &Value) -> Result<Vec<Counted>, Refused> {
+pub fn counted(said: &Value) -> Result<Counts, Refused> {
     answered(said)?;
-    let listed = |key: &str| {
-        said.get(key)
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
+    let mentions = |each: &Value| {
+        each.get("mention_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
     };
+    let unread = |each: &Value| each.get("has_unreads").and_then(Value::as_bool) == Some(true);
     // A direct message's unreads are all his, and come as its mentions.
-    let mut wanting = newest(Kind::Dm, listed("ims").chain(listed("mpims")));
-    wanting.extend(newest(Kind::Mention, listed("channels")));
+    let mut wanting = newest(
+        Kind::Dm,
+        listed(said, "ims")
+            .chain(listed(said, "mpims"))
+            .map(|each| (each, mentions(each))),
+    );
+    wanting.extend(newest(
+        Kind::Mention,
+        listed(said, "channels").map(|each| (each, mentions(each))),
+    ));
     let threads = said
         .pointer("/threads/mention_count")
         .and_then(Value::as_u64)
@@ -100,33 +140,67 @@ pub fn counted(said: &Value) -> Result<Vec<Counted>, Refused> {
             count: threads,
         });
     }
-    Ok(wanting)
+    let mut merely: Vec<(&str, Counted)> = listed(said, "channels")
+        .filter(|each| unread(each) && mentions(each) == 0)
+        .filter_map(|each| Some((stamp(each, "latest"), named(each, Kind::Unread, 0)?)))
+        .collect();
+    merely.sort_by(|(one, _), (other, _)| other.cmp(one));
+    wanting.extend(merely.into_iter().map(|(_, counted)| counted));
+    Ok(Counts {
+        unread: wanting,
+        recent: lately(said),
+    })
 }
 
-/// Those of one kind that mention Joel, newest first.
-fn newest<'a>(kind: Kind, listed: impl Iterator<Item = &'a Value>) -> Vec<Counted> {
-    let count = |each: &Value| {
-        each.get("mention_count")
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-    };
+/// The conversations of one of the answer's lists.
+fn listed<'a>(said: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
+    said.get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+}
+
+/// Those of one kind that mention Joel, each with its count of mentions,
+/// newest first.
+fn newest<'a>(kind: Kind, listed: impl Iterator<Item = (&'a Value, u64)>) -> Vec<Counted> {
     let mut found: Vec<(&str, Counted)> = listed
-        .filter(|each| count(each) > 0)
-        .filter_map(|each| {
-            let id = each.get("id").and_then(Value::as_str)?;
-            let latest = each.get("latest").and_then(Value::as_str).unwrap_or("");
-            Some((
-                latest,
-                Counted {
-                    id: id.to_owned(),
-                    kind,
-                    count: count(each),
-                },
-            ))
-        })
+        .filter(|(_, count)| *count > 0)
+        .filter_map(|(each, count)| Some((stamp(each, "latest"), named(each, kind, count)?)))
         .collect();
     found.sort_by(|(one, _), (other, _)| other.cmp(one));
     found.into_iter().map(|(_, counted)| counted).collect()
+}
+
+/// The conversations he read last, newest first, at most `RECENT`: one
+/// never read, whose `last_read` is all noughts, isn't among them.
+fn lately(said: &Value) -> Vec<Counted> {
+    let mut read: Vec<(&str, Counted)> = listed(said, "ims")
+        .chain(listed(said, "mpims"))
+        .map(|each| (each, Kind::Dm))
+        .chain(listed(said, "channels").map(|each| (each, Kind::Channel)))
+        .filter_map(|(each, kind)| Some((stamp(each, "last_read"), named(each, kind, 0)?)))
+        .filter(|(when, _)| when.chars().any(|c| c.is_ascii_digit() && c != '0'))
+        .collect();
+    read.sort_by(|(one, _), (other, _)| other.cmp(one));
+    read.into_iter()
+        .take(RECENT)
+        .map(|(_, counted)| counted)
+        .collect()
+}
+
+/// One of a conversation's timestamps, or nothing.
+fn stamp<'a>(each: &'a Value, key: &str) -> &'a str {
+    each.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+/// A conversation as counted, by its id, when it has one.
+fn named(each: &Value, kind: Kind, count: u64) -> Option<Counted> {
+    let id = each.get("id").and_then(Value::as_str)?;
+    Some(Counted {
+        id: id.to_owned(),
+        kind,
+        count,
+    })
 }
 
 /// What a conversation is called, from `conversations.info`: a channel's
@@ -191,13 +265,13 @@ fn answered(said: &Value) -> Result<&Value, Refused> {
 }
 
 impl Slack {
-    /// What wants Joel now, as `client.counts` says.
+    /// What's unread now and what he read last, as `client.counts` says.
     ///
     /// # Errors
     ///
     /// Slack's refusal, as the sign-in being refused or Slack being out of
     /// reach.
-    pub fn counts(&self, account: &Account) -> Result<Vec<Counted>, Refused> {
+    pub fn counts(&self, account: &Account) -> Result<Counts, Refused> {
         let said = self.ask(
             account,
             "client.counts",
@@ -241,6 +315,7 @@ pub fn due(written: Option<&Said>, now: &Said, every: u64) -> bool {
     written.is_none_or(|written| {
         written.state != now.state
             || written.conversations != now.conversations
+            || written.recent != now.recent
             || now.checked.saturating_sub(written.checked) >= every
     })
 }
@@ -344,39 +419,85 @@ mod tests {
         );
     }
 
-    #[test]
-    fn what_wants_joel_is_unread_messages_and_mentions_newest_first_not_unread_channels() {
-        let said = json!({
+    /// An answer of `client.counts` with one of each: direct messages
+    /// read and unread, channels mentioning him, channels merely unread,
+    /// one never read, and threads.
+    fn counts() -> Value {
+        json!({
             "ok": true,
             "ims": [
                 {"id": "D1", "has_unreads": true, "mention_count": 2,
-                 "latest": "1730300000.000100"},
-                {"id": "D2", "has_unreads": false, "mention_count": 0}
+                 "latest": "1730300000.000100", "last_read": "1730100000.000100"},
+                {"id": "D2", "has_unreads": false, "mention_count": 0,
+                 "last_read": "1730600000.000100"}
             ],
             "mpims": [{"id": "G1", "has_unreads": true, "mention_count": 1,
                         "latest": "1730400000.000100"}],
             "channels": [
-                {"id": "C1", "has_unreads": true, "mention_count": 0},
+                {"id": "C1", "has_unreads": true, "mention_count": 0,
+                 "latest": "1730100000.000100", "last_read": "1730700000.000100"},
                 {"id": "C2", "has_unreads": true, "mention_count": 3,
                  "latest": "1730200000.000100"},
                 {"id": "C3", "has_unreads": true, "mention_count": 1,
-                 "latest": "1730500000.000100"}
+                 "latest": "1730500000.000100"},
+                {"id": "C4", "has_unreads": true, "mention_count": 0,
+                 "latest": "1730800000.000100", "last_read": "0000000000.000000"},
+                {"id": "C5", "has_unreads": false, "mention_count": 0}
             ],
             "threads": {"has_unreads": true, "mention_count": 4}
-        });
-        let wanting = counted(&said).unwrap();
-        let shown: Vec<(&str, Kind, u64)> = wanting
+        })
+    }
+
+    fn shown(counted: &[Counted]) -> Vec<(&str, Kind, u64)> {
+        counted
             .iter()
             .map(|each| (each.id.as_str(), each.kind, each.count))
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn what_wants_joel_comes_newest_first_and_channels_merely_unread_after_it() {
+        let counts = counted(&counts()).unwrap();
         assert_eq!(
-            shown,
+            shown(&counts.unread),
             [
                 ("G1", Kind::Dm, 1),
                 ("D1", Kind::Dm, 2),
                 ("C3", Kind::Mention, 1),
                 ("C2", Kind::Mention, 3),
-                ("threads", Kind::Thread, 4)
+                ("threads", Kind::Thread, 4),
+                ("C4", Kind::Unread, 0),
+                ("C1", Kind::Unread, 0)
+            ]
+        );
+        let wanting: Vec<bool> = counts.unread.iter().map(|each| each.kind.wants()).collect();
+        assert_eq!(wanting, [true, true, true, true, true, false, false]);
+    }
+
+    #[test]
+    fn recent_is_what_he_read_last_never_one_he_never_read() {
+        let counts = counted(&counts()).unwrap();
+        assert_eq!(
+            shown(&counts.recent),
+            [
+                ("C1", Kind::Channel, 0),
+                ("D2", Kind::Dm, 0),
+                ("D1", Kind::Dm, 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn recent_holds_nine() {
+        let channels: Vec<Value> = (10..30)
+            .map(|at| json!({"id": format!("C{at}"), "last_read": format!("17300000{at}.000100")}))
+            .collect();
+        let counts = counted(&json!({"ok": true, "channels": channels})).unwrap();
+        let ids: Vec<&str> = counts.recent.iter().map(|each| each.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "C29", "C28", "C27", "C26", "C25", "C24", "C23", "C22", "C21"
             ]
         );
     }
@@ -433,12 +554,19 @@ mod tests {
         let said = Said {
             checked: 5,
             state: State::SignedOut,
-            conversations: vec![Unread {
+            conversations: vec![Conversation {
                 id: "D1".to_owned(),
                 name: "Ada".to_owned(),
                 kind: Kind::Dm,
                 count: 2,
                 link: "slack://channel?team=T1&id=D1".to_owned(),
+            }],
+            recent: vec![Conversation {
+                id: "C1".to_owned(),
+                name: "#launcher".to_owned(),
+                kind: Kind::Channel,
+                count: 0,
+                link: "slack://channel?team=T1&id=C1".to_owned(),
             }],
         };
         assert_eq!(
@@ -446,26 +574,32 @@ mod tests {
             json!({"checked": 5, "state": "signedOut", "conversations": [{
                 "id": "D1", "name": "Ada", "kind": "dm", "count": 2,
                 "link": "slack://channel?team=T1&id=D1"
+            }], "recent": [{
+                "id": "C1", "name": "#launcher", "kind": "channel", "count": 0,
+                "link": "slack://channel?team=T1&id=C1"
             }]})
         );
     }
 
     #[test]
     fn written_again_only_once_it_changes_or_goes_old() {
-        let at = |checked: u64, count: u64| Said {
+        let one = |id: &str, count: u64| Conversation {
+            id: id.to_owned(),
+            name: "Ada".to_owned(),
+            kind: Kind::Dm,
+            count,
+            link: String::new(),
+        };
+        let at = |checked: u64, count: u64, read: &str| Said {
             checked,
             state: State::Ok,
-            conversations: vec![Unread {
-                id: "D1".to_owned(),
-                name: "Ada".to_owned(),
-                kind: Kind::Dm,
-                count,
-                link: String::new(),
-            }],
+            conversations: vec![one("D1", count)],
+            recent: vec![one(read, 0)],
         };
-        assert!(due(None, &at(0, 1), 300_000));
-        assert!(!due(Some(&at(0, 1)), &at(30_000, 1), 300_000));
-        assert!(due(Some(&at(0, 1)), &at(30_000, 2), 300_000));
-        assert!(due(Some(&at(0, 1)), &at(300_000, 1), 300_000));
+        assert!(due(None, &at(0, 1, "D1"), 300_000));
+        assert!(!due(Some(&at(0, 1, "D1")), &at(30_000, 1, "D1"), 300_000));
+        assert!(due(Some(&at(0, 1, "D1")), &at(30_000, 2, "D1"), 300_000));
+        assert!(due(Some(&at(0, 1, "D1")), &at(30_000, 1, "D2"), 300_000));
+        assert!(due(Some(&at(0, 1, "D1")), &at(300_000, 1, "D1"), 300_000));
     }
 }

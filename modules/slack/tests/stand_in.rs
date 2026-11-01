@@ -493,11 +493,15 @@ fn with_no_sign_in_it_says_so_and_slack_is_never_asked() {
 fn wanting(line: &str) -> String {
     let said = if line.contains("client.counts") {
         concat!(
-            r#"{"ok": true, "ims": [{"id": "D1", "has_unreads": true, "mention_count": 2}],"#,
+            r#"{"ok": true, "ims": [{"id": "D1", "has_unreads": true, "mention_count": 2,"#,
+            r#""last_read": "1730100000.000100"}],"#,
             r#""mpims": [], "channels": [{"id": "C2", "has_unreads": true, "mention_count": 1},"#,
-            r#"{"id": "C3", "has_unreads": true, "mention_count": 0}],"#,
+            r#"{"id": "C3", "has_unreads": true, "mention_count": 0,"#,
+            r#""last_read": "1730200000.000100"}],"#,
             r#""threads": {"has_unreads": true, "mention_count": 3}}"#
         )
+    } else if line.contains("conversations.info?channel=C3") {
+        r#"{"ok": true, "channel": {"id": "C3", "is_channel": true, "name": "random"}}"#
     } else if line.contains("conversations.info?channel=D1") {
         r#"{"ok": true, "channel": {"id": "D1", "is_im": true, "user": "U7"}}"#
     } else if line.contains("conversations.info?channel=C2") {
@@ -586,9 +590,30 @@ fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
             {"id": "C2", "name": "#launcher", "kind": "mention", "count": 1,
              "link": "slack://channel?team=T1&id=C2"},
             {"id": "threads", "name": "Threads", "kind": "thread", "count": 3,
-             "link": "slack://open?team=T1"}
+             "link": "slack://open?team=T1"},
+            {"id": "C3", "name": "#random", "kind": "unread", "count": 0,
+             "link": "slack://channel?team=T1&id=C3"}
         ])
     );
+    // What he read last, newest first, named as the unread are.
+    assert_eq!(
+        said["recent"],
+        serde_json::json!([
+            {"id": "C3", "name": "#random", "kind": "channel", "count": 0,
+             "link": "slack://channel?team=T1&id=C3"},
+            {"id": "D1", "name": "Ada Lovelace", "kind": "dm", "count": 0,
+             "link": "slack://channel?team=T1&id=D1"}
+        ])
+    );
+    // Written aside and renamed in, so nothing of it is left aside, and
+    // nothing beside it in the folder the shell watches. Other tests
+    // write aside in the same folder, so only this file's own name is
+    // looked for.
+    let folder = file.parent().unwrap();
+    let name = file.file_name().unwrap();
+    assert!(folder.join(".writing").is_dir());
+    assert!(!folder.join(".writing").join(name).exists());
+    assert!(!file.with_extension("new").exists());
     // Asked again and again, each conversation is named only once a run.
     let asked = |method: &str| {
         stand_in
@@ -600,7 +625,7 @@ fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
     until("Slack wasn't asked again", || asked("client.counts") >= 4);
     program.kill().unwrap();
     program.wait().unwrap();
-    assert_eq!((asked("conversations.info"), asked("users.info")), (2, 1));
+    assert_eq!((asked("conversations.info"), asked("users.info")), (3, 1));
     let heard = stand_in.heard();
     assert!(
         heard.iter().all(|heard| heard.line.starts_with("GET /api/")
