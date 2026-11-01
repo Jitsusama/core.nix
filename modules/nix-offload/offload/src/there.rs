@@ -683,6 +683,28 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
 /// connection.
+/// `command` as a far shell is given it, so it ends with its caller.
+///
+/// A shell ssh starts without a terminal hears nothing when its session
+/// ends, and a build or an evaluation waiting on its builds never writes,
+/// so on 1 November runs whose callers were a day gone still held builders.
+/// sshd starts the shell as its session's process group, under a process
+/// of the same account, so a watcher that sees that process gone ends the
+/// whole group: the shell, what it started, and the watcher. Its streams go
+/// nowhere, so it never holds the session open, and once the run has ended
+/// it ends too when the session does. Hung up or ended, the shell exits,
+/// so the command's own EXIT trap still cleans up; the `exit` after it
+/// keeps zsh from running its last command in the shell's own process,
+/// which would leave nothing to run that trap.
+pub fn far(command: &str) -> String {
+    format!(
+        "caller=$PPID; \
+         (while kill -0 \"$caller\" 2>/dev/null; do sleep 5; done; kill -TERM 0) \
+         </dev/null >/dev/null 2>&1 & \
+         trap 'exit 143' HUP TERM; {command}; exit $?"
+    )
+}
+
 pub fn reaching(ssh: &str, said: &Path) -> Command {
     let mut command = Command::new(ssh);
     command
@@ -757,7 +779,7 @@ pub fn on(
             .args(["-o", &format!("HostKeyAlias={alias}")]);
     }
     eprintln!("nix-offload: building on the lent builder");
-    command.arg(&lent.host).arg(&sending.command);
+    command.arg(&lent.host).arg(far(&sending.command));
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
@@ -1199,7 +1221,7 @@ fn sent_nearby(
     };
     eprintln!("nix-offload: building on {}, {}", machine.host, asked.flake);
     let mut reached = reaching(ssh, &said);
-    reached.arg(&machine.host).arg(command);
+    reached.arg(&machine.host).arg(far(&command));
     let status = if asked.print {
         brought_from(&mut reached, &format!("ssh-ng://{}", machine.host), nix)
     } else {
@@ -1386,6 +1408,61 @@ fn decoded(encoded: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader};
+    use std::os::unix::process::CommandExt;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn a_run_ends_with_all_it_started_once_its_caller_is_gone() {
+        // The caller stands in for an ssh session. It starts the run in a
+        // process group of its own, as sshd does, and ends once told. The
+        // run holds the caller's output open, so the output closes only
+        // when the run and everything it started have ended.
+        let folder = tempfile::tempdir().unwrap();
+        let cleaned = folder.path().join("cleaned");
+        let run = far(&format!(
+            "trap 'touch {}' EXIT; echo started; sleep 120",
+            cleaned.display()
+        ));
+        let mut caller = Command::new("sh")
+            .args(["-c", "sh -c \"$1\" & read -r line", "caller", &run])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let mut said = BufReader::new(caller.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        assert_eq!(line, "started\n");
+        drop(caller.stdin.take());
+        caller.wait().unwrap();
+        let (ended, closed) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut rest = String::new();
+            let _ = std::io::Read::read_to_string(&mut said, &mut rest);
+            let _ = ended.send(());
+        });
+        assert!(
+            closed.recv_timeout(Duration::from_secs(30)).is_ok(),
+            "the run outlived its caller"
+        );
+        assert!(cleaned.exists(), "it cleaned up as it ended");
+    }
+
+    #[test]
+    fn a_run_whose_caller_stays_ends_with_its_own_status() {
+        // In a group of its own, as sshd starts it, so its watcher's end
+        // reaches nothing else once this test's process ends.
+        let ran = Command::new("sh")
+            .args(["-c", &far("echo ran; false")])
+            .process_group(0)
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+        assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n");
+    }
 
     #[test]
     fn a_size_is_said_to_a_tenth_of_its_unit() {

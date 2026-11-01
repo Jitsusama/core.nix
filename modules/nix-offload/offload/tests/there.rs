@@ -89,6 +89,22 @@ fn there_with(folder: &Path, offload: &Path, extra: &[&str]) -> Output {
         .unwrap()
 }
 
+/// What ssh was told, `host\ncommand\n`, with the command as it was
+/// before what makes it end with its caller, which every one is given.
+fn given_to(folder: &Path) -> String {
+    let given = fs::read_to_string(folder.join("ssh-was-given")).unwrap();
+    let (host, command) = given.trim_end().split_once('\n').unwrap();
+    format!("{host}\n{}\n", within_far(command))
+}
+
+/// A command sent far, without what makes it end with its caller.
+fn within_far(command: &str) -> &str {
+    command
+        .split_once("trap 'exit 143' HUP TERM; ")
+        .and_then(|(_, rest)| rest.strip_suffix("; exit $?"))
+        .unwrap_or_else(|| panic!("it doesn't end with its caller: {command}"))
+}
+
 fn journalled(folder: &Path) -> serde_json::Value {
     let journal = fs::read_to_string(folder.join("nix-offload/there.jsonl")).unwrap();
     serde_json::from_str(journal.lines().last().unwrap()).unwrap()
@@ -104,7 +120,7 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
     let ran = there(folder.path(), &offload);
     assert_eq!(ran.status.code(), Some(100), "{ran:?}");
     assert_eq!(
-        fs::read_to_string(folder.path().join("ssh-was-given")).unwrap(),
+        given_to(folder.path()),
         "nix-offload\nnix build --no-link -L --keep-going 'github:o/r/abc#checks.x.a'\n"
     );
     assert!(!folder.path().join("nix-was-given").exists());
@@ -126,7 +142,7 @@ fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
     assert_eq!(
-        fs::read_to_string(folder.path().join("ssh-was-given")).unwrap(),
+        given_to(folder.path()),
         "nix-offload\nnix build --no-link --print-out-paths -L --keep-going \
          'github:o/r/abc#checks.x.a'\n"
     );
@@ -488,7 +504,8 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
         "{given:?}"
     );
     assert!(
-        given[3].contains("nix build --no-link -L 'path:.#checks.aarch64-darwin.a'; ended=$?"),
+        within_far(given[3])
+            .contains("nix build --no-link -L 'path:.#checks.aarch64-darwin.a'; ended=$?"),
         "{given:?}"
     );
     let sent = Command::new("tar")
@@ -736,7 +753,7 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
     git(&["checkout", "-q", "--", "flake.nix"]);
     git(&["update-ref", "refs/remotes/origin/main", head]);
     assert_eq!(
-        unpushed.there(),
+        within_far(&unpushed.there()),
         format!("nix build --no-link -L 'github:o/r/{head}#checks.x.a'"),
         "a clean tree GitHub has goes by its commit"
     );
@@ -839,6 +856,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let sent = given();
     assert_eq!(sent.lines().next(), Some("nix-offload"), "{sent}");
+    within_far(sent.lines().nth(1).unwrap());
     for part in [
         format!("checkout -q -B nix-offload-changed {head}"),
         "nix run .#changed-checks -- --build --no-vm --system x86_64-linux".to_owned(),
@@ -867,6 +885,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     );
     let sent = given();
     assert_eq!(sent.lines().next(), Some("far"), "{sent}");
+    within_far(sent.lines().nth(1).unwrap());
     assert!(
         sent.contains("nix run .#changed-checks -- --no-vm --system x86_64-linux --name-only"),
         "it evaluates and doesn't build: {sent}"
