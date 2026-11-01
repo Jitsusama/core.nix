@@ -346,8 +346,10 @@ def test_a_switch_by_hand_brings_the_program_it_switched_to(on_first: Machine) -
     assert machine.succeed(serving).strip() != program
     machine.succeed(f"{moved}/bin/switch-to-configuration test")
     machine.wait_until_succeeds(f'test "$({serving})" = {program}', timeout=30)
-    status, _, said = on_first.ask()
+    head = on_first.commit(moved)
+    status, lines, said = on_first.ask()
     assert status == 0, said
+    assert lines[-1]["commit"] == head
 
 
 def test_a_machine_not_whole_goes_back(on_first: Machine) -> None:
