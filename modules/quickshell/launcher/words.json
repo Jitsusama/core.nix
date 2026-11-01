@@ -3759,6 +3759,13 @@
       "glyph": "link"
     },
     {
+      "id": "verb:slack:sign-in",
+      "in": "applications",
+      "name": "Sign In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
       "id": "verb:person:favourite",
       "in": "people",
       "name": "Favourite",

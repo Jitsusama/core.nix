@@ -4,9 +4,11 @@
 // Slack's own say each message as it comes. Return lists each
 // conversation, direct messages, then channels, then Threads, each newest
 // first, as the one row every surface shows (SlackConversation.qml), and
-// after them Show Slack, which goes to Programs › Slack. When Slack can't
-// be asked, or its count has gone stale, it says so in place of a count,
-// listing nothing; it goes once nothing wants him and Slack has said so.
+// after them Show Slack, which goes to Programs › Slack. It's here only
+// while something waits to be read: when Slack can't be asked, or its
+// count has gone stale, that's no want of Joel's, so Slack's program row
+// says it (SlackProgram.qml), and a refused sign-in waits in Needs You
+// (VKCF3Z, b8c8920e and 347abdb7).
 import qs
 import QtQuick
 

@@ -5,8 +5,10 @@
 // count is current only while Slack answered and the file was written in
 // the last ten minutes, since it's written at least every five: an old
 // count is never shown as though it were Slack's (Joel, 2026-10-28: "out
-// of date information also sucks ass"). Kept apart from the QML so Qt's
-// own engine runs it (tests/slack-unreads.qml).
+// of date information also sucks ass"). Why there's no count is said on
+// Slack's program row (SlackProgram.qml), not in Now, since Slack out of
+// reach doesn't want Joel (VKCF3Z, b8c8920e). Kept apart from the QML so
+// Qt's own engine runs it (tests/slack-unreads.qml).
 .pragma library
 
 // How long a check holds: twice the longest the service goes between
@@ -60,39 +62,42 @@ function count(told) {
     return told.conversations.reduce((all, one) => all + one.count, 0);
 }
 
-// Whether Now lists it: something to read, or Slack not saying.
+// Whether Now lists it: only with something to read, which wants Joel.
 function shown(told, stands) {
-    return stands === "ok" ? count(told) > 0 : stands !== "none";
+    return stands === "ok" && count(told) > 0;
 }
 
-// Beside its name: how many to read, or why there's no count.
+// Beside its name: how many to read.
 function value(told, stands) {
-    if (stands === "ok") {
-        return `${count(told)} to read`;
-    }
-    return stands === "signedOut" ? "signed out" : "can't check";
+    return stands === "ok" ? `${count(told)} to read` : "";
 }
 
 // What the margin's mark says when pointed at, as the mail's does.
 function hint(told, stands) {
     if (stands !== "ok") {
-        return `Slack: ${value(told, stands)}`;
+        return "";
     }
     const all = count(told);
     return all === 1 ? "A Slack message wants you" : `${all} Slack messages want you`;
 }
 
-// Its note: who and where, the first two named and how many more, or why
-// it can't say. A stale one says when it last knew, as a time of day,
-// which stays true without a clock ticking to keep it so.
-function context(told, stands) {
+// Why there's no count, as Slack's program row's note: signed out, or
+// since when it can't be checked, as a time of day, which stays true
+// without a clock ticking to keep it so; nothing while there's a count or
+// no file.
+function programNote(told, stands) {
     if (stands === "signedOut") {
-        return "pi's sign-in to Slack was refused";
+        return "signed out";
     }
-    if (stands === "unknown") {
-        return told.state === "ok" ? `not checked since ${clock(told.checked)}`
-            : "Slack can't be reached";
+    if (stands !== "unknown") {
+        return "";
     }
+    return told.state === "ok" ? `can't be checked since ${clock(told.checked)}`
+        : "Slack can't be reached";
+}
+
+// Its note: who and where, the first two named and how many more.
+function context(told, stands) {
     if (stands !== "ok") {
         return "";
     }

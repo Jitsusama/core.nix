@@ -511,17 +511,24 @@ fn wanting(line: &str) -> String {
 }
 
 /// slack-unreads, started over the stand-in with this sign-in, asking
-/// every 50 ms and keeping what it reads in `file`.
+/// every 50 ms, keeping what it reads in `file` and what it asks of Joel
+/// beside it (`waiting`).
 fn unreads(stand_in: &StandIn, credentials: &std::path::Path, file: &std::path::Path) -> Child {
     Command::new(env!("CARGO_BIN_EXE_slack-unreads"))
         .arg(credentials)
         .arg(file)
         .arg(socket(file))
+        .arg(waiting(file))
         .arg(&stand_in.origin)
         .arg("50")
         .stderr(Stdio::null())
         .spawn()
         .unwrap()
+}
+
+/// Where a run keeping `file` asks Joel to sign in again.
+fn waiting(file: &std::path::Path) -> PathBuf {
+    file.with_extension("waiting.json")
 }
 
 /// Where a run keeping `file` answers asks.
@@ -561,10 +568,16 @@ fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
     let stand_in = StandIn::new(wanting);
     let path = credentials("unreads");
     let file = path.with_extension("unreads.json");
+    // Asked before, as when Slack refused the sign-in an earlier run had.
+    std::fs::write(waiting(&file), "{}").unwrap();
     let mut program = unreads(&stand_in, &path, &file);
     until("the file never said anything", || kept(&file).is_some());
     let said = kept(&file).unwrap();
     assert_eq!(said["state"], "ok");
+    // Slack answering, nothing waits on Joel's signing in.
+    until("Joel was still asked to sign in", || {
+        !waiting(&file).exists()
+    });
     assert_eq!(
         said["conversations"],
         serde_json::json!([
@@ -709,6 +722,9 @@ fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
     let file = path.with_extension("unreads.json");
     let mut program = unreads(&stand_in, &path, &file);
     until("the file never said anything", || kept(&file).is_some());
+    until("Joel was never asked to sign in", || {
+        kept(&waiting(&file)).is_some()
+    });
     program.kill().unwrap();
     program.wait().unwrap();
     let said = kept(&file).unwrap();
@@ -716,7 +732,20 @@ fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
         (&said["state"], &said["conversations"]),
         (&serde_json::json!("signedOut"), &serde_json::json!([]))
     );
+    // As Needs You reads it, once, done when he signs in again.
+    let asked = kept(&waiting(&file)).unwrap();
+    assert_eq!(
+        (
+            &asked["items"][0]["title"],
+            &asked["items"][0]["doneWhen"]["signal"]
+        ),
+        (
+            &serde_json::json!("Sign In to Slack"),
+            &serde_json::json!("signin:slack")
+        )
+    );
     let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_file(waiting(&file));
     forget(&path);
 }
 

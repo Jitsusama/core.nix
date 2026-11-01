@@ -1,4 +1,4 @@
-//! slack-unreads CREDENTIALS FILE SOCKET [ORIGIN [PACE]]
+//! slack-unreads CREDENTIALS FILE SOCKET WAITING [ORIGIN [PACE]]
 //!
 //! What in Slack wants Joel, kept in FILE for the shell's Now (lib's
 //! `unreads` says what it is and how it's read): Slack is asked every
@@ -10,6 +10,13 @@
 //! CREDENTIALS, the harness's file, FILE is taken away and nothing is
 //! asked until there is one. ORIGIN is Slack's and PACE, in milliseconds,
 //! half a minute, unless a test names a stand-in and a quicker pace.
+//!
+//! While Slack refuses the sign-in, signing in again waits on Joel in
+//! Needs You, through WAITING, a file of what waits on him as each
+//! quest's is (lib's `sign_in_waits`): written once Slack refuses, and
+//! taken away once Slack answers again or there's no sign-in, so it clears
+//! itself. Slack out of reach leaves it as it stood, since that says
+//! nothing of the sign-in.
 //!
 //! Run by systemd, it tells its watchdog after each ask, so one that hangs
 //! is restarted, and its unit takes FILE away however it stops: a count
@@ -23,7 +30,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use slack_people::unreads::{Counted, Kind, Said, State, Unread, due, link};
+use slack_people::unreads::{Counted, Kind, Said, State, Unread, due, link, sign_in_waits};
 use slack_people::{Account, Refused, Slack};
 
 /// How often Slack is asked, unless a test says otherwise.
@@ -39,11 +46,13 @@ const MISSES: u32 = 2;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (Some(credentials), Some(file), Some(socket)) = (args.next(), args.next(), args.next())
+    let (Some(credentials), Some(file), Some(socket), Some(waiting)) =
+        (args.next(), args.next(), args.next(), args.next())
     else {
-        eprintln!("usage: slack-unreads CREDENTIALS FILE SOCKET [ORIGIN [PACE]]");
+        eprintln!("usage: slack-unreads CREDENTIALS FILE SOCKET WAITING [ORIGIN [PACE]]");
         std::process::exit(64);
     };
+    let waiting = PathBuf::from(waiting);
     let origin = args.next().unwrap_or_else(|| "https://slack.com".into());
     slack_people::daemon::listen(
         Path::new(&socket),
@@ -66,6 +75,7 @@ fn main() {
             if written.take().is_some() || file.exists() {
                 let _ = std::fs::remove_file(&file);
             }
+            ask_joel(&waiting, false);
             std::thread::sleep(every);
             continue;
         };
@@ -97,6 +107,11 @@ fn main() {
                 })
             }
         };
+        match said.as_ref().map(|said| said.state) {
+            Some(State::SignedOut) => ask_joel(&waiting, true),
+            Some(State::Ok) => ask_joel(&waiting, false),
+            _ => {}
+        }
         if let Some(said) = said
             && due(written.as_ref(), &said, STALE)
         {
@@ -170,10 +185,37 @@ fn named(
         .collect()
 }
 
+/// Asks Joel to sign in again in Needs You, or stops asking, writing or
+/// taking away `waiting` only when that changes, so the shell hears it
+/// once; its folder is made at login, and here too should it be missing.
+fn ask_joel(waiting: &Path, asks: bool) {
+    if asks == waiting.exists() {
+        return;
+    }
+    let done = if asks {
+        waiting
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| whole(waiting, &sign_in_waits(millis()).to_string()))
+    } else {
+        std::fs::remove_file(waiting)
+    };
+    if let Err(error) = done {
+        eprintln!("<4>couldn't change {}: {error}", waiting.display());
+    }
+}
+
 /// Writes what's said whole, beside the file and then over it, so the
 /// shell never reads half of it.
 fn write(file: &Path, said: &Said) -> std::io::Result<()> {
-    let text = serde_json::to_string(said).map_err(std::io::Error::other)?;
+    whole(
+        file,
+        &serde_json::to_string(said).map_err(std::io::Error::other)?,
+    )
+}
+
+/// Writes `text` beside `file` and then over it, so no reader sees half.
+fn whole(file: &Path, text: &str) -> std::io::Result<()> {
     let beside = file.with_extension("new");
     std::fs::write(&beside, text)?;
     std::fs::rename(&beside, file)

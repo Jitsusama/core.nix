@@ -11,7 +11,7 @@
 //! `users.info`, asked once a run. It only ever reads.
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::{Account, Refused, Slack};
 
@@ -245,10 +245,94 @@ pub fn due(written: Option<&Said>, now: &Said, every: u64) -> bool {
     })
 }
 
+/// What Slack refusing the sign-in asks of Joel, as Needs You reads it
+/// (VKCF3Z, 347abdb7), in the shape `mesh_wait` writes each quest's file of
+/// what waits on him: one item he can do now, known done by the signal
+/// `signin:slack`. slack-unreads takes the file away once Slack answers
+/// again, so it goes whether or not anything hears the signal.
+pub fn sign_in_waits(at: u64) -> Value {
+    json!({
+        "v": 2,
+        "updated": iso(at),
+        "quest": "slack",
+        "items": [{
+            "id": "slack-sign-in",
+            "title": "Sign In to Slack",
+            "why": "Slack refused pi's sign-in, so nothing can say what in Slack wants you",
+            "minutes": 1,
+            "ready": true,
+            "doneWhen": {"signal": "signin:slack"},
+            "steps": [
+                "Open a pi session",
+                "Type /slack-auth",
+                "Sign in to Slack in the browser it opens"
+            ]
+        }]
+    })
+}
+
+/// A time in milliseconds since the epoch as ISO 8601 in UTC, as
+/// JavaScript's `toISOString` writes it, by the civil calendar's days from
+/// the epoch (Howard Hinnant's `civil_from_days`).
+fn iso(at: u64) -> String {
+    const DAY: u64 = 86_400_000;
+    let rest = at % DAY;
+    let shifted = i64::try_from(at / DAY).unwrap_or(0) + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let of_era = shifted.rem_euclid(146_097);
+    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let march_month = (5 * of_year + 2) / 153;
+    let day = of_year - (153 * march_month + 2) / 5 + 1;
+    let month = if march_month < 10 {
+        march_month + 3
+    } else {
+        march_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
+        rest / 3_600_000,
+        rest / 60_000 % 60,
+        rest / 1000 % 60,
+        rest % 1000
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+
+    #[test]
+    fn a_time_is_written_as_javascript_writes_it() {
+        assert_eq!(iso(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(iso(1_730_300_000_123), "2024-10-30T14:53:20.123Z");
+        // A leap day, and the last moment of a year.
+        assert_eq!(iso(1_709_164_800_000), "2024-02-29T00:00:00.000Z");
+        assert_eq!(iso(1_735_689_599_999), "2024-12-31T23:59:59.999Z");
+    }
+
+    #[test]
+    fn a_refused_sign_in_waits_on_joel_until_slack_hears_him_sign_in() {
+        let waits = sign_in_waits(0);
+        let item = &waits["items"][0];
+        assert_eq!(
+            (
+                &waits["v"],
+                &waits["updated"],
+                &item["title"],
+                &item["ready"],
+                &item["doneWhen"]
+            ),
+            (
+                &json!(2),
+                &json!("1970-01-01T00:00:00.000Z"),
+                &json!("Sign In to Slack"),
+                &json!(true),
+                &json!({"signal": "signin:slack"})
+            )
+        );
+    }
 
     #[test]
     fn what_wants_joel_is_unread_messages_and_mentions_newest_first_not_unread_channels() {

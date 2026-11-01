@@ -580,6 +580,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # in to Slack here, so slack-unreads itself never starts. Only where
         # the launcher's places are tested, since no other area reads it.
         imports = lib.optional (area == "launcher-goes-places") self.homeModules.slack;
+        # And Slack's own desktop entry, as the machine's Slack brings it,
+        # so Programs has the row whose note says why Slack can't be
+        # checked. It starts nothing, since nothing here opens it.
+        xdg.desktopEntries = lib.optionalAttrs (area == "launcher-goes-places") {
+          slack = {
+            name = "Slack";
+            genericName = "Messages";
+            exec = "true %U";
+          };
+        };
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs photograph kitty the same
         # rather than catching its fade wherever it happens to be.

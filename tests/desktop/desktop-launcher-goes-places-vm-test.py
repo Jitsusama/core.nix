@@ -2666,14 +2666,39 @@ def slack_says(desktop: Desktop, state: str, conversations: list[Json], *, ago: 
     )
 
 
+def slack_is_not_in_now(desktop: Desktop) -> None:
+    """Open Now, wait until it holds no Slack row, and close the launcher."""
+    now_rows(desktop)
+    desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def slack_program_says(
+    desktop: Desktop, noted: Callable[[str], bool], *, keep_open: bool = False
+) -> None:
+    """Find Slack's program row, and wait until its note is as `noted` holds."""
+    desktop.answer("slack")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "program:slack"
+            and noted(shown["selected"]["note"])
+        )
+    )
+    if not keep_open:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_until(lambda shown: not shown["open"])
+
+
 def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop: Desktop,
 ) -> None:
     """What in Slack wants Joel is counted in Now, and never an old count.
 
     Return lists each conversation as Slack's one conversation row, then Show Slack. When
-    Slack can't be reached, or the count has gone stale, it says it can't check and lists
-    none; with no file, it's gone.
+    Slack can't be reached, the count has gone stale or Slack refused the sign-in, Now has
+    no Slack row, since none of those wants Joel, and Slack's program row says why, its
+    first act signing in again when signed out; with no file, it's gone.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
@@ -2732,32 +2757,27 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
             "A row drawn by the surface listing it, though a thing is one row:\n"
             + "\n".join(said["uncomposed"])
         )
-        # Slack out of reach: no count, and nothing listed but Show Slack.
+        # Slack out of reach wants nothing of Joel, so Now has no Slack row;
+        # Slack's program row says why.
         slack_says(desktop, "unreachable", [])
-        now_rows(desktop)
-        desktop.down_to("Slack")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["selected"]["side"] == "can't check"
-                and shown["selected"]["note"] == "Slack can't be reached"
-            )
-        )
-        machine.send_key("ret")
-        desktop.launcher_until(lambda shown: shown["rows"] == ["Show Slack"])
-        desktop.as_account("qs ipc call launcher toggle")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        slack_is_not_in_now(desktop)
+        slack_program_says(desktop, lambda note: note == "Slack can't be reached")
         # A count eleven minutes old is no count either, and says since when.
         slack_says(desktop, "ok", conversations, ago=11 * 60 * 1000)
-        now_rows(desktop)
-        desktop.down_to("Slack")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["selected"]["side"] == "can't check"
-                and shown["selected"]["note"].startswith("not checked since ")
-            )
-        )
+        slack_is_not_in_now(desktop)
+        slack_program_says(desktop, lambda note: note.startswith("can't be checked since "))
+        # Signed out, the program row says so, and its first act after
+        # Return's own is signing in again.
+        slack_says(desktop, "signedOut", [])
+        slack_is_not_in_now(desktop)
+        slack_program_says(desktop, lambda note: note == "signed out", keep_open=True)
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["New Window", "Sign In"])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # Slack answering again, the program row says nothing of it.
+        slack_says(desktop, "ok", [])
+        slack_program_says(desktop, lambda note: note == "")
     finally:
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/slack-unreads.json")
     # With no file, as when slack-unreads stops, Slack is gone from Now.

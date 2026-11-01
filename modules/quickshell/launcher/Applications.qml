@@ -614,6 +614,23 @@ Provider {
         return hooked("programActs", program);
     }
 
+    // What other providers say of a program as its row's note
+    // (`programNote(program)`), the first that says anything, as Slack's
+    // says why it can't be checked (SlackProgram.qml); a program has no
+    // note of its own, so it's empty while none does.
+    function givenNote(program) {
+        for (const other of noting) {
+            const note = other.programNote(program);
+            if (note !== "")
+                return note;
+        }
+        return "";
+    }
+    // The providers that say a program's note, found once rather than as
+    // each program's row is read.
+    readonly property var noting: (provider.launcher?.sources ?? [])
+        .filter(other => other !== provider && typeof other.programNote === "function")
+
     // What every other provider with the hook `hook` gives `program`.
     function hooked(hook, program) {
         return (provider.launcher?.sources ?? [])
@@ -858,8 +875,8 @@ Provider {
     }
 
     // Everything the right arrow holds for a program, as it stands now, in
-    // one order for every program: Go To or Open, New Window, New Window
-    // Below, its own actions, Recent, its windows, its notices, Shortcuts
+    // one order for every program: Go To or Open, what's given it to lead,
+    // New Window, New Window Below, its own actions, Recent, its windows, its notices, Shortcuts
     // and Quit, then Media and Sound while it plays. What it does comes
     // first and what ends it near the bottom, so Return on a program never
     // lands in its Recent. One that steps in has only what's given it,
@@ -876,10 +893,14 @@ Provider {
         const same = given => provider.names(entry, given, looked);
         const given = givenActs(entry.id);
         const copying = row => row.verb === "copy";
-        const doing = given.filter(row => !copying(row));
+        // An act given to lead, as signing in again does while a program
+        // is signed out, comes straight after Return's own, since it's
+        // what the program wants first.
+        const leading = given.filter(row => row.leads === true && !copying(row));
+        const doing = given.filter(row => row.leads !== true && !copying(row));
         const copies = given.filter(copying);
         if (stepsIn(entry)) {
-            return doing.concat(recent(entry), notices(same), keysOf(entry), copies);
+            return leading.concat(doing, recent(entry), notices(same), keysOf(entry), copies);
         }
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
@@ -893,7 +914,8 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), doing, recent(entry), windowsOf(entry),
+        return acts.slice(0, 1).concat(leading, acts.slice(1), menu(entry, taken), doing,
+            recent(entry), windowsOf(entry),
             notices(same), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
@@ -930,6 +952,12 @@ Provider {
                 named: binds.length > 0,
                 below: below,
                 verbs: () => provider.controls(entry, start, below)
+            });
+            // What another provider says of it, read as the row is, so it's
+            // never kept past being true.
+            Object.defineProperty(row, "note", {
+                enumerable: true,
+                get: () => provider.givenNote(entry.id)
             });
             if (provider.stepsIn(entry))
                 return Object.assign(row, {
