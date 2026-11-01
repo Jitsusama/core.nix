@@ -303,9 +303,7 @@ fn follow_the_system(program: &Path, started: Option<&Path>, current: &Mutex<Opt
 /// made, hasn't moved; one that led nowhere when it started has, once it
 /// leads somewhere.
 fn moved(program: &Path, started: Option<&Path>) -> bool {
-    fs::canonicalize(program)
-        .ok()
-        .is_some_and(|now| Some(now.as_path()) != started)
+    fs::canonicalize(program).is_ok_and(|now| Some(now.as_path()) != started)
 }
 
 /// Whether an update has ended and every asker has heard it.
