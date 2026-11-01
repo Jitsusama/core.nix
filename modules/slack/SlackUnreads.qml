@@ -25,6 +25,8 @@ Singleton {
     readonly property string value: Unreads.value(told, stands)
     readonly property string context: Unreads.context(told, stands)
     readonly property string hint: Unreads.hint(told, stands)
+    // Why there's no count, for Slack's program row (SlackProgram.qml).
+    readonly property string programNote: Unreads.programNote(told, stands)
     // Each { id, name, kind, count, link }, only while the count is
     // current, so no old one is offered as Slack's.
     readonly property var conversations: stands === "ok" ? told.conversations : []

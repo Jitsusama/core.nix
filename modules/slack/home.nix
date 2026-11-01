@@ -18,6 +18,9 @@ let
   # what in Slack wants Joel (slack-unreads).
   lookUp = pkgs.callPackage ./package.nix { };
   credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
+  # Where Slack's ask of Joel waits, beside each quest's in Needs You
+  # (WaitingOnYou.qml), named so no quest's address is it.
+  waiting = "${config.xdg.stateHome}/mission/waiting/slack.json";
 in
 {
   imports = [
@@ -49,6 +52,14 @@ in
     mark = "chat";
   };
 
+  # Why Slack can't be checked, said on its program row rather than in
+  # Now, with Sign In first while it's signed out; after Tuple's and
+  # GIMP's, beside the desktop's actions.
+  jitsusama.quickshell.launcher.providers.slack-program = {
+    order = 47;
+    source = ./SlackProgram.qml;
+  };
+
   # Write in Slack for anyone Slack knows by one of their addresses, through
   # the harness's Slack sign-in, read only (Joel, 2026-10-28). It's the
   # first source asked, since a message is the lightest way to reach
@@ -69,7 +80,9 @@ in
   # What in Slack wants Joel, kept in the runtime folder's
   # slack-unreads.json for Now's Slack piece: direct messages with
   # unreads, mentions of him and his mentions in threads, read only, and
-  # started once pi has signed in to Slack.
+  # started once pi has signed in to Slack. While Slack refuses that
+  # sign-in, signing in again waits in Needs You, in the file of what
+  # waits on Joel that's Slack's own beside each quest's.
   systemd.user.paths.slack-unreads = {
     Unit.Description = "Starts keeping Slack's unreads once pi has signed in";
     Path.PathExists = credentials;
@@ -91,6 +104,7 @@ in
         "%t/slack-unreads.json"
         # Slack's daemon, where the shell searches Slack (src/search.rs).
         "%t/daemons/slack.sock"
+        (lib.escapeShellArg waiting)
       ];
       Restart = "on-failure";
       RestartSec = 30;
@@ -98,13 +112,15 @@ in
       # that hangs is killed and started again.
       WatchdogSec = 180;
       NotifyAccess = "main";
-      # What it counted goes with it, however it stops, so the shell never
-      # shows a count nothing is keeping current.
+      # What it counted and asked goes with it, however it stops, so the
+      # shell never shows a count or an ask nothing is keeping current.
       ExecStopPost = lib.concatStringsSep " " [
         "${pkgs.coreutils}/bin/rm -f"
         "%t/slack-unreads.json"
         "%t/slack-unreads.new"
         "%t/daemons/slack.sock"
+        (lib.escapeShellArg waiting)
+        (lib.escapeShellArg "${lib.removeSuffix ".json" waiting}.new")
       ];
     };
   };
