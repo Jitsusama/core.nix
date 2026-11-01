@@ -2073,7 +2073,8 @@
     an account in update-ask updates the machine to signed main with a real switch, reads how it
     ended from the file kept past the switch's restart where an account outside can't, and asked again
     with main where it was builds nothing; an account outside it can't ask, an unsigned main is
-    refused, and a main the health check refuses is switched to and then gone back from; and a
+    refused, a main the health check refuses is switched to and then gone back from, and a switch
+    made by hand brings the update-to-main it switched to, which answers the next ask; and a
     machine following its host's word builds main unsigned, root reading the objects someone
     fetched into their checkout and the token asked as someone with none of root's groups, with
     no token builds nothing, and building elsewhere with no builders refuses a piece not marked

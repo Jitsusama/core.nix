@@ -3,7 +3,8 @@
 tests/update-to-main.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 The repository is bare, at /srv/machines.git, and a commit's flake gives one of the machine's
 systems as main's: its first, or a specialisation that adds /etc/switched, or one that adds
-/etc/unhealthy, which the machine's health check refuses. Each test commits the main it needs
+/etc/unhealthy, which the machine's health check refuses. A third, moved, holds a copy of
+update-to-main at another path, for a switch made by hand. Each test commits the main it needs
 and reads what the machine runs afterwards.
 
 hosted trusts its repository's word for main rather than a signature, so its commits are
@@ -334,6 +335,19 @@ def test_a_hosted_main_with_no_token_builds_nothing(hosted_on_first: Machine) ->
     assert "asking for a token failed" in lines[-1]["why"]
     assert lines[-1]["lines"] == ["no login"]
     assert hosted.running() == hosted.first
+
+
+def test_a_switch_by_hand_brings_the_program_it_switched_to(on_first: Machine) -> None:
+    """A switch made without an ask still brings its update-to-main, which serves the next ask."""
+    machine = on_first.machine
+    moved = machine.succeed(f"readlink -f {on_first.first}/specialisation/moved").strip()
+    program = machine.succeed(f"readlink -f {moved}/sw/bin/update-to-main").strip()
+    serving = "readlink -f /proc/$(systemctl show -p MainPID --value update-to-main)/exe"
+    assert machine.succeed(serving).strip() != program
+    machine.succeed(f"{moved}/bin/switch-to-configuration test")
+    machine.wait_until_succeeds(f'test "$({serving})" = {program}', timeout=30)
+    status, _, said = on_first.ask()
+    assert status == 0, said
 
 
 def test_a_machine_not_whole_goes_back(on_first: Machine) -> None:
