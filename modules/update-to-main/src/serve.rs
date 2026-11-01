@@ -3,7 +3,11 @@
 //! `update`, and anything else is refused. An ask while an update runs
 //! joins it and hears it from its first line, so a flood of asks is one
 //! update. Once an update has switched, the program starts itself again
-//! from the running system's path, so the newest one serves the next.
+//! from the running system's path, so the newest one serves the next. A
+//! switch made some other way, by hand or by the system's own tools,
+//! doesn't restart it, so it also starts again once the system's path
+//! holds another program than it was started as and nothing is running
+//! or being heard.
 //!
 //! Each update's ending is also kept in a file the group reads, so a
 //! machine's node can say how the last update ended though the switch
@@ -35,6 +39,10 @@ const ASK_AT_MOST: u64 = 64;
 /// before the program starts itself again.
 const HEARD_WITHIN: Duration = Duration::from_secs(10);
 
+/// How often the program checks whether the system's path holds another
+/// program than it was started as.
+const MOVED_EVERY: Duration = Duration::from_secs(5);
+
 /// One update's answer as it grows, heard by every asker who joined it.
 #[derive(Default)]
 struct Answer {
@@ -54,6 +62,11 @@ pub fn serve(config: Config) -> Result<(), String> {
     let listener = listen(&config)?;
     let config = Arc::new(config);
     let current: Arc<Mutex<Option<Arc<Answer>>>> = Arc::default();
+    if let Some(program) = config.program.clone() {
+        let started = fs::canonicalize(&program).ok();
+        let current = Arc::clone(&current);
+        thread::spawn(move || follow_the_system(&program, started.as_deref(), &current));
+    }
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
         let config = Arc::clone(&config);
@@ -255,6 +268,50 @@ fn start_again(program: &Path, heard: &Answer) {
     );
 }
 
+/// Starts the program again from the system's path once that holds
+/// another program than `started`, and no update is running or being
+/// heard. The current update's lock is held to the end, so no ask joins
+/// between looking and starting. If it can't start, this one serves on and
+/// stops looking, rather than trying again every few seconds.
+fn follow_the_system(program: &Path, started: Option<&Path>, current: &Mutex<Option<Arc<Answer>>>) {
+    loop {
+        thread::sleep(MOVED_EVERY);
+        if !moved(program, started) {
+            continue;
+        }
+        let current = current.lock().expect("the current update's lock");
+        if !current.as_deref().is_none_or(idle) {
+            continue;
+        }
+        eprintln!(
+            "{} is another program now, so starting it",
+            program.display()
+        );
+        let error = Command::new(program)
+            .args(std::env::args_os().skip(1))
+            .exec();
+        eprintln!(
+            "couldn't start {} again ({error}); this one serves on",
+            program.display()
+        );
+        return;
+    }
+}
+
+/// Whether the system's path to the program leads to another than
+/// `started`. A path that leads nowhere now, as while a system is half
+/// made, hasn't moved; one that led nowhere when it started has, once it
+/// leads somewhere.
+fn moved(program: &Path, started: Option<&Path>) -> bool {
+    fs::canonicalize(program).is_ok_and(|now| Some(now.as_path()) != started)
+}
+
+/// Whether an update has ended and every asker has heard it.
+fn idle(update: &Answer) -> bool {
+    let said = update.state.lock().expect("the answer's lock");
+    said.ended.is_some() && said.hearing == 0
+}
+
 /// The account asking, by what the kernel says of the socket's other end.
 fn asker(stream: &UnixStream) -> String {
     peer_uid(stream).map_or_else(|| "unknown".to_owned(), |uid| uid.to_string())
@@ -291,4 +348,56 @@ fn peer_uid(stream: &UnixStream) -> Option<libc::uid_t> {
     // SAFETY: uid and gid are valid for getpeereid to write.
     let done = unsafe { libc::getpeereid(stream.as_raw_fd(), &raw mut uid, &raw mut gid) };
     (done == 0).then_some(uid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn the_program_moves_when_the_systems_path_leads_to_another() {
+        let dir = tempfile::tempdir().unwrap();
+        let (old, new, path) = (
+            dir.path().join("old"),
+            dir.path().join("new"),
+            dir.path().join("path"),
+        );
+        fs::write(&old, "").unwrap();
+        fs::write(&new, "").unwrap();
+        symlink(&old, &path).unwrap();
+        let started = fs::canonicalize(&path).unwrap();
+        assert!(
+            !moved(&path, Some(&started)),
+            "still the one it was started as"
+        );
+        fs::remove_file(&path).unwrap();
+        assert!(
+            !moved(&path, Some(&started)),
+            "a path leading nowhere hasn't moved"
+        );
+        symlink(&new, &path).unwrap();
+        assert!(
+            moved(&path, Some(&started)),
+            "a switch made by hand moves it"
+        );
+        assert!(
+            moved(&path, None),
+            "one that led nowhere at the start moves once it leads somewhere"
+        );
+    }
+
+    #[test]
+    fn only_an_update_ended_and_heard_lets_the_program_start_again() {
+        let update = Answer::default();
+        assert!(!idle(&update), "running");
+        update.state.lock().unwrap().ended = Some(Line::Refused {
+            commit: None,
+            why: String::new(),
+        });
+        update.state.lock().unwrap().hearing = 1;
+        assert!(!idle(&update), "ended, but an asker is still hearing it");
+        update.state.lock().unwrap().hearing = 0;
+        assert!(idle(&update), "ended and heard");
+    }
 }

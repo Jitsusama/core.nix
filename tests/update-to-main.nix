@@ -73,6 +73,16 @@ let
     # machine unwhole.
     specialisation.switched.configuration.environment.etc.switched.text = "switched\n";
     specialisation.unhealthy.configuration.environment.etc.unhealthy.text = "unhealthy\n";
+    # One a switch by hand goes to, whose update-to-main on the system's
+    # path is a copy of the first's at another path, as a newer one would be.
+    specialisation.moved.configuration.environment.systemPackages = [
+      (pkgs.lib.hiPrio (
+        pkgs.runCommand "update-to-main-moved" { } ''
+          mkdir -p $out/bin
+          cp ${pkgs.callPackage ../modules/update-to-main/package.nix { }}/bin/update-to-main $out/bin/
+        ''
+      ))
+    ];
   };
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
