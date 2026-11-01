@@ -478,6 +478,23 @@ in
       touch $out
     '';
 
+  # A boot that read the panel's eDP display control while it was still
+  # waking chose the brightness control that flickers on it, until the
+  # next boot. Read from the XPS 14's patched source, so the patch that
+  # reads it until two reads agree is still applied after the others.
+  the-panel-is-asked-until-it-agrees =
+    let
+      dp = "drivers/gpu/drm/i915/display/intel_dp.c";
+    in
+    pkgs.runCommandLocal "the-panel-is-asked-until-it-agrees" { } ''
+      cd ${kernelSource [ dp ]}
+      if ! grep -Eq '^[[:space:]]+intel_edp_read_display_control\(intel_dp\);$' ${dp}; then
+        echo "The kernel reads the panel's eDP display control once, so a panel still waking can leave it on the brightness control that flickers."
+        exit 1
+      fi
+      touch $out
+    '';
+
   # The XPS 14's panel gives its luminance only in DisplayID's Display
   # Parameters block, so a kernel that doesn't read it guesses the panel's
   # brightness range. Read from the XPS 14's patched source.

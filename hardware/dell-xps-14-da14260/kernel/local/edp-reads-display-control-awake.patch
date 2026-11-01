@@ -1,0 +1,89 @@
+drm/i915/dp: read eDP display control until it holds still
+
+intel_edp_init_dpcd() reads the eDP display control registers (0x700)
+once, at boot, and the brightness interface is chosen from them for as
+long as the driver runs. A panel the firmware never lit, as on a laptop
+booted docked with its lid shut, is woken just before. On the XPS 14's
+LG OLED such a boot took VESA's 16-bit AUX brightness, 0 to 65535,
+which on this panel dims with flicker, rather than its luminance
+control in nits, which the same panel offers on the boots that work: the
+luminance bits of 0x703 weren't set when the block was read, and the
+panel flickered from the lid's opening until a boot that read them.
+
+So read the block until two reads 10 ms apart agree, for at most about
+a fifth of a second, and say at notice level what the first read gave
+when the last differs, since only drm.debug otherwise shows what was
+read. A panel that answers at once costs one more read and 10 ms. A
+failed read leaves the registers zero, as before.
+
+diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/display/intel_dp.c
+--- a/drivers/gpu/drm/i915/display/intel_dp.c
++++ b/drivers/gpu/drm/i915/display/intel_dp.c
+@@ -4707,6 +4707,50 @@
+ 	intel_dp->mso_pixel_overlap = mso ? info->mso_pixel_overlap : 0;
+ }
+ 
++/*
++ * Read the eDP display control registers, which say which brightness
++ * interface the panel has. A panel woken just before, as one the firmware
++ * never lit is, can answer before it has filled them in, and the driver
++ * then keeps the wrong brightness interface for as long as it runs. So
++ * read them until two reads 10 ms apart agree, for at most about a fifth
++ * of a second, and say what the first read gave when the last differs.
++ */
++static void intel_edp_read_display_control(struct intel_dp *intel_dp)
++{
++	struct intel_display *display = to_intel_display(intel_dp);
++	u8 first[EDP_DISPLAY_CTL_CAP_SIZE], last[EDP_DISPLAY_CTL_CAP_SIZE];
++	int tries = 1, ret, again;
++
++	ret = drm_dp_dpcd_read(&intel_dp->aux, DP_EDP_DPCD_REV, last, sizeof(last));
++	memcpy(first, last, sizeof(first));
++	do {
++		memcpy(intel_dp->edp_dpcd, last, sizeof(last));
++		fsleep(10000);
++		again = ret;
++		ret = drm_dp_dpcd_read(&intel_dp->aux, DP_EDP_DPCD_REV, last, sizeof(last));
++		tries++;
++	} while (tries < 20 &&
++		 (ret != sizeof(last) || again != ret ||
++		  memcmp(intel_dp->edp_dpcd, last, sizeof(last))));
++
++	if (tries > 2 || ret != sizeof(last))
++		drm_notice(display->drm,
++			   "eDP display control read %*ph first, then %*ph, %d bytes, in %d tries\n",
++			   (int)sizeof(first), first, (int)sizeof(last), last, ret, tries);
++
++	if (ret != sizeof(last)) {
++		memset(intel_dp->edp_dpcd, 0, sizeof(intel_dp->edp_dpcd));
++		return;
++	}
++
++	memcpy(intel_dp->edp_dpcd, last, sizeof(last));
++	drm_dbg_kms(display->drm, "eDP DPCD: %*ph\n",
++		    (int)sizeof(intel_dp->edp_dpcd),
++		    intel_dp->edp_dpcd);
++
++	intel_dp->use_max_params = intel_dp->edp_dpcd[0] < DP_EDP_14;
++}
++
+ static void
+ intel_edp_set_data_override_rates(struct intel_dp *intel_dp)
+ {
+@@ -4819,15 +4863,7 @@
+ 	 * method). The display control registers should read zero if they're
+ 	 * not supported anyway.
+ 	 */
+-	if (drm_dp_dpcd_read(&intel_dp->aux, DP_EDP_DPCD_REV,
+-			     intel_dp->edp_dpcd, sizeof(intel_dp->edp_dpcd)) ==
+-			     sizeof(intel_dp->edp_dpcd)) {
+-		drm_dbg_kms(display->drm, "eDP DPCD: %*ph\n",
+-			    (int)sizeof(intel_dp->edp_dpcd),
+-			    intel_dp->edp_dpcd);
+-
+-		intel_dp->use_max_params = intel_dp->edp_dpcd[0] < DP_EDP_14;
+-	}
++	intel_edp_read_display_control(intel_dp);
+ 
+ 	/*
+ 	 * If needed, program our source OUI so we can make various Intel-specific AUX services

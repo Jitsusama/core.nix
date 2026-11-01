@@ -98,6 +98,16 @@
       patch = ./local/panel-luminance-range.patch;
     }
     {
+      # A boot docked with the lid shut woke the panel just before reading
+      # which brightness interface it has, read it before the panel had
+      # filled it in, and set the OLED's brightness through the control
+      # that flickers on it until the next boot.
+      # Written here; the patch says why. Next's edp-wakes-the-panel is what
+      # wakes it, but either applies without the other.
+      name = "edp-reads-display-control-awake";
+      patch = ./local/edp-reads-display-control-awake.patch;
+    }
+    {
       # The EC sends an event Dell's driver has no key for about hourly,
       # and each one logged an unknown key. Nothing acts on it; written
       # here, and the patch says what's known of it.
