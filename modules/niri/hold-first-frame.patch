@@ -1,5 +1,5 @@
 diff --git a/src/niri.rs b/src/niri.rs
-index ff041ec..54d061d 100644
+index ff041ec..cd15028 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
 @@ -186,6 +186,16 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
@@ -78,17 +78,17 @@ index ff041ec..54d061d 100644
              screen_transition: None,
              debug_damage_tracker: OutputDamageTracker::from_output(&output),
          };
-@@ -4592,6 +4626,33 @@ impl Niri {
+@@ -4592,6 +4626,49 @@ impl Niri {
          }
      }
  
 +    /// Whether this output's first frame waits, as niri starts with
 +    /// HOLD_FIRST_FRAME_VARIABLE set on a screen of its own rather
-+    /// than in a window (winit): until a background or overlay
-+    /// layer surface maps on it (the desktop's wallpaper, or a greeter), for
-+    /// at most FIRST_FRAME_HOLD. Until then the screen keeps the boot
-+    /// splash's last frame rather than niri's bare backdrop. It never waits
-+    /// while the session locks, since locking needs a frame drawn.
++    /// than in a window (winit): until a layer surface covering it maps
++    /// (covering_surface), for at most FIRST_FRAME_HOLD. Until then the
++    /// screen keeps the boot splash's last frame rather than niri's bare
++    /// backdrop. It never waits while the session locks, since locking needs
++    /// a frame drawn.
 +    fn first_frame_held(&self, backend: &Backend, output: &Output) -> bool {
 +        if !self.holding_first_frames
 +            || matches!(backend, Backend::Winit(_))
@@ -103,16 +103,32 @@ index ff041ec..54d061d 100644
 +        {
 +            return false;
 +        }
-+        !layer_map_for_output(output).layers().any(|surface| {
-+            matches!(surface.layer(), Layer::Background | Layer::Overlay)
-+                && self.mapped_layer_surfaces.contains_key(surface)
-+        })
++        self.covering_surface(output).is_none()
++    }
++
++    /// The namespace of a background or overlay layer surface mapped on this
++    /// output and covering all of it, as the desktop's wallpaper or a greeter
++    /// does. A smaller one, such as a closed launcher's single pixel or a
++    /// strip along an edge, would show niri's bare backdrop all around it,
++    /// so it doesn't end a hold.
++    fn covering_surface(&self, output: &Output) -> Option<String> {
++        let size = output_size(output).to_i32_round::<i32>();
++        let map = layer_map_for_output(output);
++        map.layers()
++            .filter(|surface| matches!(surface.layer(), Layer::Background | Layer::Overlay))
++            .filter(|surface| self.mapped_layer_surfaces.contains_key(*surface))
++            .find(|surface| {
++                map.layer_geometry(surface).is_some_and(|geo| {
++                    geo.loc == Point::default() && geo.size.w >= size.w && geo.size.h >= size.h
++                })
++            })
++            .map(|surface| surface.namespace().to_owned())
 +    }
 +
      fn redraw(&mut self, backend: &mut Backend, output: &Output) {
          let _span = tracy_client::span!("Niri::redraw");
  
-@@ -4610,7 +4671,7 @@ impl Niri {
+@@ -4610,7 +4687,7 @@ impl Niri {
          self.update_render_elements(Some(output));
  
          let mut res = RenderResult::Skipped;
@@ -121,19 +137,25 @@ index ff041ec..54d061d 100644
              let state = self.output_state.get_mut(output).unwrap();
              state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
              state.unfinished_animations_remain |=
-@@ -4638,7 +4699,23 @@ impl Niri {
+@@ -4638,7 +4715,29 @@ impl Niri {
          }
  
          let is_locked = self.is_locked();
 +        let held = self.holds_first_frames && !matches!(backend, Backend::Winit(_));
++        // What ended this output's hold, looked for only until its first frame.
++        let covering = (held
++            && self.holding_first_frames
++            && res != RenderResult::Skipped
++            && !self.output_state[output].first_frame_shown)
++            .then(|| self.covering_surface(output))
++            .flatten();
          let state = self.output_state.get_mut(output).unwrap();
 +        if res != RenderResult::Skipped && !state.first_frame_shown {
 +            state.first_frame_shown = true;
 +            if held {
-+                let why = if self.holding_first_frames {
-+                    "once a background or overlay surface mapped"
-+                } else {
-+                    "as its hold ran out"
++                let why = match covering {
++                    Some(namespace) => format!("once {namespace:?} covered it"),
++                    None => String::from("as its hold ran out"),
 +                };
 +                info!(
 +                    "{}: first frame drawn {why}, {} ms after starting",
@@ -147,10 +169,10 @@ index ff041ec..54d061d 100644
              // Update the redraw state on failed render.
 diff --git a/src/tests/first_frame.rs b/src/tests/first_frame.rs
 new file mode 100644
-index 0000000..01a45d6
+index 0000000..b5945f0
 --- /dev/null
 +++ b/src/tests/first_frame.rs
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,123 @@
 +use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 +use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::Anchor;
 +
@@ -181,11 +203,21 @@ index 0000000..01a45d6
 +
 +/// Maps a layer surface covering the screen on the given layer.
 +fn map_layer(f: &mut Fixture, layer: Layer) {
++    let anchor = Anchor::Left | Anchor::Right | Anchor::Top | Anchor::Bottom;
++    map_part(f, layer, anchor, (1920, 1080));
++}
++
++/// Maps a layer surface on the given layer, anchored to the given edges,
++/// at the given size.
++fn map_part(f: &mut Fixture, layer: Layer, anchor: Anchor, (w, h): (u16, u16)) {
 +    let id = f.add_client();
 +    let created = f.client(id).create_layer(None, layer, "");
 +    let surface = created.surface.clone();
++    let edges = Anchor::Left | Anchor::Right | Anchor::Top | Anchor::Bottom;
 +    created.set_configure_props(LayerConfigureProps {
-+        anchor: Some(Anchor::Left | Anchor::Right | Anchor::Top | Anchor::Bottom),
++        anchor: Some(anchor),
++        // A surface anchored to every edge takes the screen's size.
++        size: (anchor != edges).then_some((u32::from(w), u32::from(h))),
 +        ..Default::default()
 +    });
 +    created.commit();
@@ -193,7 +225,7 @@ index 0000000..01a45d6
 +
 +    let mapped = f.client(id).layer(&surface);
 +    mapped.attach_new_buffer();
-+    mapped.set_size(1920, 1080);
++    mapped.set_size(w, h);
 +    mapped.ack_last_and_commit();
 +    f.double_roundtrip(id);
 +    redraw(f);
@@ -209,6 +241,26 @@ index 0000000..01a45d6
 +
 +    map_layer(&mut f, Layer::Background);
 +    assert!(first_frame_shown(&mut f), "the background surface never ended the hold");
++}
++
++#[test]
++fn an_overlay_surface_covering_only_part_never_ends_the_hold() {
++    let mut f = holding();
++
++    // A closed launcher keeps a single pixel mapped in a corner.
++    map_part(&mut f, Layer::Overlay, Anchor::Top | Anchor::Left, (1, 1));
++    assert!(!first_frame_shown(&mut f), "a pixel in a corner ended the hold");
++
++    // The margin is a strip along the top.
++    let top = Anchor::Left | Anchor::Right | Anchor::Top;
++    map_part(&mut f, Layer::Overlay, top, (1920, 40));
++    assert!(!first_frame_shown(&mut f), "a strip along the top ended the hold");
++
++    map_part(&mut f, Layer::Background, top, (1920, 1079));
++    assert!(!first_frame_shown(&mut f), "a background a line short ended the hold");
++
++    map_layer(&mut f, Layer::Background);
++    assert!(first_frame_shown(&mut f), "the wallpaper never ended the hold");
 +}
 +
 +#[test]
