@@ -497,13 +497,16 @@ struct Backlight<'a> {
 
 impl Backlight<'_> {
     /// The light changed. The first light heard teaches the curve the
-    /// brightness the screen already has.
+    /// brightness the screen already has. The keyboard's level isn't read
+    /// here: on a Dell each read is a firmware call, which fails under a
+    /// build's memory pressure, and the light sensor reports ten times a
+    /// second. It's read when a step is due (`keyboard_step`), which is where
+    /// a level Joel set with the key has to win.
     fn heard(&mut self, lux: f64) {
         let shown = self.screen.level_of(self.seen);
         if self.follow.heard(lux, shown, Instant::now()) {
             self.keep();
         }
-        self.keyboard_read();
         if let Some((keys, _)) = &mut self.keyboard {
             keys.heard(lux, Instant::now());
         }
