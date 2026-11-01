@@ -933,6 +933,7 @@ gather (
     ./modules/nix-offload/checks.nix
     ./modules/onepassword/checks.nix
     ./modules/open-with/checks.nix
+    ./modules/openssh/checks.nix
     ./modules/panel/checks.nix
     ./modules/people/checks.nix
     ./modules/pi/checks.nix

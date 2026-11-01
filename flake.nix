@@ -234,6 +234,7 @@
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
+        openssh = ./modules/openssh/darwin.nix;
         sudo = ./modules/sudo/darwin.nix;
         update-to-main = ./modules/update-to-main/darwin.nix;
         yubikey = ./modules/yubikey/system.nix;
@@ -303,6 +304,7 @@
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
         open-with = ./modules/open-with/nixos.nix;
+        openssh = ./modules/openssh/nixos.nix;
         panel = ./modules/panel/nixos.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
