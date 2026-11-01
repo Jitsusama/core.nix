@@ -67,7 +67,9 @@ pub fn said(picture: &Picture) -> Vec<Finding> {
                 format!("said:{}", digest(text)),
                 "said",
                 severity,
-                format!("the provider says: {plain}"),
+                // The meter's, never the cap's: its budget isn't what
+                // refuses.
+                format!("the provider's meter says: {plain}"),
                 "Said by the provider's own meter.".into(),
             );
             f.note = "said by the provider's meter".into();
