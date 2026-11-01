@@ -3132,8 +3132,10 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
     machine = desktop.machine
     heard = "$XDG_RUNTIME_DIR/collector/heard.jsonl"
     closed = desktop.in_session(LAUNCHER_OPEN)
-    # First an opening with no collector listening, its send refused, as
-    # when the collector is down: what's sent after it still arrives.
+    # First an opening with no collector listening, as when the collector
+    # is down: it's dropped without a warning, and what's sent after it
+    # still arrives.
+    since = desktop.mark()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.as_account("qs ipc call launcher toggle")
@@ -3175,6 +3177,16 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
         assert service == "launcher", sent["resource"]
         names = sorted(span["name"] for span in sent["scopeSpans"][0]["spans"])
         assert {"open", "step", "back"} <= set(names), names
+        # Both sends were over by the time the second arrived. The sender is
+        # the one socket with a property of its own, so Qt names it
+        # Socket_QML_<n>; a daemon not up yet warns as a plain Socket as it
+        # retries, which isn't the send's.
+        warned = desktop.as_account(
+            "journalctl --user -u quickshell --no-pager -o cat"
+            f" --after-cursor={shlex.quote(since)}"
+            " | grep -a -F quickshell.io.socket | grep -a -F Socket_QML_; true"
+        )
+        assert warned.strip() == "", f"a send warned:\n{warned}"
     finally:
         desktop.as_account("systemctl --user stop stand-in-collector")
 
