@@ -78,6 +78,7 @@ mod journal;
 mod machines;
 mod queue;
 mod relay;
+mod sleep;
 mod there;
 
 use std::io::{BufRead, BufReader};
@@ -619,6 +620,7 @@ fn serve(settings: &Settings) {
     let mut lent = adopt(settings, &mut machines, into_day());
     let mut not_before = 0;
     let mut said_on = None;
+    let mut sleep = sleep::Sleep::default();
     while !ENDING.load(Ordering::SeqCst) {
         let tick = Tick {
             now: now(),
@@ -626,6 +628,7 @@ fn serve(settings: &Settings) {
             wants: fs::read_to_string(&settings.queue)
                 .is_ok_and(|queue| queue::wants(&queue, now()))
                 || there::wanted(Path::new(DIR)),
+            woke: sleep.woke(now()),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref());
         lent = match lent.take() {
@@ -633,8 +636,14 @@ fn serve(settings: &Settings) {
                 Some(seconds) => {
                     let lent = lend(settings, &mut machines, tick.now, seconds);
                     if lent.is_none() {
-                        not_before =
-                            decide::next_after(Event::Failed, tick.wants, 0, u64::MAX, now());
+                        not_before = decide::next_after(
+                            Event::Failed,
+                            tick.wants,
+                            0,
+                            u64::MAX,
+                            false,
+                            now(),
+                        );
                     }
                     lent
                 }
@@ -649,7 +658,8 @@ fn serve(settings: &Settings) {
                     Some(event) => {
                         let (used, ends) = (builder.used, builder.ends);
                         give_back(settings, &mut machines, builder, event);
-                        not_before = decide::next_after(event, tick.wants, used, ends, now());
+                        not_before =
+                            decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
                     None => Some(builder),

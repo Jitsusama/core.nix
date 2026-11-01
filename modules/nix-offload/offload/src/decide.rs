@@ -27,6 +27,9 @@ pub struct Tick {
     pub into_day: u32,
     /// Whether the queue holds back work a builder could take.
     pub wants: bool,
+    /// Whether the machine woke from sleep in the last few minutes, long
+    /// enough for a helper to notice a builder that went while it slept.
+    pub woke: bool,
 }
 
 /// With nothing lent: the seconds a builder asked for now should live, if
@@ -43,9 +46,11 @@ pub fn lend(hours: Hours, tick: Tick, not_before: u64, unreturned: usize) -> Opt
 /// it does once the builder goes on its own. One whose time ran out ended
 /// on time, gone or not, since a machine that slept past it sees it only
 /// on waking, and the day's deadline alone can't say so once it's tomorrow.
+/// One gone just after a sleep went unused, as its own idle delete takes
+/// it, so it isn't lost either.
 pub fn give_back(hours: Hours, tick: Tick, used: u64, ends: u64, gone: bool) -> Option<Event> {
     let over = tick.now >= ends || tick.into_day >= hours.deadline;
-    if gone && !over {
+    if gone && !over && !tick.woke {
         Some(Event::Lost)
     } else if over || tick.now.saturating_sub(used) >= IDLE {
         Some(Event::Stopped)
@@ -58,11 +63,12 @@ pub fn give_back(hours: Hours, tick: Tick, used: u64, ends: u64, gone: bool) -> 
 /// ends with `event`. One given back idle while work still `wants` it is
 /// one that work couldn't use, so it waits as long as after a failure;
 /// one given back in use at the deadline, or whose time ran out at `ends`
-/// while it slept unused with the machine, doesn't.
-pub fn next_after(event: Event, wants: bool, used: u64, ends: u64, now: u64) -> u64 {
+/// while it slept unused with the machine, doesn't; nor does one that sat
+/// unused only because the machine slept, just before it `woke`.
+pub fn next_after(event: Event, wants: bool, used: u64, ends: u64, woke: bool, now: u64) -> u64 {
     match event {
         Event::Lost | Event::Failed => now + AFTER_FAILING,
-        Event::Stopped if wants && now < ends && now.saturating_sub(used) >= IDLE => {
+        Event::Stopped if wants && !woke && now < ends && now.saturating_sub(used) >= IDLE => {
             now + AFTER_FAILING
         }
         _ => now,
@@ -88,6 +94,7 @@ mod tests {
             now: 1_000_000,
             into_day,
             wants,
+            woke: false,
         }
     }
 
@@ -120,21 +127,24 @@ mod tests {
     fn none_is_lent_while_waiting_out_a_failure() {
         assert_eq!(lend(HOURS, at(12 * 3600, true), 1_000_001, 0), None);
         assert_eq!(
-            next_after(Event::Failed, false, 5, LATER, 5),
+            next_after(Event::Failed, false, 5, LATER, false, 5),
             5 + AFTER_FAILING
         );
         assert_eq!(
-            next_after(Event::Lost, false, 5, LATER, 5),
+            next_after(Event::Lost, false, 5, LATER, false, 5),
             5 + AFTER_FAILING
         );
-        assert_eq!(next_after(Event::Stopped, false, 0, LATER, IDLE), IDLE);
+        assert_eq!(
+            next_after(Event::Stopped, false, 0, LATER, false, IDLE),
+            IDLE
+        );
     }
 
     #[test]
     fn one_given_back_unused_while_work_waits_is_not_asked_for_again_at_once() {
         let now = 100_000;
         assert_eq!(
-            next_after(Event::Stopped, true, now - IDLE, LATER, now),
+            next_after(Event::Stopped, true, now - IDLE, LATER, false, now),
             now + AFTER_FAILING
         );
     }
@@ -144,7 +154,10 @@ mod tests {
         // Given back at 23:59 in use on 30 October, the next waited out
         // half an hour of the day after as if no work could use it.
         let now = 100_000;
-        assert_eq!(next_after(Event::Stopped, true, now - 60, LATER, now), now);
+        assert_eq!(
+            next_after(Event::Stopped, true, now - 60, LATER, false, now),
+            now
+        );
     }
 
     #[test]
@@ -157,14 +170,34 @@ mod tests {
             now: ends + 10 * 3600,
             into_day: 9 * 3600 + 36 * 60,
             wants: true,
+            woke: false,
         };
         assert_eq!(
             give_back(HOURS, morning, ends - 1800, ends, true),
             Some(Event::Stopped)
         );
         assert_eq!(
-            next_after(Event::Stopped, true, ends - 1800, ends, morning.now),
+            next_after(Event::Stopped, true, ends - 1800, ends, false, morning.now),
             morning.now
+        );
+    }
+
+    #[test]
+    fn one_gone_on_its_own_while_the_machine_slept_is_not_counted_lost() {
+        // A builder deletes itself after 15 idle minutes, so a lid shut over
+        // lunch leaves it gone on waking, though nothing failed.
+        let woken = Tick {
+            woke: true,
+            ..at(13 * 3600, true)
+        };
+        let used = woken.now - 3600;
+        assert_eq!(
+            give_back(HOURS, woken, used, LATER, true),
+            Some(Event::Stopped)
+        );
+        assert_eq!(
+            next_after(Event::Stopped, true, used, LATER, true, woken.now),
+            woken.now
         );
     }
 
