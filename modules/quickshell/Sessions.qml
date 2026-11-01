@@ -29,6 +29,7 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Places.js" as Places
 import "Waiting.js" as Waiting
 
 Singleton {
@@ -387,9 +388,9 @@ Singleton {
     // one back on its workspace in its order after a cold boot (Joel,
     // 2026-10-29, after a restore: "every session is all over the place on
     // one workspace, out of order"). Each is kept by the session's own id,
-    // which pi keeps as a session is reopened: the screen and the
-    // workspace as niri numbers it there, then its column and its tile in
-    // that column. One's kept after it ends, since a boot's end ends them
+    // which pi keeps as a session is reopened: the screen, by what it is
+    // and by its connector, and the workspace as niri numbers it there,
+    // then its column and its tile in that column. One's kept after it ends, since a boot's end ends them
     // one by one, and only this boot's and the boot being restored are
     // kept. It's written once the windows have been still a moment, never
     // for each change.
@@ -417,10 +418,23 @@ Singleton {
             const at = session.window?.layout?.pos_in_scrolling_layout;
             const workspace = session.window ? Niri.workspace(session.window.workspace_id) : null;
             if (session.here && typeof id === "string" && at && workspace)
-                now[id] = { output: workspace.output ?? "", workspace: workspace.idx,
+                now[id] = { screen: screens[workspace.output] ?? "",
+                    output: workspace.output ?? "", workspace: workspace.idx,
                     column: at[0], tile: at[1] };
         });
         return now;
+    }
+    // Each connector's screen as niri describes it (Places.js), asked for
+    // as places are kept and as they're reopened, since a dock or a boot
+    // can move a screen to another connector. Kept as last said when niri
+    // doesn't answer.
+    property var screens: ({})
+    function lookAtScreens(then) {
+        Niri.request("Outputs", answer => {
+            if (answer?.Outputs)
+                screens = Places.screensOf(answer.Outputs);
+            then();
+        });
     }
     function keepArrangement() {
         if (bootId === "")
@@ -435,7 +449,7 @@ Singleton {
     Timer {
         id: arranging
         interval: 2000
-        onTriggered: root.keepArrangement()
+        onTriggered: root.lookAtScreens(() => root.keepArrangement())
     }
     onRunningChanged: arranging.restart()
     Connections {
@@ -544,11 +558,18 @@ Singleton {
     function reopenAll(lost, gone, keptAt) {
         const kept = keptAt ?? (id => arrangement[restoring.boot]?.[id] ?? null);
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one));
+        const here = lost.filter(one => one.machine === undefined);
+        lookAtScreens(() => reopenHere(here, gone, kept));
+    }
+    // Each kept place found on its own screen as it's connected now, or a
+    // gone screen's after the one in use's (Places.js), then in order.
+    function reopenHere(here, gone, kept) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : a.at.output.localeCompare(b.at.output) || a.at.workspace - b.at.workspace
                 || a.at.column - b.at.column || a.at.tile - b.at.tile;
-        const queue = lost.filter(one => one.machine === undefined)
-            .map(one => ({ one, at: kept(one.id), gone })).sort(order);
+        const places = Places.placed(here.map(one => kept(one.id)), screens,
+            Niri.workspace()?.output ?? null);
+        const queue = here.map((one, at) => ({ one, at: places[at], gone })).sort(order);
         if (reopening !== null) {
             reopening.queue = reopening.queue.concat(queue);
             if (reopening.waiting === null && !reopening.looking && !reopenPacing.running)
@@ -621,8 +642,8 @@ Singleton {
                 return;
             }
             if (next.at) {
-                // A screen that's gone leaves it on the screen in use, at
-                // the same workspace.
+                // A screen gone was given the screen in use (Places.js);
+                // with none known, it stays on the one in use.
                 if (Object.values(Niri.workspaces).some(one => one.output === next.at.output))
                     Niri.act({ FocusMonitor: { output: next.at.output } });
                 Niri.act({ FocusWorkspace: { reference: { Index: next.at.workspace } } });
