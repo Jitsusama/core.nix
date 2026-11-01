@@ -266,6 +266,8 @@ pub struct Direction {
     /// Since when it has been busy at its floor with the connection's queue
     /// standing, without a quiet window between.
     floored_since: Option<f64>,
+    /// When it was last busy at its floor with the queue building.
+    floored_last: Option<f64>,
     /// The seconds it has carried well under a floor with the connection's
     /// queue building, the most and least it carried then, and when it last
     /// did.
@@ -301,6 +303,7 @@ impl Direction {
             on_trial: None,
             confirmed: None,
             floored_since: None,
+            floored_last: None,
             thin_for: 0.0,
             thin_most: 0.0,
             thin_least: f64::INFINITY,
@@ -463,12 +466,26 @@ impl Direction {
     /// arriving faster than its rate is held back here, and lowering its
     /// best for a queue elsewhere took one from 50 Mbit/s to 8 in two
     /// minutes.
-    fn pinned(&mut self, s: &Settings, now: f64, carried: f64, suspect: bool) {
+    ///
+    /// While real-time traffic flows, Joel chose the call over the rate,
+    /// and the queue standing behind a full floor needn't stand without a
+    /// break: on 31 October an upload filled its floor of 8.9 Mbit/s for
+    /// four minutes beside a stand-in call while its queue drained for a
+    /// moment every several seconds, and each moment began the count again.
+    /// Then the count runs on through quiet moments and steps that don't
+    /// count, as a thin spell's does, until the rate leaves its floor or
+    /// `thin_gap_s` passes without such a step.
+    fn pinned(&mut self, s: &Settings, now: f64, carried: f64, suspect: bool, live: bool) {
         let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
-        if !suspect || carried < float(self.rate) * s.busy || self.held > least {
+        let floored = suspect && carried >= float(self.rate) * s.busy && self.held <= least;
+        let gone = self.floored_last.is_some_and(|at| now - at > s.thin_gap_s);
+        if self.held > least || gone || !(live || floored) {
             self.floored_since = None;
+        }
+        if !floored {
             return;
         }
+        self.floored_last = Some(now);
         let since = *self.floored_since.get_or_insert(now);
         if now - since >= s.floored_s {
             self.best = whole(float(self.best) * s.cut).max(self.bounds.min);
@@ -846,7 +863,7 @@ impl Controller {
                 .into_iter()
                 .enumerate()
             {
-                dir.pinned(&s, now, carried, filling[i]);
+                dir.pinned(&s, now, carried, filling[i], self.live);
                 cuts[i] |= dir.thin(&s, now, carried, held_here[i], drain, self.live);
             }
             if cuts[0] || cuts[1] {
@@ -874,11 +891,16 @@ impl Controller {
         let mut climbing = false;
         let mut forgot = false;
         for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
+            // While live a quiet moment doesn't end the floor's count.
+            let floored = dir.floored_since;
             if carried >= float(dir.rate) * s.busy {
                 dir.climb(&s, now);
                 climbing = true;
             } else {
                 forgot |= dir.rest(&s, now);
+            }
+            if self.live {
+                dir.floored_since = floored;
             }
         }
         if climbing {
@@ -1532,6 +1554,43 @@ mod tests {
     }
 
     #[test]
+    fn while_real_time_flows_an_upload_filling_its_floor_in_spells_is_followed_down() {
+        // At home on 31 October, beside a stand-in call under full build
+        // load, an upload carried all of its floor of 8.9 Mbit/s for four
+        // minutes while the pings past the router reached 161 ms, the
+        // download already followed down to 28. Its queue drained for a
+        // moment every several seconds, and each quiet moment began the
+        // floor's count again, so its six seconds never came.
+        let mut c = wi_fi(8_900);
+        c.live = true;
+        c.up.best = 14_800;
+        c.up.peak = 14_800;
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut queue_kbit) = (0.0_f64, 0.0_f64);
+        let (mut steps, mut queued) = (0_u32, 0_u32);
+        while at < 240.0 {
+            let connection = 7_500.0 + 800.0 * (at * 0.7).sin();
+            let sent = if at % 6.0 < 4.4 {
+                float(c.up.rate)
+            } else {
+                0.0
+            };
+            queue_kbit = (queue_kbit + (sent - connection) * 0.2).clamp(0.0, connection * 0.4);
+            let delay = queue_kbit / connection * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            c.step(at, sent.min(connection), 1_000.0);
+            if at > 180.0 {
+                steps += 1;
+                queued += u32::from(delay > 30.0);
+            }
+        }
+        let share = f64::from(queued) / f64::from(steps);
+        assert!(share < 0.25, "queued {share} of the minute while live");
+        assert!(c.up.rate <= 8_000, "{}", c.up.rate);
+    }
+
+    #[test]
     fn while_real_time_flows_a_download_carrying_most_of_its_floor_is_followed_down() {
         // At home on 31 October, beside a stand-in call, a download held
         // at its floor of 80.9 Mbit/s carried 45% to 95% of it, mostly 57%
@@ -1568,10 +1627,11 @@ mod tests {
         let share = f64::from(queued) / f64::from(steps);
         assert!(share < 0.5, "queued {share} of the minute while live");
         assert!(most <= 70_000, "{most}");
-        // Pings don't say whose queue it is, so the upload, at its own
-        // floor beside it, may give a step before the download is found.
+        // Pings don't say whose queue it is, so the upload, full at its own
+        // floor beside it, gives too until the queue clears: Joel chose the
+        // call over the rate, and the cost stays near the quarter he took.
         assert!(
-            c.up.rate >= 7_500,
+            c.up.rate >= 6_500,
             "the upload took the blame: {}",
             c.up.rate
         );
