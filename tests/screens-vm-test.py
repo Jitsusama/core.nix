@@ -716,16 +716,22 @@ def test_after_the_wake_the_launchers_foot_still_tells_the_time(slept_open: Scre
     """After the wake, the launcher's foot still tells the time as it passes.
 
     A clock that stopped in the sleep would still say the minute it stopped at, so the foot
-    must follow the minute after the wake.
+    must follow the minute after the wake. A closed launcher holds its foot as it last showed
+    it, drawing nothing nobody sees, so the foot is read open, once the minute has turned.
     """
     woke = slept_open.minute()
-    slept_open.machine.log(f"the foot says: {slept_open.launcher_shows()['glance']}")
     deadline = time.monotonic() + 90
-    while (now := slept_open.minute()) == woke or now not in slept_open.launcher_shows()["glance"]:
-        assert time.monotonic() < deadline, (
-            f"the foot says {slept_open.launcher_shows()['glance']!r} at {now}"
-        )
+    while slept_open.minute() == woke:
+        assert time.monotonic() < deadline, f"the minute never turned from {woke}"
         time.sleep(1)
+    slept_open.super_space_on("Virtual-1")
+    try:
+        slept_open.launcher_until(
+            lambda shown: slept_open.minute() in shown["glance"], "told the time after the wake"
+        )
+    finally:
+        slept_open.machine.send_key("esc")
+        slept_open.launcher_until(lambda shown: not shown["open"], "closed at Escape")
 
 
 def test_quickshell_warned_of_nothing_as_the_screens_came_and_went(
