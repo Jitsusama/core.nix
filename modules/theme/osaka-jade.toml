@@ -2,7 +2,12 @@
 # pigments are Omarchy 4.0.4's, each noted with the name Omarchy gives it:
 # https://github.com/omacom/omarchy/blob/c668141e9c42b13c80c9ca4ea108e11708c5e8a5/themes/osaka-jade/colors.toml
 # Sage is ours: Omarchy's muted is too faint to read as text, so sage is its
-# hue made just light enough to pass 4.5:1 on the background.
+# hue made just light enough to pass 4.5:1 on the background. Reed is ours
+# too: text is linen, since Omarchy's foreground, parchment, is too dim on
+# the background by APCA (Lc 67.6, where body text needs 75), and muted is
+# reed, linen's own hue and chroma made just dark enough to stay Lc 60
+# on the background, oklch(0.77 0.034 105.2), so rank reads as lightness
+# alone rather than as a change of hue.
 
 name = "Osaka Jade"
 appearance = "dark"
@@ -20,6 +25,7 @@ fern = "#23372B"        # lighter_background
 moss = "#32473B"        # selection
 lichen = "#53685B"      # muted
 sage = "#718779"
+reed = "#B7B69D"
 seafoam = "#81B8A8"     # dark_foreground
 parchment = "#C1C497"   # foreground
 linen = "#D6D5BC"       # light_foreground
@@ -45,9 +51,9 @@ sunken = "deep_forest"
 deepest = "night"
 raised = "fern"
 selection = "moss"
-text = "parchment"
+text = "linen"
 strong = "cream"
-muted = "sage"
+muted = "reed"
 rule = "lichen"
 edge = "moss"
 shadow = "night"
@@ -65,7 +71,7 @@ voice = "turquoise"
 
 [terminal]
 background = "forest"
-foreground = "parchment"
+foreground = "linen"
 cursor = "cream"
 cursor_text = "forest"
 selection_background = "moss"

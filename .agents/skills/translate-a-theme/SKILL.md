@@ -76,11 +76,15 @@ brighter.
      background and the ones just below and above it. A source with one
      background gets the others by darkening and lightening it a step in
      OKLCH lightness, as new pigments.
-   - `text` and `strong`: the main foreground and the brightest one.
-   - `muted` is text, so it has to read: 4.5:1 on the background, sunken and
-     deepest. A source's comment or muted colour is usually fainter than
-     that; keep it as `rule`, and make `muted` a new pigment of its hue made
-     just light enough to pass, as Osaka Jade's `sage` is.
+   - `text` and `strong`: the main foreground and the brightest one, each
+     at least APCA's Lc 75 on the background, sunken and deepest. A dark
+     source's main foreground often passes 4.5:1 and still misses Lc 75;
+     then text is its lighter foreground, as Osaka Jade's `linen` is.
+   - `muted` is text, so it has to read: 4.5:1 and Lc 60 on the background,
+     sunken and deepest. A source's comment or muted colour is usually
+     fainter than that; keep it as `rule`, and make `muted` a new pigment on
+     text's own hue and chroma, made just dark enough to stay Lc 60, as Osaka
+     Jade's `reed` is, so rank reads as lightness and not as a change of hue.
    - `edge` outlines what isn't focused, so it's quiet: a step brighter
      than `raised`, often the source's inactive border or its selection.
    - `accent` is the one colour that means "here", so it's the source's
@@ -115,7 +119,8 @@ brighter.
 - **Legibility.** Build any check with the theme picked
   (`jitsusama.theme.name = "<name>"` on a bare machine, as
   `a-faint-theme-is-refused` in `modules/theme/checks.nix` does). Every text pair under
-  4.5:1 is listed by name with its ratio. Fix each by adding a pigment, never
+  4.5:1 is listed by name with its ratio, and every text role under its APCA Lc with its
+  Lc. Fix each by adding a pigment, never
   by loosening the check.
 - **Nothing hard-coded.** A module that names a colour of its own isn't a
   theme problem; fix the module, so the theme reaches it.

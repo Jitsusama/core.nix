@@ -14,7 +14,9 @@
     the way out, and nothing when none failed
   '';
   a-faint-theme-is-refused = ''
-    a theme with text under WCAG's 4.5:1 doesn't build
+    a theme with text under WCAG's 4.5:1, or text roles under APCA's Lc 75 for text and strong or
+    60 for muted on the grounds they're read on, doesn't build, and APCA gives its own reference
+    values
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
