@@ -40,11 +40,14 @@
 //! `$XDG_RUNTIME_DIR/backlight-warmth` for the shell's Warmth part, once a
 //! sensor sees the light's colour, so the part shows only where it means
 //! something. The daemon's stop leaves `{}` there, which shows no part.
+//! Every call to wl-gammarelay-rs is given a moment to answer (ask.rs), so
+//! the warmth never holds the brightness, the keys or the lid.
 //!
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
 //! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
 
+mod ask;
 mod curve;
 mod facts;
 mod follow;
@@ -246,7 +249,10 @@ async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'static>)>, Start
         Err(_) => false,
     };
     let shown = if running {
-        relay.temperature().await.unwrap_or(WHITE)
+        ask::twice(ask::MOMENT, || relay.temperature())
+            .await
+            .and_then(Result::ok)
+            .unwrap_or(WHITE)
     } else {
         WHITE
     };
@@ -567,10 +573,15 @@ impl Backlight<'_> {
         let Some(kelvin) = warmth.step(now) else {
             return;
         };
-        match relay.set_temperature(kelvin).await {
-            Ok(()) => warmth.set(kelvin, now),
-            Err(error) => {
+        let relay: &RelayProxy = relay;
+        match ask::twice(ask::MOMENT, || relay.set_temperature(kelvin)).await {
+            Some(Ok(())) => warmth.set(kelvin, now),
+            Some(Err(error)) => {
                 eprintln!("<4>can't set the screens' warmth: {error}");
+                warmth.abandon();
+            }
+            None => {
+                eprintln!("<4>can't set the screens' warmth: wl-gammarelay-rs didn't answer");
                 warmth.abandon();
             }
         }
