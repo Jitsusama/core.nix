@@ -1016,6 +1016,10 @@
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
   '';
+  reopening-finds-each-screen = ''
+    Reopen Them All puts each session back on its own screen, found by its maker, model and serial
+    rather than its connector, and a gone screen's workspaces after the one in use's
+  '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
   '';

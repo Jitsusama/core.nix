@@ -971,18 +971,25 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     space = next(one for one in spaces if one["id"] == pi["workspace_id"])
     at = pi["layout"]["pos_in_scrolling_layout"]
     held = json.loads(desktop.as_account(f"cat {arranged}"))["boots"][boot]["01a1face-test"]
+    # Its screen is kept by what it is as well as its connector, as niri's
+    # config names one, since a dock or a boot can move it to another.
+    output = json.loads(desktop.as_account("niri msg --json outputs"))[space["output"]]
+    screen = " ".join(part for part in (output["make"], output["model"], output["serial"]) if part)
     assert held == {
+        "screen": screen,
         "output": space["output"],
         "workspace": space["idx"],
         "column": at[0],
         "tile": at[1],
     }, held
     # The last boot's three, listed out of order: two on the first
-    # workspace, west then east, and one on the second.
+    # workspace, west then east, and one on the second, kept on this
+    # screen when it was on another connector.
+    elsewhere = {"screen": screen, "output": "DP-9"}
     where = {
-        "01c3-east": {"output": space["output"], "workspace": 1, "column": 2, "tile": 1},
-        "01c3-north": {"output": space["output"], "workspace": 2, "column": 1, "tile": 1},
-        "01c3-west": {"output": space["output"], "workspace": 1, "column": 1, "tile": 1},
+        "01c3-east": {**elsewhere, "workspace": 1, "column": 2, "tile": 1},
+        "01c3-north": {**elsewhere, "workspace": 2, "column": 1, "tile": 1},
+        "01c3-west": {**elsewhere, "workspace": 1, "column": 1, "tile": 1},
     }
     lost = {
         "v": 1,

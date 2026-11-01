@@ -579,6 +579,24 @@ onLinux {
       touch $out
     '';
 
+  # Reopen Them All puts each session back on its own screen, found by what
+  # the screen is rather than its connector, and a gone screen's workspaces
+  # after the one in use's, as tests/places.qml holds Places.js to it in
+  # Qt's own engine.
+  reopening-finds-each-screen =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "reopening-finds-each-screen" { } ''
+      cp ${../../tests/places.qml} places.qml
+      cp ${./Places.js} Places.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml places.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
@@ -1838,6 +1856,10 @@ onLinux {
         property var spawned: []
         property var spawns: []
         function act(request) { acted = request; }
+        // Asked anything, as Sessions asks for the outputs, it says nothing.
+        function request(asked, answer) { answer(null); }
+        // No workspace is known, the focused one included.
+        function workspace(id) { return null; }
         function spawn(command) {
           spawned = command;
           spawns = spawns.concat([command.join(" ")]);
@@ -1864,6 +1886,7 @@ onLinux {
       export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
       cp ${./Sessions.qml} Sessions.qml
       cp ${./Waiting.js} Waiting.js
+      cp ${./Places.js} Places.js
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../tests/sessions.qml} shell.qml

@@ -103,6 +103,7 @@ let
     "Forward.js"
     "Daemon.qml"
     "Sessions.qml"
+    "Places.js"
     "Location.qml"
     "WaitingOnYou.qml"
     "Waiting.js"
