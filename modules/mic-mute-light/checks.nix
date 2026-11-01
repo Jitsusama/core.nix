@@ -7,8 +7,9 @@
 }:
 onLinux {
   # The light's program asks after the mute only once an array of
-  # pw-dump's that touched a mute or the default source has ended, reads
-  # wpctl's mark, and lights the light for a muted source alone.
+  # pw-dump's that touched a mute or the default source has ended, or any
+  # array while the light has yet to be set, reads wpctl's mark, and
+  # lights the light for a muted source alone.
   the-mic-mute-light-follows-the-mute =
     pkgs.runCommandCC "the-mic-mute-light-follows-the-mute" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
