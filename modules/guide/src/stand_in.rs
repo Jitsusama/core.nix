@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 
 use crate::vault::VaultKey;
 use crate::vault::store::Store;
+use crate::tool::Path;
 use crate::{Fault, Given, Journal, Machine, Program, Ran, Tool};
 
 /// A call as the `StandIn` keys what it answers: the program, then its
@@ -33,8 +34,8 @@ pub struct StandIn {
     /// Whether the stick is out, its vault out of reach.
     stick_out: bool,
     /// Every call made, in order, as `program arg arg`, followed by the
-    /// names of the secrets it was given in brackets, and `(as root)` for
-    /// one run through run0.
+    /// names of the plain variables it was given in braces, the names of
+    /// the secrets in brackets, and `(as root)` for one run through run0.
     pub calls: Vec<String>,
     /// Each secret given, as where it went (`PIN`, `cryptenroll.fido2-pin`,
     /// `stdin`) and what it was, in order.
@@ -197,6 +198,24 @@ impl Machine for StandIn {
             .chain(args.iter().copied())
             .collect::<Vec<_>>()
             .join(" ");
+        if !given.plain.is_empty() {
+            let names: Vec<&str> = given.plain.iter().map(|(name, _)| *name).collect();
+            call = format!("{call} {{{}}}", names.join(" "));
+        }
+        // A cryptsetup without systemd's plugins passes over every token
+        // and answers as if it had tried, so a step that leaves them out
+        // would pass here and do nothing on a machine.
+        if program == Program::Tool(Tool::Cryptsetup)
+            && args.contains(&"--token-only")
+            && !given
+                .plain
+                .iter()
+                .any(|&(name, value)| name == "LD_LIBRARY_PATH" && Path::Tokens.value() == Some(value))
+        {
+            return Err(Fault::Unscripted {
+                call: format!("{call} without systemd's token plugins"),
+            });
+        }
         let mut handed = vec![];
         for (place, secret) in given.env.iter().chain(&given.credentials) {
             handed.push(place.to_string());
