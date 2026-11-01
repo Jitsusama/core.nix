@@ -31,15 +31,67 @@ fn ask(store: &Path, words: &[&str]) -> Output {
 }
 
 /// Waits for `ready`, failing rather than hanging when it never comes.
-fn until<T>(what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
-    let deadline = Instant::now() + Duration::from_secs(10);
+fn until<T>(what: &str, ready: impl FnMut() -> Option<T>) -> T {
+    within(10, what, ready)
+}
+
+fn within<T>(seconds: u64, what: &str, mut ready: impl FnMut() -> Option<T>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(seconds);
     loop {
         if let Some(it) = ready() {
             return it;
         }
-        assert!(Instant::now() < deadline, "{what} within 10 s");
+        assert!(Instant::now() < deadline, "{what} within {seconds} s");
         std::thread::yield_now();
     }
+}
+
+fn pressure(some: u64) -> String {
+    format!(
+        "some avg10=0.00 avg60=0.00 avg300=0.00 total={some}\n\
+         full avg10=0.00 avg60=0.00 avg300=0.00 total={}\n",
+        some / 2
+    )
+}
+
+// The machine's memory waits half a second once the collector has read
+// it quiet, and the wait is kept as the kernel's span once three quiet
+// seconds end it. Its first reading is taken before the socket is made,
+// so a socket there means the quiet one was read.
+#[test]
+fn a_wait_the_kernel_counts_is_kept_as_its_span() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let socket = dir.path().join("run/lines.sock");
+    let store = dir.path().join("store");
+    let root = dir.path().join("root");
+    let memory = root.join("proc/pressure/memory");
+    std::fs::create_dir_all(memory.parent().unwrap()).unwrap();
+    std::fs::write(&memory, pressure(0)).unwrap();
+    let _serving = Serving(
+        Command::new(COLLECTOR)
+            .args(["serve", "--socket"])
+            .arg(&socket)
+            .arg("--store")
+            .arg(&store)
+            .arg("--pressure")
+            .arg(&root)
+            .spawn()
+            .expect("collector serves"),
+    );
+    until("the socket", || UnixStream::connect(&socket).ok());
+    std::fs::write(&memory, pressure(500_000)).unwrap();
+
+    // Its three quiet seconds come after the waiting one.
+    let line = within(30, "the wait kept", || {
+        let out = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+        let text = String::from_utf8(out.stdout).ok()?;
+        text.lines()
+            .find(|line| line.contains("memory waits in the machine"))
+            .map(str::to_owned)
+    });
+    assert!(line.contains(r#""service":"kernel""#), "{line}");
+    assert!(line.contains(r#""waited_ms":500"#), "{line}");
+    assert!(line.contains(r#""full_ms":250"#), "{line}");
 }
 
 fn request(now: u128) -> String {

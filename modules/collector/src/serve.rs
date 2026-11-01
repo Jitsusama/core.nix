@@ -14,6 +14,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::otlp;
+use crate::pressure;
 use crate::store::Store;
 
 /// The longest line taken. A sender batches a second's spans into a line,
@@ -21,12 +22,22 @@ use crate::store::Store;
 /// is closed rather than held in memory.
 const LONGEST: u64 = 4 << 20;
 
-/// Takes spans on `socket` into `store` until the process is stopped.
+/// Takes spans on `socket` into `store` until the process is stopped,
+/// with the waits the kernel counts below `root`.
 ///
 /// # Errors
 ///
 /// When the socket can't be made.
-pub fn serve(socket: &Path, store: Store) -> Result<(), String> {
+pub fn serve(socket: &Path, store: Store, root: &Path) -> Result<(), String> {
+    let store = Arc::new(Mutex::new(store));
+    // Read before the socket is made, so a sender that finds the socket
+    // knows the first reading is taken.
+    let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let watching = pressure::Watching::start(pressure::sources(root, &cgroup));
+    {
+        let store = Arc::clone(&store);
+        thread::spawn(move || watching.run(&store));
+    }
     if let Some(dir) = socket.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("making {}: {e}", dir.display()))?;
     }
@@ -39,7 +50,6 @@ pub fn serve(socket: &Path, store: Store) -> Result<(), String> {
         .map_err(|e| format!("listening on {}: {e}", socket.display()))?;
     fs::set_permissions(socket, fs::Permissions::from_mode(0o600))
         .map_err(|e| format!("keeping {} to its account: {e}", socket.display()))?;
-    let store = Arc::new(Mutex::new(store));
     for stream in listener.incoming().flatten() {
         let store = Arc::clone(&store);
         thread::spawn(move || take(stream, &store));

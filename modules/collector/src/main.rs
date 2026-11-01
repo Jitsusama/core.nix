@@ -5,15 +5,19 @@
 //! - `collector serve` takes spans in OpenTelemetry's JSON form, one
 //!   export request a line, on `$XDG_RUNTIME_DIR/collector/lines.sock`, and
 //!   keeps them an hour a file in `$XDG_STATE_HOME/collector`, for seven
-//!   days and in at most 2 GiB.
+//!   days and in at most 2 GiB. Beside them it keeps the kernel's own:
+//!   each time the machine, or the account's app or session slice, made
+//!   something wait for the processor, memory or the disk.
+//!   (src/pressure.rs says which.)
 //! - `collector at 09:01:57 [--around 5s]` lists every span open within
 //!   that much of the moment, by when it began.
 //! - `collector trace <id>` shows one trace's spans as the tree they make.
 //!
-//! `--json` prints a span a line instead, and `--store` and `--socket`
-//! name other places.
+//! `--json` prints a span a line instead, and `--store`, `--socket` and
+//! `--pressure` (where /proc and /sys are) name other places.
 
 mod otlp;
+mod pressure;
 mod serve;
 mod store;
 mod when;
@@ -31,7 +35,7 @@ use otlp::Span;
 use store::{Keep, Store};
 
 const USAGE: &str = "usage: collector serve | at <time> [--around <length>] | trace <id> \
-                     [--json] [--store <folder>] [--socket <path>]";
+                     [--json] [--store <folder>] [--socket <path>] [--pressure <root>]";
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {
@@ -49,6 +53,8 @@ struct Asked {
     json: bool,
     store: PathBuf,
     socket: PathBuf,
+    /// Where the machine's /proc and /sys are, which a test moves.
+    pressure: PathBuf,
 }
 
 fn asked(args: Vec<String>) -> Result<Asked, String> {
@@ -60,6 +66,7 @@ fn asked(args: Vec<String>) -> Result<Asked, String> {
         socket: env::var_os("XDG_RUNTIME_DIR")
             .map_or_else(|| PathBuf::from("/run/user/unknown"), PathBuf::from)
             .join("collector/lines.sock"),
+        pressure: PathBuf::from("/"),
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -69,6 +76,7 @@ fn asked(args: Vec<String>) -> Result<Asked, String> {
             "--json" => asked.json = true,
             "--store" => asked.store = PathBuf::from(value()?),
             "--socket" => asked.socket = PathBuf::from(value()?),
+            "--pressure" => asked.pressure = PathBuf::from(value()?),
             flag if flag.starts_with("--") => return Err(format!("{flag}? {USAGE}")),
             _ => asked.words.push(arg),
         }
@@ -90,7 +98,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let asked = asked(args)?;
     let zone = TimeZone::system();
     match asked.words.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["serve"] => serve::serve(&asked.socket, Store::new(&asked.store, Keep::USUAL)?),
+        ["serve"] => serve::serve(
+            &asked.socket,
+            Store::new(&asked.store, Keep::USUAL)?,
+            &asked.pressure,
+        ),
         ["at", moment] => {
             let at = when::moment(moment, &zone, Timestamp::now())?;
             let spans = Store::new(&asked.store, Keep::USUAL)?
