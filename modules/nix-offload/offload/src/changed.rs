@@ -192,7 +192,7 @@ pub fn evaluated(
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
     let said = there::mine(scratch, "evaluator-ssh.log");
     let mut command = there::reaching(ssh, &said);
-    command.arg(host).arg(&sending.command);
+    command.arg(host).arg(there::far(&sending.command));
     command.stdout(Stdio::piped());
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
