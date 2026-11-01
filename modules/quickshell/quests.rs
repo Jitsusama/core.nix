@@ -5,7 +5,8 @@
 //! first paragraph of its summary, and the folder pi would be opened in
 //! for it, chosen as the harness chooses a spawned session's: the newest
 //! of its trees still there, then the newest of its sessions' folders still
-//! there, then the quest's own folder.
+//! there, then home, never a folder inside the quest store, where no
+//! session may run.
 //!
 //! The store is the folder given as the only argument. A README that can't
 //! be read, or has no front matter, is left out. It reads only as far as
@@ -161,8 +162,10 @@ fn parse(lines: impl Iterator<Item = String>) -> Option<Quest> {
 
 /// The folder pi opens in for a quest, as the harness picks a spawned
 /// session's: its newest tree still there, its newest session's folder
-/// still there, then the quest's own folder.
-fn folder(quest: &Quest, own: &Path, exists: impl Fn(&str) -> bool) -> String {
+/// still there, then home. A folder inside the quest store is passed over,
+/// so a session once started in a quest's own folder isn't followed there.
+fn folder(quest: &Quest, store: &Path, home: &str, exists: impl Fn(&str) -> bool) -> String {
+    let exists = |path: &str| !Path::new(path).starts_with(store) && exists(path);
     if let Some(tree) = quest.trees.iter().rev().find(|tree| exists(tree)) {
         return tree.clone();
     }
@@ -175,7 +178,7 @@ fn folder(quest: &Quest, own: &Path, exists: impl Fn(&str) -> bool) -> String {
     {
         return cwd.clone();
     }
-    own.to_string_lossy().into_owned()
+    home.to_string()
 }
 
 /// A string as JSON writes it.
@@ -222,6 +225,7 @@ fn main() -> ExitCode {
         eprintln!("usage: pi-quests <the quest store's folder>");
         return ExitCode::from(2);
     };
+    let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
     let mut found = Vec::new();
     if let Ok(entries) = fs::read_dir(&store) {
         for entry in entries.flatten() {
@@ -231,7 +235,9 @@ fn main() -> ExitCode {
             };
             let lines = BufReader::new(file).lines().map_while(Result::ok);
             if let Some(quest) = parse(lines) {
-                let at = folder(&quest, &own, |path| Path::new(path).is_dir());
+                let at = folder(&quest, Path::new(&store), &home, |path| {
+                    Path::new(path).is_dir()
+                });
                 found.push(json(&quest, &at));
             }
         }
@@ -339,19 +345,40 @@ Not the first paragraph.
     #[test]
     fn the_newest_tree_still_there_comes_first() {
         let quest = parse(lines(README)).unwrap();
-        let own = Path::new("/quests/QEST");
-        assert_eq!(folder(&quest, own, |_| true), "/second");
-        assert_eq!(folder(&quest, own, |path| path == "/first"), "/first");
+        let store = Path::new("/quests");
+        assert_eq!(folder(&quest, store, "/home", |_| true), "/second");
+        assert_eq!(
+            folder(&quest, store, "/home", |path| path == "/first"),
+            "/first"
+        );
     }
 
     #[test]
-    fn then_the_newest_session_still_there_then_the_quest() {
+    fn then_the_newest_session_still_there_then_home() {
         let mut quest = parse(lines(README)).unwrap();
         quest.trees.clear();
-        let own = Path::new("/quests/QEST");
-        assert_eq!(folder(&quest, own, |_| true), "/new");
-        assert_eq!(folder(&quest, own, |path| path == "/old"), "/old");
-        assert_eq!(folder(&quest, own, |_| false), "/quests/QEST");
+        let store = Path::new("/quests");
+        assert_eq!(folder(&quest, store, "/home", |_| true), "/new");
+        assert_eq!(
+            folder(&quest, store, "/home", |path| path == "/old"),
+            "/old"
+        );
+        assert_eq!(folder(&quest, store, "/home", |_| false), "/home");
+    }
+
+    #[test]
+    fn a_folder_inside_the_quest_store_is_never_chosen() {
+        let mut quest = parse(lines(README)).unwrap();
+        quest.trees = vec!["/quests/QEST/attachments".into()];
+        quest.sessions = vec![
+            ("/old".into(), "2026-10-10T00:09:53.403Z".into()),
+            ("/quests/QEST".into(), "2026-10-30T19:15:45.000Z".into()),
+        ];
+        let store = Path::new("/quests");
+        assert_eq!(folder(&quest, store, "/home", |_| true), "/old");
+        quest.sessions.clear();
+        quest.sessions.push(("/quests/QEST".into(), String::new()));
+        assert_eq!(folder(&quest, store, "/home", |_| true), "/home");
     }
 
     #[test]
