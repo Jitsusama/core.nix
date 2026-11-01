@@ -231,6 +231,30 @@ let
     '';
   };
 
+  # The status files the shell watches, each written again as their
+  # writers write them, aside and renamed in, one every so many seconds in
+  # turn, so the shell hears what it hears on a working machine. Each says
+  # again what it said, so nothing it shows changes.
+  rewrites = pkgs.writeShellApplication {
+    name = "rewrites";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      every=$1
+      shift
+      while :; do
+        for file in "$@"; do
+          [ -f "$file" ] || continue
+          aside="$(dirname "$file")/.writing"
+          mkdir -p "$aside"
+          cp "$file" "$aside/$(basename "$file")"
+          mv "$aside/$(basename "$file")" "$file"
+          sleep "$every"
+        done
+        sleep "$every"
+      done
+    '';
+  };
+
   # pi, as the launcher opens it: where it started and the quest it was
   # told to load, then what it was told, a line each, written down, since
   # the VM has no pi. While a test leaves pi-stays, it stays, its window
@@ -647,6 +671,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       };
       environment.systemPackages = [
         reports
+        rewrites
         piStandIn
         pkgs.libnotify
         # The disk guard's own program, without its daemons, so Disk's Keep

@@ -1880,7 +1880,13 @@ in
         );
       };
       Service = {
-        ExecStart = lib.getExe' pkgs.quickshell "quickshell";
+        # Quickshell turns every one of its own categories on at every level
+        # for its log file, so each debug line, from every file read to every
+        # PipeWire event, was made on the thread saying it and woke the
+        # logging thread: two wakes a second of the locked shell's, for lines
+        # nobody reads (2026-10-31). Without them its file keeps what's shown,
+        # as the journal does.
+        ExecStart = "${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
         # theme itself.

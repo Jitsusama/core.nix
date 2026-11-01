@@ -1699,12 +1699,19 @@ fn json(devices: &[(String, Facts)]) -> String {
 }
 
 /// Writes a file whole, through a copy renamed over it, unless it already
-/// says this.
+/// says this. The copy is made in a `.writing` folder beside it: the shell
+/// watches the desk's folder, so a copy made there woke it for each step,
+/// where made aside only the rename is heard.
 fn write(path: &Path, text: &str) -> io::Result<()> {
     if fs::read_to_string(path).is_ok_and(|said| said == text) {
         return Ok(());
     }
-    let copy = path.with_extension("json.new");
+    let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "no file named"));
+    };
+    let aside = folder.join(".writing");
+    fs::create_dir_all(&aside)?;
+    let copy = aside.join(name);
     fs::write(&copy, text)?;
     fs::rename(&copy, path)
 }
@@ -2711,6 +2718,27 @@ Playback:
             "5 V at 3 A, 20 V at 2.3 A"
         );
         assert_eq!(offered_power(&[]), "");
+    }
+
+    #[test]
+    fn a_file_is_written_aside_and_only_when_it_changes() {
+        let folder = std::env::temp_dir().join(format!("desk-aside-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("sound.json");
+        write(&path, "{}\n").unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        write(&path, "{}\n").unwrap();
+        let mut names: Vec<String> = fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        let aside = fs::read_dir(folder.join(".writing")).unwrap().count();
+        let again = fs::metadata(&path).unwrap().modified().unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(names, [".writing", "sound.json"]);
+        assert_eq!(aside, 0);
+        assert_eq!(modified, again);
     }
 
     /// Writes a stand-in sysfs file, with the folders it's in.
