@@ -42,6 +42,17 @@ function connectorOf(at, screens) {
 // connector there is to its description; with none known, as when niri
 // didn't answer, or no screen in use, a gone one is left as it was kept.
 function placed(places, screens, inUse) {
+    return places.map(at => {
+        if (!at) {
+            return null;
+        }
+        return at.output in screens || !inUse
+            ? Object.assign({}, at)
+            : Object.assign({}, at, { output: inUse });
+    });
+}
+
+function placedAsFixed(places, screens, inUse) {
     const known = Object.keys(screens ?? {}).length > 0;
     const found = places.map(at => {
         if (!at) {
