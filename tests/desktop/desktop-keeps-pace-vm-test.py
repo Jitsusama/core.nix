@@ -45,8 +45,13 @@ WORDS = ["power", "sound", "files", "night", "music", "clock", "paint", "light",
 # launcher is what's left between them. Design.md's budget is 50 ms from a key to its frame,
 # and 100 ms for all but one key in a hundred: under load a key may take twice its time with
 # the load frozen, and that budget more. The tail is the slowest key in twenty, since one in a
-# hundred is a key or two of each run, as likely the builder's as the machine's. The laptop's
-# own times come from its load proof, which reads the same list of frames.
+# hundred is a key or two of each run, as likely the builder's as the machine's. It's read in
+# each turn and judged at the middle turn's: the VM's drawing can stop for seconds while the
+# launcher hears every key at once, then draw the keys it held in one frame (7 keys in a turn
+# with the load frozen took 1.5 to 3.8 s on 2026-11-02), and a stall of seven keys, falling in
+# either kind of turn by chance, set the tail of all 140, while it's one turn's in seven.
+# A launcher the load slows is slow in every turn under it. The laptop's own times come from
+# its load proof, which reads the same list of frames.
 PHASE = 20
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
@@ -133,6 +138,9 @@ class Timing:
         self.desktop = desktop
         self.under: list[float] = []
         self.free: list[float] = []
+        # Each turn's keys, by the turn they were pressed in, under load and frozen.
+        self.under_turns: dict[int, list[float]] = {}
+        self.free_turns: dict[int, list[float]] = {}
         # From the press the launcher was told of to its frame, which the machine's load proof
         # reads of Joel's own keys, and from the launcher's handler taking it, the shell's part,
         # both under load.
@@ -140,7 +148,7 @@ class Timing:
         self.handled: list[float] = []
         self.next = time.monotonic()
         self.said = self.timed = self.pressing = self.presses = 0
-        self.turns: list[bool] = []
+        self.turns: list[tuple[int, bool]] = []
         self.loading = True
 
     def begin(self) -> None:
@@ -169,8 +177,8 @@ class Timing:
         if loaded != self.loading:
             self.caught_up()
             self.load(on=loaded)
+        self.turns.append((self.presses // PHASE, loaded))
         self.presses += 1
-        self.turns.append(loaded)
         self.next = max(self.next, time.monotonic())
         self.desktop.machine.succeed(f"echo {key} > {KEYBOARD}")
         self.pressing += 1
@@ -220,7 +228,7 @@ class Timing:
             noted["frames"][-self.pressing :],
             strict=True,
         )
-        for line, loaded, pressed, heard, frame in times:
+        for line, (turn, loaded), pressed, heard, frame in times:
             key, down = line.split()
             took = frame - float(down)
             assert took >= 0, f"{key}'s frame came {-took:.0f} ms before it was pressed"
@@ -234,8 +242,10 @@ class Timing:
             )
             if not loaded:
                 self.free.append(took)
+                self.free_turns.setdefault(turn, []).append(took)
                 continue
             self.under.append(took)
+            self.under_turns.setdefault(turn, []).append(took)
             self.stamped.append(frame - pressed)
             self.handled.append(frame - heard)
 
@@ -247,8 +257,13 @@ class Timing:
         def ranked(times: list[float], share: float) -> float:
             return times[max(0, math.ceil(share * len(times)) - 1)]
 
+        def turned(turns: dict[int, list[float]]) -> list[float]:
+            return [ranked(sorted(times), TAIL) for _, times in sorted(turns.items())]
+
         middle, tail = ranked(under, 0.5), ranked(under, TAIL)
         middle_free, tail_free = ranked(free, 0.5), ranked(free, TAIL)
+        tails, tails_free = turned(self.under_turns), turned(self.free_turns)
+        turn_tail, turn_tail_free = ranked(sorted(tails), 0.5), ranked(sorted(tails_free), 0.5)
         print(
             f"{len(under)} keys under load and {len(free)} with it frozen, from the keyboard to "
             f"their frames: half within {middle:.0f} ms against {middle_free:.0f} ms, 95% "
@@ -256,15 +271,17 @@ class Timing:
             f"against {free[-1]:.0f} ms; under load, from the press the launcher was told of: "
             f"half within {ranked(stamped, 0.5):.0f} ms, 95% within {ranked(stamped, TAIL):.0f} "
             f"ms; from the launcher's handler: half within {ranked(handled, 0.5):.0f} ms, 95% "
-            f"within {ranked(handled, TAIL):.0f} ms"
+            f"within {ranked(handled, TAIL):.0f} ms; nineteen in twenty of the middle turn within "
+            f"{turn_tail:.0f} ms against {turn_tail_free:.0f} ms, each turn's under load "
+            f"{[round(t) for t in tails]} and frozen {[round(t) for t in tails_free]}"
         )
         assert middle <= SLOWER_MOST * middle_free + MIDDLE_MORE, (
             f"half the keys under load took {middle:.0f} ms to their frames, against "
             f"{middle_free:.0f} ms with the load frozen"
         )
-        assert tail <= SLOWER_MOST * tail_free + TAIL_MORE, (
-            f"one key in twenty under load took over {tail:.0f} ms to its frame, against "
-            f"{tail_free:.0f} ms with the load frozen"
+        assert turn_tail <= SLOWER_MOST * turn_tail_free + TAIL_MORE, (
+            f"one key in twenty of the middle turn under load took over {turn_tail:.0f} ms to "
+            f"its frame, against {turn_tail_free:.0f} ms with the load frozen"
         )
 
 
