@@ -15,13 +15,12 @@
 # Its compiled models are kept in a cache of its own, since a load removes
 # whatever else is in the folder it's given.
 #
-# Once a call is written down whole and no call is being heard, Whisper is
-# let go and Phi-3.5-mini (summarizer.nix) sums the call up beside its
-# transcript, on the NPU at the same priority, its compiled model in a
-# cache of its own beside Whisper's. A call with too little said is told
-# so with no model asked, and a summary naming what the call never did
-# is written once more, told not to, and isn't kept if it still does. A
-# notice says it's ready, and its Read It opens the summary.
+# Once a call is written down whole, a notice says so, and its Open the
+# Transcript opens it in the session's reader. Nothing sums it up: the
+# daemon is given no summarizer, since Phi-3.5-mini, the one it had,
+# wrote summaries of hour-long calls that named decisions never made,
+# and a wrong summary is worse than none. A model that sums a long call
+# up truly is given to it once one is found.
 #
 # The shell reads the calls from the service, over
 # $XDG_RUNTIME_DIR/daemons/calls.sock in the shell's daemon interface,
@@ -35,7 +34,6 @@
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ../dictation/model.nix { };
-  summarizer = pkgs.callPackage ./summarizer.nix { };
 in
 {
   systemd.user.services.call-transcripts = {
@@ -48,7 +46,7 @@ in
     Service = {
       ExecStart = lib.concatStringsSep " " [
         "${dictation}/bin/call-transcripts serve"
-        "%t/daemons/calls.sock ${model} ${summarizer} %h/Documents/Calls"
+        "%t/daemons/calls.sock ${model} %h/Documents/Calls"
       ];
       ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/calls.sock";
       Slice = "background.slice";
@@ -57,16 +55,18 @@ in
       RestartSec = 5;
       Environment = [
         "DICTATION_CACHE=%C/call-transcripts/whisper"
-        "SUMMARIZER_CACHE=%C/call-transcripts/summarizer"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"
-        # The profile's last, for the program a summary opens in: xdg-open
-        # finds it by its desktop entry, which names it bare.
+        # The profile's last, for the program a transcript opens in:
+        # xdg-open finds it by its desktop entry, which names it bare. A
+        # file opens through systemd-run, in a unit of its own given this
+        # PATH, so it has the session's screen (notices.rs says why).
         "PATH=${
           lib.makeBinPath [
             pkgs.libnotify
             pkgs.pipewire
+            pkgs.systemd
             # wl-copy, which puts the line for a call's chat on the clipboard.
             pkgs.wl-clipboard
             pkgs.xdg-utils

@@ -1,6 +1,7 @@
 //! The notices call-transcripts raises, every one from Calls, in
 //! VKCF3Z's words: a call being transcribed, its line for the call's chat
-//! offered to copy; its summary ready; and what couldn't be done, and why.
+//! offered to copy; its summary ready, or its transcript alone when
+//! there's no summarizer; and what couldn't be done, and why.
 //!
 //! Each answers a call Joel is on or just had, so none is ever counted
 //! missed (the shell's `x-answers`). Each waits on a thread of its own for
@@ -57,6 +58,23 @@ pub fn summed_up(title: &str, first: &str) -> Notice {
         heading: format!("Summary of {} Is Ready", named(title, false)),
         body: first.to_owned(),
         acts: vec![("read", "Read It"), ("forget", "Forget")],
+        quiet: false,
+    }
+}
+
+/// The notice once a call is written down with no summarizer: its
+/// transcript alone, and why there's no summary.
+pub fn written_down(title: &str) -> Notice {
+    Notice {
+        heading: format!("{} Is Written Down", named(title, true)),
+        body: "Its transcript is in its folder. It isn't summed up, since the \
+               summarizer can't yet sum a call up truly."
+            .to_owned(),
+        acts: vec![
+            ("transcript", "Open the Transcript"),
+            ("forget", "Forget"),
+            ("default", "Open the Transcript"),
+        ],
         quiet: false,
     }
 }
@@ -151,10 +169,36 @@ pub fn copy_line() {
     }
 }
 
-/// Opens a call's file as any file is opened.
+/// systemd-run's arguments to open a call's file as any file is opened,
+/// in a unit of its own among the session's apps. The service started
+/// before the session said where its screen is, so a program it starts
+/// itself finds none, and xdg-open falls through to text browsers; a
+/// unit started now has the session's environment as it is. It's given
+/// the service's PATH, which holds xdg-open and the profile's programs,
+/// and it outlives the service's restart at a switch.
+fn opening(file: &std::path::Path) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = [
+        "--user",
+        "--collect",
+        "--quiet",
+        "--slice=app.slice",
+        "--setenv=PATH",
+        "--",
+        "xdg-open",
+    ]
+    .into_iter()
+    .map(Into::into)
+    .collect();
+    args.push(file.as_os_str().to_owned());
+    args
+}
+
+/// Opens a call's file as any file is opened, in the session's reader.
 pub fn open(file: &std::path::Path) {
-    if let Err(why) = Command::new("xdg-open").arg(file).status() {
-        eprintln!("call-transcripts: {} wasn't opened: {why}", file.display());
+    match Command::new("systemd-run").args(opening(file)).status() {
+        Ok(done) if done.success() => {}
+        Ok(done) => eprintln!("call-transcripts: {} wasn't opened: {done}", file.display()),
+        Err(why) => eprintln!("call-transcripts: {} wasn't opened: {why}", file.display()),
     }
 }
 
@@ -192,6 +236,24 @@ mod tests {
         assert_eq!(passing.acts[0], ("again", "Try Again"));
         let lasting = not_summed_up("Standup", "its transcript can't be read", false);
         assert!(lasting.acts.iter().all(|(name, _)| *name != "again"));
+    }
+
+    #[test]
+    fn a_call_written_down_alone_opens_its_transcript() {
+        let notice = written_down("Standup");
+        assert_eq!(notice.heading, "Standup Is Written Down");
+        assert!(notice.body.contains("isn't summed up"));
+        let names: Vec<&str> = notice.acts.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["transcript", "forget", "default"]);
+    }
+
+    #[test]
+    fn a_file_opens_in_a_unit_of_its_own_with_the_services_path() {
+        let args = opening(std::path::Path::new("/calls/a b/summary.md"));
+        let end = args.iter().position(|arg| arg == "--").unwrap();
+        assert!(args[..end].contains(&"--user".into()));
+        assert!(args[..end].contains(&"--setenv=PATH".into()));
+        assert_eq!(args[end + 1..], ["xdg-open", "/calls/a b/summary.md"]);
     }
 
     #[test]

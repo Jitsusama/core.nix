@@ -14,10 +14,11 @@
 //! Usage:
 //!
 //! ```text
-//! call-transcripts serve SOCKET MODEL_DIR SUMMARIZER_DIR CALLS
+//! call-transcripts serve SOCKET MODEL_DIR [SUMMARIZER_DIR] CALLS
 //!     follow calls as they come and go, writing each one's transcript
 //!     and then its summary into a folder of its own in CALLS, and say
-//!     them over SOCKET in the shell's daemon interface (book.rs)
+//!     them over SOCKET in the shell's daemon interface (book.rs); with
+//!     no summarizer, a call is only written down, and a notice says so
 //! call-transcripts transcribe MODEL_DIR MINE.wav THEIRS.wav
 //!     print, as Markdown, the transcript of a call's two sides, each a
 //!     16 kHz mono WAV starting at the call's start
@@ -60,7 +61,7 @@ use dictation::takes::{Cutter, Take};
 use dictation::transcript::{Line, Side, markdown};
 use dictation::wav;
 
-const USAGE: &str = "usage: call-transcripts serve SOCKET MODEL_DIR SUMMARIZER_DIR CALLS \
+const USAGE: &str = "usage: call-transcripts serve SOCKET MODEL_DIR [SUMMARIZER_DIR] CALLS \
     | transcribe MODEL_DIR MINE.wav THEIRS.wav \
     | summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md";
 
@@ -70,7 +71,13 @@ fn main() -> ExitCode {
         ["serve", socket, model, summarizer, calls] => serve(
             Path::new(socket),
             PathBuf::from(model),
-            PathBuf::from(summarizer),
+            Some(PathBuf::from(summarizer)),
+            Path::new(calls),
+        ),
+        ["serve", socket, model, calls] => serve(
+            Path::new(socket),
+            PathBuf::from(model),
+            None,
             Path::new(calls),
         ),
         ["summarize", summarizer, title, transcript] => {
@@ -90,17 +97,18 @@ fn main() -> ExitCode {
     }
 }
 
-/// Where Whisper runs, as dictation's does, and where the summarizer is.
+/// Where Whisper runs, as dictation's does, and where the summarizer is,
+/// if there's one.
 pub struct Settings {
     pub model: PathBuf,
     pub device: String,
     pub cache: Option<PathBuf>,
-    pub summarizer: PathBuf,
+    pub summarizer: Option<PathBuf>,
     pub summarizer_cache: Option<PathBuf>,
 }
 
 impl Settings {
-    fn read(model: PathBuf, summarizer: PathBuf) -> Self {
+    fn read(model: PathBuf, summarizer: Option<PathBuf>) -> Self {
         Self {
             model,
             device: std::env::var("DICTATION_DEVICE").unwrap_or_else(|_| "NPU".to_owned()),
@@ -110,10 +118,13 @@ impl Settings {
         }
     }
 
-    /// The summarizer, at the NPU's background priority.
+    /// The summarizer, at the NPU's background priority, when there's one.
     pub fn load_summarizer(&self) -> Result<LanguageModel, String> {
+        let Some(summarizer) = &self.summarizer else {
+            return Err("there's no summarizer".to_owned());
+        };
         LanguageModel::load(
-            &self.summarizer,
+            summarizer,
             &self.device,
             self.summarizer_cache.as_deref(),
             Priority::Background,
@@ -132,7 +143,12 @@ impl Settings {
     }
 }
 
-fn serve(socket: &Path, model: PathBuf, summarizer: PathBuf, calls: &Path) -> Result<(), String> {
+fn serve(
+    socket: &Path,
+    model: PathBuf,
+    summarizer: Option<PathBuf>,
+    calls: &Path,
+) -> Result<(), String> {
     let settings = Settings::read(model, summarizer);
     let book = Arc::new(book::Shared::new(book::Book::read(calls)));
     let listener = dictation::daemon::listen(socket)?;
@@ -155,7 +171,7 @@ fn summarize(summarizer: PathBuf, title: &str, transcript: &Path) -> Result<(), 
         println!("{}", said::TOO_LITTLE);
         return Ok(());
     }
-    let mut model = Settings::read(PathBuf::new(), summarizer).load_summarizer()?;
+    let mut model = Settings::read(PathBuf::new(), Some(summarizer)).load_summarizer()?;
     match summary::grounded(&mut model, title, &text)? {
         Summed::Kept(written) => {
             println!("{written}");
@@ -169,7 +185,7 @@ fn summarize(summarizer: PathBuf, title: &str, transcript: &Path) -> Result<(), 
 }
 
 fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
-    let mut speech = Settings::read(model.to_owned(), PathBuf::new()).load()?;
+    let mut speech = Settings::read(model.to_owned(), None).load()?;
     let mut lines = Vec::new();
     for (side, file) in [(Side::Mine, mine), (Side::Theirs, theirs)] {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
