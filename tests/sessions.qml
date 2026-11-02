@@ -9,7 +9,9 @@ pragma ComponentBehavior: Bound
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
 // ends, takes its session with it. What an earlier boot's end took away
-// is offered whole, reopened held in its own folder, until put off, what
+// is offered whole, reopened held in its own folder, until put off, one
+// pi never saved started under its own id with its quest, and Reopen Them
+// All reopens even when niri never answers its ask for the screens; what
 // another machine carried here is offered after it, the newest first, and
 // never put off with it, and a
 // window it had joined to a session another machine holds is joined again
@@ -57,6 +59,15 @@ ShellRoot {
     Connections {
         target: Sessions
         function onRunningChanged() {
+            Qt.callLater(root.check);
+        }
+    }
+
+    // Reopen Them All opens each on a timer of its own, which nothing else
+    // here hears.
+    Connections {
+        target: Niri
+        function onSpawnsChanged() {
             Qt.callLater(root.check);
         }
     }
@@ -141,7 +152,8 @@ ShellRoot {
     // the quest's start folder, or nowhere when it has none.
     function lastBoot() {
         expect("only the whole ones of another boot",
-            Sessions.lastBoot.map(one => one.id).join(" ") === "s-before s-given-back s-far",
+            Sessions.lastBoot.map(one => one.id).join(" ")
+                === "s-before s-fresh s-given-back s-far",
             JSON.stringify(Sessions.lastBoot));
         // Those another machine carried here apart, the newest first, and
         // one saying where from badly left out.
@@ -149,25 +161,43 @@ ShellRoot {
             Sessions.carried.map(one => one.id).join(" ") === "s-ferry s-ferried",
             JSON.stringify(Sessions.carried));
         expect("the last boot's, then the carried", Sessions.toReopen.map(one => one.id).join(" ")
-            === "s-before s-given-back s-far s-ferry s-ferried", JSON.stringify(Sessions.toReopen));
+            === "s-before s-fresh s-given-back s-far s-ferry s-ferried",
+            JSON.stringify(Sessions.toReopen));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
         // One held elsewhere is joined again once, however often asked.
-        Sessions.reopen(Sessions.lastBoot[2], told("s-far"));
+        Sessions.reopen(Sessions.lastBoot.find(one => one.id === "s-far"), told("s-far"));
         Sessions.resume("s-kept", "QEST-KEPT", "/tmp", told("s-kept"));
         Sessions.resume("s-gone", "QEST-GONE", root.state, told("s-gone"));
         Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
+        // Reopen Them All asks niri for its screens first, and niri here
+        // never answers, as it doesn't a request it refused.
+        Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null);
+        patience.start();
+    }
+    Timer {
+        id: patience
+        interval: 10000
+        onTriggered: {
+            if (!Niri.spawns.some(one => one.endsWith(" pi --session s-patient")))
+                root.fail("Reopen Them All waited on niri's answer for good");
+        }
     }
 
     readonly property string kitty: "kitty -1 --instance-group pi-sessions --directory"
     function reopening() {
         const kitties = Niri.spawns.filter(command => command.startsWith("kitty "));
-        if (kitties.length < 4 || unopened.length < 3)
+        if (kitties.length < 6 || unopened.length < 3)
             return;
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
             && one.endsWith(command[1]));
         expect("reopened in its own window and folder",
             opened([`${kitty} /tmp zsh -lic `, " pi --session s-before"]), kitties.join("\n"));
+        expect("one pi never saved started under its own id, its quest loaded", opened([
+            `${kitty} /tmp env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-FRESH zsh -lic `,
+            " pi --session-id s-fresh"]), kitties.join("\n"));
+        expect("reopened though niri never said its screens",
+            opened([`${kitty} /tmp zsh -lic `, " pi --session s-patient"]), kitties.join("\n"));
         expect("resumed in the folder its record says",
             opened([`${kitty} ${state}/trees/karst zsh -lic `, " pi --session s-kept"]),
             kitties.join("\n"));
@@ -177,7 +207,7 @@ ShellRoot {
         expect("one held elsewhere joined again by its words, in its folder here",
             kitties.includes(`${kitty} /tmp ssh -t lighthouse mycelium attach s-far`),
             kitties.join("\n"));
-        expect("four opened, none in the home folder nor a gone one", kitties.length === 4
+        expect("six opened, none in the home folder nor a gone one", kitties.length === 6
             && !kitties.some(one => one.includes(`--directory ${Quickshell.env("HOME")} `)
                 || one.includes("given-back") || one.includes("QEST-NONE")),
             kitties.join("\n"));

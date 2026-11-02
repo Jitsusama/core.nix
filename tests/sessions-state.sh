@@ -54,7 +54,7 @@ record reused REUSE5 "$live" "$boot" "$(($(ticks "$live") + 1))" ''
 echo "$live" >"$state/live.pid"
 
 # What the last boot's end took away, as the harness keeps it: one whole,
-# one whose folder is gone since, one with no folder and one whose id a
+# one pi never saved, with its quest, one whose folder is gone since, one with no folder and one whose id a
 # shell would read; and two windows joined to sessions another machine
 # holds, one by its words as an argv and one by a line a shell would read;
 # and three another machine carried here as it went away, two whole, the
@@ -62,6 +62,8 @@ echo "$live" >"$state/live.pid"
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
+  {"id":"s-fresh","address":"FRESH7","title":"Fresh","cwd":"/tmp","lostAt":1,"fresh":true,
+   "quest":"QEST-FRESH"},
   {"id":"s-given-back","address":"GIVENB","title":"Given Back","cwd":"/given-back","lostAt":1},
   {"id":"s-nowhere","address":"NOWHRE","title":"Nowhere","lostAt":1},
   {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1},
