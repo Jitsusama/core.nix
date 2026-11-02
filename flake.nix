@@ -288,6 +288,7 @@
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         libvirt = ./modules/libvirt/nixos.nix;
         lid = ./modules/lid/nixos.nix;
+        lid-hinge = ./modules/lid-hinge/nixos.nix;
         linux-id = ./modules/linux-id/nixos.nix;
         litra = ./modules/litra/nixos.nix;
         memory = ./modules/memory/nixos.nix;

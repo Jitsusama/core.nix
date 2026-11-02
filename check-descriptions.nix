@@ -1434,6 +1434,10 @@
     it, a void above a list's first row is told from a list scrolled down, and the whole is sent
     in OTLP's JSON mapping
   '';
+  the-lid-shuts-when-the-hinge-agrees = ''
+    lid-hinge believes a shut switch once the hinge last read nearly shut, a light sensor lit at
+    the switch reads dark, or none was lit, doubts it otherwise, and reads the hinge's buffer
+  '';
   the-litra-follows-the-cameras = ''
     `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
     by a whole file naming a program
@@ -1988,6 +1992,11 @@
   '';
   vm-libvirt-stops-quickly = ''
     libvirt's daemon stops at once, its udev thread starved
+  '';
+  vm-lid-shuts-with-the-hinge = ''
+    logind hears lid-hinge's switch and not the lid's own: a lid shut with the hinge coming down
+    sleeps, one shut with the hinge wide open and the light on stays open, and one slammed shut
+    sleeps once the light goes dark
   '';
   vm-lid-stays-at-the-desk = ''
     a shut lid keeps running on the charger and sleeps once it's unplugged; on battery it sleeps

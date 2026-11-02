@@ -1,0 +1,11 @@
+# The lid's own switch, hidden from logind and libinput so they hear only
+# lid-hinge's. Before 70-power-switch.rules, which tags each switch for
+# logind. Taking that tag off after it, with TAG-=, still left logind
+# watching the switch, so the switch is kept from looking like one to it
+# instead. A switch with a lid's alone, but the program's.
+ACTION!="remove", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{capabilities/sw}=="1", \
+  ATTRS{name}!="Lid Switch (Hinge)", ENV{ID_INPUT_SWITCH}="", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+
+# The hinge's buffer, carrying its angle alone, which lid-hinge reads.
+ACTION=="add|change", SUBSYSTEM=="iio", ATTR{name}=="hinge", TEST=="buffer/enable", \
+  ATTR{buffer/enable}=="0", ATTR{scan_elements/in_angl0_en}="1", ATTR{buffer/enable}="1"
