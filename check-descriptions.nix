@@ -1869,7 +1869,8 @@
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
     jobs.slice and build.slice as with that load frozen: half and nineteen in twenty within twice
     their frozen times and design.md's budget more, timed in turns in the same machine so the
-    builder's own load slows both alike
+    builder's own load slows both alike; and text a program types at once is searched once for
+    its newest letters, with a Return typed among them acting on the row those letters found
   '';
   vm-desktop-launcher-answers = ''
     the launcher lists each thing once for everything Joel types, copies what it answers, keeps

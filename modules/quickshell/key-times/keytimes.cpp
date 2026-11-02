@@ -45,7 +45,10 @@ bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {
         const auto stamp = static_cast<std::uint32_t>(static_cast<QInputEvent *>(event)->timestamp());
         const double now = monotonicNow();
         const auto since = static_cast<std::uint32_t>(static_cast<std::uint64_t>(now)) - stamp;
-        handling = now - static_cast<double>(since);
+        // A key a program typed can come with no time, as wtype's do in the
+        // test machine, which widened would read as pressed a moment after
+        // the clock began; it's a press of unknown time instead.
+        handling = stamp == 0 ? 0 : now - static_cast<double>(since);
         const quint64 press = ++presses;
         QMetaObject::invokeMethod(
             this,
