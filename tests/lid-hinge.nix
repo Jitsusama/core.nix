@@ -7,7 +7,9 @@
 # no monitor, and its sleep stands in, leaving a file and returning at
 # once, as in lid.nix. The hinge and the light sensor stand in under /run:
 # their attributes are files, and the hinge's buffer a named pipe the test
-# writes its samples to. The script is lid-hinge-vm-test.py.
+# writes its samples to. The hinge appears only once lid-hinge has looked
+# for it, as the sensor hub's devices come at a real boot, so lid-hinge
+# must find it later. The script is lid-hinge-vm-test.py.
 { self, pkgs }:
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "lid-hinge";
@@ -39,12 +41,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
       systemd.tmpfiles.settings.stand-ins = {
         "/run/stand-in-drm/card0-eDP-1/status".f.argument = "connected";
-        "/run/stand-in-iio/iio:device0/name".f.argument = "hinge";
-        "/run/stand-in-iio/iio:device0/in_angl_scale".f.argument = "0.017453293";
-        "/run/stand-in-iio/iio:device0/buffer/enable".f.argument = "1";
-        "/run/stand-in-iio/iio:device0/scan_elements/in_angl0_en".f.argument = "1";
-        "/run/stand-in-iio/iio:device0/scan_elements/in_angl0_index".f.argument = "0";
-        "/run/stand-in-iio/iio:device0/scan_elements/in_angl0_type".f.argument = "le:s16/32>>0";
         "/run/stand-in-iio/iio:device1/name".f.argument = "als";
         "/run/stand-in-iio/iio:device1/in_illuminance_raw".f.argument = "10000";
         "/run/stand-in-iio-nodes/iio:device0".p = { };
@@ -53,14 +49,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         LID_HINGE_IIO = "/run/stand-in-iio";
         LID_HINGE_NODES = "/run/stand-in-iio-nodes";
       };
-      # A writer held open from boot, so the hinge's pipe never reads as
-      # hung up between the test's samples, which would read as the hinge
-      # gone. It waits for lid-hinge to open the pipe, and either may
-      # start first.
+      # The hinge, made once lid-hinge has said what it follows, its name
+      # last so it's never found half made; then a writer held open, so
+      # its pipe never reads as hung up between the test's samples, which
+      # would read as the hinge gone.
       systemd.services.stand-in-hinge = {
         wantedBy = [ "multi-user.target" ];
-        after = [ "systemd-tmpfiles-setup.service" ];
-        script = "exec sleep infinity > /run/stand-in-iio-nodes/iio:device0";
+        after = [
+          "systemd-tmpfiles-setup.service"
+          "lid-hinge.service"
+        ];
+        script = builtins.readFile ./lid-hinge-stand-in-hinge.sh;
       };
 
       systemd.services.systemd-suspend.serviceConfig.ExecStart = [

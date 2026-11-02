@@ -102,9 +102,14 @@ def laptop(machine: BaseMachine) -> Laptop:
     return Laptop(machine)
 
 
+def test_a_hinge_that_comes_late_is_found(laptop: Laptop) -> None:
+    """A hinge that appears after lid-hinge has looked for one is found, as at a real boot."""
+    laptop.machine.succeed(f"{SAID} | grep -qF 'with no hinge'")
+    laptop.wait_to_say("found the hinge", 0)
+
+
 def test_logind_hears_lid_hinges_switch_alone(laptop: Laptop) -> None:
     """Logind watches lid-hinge's switch, and udev hides the lid's own from it."""
-    laptop.machine.succeed(f"{SAID} | grep -qF 'with the hinge'")
     laptop.machine.fail(f"{LOGIND_SAID} | grep -qF 'Stand-in Lid Switch'")
 
 
