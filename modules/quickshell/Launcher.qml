@@ -4335,7 +4335,7 @@ Scope {
                         }
 
                         width: parent.width
-                        height: Theme.space.xxl
+                        height: Theme.space.xxxl
 
                         // How things stand, the quietest thing here: the
                         // facts the margin's pieces hold that are always

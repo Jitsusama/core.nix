@@ -145,8 +145,8 @@ shows and further apart as they grow:
 | m    | 3     | 12     | between windows, between notices, a field's glyph  |
 | l    | 4     | 16     | text inside its row, a terminal's padding          |
 | xl   | 6     | 24     | a terminal's padding at the sides, between columns |
-| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name, a footer |
-| xxxl | 12    | 48     | a row of the launcher or a prompt, a meter         |
+| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name, a footer with no row pitch |
+| xxxl | 12    | 48     | a row of the launcher or a prompt, the launcher's footer, a meter |
 | huge | 16    | 64     | an overlay's distance from the edge, as a meter's from the bottom |
 
 Whitespace groups things before borders or boxes do. Start with too much space
@@ -356,7 +356,10 @@ border, and its text `space.l` inside the region, so letters start the same
 distance from every frame. Nothing is nudged by a number off the scale to
 even out the ink. Large type sits in rows of `space.xxxl`, as a meter's row
 does; a line of body type is 20 pixels and of large type 24, five and six
-units; a footer is `space.xxl` tall. Lines that belong together, as who
+units. A footer takes its surface's pitch: `space.xxxl` in the launcher, whose
+field and rows are that tall, and `space.xxl` on a surface with no row pitch
+of its own, as the picker, the keyboard map and the prompts. Lines that
+belong together, as who
 asks and why, keep `space.xs` between them.
 
 **A notice sits a step inside the windows' edge,** `space.s` past their
