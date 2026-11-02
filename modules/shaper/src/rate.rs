@@ -286,6 +286,12 @@ pub struct Direction {
 /// its rate.
 const STEADY: f64 = 0.75;
 
+/// The share of what the other direction carries under which a direction
+/// carries only that one's acknowledgements: TCP's are about a fortieth of
+/// what they acknowledge, and the upload at midnight on 1 November carried
+/// a thirty-sixth of its download.
+const ACKS: f64 = 0.1;
+
 impl Direction {
     pub fn new(bounds: Bounds, held: u64) -> Self {
         let held = held.clamp(bounds.min, bounds.max);
@@ -542,7 +548,9 @@ impl Direction {
     /// to be thin and too thin to be busy at the floor, so nothing gave.
     /// It swung from 59% to 99% from step to step, too, and each step over
     /// three quarters began the count again, so live such a step only adds
-    /// no time. Gives whether it cut.
+    /// no time. `held_here` is also given for a direction carrying only
+    /// the acknowledgements of the other while that one fills the queue,
+    /// which says no more of the connection. Gives whether it cut.
     fn thin(
         &mut self,
         s: &Settings,
@@ -858,7 +866,14 @@ impl Controller {
                     cuts[i] = true;
                 }
             }
-            let held_here = [false, shares[1] > s.held_here];
+            // A direction carrying a sliver of what the other fills the
+            // queue with is that one's acknowledgements, which say nothing
+            // of the connection: at midnight on 1 November an upload
+            // carrying 1.3 Mbit/s beside a full download of 47.5 was
+            // taken for a thin connection and held at 1.2 for days.
+            let both = [sent, received];
+            let beside = [0, 1].map(|i| filling[1 - i] && both[i] < both[1 - i] * ACKS);
+            let held_here = [beside[0], shares[1] > s.held_here || beside[1]];
             for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
                 .enumerate()
@@ -1386,6 +1401,28 @@ mod tests {
         }
         assert!(worst < 50.0, "{worst} ms");
         assert!(lowest >= 8_500, "{lowest}");
+    }
+
+    #[test]
+    fn an_upload_carrying_a_full_download_s_acknowledgements_is_not_thin() {
+        // A Wi-Fi laptop at home at midnight on 1 November: a download
+        // filled its rate of 47.5 Mbit/s for minutes while the upload
+        // carried 7% to 13% of its 10, the download's acknowledgements. Counted
+        // as a connection far under its best, the upload was cut to 1.2
+        // Mbit/s, its best with it, and held there for days on a
+        // connection that carries 16.
+        let mut c = wi_fi(10_000);
+        pings(&mut c, 20.0, 6);
+        let mut now = 0.0;
+        while now < 30.0 {
+            for host in 0..3 {
+                c.sample(&format!("host{host}"), Some(60.0));
+            }
+            c.step(now, 1_300.0, float(c.down.rate));
+            now += 0.2;
+        }
+        assert_eq!(c.up.best, 10_000);
+        assert!(c.up.rate >= 9_500, "{}", c.up.rate);
     }
 
     #[test]
