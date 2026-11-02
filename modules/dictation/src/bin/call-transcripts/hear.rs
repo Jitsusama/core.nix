@@ -10,8 +10,10 @@
 //! Whisper is let go first and the language model after, so the two are
 //! never held at once, and a call that starts meanwhile waits its turn.
 //! A call with too little said isn't given to the model, and a summary
-//! naming what the call never did isn't kept (said.rs). What can't be
-//! heard or summed up is said in a notice (notices.rs).
+//! naming what the call never did isn't kept (said.rs). With no
+//! summarizer, a call written down whole is said so in a notice that
+//! opens its transcript, and nothing is summed up. What can't be heard
+//! or summed up is said in a notice (notices.rs).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -215,6 +217,12 @@ fn sum_up(settings: &Settings, book: &Shared, keys: &[String], again: &Sender<Jo
     if readable.is_empty() {
         return;
     }
+    if settings.summarizer.is_none() {
+        for (record, _) in &readable {
+            written_down(record);
+        }
+        return;
+    }
     // A model that won't load and a summary that fails can each pass, as
     // the NPU frees, so each offers Try Again. A summary naming what the
     // call never did is written once more, told not to; one that still
@@ -265,6 +273,21 @@ fn keep(book: &Shared, record: &Record, written: &str, again: &Sender<Job>) {
             ..now
         });
     }
+}
+
+/// Says a call is written down, with no summarizer to sum it up, in a
+/// notice that opens its transcript.
+fn written_down(record: &Record) {
+    eprintln!(
+        "call-transcripts: {} is written down, with no summary",
+        record.key
+    );
+    let transcript = record.transcript.clone();
+    notices::show(&notices::written_down(&record.title), move |chosen| {
+        if let ("transcript" | "default", Some(file)) = (chosen, &transcript) {
+            notices::open(file);
+        }
+    });
 }
 
 /// Says a call's summary is ready, in a notice whose Read It opens it.

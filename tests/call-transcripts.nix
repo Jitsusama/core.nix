@@ -4,9 +4,13 @@
 # call, and the same program's player for the others' side. Joel asks, the
 # others answer, another program says something of its own meanwhile, and
 # Joel answers back; the transcript must hold the three turns in order and
-# nothing of the other program's. Then the call is summed up, and a notice
-# says so, which a stand-in for the shell's notices keeps; a notice as the
-# call started offered the line for its chat. The next meeting is stopped
+# nothing of the other program's. The daemon runs as the service does,
+# with no summarizer, so the call is only written down, and a notice says
+# so, which a stand-in for the shell's notices keeps; a notice as the call
+# started offered the line for its chat. The session says where its
+# screen is only after the daemon starts, as niri does, and the notice's
+# Open the Transcript must still open it in the session's reader, which a
+# stand-in for it notes. The next meeting is stopped
 # from that notice, chosen on the stand-in as a click would, and joined
 # again, which mustn't be recorded. The voices are
 # espeak-ng's, made as the test builds. The tests are
@@ -15,7 +19,17 @@
 let
   dictation = pkgs.callPackage ../modules/dictation/package.nix { };
   model = pkgs.callPackage ../modules/dictation/model.nix { };
-  summarizer = pkgs.callPackage ../modules/call-transcripts/summarizer.nix { };
+  # The session's reader for Markdown, noting where it was shown and what.
+  reader = pkgs.writeShellApplication {
+    name = "stand-in-reader";
+    text = ''echo "$WAYLAND_DISPLAY $1" > "$HOME/read"'';
+  };
+  readerEntry = pkgs.makeDesktopItem {
+    name = "stand-in-reader";
+    desktopName = "Stand-in Reader";
+    exec = "stand-in-reader %f";
+    mimeTypes = [ "text/markdown" ];
+  };
   notices = pkgs.writeShellApplication {
     name = "stand-in-notices";
     text = ''
@@ -55,8 +69,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
   nodes.machine = {
     imports = [ "${self}/modules/pipewire/nixos.nix" ];
-    # Whisper and then the summarizer on the CPU, as dictation's checks run
-    # Whisper, since a VM has no NPU, need the room.
+    # Whisper on the CPU, as dictation's checks run it, since a VM has no
+    # NPU, needs the room.
     virtualisation.memorySize = 6144;
     virtualisation.cores = 4;
     users.users.joel.isNormalUser = true;
@@ -67,16 +81,23 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       pkgs.libnotify
       pkgs.pulseaudio
       pkgs.socat
+      pkgs.xdg-utils
+      reader
+      readerEntry
     ];
     environment.etc."call-clips".source = clips;
+    environment.etc."xdg/mimeapps.list".text = ''
+      [Default Applications]
+      text/markdown=stand-in-reader.desktop
+    '';
   };
 
   values =
     _:
     pkgs.writeText "call-transcripts-values.json" (
       builtins.toJSON {
-        inherit model summarizer;
-        # The summarizer's tokenizer needs the library the service names too.
+        inherit model;
+        # The library the service names, given as it gives it.
         tokenizers = "${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so";
       }
     );

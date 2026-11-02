@@ -26,8 +26,8 @@ STANDUP = "Standup"
 # How long the daemon has to answer, and to start and finish hearing the call.
 ANSWERS_WITHIN = timedelta(minutes=1)
 WRITTEN_WITHIN = timedelta(minutes=10)
-# How long the summarizer has, on the VM's processor, to load and sum the call up.
-SUMMED_WITHIN = timedelta(minutes=15)
+# Where the session's screen is, said only once the daemon runs, as niri says it.
+SCREEN = "stand-in-screen"
 # Where the stand-in for the shell's notices keeps each it's given.
 TOLD = "/home/joel/told"
 # The clips, made as the test builds.
@@ -125,13 +125,15 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
     joel.run(
         "systemd-run --user --unit=call-transcripts --setenv=DICTATION_DEVICE=CPU"
         " --setenv=DICTATION_CACHE=$HOME/.cache/call-transcripts/whisper"
-        " --setenv=SUMMARIZER_CACHE=$HOME/.cache/call-transcripts/summarizer"
         f" --setenv=OPENVINO_TOKENIZERS_PATH_GENAI={values['tokenizers']}"
         " --setenv=PATH=/run/current-system/sw/bin"
-        f" call-transcripts serve {SOCKET} {values['model']} {values['summarizer']}"
-        " $HOME/Documents/Calls"
+        f" call-transcripts serve {SOCKET} {values['model']} $HOME/Documents/Calls"
     )
     joel.wait_for(f"test -S {SOCKET}", ANSWERS_WITHIN)
+    joel.run(
+        f"systemctl --user set-environment WAYLAND_DISPLAY={SCREEN}"
+        " XDG_DATA_DIRS=/run/current-system/sw/share"
+    )
     return joel
 
 
@@ -162,29 +164,20 @@ def call(joel: Joel) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def summed(joel: Joel, call: dict[str, Any]) -> dict[str, Any]:
-    """Wait for the call to be summed up, giving its record then."""
-    # A summarizer that won't load is said in the daemon's log at once, so it ends the wait.
-    refused = 'journalctl --user -u call-transcripts | grep -qF "summarizer didn\'t load"'
+def written(joel: Joel, call: dict[str, Any]) -> dict[str, Any]:
+    """Wait for the notice that the call is written down, giving its record then."""
     try:
-        joel.wait_for(
-            f"{joel.listing()} | jq -e '.records[0].summary != null' > /dev/null || {refused}",
-            SUMMED_WITHIN,
-        )
+        joel.wait_for(f"grep -qxF '{MEETING} Is Written Down' {TOLD}", ANSWERS_WITHIN)
     except Exception:
         joel.explain()
         raise
-    [record] = joel.calls()
-    if record["summary"] is None:
-        joel.explain()
-        pytest.fail("the summarizer didn't load")
-    assert record["key"] == call["key"]
-    print(record["summary"])
+    record = joel.record(call["key"])
+    assert record["key"] == "call:e1"
     return record
 
 
 @pytest.fixture(scope="module")
-def stopped(joel: Joel, summed: dict[str, Any]) -> dict[str, Any]:
+def stopped(joel: Joel, written: dict[str, Any]) -> dict[str, Any]:
     """Join the next meeting and stop transcribing it from its notice, the call still on."""
     heading = f"{STANDUP} Is Being Transcribed"
     joel.meeting_on("e2", STANDUP)
@@ -203,7 +196,7 @@ def stopped(joel: Joel, summed: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         joel.explain()
         raise
-    assert summed["key"] == "call:e1"
+    assert written["key"] == "call:e1"
     return joel.record("call:e2")
 
 
@@ -247,19 +240,26 @@ def test_the_recorders_hold_no_call_open(joel: Joel, call: dict[str, Any]) -> No
     assert len(joel.calls()) == 1
 
 
-def test_the_call_is_summed_up_beside_its_transcript(joel: Joel, summed: dict[str, Any]) -> None:
-    """The summary is written into the call's folder, says what was decided, and is the record's."""
-    written = joel.run(f"cat {shlex.quote(summed['folder'])}/summary.md")
-    assert written.strip() == summed["summary"].strip()
-    assert "thursday" in written.lower()
-
-
-def test_a_notice_says_the_summary_is_ready(joel: Joel, summed: dict[str, Any]) -> None:
-    """The notice comes from Calls, titled by the meeting, and opens with the summary."""
-    joel.wait_for(f"grep -qxF 'Summary of {MEETING} Is Ready' {TOLD}", ANSWERS_WITHIN)
-    [(app, _, first)] = [n for n in joel.told() if n[1] == f"Summary of {MEETING} Is Ready"]
+def test_a_call_is_written_down_with_no_summary(joel: Joel, written: dict[str, Any]) -> None:
+    """With no summarizer, the call has no summary, and a notice from Calls says why."""
+    assert written["summary"] is None
+    joel.run(f"test ! -e {shlex.quote(written['folder'])}/summary.md")
+    [(app, _, body)] = [n for n in joel.told() if n[1] == f"{MEETING} Is Written Down"]
     assert app == "Calls"
-    assert first in summed["summary"]
+    assert "isn't summed up" in body
+
+
+def test_the_notice_opens_the_transcript_in_the_sessions_reader(
+    joel: Joel, written: dict[str, Any]
+) -> None:
+    """Open the Transcript shows it on the session's screen, said after the daemon started."""
+    joel.choose(f"{MEETING} Is Written Down", "transcript")
+    try:
+        joel.wait_for("test -s read", ANSWERS_WITHIN)
+    except Exception:
+        joel.explain()
+        raise
+    assert joel.run("cat read").strip() == f"{SCREEN} {written['transcript']}"
 
 
 def test_a_call_starting_offers_the_line_for_its_chat(joel: Joel, call: dict[str, Any]) -> None:
