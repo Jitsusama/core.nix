@@ -54,8 +54,8 @@ Scope {
 
     // Wide enough for a short message on one or two lines.
     readonly property int width: 380
-    // The body step's line, to a whole pixel on the space grid.
-    readonly property int line: Theme.space.xl - Theme.space.xs / 2
+    // The body step's line, on the space grid: five units.
+    readonly property int line: Theme.space.xl - Theme.space.xs
 
     // Whether what's playing is called for. The card's own visibility can't
     // say, since an item in a hidden window counts as hidden.
@@ -92,7 +92,7 @@ Scope {
         settled;
         Niri.revision;
         const step = Theme.space.s;
-        const corner = { right: Theme.space.m + step, top: Theme.space.m + step, width: root.width };
+        const corner = { right: Theme.gap + step, top: Theme.gap + step, width: root.width };
         const screen = window.screen;
         if (!screen)
             return corner;
@@ -734,7 +734,7 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            y: Math.max(root.inside.top, Theme.space.m + Theme.space.s)
+            y: Math.max(root.inside.top, Theme.gap + Theme.space.s)
             onHeightChanged: reported.changed()
             // Where the pointer reaches and what niri blurs follow a card
             // only as it moves within the column, so they're gathered again
@@ -761,12 +761,14 @@ Scope {
                 onVisibleChanged: Qt.callLater(window.gather)
                 onHeightChanged: Qt.callLater(window.gather)
 
+                // The letters an inset and a step from the frame on every
+                // side, as a launcher row's are.
                 Column {
                     id: said
-                    x: Theme.space.l
+                    x: Theme.inset + Theme.space.l
                     width: parent.width - 2 * x
-                    topPadding: Theme.space.m - Theme.border
-                    bottomPadding: topPadding + 2
+                    topPadding: x
+                    bottomPadding: x
 
                     Item {
                         width: parent.width
@@ -829,6 +831,7 @@ Scope {
                                 width: parent.width
                                 text: root.song.artist
                                 visible: text !== ""
+                                topPadding: Theme.space.xs
                                 color: Theme.text
                                 elide: Text.ElideRight
                                 lineHeight: root.line
@@ -977,14 +980,12 @@ Scope {
                     Column {
                         id: words
                         visible: card.front
-                        x: Theme.space.l
+                        // The letters an inset and a step from the frame on
+                        // every side, as a launcher row's are.
+                        x: Theme.inset + Theme.space.l
                         width: parent.width - 2 * x
-                        // The letters sit a step from the frame on every
-                        // side, measured to the ink: the footer's glyph
-                        // reaches lower than a line's letters, so the
-                        // bottom keeps a little more.
-                        topPadding: Theme.space.m - Theme.border
-                        bottomPadding: topPadding + 2
+                        topPadding: x
+                        bottomPadding: x
 
                         Text {
                             width: parent.width
@@ -1005,6 +1006,8 @@ Scope {
                             width: parent.width
                             text: card.modelData.body
                             visible: text !== ""
+                            // A line that belongs with the summary above.
+                            topPadding: Theme.space.xs
                             color: Theme.text
                             wrapMode: Text.Wrap
                             maximumLineCount: 6
@@ -1032,7 +1035,7 @@ Scope {
                             // a session's whole title, which ran past the
                             // card to the screen's edge (Joel, 2026-11-01).
                             readonly property real room: width - reaching.implicitWidth
-                                - Theme.space.m
+                                - Theme.space.xxl
 
                             // Whether they reach past their room anyway,
                             // said for the tests (notices.spilled).
@@ -1126,7 +1129,7 @@ Scope {
                         // card's size: the glyph in a column of its own,
                         // the name, the key that does it straight away on
                         // the right, muted, and once stepped in, the chosen
-                        // one filled a step round its words.
+                        // one filled out to an inset inside the frame.
                         Column {
                             width: parent.width
                             topPadding: Theme.space.s
@@ -1148,8 +1151,8 @@ Scope {
 
                                     Rectangle {
                                         anchors.fill: parent
-                                        anchors.leftMargin: -Theme.space.s
-                                        anchors.rightMargin: -Theme.space.s
+                                        anchors.leftMargin: -Theme.space.l
+                                        anchors.rightMargin: -Theme.space.l
                                         radius: Theme.inner
                                         color: Qt.alpha(Theme.selection, Theme.floating.selection)
                                         visible: verb.chosen
@@ -1164,8 +1167,8 @@ Scope {
                                     }
 
                                     Text {
-                                        x: Theme.space.xl
-                                        width: chord.x - x - Theme.space.l
+                                        x: Theme.space.xxl
+                                        width: chord.x - x - Theme.space.xxl
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: verb.modelData.name
                                         textFormat: Text.PlainText

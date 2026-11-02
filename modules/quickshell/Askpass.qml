@@ -26,8 +26,8 @@ Scope {
 
     // As wide as polkit's prompt.
     readonly property int width: 560
-    // The large step's line, to a whole pixel on the space grid.
-    readonly property int line: Theme.space.xl + Theme.space.xs / 2
+    // The large step's line, on the space grid.
+    readonly property int line: Theme.space.xl
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
 
     // Who's waiting, oldest first: { kind, asker, prompt, reply }.
@@ -151,10 +151,10 @@ Scope {
                 Column {
                     x: Theme.inset + Theme.space.l
                     width: parent.width - 2 * x
-                    // As polkit's: the letters as far from the frame as from
-                    // its sides, measured to the ink.
-                    topPadding: Theme.inset + Theme.space.l - Theme.border - 5
-                    bottomPadding: Theme.inset + Theme.space.l - 2
+                    // As polkit's: the letters an inset and a step from the
+                    // frame on every side.
+                    topPadding: x
+                    bottomPadding: x
 
                     Text {
                         width: parent.width
@@ -181,6 +181,8 @@ Scope {
                     Text {
                         width: parent.width
                         visible: text !== ""
+                        // A line that belongs with the title, above.
+                        topPadding: Theme.space.xs
                         text: root.read === null ? "" : root.read.detail
                         color: Theme.muted
                         wrapMode: Text.Wrap
@@ -228,12 +230,12 @@ Scope {
 
                 Item {
                     width: parent.width
-                    height: Theme.space.xxl + Theme.space.s
+                    height: Theme.space.xxl + 2 * Theme.inset
                     visible: root.holds
 
                     KeyHints {
                         anchors.right: parent.right
-                        anchors.rightMargin: Theme.space.l
+                        anchors.rightMargin: Theme.inset + Theme.space.l
                         anchors.verticalCenter: parent.verticalCenter
                         keys: root.read === null ? [] : root.read.keys
                     }

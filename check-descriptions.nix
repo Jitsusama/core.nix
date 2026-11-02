@@ -1006,6 +1006,10 @@
   quickshell-installs-what-it-imports = ''
     every file a shell file imports by its path is installed beside it
   '';
+  quickshell-keeps-to-the-space-scale = ''
+    no padding, margin, gap or line in the shell or a module's surface is a step nudged by a number
+    off the space scale
+  '';
   quickshell-passes-qmllint = ''
     qmllint finds nothing in the account's shell or the greeter, leaving out only types Quickshell's
     files don't export and Qt enum parameters
@@ -1014,7 +1018,7 @@
     a switch restarts the shell when a file it reads changes
   '';
   quickshell-takes-its-shape-from-the-theme = ''
-    every corner and border in the shell is the theme's
+    every corner and border in the shell and in each module's surface is the theme's
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests

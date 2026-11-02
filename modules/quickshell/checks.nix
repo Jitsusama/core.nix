@@ -28,6 +28,18 @@ let
     '';
   # Quickshell's runner, the one the account's shell runs on.
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # Every QML file the shell and the modules beside it draw, by its path
+  # under modules/, its tests left out: a module's surface is drawn in the
+  # theme as the shell's own are.
+  everyShellFile =
+    let
+      modules = toString ../.;
+    in
+    map (path: lib.removePrefix "${modules}/" (toString path)) (
+      lib.filter (
+        path: lib.hasSuffix ".qml" (toString path) && !(lib.hasInfix "/tests/" (toString path))
+      ) (lib.filesystem.listFilesRecursive ../.)
+    );
   # The launcher's maths, a QML module the shell imports as Maths
   # (maths/package.nix), and where Qt finds it.
   mathsModules = "${pkgs.callPackage ./maths/package.nix { }}/lib/qt-6/qml";
@@ -2673,12 +2685,8 @@ onLinux {
   # radius the theme derives from it, and every border is the theme's.
   quickshell-takes-its-shape-from-the-theme =
     let
-      dir = ./.;
-      files =
-        lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir dir))
-        ++ map (name: "pieces/${name}") (
-          lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir (dir + "/pieces")))
-        );
+      dir = ../.;
+      files = everyShellFile;
       allowed = {
         radius = [
           "Theme.radius"
@@ -2717,6 +2725,53 @@ onLinux {
     holds "quickshell-takes-its-shape-from-the-theme" ''
       These pick a radius or a border width of their own rather than the theme's:
       ${lib.concatStringsSep "\n" culprits}'' (files != [ ] && culprits == [ ]);
+
+  # Space is one scale (docs/design.md, Space): a padding, a margin, a gap or
+  # a line names a step, or sums and multiples of steps, so every surface
+  # lands on the same few values. A raw number added to a step, a step
+  # divided, or a raw padding, margin or spacing is a nudge off it, the way
+  # the ink was once evened by hand. A count taken from (`length - 1`) and a
+  # share of the screen (`parent.height / 12`) aren't steps, so they pass.
+  quickshell-keeps-to-the-space-scale =
+    let
+      dir = ../.;
+      step = "Theme\\.(space\\.[a-z]+|inset|border|gap)";
+      spacing = "([pP]adding|[mM]argins?|spacing)[[:space:]]*:";
+      # Each raw number taken from or added to something, with what comes
+      # before it and whether a step multiplies it.
+      added = "([a-zA-Z_]*)[[:space:]]*[-+][[:space:]]*([0-9]+(\\.[0-9]+)?)([[:space:]]*[*])?";
+      divided = "(${step}|[0-9])[[:space:]]*/[[:space:]]*[0-9]+";
+      nudged =
+        line:
+        let
+          adds = lib.filter lib.isList (builtins.split added line);
+          raw = lib.any (
+            found:
+            lib.elemAt found 3 == null
+            && !(lib.elem (lib.head found) [
+              "length"
+              "count"
+              "index"
+            ])
+          ) adds;
+        in
+        builtins.match "[[:space:]]*//.*" line == null
+        && (builtins.match ".*(${step}|${spacing}).*" line != null)
+        && (
+          raw
+          || builtins.match ".*${divided}.*" line != null
+          || builtins.match ".*${spacing}[[:space:]]*-?[1-9][0-9]*[[:space:]]*;?[[:space:]]*" line != null
+        );
+      culprits = lib.concatMap (
+        name:
+        map (line: "${name}: ${lib.trim line}") (
+          lib.filter nudged (lib.splitString "\n" (builtins.readFile (dir + "/${name}")))
+        )
+      ) everyShellFile;
+    in
+    holds "quickshell-keeps-to-the-space-scale" ''
+      These nudge a step, or set a padding, margin or spacing, by a number off the scale:
+      ${lib.concatStringsSep "\n" culprits}'' (everyShellFile != [ ] && culprits == [ ]);
 
   # The shell follows dictation as its service says (tests/dictation-watch.py
   # stands in for it): each state said, a service that stops watched again

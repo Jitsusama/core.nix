@@ -32,7 +32,8 @@ PanelWindow {
     visible: KeyboardLayout.shown
     anchors.bottom: true
     implicitWidth: card.width + 2 * Theme.floating.reach
-    implicitHeight: card.height + Theme.space.xxxl + Theme.floating.reach
+    // An overlay's distance from the edge, below it.
+    implicitHeight: card.height + Theme.space.huge + Theme.floating.reach
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     mask: card.area
@@ -57,13 +58,16 @@ PanelWindow {
         id: card
         x: Theme.floating.reach
         y: Theme.floating.reach
-        width: map.across * map.unit + 2 * Theme.space.l
+        // The keys, less the gap the last leaves after it, an inset and a
+        // step from the frame on every side, as a launcher row's letters.
+        width: map.across * map.unit - map.gap + 2 * (Theme.inset + Theme.space.l)
+            + 2 * Theme.border
 
         Column {
-            x: Theme.space.l - Theme.border
+            x: Theme.inset + Theme.space.l
             width: parent.width - 2 * x
-            topPadding: Theme.space.l - Theme.border
-            bottomPadding: Theme.space.l - Theme.border
+            topPadding: x
+            bottomPadding: x
             spacing: Theme.space.l
 
             Row {
@@ -88,8 +92,8 @@ PanelWindow {
             }
 
             Item {
-                width: map.across * map.unit
-                height: map.down * map.unit
+                width: map.across * map.unit - map.gap
+                height: map.down * map.unit - map.gap
 
                 Repeater {
                     model: map.shown.keys
@@ -119,6 +123,8 @@ PanelWindow {
 
                         Column {
                             anchors.centerIn: parent
+                            // What it holds belongs with its cap.
+                            spacing: Theme.space.xs
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter

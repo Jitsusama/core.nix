@@ -145,9 +145,9 @@ shows and further apart as they grow:
 | m    | 3     | 12     | between windows, between notices, a field's glyph  |
 | l    | 4     | 16     | text inside its row, a terminal's padding          |
 | xl   | 6     | 24     | a terminal's padding at the sides, between columns |
-| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name  |
+| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name, a footer |
 | xxxl | 12    | 48     | a row of the launcher or a prompt, a meter         |
-| huge | 16    | 64     | an overlay's distance from the edge                |
+| huge | 16    | 64     | an overlay's distance from the edge, as a meter's from the bottom |
 
 Whitespace groups things before borders or boxes do. Start with too much space
 and take it away. Density follows the moment: dense and scannable where Joel is
@@ -245,7 +245,7 @@ words, so Joel never wonders what he's talking to.
 | --------------------------- | --------------------------------------------------------------- |
 | a border, `shape.border`    | this is a thing; its colour says where the keys go: the accent holds them, the edge doesn't, the alert needs Joel |
 | the radius, `shape.radius`  | a whole thing: a window, or anything floating                   |
-| a smaller radius            | a part of a thing, always the radius less the border and `shape.inset`, so the curves run parallel |
+| a part's radius             | a part of a thing, always the radius less the border and `shape.inset`, never below square; at one unit's radius, square, since a smaller curve inside a small one wobbles |
 | square                      | not a thing at all: text, a hairline, a bar's fill              |
 | a hairline across a surface | splits what's typed from what comes back                        |
 | cloudy, lifted by a shadow  | it floats above the windows, which stay opaque                  |
@@ -261,7 +261,7 @@ that does. The kinds that follow from it:
 | ------- | ---------------------- | ------------------------- | --------------------- | ----------------- | ------------------ |
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
-| prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
+| prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
 | notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | body, Mona Sans | who first, then the message, then a footer of where from and when; Super+N gives it the launcher's keys, the footer saying them where it said when |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
@@ -349,11 +349,15 @@ between its words and what it says at the right, and the graphs in a list
 stand in one column, clear of the widest of those, the name giving way to
 it before anything else does.
 
-**The space from text to its frame is the same on every side,** measured to
-the letters rather than their boxes. In the palette and a prompt, large type
-sits in rows of `space.xxxl`, each region an inset inside the border and its
-text `space.l` inside its row. A notice keeps `space.l` from its letters to
-its frame, and a meter is `space.xxxl` tall with `space.l` at its sides.
+**The space from text to its frame is the same on every side, and on every
+surface,** the launcher's. Each region of a floating thing (a row, a field,
+a footer, a notice's message, a drawer's facts) sits `shape.inset` inside the
+border, and its text `space.l` inside the region, so letters start the same
+distance from every frame. Nothing is nudged by a number off the scale to
+even out the ink. Large type sits in rows of `space.xxxl`, as a meter's row
+does; a line of body type is 20 pixels and of large type 24, five and six
+units; a footer is `space.xxl` tall. Lines that belong together, as who
+asks and why, keep `space.xs` between them.
 
 **A notice sits a step inside the windows' edge,** `space.s` past their
 gap, so it never lines up with a window's border by chance and reads as its
