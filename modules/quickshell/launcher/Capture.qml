@@ -23,6 +23,11 @@
 // and looking through them all are GIMP's and the picture viewer's own, in
 // their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
 // program that edits it gives (`fileActs`), as Edit in GIMP.
+//
+// Its last rows keep the last minute (Recorder.qml): Save the Last Minute
+// while it's kept, then Keep the Last Minute, a switch saying no, or yes and
+// what it keeps, and while it's on, Keep It During Calls, a switch too
+// (VKCF3Z, 2026-10-29).
 import Quickshell
 import qs
 import QtQuick
@@ -178,6 +183,17 @@ Provider {
             later: true,
             run: () => Recorder.region(provider.back)
         })
+    ], !Recorder.keeps ? [] : [
+        member({
+            key: "capture:save-minute",
+            verb: Words.verb("capture:save-minute"),
+            name: Words.name("capture:save-minute"),
+            keywords: "video recording replay keep",
+            glyph: Words.glyph("capture:save-minute"),
+            hue: "action",
+            later: true,
+            run: () => Recorder.saveLastMinute()
+        })
     ], !provider.settings.camera ? [] : [
         member({
             key: "capture:camera-picture",
@@ -199,7 +215,33 @@ Provider {
             later: true,
             run: () => Niri.spawn(["camera", "video"])
         })
+    ], [
+        switched("capture:keep", Recorder.keeping, "video recording replay",
+            () => Recorder.keepLastMinute(!Recorder.keeping))
+    ], !Recorder.keeping ? [] : [
+        switched("capture:keep-calls", Recorder.keepsDuringCalls,
+            "video recording replay call meeting",
+            () => Recorder.keepDuringCalls(!Recorder.keepsDuringCalls))
     ])
+
+    // A switch, one row keeping its name as it flips, its note saying how
+    // it stands, as the vocabulary words it, and Return flipping it, the
+    // launcher staying.
+    function switched(key, on, keywords, run) {
+        const state = on ? "kept" : "";
+        const said = on ? "yes" : "no";
+        return member({
+            key: key,
+            verb: Words.verb(key, state),
+            name: Words.name(key, state),
+            side: (Words.of(key).said ?? {})[said] ?? said,
+            keywords: keywords,
+            glyph: Words.glyph(key, state),
+            hue: "action",
+            stays: true,
+            run: run
+        });
+    }
 
     // Every other window, found only by typing its title or program, since
     // listing them all would bury the rest.

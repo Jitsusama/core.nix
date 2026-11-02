@@ -380,8 +380,9 @@ both of Joel's screens' scales. Every drawing touches its grid's top and
 bottom and is centred across it, so a row of them is level and nothing
 jumps when one comes. They read from the right by how much each asks:
 what's on air rightmost (a camera, a share, a recording, a call),
-then what wants Joel, then what was left on (Keep Awake, do not disturb, the
-mic muted, caps lock), and within each in the overview's order. Colour says
+then what wants Joel, then what was left on (Keep Awake, the last minute
+kept, do not disturb, the mic muted, caps lock), and within each in the
+overview's order. Colour says
 only how much: strong for what's on air or wants him, muted for what was
 left on, and the alert for what needs him now, the battery about to die or
 a call ringing. Nothing else in the margin has a hue, no glyph carries a
@@ -1053,13 +1054,22 @@ works the same way everywhere.
   with the lid shut. Without power the lid is let go, since a laptop shut in
   a bag on its battery would cook. While it holds, Keep Awake shows in Now,
   saying it's on, and the margin's mark says so.
+- **The last minute, kept on purpose.** Keep the Last Minute, in Capture,
+  keeps the screen and its sound in memory, never in a file, so something
+  worth keeping is saved after it's happened, as one recording with a
+  recording's notice. It's off until it's turned on, stays as it was left
+  across boots, and pauses for a call unless Keep It During Calls says yes,
+  letting go what it kept. While it's on its mark is muted, something left
+  on, never on air, since nothing leaves the machine until it's saved; paused,
+  the mark stays and Now says "paused during the call".
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.
 - **Hints in place.** Wherever there are actions, their keys sit beside them in
   muted type, part of the design rather than a cheat sheet bolted on.
-- **No hidden modes.** Do Not Disturb, caffeinate, recording, a resize, an
-  editor's modes, a waiting gate: each shows that it's on, and Escape leaves.
+- **No hidden modes.** Do Not Disturb, caffeinate, recording, the last
+  minute kept, a resize, an editor's modes, a waiting gate: each shows that
+  it's on, and Escape leaves.
 - **One gesture per meaning.** A surface that needs a gesture of its own is a
   design problem to solve, not a feature.
 

@@ -495,6 +495,7 @@ let
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
     profile = ./pieces/Profile.qml;
+    keeping = ./pieces/Keeping.qml;
     disk = ./pieces/Disk.qml;
     lag = ./pieces/Lag.qml;
     spend = ./pieces/Spend.qml;
@@ -1328,6 +1329,15 @@ in
         tier = "when";
         mark = "saver";
       };
+      # A mode as well, keeping the last minute of the screen: muted, never
+      # on air, since nothing leaves the machine until it's saved.
+      keeping = {
+        order = 62;
+        source = "keeping";
+        label = "keeping";
+        tier = "when";
+        mark = "keeping";
+      };
       # What AI use cost today against usual, where spend-watch runs
       # (modules/spend-watch), and a glyph in the margin while something
       # wants a look. It gives way before the network. It wears the
@@ -1455,8 +1465,9 @@ in
       };
     };
 
-    # The recorder's tools (Recorder.qml): wf-recorder records the screen
-    # and record-window a window, grim takes a region's picture and wl-copy
+    # The recorder's tools (Recorder.qml): wf-recorder records the screen,
+    # record-window a window and last-minute keeps the last minute, grim
+    # takes a region's picture and wl-copy
     # copies it, and notify-send says where the file went. The launcher's
     # quests and runs read pi through pi-quests and pi-runs
     # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
@@ -1469,6 +1480,7 @@ in
       pkgs.quickshell
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
+      (pkgs.callPackage ./last-minute/package.nix { })
       (pkgs.callPackage ./pi-helper.nix {
         name = "pi-quests";
         source = ./quests.rs;
