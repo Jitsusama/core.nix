@@ -288,15 +288,32 @@ def typed_at_once(desktop: Desktop, typing: str) -> None:
 
 def test_text_typed_at_once_is_searched_once(desktop: Desktop) -> None:
     """Text a program types at once is searched for its newest letters, not once a letter."""
-    word = "workspaces"
+    # Its first letter alone selects Windows, and the word a workspace, so a report said partway
+    # through its search selects the wrong row.
+    word = "workspace"
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     try:
         before = searched(desktop)
+        since = desktop.mark()
         typed_at_once(desktop, word)
-        desktop.launcher_until(lambda shown: shown["typed"] == word)
+        seen: list[str] = []
+
+        def whole(said: str) -> bool:
+            shown = json.loads(said)
+            if shown["typed"] != word:
+                return False
+            seen.append((shown["selected"] or {}).get("name", ""))
+            return True
+
+        desktop.reported("showing ", whole, since)
         searches = searched(desktop) - before
         assert searches < len(word), f"{len(word)} letters typed at once took {searches} searches"
+        # Said as a frame can draw it, the text comes with what it found, never partway
+        # through the search, the letters there and the rows still those before them.
+        settled = (desktop.showing()["selected"] or {}).get("name", "")
+        assert settled, f"{word!r} found nothing, so it can't tell a report said partway"
+        assert seen == [settled], f"the launcher said {word!r} selecting {seen}, not {settled!r}"
     finally:
         desktop.machine.send_key("esc")
         desktop.launcher_until(lambda shown: not shown["open"])

@@ -3491,10 +3491,22 @@ Scope {
     }
 
     // Said each time it changes, while reports are on, so the test hears
-    // every step rather than asking over and over.
+    // every step rather than asking over and over. It's said as the event
+    // loop's turn ends, which is what a frame can draw: said as it changed,
+    // a search was heard partway, what's typed already new and its rows
+    // not yet found, which no frame ever showed (the answers test's
+    // "came and went", 2026-11-02, once text typed at once was searched
+    // once).
     readonly property string shown: Options.reports ? showing() : ""
+    property string shownSaid: ""
 
-    onShownChanged: Report.say(`showing ${shown}`)
+    onShownChanged: Qt.callLater(sayShown)
+    function sayShown() {
+        if (shown === shownSaid)
+            return;
+        shownSaid = shown;
+        Report.say(`showing ${shown}`);
+    }
 
     // The window the launcher opened over, as niri describes it, or null on
     // an empty workspace: what Return pastes into (Pasting.qml), and whose
