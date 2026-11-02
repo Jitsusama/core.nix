@@ -687,35 +687,61 @@ fn a_machine_not_whole_after_its_switch_goes_back() {
     assert_eq!(world.booting(), first);
 }
 
-#[test]
-fn a_new_kernel_is_left_for_the_next_boot() {
-    let world = World::new();
-    let first = world.running();
-    for (system, kernel) in [(&first, "one"), (&world.root.join("booted"), "one")] {
-        fs::create_dir_all(system).unwrap();
-        fs::write(system.join("kernel"), kernel).unwrap();
+/// A machine booted from `first`'s kernel, and main's system for `head`
+/// with another kernel, whose switch refuses any mode but a live one.
+fn a_new_kernel(world: &World, head: &str) -> PathBuf {
+    for system in [world.running(), world.root.join("booted")] {
+        fs::create_dir_all(&system).unwrap();
+        fs::write(system.join("kernel"), "one").unwrap();
     }
-    let head = world.signed("one");
-    let system = world.system(&head);
+    let system = world.system(head);
     fs::write(system.join("kernel"), "two").unwrap();
-    // The stand-in's boot mode points the profile only, as NixOS's does.
+    let switch = system.join("bin/switch-to-configuration");
+    let head = stand_in_head();
+    let rest = fs::read_to_string(&switch).unwrap();
+    let rest = rest.strip_prefix(&head).unwrap();
     write_program(
-        &system.join("bin/switch-to-configuration"),
-        &format!("{}\n[ \"$1\" = boot ] || exit 9\n", stand_in_head()),
+        &switch,
+        &format!("{head}\n[ \"$1\" = switch ] || exit 9{rest}"),
     );
+    system
+}
+
+#[test]
+fn a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot() {
+    let world = World::new();
+    let head = world.signed("one");
+    let system = a_new_kernel(&world, &head);
     let (_, ending) = world.update();
     assert_eq!(
         ending,
         Line::Done {
             commit: head,
-            applied: Applied::NextBoot,
+            applied: Applied::Now,
             restart: Some("its kernel changed".to_owned()),
-            restarted: Vec::new(),
+            restarted: vec!["sshd.service".to_owned()],
             followed: BTreeMap::new(),
         }
     );
-    assert_eq!(world.running(), first);
+    assert_eq!(world.running(), system);
     assert_eq!(world.booting(), system);
+}
+
+#[test]
+fn a_new_kernels_userland_not_whole_goes_back() {
+    let world = World::new();
+    let first = world.running();
+    let head = world.signed("one");
+    let system = a_new_kernel(&world, &head);
+    fs::write(system.join("unhealthy"), "").unwrap();
+    let (_, ending) = world.update();
+    let Line::Failed { why, .. } = ending else {
+        panic!("not failed: {ending:?}")
+    };
+    assert!(why.contains("the health check"), "{why}");
+    assert!(why.contains("went back to what it ran"), "{why}");
+    assert_eq!(world.running(), first);
+    assert_eq!(world.booting(), first);
 }
 
 #[test]

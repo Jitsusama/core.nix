@@ -7,7 +7,8 @@
 # someone's checkout and asking for a token as someone, the flake in a
 # folder of the repository, and builds only light pieces itself, having no
 # builders; following's flake has an input, core, that follows its own
-# signed main, whose file names the system. The tests are update-to-main-vm-test.py, which
+# signed main, whose file names the system; booting boots through a boot
+# loader, and main may give it another kernel. The tests are update-to-main-vm-test.py, which
 # pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
@@ -116,6 +117,39 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         repository = "file:///srv/core.git";
         signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
       };
+    };
+  };
+
+  # Boots from its own disk through its boot loader, so what a switch left
+  # for the next boot is what it boots. main may be a system with another
+  # kernel, whose service the first one runs is changed.
+  nodes.booting = {
+    imports = [
+      (machine {
+        jitsusama.update-to-main = {
+          repository = "file:///srv/machines.git";
+          signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
+        };
+      })
+    ];
+    virtualisation = {
+      useBootLoader = true;
+      useEFIBoot = true;
+      diskSize = 4096;
+    };
+    boot.loader.systemd-boot.enable = true;
+    boot.loader.efi.canTouchEfiVariables = true;
+    # Kept across the reboot, as a machine's is.
+    environment.etc.machine-id.text = "1234567890abcdef1234567890abcdef\n";
+    systemd.services.userland = {
+      wantedBy = [ "multi-user.target" ];
+      environment.SYSTEM = "first";
+      serviceConfig.ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+    };
+    specialisation.kernel.configuration = {
+      boot.kernelPackages = pkgs.linuxPackages_6_12;
+      environment.etc.kernel.text = "kernel\n";
+      systemd.services.userland.environment.SYSTEM = pkgs.lib.mkForce "kernel";
     };
   };
 

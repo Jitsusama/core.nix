@@ -2094,8 +2094,10 @@
     machine following its host's word builds main unsigned, root reading the objects someone
     fetched into their checkout and the token asked as someone with none of root's groups, with
     no token builds nothing, and building elsewhere with no builders refuses a piece not marked
-    light; and a signed commit to a followed input's main alone moves the machine, an unsigned
-    one is refused
+    light; a signed commit to a followed input's main alone moves the machine, an unsigned
+    one is refused; and on a machine booting through systemd-boot, a main with another kernel
+    runs its userland at once, restarting the service it changed, while the booted kernel and
+    its modules stay, and the reboot after starts the new kernel
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in

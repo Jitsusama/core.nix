@@ -7,6 +7,10 @@ systems as main's: its first, or a specialisation that adds /etc/switched, or on
 update-to-main at another path, for a switch made by hand. Each test commits the main it needs
 and reads what the machine runs afterwards.
 
+booting boots from its disk through systemd-boot, so starting it again boots what the switch
+left for the next boot. Its specialisation kernel has another kernel and changes a service it
+runs.
+
 hosted trusts its repository's word for main rather than a signature, so its commits are
 unsigned, their flake in the repository's machine folder. Its objects are read from someone's
 clone at /home/someone/machines, and its token comes from a stand-in that writes who ran it
@@ -205,6 +209,14 @@ def following_on_first(following_: Machine) -> Machine:
     return following_
 
 
+@pytest.fixture(scope="module")
+def booting_(machines: dict[str, BaseMachine], values: dict[str, str]) -> Machine:
+    """Give the booting machine up, with an empty repository and the key that signs its main."""
+    booting = up(machines["booting"])
+    booting.machine.succeed(f"install -m 0600 {values['key']} /root/key")
+    return booting
+
+
 @pytest.fixture
 def on_first(machine_: Machine) -> Machine:
     """Give the machine on its first system, main signed and pointing there."""
@@ -350,6 +362,41 @@ def test_a_switch_by_hand_brings_the_program_it_switched_to(on_first: Machine) -
     status, lines, said = on_first.ask()
     assert status == 0, said
     assert lines[-1]["commit"] == head
+
+
+def test_a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot(
+    booting_: Machine,
+) -> None:
+    """A main with another kernel runs its userland at once, and its kernel from the next boot."""
+    machine = booting_.machine
+    kernel = machine.succeed(f"readlink -f {booting_.first}/specialisation/kernel").strip()
+    booted = machine.succeed("uname -r").strip()
+    (release,) = machine.succeed(f"ls {kernel}/kernel-modules/lib/modules").split()
+    assert release != booted
+    head = booting_.commit(kernel)
+    status, lines, said = booting_.ask()
+    assert status == 0, said
+    done = lines[-1]
+    assert (done["commit"], done["applied"], done["restart"]) == (
+        head,
+        "now",
+        "its kernel changed",
+    )
+    assert "userland.service" in done["restarted"], said
+    # Its userland runs now, on the kernel the machine booted, whose
+    # modules still load.
+    assert booting_.running() == kernel
+    machine.succeed("test -e /etc/kernel")
+    machine.succeed("systemctl show -p Environment userland | grep -q SYSTEM=kernel")
+    assert machine.succeed("readlink -f /run/booted-system").strip() == booting_.first
+    assert machine.succeed("uname -r").strip() == booted
+    machine.succeed("modprobe dummy")
+    # The boot loader starts the new kernel.
+    machine.shutdown()
+    machine.start()
+    machine.wait_for_unit("update-to-main.service")
+    assert machine.succeed("readlink -f /run/booted-system").strip() == kernel
+    assert machine.succeed("uname -r").strip() == release
 
 
 def test_a_machine_not_whole_goes_back(on_first: Machine) -> None:
