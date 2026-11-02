@@ -30,8 +30,8 @@ ShellRoot {
 
     // As wide as polkit's prompt, the same kind of thing.
     readonly property int width: 560
-    // A line of the title: the large step plus half the smallest.
-    readonly property int line: Theme.space.xl + Theme.space.xs / 2
+    // A line of the title: the large step's, on the space grid.
+    readonly property int line: Theme.space.xl
 
     readonly property var accounts: @accounts@
     readonly property var session: @session@
@@ -262,15 +262,14 @@ ShellRoot {
 
                         Item {
                             width: parent.width
-                            // The letters sit as far from the frame as from
-                            // its sides, as on polkit's prompt.
+                            // The letters an inset and a step from the frame
+                            // on every side, as on polkit's prompt.
                             height: title.height + 2 * (Theme.inset + Theme.space.l)
-                                - Theme.border - 7
 
                             Text {
                                 id: title
                                 x: Theme.inset + Theme.space.l
-                                y: Theme.inset + Theme.space.l - Theme.border - 5
+                                y: x
                                 width: parent.width - 2 * x
                                 textFormat: Text.RichText
                                 readonly property string called: "<span style=\""
@@ -332,12 +331,13 @@ ShellRoot {
 
                         Item {
                             width: parent.width
-                            height: Theme.space.xxl + Theme.space.s
+                            height: Theme.space.xxl + 2 * Theme.inset
 
-                            // Where Return leads: the session's program.
+                            // Where Return leads: the session's program, its
+                            // letters under the title's.
                             Text {
                                 anchors.left: parent.left
-                                anchors.leftMargin: Theme.space.l
+                                anchors.leftMargin: Theme.inset + Theme.space.l
                                 anchors.right: keys.left
                                 anchors.rightMargin: Theme.space.xl
                                 anchors.verticalCenter: parent.verticalCenter
@@ -352,7 +352,7 @@ ShellRoot {
                             KeyHints {
                                 id: keys
                                 anchors.right: parent.right
-                                anchors.rightMargin: Theme.space.l
+                                anchors.rightMargin: Theme.inset + Theme.space.l
                                 anchors.verticalCenter: parent.verticalCenter
                                 keys: root.next === null ? [["\u21b5", "sign in"]]
                                     : [["\u21b5", "sign in"], ["\u21e5", root.next.called]]

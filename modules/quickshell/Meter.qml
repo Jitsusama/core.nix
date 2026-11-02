@@ -39,7 +39,8 @@ PanelWindow {
 
     anchors.bottom: true
     implicitWidth: length + 2 * Theme.floating.reach
-    implicitHeight: card.height + Theme.space.xxxl + Theme.floating.reach
+    // An overlay's distance from the edge, below it.
+    implicitHeight: card.height + Theme.space.huge + Theme.floating.reach
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     mask: card.area
@@ -57,15 +58,17 @@ PanelWindow {
         y: Theme.floating.reach
         width: meter.length
 
+        // A launcher row's shape: a row of the large step an inset inside
+        // the frame, its letters a step inside the row.
         Item {
             width: parent.width
-            height: Theme.space.xxxl - 2 * Theme.border
+            height: Theme.space.xxxl + 2 * Theme.inset
 
             Text {
                 id: mark
-                x: Theme.space.l - Theme.border
+                x: Theme.inset + Theme.space.l
                 anchors.verticalCenter: parent.verticalCenter
-                width: Theme.space.xl
+                width: Theme.space.xxl
                 text: meter.glyph
                 color: Theme.machine
                 font.family: Theme.mono.family
@@ -99,7 +102,7 @@ PanelWindow {
                 width: Math.ceil(widest.advanceWidth)
                 horizontalAlignment: Text.AlignRight
                 anchors.right: parent.right
-                anchors.rightMargin: Theme.space.l - Theme.border
+                anchors.rightMargin: Theme.inset + Theme.space.l
                 anchors.verticalCenter: parent.verticalCenter
                 text: meter.figure
                 color: meter.off ? Theme.muted : Theme.text

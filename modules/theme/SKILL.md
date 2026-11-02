@@ -103,9 +103,10 @@ constrain".
   from stats" when both lead alike (2026-10-24).
 - **Braille graphs, ten characters wide.** Over a dim track of every dot,
   so a graph's ends show; block characters were "too blocky".
-- **One frame, shared radii.** The launcher won when it became one border
-  round a field and its results, split by a hairline, its selected row an
-  inset whose curve runs parallel to the frame's.
+- **One frame.** The launcher won when it became one border round a field
+  and its results, split by a hairline, its selected row an inset. The
+  frame's corners are softened by one unit and the row inside it is square,
+  since a smaller curve inside a small one wobbles.
 - **Cloudy, mostly opaque.** A floating surface that "only hints at what is
   beneath", lifted by light shadows, its rows told apart by weight and
   colour.
@@ -134,6 +135,10 @@ constrain".
 
 ## What He's Turned Down
 
+- **Too much roundness.** "you also have issues with consistency in
+  padding and margin, and have often too much roundness" (2026-11-02). A
+  corner is softened by the theme's radius, one unit, and parts are
+  square; nothing picks a corner of its own.
 - **Boxes in boxes.** Two rounded boxes nested in one dialog. Use space, a
   hairline or weight instead.
 - **Inconsistency.** Spacing, sizes or weights that differ for no reason, a

@@ -89,10 +89,12 @@ Floating {
 
         Column {
             id: column
-            x: Theme.space.l
-            width: view.width - 2 * Theme.space.l
-            topPadding: Theme.space.l
-            bottomPadding: Theme.space.l
+            // The letters an inset and a step from the frame on every side,
+            // as the card's beside it are.
+            x: Theme.inset + Theme.space.l
+            width: view.width - 2 * x
+            topPadding: x
+            bottomPadding: x
             spacing: Theme.space.m
 
             Text {

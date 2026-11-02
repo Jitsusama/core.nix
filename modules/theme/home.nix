@@ -675,8 +675,10 @@ in
       };
       radius = lib.mkOption {
         type = lib.types.ints.unsigned;
-        default = cfg.space.s;
-        defaultText = lib.literalMD "`space.s`";
+        # One unit: softened, never round. At two units Joel found "often too
+        # much roundness" (2026-11-02), and a part's curve inside it wobbled.
+        default = cfg.space.xs;
+        defaultText = lib.literalMD "`space.xs`";
         description = "How round, in pixels, the corners of a window or a prompt are.";
       };
       gap = lib.mkOption {
@@ -692,7 +694,8 @@ in
         description = ''
           How far, in pixels, a part sits inside the border of the whole it
           belongs to, such as the launcher's selected row. A part's corners
-          are the radius less the border and this, so the curves run parallel.
+          are the radius less the border and this, never below square: at the
+          default radius, square.
         '';
       };
     };

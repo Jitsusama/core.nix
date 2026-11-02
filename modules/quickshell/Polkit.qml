@@ -19,8 +19,8 @@ Scope {
 
     // Wide enough for polkit's longer reasons on two lines at most.
     readonly property int width: 560
-    // The large step's line, to a whole pixel on the space grid.
-    readonly property int line: Theme.space.xl + Theme.space.xs / 2
+    // The large step's line, on the space grid.
+    readonly property int line: Theme.space.xl
 
     PolkitAgent {
         id: agent
@@ -93,12 +93,10 @@ Scope {
                 Column {
                     x: Theme.inset + Theme.space.l
                     width: parent.width - 2 * x
-                    // The letters sit as far from the frame as from its
-                    // sides. A line is taller than its letters, so each
-                    // side gives back what the lines add beyond them,
-                    // measured to the ink on the panel.
-                    topPadding: Theme.inset + Theme.space.l - Theme.border - 5
-                    bottomPadding: Theme.inset + Theme.space.l - 2
+                    // The letters an inset and a step from the frame on
+                    // every side, as a launcher row's are.
+                    topPadding: x
+                    bottomPadding: x
 
                     Text {
                         width: parent.width
@@ -118,6 +116,8 @@ Scope {
 
                     Text {
                         width: parent.width
+                        // A line that belongs with who asks, above.
+                        topPadding: Theme.space.xs
                         text: root.failed ? root.flow.supplementaryMessage : root.why
                         color: root.failed ? Theme.alert : Theme.muted
                         wrapMode: Text.Wrap
@@ -165,11 +165,13 @@ Scope {
 
                 Item {
                     width: parent.width
-                    height: Theme.space.xxl + Theme.space.s
+                    // The footer's keys an inset and a step inside the
+                    // frame, under the letters above.
+                    height: Theme.space.xxl + 2 * Theme.inset
 
                     KeyHints {
                         anchors.right: parent.right
-                        anchors.rightMargin: Theme.space.l
+                        anchors.rightMargin: Theme.inset + Theme.space.l
                         anchors.verticalCenter: parent.verticalCenter
                         keys: [["\u21b5", "allow"], ["Esc", "refuse"]]
                     }

@@ -32,7 +32,7 @@ Flow {
                 id: plus
                 visible: parent.index > 0
                 width: parent.modelData.after === true ? Theme.space.l
-                    : implicitWidth + 2 * Theme.space.xs * 3 / 2
+                    : implicitWidth + 2 * Theme.space.s
                 horizontalAlignment: Text.AlignHCenter
                 text: parent.modelData.after === true ? "" : "+"
                 color: Theme.muted

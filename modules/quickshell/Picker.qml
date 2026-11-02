@@ -275,7 +275,7 @@ Singleton {
                     x: Math.round((column + 0.5) * window.cells.width - width / 2)
                     y: Math.round((row + 0.5) * window.cells.height - height / 2)
                     width: labelText.implicitWidth + 2 * Theme.space.s
-                    height: labelText.implicitHeight + Theme.space.xs
+                    height: labelText.implicitHeight + 2 * Theme.space.xs
                     radius: Theme.inner
                     color: Qt.alpha(Theme.raised, Theme.floating.opacity)
                     opacity: leads ? 1 : root.typed === "" ? 0.7 : 0.3
@@ -381,12 +381,12 @@ Singleton {
                     // What the keys do here, as the launcher's footer says.
                     Item {
                         width: parent.width
-                        height: Theme.space.xxl + Theme.space.s
+                        height: Theme.space.xxl + 2 * Theme.inset
 
                         KeyHints {
                             id: hints
                             anchors.right: parent.right
-                            anchors.rightMargin: Theme.space.l
+                            anchors.rightMargin: Theme.inset + Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
                             keys: root.lettered
                                 ? [["\u21b5", "take"], ["a\u2013z", "row, then column"],
