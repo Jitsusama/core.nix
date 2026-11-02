@@ -160,10 +160,12 @@ class Timing:
 
         A beat missed, while the test did something else, starts the beat again rather than
         pressing the keys it missed at once. The load turns on or off before the first key of
-        each turn.
+        each turn, once the launcher has drawn every key before it, so no key waits behind the
+        last turn's.
         """
         loaded = (self.presses // PHASE) % 2 == 0
         if loaded != self.loading:
+            self.caught_up()
             self.load(on=loaded)
         self.presses += 1
         self.turns.append(loaded)
@@ -173,16 +175,8 @@ class Timing:
         self.next += PACE.total_seconds()
         time.sleep(max(0.0, self.next - time.monotonic()))
 
-    def keep(self) -> None:
-        """Pair the run's keys with their frames, once the launcher has timed every one."""
-        machine = self.desktop.machine
-        assert self.pressing <= KEPT, f"a run of {self.pressing} keys outruns the {KEPT} kept"
-        # The keyboard says a key once it has let it go.
-        machine.wait_until_succeeds(
-            f"[ $(wc -l < {SAID}) -ge {self.said + self.pressing} ]",
-            timeout=timedelta(seconds=10),
-        )
-        lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
+    def caught_up(self) -> Json:
+        """Wait for the launcher to have timed every key of the run so far, and give its times."""
         noted: Json = {}
 
         def drawn(_: bool) -> bool:
@@ -197,6 +191,19 @@ class Timing:
         assert noted["timed"] == self.timed + self.pressing, (
             f"the launcher timed {noted['timed'] - self.timed} keys of {self.pressing} pressed"
         )
+        return noted
+
+    def keep(self) -> None:
+        """Pair the run's keys with their frames, once the launcher has timed every one."""
+        machine = self.desktop.machine
+        assert self.pressing <= KEPT, f"a run of {self.pressing} keys outruns the {KEPT} kept"
+        # The keyboard says a key once it has let it go.
+        machine.wait_until_succeeds(
+            f"[ $(wc -l < {SAID}) -ge {self.said + self.pressing} ]",
+            timeout=timedelta(seconds=10),
+        )
+        lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
+        noted = self.caught_up()
         assert noted["clock"] == "monotonic", f"the launcher keeps time by {noted['clock']}"
         kept = len(noted["frames"])
         assert len(noted["pressed"]) == len(noted["heard"]) == kept, (
