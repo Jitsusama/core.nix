@@ -495,14 +495,14 @@ in
       touch $out
     '';
 
-  # A monitor that can select its RGB range starts in full range, so the
+  # A screen that can select its RGB range starts in full range, so the
   # compositor asking for full range at its first frame changes nothing and
-  # the monitor doesn't retrain. Read from the XPS 14's patched source.
-  a-selectable-monitor-starts-in-full-range =
+  # the screen doesn't retrain. Read from the XPS 14's patched source.
+  a-selectable-screen-starts-in-full-range =
     let
       dp = "drivers/gpu/drm/i915/display/intel_dp.c";
     in
-    pkgs.runCommandLocal "a-selectable-monitor-starts-in-full-range" { } ''
+    pkgs.runCommandLocal "a-selectable-screen-starts-in-full-range" { } ''
       cd ${kernelSource [ dp ]}
       if ! grep -Fq 'display_info.rgb_quant_range_selectable)' ${dp}; then
         echo "Broadcast RGB's Automatic gives limited range to a monitor that can select full, so the compositor's first frame retrains it."
