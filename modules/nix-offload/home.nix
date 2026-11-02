@@ -30,6 +30,28 @@ let
     };
   };
   names = cfg.standing != [ ] || cfg.beside != [ ];
+  # How a lender is run, the first and any for VM tests alike.
+  serving = [
+    (lib.getExe offload)
+    "serve --helper ${cfg.helper} --rate ${cfg.rate}"
+    "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
+    "--deadline ${cfg.deadline}"
+  ];
+  # Named here, since glibc without it reads a zone it can't find as UTC,
+  # and says nothing.
+  zoned = [
+    "TZDIR=${pkgs.tzdata}/share/zoneinfo"
+  ]
+  ++ lib.optional (cfg.timeZone != null) "TZ=${cfg.timeZone}";
+  # It's told to end first, so it ends its helper and journals its builder
+  # for the next start to take back, then anything left goes. A switch
+  # starts nothing until every stop ends, so a stop is short.
+  stopping = {
+    KillMode = "mixed";
+    TimeoutStopSec = "10s";
+    Restart = "on-failure";
+    Slice = "background.slice";
+  };
   sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
 in
 {
@@ -83,6 +105,41 @@ in
       type = time;
       default = "20:00";
       description = "The time of day every builder is given back by.";
+    };
+    vmTests = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.submodule {
+          options = {
+            prefix = lib.mkOption {
+              type = lib.types.str;
+              description = "What every VM-test builder's name starts with, apart from the first's.";
+            };
+            patterns = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ "checks.*.vm-*" ];
+              description = ''
+                The attributes that are VM tests, as patterns where `*` stands
+                for any run of characters.
+              '';
+            };
+            environment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              description = ''
+                What the helper is told for this builder, such as the port its
+                way to it takes, so it holds one beside the first builder's.
+              '';
+            };
+          };
+        }
+      );
+      default = null;
+      description = ''
+        A second builder, lent by the same helper only while a `nix-offload
+        there` build waits on it, that takes the VM tests such a build names,
+        so they never share a builder with big builds. Without it, they go to
+        the one lent.
+      '';
     };
     standing = lib.mkOption {
       type = lib.types.listOf builder;
@@ -222,30 +279,34 @@ in
                 "stand"
               ]
             else
-              [
-                (lib.getExe offload)
-                "serve --helper ${cfg.helper} --prefix ${cfg.prefix} --rate ${cfg.rate}"
-                "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
-                "--deadline ${cfg.deadline}"
-              ]
+              serving ++ [ "--prefix ${cfg.prefix}" ]
           )
           ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
           ++ lib.optional (cfg.beside != [ ]) "--beside ${beside}"
         );
-        # Named here, since glibc without it reads a zone it can't find as
-        # UTC, and says nothing.
-        Environment = [
-          "TZDIR=${pkgs.tzdata}/share/zoneinfo"
-        ]
-        ++ lib.optional (cfg.timeZone != null) "TZ=${cfg.timeZone}";
-        # It's told to end first, so it ends its helper and journals its
-        # builder for the next start to take back, then anything left goes.
-        # A switch starts nothing until every stop ends, so a stop is short.
-        KillMode = "mixed";
-        TimeoutStopSec = "10s";
-        Restart = "on-failure";
-        Slice = "background.slice";
-      };
+        Environment = zoned;
+      }
+      // stopping;
+      Install.WantedBy = [ "default.target" ];
+    };
+
+    xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
+      text = lib.concatMapStrings (pattern: "${pattern}\n") cfg.vmTests.patterns;
+    };
+
+    systemd.user.services.nix-offload-vm = lib.mkIf (cfg.helper != null && cfg.vmTests != null) {
+      Unit.Description = "Lends a builder for VM tests alone while a build sent there waits on one";
+      Service = {
+        ExecStart = lib.concatStringsSep " " (
+          serving
+          ++ [
+            "--prefix ${cfg.vmTests.prefix}"
+            "--dir /run/nix-offload-vm --only-there"
+          ]
+        );
+        Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.vmTests.environment;
+      }
+      // stopping;
       Install.WantedBy = [ "default.target" ];
     };
   };

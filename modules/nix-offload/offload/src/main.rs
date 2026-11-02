@@ -3,7 +3,7 @@
 //!
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
-//! PATH] [--beside PATH]`, or `nix-offload stand [--standing PATH]
+//! PATH] [--beside PATH] [--dir DIR] [--only-there]`, or `nix-offload stand [--standing PATH]
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
@@ -65,6 +65,14 @@
 //! Each ask, start, stop and leftover is a line in the journal under XDG's
 //! state folder, `nix-offload/journal.jsonl`, which `report` sums.
 //!
+//! A second lender may run beside it for VM tests alone: `--dir` gives it
+//! a folder of its own, such as /run/nix-offload-vm, whose files nothing
+//! but `there` reads, and its lock and journal are named for that folder;
+//! `--only-there` has it lend only while a `there` build waits on it. A
+//! `there` build sends the attributes the patterns in XDG's config folder,
+//! `nix-offload/vm-tests`, describe to that lender's builder while it
+//! runs, so VM tests never share a builder with big builds.
+//!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
 //! answer, so Nix never waits on one that's away. Those in the file
@@ -121,6 +129,9 @@ const STORE: &str = "/run/nix-offload/store";
 /// `lender`, and a build waiting for a builder says it wants one in
 /// `wanted`.
 const DIR: &str = "/run/nix-offload";
+/// The folder of the lender whose builder takes only VM tests, when one
+/// runs, as `serve --dir` it with `--only-there`.
+const VM_DIR: &str = "/run/nix-offload-vm";
 /// Where the machine queue reads the builder being made, to hold the
 /// builds it could take until Nix can see it.
 const LENDING: &str = "/run/nix-offload/lending";
@@ -134,7 +145,7 @@ const USAGE: i32 = 64;
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
-                    [--standing PATH] [--beside PATH] \
+                    [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
@@ -177,6 +188,12 @@ struct Settings {
     standing: Option<PathBuf>,
     beside: Option<PathBuf>,
     journal: PathBuf,
+    /// The folder its files are written in, `/run/nix-offload` unless
+    /// `--dir` names another.
+    dir: PathBuf,
+    /// Whether it lends only while a `there` build waits for its builder,
+    /// as `--only-there` says.
+    only_there: bool,
 }
 
 /// A builder lent to the machine.
@@ -314,9 +331,8 @@ fn there(arguments: &[String]) -> ExitCode {
     };
     // A test names its own folder, as changed-checks lets one.
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
-    let store = fs::read_to_string(dir.join("store"))
-        .ok()
-        .filter(|store| !store.trim().is_empty());
+    let vm_dir =
+        env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let scratch = env::var_os("XDG_RUNTIME_DIR")
         .map_or_else(env::temp_dir, PathBuf::from)
         .join("nix-offload-there");
@@ -341,16 +357,32 @@ fn there(arguments: &[String]) -> ExitCode {
             there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"])
         });
     }
-    if let Some(part) = &left {
+    // VM tests go to a builder of their own while its lender runs, so they
+    // never share one with big builds: beside a kernel build on 2 November
+    // they ran past their timeouts. With none, they go the lent way.
+    let patterns = fs::read_to_string(config().join("nix-offload/vm-tests"))
+        .map(|text| there::patterns(&text))
+        .unwrap_or_default();
+    let (vm, left) = match left {
+        Some(part) if !patterns.is_empty() && there::lends(&vm_dir) => {
+            there::vm_tests(&part, &patterns)
+        }
+        left => (None, left),
+    };
+    for (dir, part) in [(&vm_dir, vm), (&dir, left)] {
+        let Some(part) = &part else { continue };
         // Asked for and waited on, rather than built here, while a lender
         // runs: a builder stands about 70 s after it's asked for.
-        let store = store.or_else(|| there::waited(&dir, there::WAITING));
+        let store = fs::read_to_string(dir.join("store"))
+            .ok()
+            .filter(|store| !store.trim().is_empty())
+            .or_else(|| there::waited(dir, there::WAITING));
         // Waited for from when the builder was first lost.
         let lost = std::cell::Cell::new(None);
         let again = || {
             let since = lost.get().unwrap_or_else(std::time::Instant::now);
             lost.set(Some(since));
-            there::stood_again(&dir, there::WAITING, since)
+            there::stood_again(dir, there::WAITING, since)
         };
         timed(part, &|| {
             there::run(part, store.as_deref(), &again, &scratch, ["ssh", "nix"])
@@ -490,7 +522,14 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
         eprintln!("nix-offload: --rate takes a price, such as 0.68\n{USED}");
         return ExitCode::from(64);
     };
-    let journal = state().join("nix-offload/journal.jsonl");
+    // A lender's lock and journal are named for its folder, so a second
+    // lender, for VM tests, never gives back what the first lent.
+    let dir = given("--dir").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let name = dir.file_name().map_or_else(
+        || "nix-offload".into(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let journal = state().join(&name).join("journal.jsonl");
     match arguments.first().map(String::as_str) {
         Some("report") => {
             let journal = fs::read_to_string(&journal).unwrap_or_default();
@@ -518,7 +557,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 PathBuf::from,
             );
             // Two would each give back what the other lent.
-            let Ok(lock) = fs::File::create(runtime.join("nix-offload.lock")) else {
+            let Ok(lock) = fs::File::create(runtime.join(format!("{name}.lock"))) else {
                 eprintln!("nix-offload: can't make its lock in {}", runtime.display());
                 return ExitCode::FAILURE;
             };
@@ -538,6 +577,8 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 standing: given("--standing").map(PathBuf::from),
                 beside: given("--beside").map(PathBuf::from),
                 journal,
+                dir,
+                only_there: arguments.iter().any(|argument| argument == "--only-there"),
             });
             ExitCode::SUCCESS
         }
@@ -591,26 +632,29 @@ fn serve(settings: &Settings) {
         .standing
         .as_deref()
         .map_or_else(Vec::new, read_standing);
+    // Each file is in the lender's own folder, so a second lender, for VM
+    // tests, writes none that Nix or the queue reads.
+    let dir = &settings.dir;
     let mut machines = Machines::new(
-        MACHINES.into(),
-        WITH_STANDING.into(),
-        STORE.into(),
-        LENDING.into(),
+        dir.join("machines"),
+        dir.join("machines-with-standing"),
+        dir.join("store"),
+        dir.join("lending"),
         standing,
     )
     .beside(
-        BESIDE.into(),
+        dir.join("machines-beside"),
         settings
             .beside
             .as_deref()
             .map_or_else(Vec::new, read_standing),
     )
-    .for_anything(ANYTHING.into());
+    .for_anything(dir.join("machines-for-anything"));
     machines.show(None);
     machines.asking(None);
     // Said so a build with no builder waits for one only while a lender
     // runs to make it.
-    let lender = Path::new(DIR).join("lender");
+    let lender = dir.join("lender");
     if let Err(error) = fs::write(&lender, format!("{}\n", std::process::id())) {
         eprintln!(
             "nix-offload: couldn't say I lend in {}: {error}",
@@ -625,9 +669,14 @@ fn serve(settings: &Settings) {
         let tick = Tick {
             now: now(),
             into_day: into_day(),
-            wants: fs::read_to_string(&settings.queue)
-                .is_ok_and(|queue| queue::wants(&queue, now()))
-                || there::wanted(Path::new(DIR)),
+            wants: decide::wants(
+                settings.only_there,
+                || {
+                    fs::read_to_string(&settings.queue)
+                        .is_ok_and(|queue| queue::wants(&queue, now()))
+                },
+                there::wanted(dir),
+            ),
             woke: sleep.woke(now()),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref());
@@ -1161,6 +1210,8 @@ exit 1
             standing: None,
             beside: None,
             journal: folder.join("journal.jsonl"),
+            dir: folder.to_path_buf(),
+            only_there: false,
         };
         let file = |name: &str| folder.join(name);
         let machines = Machines::new(
