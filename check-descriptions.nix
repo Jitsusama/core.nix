@@ -1863,9 +1863,10 @@
     keys, and its lock screen, polkit's prompt and the askpass answer and hold
   '';
   vm-desktop-keeps-pace = ''
-    the launcher draws half its keys, arrowed or typed, within a second and nearly every one within
-    two of a keyboard pressing them, while every core is busy in jobs.slice and build.slice, so it
-    never falls whole seconds behind
+    the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
+    jobs.slice and build.slice as with that load frozen: half and nineteen in twenty within twice
+    their frozen times and design.md's budget more, timed in turns in the same machine so the
+    builder's own load slows both alike
   '';
   vm-desktop-launcher-answers = ''
     the launcher lists each thing once for everything Joel types, copies what it answers, keeps
