@@ -394,6 +394,9 @@ let
     vm-dictation-listens-once-it-hears = import ./tests/dictation-listening.nix {
       inherit self pkgs;
     };
+    # Whether logind and the compositor hear the lid's own switch or
+    # lid-hinge's shows only with udev, uinput and logind there.
+    vm-lid-shuts-with-the-hinge = import ./tests/lid-hinge.nix { inherit self pkgs; };
     # What logind makes of a shut lid shows only with logind watching one.
     vm-lid-stays-at-the-desk = import ./tests/lid.nix { inherit self pkgs; };
     # Whether udev turns a root hub's wakeup on shows only with a USB
@@ -918,6 +921,7 @@ gather (
     ./modules/lanzaboote/checks.nix
     ./modules/libvirt/checks.nix
     ./modules/lid/checks.nix
+    ./modules/lid-hinge/checks.nix
     ./modules/link-keys/checks.nix
     ./modules/linux-builder/checks.nix
     ./modules/linux-id/checks.nix

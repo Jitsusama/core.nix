@@ -259,7 +259,8 @@ off.
 | log out | ending the desktop, back to the greeter | sign out | `session:` |
 | reboot | starting the machine again | restart | |
 | power off | turning the machine off | shut down | |
-| lid | the laptop's lid, whose closing puts it to sleep away from a desk | | `lid-docked` |
+| lid | the laptop's lid, whose closing puts it to sleep away from a desk | | `lid-docked`, `lid-hinge` |
+| hinge | the lid's angle from the keyboard, as a sensor in the laptop reads it | | IIO's `hinge` |
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
 | Bluetooth | the radio that reaches headphones, keyboards and mice, and the place listing every device it reaches, to pair and connect | | BlueZ |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |

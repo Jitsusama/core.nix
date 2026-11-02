@@ -67,6 +67,9 @@ in
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ../../modules/kmscon/nixos.nix
+    # Its lid's switch has said shut with the lid wide open, and its hinge
+    # sensor tells.
+    ../../modules/lid-hinge/nixos.nix
     ../../modules/mic-mute-light/nixos.nix
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
