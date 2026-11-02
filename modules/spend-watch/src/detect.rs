@@ -187,6 +187,16 @@ fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
         Some(at) => format!(", resetting at {}", picture.zone.clock(at, now)),
         None => format!(" in the last {} hours", cap.window_hours),
     };
+    // A feed's figure is the provider's own count at its last run, which
+    // is what it refuses by, so the time it ran is said with it.
+    let counted = if cap.feed.is_empty() {
+        counted
+    } else {
+        format!(
+            "{counted}, by the {} count",
+            picture.zone.clock(cap.at, now)
+        )
+    };
     if over {
         return vec![over_finding(picture, view, allowance, &counted, ask)];
     }
