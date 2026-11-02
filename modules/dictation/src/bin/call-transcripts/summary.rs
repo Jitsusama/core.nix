@@ -12,11 +12,11 @@ use dictation::language::LanguageModel;
 
 use crate::said;
 
-/// The most of a transcript one prompt holds, in characters. English runs
-/// about four characters a token, so this is about 600 of the 1024 tokens
-/// the NPU reads, leaving room for what it's asked and a word that's
-/// longer in tokens than most.
-const PART_CHARS: usize = 2400;
+/// The most of a transcript one prompt holds, in characters. A transcript
+/// of short turns, each opening with a name and a time, runs nearer three
+/// characters a token than English's four, so this is about 3000 of the
+/// 4096 tokens the NPU reads, leaving room for what it's asked.
+const PART_CHARS: usize = 9000;
 
 /// How many times notes are taken on notes before giving up: far more
 /// than a call of a day needs, since each round's notes are a fraction
@@ -314,10 +314,10 @@ mod tests {
 
     #[test]
     fn a_long_call_is_summed_up_from_notes_that_fit_in_one_prompt() {
-        // Ninety minutes of short turns, noted at near half a part each,
-        // takes more rounds of notes on notes than four.
-        let mut reader = Reader::new(PART_CHARS, 1000);
-        let summary = summarize(&mut reader, "Joel / Chad", &call(2000), &[]).unwrap();
+        // Some fifty parts of short turns, noted at near half a part
+        // each, takes more rounds of notes on notes than four.
+        let mut reader = Reader::new(PART_CHARS, PART_CHARS * 2 / 5);
+        let summary = summarize(&mut reader, "Joel / Chad", &call(8000), &[]).unwrap();
         assert_eq!(summary, "The summary.");
         assert_eq!(reader.refused, 0);
         assert!(reader.read.iter().all(|&read| read <= PART_CHARS));

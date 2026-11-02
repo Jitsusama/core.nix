@@ -16,11 +16,15 @@ use crate::cache;
 use crate::genai::{check, text_of};
 use crate::openvino::Priority;
 
-/// The longest prompt the NPU's pipeline is compiled for, in tokens.
-pub const PROMPT_TOKENS: usize = 1024;
+/// The longest prompt the NPU's pipeline is compiled for, in tokens:
+/// long enough that a call of an hour and a half is read in a dozen
+/// parts, since every round of notes on notes drifts further from what
+/// was said.
+pub const PROMPT_TOKENS: usize = 4096;
 
-/// The longest answer it writes, in tokens: enough for a call's summary.
-pub const ANSWER_TOKENS: usize = 256;
+/// The longest answer it writes, in tokens: enough for a call's summary
+/// to end where it means to.
+pub const ANSWER_TOKENS: usize = 512;
 
 #[repr(C)]
 struct Pipeline {
