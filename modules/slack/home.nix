@@ -84,10 +84,11 @@ in
     source = ./SlackSearch.qml;
   };
 
-  # What in Slack wants Joel, kept in the runtime folder's
-  # slack-unreads.json for Now's Slack piece: direct messages with
-  # unreads, mentions of him and his mentions in threads, read only, and
-  # started once pi has signed in to Slack. While Slack refuses that
+  # What in Slack is unread, kept in the runtime folder's
+  # slack-unreads.json for Now's Slack piece and Slack's Unread: direct
+  # messages with unreads, mentions of him, his mentions in threads and
+  # channels merely unread; and the conversations he read last, for
+  # Slack's Recent. Read only, and started once pi has signed in to Slack. While Slack refuses that
   # sign-in, signing in again waits in Needs You, in the file of what
   # waits on Joel that's Slack's own beside each quest's.
   systemd.user.paths.slack-unreads = {
@@ -124,10 +125,10 @@ in
       ExecStopPost = lib.concatStringsSep " " [
         "${pkgs.coreutils}/bin/rm -f"
         "%t/slack-unreads.json"
-        "%t/slack-unreads.new"
+        "%t/.writing/slack-unreads.json"
         "%t/daemons/slack.sock"
         (lib.escapeShellArg waiting)
-        (lib.escapeShellArg "${lib.removeSuffix ".json" waiting}.new")
+        (lib.escapeShellArg "${dirOf waiting}/.writing/${baseNameOf waiting}")
       ];
     };
   };

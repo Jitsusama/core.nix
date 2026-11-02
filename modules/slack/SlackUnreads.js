@@ -1,7 +1,9 @@
-// What in Slack wants Joel, as slack-unreads keeps it in the runtime
-// folder's slack-unreads.json (src/bin/slack-unreads.rs) and Now's Slack
-// piece says it (SlackUnreads.qml, NewSlack.qml): whether what the file says is current,
-// how many to read, from whom, and each conversation's row's words. A
+// What in Slack is unread and what Joel read last, as slack-unreads keeps
+// it in the runtime folder's slack-unreads.json (src/bin/slack-unreads.rs),
+// Now's Slack piece says what of it wants him (SlackUnreads.qml,
+// NewSlack.qml) and Slack's program lists it as Unread and Recent
+// (SlackProgram.qml): whether what the file says is current, how many to
+// read, from whom, and each conversation's row's words. A
 // count is current only while Slack answered and the file was written in
 // the last ten minutes, since it's written at least every five: an old
 // count is never shown as though it were Slack's (Joel, 2026-10-28: "out
@@ -15,8 +17,10 @@
 // writes, so one slow ask doesn't make Now say it can't check.
 const fresh = 10 * 60 * 1000;
 
-// The file's words as { checked, state, conversations }, or null when
-// there's no file or it isn't one slack-unreads wrote.
+// The file's words as { checked, state, conversations, recent }, or null
+// when there's no file or it isn't one slack-unreads wrote. A conversation
+// is kept when it's whole: a channel merely unread, or one in Recent,
+// has no count, and anything else has one.
 function read(text) {
     let told;
     try {
@@ -27,14 +31,27 @@ function read(text) {
     if (told === null || typeof told !== "object" || typeof told.checked !== "number") {
         return null;
     }
-    const conversations = Array.isArray(told.conversations) ? told.conversations : [];
+    const whole = one => one !== null && typeof one === "object"
+        && typeof one.id === "string" && typeof one.name === "string"
+        && typeof one.link === "string";
+    const listed = list => Array.isArray(list) ? list.filter(whole) : [];
     return {
         checked: told.checked,
         state: typeof told.state === "string" ? told.state : "",
-        conversations: conversations.filter(one => one !== null && typeof one === "object"
-            && typeof one.id === "string" && typeof one.name === "string"
-            && typeof one.link === "string" && one.count > 0)
+        conversations: listed(told.conversations)
+            .filter(one => one.kind === "unread" || one.count > 0),
+        recent: listed(told.recent)
     };
+}
+
+// Whether a conversation wants Joel, as Now lists only those that do: a
+// channel merely unread doesn't.
+function wants(one) {
+    return one.kind !== "unread";
+}
+
+function wanting(told) {
+    return told.conversations.filter(wants);
 }
 
 // How what it says stands: "none" with no file, "ok" while Slack answered
@@ -59,7 +76,7 @@ function staleAt(told) {
 }
 
 function count(told) {
-    return told.conversations.reduce((all, one) => all + one.count, 0);
+    return wanting(told).reduce((all, one) => all + one.count, 0);
 }
 
 // Whether Now lists it: only with something to read, which wants Joel.
@@ -96,12 +113,13 @@ function programNote(told, stands) {
         : "Slack can't be reached";
 }
 
-// Its note: who and where, the first two named and how many more.
-function context(told, stands) {
+// Its note: who and where, the first two named and how many more, of
+// those wanting him in Now, or of every one in Slack's Unread.
+function context(told, stands, every) {
     if (stands !== "ok") {
         return "";
     }
-    const names = told.conversations.map(one => one.name);
+    const names = (every ? told.conversations : wanting(told)).map(one => one.name);
     if (names.length <= 2) {
         return names.join(" and ");
     }
@@ -114,16 +132,18 @@ function clock(at) {
     return `${two(when.getHours())}:${two(when.getMinutes())}`;
 }
 
-// A conversation's row's words: how many to read beside it, and what
-// kind it is in its note.
+// A conversation's row's words: how many to read beside it, when it's
+// counted, and what kind it is in its note.
 function beside(one) {
-    return `${one.count} to read`;
+    return one.count > 0 ? `${one.count} to read` : "";
 }
 
 const kinds = {
     dm: "a direct message",
     mention: "mentions you",
-    thread: "replies in threads"
+    thread: "replies in threads",
+    unread: "a channel",
+    channel: "a channel"
 };
 
 function note(one) {

@@ -3745,6 +3745,13 @@
       "verb": "open"
     },
     {
+      "id": "slack:unread",
+      "of": "program:slack",
+      "name": "Unread",
+      "verb": "more",
+      "glyph": "unread"
+    },
+    {
       "id": "verb:slack:open",
       "in": "slack:conversation",
       "name": "Open in Slack",

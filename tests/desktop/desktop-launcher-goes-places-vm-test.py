@@ -2662,11 +2662,25 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     )
 
 
-def slack_says(desktop: Desktop, state: str, conversations: list[Json], *, ago: int = 0) -> None:
+def slack_says(
+    desktop: Desktop,
+    state: str,
+    conversations: list[Json],
+    *,
+    ago: int = 0,
+    recent: list[Json] | None = None,
+) -> None:
     """Write slack-unreads' file as it does, whole, checked `ago` milliseconds since."""
     # The guest's clock, which the shell judges the file by.
     checked = int(desktop.as_account("date +%s%3N").strip()) - ago
-    told = json.dumps({"checked": checked, "state": state, "conversations": conversations})
+    told = json.dumps(
+        {
+            "checked": checked,
+            "state": state,
+            "conversations": conversations,
+            "recent": recent or [],
+        }
+    )
     desktop.as_account(
         f"printf '%s' {shlex.quote(told)} > $XDG_RUNTIME_DIR/slack-unreads.new"
         " && mv $XDG_RUNTIME_DIR/slack-unreads.new $XDG_RUNTIME_DIR/slack-unreads.json"
@@ -2792,6 +2806,121 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def slack_program(desktop: Desktop) -> None:
+    """Find Slack's program row, step into it, and wait until it holds Unread and Recent."""
+    slack_program_says(desktop, lambda note: note == "", keep_open=True)
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Unread" in shown["rows"] and "Recent" in shown["rows"])
+
+
+def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants_joel(
+    desktop: Desktop,
+) -> None:
+    """Slack's program holds Unread and then Recent, and Now only the part that wants Joel.
+
+    Unread says how many to read and who, and lists every conversation unread, direct
+    messages, mentions and Threads first, then the channels merely unread; Now's Slack row
+    is its first three groups, so it neither counts nor lists a channel merely unread.
+    Recent lists the conversations Joel read last, newest first.
+    """
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+
+    def conversation(id_: str, name: str, kind: str, count: int) -> Json:
+        return {
+            "id": id_,
+            "name": name,
+            "kind": kind,
+            "count": count,
+            "link": f"slack://channel?team=T1&id={id_}",
+        }
+
+    unread = [
+        conversation("D1", "Ada Lovelace", "dm", 2),
+        conversation("C1", "#deploys", "mention", 1),
+        conversation("threads", "Threads", "thread", 3),
+        conversation("C9", "#random", "unread", 0),
+    ]
+    recent = [
+        conversation("C8", "#launcher", "channel", 0),
+        conversation("D1", "Ada Lovelace", "dm", 0),
+    ]
+    slack_says(desktop, "ok", unread, recent=recent)
+    try:
+        # Now counts and lists only what wants Joel.
+        now_rows(desktop)
+        desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
+        desktop.down_to("Slack")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "6 to read"
+                and shown["selected"]["note"] == "Ada Lovelace, #deploys and 1 more"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: shown["rows"] == ["Ada Lovelace", "#deploys", "Threads", "Show Slack"]
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # Slack's program: Unread after its acts, and Recent after Unread.
+        slack_program(desktop)
+        rows = desktop.showing()["rows"]
+        assert rows.index("Unread") < rows.index("Recent"), rows
+        assert "Sign In" not in rows, rows
+        desktop.down_to("Unread")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "6 to read"
+                and shown["selected"]["note"] == "Ada Lovelace, #deploys and 2 more"
+            )
+        )
+        desktop.step_in("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"][-1:] == ["Unread"]
+                and shown["rows"] == ["Ada Lovelace", "#deploys", "Threads", "#random"]
+            )
+        )
+        desktop.down_to("#random")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "" and shown["selected"]["note"] == "a channel"
+            )
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # Recent, newest first.
+        slack_program(desktop)
+        desktop.down_to("Recent")
+        desktop.step_in("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"][-1:] == ["Recent"] and shown["rows"] == ["#launcher", "Ada Lovelace"]
+            )
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # Every Slack conversation row, Unread's and Recent's too, is made by
+        # its one component.
+        said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+        assert said["uncomposed"] == [], (
+            "A row drawn by the surface listing it, though a thing is one row:\n"
+            + "\n".join(said["uncomposed"])
+        )
+        # Nothing unread, Slack's program holds no Unread.
+        slack_says(desktop, "ok", [], recent=recent)
+        slack_program_says(desktop, lambda note: note == "", keep_open=True)
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: "Recent" in shown["rows"] and "Unread" not in shown["rows"]
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/slack-unreads.json")
 
 
 @pytest.mark.usefixtures("google")

@@ -1,5 +1,6 @@
 pragma Singleton
-// What in Slack wants Joel, read from the runtime folder's
+// What in Slack is unread and what Joel read last, read from the runtime
+// folder's
 // slack-unreads.json, which slack-unreads writes whole when it changes or
 // at least every five minutes and takes with it however it stops. One
 // file, read by one watcher. What it says and whether it's current are
@@ -14,7 +15,8 @@ Singleton {
     id: root
 
     readonly property string path: `${Quickshell.env("XDG_RUNTIME_DIR")}/slack-unreads.json`
-    // What the file says, { checked, state, conversations }, or null.
+    // What the file says, { checked, state, conversations, recent }, or
+    // null.
     property var told: null
     // The time it was last judged by: set as the file is read, and once
     // more as a fresh count goes stale.
@@ -27,9 +29,18 @@ Singleton {
     readonly property string hint: Unreads.hint(told, stands)
     // Why there's no count, for Slack's program row (SlackProgram.qml).
     readonly property string programNote: Unreads.programNote(told, stands)
-    // Each { id, name, kind, count, link }, only while the count is
-    // current, so no old one is offered as Slack's.
-    readonly property var conversations: stands === "ok" ? told.conversations : []
+    // Each { id, name, kind, count, link } that wants Joel, for Now, only
+    // while the count is current, so no old one is offered as Slack's.
+    readonly property var conversations: stands === "ok" ? told.conversations.filter(Unreads.wants)
+        : []
+    // Every one unread, those wanting him first and then the channels
+    // merely unread, for Slack's own Unread, of which Now's are the first
+    // three groups, so the two never disagree.
+    readonly property var unread: stands === "ok" ? told.conversations : []
+    // Who and where, of every one unread.
+    readonly property string unreadContext: Unreads.context(told, stands, true)
+    // What he read last, newest first, for Slack's Recent.
+    readonly property var recent: stands === "ok" ? told.recent : []
 
     // A conversation's row's words, for the piece, which lives where
     // SlackUnreads.js can't be imported.
