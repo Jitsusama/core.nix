@@ -58,6 +58,15 @@
       # The builder fetches what a cache holds itself, rather than being
       # sent it from here.
       builders-use-substitutes = true;
+      # Each build's cores travel with it: Nix sends a builder this
+      # machine's own `cores`, and its daemon takes it over the builder's
+      # (2.34's daemon.cc), so a builder's own setting never reaches what is
+      # sent from here. At the default, 0, every build took all of a
+      # 32-core builder: on 2 November make and ninja ran at -j32 beside
+      # five VM tests, at load 136, and the VM tests ran past their
+      # timeouts. Eight lets four big builds fill such a builder, and a
+      # build here still has half of a 16-thread laptop.
+      cores = lib.mkDefault 8;
     };
 
     systemd.tmpfiles.rules = [
