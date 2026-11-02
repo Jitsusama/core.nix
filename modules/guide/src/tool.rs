@@ -99,6 +99,16 @@ pub enum Path {
 impl Path {
     pub const ALL: &[Path] = &[Path::Disk, Path::Install, Path::Tokens, Path::AgePlugins];
 
+    /// The paths this build must have: every one where the guide installs
+    /// and repairs, and none on a Mac, which only writes a stick.
+    pub fn built() -> &'static [Path] {
+        if cfg!(target_os = "macos") {
+            &[]
+        } else {
+            Self::ALL
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Path::Disk => "the disk tools",
@@ -134,6 +144,20 @@ pub fn disk_packages() -> Vec<&'static str> {
 }
 
 impl Tool {
+    /// What writing a stick runs, which is all a Mac's guide is built
+    /// with, since a Mac only ever writes one (tools.nix).
+    pub const WRITES: &[Tool] = &[Tool::Nix];
+
+    /// The tools this build must have: every one where the guide installs
+    /// and repairs, and the writer's alone on a Mac.
+    pub fn built() -> &'static [Tool] {
+        if cfg!(target_os = "macos") {
+            Self::WRITES
+        } else {
+            Self::ALL
+        }
+    }
+
     /// Whether a build of the guide may go without it: Plymouth, which
     /// only a machine showing a splash gives, and the stick doesn't.
     pub fn optional(self) -> bool {

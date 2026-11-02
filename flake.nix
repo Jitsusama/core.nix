@@ -371,6 +371,11 @@
         };
       };
 
+      # The guide as a Mac runs it, to write a stick and nothing else.
+      packages.aarch64-darwin.guide =
+        nixpkgs.legacyPackages.aarch64-darwin.callPackage ./modules/guide/package.nix
+          { };
+
       # A machine's guide, for its own repository to offer as `nix run
       # .#guide`: the stick's image and the machine's payload built in, so
       # writing its stick on a host needs nothing more than plugging one in.
