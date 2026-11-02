@@ -33,7 +33,9 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ./Cargo.lock;
   # The stick's tests are judged by what a person would check it with, and
   # its signatures by sbsign's for the programs systemd builds for EFI,
-  # which only Linux has; a Mac's run leaves those tests out.
+  # which only Linux has. A Mac runs the library's tests, its own raw
+  # disks and waking among them, and leaves the rest to Linux's build.
+  cargoTestFlags = lib.optionals stdenv.hostPlatform.isDarwin [ "--lib" ];
   nativeCheckInputs = lib.optionals stdenv.hostPlatform.isLinux [
     dosfstools
     mtools

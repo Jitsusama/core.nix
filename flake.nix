@@ -379,7 +379,6 @@
       # A machine's guide, for its own repository to offer as `nix run
       # .#guide`: the stick's image and the machine's payload built in, so
       # writing its stick on a host needs nothing more than plugging one in.
-      # The host is an x86-64 Linux machine; a Mac's guide is to come.
       lib.guide =
         {
           # The machine's configuration, nixosSystem's config.
@@ -389,11 +388,19 @@
           # The account the person signs in with, when it has no greeter
           # to name it.
           account ? null,
+          # The system the stick is written from: an x86-64 Linux machine,
+          # or a Mac, as aarch64-darwin. The stick and what it installs are
+          # x86-64 Linux either way, so a Mac builds them on a Linux builder
+          # or takes them from a cache.
+          host ? "x86_64-linux",
         }:
         let
-          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          linux = nixpkgs.legacyPackages.x86_64-linux;
+          pkgs = nixpkgs.legacyPackages.${host};
           guide = pkgs.callPackage ./modules/guide/package.nix { };
-          payload = pkgs.callPackage ./modules/guide/payload.nix { } { inherit config yubikeys account; };
+          payload = linux.callPackage ./modules/guide/payload.nix { } {
+            inherit config yubikeys account;
+          };
           image = "${stick.config.system.build.image}/${stick.config.image.filePath}";
         in
         pkgs.runCommand "guide-${config.networking.hostName}"
