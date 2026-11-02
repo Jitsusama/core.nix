@@ -1856,8 +1856,9 @@ onLinux {
         property var spawned: []
         property var spawns: []
         function act(request) { acted = request; }
-        // Asked anything, as Sessions asks for the outputs, it says nothing.
-        function request(asked, answer) { answer(null); }
+        // Asked anything, as Sessions asks for the outputs, it never
+        // answers, as niri doesn't a request it refused.
+        function request(asked, answer) {}
         // No workspace is known, the focused one included.
         function workspace(id) { return null; }
         function spawn(command) {
