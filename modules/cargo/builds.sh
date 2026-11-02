@@ -17,6 +17,23 @@ sound() {
   [ "$status" -le 1 ]
 }
 
+# The size in bytes to make or grow IMAGE to: the one asked, or half what
+# its disk would have free without it, when that's less. So a small disk,
+# such as a stick's, still mounts one and keeps room beside it, rather than
+# failing for want of the whole size: fallocate reserves every byte. Half
+# of free-and-its-own stays put once reached, so attaching again at each
+# boot doesn't creep the image up.
+room() {
+  local image=$1 asked has=0 blocks block most
+  asked=$(numfmt --from=iec "$2")
+  if [ -e "$image" ]; then
+    has=$(stat -c %s "$image")
+  fi
+  read -r blocks block < <(stat -f -c '%a %S' "$(dirname "$image")")
+  most=$(((blocks * block + has) / 2))
+  echo $((asked < most ? asked : most))
+}
+
 attach() {
   local image=$1 size=$2 folder=$3
   shift 3
@@ -34,13 +51,14 @@ attach() {
     if [ "$(stat -f -c %T "$(dirname "$image")")" = btrfs ]; then
       chattr +C "$image.new"
     fi
-    fallocate -l "$size" "$image.new"
+    fallocate -l "$(room "$image.new" "$size")" "$image.new"
     mkfs.ext4 -q -L cargo-builds "$image.new"
     mv "$image.new" "$image"
   fi
-  # A size raised since the image was made grows it in place; one lowered
-  # leaves it as it is, since shrinking would lose builds for no room.
-  fallocate -l "$size" "$image" 2>/dev/null || true
+  # A size raised since the image was made, or room freed since it was made
+  # smaller than asked, grows it in place; one lowered leaves it as it is,
+  # since shrinking would lose builds for no room.
+  fallocate -l "$(room "$image" "$size")" "$image" 2>/dev/null || true
   if ! mountpoint -q "$folder"; then
     local loop
     # Direct IO, so a block isn't cached twice, once for the image file and

@@ -78,6 +78,24 @@ def test_a_reload_leaves_a_build_running(up: BaseMachine) -> None:
     up.succeed("systemctl stop build")
 
 
+def test_an_image_bigger_than_the_disk_takes_half_what_is_free(up: BaseMachine) -> None:
+    """Asked for more than the disk holds, the image is half what's free, and stays so.
+
+    A stick's 61 GB disk couldn't hold the 48G default, and the boot failed on it.
+    """
+    script = up.succeed(f"systemctl show -P ExecStart {SERVICE}").split("path=")[1].split()[0]
+    image, folder = "/var/cache/big.img", "/mnt/big"
+    blocks, block = up.succeed("stat -f -c '%a %S' /var/cache").split()
+    free = int(blocks) * int(block)
+    up.succeed(f"{script} attach {image} 100G {folder} joel:users")
+    made = int(up.succeed(f"stat -c %s {image}").strip())
+    assert free * 0.4 < made <= free / 2, f"{made} bytes made with {free} free"
+    up.succeed(f"mountpoint -q {folder} && test -d {folder}/joel")
+    up.succeed(f"{script} detach {folder} && {script} attach {image} 100G {folder} joel:users")
+    assert int(up.succeed(f"stat -c %s {image}").strip()) == made, "attaching again grew it"
+    up.succeed(f"{script} detach {folder} && rm {image}")
+
+
 def test_an_image_past_repairing_is_made_again(up: BaseMachine) -> None:
     """An image whose filesystem can't be read is replaced by an empty one, mounted as before."""
     as_account(up, f"touch {FOLDER}/joel/lost")

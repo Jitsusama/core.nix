@@ -48,8 +48,9 @@ in
       default = "48G";
       description = ''
         How big the image is, as fallocate reads a size. It's reserved whole
-        on the system's disk. Raising it grows the image at the next boot or
-        switch; lowering it leaves the image as it is.
+        on the system's disk, or as half what the disk would have free
+        without it, when that's less. Raising it grows the image at the
+        next boot or switch; lowering it leaves the image as it is.
       '';
     };
   };
