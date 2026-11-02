@@ -1,7 +1,7 @@
 //! The load proof: whether what Joel uses still feels idle while the work
 //! behind him fills every core and the line.
 //!
-//! It has five signals, each read on its own or all at once:
+//! It has six signals, each read on its own or all at once:
 //!
 //! - `call`: how long a call's packets take to cross the line and back
 //!   (call.rs).
@@ -9,14 +9,16 @@
 //! - `keys`: how quickly a key typed in a terminal comes back (keys.rs).
 //! - `save`: how quickly an app's careful save reaches the disk (save.rs).
 //! - `sound`: whether any sound in PipeWire misses its turn (sound.rs).
+//! - `typed`: how long Joel's own keys in the launcher take to reach the
+//!   screen, from what the launcher keeps of them (typed.rs).
 //!
-//! `all` reads the five at once and prints a line each, which is a
+//! `all` reads the six at once and prints a line each, which is a
 //! reading; `judge` says whether a loaded reading felt as an idle one did
 //! (judge.rs). `run` takes an idle reading, loads the machine in steps up
 //! to twenty builds with the line full both ways, and judges a reading in
 //! each step against idle (run.rs).
 //!
-//! Usage: load-proof call|frames|keys|save|sound|all [SECONDS]
+//! Usage: load-proof call|frames|keys|save|sound|typed|all [SECONDS]
 //!        load-proof judge IDLE LOADED
 //!        load-proof run
 
@@ -28,6 +30,7 @@ mod run;
 mod save;
 mod sound;
 mod spread;
+mod typed;
 
 use spread::Spread;
 
@@ -37,12 +40,12 @@ use std::process::ExitCode;
 use std::thread;
 use std::time::Duration;
 
-const USAGE: &str = "usage: load-proof call|frames|keys|save|sound|all [SECONDS]
+const USAGE: &str = "usage: load-proof call|frames|keys|save|sound|typed|all [SECONDS]
        load-proof judge IDLE LOADED
        load-proof run";
 
 /// The signals, in the order a reading prints them.
-const SIGNALS: [&str; 5] = ["call", "sound", "frames", "keys", "save"];
+const SIGNALS: [&str; 6] = ["call", "sound", "frames", "keys", "save", "typed"];
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
@@ -182,6 +185,13 @@ fn read(signal: &str, length: Duration) -> Result<String, String> {
                 let _ = write!(line, ", {node} {count}");
             }
             line
+        }),
+        "typed" => typed::watch(length).map(|keys| {
+            let t = Spread::of(&keys);
+            format!(
+                "typed {} frame p50 {:.2} ms p99 {:.2} ms worst {:.2} ms",
+                t.count, t.p50_ms, t.p99_ms, t.worst_ms
+            )
         }),
         _ => Err(format!("no signal {signal}")),
     }

@@ -13,7 +13,11 @@
 //! - no sound that misses a turn;
 //! - niri missing no more frames than idle;
 //! - a key's echo p99 within 2 ms of idle's, and none over 16 ms;
-//! - an app's save p99 within 20 ms of idle's.
+//! - an app's save p99 within 20 ms of idle's;
+//! - where Joel typed in the launcher, his keys reaching their frame in
+//!   50 ms at the middle and 100 ms for 99 in 100, the launcher's own
+//!   budget, whatever idle did, since he may type in one and not the
+//!   other; a step he typed nothing in isn't judged for it.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -32,6 +36,10 @@ const KEYS_MARGIN: f64 = 2.0;
 const KEYS_WORST: f64 = 16.0;
 /// A save's p99 may grow this much under load, in ms.
 const SAVE_MARGIN: f64 = 20.0;
+/// The launcher's budget from a key's press to its frame, in ms: at the
+/// middle, and for 99 keys in 100.
+const TYPED_MIDDLE: f64 = 50.0;
+const TYPED_MOST: f64 = 100.0;
 
 /// The signals, by the word each line opens with, and what to call each.
 const SIGNALS: [(&str, &str); 5] = [
@@ -136,6 +144,23 @@ pub fn judge(idle: &Reading, loaded: &Reading) -> Vec<String> {
             failed.push(format!("{name}: {}", says.trim_end_matches("; ")));
         }
     }
+    if let Some(typed) = loaded
+        .get("typed")
+        .filter(|typed| typed.get("typed") > Some(&0.0))
+    {
+        let figure = |key: &str| typed.get(key).copied().unwrap_or(f64::NAN);
+        let mut says = String::new();
+        let (middle, most) = (figure("p50"), figure("p99"));
+        if !within(middle, TYPED_MIDDLE) {
+            let _ = write!(says, "p50 {middle:.1} ms, past {TYPED_MIDDLE} ms; ");
+        }
+        if !within(most, TYPED_MOST) {
+            let _ = write!(says, "p99 {most:.1} ms, past {TYPED_MOST} ms; ");
+        }
+        if !says.is_empty() {
+            failed.push(format!("typed: {}", says.trim_end_matches("; ")));
+        }
+    }
     failed
 }
 
@@ -234,6 +259,28 @@ saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
             judge(&read(&poor), &read(&loaded)),
             ["call: p95 335.0 ms, past 300 ms; 60 lost of 1500, past 1%"]
         );
+    }
+
+    #[test]
+    fn keys_typed_within_the_launchers_budget_pass() {
+        let loaded = format!("{IDLE}typed 40 frame p50 19.00 ms p99 82.00 ms worst 82.00 ms\n");
+        assert_eq!(judge(&read(IDLE), &read(&loaded)), Vec::<String>::new());
+    }
+
+    #[test]
+    fn keys_typed_past_the_launchers_budget_fail_whatever_idle_was() {
+        let loaded = format!("{IDLE}typed 40 frame p50 60.00 ms p99 140.00 ms worst 150.00 ms\n");
+        assert_eq!(
+            judge(&read(IDLE), &read(&loaded)),
+            ["typed: p50 60.0 ms, past 50 ms; p99 140.0 ms, past 100 ms"]
+        );
+    }
+
+    #[test]
+    fn a_step_nobody_typed_in_is_not_judged_for_it() {
+        let none = format!("{IDLE}typed 0 frame p50 0.00 ms p99 0.00 ms worst 0.00 ms\n");
+        assert_eq!(judge(&read(IDLE), &read(&none)), Vec::<String>::new());
+        assert_eq!(judge(&read(IDLE), &read(IDLE)), Vec::<String>::new());
     }
 
     #[test]

@@ -17,8 +17,10 @@ onLinux {
   # text whole; a call's request answered by a STUN server's stand-in is
   # timed and one never answered is lost; each sound node's errors are read
   # from pw-top, cameras' left out, and counted only while it runs; the
-  # times are summed; a loaded reading is judged against an idle one by
-  # each signal's margin; and a run fits in five minutes, climbs to twenty
+  # launcher's keys are timed from press to frame, only those it took
+  # since the signal started; the times are summed; a loaded reading is
+  # judged against an idle one by each signal's margin, and typed keys by
+  # the launcher's budget; and a run fits in five minutes, climbs to twenty
   # builds, builds offline from its own source, and stops on low memory; and
   # a command given more than it takes is refused before anything starts.
   load-proof-reads-its-signals = pkgs.callPackage ./package.nix { };
