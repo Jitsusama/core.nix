@@ -7,9 +7,18 @@ its touchscreen with it. Shut, the panel goes dark either way, and
 opening the lid lights it again; with no output at all, niri runs as
 it does when a desktop's only monitor is unplugged.
 
+A lid's switch can be wrong, though: one read shut for two minutes on
+a lap, with the lid open, and left nothing lit. So while the lid reads
+shut and no screen is lit, a key, a click or a pointer moved, which
+nobody can make with the lid shut, takes the lid as open until its
+switch next changes. A touch or a pen doesn't, since a shut lid can
+press the screen.
+
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 741f218..0f61eb7 100644
 --- a/src/backend/tty.rs
 +++ b/src/backend/tty.rs
-@@ -2344,19 +2344,9 @@
+@@ -2352,19 +2352,9 @@ impl Tty {
              return false;
          }
  
@@ -32,3 +41,111 @@ it does when a desktop's only monitor is unplugged.
      }
  
      pub fn on_output_config_changed(&mut self, niri: &mut Niri) {
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index be0f99c..bae7000 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -142,6 +142,10 @@ impl State {
+             self.niri.reset_pointer_inactivity_timer();
+         }
+ 
++        if self.niri.is_lid_closed && proves_the_lid_open(&event) {
++            self.lid_proven_open();
++        }
++
+         let hide_hotkey_overlay =
+             self.niri.hotkey_overlay.is_open() && should_hide_hotkey_overlay(&event);
+ 
+@@ -4727,6 +4731,21 @@ fn modifiers_from_state(mods: ModifiersState) -> Modifiers {
+     modifiers
+ }
+ 
++/// Whether the event is one nobody can make with the lid shut: a key, a click
++/// or a pointer moved. A touch or a pen isn't, since a shut lid can press the
++/// screen.
++fn proves_the_lid_open<I: InputBackend>(event: &InputEvent<I>) -> bool {
++    match event {
++        InputEvent::TouchDown { .. }
++        | InputEvent::TouchMotion { .. }
++        | InputEvent::TabletToolAxis { .. }
++        | InputEvent::TabletToolProximity { .. }
++        | InputEvent::TabletToolTip { .. }
++        | InputEvent::TabletToolButton { .. } => false,
++        _ => should_activate_monitors(event),
++    }
++}
++
+ fn should_activate_monitors<I: InputBackend>(event: &InputEvent<I>) -> bool {
+     match event {
+         InputEvent::Keyboard { event } if event.state() == KeyState::Pressed => true,
+diff --git a/src/niri.rs b/src/niri.rs
+index ff041ec..d1e05e8 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -803,6 +803,19 @@ impl State {
+         self.backend.on_output_config_changed(&mut self.niri);
+     }
+ 
++    /// Someone pressed a key, clicked or moved a pointer while the lid reads
++    /// shut and no screen is lit, which nobody can do with the lid shut. The
++    /// lid's switch is wrong, so the lid is taken as open, lighting the panel
++    /// again, until the switch next changes.
++    pub fn lid_proven_open(&mut self) {
++        if !self.niri.is_lid_closed || self.niri.global_space.outputs().next().is_some() {
++            return;
++        }
++
++        info!("laptop lid taken as open: used with no screen lit while it read shut");
++        self.set_lid_closed(false);
++    }
++
+     fn refresh(&mut self) {
+         let _span = tracy_client::span!("State::refresh");
+ 
+diff --git a/src/tests/lid.rs b/src/tests/lid.rs
+new file mode 100644
+index 0000000..2207cf1
+--- /dev/null
++++ b/src/tests/lid.rs
+@@ -0,0 +1,29 @@
++use super::*;
++
++#[test]
++fn a_shut_lid_with_no_screen_lit_is_taken_as_open_once_used() {
++    let mut f = Fixture::new();
++    f.niri_state().set_lid_closed(true);
++    assert!(f.niri().is_lid_closed);
++
++    f.niri_state().lid_proven_open();
++    assert!(!f.niri().is_lid_closed);
++}
++
++#[test]
++fn a_shut_lid_beside_a_lit_screen_stays_shut_when_used() {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    f.niri_state().set_lid_closed(true);
++
++    f.niri_state().lid_proven_open();
++    assert!(f.niri().is_lid_closed);
++}
++
++#[test]
++fn an_open_lid_stays_open_when_used() {
++    let mut f = Fixture::new();
++
++    f.niri_state().lid_proven_open();
++    assert!(!f.niri().is_lid_closed);
++}
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index 92a4056..c61484e 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -8,6 +8,7 @@ mod animations;
+ mod floating;
+ mod fullscreen;
+ mod layer_shell;
++mod lid;
+ mod remove_output;
+ mod transactions;
+ mod window_opening;

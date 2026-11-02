@@ -69,7 +69,9 @@
     # another monitor is connected, so a laptop kept awake shut with
     # nothing plugged in, working for others, lit a panel nobody could
     # see. The patch (shut-lid-darkens-the-panel.patch) darkens it either
-    # way; opening the lid lights it again.
+    # way; opening the lid lights it again. A lid's switch can read shut
+    # with the lid open, so while no screen is lit a key, a click or a
+    # pointer moved takes the lid as open.
     #
     # niri draws its first frame the moment it starts, its bare backdrop,
     # so the boot splash's picture went dark for the second or more until
