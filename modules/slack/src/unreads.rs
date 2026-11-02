@@ -262,10 +262,13 @@ pub fn sign_in_waits(at: u64) -> Value {
             "minutes": 1,
             "ready": true,
             "doneWhen": {"signal": "signin:slack"},
+            // Slack's program row signs in again in one key, so that comes
+            // first, and pi's own command after it for where the launcher
+            // isn't at hand (VKCF3Z, 67b9e042).
             "steps": [
-                "Open a pi session",
-                "Type /slack-auth",
-                "Sign in to Slack in the browser it opens"
+                "Press Sign In on Slack in Programs",
+                "Sign in to Slack in the browser it opens",
+                "Or type /slack-auth in a pi session"
             ]
         }]
     })
@@ -331,6 +334,13 @@ mod tests {
                 &json!(true),
                 &json!({"signal": "signin:slack"})
             )
+        );
+        // The one key first, pi's command only as the way round it.
+        let steps = item["steps"].as_array().unwrap();
+        assert_eq!(steps[0], "Press Sign In on Slack in Programs");
+        assert_eq!(
+            steps[steps.len() - 1],
+            "Or type /slack-auth in a pi session"
         );
     }
 
