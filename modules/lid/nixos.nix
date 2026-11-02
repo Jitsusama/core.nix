@@ -37,7 +37,10 @@ in
   # every session kept. NixOS marks logind to reload rather than restart,
   # since a restart would end the sessions, but gives it nothing to reload
   # on, so a switch left the old settings running until the next boot.
-  systemd.services.systemd-logind.reloadTriggers = [
+  # A restart trigger is the one to give it: one that changes changes the
+  # unit, and a unit marked to reload is reloaded, where a reload trigger
+  # beside that mark does the same and NixOS warns of it at every build.
+  systemd.services.systemd-logind.restartTriggers = [
     config.environment.etc."systemd/logind.conf".source
   ];
 
