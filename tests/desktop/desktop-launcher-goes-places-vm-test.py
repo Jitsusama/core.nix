@@ -449,6 +449,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
 
 
 HARNESS = "~/.local/state/pi/agentic-harness.pi"
+# How long a window may take to start the stand-in pi. The first zsh in the fresh test machine
+# makes its completion dump before running anything, and under the builder's load that has
+# kept a window's shell busy past a minute, so a subtest run on its own waited it out.
+SHELL_STARTS = dt.timedelta(seconds=120)
 INBOX = f"{HARNESS}/steer/TESTQA"
 
 
@@ -760,7 +764,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session(f'grep -qx "$HOME/lighthouse " {opened}'),
-        timeout=dt.timedelta(seconds=30),
+        timeout=SHELL_STARTS,
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
     assert said[1:3] == ["--session", "01a1-lighthouse"], said
@@ -816,7 +820,7 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session(f'grep -qx "$HOME/harbour " {opened}'),
-        timeout=dt.timedelta(seconds=30),
+        timeout=SHELL_STARTS,
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
     assert said[1:3] == ["--session", "01b2-harbour"], said
@@ -876,7 +880,7 @@ def test_agents_reopens_a_session_another_machine_carried_here(desktop: Desktop)
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session(f'grep -qx "$HOME/ferry " {opened}'),
-        timeout=dt.timedelta(seconds=30),
+        timeout=SHELL_STARTS,
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
     assert said[1:3] == ["--session", "01b2-ferry"], said
@@ -920,7 +924,7 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
     assert answer == "taken", answer
     desktop.machine.wait_until_succeeds(
         desktop.in_session(f'grep -qx "$HOME/quay " {opened}'),
-        timeout=dt.timedelta(seconds=30),
+        timeout=SHELL_STARTS,
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
     assert said[1:3] == ["--session", "01b2-quay"], said
@@ -2543,7 +2547,7 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         machine.send_key("ret")
         machine.wait_until_succeeds(
             desktop.in_session(f"grep -qx /google-auth {opened}"),
-            timeout=dt.timedelta(seconds=30),
+            timeout=SHELL_STARTS,
         )
         desktop.as_account(f'grep -qx "$HOME " {opened}')
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
