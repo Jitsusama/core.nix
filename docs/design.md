@@ -712,7 +712,11 @@ works the same way everywhere.
   Health, Machine › Power › Battery), and Return goes there, the path
   filled, so the left arrow climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
-  Only what a thing reads or holds is found so, never what it does.
+  Only what a thing reads or holds is found so, never what it does,
+  except a program's own acts (Meet's New Meeting), each found by its
+  name with the program's mark and its path (Programs › Meet), below the
+  program itself. Return does the act, and the right arrow goes into the
+  program onto it.
 - **Acts in one order.** Every kind of thing lists what's inside it in
   the same order, so three anchors are all there is to learn: the top row
   does it, what ends it comes near the bottom, and Copy is last. Between

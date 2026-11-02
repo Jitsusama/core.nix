@@ -3589,6 +3589,89 @@ def test_meet_copies_a_new_meetings_link_last_without_opening_meet(desktop: Desk
 
 
 @pytest.mark.usefixtures("google")
+def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program(
+    desktop: Desktop,
+) -> None:
+    """A program's acts are found from the top by their own names, saying where they live.
+
+    Return does the act, as it does inside the program, and the right arrow goes into the
+    program onto it, so the left arrow climbs back out. Typing the program's name lists the
+    program first, and only those acts whose own names it starts a word of.
+    """
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # Meet's desktop entry's own New Meeting, by its name.
+    desktop.answer("new meeting")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "New Meeting"
+            and shown["selected"]["note"] == "Programs \u203a Meet"
+        )
+    )
+    # The right arrow goes into Meet, onto New Meeting.
+    machine.send_key("right")
+    desktop.launcher_until(
+        lambda shown: (
+            # Programs, then Meet.
+            shown["held"][1:] == ["Meet"] and (shown["selected"] or {}).get("name") == "New Meeting"
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Return starts it, as inside Meet, and the launcher goes.
+    desktop.answer("new meeting")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "New Meeting")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF https://meet.google.com/new {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Meet's own acts it opts in: Join by Code asks for its code there.
+    desktop.answer("join by code")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Join by Code"
+            and shown["selected"]["note"] == "Programs \u203a Meet"
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"][-2:] == ["Meet", "Join by Code"])
+    machine.send_chars("abc-defg-hij")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF https://meet.google.com/abc-defg-hij {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # And Copy a New Meeting's Link, while Meet's scope is granted.
+    desktop.answer("copy a new meeting")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Copy a New Meeting's Link"
+            and shown["selected"]["note"] == "Programs \u203a Meet"
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Typing the program's name finds it first, and an act only by its own
+    # name, never by the program's in its note.
+    desktop.answer("meet")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Meet"
+            and "New Meeting" in shown["rows"]
+            and shown["rows"].index("Meet") < shown["rows"].index("New Meeting")
+            and "Join by Code" not in shown["rows"]
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:
