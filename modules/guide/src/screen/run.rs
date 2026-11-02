@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use zeroize::Zeroizing;
 
@@ -145,18 +145,22 @@ impl Walk<'_> {
         let stopped = stopping.clone();
         let thread = std::thread::spawn(move || {
             let slice = Duration::from_millis(100);
+            // Kept to the clock, so neither a slow sleep nor a key let go
+            // early moves when the next second's screen is drawn.
+            let mut next = Instant::now() + TICK;
             loop {
-                let mut waited = Duration::ZERO;
-                while waited < TICK {
+                while let Some(left) = next.checked_duration_since(Instant::now()) {
                     if stopped.load(Ordering::Relaxed) {
                         return;
                     }
-                    if painter.left(slice) {
+                    if painter.left(slice.min(left)) {
                         painter.stop(&title, meter.program());
                         return;
                     }
-                    waited += slice;
                 }
+                // A painter woken long after, as from a sleep, starts the
+                // seconds again rather than drawing each one it missed.
+                next = (next + TICK).max(Instant::now());
                 let said = meter.said();
                 let at = Where {
                     journey: &journey,

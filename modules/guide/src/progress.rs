@@ -623,6 +623,9 @@ mod tests {
         );
     }
 
+    // Only Linux says what another program has read or written, and only
+    // the stick, which runs it, stages by a program's counts.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_stage_a_program_does_is_counted_by_what_it_has_read() {
         let meter = Meter::new();
@@ -651,6 +654,7 @@ mod tests {
         meter.running(None);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_stage_a_program_does_can_be_counted_by_what_it_has_written() {
         let meter = Meter::new();
