@@ -2214,6 +2214,7 @@ Scope {
         // for fucking ever to load").
         const began = Date.now();
         const heard = KeyTimes.now();
+        const pressed = KeyTimes.pressed();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -2259,7 +2260,7 @@ Scope {
         // stepping took, and the search that draws its rows.
         searchParts = { lists: made - began, rows: Date.now() - opened, answers: 0,
             each: { holding: pushed - made, opening: opened - pushed } };
-        keyTimed(`\u2192 ${row.name}`, began, heard);
+        keyTimed(`\u2192 ${row.name}`, began, heard, pressed);
         return true;
     }
 
@@ -2282,6 +2283,7 @@ Scope {
             return;
         asking.given(words);
         prompt.text = "";
+        searchNow();
     }
 
     // A collection whose things changed while it's open is searched again,
@@ -2558,6 +2560,8 @@ Scope {
             search(text);
         else
             prompt.text = text;
+        // Whoever set it reads what it finds next.
+        searchNow();
     }
 
     property string typed: ""
@@ -2625,6 +2629,7 @@ Scope {
         // Only what's typed is a search of its own; a list said again in
         // place is a refresh. Its letters are counted, never kept.
         if (!steadying) {
+            searched += 1;
             forgetGone();
             traces.began("search", { letters: letters.length, depth: held.length });
         }
@@ -2839,14 +2844,15 @@ Scope {
     // A key is heard when its handler began, read then on the clock its
     // press is stamped by, rather than worked back from the wall clock,
     // whose whole milliseconds could put it before the press it handles.
-    function keyTimed(typed, began, heard) {
+    // `pressed` is KeyTimes.pressed() read as the key was heard, since a key
+    // searched later, with others typed at once, is timed after KeyTimes has
+    // let its press go.
+    function keyTimed(typed, began, heard, pressed) {
         keyBegan = began;
         keySearched = Date.now() - began;
         keyText = typed;
         keyWaits = true;
         keysWaiting += 1;
-        // Still inside the press that made it, if a press did.
-        const pressed = KeyTimes.pressed();
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
     }
@@ -2901,10 +2907,51 @@ Scope {
             return;
         const began = Date.now();
         const heard = KeyTimes.now();
+        const pressed = KeyTimes.pressed();
         searchParts = null;
         current = to;
-        keyTimed(arrow, began, heard);
+        keyTimed(arrow, began, heard, pressed);
     }
+
+    // Text typed faster than it's searched, as a program types it, reaches
+    // the field in one turn of the event loop: wtype's eight letters came in
+    // one (2026-11-02). Searched once a letter, a burst's last letter waited
+    // on every search before it (5FWIUS's finding [a0802572]). So each
+    // change is kept with when it was heard and pressed. The first in a turn
+    // is searched at once, as a key Joel presses always is, so it waits on
+    // nothing more than before; any that follow it in the same turn are
+    // searched once, for the newest text, as the turn ends or as soon as a
+    // key reads what was found, whichever is sooner. Each key is still
+    // timed on its own.
+    property var keysDue: []
+    property bool searchedThisTurn: false
+    function searchSoon(text, began, heard, pressed) {
+        keysDue = keysDue.concat([{ text, began, heard, pressed }]);
+        if (searchedThisTurn)
+            return;
+        searchedThisTurn = true;
+        Qt.callLater(turnEnded);
+        searchNow();
+    }
+    function turnEnded() {
+        searchedThisTurn = false;
+        searchNow();
+    }
+    // What every key and setter that reads what was found runs first, so it
+    // acts on what's typed now rather than on the rows of a letter before.
+    function searchNow() {
+        if (keysDue.length === 0)
+            return;
+        const due = keysDue;
+        keysDue = [];
+        searchParts = null;
+        search(prompt.text);
+        if (!asking)
+            due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed));
+    }
+    // How many searches of what's typed have run, refreshes aside, for the
+    // check that a burst is searched once.
+    property int searched: 0
 
     onCurrentChanged: {
         list.pick(list.settled);
@@ -3170,6 +3217,12 @@ Scope {
         // that a closed launcher makes nothing of what changes.
         function joined(): string {
             return String(root.choicesJoined);
+        }
+
+        // How many searches of what's typed have run, for the check that
+        // text typed at once is searched once.
+        function searched(): string {
+            return String(root.searched);
         }
 
         // When each of the last keys, typed or arrowed, was pressed, when
@@ -3834,15 +3887,14 @@ Scope {
                         // takes it away whole before it steps back out.
                         leftClears: true
                         onTextChanged: {
-                            trials.retyped(root.typed, text);
-                            const began = Date.now();
-                            const heard = KeyTimes.now();
-                            root.searchParts = null;
-                            root.search(text);
-                            if (!root.asking)
-                                root.keyTimed(text, began, heard);
+                            const due = root.keysDue;
+                            trials.retyped(due.length > 0 ? due[due.length - 1].text
+                                : root.typed, text);
+                            root.searchSoon(text, Date.now(), KeyTimes.now(),
+                                KeyTimes.pressed());
                         }
                         onAccepted: (below, closing) => {
+                            root.searchNow();
                             trials.pressed("returns");
                             if (root.asking)
                                 root.give();
@@ -3853,6 +3905,7 @@ Scope {
                         // question, so a sum can be carried on; one still
                         // being asked for leaves the question as it is.
                         onCompleted: {
+                            root.searchNow();
                             trials.pressed("tabs");
                             // Tab does something only while the field
                             // shows a grey completion, and only takes it;
@@ -3875,13 +3928,16 @@ Scope {
                             // put in the question's place.
                             else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
                                 text = root.answer.copy ?? root.answer.headline;
+                            root.searchNow();
                         }
                         onCancelled: root.open = false
                         onForward: {
+                            root.searchNow();
                             trials.pressed("steps");
                             root.inward(root.matches[root.current]);
                         }
                         onBackward: {
+                            root.searchNow();
                             trials.pressed("backs");
                             root.back();
                         }
@@ -3892,6 +3948,7 @@ Scope {
                         // With Ctrl, the arrows scroll the drawer instead,
                         // since Page Up and Page Down page the list.
                         Keys.onUpPressed: event => {
+                            root.searchNow();
                             if (event.modifiers & Qt.ControlModifier) {
                                 drawerCard.scroll(-1);
                                 return;
@@ -3899,6 +3956,7 @@ Scope {
                             root.arrowed(Math.max(root.current - 1, highest), "\u2191");
                         }
                         Keys.onDownPressed: event => {
+                            root.searchNow();
                             if (event.modifiers & Qt.ControlModifier) {
                                 drawerCard.scroll(1);
                                 return;
@@ -3907,6 +3965,7 @@ Scope {
                                 Math.min(root.current + 1, root.matches.length - 1)), "\u2193");
                         }
                         Keys.onPressed: event => {
+                            root.searchNow();
                             if (event.key === Qt.Key_PageUp) {
                                 root.arrowed(Math.max(root.current - root.rows, highest),
                                     "page up");

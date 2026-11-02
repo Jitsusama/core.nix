@@ -4,7 +4,9 @@ Here the launcher keeps pace with the keys while the machine is busy. Every core
 account's jobs.slice and in build.slice, where a workstation's agents and builds run, and each key
 is timed from the moment a stand-in keyboard pressed it to the first frame the launcher drew for
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
-those under load are held against the others, so the builder's own load slows both alike.
+those under load are held against the others, so the builder's own load slows both alike. Text a
+program types at once keeps pace too: it's searched once, not once a letter, and a Return among it
+acts on what it found.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
@@ -264,6 +266,53 @@ class Timing:
             f"one key in twenty under load took over {tail:.0f} ms to its frame, against "
             f"{tail_free:.0f} ms with the load frozen"
         )
+
+
+def searched(desktop: Desktop) -> int:
+    """Give how many searches of what's typed the launcher has run."""
+    return int(desktop.as_account("qs ipc call launcher searched").strip())
+
+
+def typed_at_once(desktop: Desktop, typing: str) -> None:
+    """Type with wtype while the shell is frozen, so every key reaches it in one turn of its loop.
+
+    A program's keys come together, but a busy machine can space them out a search apart, which
+    would leave nothing to show; held in the shell's socket until it thaws, they come at once.
+    """
+    desktop.as_account("systemctl --user freeze quickshell")
+    try:
+        desktop.as_account(f"wtype {typing}")
+    finally:
+        desktop.as_account("systemctl --user thaw quickshell")
+
+
+def test_text_typed_at_once_is_searched_once(desktop: Desktop) -> None:
+    """Text a program types at once is searched for its newest letters, not once a letter."""
+    word = "workspaces"
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    try:
+        before = searched(desktop)
+        typed_at_once(desktop, word)
+        desktop.launcher_until(lambda shown: shown["typed"] == word)
+        searches = searched(desktop) - before
+        assert searches < len(word), f"{len(word)} letters typed at once took {searches} searches"
+    finally:
+        desktop.machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def test_return_typed_with_the_text_acts_on_what_it_found(desktop: Desktop) -> None:
+    """Return typed at once with the text acts on the row the text found, never one before it."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    try:
+        # Found before its letters, Return would step into the first row at home, Now.
+        typed_at_once(desktop, "'needs you' -k Return")
+        desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
+    finally:
+        desktop.machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
 
 
 @pytest.mark.usefixtures("keyboard", "loaded")
