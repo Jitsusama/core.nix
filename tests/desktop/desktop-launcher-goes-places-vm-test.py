@@ -767,7 +767,8 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
         timeout=SHELL_STARTS,
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
-    assert said[1:3] == ["--session", "01a1-lighthouse"], said
+    # Joel is there, so it's told nothing and waits for him.
+    assert said[1:] == ["--session", "01a1-lighthouse", ""], said
     # Resuming one takes Joel to it, so the launcher closes.
     desktop.launcher_until(lambda shown: not shown["open"])
     # Its own row under Orchestrators says the same, Resume its Return.
@@ -824,6 +825,10 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
     assert said[1:3] == ["--session", "01b2-harbour"], said
+    # Each is told to carry on as it opens, so a boot leaves none waiting.
+    assert said[3] == "--", said
+    assert said[4].startswith("[Automated message, no human input: "), said
+    assert said[4].endswith("Carry on from where you left off: your plan's next open item."), said
     desktop.launcher_until(lambda shown: not shown["open"])
     # Put off, it's gone for this boot, as no harness here drops it.
     desktop.as_account("qs ipc call launcher toggle")
@@ -927,7 +932,8 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
         timeout=SHELL_STARTS,
     )
     said = desktop.as_account(f"cat {opened}").split("\n")
-    assert said[1:3] == ["--session", "01b2-quay"], said
+    # The harness says for itself what a session it hands over is to do.
+    assert said[1:] == ["--session", "01b2-quay", ""], said
     desktop.as_account(f"rm -rf {opened} {handed} ~/quay")
 
 
@@ -936,7 +942,8 @@ def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
     spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
     idx = {one["id"]: one["idx"] for one in spaces}
     return {
-        window["title"].split()[-1]: (
+        # "pi --session <id>", then what it was told, if anything.
+        window["title"].split()[2]: (
             idx[window["workspace_id"]],
             window["layout"]["pos_in_scrolling_layout"][0],
         )

@@ -249,13 +249,17 @@ Singleton {
     // (85PKB2, 2026-11-01 [e51c350d]): `pi --session` finds no record of
     // it and exits at once, so it starts under its own id, with its quest
     // loaded as start() loads one, since only a record brings one back.
-    function reopened(one, cwd) {
+    // `told`, when given, is pi's first prompt, sent as it opens, as the
+    // shell's $0 so nothing in it is read as the shell's own.
+    function reopened(one, cwd, told) {
         const fresh = one.fresh === true;
         const quest = fresh && typeof one.quest === "string" && one.quest !== ""
             ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
+        const pi = fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`;
+        const telling = typeof told === "string" && told !== "";
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd]
-            .concat(quest, ["zsh", "-lic",
-                held(fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`)]));
+            .concat(quest, ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)],
+                telling ? [told] : []));
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
     }
 
@@ -580,22 +584,33 @@ Singleton {
     // says where one sat, the boot being restored's place by default. A
     // list given while another is being reopened joins its end, so two
     // never open at once and misplace each other.
+    // `told`, when given, is each one's first prompt as it opens
+    // (reopened), as Reopen Them All tells each to carry on.
     property var reopening: null
-    function reopenAll(lost, gone, keptAt) {
+    function reopenAll(lost, gone, keptAt, told) {
         const kept = keptAt ?? (id => arrangement[restoring.boot]?.[id] ?? null);
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one));
         const here = lost.filter(one => one.machine === undefined);
-        lookAtScreens(() => reopenHere(here, gone, kept));
+        lookAtScreens(() => reopenHere(here, gone, kept, told ?? ""));
     }
+    // What Reopen Them All tells each session it reopens, so a boot never
+    // leaves them waiting to be poked one by one (P9R1KI, 2026-11-02
+    // [2c47b9fa], after the 14:50 boot left every session idle until Joel
+    // poked each by hand). It's said to pi, not shown in the launcher, so
+    // it reads as the harness's own automated turns do.
+    readonly property string carryOn: "[Automated message, no human input: the machine "
+        + "restarted, and Reopen Them All reopened this session.] Carry on from where you "
+        + "left off: your plan's next open item."
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
-    function reopenHere(here, gone, kept) {
+    function reopenHere(here, gone, kept, told) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : a.at.output.localeCompare(b.at.output) || a.at.workspace - b.at.workspace
                 || a.at.column - b.at.column || a.at.tile - b.at.tile;
         const places = Places.placed(here.map(one => kept(one.id)), screens,
             Niri.workspace()?.output ?? null);
-        const queue = here.map((one, at) => ({ one, at: places[at], gone })).sort(order);
+        const queue = here.map((one, at) => ({ one, at: places[at], gone, told }))
+            .sort(order);
         if (reopening !== null) {
             reopening.queue = reopening.queue.concat(queue);
             if (reopening.waiting === null && !reopening.looking && !reopenPacing.running)
@@ -681,7 +696,7 @@ Singleton {
             reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
                 into: next.at ? root.into(next.at) : null, opened: null };
             reopenStartedAt = Date.now();
-            reopened(next.one, next.one.cwd);
+            reopened(next.one, next.one.cwd, next.told);
             reopenPatience.restart();
         });
     }
