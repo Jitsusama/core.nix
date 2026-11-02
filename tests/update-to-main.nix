@@ -139,6 +139,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     boot.loader.systemd-boot.enable = true;
     boot.loader.efi.canTouchEfiVariables = true;
+    # Its store is on its own disk rather than the host's, so the key the
+    # tests sign main with is put there.
+    system.extraDependencies = [ ./update-to-main-signer ];
     # Kept across the reboot, as a machine's is.
     environment.etc.machine-id.text = "1234567890abcdef1234567890abcdef\n";
     systemd.services.userland = {
