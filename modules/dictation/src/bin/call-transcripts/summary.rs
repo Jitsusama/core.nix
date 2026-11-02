@@ -4,8 +4,9 @@
 //!
 //! The NPU's model reads a prompt of at most `PROMPT_TOKENS`, so a call
 //! too long for one is read in parts: notes are taken on each, and the
-//! summary is written from the notes, which are read in parts again while
-//! they're still too long.
+//! summary is written from the notes, which are read in parts again until
+//! they fit in one. A part is cut by its characters, which only guesses at
+//! its tokens, so a part the model can't read is read again in halves.
 
 use dictation::language::LanguageModel;
 
@@ -17,10 +18,30 @@ use crate::said;
 /// longer in tokens than most.
 const PART_CHARS: usize = 2400;
 
-/// How many times notes are taken on notes before what's left is read as
-/// it is: enough for a call of several hours, and an end if the notes
-/// somehow stop getting shorter.
-const ROUNDS: usize = 4;
+/// How many times notes are taken on notes before giving up: far more
+/// than a call of a day needs, since each round's notes are a fraction
+/// of what they're on, and an end if they somehow stop getting shorter.
+const ROUNDS: usize = 12;
+
+/// The shortest part that's halved when the model can't read it. Shorter
+/// than this, the part's length isn't what failed.
+const HALVED_AT_LEAST: usize = PART_CHARS / 8;
+
+/// What answers a prompt: the language model, or a test's stand-in.
+pub trait Answers {
+    /// The answer to `prompt`.
+    ///
+    /// # Errors
+    ///
+    /// When the prompt can't be answered, as one too long to read.
+    fn answer(&mut self, prompt: &str) -> Result<String, String>;
+}
+
+impl Answers for LanguageModel {
+    fn answer(&mut self, prompt: &str) -> Result<String, String> {
+        LanguageModel::answer(self, prompt)
+    }
+}
 
 /// A summary as written, kept or not.
 pub enum Summed {
@@ -39,11 +60,7 @@ pub enum Summed {
 /// # Errors
 ///
 /// When the model fails to answer.
-pub fn grounded(
-    model: &mut LanguageModel,
-    title: &str,
-    transcript: &str,
-) -> Result<Summed, String> {
+pub fn grounded(model: &mut impl Answers, title: &str, transcript: &str) -> Result<Summed, String> {
     let mut strays = Vec::new();
     for _ in 0..2 {
         let written = summarize(model, title, transcript, &strays)?;
@@ -64,27 +81,89 @@ pub fn grounded(
 /// told not to name what `strays` holds, which an earlier summary named
 /// and the call never did.
 fn summarize(
-    model: &mut LanguageModel,
+    model: &mut impl Answers,
     title: &str,
     transcript: &str,
     strays: &[String],
 ) -> Result<String, String> {
     let mut texts = parts(transcript, PART_CHARS);
     let mut from = From::Transcript;
-    for _ in 0..ROUNDS {
-        if texts.len() <= 1 {
+    for round in 0..=ROUNDS {
+        match texts.as_slice() {
+            [] => return model.answer(&summary_of(title, from, "", strays)),
+            [text] => match model.answer(&summary_of(title, from, text, strays)) {
+                Err(why) => match halves(text) {
+                    Some(halves) => {
+                        eprintln!(
+                            "call-transcripts: a summary of {} characters couldn't be \
+                             written, so notes are taken on its halves: {why}",
+                            text.len()
+                        );
+                        texts = halves;
+                    }
+                    None => return Err(why),
+                },
+                written => return written,
+            },
+            _ => {}
+        }
+        if round == ROUNDS {
             break;
         }
         let count = texts.len();
-        let notes = texts
-            .iter()
-            .enumerate()
-            .map(|(at, text)| model.answer(&notes_on(title, at + 1, count, from, text)))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut notes = Vec::with_capacity(count);
+        for (at, text) in texts.iter().enumerate() {
+            notes.extend(noted(model, text, &|text| {
+                notes_on(title, at + 1, count, from, text)
+            })?);
+        }
         texts = parts(&notes.join("\n\n"), PART_CHARS);
+        eprintln!(
+            "call-transcripts: notes taken on {count} parts of {}, in {} now",
+            from.what(),
+            texts.len()
+        );
         from = From::Notes;
     }
-    model.answer(&summary_of(title, from, &texts.join("\n\n"), strays))
+    Err(format!(
+        "its notes were still {} parts after {ROUNDS} rounds",
+        texts.len()
+    ))
+}
+
+/// The notes `ask` asks for on `text`, read again in halves while the
+/// model can't read it whole, each half giving notes of its own.
+fn noted(
+    model: &mut impl Answers,
+    text: &str,
+    ask: &dyn Fn(&str) -> String,
+) -> Result<Vec<String>, String> {
+    let why = match model.answer(&ask(text)) {
+        Ok(notes) => return Ok(vec![notes]),
+        Err(why) => why,
+    };
+    let Some(halves) = halves(text) else {
+        return Err(why);
+    };
+    eprintln!(
+        "call-transcripts: a part of {} characters couldn't be read, so its halves are: \
+         {why}",
+        text.len()
+    );
+    let mut notes = Vec::new();
+    for half in halves {
+        notes.extend(noted(model, &half, ask)?);
+    }
+    Ok(notes)
+}
+
+/// `text` in two, or more where a line is cut between words, when it's
+/// long enough that its length could be what the model couldn't read.
+fn halves(text: &str) -> Option<Vec<String>> {
+    if text.len() < HALVED_AT_LEAST {
+        return None;
+    }
+    Some(parts(text, text.len().div_ceil(2))).filter(|halves| halves.len() > 1)
 }
 
 /// What a prompt gives the model to read.
@@ -189,6 +268,77 @@ fn pieces(line: &str, most: usize) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A model that reads at most `most` characters of what it's given
+    /// and notes each part in `noted` characters, keeping what it's asked.
+    struct Reader {
+        most: usize,
+        noted: usize,
+        read: Vec<usize>,
+        refused: usize,
+    }
+
+    impl Reader {
+        fn new(most: usize, noted: usize) -> Self {
+            Reader {
+                most,
+                noted,
+                read: Vec::new(),
+                refused: 0,
+            }
+        }
+    }
+
+    impl Answers for Reader {
+        fn answer(&mut self, prompt: &str) -> Result<String, String> {
+            let (asked, text) = prompt.split_once("\n\n").unwrap_or((prompt, ""));
+            if text.len() > self.most {
+                self.refused += 1;
+                return Err("GenAI's answer failed with status -17".to_owned());
+            }
+            self.read.push(text.len());
+            if asked.contains("Write a short summary") {
+                Ok("The summary.".to_owned())
+            } else {
+                Ok("noted ".repeat(self.noted / 6))
+            }
+        }
+    }
+
+    fn call(lines: usize) -> String {
+        (0..lines)
+            .map(|at| format!("**Others**, {at}:00: one two three four five six seven"))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    #[test]
+    fn a_long_call_is_summed_up_from_notes_that_fit_in_one_prompt() {
+        // Ninety minutes of short turns, noted at near half a part each,
+        // takes more rounds of notes on notes than four.
+        let mut reader = Reader::new(PART_CHARS, 1000);
+        let summary = summarize(&mut reader, "Joel / Chad", &call(2000), &[]).unwrap();
+        assert_eq!(summary, "The summary.");
+        assert_eq!(reader.refused, 0);
+        assert!(reader.read.iter().all(|&read| read <= PART_CHARS));
+    }
+
+    #[test]
+    fn a_part_too_long_to_read_is_read_in_halves() {
+        let mut reader = Reader::new(PART_CHARS / 2, 100);
+        let summary = summarize(&mut reader, "", &call(300), &[]).unwrap();
+        assert_eq!(summary, "The summary.");
+        assert!(reader.refused > 0);
+    }
+
+    #[test]
+    fn a_part_too_short_to_halve_fails_as_the_model_did() {
+        let mut reader = Reader::new(10, 100);
+        assert_eq!(
+            summarize(&mut reader, "", &call(3), &[]),
+            Err("GenAI's answer failed with status -17".to_owned())
+        );
+    }
 
     #[test]
     fn a_short_call_is_one_part() {
