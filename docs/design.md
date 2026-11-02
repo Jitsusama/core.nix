@@ -1215,7 +1215,8 @@ what they do, since they're what Joel presses.
   and the one control system can retune them later without a rewrite.
 - **First, on every such surface:**
   - **Moving:** h, j, k and l, as the arrows; gg and G to the first and
-    last; Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen.
+    last; and, where there's more than a screen to move through, Ctrl+D
+    and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen.
   - **Counts** before a motion: 5j, 3G.
   - **Searching,** where there's text: / and ?, then n and N, with case
     ignored until a capital is typed, as his smartcase has it.
@@ -1254,9 +1255,11 @@ Where vi meets the keys already here, each clash resolves one way:
 
 On the notices on screen, held: j and k (and ↓ and ↑) turn through the
 cards, l steps into the front card's acts and h back out, and there j and
-k choose an act. Return runs it, and Ctrl+Return runs it and closes. dd or
-Delete forgets the front card, with Shift for all. gg and G go to the
-newest and the oldest, and Escape steps out, then lets the stack go. In
+k choose an act. Return runs it, and Ctrl+Return runs it and closes. dd,
+Delete or Backspace forgets the front card; dG, as vi deletes to the last
+line, or Shift with Delete or Backspace forgets them all. gg and G go to
+the newest and the oldest, and Escape steps out, then lets the stack go.
+The stack shows one card at a time, so it has no screen keys. In
 the viewfinder, q closes as Escape does, and nothing else changes, since
 its keys are few on purpose.
 
