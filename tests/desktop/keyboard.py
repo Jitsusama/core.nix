@@ -48,14 +48,15 @@ def main() -> None:
     device = UInput({e.EV_KEY: KEYS}, name="stand-in keyboard")
     Path(DEVICE).write_text(f"{device.device.path}\n")
     os.mkfifo(FIFO)
-    with Path(LOG).open("a") as said:
-        while True:
-            with Path(FIFO).open() as asked:
-                for line in asked:
-                    name = line.strip()
-                    pressed = press(device, e.ecodes[f"KEY_{name.upper()}"])
-                    said.write(f"{name} {pressed:.1f}\n")
-                    said.flush()
+    # Opened to write as well as read, once, so the pipe always has a reader and never ends. Opened
+    # to read alone, it ended as each writer closed it and was opened again, and a writer that
+    # came between the end and the close wrote to no reader, its key lost to a broken pipe.
+    with Path(LOG).open("a") as said, os.fdopen(os.open(FIFO, os.O_RDWR), "r") as asked:
+        for line in asked:
+            name = line.strip()
+            pressed = press(device, e.ecodes[f"KEY_{name.upper()}"])
+            said.write(f"{name} {pressed:.1f}\n")
+            said.flush()
 
 
 if __name__ == "__main__":
