@@ -481,9 +481,17 @@ impl Direction {
     /// Then the count runs on through quiet moments and steps that don't
     /// count, as a thin spell's does, until the rate leaves its floor or
     /// `thin_gap_s` passes without such a step.
+    ///
+    /// Outside a call it fills its floor carrying half its rate, where the
+    /// thin rule below stops: at home on 2 November the floor held an
+    /// upload at 16.3 Mbit/s over a modem that took 11 and dropped the rest,
+    /// so it carried 68% of its rate, and with neither rule taking it the
+    /// modem's queue stood for hours. Live, the thin rule reaches up to the
+    /// busy share itself.
     fn pinned(&mut self, s: &Settings, now: f64, carried: f64, suspect: bool, live: bool) {
         let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
-        let floored = suspect && carried >= float(self.rate) * s.busy && self.held <= least;
+        let fills = if live { s.busy } else { s.loaded };
+        let floored = suspect && carried >= float(self.rate) * fills && self.held <= least;
         let gone = self.floored_last.is_some_and(|at| now - at > s.thin_gap_s);
         if self.held > least || gone || !(live || floored) {
             self.floored_since = None;
@@ -866,13 +874,7 @@ impl Controller {
                     cuts[i] = true;
                 }
             }
-            // A direction carrying a sliver of what the other fills the
-            // queue with is that one's acknowledgements, which say nothing
-            // of the connection: at midnight on 1 November an upload
-            // carrying 1.3 Mbit/s beside a full download of 47.5 was
-            // taken for a thin connection and held at 1.2 for days.
-            let both = [sent, received];
-            let beside = [0, 1].map(|i| filling[1 - i] && both[i] < both[1 - i] * ACKS);
+            let beside = self.beside(filling, [sent, received]);
             let held_here = [beside[0], shares[1] > s.held_here || beside[1]];
             for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
@@ -925,6 +927,23 @@ impl Controller {
         } else {
             State::Resting
         }
+    }
+
+    /// Which directions, up and down, the queue says nothing of, being the
+    /// other's, given which are `filling` it and what each `carried`.
+    ///
+    /// A direction carrying a sliver of what the other fills the queue with
+    /// is that one's acknowledgements: at midnight on 1 November an upload
+    /// carrying 1.3 Mbit/s beside a full download of 47.5 was taken for a
+    /// thin connection and held at 1.2 for days. Outside a call, too, one
+    /// is excused while the other is followed down from its floor: on 2
+    /// November a download of 26 Mbit/s beside an upload held over the
+    /// modem was cut from 128 to 5. Live, Joel chose the call, so both give.
+    fn beside(&self, filling: [bool; 2], carried: [f64; 2]) -> [bool; 2] {
+        let floored = [self.up.floored_since, self.down.floored_since].map(|f| f.is_some());
+        [0, 1].map(|i| {
+            filling[1 - i] && (carried[i] < carried[1 - i] * ACKS || !self.live && floored[1 - i])
+        })
     }
 
     /// Which directions, up and down, may be filling the connection's
@@ -1346,6 +1365,43 @@ mod tests {
         assert!(c.up.rate < 9_000, "{}", c.up.rate);
         assert!(lowest >= 8_100, "{lowest}");
         assert!(worst < 50.0, "{worst} ms");
+    }
+
+    #[test]
+    fn a_wi_fi_upload_its_floor_holds_over_a_modem_that_drops_is_followed_down() {
+        // At home on 2 November the upload's floor held it at 16.3 Mbit/s
+        // while the connection carried 11: the modem's queue filled and
+        // dropped, so the upload carried 68% of its rate, too full to be
+        // thin and too thin to fill its floor. Its queue stood at 300 ms
+        // ahead of everything for hours, and a download of 26 Mbit/s
+        // beside it was taken for a thin connection and cut from 128 to 5.
+        let mut c = wi_fi(17_115);
+        c.down.best = 128_100;
+        c.down.peak = 128_100;
+        c.down.held = 128_100;
+        c.down.rate = 128_100;
+        pings(&mut c, 20.0, 6);
+        let (connection, buffer) = (11_000.0, 3_300.0);
+        let (mut at, mut queue_kbit, mut worst) = (0.0_f64, 0.0_f64, 0.0_f64);
+        while at < 180.0 {
+            let offered = float(c.up.rate);
+            queue_kbit = (queue_kbit + (offered - connection) * 0.2).clamp(0.0, buffer);
+            let sent = if queue_kbit >= buffer {
+                connection
+            } else {
+                offered
+            };
+            let delay = queue_kbit / connection * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            c.step(at, sent, 26_000.0);
+            if at > 150.0 {
+                worst = worst.max(delay);
+            }
+        }
+        assert!(c.up.rate < 11_000, "{}", c.up.rate);
+        assert!(worst < 60.0, "{worst} ms");
+        assert!(c.down.best >= 128_100, "{}", c.down.best);
     }
 
     #[test]
