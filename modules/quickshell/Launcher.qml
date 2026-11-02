@@ -2213,6 +2213,7 @@ Scope {
         // (Joel, 2026-10-28: "programs from the main launcher screen takes
         // for fucking ever to load").
         const began = Date.now();
+        const heard = KeyTimes.now();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -2258,7 +2259,7 @@ Scope {
         // stepping took, and the search that draws its rows.
         searchParts = { lists: made - began, rows: Date.now() - opened, answers: 0,
             each: { holding: pushed - made, opening: opened - pushed } };
-        keyTimed(`\u2192 ${row.name}`, began);
+        keyTimed(`\u2192 ${row.name}`, began, heard);
         return true;
     }
 
@@ -2835,7 +2836,10 @@ Scope {
     property real keySearched: 0
     property string keyText: ""
 
-    function keyTimed(typed, began) {
+    // A key is heard when its handler began, read then on the clock its
+    // press is stamped by, rather than worked back from the wall clock,
+    // whose whole milliseconds could put it before the press it handles.
+    function keyTimed(typed, began, heard) {
         keyBegan = began;
         keySearched = Date.now() - began;
         keyText = typed;
@@ -2844,7 +2848,7 @@ Scope {
         // Still inside the press that made it, if a press did.
         const pressed = KeyTimes.pressed();
         keysPressed.push(pressed > 0 ? pressed : null);
-        keysHeard.push(KeyTimes.now() - (Date.now() - began));
+        keysHeard.push(heard);
     }
 
     function keyDrawn() {
@@ -2896,9 +2900,10 @@ Scope {
         if (to === current)
             return;
         const began = Date.now();
+        const heard = KeyTimes.now();
         searchParts = null;
         current = to;
-        keyTimed(arrow, began);
+        keyTimed(arrow, began, heard);
     }
 
     onCurrentChanged: {
@@ -3831,10 +3836,11 @@ Scope {
                         onTextChanged: {
                             trials.retyped(root.typed, text);
                             const began = Date.now();
+                            const heard = KeyTimes.now();
                             root.searchParts = null;
                             root.search(text);
                             if (!root.asking)
-                                root.keyTimed(text, began);
+                                root.keyTimed(text, began, heard);
                         }
                         onAccepted: (below, closing) => {
                             trials.pressed("returns");
