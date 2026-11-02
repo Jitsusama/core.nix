@@ -2832,6 +2832,7 @@ Scope {
     // for one.
     property bool keyWaits: false
     property real keyBegan: 0
+    property bool lastRepeat: false
     property real keySearched: 0
     property string keyText: ""
 
@@ -2845,6 +2846,9 @@ Scope {
         const pressed = KeyTimes.pressed();
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(KeyTimes.now() - (Date.now() - began));
+        const heardNow = keysHeard[keysHeard.length - 1];
+        if (pressed > heardNow + 1)
+            console.warn(`DEBUG press after heard: ${typed} pressed ${pressed} heard ${heardNow} now ${KeyTimes.now()} took ${Date.now() - began} repeat ${root.lastRepeat} at ${new Error().stack}`);
     }
 
     function keyDrawn() {
@@ -3886,6 +3890,9 @@ Scope {
                         // With Ctrl, the arrows scroll the drawer instead,
                         // since Page Up and Page Down page the list.
                         Keys.onUpPressed: event => {
+                            root.lastRepeat = event.isAutoRepeat;
+                            if (event.isAutoRepeat)
+                                console.warn(`DEBUG repeat up pressed ${KeyTimes.pressed()} now ${KeyTimes.now()}`);
                             if (event.modifiers & Qt.ControlModifier) {
                                 drawerCard.scroll(-1);
                                 return;
@@ -3893,6 +3900,9 @@ Scope {
                             root.arrowed(Math.max(root.current - 1, highest), "\u2191");
                         }
                         Keys.onDownPressed: event => {
+                            root.lastRepeat = event.isAutoRepeat;
+                            if (event.isAutoRepeat)
+                                console.warn(`DEBUG repeat down pressed ${KeyTimes.pressed()} now ${KeyTimes.now()}`);
                             if (event.modifiers & Qt.ControlModifier) {
                                 drawerCard.scroll(1);
                                 return;
