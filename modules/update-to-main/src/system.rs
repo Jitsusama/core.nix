@@ -405,7 +405,9 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
         Kind::Nixos => {
             let booted = &config.booted;
             let kernel_waits = booted.exists() && !same_boot(booted, system);
-            let said = run::output(
+            // It says what it stopped, started and restarted on its error
+            // stream.
+            let said = run::said(
                 run::command(&system.join("bin/switch-to-configuration"), &config.state),
                 "switching",
                 ["switch"],
@@ -497,14 +499,25 @@ fn same_boot(a: &Path, b: &Path) -> bool {
             == fs::read_to_string(b.join("kernel-params")).ok()
 }
 
-/// The units switch-to-configuration says it restarted.
+/// The units switch-to-configuration says it restarted, or stopped and
+/// started again, as it does a changed service unless that says otherwise.
 pub fn restarted_units(said: &str) -> Vec<String> {
-    said.lines()
-        .filter_map(|l| l.strip_prefix("restarting the following units: "))
-        .flat_map(|units| units.split(", "))
-        .map(|u| u.trim().to_owned())
-        .filter(|u| !u.is_empty())
-        .collect()
+    let units = |prefix: &str| -> Vec<String> {
+        said.lines()
+            .filter_map(|l| l.strip_prefix(prefix))
+            .flat_map(|units| units.split(", "))
+            .map(|u| u.trim().to_owned())
+            .filter(|u| !u.is_empty())
+            .collect()
+    };
+    let started = units("starting the following units: ");
+    let mut restarted = units("restarting the following units: ");
+    let again: Vec<String> = units("stopping the following units: ")
+        .into_iter()
+        .filter(|u| started.contains(u) && !restarted.contains(u))
+        .collect();
+    restarted.extend(again);
+    restarted
 }
 
 /// The labels of the launchd daemons whose definition differs between two
@@ -648,12 +661,14 @@ mod tests {
 
     #[test]
     fn the_units_a_switch_restarted_are_read_from_what_it_said() {
-        let said = "stopping the following units: a.service\n\
+        // A changed service is stopped and started again unless it says
+        // otherwise, which is a restart as much as one restarted is.
+        let said = "stopping the following units: a.service, c.service\n\
                     restarting the following units: nix-daemon.service, sshd.service\n\
-                    starting the following units: b.service\n";
+                    starting the following units: b.service, c.service\n";
         assert_eq!(
             restarted_units(said),
-            ["nix-daemon.service", "sshd.service"]
+            ["nix-daemon.service", "sshd.service", "c.service"]
         );
     }
 
