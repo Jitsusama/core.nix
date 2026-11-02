@@ -497,8 +497,15 @@ pub fn cap_line(picture: &Picture, view: &crate::picture::CapView) -> String {
     let Some(allowance) = cap.allowance else {
         return format!("{}: no limit, {} spent.", cap.label, whole(view.spent));
     };
+    // A feed's figure is the provider's own count at its last run, so the
+    // time it ran is said with it; a machine's own cap is counted here.
+    let by = if cap.feed.is_empty() {
+        String::new()
+    } else {
+        format!(" by the {} count", picture.zone.clock(cap.at, picture.now))
+    };
     let mut line = format!(
-        "{}: {} of {} ({}).",
+        "{}: {} of {} ({}){by}.",
         cap.label,
         whole(view.spent),
         whole(allowance),

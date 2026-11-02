@@ -129,6 +129,10 @@ pub struct Inputs {
     /// When a provider last refused a session for being over a cap, if
     /// that's since the cap's reading and the session hasn't spent since.
     pub refused: Option<f64>,
+    /// Whose count the cap's reading is, as its feed's label names it, so
+    /// the figure says where it's from: the feed's name until the daemon
+    /// gives the label.
+    pub counter: String,
 }
 
 /// The last refusal since the cap's reading that its session hasn't got
@@ -268,6 +272,7 @@ pub fn read(history: &History, now: f64, rate: Rate) -> Result<Option<Inputs>, S
         .ok();
     let rises = rises(history, &cap, now)?;
     let refused = refused(history, &cap, now)?;
+    let counter = cap.feed.clone();
     Ok(Some(Inputs {
         cap,
         rate,
@@ -275,6 +280,7 @@ pub fn read(history: &History, now: f64, rate: Rate) -> Result<Option<Inputs>, S
         top,
         rises,
         refused,
+        counter,
     }))
 }
 
@@ -401,7 +407,12 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
     let cap = &inputs.cap;
     let allowance = cap.allowance?;
     let used = cap.spent / allowance;
-    let percent = format!("{:.0}% used", used * 100.0);
+    // The figure is the provider's own count at its last run, which is
+    // what it refuses by, so it says whose count it is and when it ran:
+    // anything else, such as its calendar-week meter, counts differently.
+    let by = format!("by {}'s {} count", inputs.counter, zone.clock(cap.at, now));
+    let count = format!("{} of {} {by}", whole(cap.spent), whole(allowance));
+    let percent = format!("{:.0}% {by}", used * 100.0);
     let read_over = cap.state == "refused" || cap.spent >= allowance;
     let over = read_over || inputs.refused.is_some();
     if !over && now - cap.at > STALE {
@@ -453,15 +464,11 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
         )
     };
     let rate = if over {
-        percent.clone()
+        count
     } else {
-        format!("at {} an hour · {percent}", whole(inputs.rate))
+        format!("{count} · {} an hour", whole(inputs.rate))
     };
-    let quiet_rate = if over {
-        percent
-    } else {
-        format!("at this rate · {percent}")
-    };
+    let quiet_rate = percent;
     Some(Tokens {
         level,
         now: matches!(level, Level::Out | Level::Minutes),
@@ -549,6 +556,7 @@ mod tests {
             top: Some(("01a19269".into(), Some("QEST-20261025-5FWIUS".into()))),
             rises: Vec::new(),
             refused: None,
+            counter: "the AI proxy".into(),
         }
     }
 
@@ -608,8 +616,11 @@ mod tests {
         assert_eq!(tokens.runs_out, Some(AT + 4.0 * HOUR));
         assert_eq!(tokens.title, "Tokens Run Out in About 4 Hours");
         assert_eq!(tokens.hint, "Tokens run out in about 4 hours at this rate");
-        assert_eq!(tokens.context, "at $300 an hour · 92% used");
-        assert!(!tokens.quiet.context.contains('$'));
+        assert_eq!(
+            tokens.context,
+            "$13,800 of $15,000 by the AI proxy's 05:02 count · $300 an hour"
+        );
+        assert_eq!(tokens.quiet.context, "92% by the AI proxy's 05:02 count");
         assert!(!tokens.now);
     }
 

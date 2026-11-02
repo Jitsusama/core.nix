@@ -374,7 +374,16 @@ pub fn pass(
     let picture = Picture::read(history, config, now)?;
     let raised = crate::detect::all(&picture, history, config)?;
     let findings = crate::findings::settle(history, &raised, now)?;
-    let inputs = crate::tokens::read(history, now, crate::tokens::Rate::Live)?;
+    let inputs = crate::tokens::read(history, now, crate::tokens::Rate::Live)?.map(|mut inputs| {
+        if let Some(feed) = config
+            .feeds
+            .iter()
+            .find(|feed| feed.name == inputs.cap.feed)
+        {
+            inputs.counter.clone_from(&feed.label);
+        }
+        inputs
+    });
     let tokens = inputs
         .as_ref()
         .and_then(|inputs| crate::tokens::outlook(inputs, writer.tokens, &picture.zone, now));

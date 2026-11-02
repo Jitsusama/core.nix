@@ -460,7 +460,7 @@ mod tests {
         let over = found.iter().find(|f| f.key.ends_with(":over")).unwrap();
         assert_eq!(
             over.detail,
-            "$1,100 of $1,000, resetting at 04:00 tomorrow."
+            "$1,100 of $1,000, resetting at 04:00 tomorrow, by the 12:29 count."
         );
         assert_eq!(over.badge, "back 04:00 tomorrow");
     }
