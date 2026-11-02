@@ -71,9 +71,6 @@
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
     battery without repeating it, and said once it takes
   '';
-  a-selectable-screen-starts-in-full-range = ''
-    the XPS 14's kernel gives full RGB range under Automatic to a screen whose EDID can select it
-  '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
