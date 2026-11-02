@@ -124,6 +124,7 @@ class Timing:
         # reads of Joel's own keys, and from the launcher's handler taking it, the shell's part.
         self.stamped: list[float] = []
         self.handled: list[float] = []
+        self.debug_rows: list[tuple[float, str, float, float, float, float]] = []
         self.next = time.monotonic()
         self.said = self.timed = self.pressing = 0
 
@@ -197,6 +198,7 @@ class Timing:
             self.took.append(took)
             self.stamped.append(frame - pressed)
             self.handled.append(frame - heard)
+            self.debug_rows.append((took, key, float(down), pressed, heard, frame))
 
     def said_and_held(self) -> None:
         """Say how long keys took to their frames, and fail a launcher seconds behind them."""
@@ -207,6 +209,12 @@ class Timing:
         def ranked(times: list[float], share: float) -> float:
             return times[max(0, math.ceil(share * len(times)) - 1)]
 
+        for row in sorted(self.debug_rows, reverse=True)[:15]:
+            took_, key_, down_, pressed_, heard_, frame_ = row
+            print(
+                f"DEBUG slow {key_} took {took_:.0f}: to stamp {pressed_ - down_:.0f}, "
+                f"stamp to handler {heard_ - pressed_:.0f}, handler to frame {frame_ - heard_:.0f}"
+            )
         middle, p95, p99 = ranked(took, 0.5), ranked(took, 0.95), ranked(took, 0.99)
         print(
             f"{len(took)} keys under load, from the keyboard to their frames: half within "
@@ -227,6 +235,13 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     timing = Timing(desktop)
+    print("DEBUG", machine.execute(
+        "for p in $(pgrep -o -f bin/cage) $(pgrep -o -x niri) $(pgrep -o -f bin/quickshell) "
+        "$(pgrep -o stress-ng); do c=$(cut -d: -f3 /proc/$p/cgroup); "
+        "echo \"$p $(cat /proc/$p/comm) $c nice=$(awk '{print $19}' /proc/$p/stat)\"; "
+        "d=/sys/fs/cgroup$c; while [ \"$d\" != /sys/fs/cgroup ]; do "
+        "echo \"  $d $(cat $d/cpu.weight 2>/dev/null)\"; d=$(dirname $d); done; done"
+    )[1])
     try:
         desktop.down_to("Programs")
         desktop.step_in("ret")
