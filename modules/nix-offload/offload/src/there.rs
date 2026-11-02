@@ -1266,6 +1266,43 @@ pub fn shared<'a>(
     (parts, left)
 }
 
+/// What was asked, split: the attributes a pattern in `patterns` describes,
+/// VM tests for a builder of their own so they never share one with big
+/// builds, and the rest. Derivations, an applied function and an output
+/// copied back aren't split, as `shared` doesn't share them.
+pub fn vm_tests(asked: &Asked, patterns: &[String]) -> (Option<Asked>, Option<Asked>) {
+    if asked.apply.is_some() || asked.out.is_some() || asked.derivations {
+        return (
+            None,
+            Some(asked.with(&asked.flake, asked.attributes.clone())),
+        );
+    }
+    let (vm, rest): (Vec<String>, Vec<String>) = asked
+        .attributes
+        .iter()
+        .cloned()
+        .partition(|attribute| patterns.iter().any(|pattern| matches(pattern, attribute)));
+    let part = |attributes: Vec<String>| {
+        (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes))
+    };
+    (part(vm), part(rest))
+}
+
+/// Whether a lender runs for `dir`, as its `lender` file says.
+pub fn lends(dir: &Path) -> bool {
+    pid_in(&dir.join("lender")).is_some_and(runs)
+}
+
+/// The patterns of VM tests' attributes in a file of them, a line each;
+/// blank lines and those starting `#` say nothing.
+pub fn patterns(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// The folder here a flake is, when it's one no other machine could fetch:
 /// `path:DIR`, or a path itself.
 fn folder_of(flake: &str) -> Option<PathBuf> {
@@ -1997,6 +2034,52 @@ mod tests {
 
         let darwin = super::asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
         assert_eq!(shared(&darwin, &machines, |_| true).1, None);
+    }
+
+    #[test]
+    fn vm_tests_are_split_off_for_their_own_builder() {
+        let patterns = words("checks.*.vm-* *-boots");
+        let asked = asked(&words(
+            "-L path:/z checks.x86_64-linux.vm-desktop checks.x86_64-linux.formatting \
+             usb-boots checks.x86_64-linux.vm-greeter",
+        ))
+        .unwrap();
+        let (vm, rest) = vm_tests(&asked, &patterns);
+        let vm = vm.unwrap();
+        assert_eq!(
+            vm.command(),
+            "nix build --no-link -L 'path:/z#checks.x86_64-linux.vm-desktop' \
+             'path:/z#usb-boots' 'path:/z#checks.x86_64-linux.vm-greeter'"
+        );
+        assert_eq!(
+            rest.map(|rest| rest.attributes),
+            Some(words("checks.x86_64-linux.formatting"))
+        );
+    }
+
+    #[test]
+    fn with_no_vm_test_asked_everything_stays_as_it_was() {
+        let patterns = words("checks.*.vm-*");
+        let asked = asked(&words("path:/z checks.x86_64-linux.formatting")).unwrap();
+        let (vm, rest) = vm_tests(&asked, &patterns);
+        assert_eq!(vm, None);
+        assert_eq!(
+            rest.map(|rest| rest.attributes),
+            Some(words("checks.x86_64-linux.formatting"))
+        );
+        let only = super::asked(&words("path:/z checks.x86_64-linux.vm-a")).unwrap();
+        assert_eq!(vm_tests(&only, &patterns).1, None);
+    }
+
+    #[test]
+    fn derivations_and_applied_builds_are_never_split() {
+        let patterns = words("*");
+        let drv = asked(&words("/nix/store/aaaa-vm-test-run-x.drv")).unwrap();
+        let (vm, rest) = vm_tests(&drv, &patterns);
+        assert_eq!(vm, None);
+        assert!(rest.is_some());
+        let applied = asked(&words("--apply f path:/z checks.x86_64-linux.vm-a")).unwrap();
+        assert_eq!(vm_tests(&applied, &patterns).0, None);
     }
 
     #[test]

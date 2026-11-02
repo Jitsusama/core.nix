@@ -66,6 +66,9 @@
       "f /run/nix-offload/machines-with-standing 0644 ${config.jitsusama.nix-offload.account} - -"
       "f /run/nix-offload/store 0644 ${config.jitsusama.nix-offload.account} - -"
       "f /run/nix-offload/lending 0644 ${config.jitsusama.nix-offload.account} - -"
+      # The folder of a second lender, for VM tests alone, whose files only
+      # the account's `there` reads: Nix is never given its builder.
+      "d /run/nix-offload-vm 0755 ${config.jitsusama.nix-offload.account} - -"
     ];
 
     # After /etc, which /etc/nix belongs to.

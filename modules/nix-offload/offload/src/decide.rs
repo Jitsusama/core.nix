@@ -75,9 +75,25 @@ pub fn next_after(event: Event, wants: bool, used: u64, ends: u64, woke: bool, n
     }
 }
 
+/// Whether a builder is wanted now: while a `there` build waits for one,
+/// or the queue holds work one could take, unless the lender lends only to
+/// `there`, whose builder would never be offered the queue's work. The
+/// queue is read only when it counts.
+pub fn wants(only_there: bool, queued: impl FnOnce() -> bool, waiting: bool) -> bool {
+    waiting || (!only_there && queued())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lender_only_for_there_wants_nothing_the_queue_holds() {
+        assert!(!wants(true, || true, false));
+        assert!(wants(true, || panic!("the queue isn't read"), true));
+        assert!(wants(false, || true, false));
+        assert!(!wants(false, || false, false));
+    }
 
     const HOURS: Hours = Hours {
         first: 8 * 3600,
