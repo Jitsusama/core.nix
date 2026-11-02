@@ -14,7 +14,7 @@ pub enum Line {
     Building { commit: String },
     /// Switching the machine to the system built from this commit.
     Switching { commit: String },
-    /// The machine runs this commit, or boots it next.
+    /// The machine runs this commit, and boots it next.
     Done {
         commit: String,
         applied: Applied,
@@ -49,11 +49,9 @@ pub enum Line {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Applied {
-    /// The running system is the new one.
+    /// The running system is the new one, though what only a boot brings,
+    /// such as a new kernel, waits for one, as its restart says.
     Now,
-    /// The new system is the one the machine starts; nothing of it runs
-    /// until it does.
-    NextBoot,
 }
 
 impl Line {

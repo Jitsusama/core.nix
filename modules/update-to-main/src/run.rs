@@ -159,7 +159,25 @@ pub fn command_as(program: &OsStr, account: &Account, path: &[PathBuf], dir: &Pa
 
 /// Runs a command to its end, giving what it printed, or a failure naming
 /// `what` with the last lines of everything it said.
-pub fn output<I, S>(mut command: Command, what: &str, args: I) -> Result<String, Failure>
+pub fn output<I, S>(command: Command, what: &str, args: I) -> Result<String, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    ran(command, what, args, false)
+}
+
+/// Runs a command to its end as `output` does, but giving everything it
+/// said on both its streams, for one that reports on its error stream.
+pub fn said<I, S>(command: Command, what: &str, args: I) -> Result<String, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    ran(command, what, args, true)
+}
+
+fn ran<I, S>(mut command: Command, what: &str, args: I, errors_too: bool) -> Result<String, Failure>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -169,7 +187,11 @@ where
         .output()
         .map_err(|e| Failure::new(format!("{what}: {e}")))?;
     if out.status.success() {
-        return Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned());
+        let mut said = String::from_utf8_lossy(&out.stdout).into_owned();
+        if errors_too {
+            said.push_str(&String::from_utf8_lossy(&out.stderr));
+        }
+        return Ok(said.trim().to_owned());
     }
     let mut said = String::from_utf8_lossy(&out.stdout).into_owned();
     said.push_str(&String::from_utf8_lossy(&out.stderr));
@@ -189,6 +211,20 @@ pub fn tail(said: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn said_gives_both_streams_and_output_only_what_was_printed() {
+        let both = || {
+            // The shell the integration tests' stand-ins run on, which a
+            // build's sandbox has where it has no /bin/sh.
+            let shell = std::env::var("STAND_IN_SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
+            let mut sh = Command::new(shell);
+            sh.arg("-c").arg("echo printed; echo said >&2");
+            sh
+        };
+        assert_eq!(output(both(), "saying", [""; 0]).unwrap(), "printed");
+        assert_eq!(said(both(), "saying", [""; 0]).unwrap(), "printed\nsaid");
+    }
 
     #[test]
     fn a_tail_keeps_the_last_lines_that_say_something() {

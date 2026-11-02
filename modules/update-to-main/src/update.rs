@@ -11,7 +11,7 @@ use crate::config::{Busy, Config, Kind};
 use crate::follows;
 use crate::git::{self, Repo};
 use crate::hosted;
-use crate::line::{Applied, Line};
+use crate::line::Line;
 use crate::power::{self, Power};
 use crate::run::Failure;
 use crate::system;
@@ -115,12 +115,8 @@ fn switch(
     followed: follows::Followed,
 ) -> Line {
     let previous = system::current(config);
-    let switched = system::switch(config, built).and_then(|switched| {
-        if switched.applied == Applied::Now {
-            system::healthy(config)?;
-        }
-        Ok(switched)
-    });
+    let switched = system::switch(config, built)
+        .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {
         Ok(switched) => {
             if let Err(e) =

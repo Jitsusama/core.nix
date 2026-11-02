@@ -37,7 +37,8 @@ in
   # switched to, main where it was builds nothing, an unsigned main, one
   # signed by a key not given and a rewritten one are refused, a failed
   # build leaves the machine as it was, a failed switch and a machine not
-  # whole after it go back, a new kernel waits for the next boot, a low
+  # whole after it go back, a new kernel's userland runs at once and goes
+  # back if it isn't whole while the kernel waits for the next boot, a low
   # battery starts nothing, asks during an update join it, anything but the
   # one ask is refused, and the socket is only its group's to write.
   update-to-main-updates-to-signed-main = pkgs.callPackage ./package.nix { };
