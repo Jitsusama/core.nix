@@ -80,8 +80,8 @@ pub struct Config {
     /// itself again from once it has switched, so the newest one serves;
     /// none to serve on as it is.
     pub program: Option<PathBuf>,
-    /// The system NixOS booted, whose kernel decides whether a new system
-    /// can be switched to live.
+    /// The system NixOS booted, whose kernel says whether a switch leaves
+    /// a new one for the next boot.
     pub booted: PathBuf,
 }
 

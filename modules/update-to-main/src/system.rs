@@ -391,29 +391,28 @@ pub fn current(config: &Config) -> Option<PathBuf> {
     fs::canonicalize(&config.profile).ok()
 }
 
-/// Points the profile at `system` and switches the machine to it: live,
-/// unless on NixOS its kernel differs from the booted one, when it's only
-/// made the system the machine starts.
+/// Points the profile at `system` and switches the machine to it live.
+///
+/// On NixOS a new kernel, initrd or kernel parameters can only come with a
+/// boot, so the system runs now on the kernel the machine booted, as
+/// NixOS's own switch does: its modules are still loaded from the booted
+/// system, and the boot loader starts the new kernel next time. The switch
+/// says so as the restart it needs.
 pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
     let previous = current(config);
     set_profile(config, system)?;
     match config.kind {
         Kind::Nixos => {
             let booted = &config.booted;
-            let next_boot = booted.exists() && !same_boot(booted, system);
-            let mode = if next_boot { "boot" } else { "switch" };
+            let kernel_waits = booted.exists() && !same_boot(booted, system);
             let said = run::output(
                 run::command(&system.join("bin/switch-to-configuration"), &config.state),
                 "switching",
-                [mode],
+                ["switch"],
             )?;
             Ok(Switched {
-                applied: if next_boot {
-                    Applied::NextBoot
-                } else {
-                    Applied::Now
-                },
-                restart: next_boot.then(|| "its kernel changed".to_owned()),
+                applied: Applied::Now,
+                restart: kernel_waits.then(|| "its kernel changed".to_owned()),
                 restarted: restarted_units(&said),
             })
         }
@@ -489,7 +488,7 @@ fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
 }
 
 /// Whether two NixOS systems boot the same kernel, initrd and parameters,
-/// so one can be switched to live from the other.
+/// so a switch from one to the other leaves nothing for the next boot.
 fn same_boot(a: &Path, b: &Path) -> bool {
     ["kernel", "initrd"]
         .iter()
