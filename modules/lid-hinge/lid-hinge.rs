@@ -48,6 +48,11 @@ const DARK_SHARE: f64 = 0.05;
 /// How often the light is read while a close is doubted.
 const LOOK_AGAIN: Duration = Duration::from_secs(1);
 
+/// How often the hinge is looked for while there's none: the sensor hub's devices come a
+/// moment after this starts at boot, and again after it resets, and the angles before a shut
+/// switch are only heard once the hinge is.
+const LOOK_FOR_HINGE: Duration = Duration::from_secs(2);
+
 /// How long a close is doubted before it's believed anyway. A false close seen on the laptop
 /// this was written for lasted two minutes, and a lid shut in a lit room should sleep in a
 /// bag before long.
@@ -593,11 +598,16 @@ fn run() -> io::Result<()> {
                 revents: 0,
             });
         }
-        let timeout = if judge.doubting() {
-            c_int::try_from(LOOK_AGAIN.as_millis()).unwrap_or(c_int::MAX)
-        } else {
-            -1
-        };
+        let timeout = [
+            judge.doubting().then_some(LOOK_AGAIN),
+            hinge.is_none().then_some(LOOK_FOR_HINGE),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .map_or(-1, |wait| {
+            c_int::try_from(wait.as_millis()).unwrap_or(c_int::MAX)
+        });
         let count = c_ulong::try_from(fds.len()).unwrap_or(1);
         match checked(unsafe { poll(fds.as_mut_ptr(), count, timeout) }) {
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
@@ -612,15 +622,16 @@ fn run() -> io::Result<()> {
         {
             eprintln!("lid-hinge: the hinge went away, so the light alone tells");
             hinge = None;
+        } else if hinge.is_none() {
+            hinge = Hinge::find(&root, &nodes);
+            if hinge.is_some() {
+                eprintln!("lid-hinge: found the hinge");
+            }
         }
         // Before the switch, since the angles came before it.
         hear(hinge.as_mut(), &mut judge)?;
         let now = Instant::now();
         let verdict = if fds[0].revents & POLLIN != 0 && lid_events(&mut lid)? {
-            // udev may turn the hinge's buffer on after this starts.
-            if hinge.is_none() {
-                hinge = Hinge::find(&root, &nodes);
-            }
             let shut = lid_shut(&lid)?;
             let seen = judge
                 .hinge
