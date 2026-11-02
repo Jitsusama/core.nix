@@ -569,6 +569,9 @@
   lag-watch-passes-clippy = ''
     clippy finds nothing in lag-watch or its tests
   '';
+  last-minute-passes-clippy = ''
+    clippy finds nothing in last-minute or its tests
+  '';
   lag-watch-tells-who-waited = ''
     lag-watch counts the desktop or apps waiting as trouble, the desktop's memory stalls only from a
     120 Hz frame's worth of the window, and its waits on the disk or a page being moved from the

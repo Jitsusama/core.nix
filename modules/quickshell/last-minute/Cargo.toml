@@ -1,0 +1,11 @@
+# The last minute of the screen and its sound, kept in memory for the
+# shell's recorder and saved when asked (src/main.rs says how).
+[package]
+name = "last-minute"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+libc = "0.2"

@@ -20,9 +20,19 @@ pragma Singleton
 // finishes the file. Once it has, a notice says where it went, and playing
 // it is the notice's action, which Super+N opens on. It answers what Joel
 // just did, so it's never missed (Notices.qml).
+//
+// It keeps the last minute too, once Joel turns that on in Capture: the
+// screen and its sound, held by last-minute (modules/quickshell/last-minute)
+// in its own memory and never in a file, so something worth keeping can be
+// saved after it's happened. Saved, the minute is a recording like the
+// rest, beside them and with their notice. It stays as he left it across
+// boots, and a call pauses it unless he keeps it during calls too, so a
+// call isn't kept unasked; paused, what was kept is let go, and keeping
+// starts afresh once the call ends (VKCF3Z, 2026-10-29).
 import qs
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.Pipewire
 import QtQuick
 
 Singleton {
@@ -30,9 +40,11 @@ Singleton {
 
     // What niri says is recording now: the screen or a region straight
     // from niri, and the window whose screencast record-window says is its
-    // own. A call's shares are left out.
+    // own. A call's shares are left out, and so is the screencopy keeping
+    // the last minute, which records for nobody until it's saved.
     readonly property var casts: Object.values(Niri.casts)
         .filter(cast => cast.is_active && (cast.kind === "WlrScreencopy"
+                && (keptBy === 0 || cast.pid !== keptBy)
             || cast.kind === "PipeWire" && windowSession !== null
                 && cast.session_id === windowSession))
     // The screencast session record-window records a window through, which
@@ -57,6 +69,163 @@ Singleton {
     readonly property string folder: `${Quickshell.env("HOME")}/Videos/Recordings`
 
     onRecordingChanged: starting = false
+
+    // Whether the last minute is kept, and during calls too: Joel's two
+    // switches, kept in the shell's state.
+    property var switched: ({ keep: false, calls: false })
+    readonly property bool keeping: switched.keep === true
+    readonly property bool keepsDuringCalls: switched.calls === true
+    // Paused for a call while it's kept.
+    readonly property bool keepingHeld: keeping && calling && !keepsDuringCalls
+    // Between asking for the minute and its file being whole.
+    property string savingTo: ""
+    readonly property bool saving: savingTo !== ""
+    // The wf-recorder keeping it, as last-minute says, so its screencopy
+    // isn't taken for a recording.
+    property int keptBy: 0
+    // A call: another program recording sound, as Playing counts one
+    // (launcher/Playing.qml), leaving out the shell's own level meters and
+    // the minute's own sound, which wf-recorder takes from the speakers.
+    readonly property var recordings: Pipewire.nodes.values.filter(node => node.isStream
+        && !node.isSink && (node.type & PwNodeType.Audio)
+        && node.name !== "quickshell-peak-monitor" && node.name !== "wf-recorder")
+    // Only a program's own, as Sound tells one (launcher/Sound.qml): a
+    // filter's own stream, such as the MV7's voice taking from its
+    // microphone, carries the link group its halves share, and a level
+    // meter's is a monitor. Neither is anyone on a call.
+    readonly property var callers: recordings.filter(node => !node.properties["node.link-group"]
+        && node.properties["stream.monitor"] !== "true")
+    readonly property bool calling: callers.length > 0
+    readonly property bool keeps: keeping && !keepingHeld
+
+    onKeepsChanged: keeps ? root.begin() : root.end()
+
+    function keepLastMinute(on: bool): void {
+        remember({ keep: on });
+    }
+
+    function keepDuringCalls(on: bool): void {
+        remember({ calls: on });
+    }
+
+    function remember(changed: var): void {
+        switched = Object.assign({}, switched, changed);
+        switches.setText(JSON.stringify(switched));
+    }
+
+    // Saves what's kept beside the recordings, named as they are, by when.
+    function saveLastMinute(): void {
+        if (!keeper.running || saving)
+            return;
+        savingTo = `${folder}/${Qt.formatDateTime(new Date(), "yyyy-MM-dd HH-mm-ss")}.mp4`;
+        keeper.write(`${savingTo}\n`);
+    }
+
+    // Keeps the screen the keys are in, as recording the screen does, once
+    // niri says which that is.
+    function begin(): void {
+        const workspace = Niri.workspace();
+        if (!keeps || keeper.running)
+            return;
+        if (workspace === null) {
+            again.restart();
+            return;
+        }
+        keeper.command = ["sh", "-c", keepScript, "keeper", workspace.output];
+        keeper.running = true;
+    }
+
+    // Stopped, last-minute lets what it kept go, and wf-recorder ends with it.
+    function end(): void {
+        again.stop();
+        keeper.running = false;
+        savingTo = "";
+    }
+
+    // What last-minute says of each save: the notice a recording's is, or
+    // why it couldn't.
+    function heard(line: string): void {
+        if (line.startsWith("keeping ")) {
+            keptBy = Number(line.slice("keeping ".length)) || 0;
+            return;
+        }
+        if (line.startsWith("saved "))
+            Niri.spawn(["sh", "-c", ["file=$1"].concat(saved).join("\n"), "recorder",
+                line.slice("saved ".length)]);
+        else if (line.startsWith("failed ")) {
+            console.warn(`last-minute ${line}`);
+            const asked = `failed ${savingTo}: `;
+            Niri.spawn(["notify-send", "--app-name=Recorder", "The last minute could not be saved",
+                line.startsWith(asked) ? line.slice(asked.length) : line.slice("failed ".length)]);
+        } else {
+            // A line it doesn't know ends no save: ffmpeg may still write.
+            console.warn(`last-minute said: ${line}`);
+            return;
+        }
+        savingTo = "";
+    }
+
+    // The screen, the sound from the speakers, and the GPU's encoder where
+    // Intel's or AMD's driver runs one, as a recording of the screen has.
+    readonly property string keepScript: [
+        'set -- --output "$1" --audio --audio-backend pipewire',
+        'case $(readlink /sys/class/drm/renderD128/device/driver) in',
+        '    */i915 | */xe | */amdgpu)',
+        '        set -- "$@" --codec h264_vaapi --device /dev/dri/renderD128 ;;',
+        'esac',
+        'exec last-minute 60 -- "$@"'
+    ].join("\n")
+
+    Process {
+        id: keeper
+        stdinEnabled: true
+        stdout: SplitParser {
+            onRead: line => root.heard(line)
+        }
+        // What it and wf-recorder complain of goes to the journal, where a
+        // minute that isn't kept can be read about.
+        stderr: SplitParser {
+            onRead: line => console.warn(`last-minute: ${line}`)
+        }
+        // Should it stop by itself, as when its screen goes, it's started
+        // again on the screen the keys are in.
+        onExited: code => {
+            root.keptBy = 0;
+            if (root.keeps)
+                console.warn(`last-minute stopped (${code}), so it starts again in 5 s`);
+            root.savingTo = "";
+            if (root.keeps)
+                again.restart();
+        }
+    }
+
+    // A stream's properties are heard only once something binds it.
+    PwObjectTracker {
+        objects: root.recordings
+    }
+
+    Timer {
+        id: again
+        interval: 5000
+        onTriggered: root.begin()
+    }
+
+    FileView {
+        id: switches
+        path: Quickshell.statePath("last-minute.json")
+        blockLoading: true
+        printErrors: false
+    }
+
+    Component.onCompleted: {
+        try {
+            const kept = JSON.parse(switches.text() || "{}");
+            switched = { keep: kept?.keep === true, calls: kept?.calls === true };
+        } catch (error) {
+            console.warn(`The last minute's switches couldn't be read, so it's off: ${error}`);
+        }
+        begin();
+    }
 
     // The process recording a cast: niri's own casts say it, and a window's
     // is record-window's.
@@ -293,6 +462,29 @@ Singleton {
 
         function stop(): void {
             root.stop();
+        }
+
+        function keepLastMinute(on: bool): void {
+            root.keepLastMinute(on);
+        }
+
+        function keepDuringCalls(on: bool): void {
+            root.keepDuringCalls(on);
+        }
+
+        function saveLastMinute(): void {
+            root.saveLastMinute();
+        }
+
+        // How keeping the last minute stands, for the tests.
+        function lastMinute(): string {
+            return JSON.stringify({
+                keeping: root.keeping,
+                held: root.keepingHeld,
+                saving: root.saving,
+                running: keeper.running,
+                calls: root.callers.map(node => `${node.name} (${node.description})`)
+            });
         }
     }
 

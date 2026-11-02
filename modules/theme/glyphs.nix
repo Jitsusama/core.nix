@@ -240,6 +240,23 @@ in
     # The dot every recorder lights.
     drawn = "M0 6A6 6 0 1 0 12 6A6 6 0 1 0 0 6Z";
   };
+  # The last minute kept, a mode left on: a camera with a clock's hand in its
+  # lens, never the recording's dot, since nothing is on air until it's
+  # saved, and its console letter Y, which no other mark has, since M is
+  # the muted microphone's.
+  keeping = {
+    glyph = nerd "f0109";
+    console = "Y";
+    means = "the last minute of the screen is kept, to save";
+    # A camera's body, its lens a ring cut out with a hand from its middle
+    # up to twelve.
+    drawn = drawing [
+      "M0 3H3L4 0H8L9 3H12V12H0Z"
+      "M2.5 7.5A3.5 3.5 0 1 0 9.5 7.5A3.5 3.5 0 1 0 2.5 7.5Z"
+      "M3.75 7.5A2.25 2.25 0 1 0 8.25 7.5A2.25 2.25 0 1 0 3.75 7.5Z"
+      "M5.5 5.25H6.5V8H5.5Z"
+    ];
+  };
   # A webcam, unlike the camera that stands for taking a picture, and its
   # console letter K, since C is awake's.
   camera = {
@@ -376,6 +393,12 @@ in
     glyph = nerd "f0875";
     console = "T";
     means = "the AI tokens run out soon at this rate, or have run out until they reset";
+    # A dial, its needle cut out from the middle toward the left, as a fuel
+    # gauge reads near empty.
+    drawn = drawing [
+      "M0 6A6 6 0 1 0 12 6A6 6 0 1 0 0 6Z"
+      "M6.23 5.56L5.77 6.44L1.57 4.24L2.03 3.36Z"
+    ];
   };
   # What a glance at the desktop reads each value by (the launcher's foot),
   # so a number says what it's of without a word.

@@ -1,0 +1,30 @@
+Binds linux-dmabuf at the version the compositor offers, up to the 4
+wf-recorder asks for, and asks for its feedback only at 4, which brought it.
+Binding past what's offered is a protocol error, so on a compositor
+offering 3, as niri nested in a window does, wf-recorder lost its
+connection before it found an output, --no-dmabuf or not. Without the
+feedback it learns no GPU and copies frames through shared memory, as
+--no-dmabuf does.
+
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -523,7 +523,7 @@
+ };
+ 
+ static void handle_global(void*, struct wl_registry *registry,
+-    uint32_t name, const char *interface, uint32_t) {
++    uint32_t name, const char *interface, uint32_t version) {
+ 
+     if (strcmp(interface, wl_output_interface.name) == 0)
+     {
+@@ -550,8 +550,8 @@
+     else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0)
+     {
+         dmabuf = (zwp_linux_dmabuf_v1*) wl_registry_bind(registry, name,
+-            &zwp_linux_dmabuf_v1_interface, 4);
+-        if (dmabuf) {
++            &zwp_linux_dmabuf_v1_interface, version < 4 ? version : 4);
++        if (dmabuf && version >= 4) {
+             struct zwp_linux_dmabuf_feedback_v1 *feedback =
+                 zwp_linux_dmabuf_v1_get_default_feedback(dmabuf);
+             zwp_linux_dmabuf_feedback_v1_add_listener(feedback, &dmabuf_feedback_listener, NULL);

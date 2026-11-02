@@ -2755,6 +2755,11 @@ onLinux {
     pkgs.callPackage ./clipboard/package.nix { }
   );
 
+  # clippy finds nothing in the last minute's keeper, its tests included.
+  last-minute-passes-clippy = passesClippy "last-minute-passes-clippy" (
+    pkgs.callPackage ./last-minute/package.nix { }
+  );
+
   # clippy finds nothing in the window recorder, its tests included.
   record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
     pkgs.callPackage ./record-window/package.nix { }
