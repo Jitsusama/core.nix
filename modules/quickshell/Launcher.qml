@@ -3410,7 +3410,10 @@ Scope {
     // given drawerLeast or what the screen has. Both are worked out for the
     // screen alone, never for what's shown, so the card never moves.
     readonly property int drawerMost: 520
-    readonly property int drawerLeast: 280
+    // The least holds a screenshot's name, "2026-11-03 00-10-41.png", on one
+    // line of the head, its text an inset and a step in from each side; a
+    // name is never broken across lines, and its time tells two apart.
+    readonly property int drawerLeast: 288
     readonly property real drawerGap: Theme.space.m
     readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
     readonly property real drawerRoom: !screenHere ? 0
