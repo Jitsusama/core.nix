@@ -6,7 +6,6 @@
   fetchzip,
   fontconfig,
   fraunces,
-  hubot-sans,
   lib,
   libGL,
   libxkbcommon,
@@ -26,12 +25,11 @@ let
     stripRoot = false;
   };
 
-  # One folder of one family's faces, for the theme's three: the serif as
-  # its two variable files, upright and italic, which the page sets at its
-  # own axes, without the static cuts that share their family name
-  # (../fonts/system.nix says why); the wide face's expanded width; and the
-  # mono face as the terminal has it, without its narrower and proportional
-  # cuts.
+  # One folder of one family's faces, for the theme's two the page sets:
+  # the serif as its two variable files, upright and italic, which the page
+  # sets at its own axes, without the static cuts that share their family
+  # name (../fonts/system.nix says why); and the mono face as the terminal
+  # has it, without its narrower and proportional cuts.
   faces =
     name: package: glob:
     runCommand name { } ''
@@ -40,7 +38,6 @@ let
     '';
   fonts = [
     (faces "fraunces-variable" fraunces "truetype/*'[SOFT,WONK,opsz,wght].ttf'")
-    (faces "hubot-sans-expanded" hubot-sans "opentype/HubotSansExpanded-*.otf")
     (faces "monaspace-xenon" nerd-fonts.monaspace "opentype/NerdFonts/*/MonaspiceXeNerdFont-*.otf")
   ];
 in

@@ -55,7 +55,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // own adds 300, which draws this face black.
 #set strong(delta: 100)
 #show strong: set text(fill: ink.strong)
-#show heading: set text(font: face.wide, weight: 700, fill: ink.strong, hyphenate: false)
+#show heading: set text(variations: display-axes, weight: 700, fill: ink.strong, hyphenate: false)
 // A heading's lines keep their own leading, by their size, not the words'.
 #show heading: set par(leading: 0.62em)
 #show heading.where(level: 1): set text(size: 40pt)

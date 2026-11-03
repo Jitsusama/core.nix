@@ -19,7 +19,7 @@
 #
 # Every colour and face is the theme's, written here as reader/theme.json
 # in the configuration home, which the reader reads as it starts: its
-# words in the serif face at its large step, headings in the wide one and
+# words and headings in the serif face, the words at its large step, and
 # code in the mono; the page on the background, headings in the strong text, code on the sunken
 # ground in the colours bat wears (../theme/tmtheme.nix), and search's marks
 # as Neovim's.
@@ -62,7 +62,6 @@ let
       ;
     faces = {
       text = font.serif.family;
-      wide = font.wide.family;
       code = font.mono.family;
     };
     # The serif's large step, which sets its capitals level with the

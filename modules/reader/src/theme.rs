@@ -42,8 +42,6 @@ impl Colour {
 pub struct Faces {
     /// What's read: the page's text, a diagram's words.
     pub text: String,
-    /// Titles and headings, in the theme's wide face.
-    pub wide: String,
     /// Code, the prompt, the key list and the labels over links.
     pub code: String,
 }
@@ -96,7 +94,6 @@ impl Theme {
             on_accent: grey(255),
             faces: Faces {
                 text: TYPSTS_OWN.into(),
-                wide: TYPSTS_OWN.into(),
                 code: TYPSTS_OWN.into(),
             },
             sizes: Sizes { text: TYPSTS_SIZE },
@@ -131,7 +128,6 @@ impl Theme {
         if let Some(serde_json::Value::Object(faces)) = roles.get("faces") {
             for (name, slot) in [
                 ("text", &mut theme.faces.text),
-                ("wide", &mut theme.faces.wide),
                 ("code", &mut theme.faces.code),
             ] {
                 if let Some(family) = faces.get(name).and_then(serde_json::Value::as_str) {
@@ -170,10 +166,9 @@ impl Theme {
             .map(|(name, Colour([r, g, b]))| format!("{name}: paint({r}, {g}, {b})"))
             .collect();
         format!(
-            "#let paint = rgb\n#let ink = ({})\n#let face = (text: {:?}, wide: {:?}, code: {:?})\n",
+            "#let paint = rgb\n#let ink = ({})\n#let face = (text: {:?}, code: {:?})\n",
             named.join(", "),
             self.faces.text,
-            self.faces.wide,
             self.faces.code
         )
     }
@@ -222,7 +217,6 @@ mod tests {
             "a role it doesn't name stays"
         );
         assert_eq!(theme.faces.text, "A Text Face");
-        assert_eq!(theme.faces.wide, Theme::plain().faces.wide);
         assert!((theme.sizes.text - 13.69).abs() < 1e-9, "{:?}", theme.sizes);
         assert!(
             (Theme::plain().sizes.text - 11.0).abs() < 1e-9,
