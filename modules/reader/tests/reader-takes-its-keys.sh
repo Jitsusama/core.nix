@@ -108,9 +108,11 @@ awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt
 
 # The link near the top to another markdown file sets it in this window,
 # and Ctrl+O comes back to the place it left on the first, Ctrl+I goes on
-# to it again, and the file shown and its saves move with it.
-press 3j
-logged '^key Down Some\(3\)' 1
+# to it again, and the file shown and its saves move with it. One line
+# down leaves a place to come back to while the link, the page's first
+# line under its heading, stays in view on any line the page is set on.
+press j
+logged '^key Down None' 2
 left=$(heading)
 press gx
 logged '^links: 1 in view' 2
