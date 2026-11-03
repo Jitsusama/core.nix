@@ -65,7 +65,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // half line so every baseline stays on the grid. A block's top edge is its
 // capitals (`caps` of an em in the words' face, the same at both sets of
 // axes, and `code-caps` in the mono), so a gap takes the cap height of what
-// follows off.
+// follows off. A heavier or italic cut of a face that has cuts may stand
+// its capitals a little higher or lower, so headings and the lede say
+// their top edge as the regular's capitals, keeping every baseline where
+// the gaps put it.
 #let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
 #let title-size = 42pt
 #let section-size = 17.1pt
@@ -74,13 +77,13 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: 0.16em, fill: ink.muted, upper(body))
 #show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
 // A title's lines two and a half lines apart, a section's one.
-#show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em)
+#show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em, top-edge: caps * title-size)
 #show heading.where(level: 1): set par(leading: 2.5 * pitch - caps * title-size)
 #show heading.where(level: 1): set block(above: lines(3, caps * title-size), below: 1.5 * pitch - cap)
-#show heading.where(level: 2): set text(size: section-size, weight: 520)
+#show heading.where(level: 2): set text(size: section-size, weight: 520, top-edge: caps * section-size)
 #show heading.where(level: 2): set par(leading: pitch - caps * section-size)
 #show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: 1.5 * pitch - cap)
-#show heading.where(level: 3): set text(variations: text-axes, style: "italic", size: body-size, weight: 460)
+#show heading.where(level: 3): set text(variations: text-axes, style: "italic", size: body-size, weight: 460, top-edge: cap)
 #show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
 #show heading.where(level: 4): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
 #show heading.where(level: 5): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
@@ -91,7 +94,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show heading.where(level: 1): it => layout(size => {
   let tall(width) = measure(block(width: width, {
     set par(leading: 2.5 * pitch - caps * title-size)
-    text(font: face.text, variations: display-axes, size: title-size, weight: 540, tracking: -0.02em, hyphenate: false, it.body)
+    text(font: face.text, variations: display-axes, size: title-size, weight: 540, tracking: -0.02em, hyphenate: false, top-edge: caps * title-size, it.body)
   })).height
   let full = tall(size.width)
   if full < 2.5 * pitch { return it }
@@ -108,7 +111,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show <title>: set block(above: 0pt)
 #let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
 // The paragraph after the title, in the text face's italic.
-#let lede(body) = par(text(style: "italic", weight: 360, body))
+#let lede(body) = par(text(style: "italic", weight: 360, top-edge: cap, body))
 // A link's words in the strong text with a hairline under them, as his
 // Neovim sets a link, since a hue is a glyph's and never text's.
 #show link: it => underline(stroke: 0.75pt + ink.rule, offset: 2.5pt, text(fill: ink.strong, it))
