@@ -249,7 +249,7 @@ impl Daemon {
         for line in BufReader::new(reading).lines() {
             let Ok(line) = line else { break };
             let answer = self.answer(&line, connection, &told, asks);
-            if told.send(answer.to_string()).is_err() {
+            if !answer.is_null() && told.send(answer.to_string()).is_err() {
                 break;
             }
         }
@@ -258,7 +258,8 @@ impl Daemon {
             .retain(|watch| watch.connection != connection);
     }
 
-    /// What one ask is answered with.
+    /// What one ask is answered with, or nothing once a watch's answer is
+    /// sent.
     fn answer(
         &self,
         line: &str,
@@ -345,7 +346,11 @@ impl Daemon {
                 held.watches
                     .retain(|was| !(was.connection == connection && was.id == id));
                 held.watches.push(watch);
-                json!({"id": id, "records": records})
+                // Sent while Google's next answer waits on the lock, so
+                // whatever it changes reaches the watch after these, and
+                // the shell never takes them over that change.
+                let _ = told.send(json!({"id": id, "records": records}).to_string());
+                Value::Null
             }
             "unwatch" => {
                 held.watches
@@ -452,6 +457,27 @@ mod tests {
         assert_eq!(key, ACCOUNT);
         assert_eq!(record["kind"], "account");
         assert_eq!(record["account"]["standing"], "signedOut");
+    }
+
+    #[test]
+    fn a_watch_is_answered_before_any_change_said_after_it() {
+        let daemon = Daemon {
+            held: Arc::new(Mutex::new(Held::default())),
+        };
+        let (told, lines) = mpsc::channel();
+        let (asks, _) = mpsc::channel();
+        let answered = daemon.answer(r#"{"id": 1, "ask": "watch"}"#, 1, &told, &asks);
+        // Google answers as the answer is on its way: what the watch is
+        // told of it must come after the records it was answered with, or
+        // the shell would take those older records over the change.
+        daemon.say(&State::without(Standing::SignedOut), 1);
+        if !answered.is_null() {
+            told.send(answered.to_string()).unwrap();
+        }
+        let first: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
+        assert_eq!(first, json!({"id": 1, "records": []}));
+        let next: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
+        assert_eq!(next["changed"][0]["key"], ACCOUNT, "{next}");
     }
 
     #[test]
