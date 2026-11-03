@@ -2161,8 +2161,8 @@
     opens, finds and runs a row on either of two screens as each goes and comes back, as both go,
     and after a sleep, its foot still telling the time after the wake; Quickshell warns of nothing
     meanwhile; desk-facts stops naming the screen once it's gone and names it again once it's
-    back; and sessions reopened while the screen they sat on is gone go to it, in their order, once
-    it comes back
+    back; sessions reopened while the screen they sat on is gone go to it, in their order, once
+    it comes back; and keys typed through the virtual keyboard keep the session from going idle
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it; the firmware starts the loader by
