@@ -1,7 +1,7 @@
 //! The daemon over its socket, with stand-in sources of its own: a get is
 //! a step-in, answered within its patience; a watch asks ahead, says what's
-//! held, then each change, a burst gathered into one; a source signed out
-//! is never waited on; one that stops is started again and asked again
+//! held, then each change, a burst gathered into one, and how a source
+//! stands once that changes; a source signed out is never waited on; one that stops is started again and asked again
 //! about everyone watched; a roster is searched and watched by who it
 //! lists; and an ask or kind it doesn't know is refused.
 
@@ -154,6 +154,17 @@ impl Client {
         self.lines.read_line(&mut line).unwrap();
         serde_json::from_str(&line).unwrap()
     }
+
+    /// The next change a watch is told, passing over how its sources
+    /// stand, which a source still starting may say first.
+    fn changed(&mut self) -> Value {
+        loop {
+            let said = self.next();
+            if said.get("changed").is_some() {
+                return said;
+            }
+        }
+    }
 }
 
 fn until(what: &str, held: impl Fn() -> bool) {
@@ -196,7 +207,7 @@ fn a_watch_asks_ahead_says_what_is_held_and_gathers_a_burst_into_one_change() {
     let mut changed = Vec::new();
     let mut messages = 0;
     while changed.len() < 3 {
-        let said = client.next();
+        let said = client.changed();
         assert_eq!(said["id"], 1);
         changed.extend(said["changed"].as_array().unwrap().iter().cloned());
         messages += 1;
@@ -246,6 +257,22 @@ fn a_source_signed_out_is_never_waited_on() {
         said["sources"],
         json!({"slack": "answering", "vault": "signed-out"})
     );
+}
+
+#[test]
+fn a_watch_hears_a_source_sign_out_as_it_says_so() {
+    let running = Running::with("standing", &[("slack", SIGNED_OUT)]);
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while client.ask(&json!({"id": 1, "ask": "hello"}))["sources"]["slack"] != "answering" {
+        assert!(Instant::now() < deadline, "slack never started");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    client.ask(&json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]}));
+    // The ask ahead has it say it's signed out, which the watch hears
+    // without asking, as a client learns a sign-in went.
+    let said = client.next();
+    assert_eq!(said, json!({"id": 2, "sources": {"slack": "signed-out"}}));
 }
 
 #[test]
@@ -335,20 +362,20 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     );
     assert_eq!(said["waiting"], json!([]));
     // Eli made a favourite is told to the watch of the listed.
-    let said = client.next();
+    let said = client.changed();
     assert_eq!(said["id"], 5);
     assert_eq!(said["changed"][0]["key"], "person:eli@example.com");
     assert_eq!(said["changed"][0]["sources"]["tuple"]["favourite"], true);
     // Ada no longer one is told too, so it's dropped.
     client.ask(&json!({"id": 7, "ask": "get", "keys": ["person:ada@example.com"]}));
-    let said = client.next();
+    let said = client.changed();
     assert_eq!(said["changed"][0]["key"], "person:ada@example.com");
     assert_eq!(said["changed"][0]["sources"]["tuple"]["favourite"], false);
     // Gus, never listed, goes without a word to it, and from the book.
     let mut everyone = running.client();
     everyone.ask(&json!({"id": 1, "ask": "watch"}));
     client.ask(&json!({"id": 8, "ask": "get", "keys": ["person:tuple:7"]}));
-    let said = everyone.next();
+    let said = everyone.changed();
     assert_eq!(
         said["changed"],
         json!([{"key": "person:tuple:7", "kind": "person", "gone": true}])
