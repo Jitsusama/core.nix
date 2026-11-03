@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn the_words_land_on_the_pitch_a_paragraph_one_and_a_half() {
         let markdown = format!(
-            "{OPENING}The second paragraph runs long enough to wrap onto a second line as well, so a step between paragraphs sits among steps between lines, at Omega.\n"
+            "{OPENING}The second paragraph runs long enough to wrap onto a second line and a third as well, so a step between paragraphs sits among steps between lines, whichever face and size the page sets its words in, plain or the theme's, before it comes to an end at Omega.\n"
         );
         let (pitch, lines) = baselines("words", &markdown, "opening", "Omega");
         let steps = steps(pitch, &lines);
