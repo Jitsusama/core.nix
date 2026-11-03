@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 /// How long a job may take before it's stopped. It fetches an input, which
 /// may be a large repository.
-const WITHIN: Duration = Duration::from_secs(60 * 60);
+const WITHIN: Duration = Duration::from_hours(1);
 
 /// How often root looks whether the job has ended.
 const EVERY: Duration = Duration::from_millis(250);
