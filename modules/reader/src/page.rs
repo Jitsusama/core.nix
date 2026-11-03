@@ -115,7 +115,29 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
-#let rule() = line(length: 100%, stroke: 0.5pt + ink.rule)
+// The page's thresholds carry its whimsy, never its reading. The ground
+// glows faintly at the head: the background lifted 18% toward raised at
+// most, so muted keeps Lc 60 on its lightest, fading to the background
+// before the page's sides and 900 pt down.
+#let glow = color.mix((ink.background, 82%), (ink.raised, 18%), space: rgb)
+#set page(background: place(top + center, rect(width: 100%, height: 1800pt, fill: gradient.radial(glow, ink.background, center: (50%, 0%), radius: 50%, relative: "self"))))
+// A thematic break is a fleuron: an asterism of Fraunces Display's
+// asterisks in the accent, centred, standing as a line two lines from the
+// words either side.
+#let star = text(font: face.text, variations: display-axes, weight: 500, size: 1.3 * body-size, fill: ink.accent, top-edge: "bounds", bottom-edge: "bounds", "*")
+#let fleuron = context {
+  let s = measure(star)
+  // Its ink stands evenly between the words either side: from the
+  // baseline above, and to the capitals below.
+  box(width: 2.3 * s.width, height: cap, {
+    place(top + center, dy: -0.49 * s.height, star)
+    place(bottom + left, dy: 0.66 * s.height, star)
+    place(bottom + right, dy: 0.66 * s.height, star)
+  })
+}
+#let rule() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, fleuron))
+// The page ends with a small accent lozenge after its last word.
+#let the-end = box(polygon(fill: ink.accent, (0pt, 0.21em), (0.15em, 0pt), (0.3em, 0.21em), (0.15em, 0.42em)))
 // A key, in the mono, framed: the frame stands outside the line's room,
 // over the capitals and under the descenders, so a line with one still
 // steps one line.

@@ -160,9 +160,12 @@ pub fn program(
         caption: None,
     };
     walker.children(&dom.document);
+    let (titled, blocks) = (walker.titled, walker.blocks);
+    if blocks > 0 {
+        end_with_its_mark(&mut out);
+    }
     // The eyebrow goes before any block, so the first set carries it
     // wherever it starts, and sits closer over a title than over words.
-    let titled = walker.titled;
     out.insert_str(
         crate::page::template(world).len(),
         &format!("#about(titled: {titled})[#{}]\n", literal(about)),
@@ -329,6 +332,25 @@ fn is_figure(text: &str) -> bool {
         && text
             .chars()
             .all(|c| c.is_ascii_digit() || " .,%$\u{20ac}\u{a3}+-\u{2212}\u{d7}:/~".contains(c))
+}
+
+/// Ends the page with its mark: after the last word when the last block is
+/// a paragraph, else on a line of its own.
+fn end_with_its_mark(out: &mut String) {
+    let last = out.rfind("\n// block\n").unwrap_or(0);
+    let body = out[last..]
+        .split_once(")\n")
+        .map_or("", |(_, body)| body)
+        .trim_end();
+    let words = body.starts_with("#par[") || body.starts_with("#lede[");
+    if words
+        && body.ends_with(']')
+        && let Some(close) = out.rfind(']')
+    {
+        out.insert_str(close, "#h(0.3em)#the-end");
+    } else {
+        out.push_str("\n#par[#the-end]\n");
+    }
 }
 
 /// A figure's caption as Typst content: empty when there are no words.
@@ -977,7 +999,8 @@ mod tests {
         );
         assert!(titled.contains("] <title>"), "{titled}");
         assert!(titled.contains("#lede[#\"The lede.\"]"), "{titled}");
-        assert!(titled.contains("#par[#\"The words.\"]"), "{titled}");
+        // The last words carry the page's end mark.
+        assert!(titled.contains("#par[#\"The words.\""), "{titled}");
         let untitled = walk("The words.\n\n# Later\n\nMore.\n");
         assert!(untitled.contains("#about(titled: false)"), "{untitled}");
         assert!(
@@ -985,7 +1008,7 @@ mod tests {
             "a later title isn't the page's: {untitled}"
         );
         assert!(
-            untitled.contains("#par[#\"More.\"]"),
+            untitled.contains("#par[#\"More.\""),
             "only the page's title has a lede: {untitled}"
         );
     }
@@ -1052,6 +1075,33 @@ mod tests {
         let among = walk("Words ![What it shows](missing.png) and more.\n");
         assert!(!among.contains("#alone"), "{among}");
         assert!(among.contains("#par["), "{among}");
+    }
+
+    #[test]
+    fn a_page_ends_with_its_mark_after_its_last_word() {
+        let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+        let walk = |markdown: &str| {
+            program(
+                markdown,
+                "notes",
+                None,
+                &Pieces::new(),
+                &world,
+                &mut Costs::default(),
+            )
+        };
+        let words = walk("First.\n\n---\n\nLast words.\n");
+        assert!(words.contains("#rule()"), "{words}");
+        assert!(
+            words
+                .trim_end()
+                .ends_with("#\"Last words.\"#h(0.3em)#the-end]"),
+            "{words}"
+        );
+        let code = walk("Words.\n\n```\ncode\n```\n");
+        assert!(code.trim_end().ends_with("#par[#the-end]"), "{code}");
+        assert_eq!(code.matches("#the-end").count(), 1, "{code}");
+        assert!(!walk("").contains("#the-end]"), "an empty page has no end");
     }
 
     #[test]
