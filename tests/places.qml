@@ -31,6 +31,12 @@ QtObject {
             "DP-4": { make: "HP Inc.", model: "HP Z27k G3", serial: "CN41282GC1" },
             "eDP-1": { make: "LG Display", model: "0x07C6", serial: null }
         }), { "DP-4": monitor, "eDP-1": panel });
+        expect("a screen that's off as gone, as the lid shut on the dock leaves it",
+            Places.screensOf({
+                "DP-4": { make: "HP Inc.", model: "HP Z27k G3", serial: "CN41282GC1",
+                    logical: { x: 0, y: 0, width: 2560, height: 1440 } },
+                "eDP-1": { make: "LG Display", model: "0x07C6", serial: null, logical: null }
+            }), { "DP-4": monitor });
 
         // Kept on the monitor as DP-4; after the boot it's DP-5, beside the
         // laptop's panel, which is in use.

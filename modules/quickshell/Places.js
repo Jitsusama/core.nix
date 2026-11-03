@@ -15,11 +15,19 @@ function described(output) {
         .join(" ");
 }
 
-// Each connector's description, from niri's answer to Outputs.
+// Each connector's description, from niri's answer to Outputs, but for a
+// screen that's off, as the laptop's is while its lid is shut on the dock:
+// niri still lists it, with no place in the layout (`logical` null), and it
+// holds no workspace, so it's as gone as one unplugged. Counted as there,
+// every workspace noted away from it went "home" to it at each change of
+// the workspaces, putting them back in the order they had on it whenever
+// Joel moved one (P9R1KI, 2026-11-03).
 function screensOf(outputs) {
     const screens = {};
     for (const [name, output] of Object.entries(outputs ?? {})) {
-        screens[name] = described(output);
+        if (output?.logical !== null) {
+            screens[name] = described(output);
+        }
     }
     return screens;
 }

@@ -786,6 +786,75 @@ def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window
                 machine.succeed(booted.in_niri(f"niri msg action close-window --id {window['id']}"))
 
 
+def test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them(
+    booted: Screens,
+) -> None:
+    """Workspaces moved from a screen turned off stay where Joel puts them, until it's back.
+
+    The laptop's screen is off while its lid is shut on the dock, and niri still lists it. On
+    2026-11-03 the shell took it for there, so each change of the workspaces sent the ones it
+    had back to their old order, and a workspace put third went sixth again.
+    """
+    machine = booted.machine
+    opened: list[str] = []
+
+    def open_on(title: str) -> int:
+        """Open a window with this title where the focus is, and give its id once listed."""
+        opened.append(title)
+        machine.succeed(booted.in_niri(f"niri msg action spawn -- kitty --title {title}"))
+        machine.wait_until_succeeds(
+            booted.in_niri(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
+            timeout=dt.timedelta(seconds=120),
+        )
+        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+        return int(next(window["id"] for window in windows if window["title"] == title))
+
+    def order() -> list[str]:
+        """Give the windows opened here by their workspaces' order on the first screen."""
+        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
+        spaces = {one["id"]: one for one in listed}
+        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+        mine = [window for window in windows if window["title"] in opened]
+        on = [window for window in mine if spaces[window["workspace_id"]]["output"] == "Virtual-1"]
+        return [
+            window["title"]
+            for window in sorted(on, key=lambda window: spaces[window["workspace_id"]]["idx"])
+        ]
+
+    try:
+        machine.succeed(booted.in_niri("niri msg action focus-monitor Virtual-2"))
+        machine.succeed(booted.in_niri("niri msg action focus-workspace 1"))
+        open_on("Cove")
+        machine.succeed(booted.in_niri("niri msg action focus-workspace 2"))
+        shoal = open_on("Shoal")
+        # Off, as the lid shut on the dock leaves the laptop's: listed, but with no workspace.
+        machine.succeed(booted.in_niri("niri msg output Virtual-2 off"))
+        machine.wait_until_succeeds(
+            booted.in_niri('! niri msg --json workspaces | grep -qF \'"output":"Virtual-2"\''),
+            timeout=dt.timedelta(seconds=60),
+        )
+        machine.wait_until_succeeds(
+            booted.in_niri('niri msg --json windows | grep -qF \'"title":"Shoal"\'')
+        )
+        # Joel puts Shoal's workspace before Cove's, and changes nothing after.
+        machine.succeed(booted.in_niri(f"niri msg action focus-window --id {shoal}"))
+        machine.succeed(booted.in_niri("niri msg action move-workspace-to-index 1"))
+        assert order().index("Shoal") < order().index("Cove"), order()
+        # A change of the workspaces, as a session opening its own does.
+        machine.succeed(booted.in_niri("niri msg action focus-workspace-down"))
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            now = order()
+            assert now.index("Shoal") < now.index("Cove"), f"put back in their old order: {now}"
+            time.sleep(1)
+    finally:
+        machine.succeed(booted.in_niri("niri msg output Virtual-2 on"))
+        booted.outputs_say("Virtual-2", there=True)
+        for window in json.loads(machine.succeed(booted.in_niri("niri msg --json windows"))):
+            if window["title"] in opened:
+                machine.succeed(booted.in_niri(f"niri msg action close-window --id {window['id']}"))
+
+
 def test_a_niri_from_before_the_hold_takes_the_settings_a_switch_brings(booted: Screens) -> None:
     """A niri started before the hold came in takes the account's settings, as at a switch."""
     older = "/etc/niri-before-the-hold/bin/niri"
