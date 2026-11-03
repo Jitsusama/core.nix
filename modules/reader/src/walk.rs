@@ -156,6 +156,7 @@ pub fn program(
         blocks: 0,
         after_title: false,
         titled: false,
+        after_box: false,
     };
     walker.children(&dom.document);
     // The eyebrow goes before any block, so the first set carries it
@@ -230,6 +231,9 @@ struct Walker<'a> {
     after_title: bool,
     /// Whether the page opens with its title.
     titled: bool,
+    /// Whether a task's box was just passed over, so the space after it
+    /// goes.
+    after_box: bool,
 }
 
 fn attr(node: &Handle, name: &str) -> Option<String> {
@@ -323,6 +327,30 @@ fn is_figure(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || " .,%$\u{20ac}\u{a3}+-\u{2212}\u{d7}:/~".contains(c))
 }
 
+/// Whether a list item is a task its words follow (a tight item), and if
+/// so whether it's done.
+fn task_of(item: &Handle) -> Option<bool> {
+    let first = item
+        .children
+        .borrow()
+        .iter()
+        .find(|it| matches!(it.data, NodeData::Element { .. }))
+        .cloned()?;
+    (tag(&first).as_deref() == Some("input") && attr(&first, "type").as_deref() == Some("checkbox"))
+        .then(|| attr(&first, "checked").is_some())
+}
+
+/// Whether a list item is a task, tight or with its box in a paragraph.
+fn holds_task(item: &Handle) -> bool {
+    task_of(item).is_some()
+        || item
+            .children
+            .borrow()
+            .iter()
+            .find(|it| matches!(it.data, NodeData::Element { .. }))
+            .is_some_and(|first| tag(first).as_deref() == Some("p") && task_of(first).is_some())
+}
+
 const BLOCKS: &[&str] = &[
     "p",
     "h1",
@@ -359,11 +387,14 @@ impl Walker<'_> {
         match &node.data {
             NodeData::Document => self.children(node),
             NodeData::Text { contents } => {
-                let text = collapse(&contents.borrow());
+                let mut text = collapse(&contents.borrow());
                 // The line breaks between blocks are no words: set, a space
                 // there would be a paragraph of its own, a blank line and a
                 // second gap between the blocks either side of it.
                 let between_blocks = text == " " && parent_tag(node).as_deref() == Some("body");
+                if std::mem::take(&mut self.after_box) {
+                    text = text.trim_start().to_string();
+                }
                 if !text.is_empty() && !between_blocks {
                     self.out.push('#');
                     self.out.push_str(&literal(&text));
@@ -443,9 +474,10 @@ impl Walker<'_> {
                     node,
                 );
             }
+            // A task's box in a loose item, its words in their own paragraph.
             "input" => {
                 let checked = attr(node, "checked").is_some();
-                let _ = write!(self.out, "#task({checked})");
+                let _ = write!(self.out, "#task({checked})[]");
             }
             "blockquote" => self.wrap("#quote(block: true)[", node, "]\n"),
             "div" => {
@@ -482,9 +514,18 @@ impl Walker<'_> {
         if loose {
             self.out.push_str("tight: false, ");
         }
+        // A task list's boxes hang where its bullets would.
+        if node.children.borrow().iter().any(holds_task) {
+            self.out.push_str("marker: no-mark, ");
+        }
         for child in node.children.borrow().iter() {
             if tag(child).as_deref() == Some("li") {
                 self.out.push('[');
+                // A task's words go inside it, so a done one's are muted.
+                let task = task_of(child);
+                if let Some(done) = task {
+                    let _ = write!(self.out, "#task({done})[");
+                }
                 // A loose list's item holds paragraphs, and the newlines
                 // between them set an empty first line that the item's
                 // mark sat on alone, its text below.
@@ -495,9 +536,16 @@ impl Walker<'_> {
                     .any(|it| tag(it).is_some_and(|name| BLOCKS.contains(&name.as_str())));
                 for it in child.children.borrow().iter() {
                     let blank = matches!(&it.data, NodeData::Text { contents } if contents.borrow().trim().is_empty());
-                    if !(blocks && blank) {
+                    let its_box = task.is_some() && tag(it).as_deref() == Some("input");
+                    if its_box {
+                        // The space after the box isn't the words'.
+                        self.after_box = true;
+                    } else if !(blocks && blank) {
                         self.node(it);
                     }
+                }
+                if task.is_some() {
+                    self.out.push(']');
                 }
                 self.out.push_str("], ");
             }

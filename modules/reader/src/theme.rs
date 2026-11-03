@@ -71,6 +71,13 @@ pub struct Theme {
     pub rule: Colour,
     pub accent: Colour,
     pub on_accent: Colour,
+    /// The hues marks wear, each one kind of thing: an alert's rule takes
+    /// its kind's.
+    pub action: Colour,
+    pub program: Colour,
+    pub machine: Colour,
+    pub person: Colour,
+    pub voice: Colour,
     pub faces: Faces,
     pub sizes: Sizes,
     /// The theme as a `TextMate` theme, for code; two-face's Nord without one.
@@ -92,6 +99,11 @@ impl Theme {
             rule: grey(160),
             accent: grey(0),
             on_accent: grey(255),
+            action: grey(0),
+            program: grey(0),
+            machine: grey(0),
+            person: grey(0),
+            voice: grey(0),
             faces: Faces {
                 text: TYPSTS_OWN.into(),
                 code: TYPSTS_OWN.into(),
@@ -120,6 +132,11 @@ impl Theme {
             ("rule", &mut theme.rule),
             ("accent", &mut theme.accent),
             ("on_accent", &mut theme.on_accent),
+            ("action", &mut theme.action),
+            ("program", &mut theme.program),
+            ("machine", &mut theme.machine),
+            ("person", &mut theme.person),
+            ("voice", &mut theme.voice),
         ] {
             if let Some(colour) = named(name).and_then(Colour::parse) {
                 *slot = colour;
@@ -160,6 +177,11 @@ impl Theme {
             ("rule", self.rule),
             ("accent", self.accent),
             ("on_accent", self.on_accent),
+            ("action", self.action),
+            ("program", self.program),
+            ("machine", self.machine),
+            ("person", self.person),
+            ("voice", self.voice),
         ];
         let named: Vec<String> = roles
             .iter()
