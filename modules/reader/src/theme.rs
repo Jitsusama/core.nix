@@ -80,6 +80,9 @@ pub struct Theme {
     pub voice: Colour,
     pub faces: Faces,
     pub sizes: Sizes,
+    /// How far apart an eyebrow's capitals are set, in ems: the line above
+    /// a title saying where and when.
+    pub eyebrow_tracking: f64,
     /// The theme as a `TextMate` theme, for code; two-face's Nord without one.
     pub code: Option<PathBuf>,
 }
@@ -109,6 +112,7 @@ impl Theme {
                 code: TYPSTS_OWN.into(),
             },
             sizes: Sizes { text: TYPSTS_SIZE },
+            eyebrow_tracking: 0.0,
             code: None,
         }
     }
@@ -160,6 +164,14 @@ impl Theme {
         {
             theme.sizes.text = size;
         }
+        if let Some(tracking) = roles
+            .get("eyebrow")
+            .and_then(|eyebrow| eyebrow.get("tracking"))
+            .and_then(serde_json::Value::as_f64)
+            .filter(|tracking| tracking.is_finite())
+        {
+            theme.eyebrow_tracking = tracking;
+        }
         theme.code = named("code").map(PathBuf::from);
         theme
     }
@@ -188,10 +200,11 @@ impl Theme {
             .map(|(name, Colour([r, g, b]))| format!("{name}: paint({r}, {g}, {b})"))
             .collect();
         format!(
-            "#let paint = rgb\n#let ink = ({})\n#let face = (text: {:?}, code: {:?})\n",
+            "#let paint = rgb\n#let ink = ({})\n#let face = (text: {:?}, code: {:?})\n#let eyebrow-tracking = {}em\n",
             named.join(", "),
             self.faces.text,
-            self.faces.code
+            self.faces.code,
+            self.eyebrow_tracking
         )
     }
 }
@@ -228,6 +241,7 @@ mod tests {
             "text": ink.hex(),
             "faces": {"text": "A Text Face", "code": "A Code Face"},
             "sizes": {"text": 13.69},
+            "eyebrow": {"tracking": 0.16},
             "code": "/a/theme.tmTheme",
         });
         let theme = Theme::read(&file.to_string());
@@ -254,6 +268,11 @@ mod tests {
             "{typst}"
         );
         assert!(typst.contains("code: \"A Code Face\""), "{typst}");
+        assert!(typst.contains("eyebrow-tracking = 0.16em"), "{typst}");
+        assert!(
+            Theme::plain().typst().contains("eyebrow-tracking = 0em"),
+            "without a tracking, Typst's own"
+        );
     }
 
     #[test]

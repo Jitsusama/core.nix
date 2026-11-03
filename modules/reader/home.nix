@@ -72,6 +72,8 @@ let
     # The serif's large step, which sets its capitals level with the
     # mono's at that step.
     sizes.text = builtins.fromJSON type.serif.large;
+    # One tracking for every eyebrow, the launcher's plate's and the page's.
+    eyebrow.tracking = type.eyebrow.tracking;
     code = "${
       import ../theme/tmtheme.nix {
         inherit
