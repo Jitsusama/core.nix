@@ -71,8 +71,11 @@ fn lately(state: &Path) -> Vec<PathBuf> {
             (file.is_file() && !is(&file)).then_some((when, file))
         })
         .collect();
-    kept.sort_by(|a, b| b.0.cmp(&a.0));
-    kept.into_iter().map(|(_, file)| file).take(LATELY).collect()
+    kept.sort_by_key(|kept| std::cmp::Reverse(kept.0));
+    kept.into_iter()
+        .map(|(_, file)| file)
+        .take(LATELY)
+        .collect()
 }
 
 /// Markdown files under `home`, folders nearest first, leaving out hidden
@@ -112,8 +115,12 @@ fn around(home: &Path, leave: &[PathBuf], by: Instant) -> Vec<PathBuf> {
             }
         }
     }
-    found.sort_by(|a, b| b.0.cmp(&a.0));
-    found.into_iter().map(|(_, file)| file).take(AROUND).collect()
+    found.sort_by_key(|found| std::cmp::Reverse(found.0));
+    found
+        .into_iter()
+        .map(|(_, file)| file)
+        .take(AROUND)
+        .collect()
 }
 
 /// The page itself, as markdown.
@@ -252,7 +259,9 @@ mod tests {
         );
         assert!(text.starts_with("# What to Read\n"), "{text}");
         assert!(
-            text.contains("## Lately\n\n- [notes \\[old\\].md](</home/someone/notes [old].md>), in ~\n"),
+            text.contains(
+                "## Lately\n\n- [notes \\[old\\].md](</home/someone/notes [old].md>), in ~\n"
+            ),
             "{text}"
         );
         assert!(

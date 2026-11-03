@@ -144,8 +144,10 @@ fn unescaped(path: &str) -> String {
     while at < bytes.len() {
         let hex = |b: u8| char::from(b).to_digit(16);
         if bytes[at] == b'%'
-            && let (Some(Some(high)), Some(Some(low))) =
-                (bytes.get(at + 1).map(|b| hex(*b)), bytes.get(at + 2).map(|b| hex(*b)))
+            && let (Some(Some(high)), Some(Some(low))) = (
+                bytes.get(at + 1).map(|b| hex(*b)),
+                bytes.get(at + 2).map(|b| hex(*b)),
+            )
         {
             out.push(u8::try_from(high * 16 + low).unwrap_or(b'%'));
             at += 3;
