@@ -128,7 +128,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   }
 })
 #let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, text(font: face.code, size: 11.5pt, body))
-#let picture(alt, w, h) = box(width: calc.min(w, measure), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
+#let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true
 #let pic(path, alt, w) = if not pictures { picture(alt, 320pt, 160pt) } else {
@@ -144,7 +144,7 @@ pub fn template() -> &'static str {
     static TEMPLATE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     TEMPLATE.get_or_init(|| {
         format!(
-            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n{PAGE}",
+            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n{PAGE}",
             ink = crate::theme::get().typst(),
         )
     })
