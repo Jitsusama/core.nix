@@ -937,6 +937,132 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
     desktop.as_account(f"rm -rf {opened} {handed} ~/quay")
 
 
+def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Desktop) -> None:
+    """A session the harness hands over while Joel types opens aside, and every key stays his."""
+    machine = desktop.machine
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/aside && rm -f ~/typed")
+    desktop.as_account(
+        "niri msg action spawn -- kitty --class notes --title Notes sh -c 'cat > ~/typed'"
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session('niri msg --json windows | grep -q \'"app_id":"notes"\''),
+        timeout=dt.timedelta(seconds=60),
+    )
+    notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
+    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    try:
+        # Every focus niri gives from here on, and Joel typing numbered words
+        # until told to stop, so a key that went elsewhere leaves a gap.
+        watch_the_focus(desktop)
+        typing = (
+            'i=0; while [ ! -e ~/typing-done ]; do i=$((i+1)); wtype "w$i ";'
+            " echo $i > ~/typing-count; done; wtype -k Return"
+        )
+        desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
+        # As a quest's spawn hands it over: no focus asked for.
+        handed = {"sessions": [{"id": "01c7-aside", "cwd": "/home/jitsusama/aside"}]}
+        answer = desktop.as_account(
+            f"qs ipc call sessions reopen {shlex.quote(json.dumps(handed))}"
+        ).strip()
+        assert answer == "taken", answer
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json windows | grep -q 'pi --session 01c7-aside'"),
+            timeout=dt.timedelta(seconds=300),
+        )
+        # Typed on past the window showing and the shell placing it.
+        since = int(desktop.as_account("cat ~/typing-count").strip() or "0")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"[ $(cat ~/typing-count) -ge {since + 20} ]"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        desktop.as_account("touch ~/typing-done")
+        machine.wait_until_succeeds(
+            desktop.in_session("[ -s ~/typed ]"), timeout=dt.timedelta(seconds=60)
+        )
+        typed = desktop.as_account("cat ~/typed").split()
+        assert typed == [f"w{n}" for n in range(1, len(typed) + 1)], typed
+        windows, workspaces = focus_given(desktop)
+        assert set(windows) <= {notes["id"]}, windows
+        assert set(workspaces) <= {notes["workspace_id"]}, workspaces
+    finally:
+        desktop.as_account(
+            "touch ~/typing-done; pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
+            f" pkill -f 'sleep 60[0]'; niri msg action close-window --id {notes['id']}; true"
+        )
+        desktop.as_account("rm -rf ~/aside ~/typed ~/typing-done ~/typing-count ~/focus-events")
+
+
+def test_a_session_another_restores_goes_to_its_workspace_and_leaves_joel_his_focus(
+    desktop: Desktop,
+) -> None:
+    """Sessions handed back with places kept go each to its kept workspace, never focused."""
+    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
+    where = {
+        "01c8-near": {"output": output, "workspace": 1, "column": 1, "tile": 1},
+        "01c8-far": {"output": output, "workspace": 2, "column": 1, "tile": 1},
+    }
+    sessions = [{"id": one, "cwd": f"/home/jitsusama/{one[5:]}"} for one in where]
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/near ~/far")
+    lost = {"v": 1, "boot": "a-boot-before", "sessions": sessions}
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    kept(desktop, f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
+    stand_in(desktop, "notes", "Notes")
+    notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
+    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    try:
+        watch_the_focus(desktop)
+        # As `quest restore` hands them over: no focus asked for.
+        handed = shlex.quote(json.dumps({"sessions": sessions}))
+        answer = desktop.as_account(f"qs ipc call sessions reopen {handed}").strip()
+        assert answer == "taken", answer
+        deadline = time.monotonic() + 300
+        while not apart_as_kept(back := sat(desktop, "01c8-")) and time.monotonic() < deadline:
+            time.sleep(1)
+        assert apart_as_kept(back), back
+        windows, workspaces = focus_given(desktop)
+        assert set(windows) <= {notes["id"]}, windows
+        assert set(workspaces) <= {notes["workspace_id"]}, workspaces
+    finally:
+        desktop.as_account(
+            "pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'"
+        )
+        kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        desktop.as_account("rm -rf ~/near ~/far ~/focus-events")
+
+
+def apart_as_kept(back: dict[str, tuple[int, int]]) -> bool:
+    """Whether near and far sit as kept, far on the workspace next after near's.
+
+    A workspace kept holds only its own sessions, but a window of Joel's may sit
+    on it, so near may share Notes' workspace.
+    """
+    if len(back) != 2:  # noqa: PLR2004
+        return False
+    return back["01c8-far"][0] == back["01c8-near"][0] + 1
+
+
+def watch_the_focus(desktop: Desktop) -> None:
+    """Keep what niri says from now on, to read what it focused with focus_given."""
+    desktop.as_account(
+        "setsid sh -c 'niri msg --json event-stream > ~/focus-events' > /dev/null 2>&1 &"
+    )
+    desktop.machine.wait_until_succeeds(desktop.in_session("[ -s ~/focus-events ]"))
+
+
+def focus_given(desktop: Desktop) -> tuple[list[int | None], list[int]]:
+    """Give each window and each workspace niri focused since watch_the_focus, in order."""
+    said = [json.loads(line) for line in desktop.as_account("cat ~/focus-events").splitlines()]
+    windows = [one["WindowFocusChanged"]["id"] for one in said if "WindowFocusChanged" in one]
+    workspaces = [
+        one["WorkspaceActivated"]["id"]
+        for one in said
+        if one.get("WorkspaceActivated", {}).get("focused")
+    ]
+    return windows, workspaces
+
+
 def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
     """Give each stand-in session's workspace and column, by its session, as niri lists them."""
     spaces = json.loads(desktop.as_account("niri msg --json workspaces"))

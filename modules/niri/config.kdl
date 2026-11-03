@@ -164,3 +164,13 @@ window-rule {
     match app-id="^slack$" title="^Slack$"
     block-out-from "screencast"
 }
+
+// A session another session started, as a quest's spawn does: the harness
+// and the shell open its kitty window classed so. Only Joel's own presses
+// focus a window, since he'd otherwise go on typing into the new one by
+// accident (Joel, 2026-11-02). The shell then moves it to its quest's
+// workspace.
+window-rule {
+    match app-id="^pi-spawned$"
+    open-focused false
+}
