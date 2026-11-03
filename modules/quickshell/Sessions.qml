@@ -264,7 +264,9 @@ Singleton {
         const quiet = one.quiet === true;
         const untold = quiet ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"]
             : [];
-        const apart = quiet ? ["--class", "pi-spawned"] : [];
+        // Each classed as a session's (Niri.qml's heard), so a window Joel
+        // opens meanwhile isn't taken for it.
+        const apart = ["--class", quiet ? "pi-spawned" : "pi-session"];
         Niri.spawn(untold.concat(["kitty", "-1", "--instance-group", "pi-sessions"], apart,
             ["--directory", cwd], quest, ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)],
                 telling ? [told] : []));
@@ -547,9 +549,9 @@ Singleton {
             root.settleReopenedSoon();
         }
         // The window a session being reopened opens in, placed once niri
-        // has laid it out, and the next begun.
+        // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
-            if (root.reopening && window.app_id === "kitty")
+            if (root.reopening && window.session === true)
                 root.reopenedWindow(window.id);
             root.placeOpened();
             root.settleReopenedSoon();
