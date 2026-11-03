@@ -58,6 +58,9 @@ pub struct Conversation {
     pub count: u64,
     /// The `slack://` link that opens it in Slack.
     pub link: String,
+    /// Slack's timestamp it's ordered by, as `Counted`'s.
+    #[serde(skip)]
+    pub at: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -90,6 +93,9 @@ pub struct Counted {
     pub id: String,
     pub kind: Kind,
     pub count: u64,
+    /// Slack's timestamp it's ordered by: an unread one's latest
+    /// message, or when one in Recent was read last; none for threads.
+    pub at: String,
 }
 
 /// What's unread and what he read last, as `client.counts` says them.
@@ -138,11 +144,15 @@ pub fn counted(said: &Value) -> Result<Counts, Refused> {
             id: "threads".to_owned(),
             kind: Kind::Thread,
             count: threads,
+            at: String::new(),
         });
     }
     let mut merely: Vec<(&str, Counted)> = listed(said, "channels")
         .filter(|each| unread(each) && mentions(each) == 0)
-        .filter_map(|each| Some((stamp(each, "latest"), named(each, Kind::Unread, 0)?)))
+        .filter_map(|each| {
+            let at = stamp(each, "latest");
+            Some((at, named(each, Kind::Unread, 0, at)?))
+        })
         .collect();
     merely.sort_by(|(one, _), (other, _)| other.cmp(one));
     wanting.extend(merely.into_iter().map(|(_, counted)| counted));
@@ -165,7 +175,10 @@ fn listed<'a>(said: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
 fn newest<'a>(kind: Kind, listed: impl Iterator<Item = (&'a Value, u64)>) -> Vec<Counted> {
     let mut found: Vec<(&str, Counted)> = listed
         .filter(|(_, count)| *count > 0)
-        .filter_map(|(each, count)| Some((stamp(each, "latest"), named(each, kind, count)?)))
+        .filter_map(|(each, count)| {
+            let at = stamp(each, "latest");
+            Some((at, named(each, kind, count, at)?))
+        })
         .collect();
     found.sort_by(|(one, _), (other, _)| other.cmp(one));
     found.into_iter().map(|(_, counted)| counted).collect()
@@ -178,7 +191,10 @@ fn lately(said: &Value) -> Vec<Counted> {
         .chain(listed(said, "mpims"))
         .map(|each| (each, Kind::Dm))
         .chain(listed(said, "channels").map(|each| (each, Kind::Channel)))
-        .filter_map(|(each, kind)| Some((stamp(each, "last_read"), named(each, kind, 0)?)))
+        .filter_map(|(each, kind)| {
+            let at = stamp(each, "last_read");
+            Some((at, named(each, kind, 0, at)?))
+        })
         .filter(|(when, _)| when.chars().any(|c| c.is_ascii_digit() && c != '0'))
         .collect();
     read.sort_by(|(one, _), (other, _)| other.cmp(one));
@@ -194,12 +210,13 @@ fn stamp<'a>(each: &'a Value, key: &str) -> &'a str {
 }
 
 /// A conversation as counted, by its id, when it has one.
-fn named(each: &Value, kind: Kind, count: u64) -> Option<Counted> {
+fn named(each: &Value, kind: Kind, count: u64, at: &str) -> Option<Counted> {
     let id = each.get("id").and_then(Value::as_str)?;
     Some(Counted {
         id: id.to_owned(),
         kind,
         count,
+        at: at.to_owned(),
     })
 }
 
@@ -539,11 +556,13 @@ mod tests {
             id: "D1".to_owned(),
             kind: Kind::Dm,
             count: 1,
+            at: String::new(),
         };
         let threads = Counted {
             id: "threads".to_owned(),
             kind: Kind::Thread,
             count: 1,
+            at: String::new(),
         };
         assert_eq!(link("T1", &dm), "slack://channel?team=T1&id=D1");
         assert_eq!(link("T1", &threads), "slack://open?team=T1");
@@ -560,6 +579,7 @@ mod tests {
                 kind: Kind::Dm,
                 count: 2,
                 link: "slack://channel?team=T1&id=D1".to_owned(),
+                at: "1730300000.000100".to_owned(),
             }],
             recent: vec![Conversation {
                 id: "C1".to_owned(),
@@ -567,6 +587,7 @@ mod tests {
                 kind: Kind::Channel,
                 count: 0,
                 link: "slack://channel?team=T1&id=C1".to_owned(),
+                at: "1730700000.000100".to_owned(),
             }],
         };
         assert_eq!(
@@ -589,6 +610,7 @@ mod tests {
             kind: Kind::Dm,
             count,
             link: String::new(),
+            at: String::new(),
         };
         let at = |checked: u64, count: u64, read: &str| Said {
             checked,

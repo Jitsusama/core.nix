@@ -715,14 +715,17 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     let file = path.with_extension("search.json");
     let mut program = unreads(&stand_in, &path, &file);
     until("the socket never came", || socket(&file).exists());
-    let hello = asked(
-        &file,
-        &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
-    );
-    assert_eq!(
-        (&hello["domain"], &hello["sources"]["slack"]),
-        (&serde_json::json!("slack"), &serde_json::json!("answering"))
-    );
+    let hello = || {
+        asked(
+            &file,
+            &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
+        )
+    };
+    assert_eq!(hello()["domain"], "slack");
+    // Starting until Slack is first asked, then answering.
+    until("Slack never answered", || {
+        hello()["sources"]["slack"] == "answering"
+    });
     let found = asked(
         &file,
         &serde_json::json!({"id": 2, "ask": "search", "words": "launcher"}),
@@ -780,6 +783,173 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     forget(&path);
 }
 
+/// Whether Joel has read Ada's direct message, for `reading`.
+static READ: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Slack as `wanting` says it until Joel reads Ada's direct message,
+/// and once he has, nothing unread there and a second mention in
+/// #launcher.
+fn reading(line: &str) -> String {
+    if READ.load(std::sync::atomic::Ordering::SeqCst) && line.contains("client.counts") {
+        concat!(
+            r#"{"ok": true, "ims": [{"id": "D1", "has_unreads": false, "mention_count": 0,"#,
+            r#""last_read": "1730100000.000100"}],"#,
+            r#""mpims": [], "channels": [{"id": "C2", "has_unreads": true, "mention_count": 2},"#,
+            r#"{"id": "C3", "has_unreads": true, "mention_count": 0,"#,
+            r#""last_read": "1730200000.000100"}],"#,
+            r#""threads": {"has_unreads": true, "mention_count": 3}}"#
+        )
+        .into()
+    } else {
+        wanting(line)
+    }
+}
+
+/// One connection to a running slack-unreads' socket, kept open, as the
+/// shell's is.
+struct Connection {
+    writing: std::os::unix::net::UnixStream,
+    reading: BufReader<std::os::unix::net::UnixStream>,
+}
+
+impl Connection {
+    fn to(file: &std::path::Path) -> Connection {
+        let stream = std::os::unix::net::UnixStream::connect(socket(file)).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        Connection {
+            writing: stream.try_clone().unwrap(),
+            reading: BufReader::new(stream),
+        }
+    }
+
+    fn ask(&mut self, ask: &serde_json::Value) {
+        writeln!(self.writing, "{ask}").unwrap();
+    }
+
+    /// The next line said that `wanted` takes, passing over the rest.
+    fn heard(&mut self, wanted: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
+        loop {
+            let mut line = String::new();
+            self.reading.read_line(&mut line).unwrap();
+            assert!(!line.is_empty(), "the daemon hung up");
+            let said: serde_json::Value = serde_json::from_str(&line).unwrap();
+            if wanted(&said) {
+                return said;
+            }
+        }
+    }
+
+    /// The answer to an ask, by its id.
+    fn answer(&mut self, ask: &serde_json::Value) -> serde_json::Value {
+        self.ask(ask);
+        let id = ask["id"].clone();
+        self.heard(|said| said["id"] == id && said.get("changed").is_none())
+    }
+}
+
+/// Each record's key, in the order said.
+fn keys(records: &serde_json::Value) -> Vec<&str> {
+    records
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| record["key"].as_str().unwrap())
+        .collect()
+}
+
+#[test]
+fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
+    let stand_in = StandIn::new(reading);
+    let path = credentials("unreads-watch");
+    let file = path.with_extension("watch.json");
+    let mut program = unreads(&stand_in, &path, &file);
+    until("the socket never came", || socket(&file).exists());
+    let mut shell = Connection::to(&file);
+    until("Slack was never heard", || {
+        let listed = asked(
+            &file,
+            &serde_json::json!({"id": 1, "ask": "list", "kind": "slack-account"}),
+        );
+        listed["records"][0]["slack-account"]["standing"] == "ok"
+    });
+    let watch = serde_json::json!({
+        "id": "all", "ask": "watch", "kind": ["slack-unread", "slack-account"],
+    });
+    let held = shell.answer(&watch);
+    // What wants Joel first, then what's merely unread, then the account,
+    // and nothing of Recent, which wasn't asked for.
+    assert_eq!(
+        keys(&held["records"]),
+        [
+            "slack-unread:D1",
+            "slack-unread:C2",
+            "slack-unread:threads",
+            "slack-unread:C3",
+            "slack-account:slack"
+        ]
+    );
+    let ada = &held["records"][0];
+    assert_eq!(
+        (&ada["slack-unread"]["name"], &ada["slack-unread"]["count"]),
+        (&serde_json::json!("Ada Lovelace"), &serde_json::json!(2))
+    );
+    assert!(ada["heard"].as_u64().unwrap() > 0);
+    let threads = held["records"][2].clone();
+    // Joel reads Ada's message, and a second mention comes in #launcher:
+    // only those two are said, Ada's as gone.
+    READ.store(true, std::sync::atomic::Ordering::SeqCst);
+    let changed = shell.heard(|said| said["id"] == "all" && said.get("changed").is_some());
+    assert_eq!(
+        (keys(&changed["changed"]), &changed["gone"]),
+        (
+            vec!["slack-unread:C2"],
+            &serde_json::json!(["slack-unread:D1"])
+        )
+    );
+    assert_eq!(changed["changed"][0]["slack-unread"]["count"], 2);
+    // Threads, asked about again and again, weren't heard again.
+    let now = shell.answer(&serde_json::json!({
+        "id": 2, "ask": "get", "keys": ["slack-unread:threads", "slack-unread:D1"],
+    }));
+    assert_eq!(now["records"], serde_json::json!([threads]));
+    // Recent is its own kind, and a list says only as many as asked.
+    let recent = shell.answer(&serde_json::json!({
+        "id": 3, "ask": "list", "kind": "slack-recent", "limit": 1,
+    }));
+    assert_eq!(keys(&recent["records"]), ["slack-recent:C3"]);
+    assert_eq!(
+        recent["records"][0]["slack-recent"]["read"],
+        "1730200000.000100"
+    );
+    // Messages are asked of Slack and never held, so a watch of them,
+    // as Search Slack's is, holds nothing; a kind it doesn't know is said
+    // so.
+    let message = shell.answer(&serde_json::json!({
+        "id": 4, "ask": "watch", "kind": "slack-message",
+    }));
+    assert_eq!(message["records"], serde_json::json!([]));
+    let unknown = shell.answer(&serde_json::json!({
+        "id": 6, "ask": "list", "kind": "slack-channel",
+    }));
+    assert_eq!(unknown["error"]["code"], "unknown-kind");
+    for id in [serde_json::json!("all"), serde_json::json!(4)] {
+        let unwatched = shell.answer(&serde_json::json!({"id": id, "ask": "unwatch"}));
+        assert_eq!(unwatched["unwatched"], true);
+    }
+    let health = shell.answer(&serde_json::json!({"id": 5, "ask": "health"}));
+    assert_eq!(
+        (&health["watching"], &health["sources"]["slack"]["state"]),
+        (&serde_json::json!(0), &serde_json::json!("answering"))
+    );
+    program.kill().unwrap();
+    program.wait().unwrap();
+    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_dir_all(socket(&file).parent().unwrap());
+    forget(&path);
+}
+
 #[test]
 fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
     let stand_in = StandIn::new(|_| r#"{"ok": false, "error": "invalid_auth"}"#.into());
@@ -790,6 +960,15 @@ fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
     until("Joel was never asked to sign in", || {
         kept(&waiting(&file)).is_some()
     });
+    // Over the socket, only the account is held, saying so.
+    let held = asked(&file, &serde_json::json!({"id": 1, "ask": "list"}));
+    assert_eq!(
+        held["records"],
+        serde_json::json!([{"key": "slack-account:slack", "kind": "slack-account",
+            "slack-account": {"standing": "signedOut"}, "heard": held["records"][0]["heard"]}])
+    );
+    let hello = asked(&file, &serde_json::json!({"id": 2, "ask": "hello"}));
+    assert_eq!(hello["sources"]["slack"], "signed-out");
     program.kill().unwrap();
     program.wait().unwrap();
     let said = kept(&file).unwrap();
