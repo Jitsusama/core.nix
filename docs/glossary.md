@@ -372,6 +372,8 @@ The words core.nix is built from. Never a launcher place.
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
 | colour | what a colour means in the theme, such as the accent | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
+| face | one of the theme's typefaces, named by its kind: mono, sans or wide | typeface | `jitsusama.theme.font` |
+| wide face | the theme's expanded grotesque, for a page's titles and headings | | `jitsusama.theme.font.wide` |
 | account | the account on a machine that home-manager configures | | `home-manager.users.<account>` |
 
 ## Checks

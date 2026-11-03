@@ -13,14 +13,13 @@ use crate::world::PageWorld;
 /// The page's look.
 /// What every page is set with, after the theme's ink (template).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
-#let face = sys.inputs.at("face", default: "Mona Sans")
 #set page(width: 720pt, height: auto, margin: (left: 210pt, right: 80pt, y: 36pt), fill: ink.background)
-#set text(font: face, size: 13.1pt, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), weight: 380)
+#set text(font: face.text, size: 13.1pt, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), weight: 380)
 #set par(justify: false, linebreaks: "optimized", leading: 0.62em, spacing: 1.2em)
-#show heading: set text(font: "Hubot Sans", weight: 700, fill: ink.strong)
+#show heading: set text(font: face.wide, weight: 700, fill: ink.strong)
 #show heading.where(level: 1): set text(size: 40pt)
 #show heading.where(level: 2): set text(size: 16.4pt)
-#show raw: set text(font: "Monaspace Neon", size: 11.5pt)
+#show raw: set text(font: face.code, size: 11.5pt)
 // A link's words in the strong text with a hairline under them, as his
 // Neovim sets a link, since a hue is a glyph's and never text's.
 #show link: it => underline(stroke: 0.75pt + ink.rule, offset: 2.5pt, text(fill: ink.strong, it))
@@ -113,7 +112,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
 })
-#let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, text(font: "Monaspace Neon", size: 11.5pt, body))
+#let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, text(font: face.code, size: 11.5pt, body))
 #let picture(alt, w, h) = box(width: calc.min(w, 474pt), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true

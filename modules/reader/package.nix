@@ -12,7 +12,7 @@
   makeDesktopItem,
   makeWrapper,
   mona-sans,
-  monaspace,
+  nerd-fonts,
   pkg-config,
   runCommand,
   rustPlatform,
@@ -26,10 +26,11 @@ let
     stripRoot = false;
   };
 
-  # One folder of one family's faces: Mona Sans at its normal width only,
-  # since it ships each width under one family name and Typst may otherwise
-  # pick a condensed one, Hubot Sans Expanded for titles, Monaspace Neon for
-  # code.
+  # One folder of one family's faces, for the theme's three: the sans at
+  # its normal width only, since it ships each width under one family name
+  # and Typst may otherwise pick a condensed one; the wide face's expanded
+  # width; and the mono face as the terminal has it, without its narrower
+  # and proportional cuts.
   faces =
     name: package: glob:
     runCommand name { } ''
@@ -39,7 +40,7 @@ let
   fonts = [
     (faces "mona-sans-normal" mona-sans "opentype/MonaSans-*.otf")
     (faces "hubot-sans-expanded" hubot-sans "opentype/HubotSansExpanded-*.otf")
-    (faces "monaspace-neon" monaspace "opentype/MonaspaceNeon-*.otf")
+    (faces "monaspace-xenon" nerd-fonts.monaspace "opentype/NerdFonts/*/MonaspiceXeNerdFont-*.otf")
   ];
 in
 rustPlatform.buildRustPackage {

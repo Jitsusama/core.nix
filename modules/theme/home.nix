@@ -553,6 +553,18 @@ in
           description = "The proportional face's size in points, as Linux counts them.";
         };
       };
+      wide = {
+        family = lib.mkOption {
+          type = lib.types.str;
+          # Mona Sans's expanded sibling, by GitHub Next, so the three share
+          # proportions.
+          default = "Hubot Sans";
+          description = ''
+            The wide face, an expanded grotesque, for a page's titles and
+            headings: the reader's.
+          '';
+        };
+      };
     };
 
     space = {

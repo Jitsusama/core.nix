@@ -15,10 +15,12 @@
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
 #
-# Every colour is the theme's, written here as reader/theme.json in the
-# configuration home, which the reader reads as it starts: the page on the
-# background, headings in the strong text, code on the sunken ground in the
-# colours bat wears (../theme/tmtheme.nix), and search's marks as Neovim's.
+# Every colour and face is the theme's, written here as reader/theme.json
+# in the configuration home, which the reader reads as it starts: its
+# text in the sans face, headings in the wide one and code in the mono; the
+# page on the background, headings in the strong text, code on the sunken
+# ground in the colours bat wears (../theme/tmtheme.nix), and search's marks
+# as Neovim's.
 #
 # Each file it's started with is said to the desktop's list of files opened
 # lately (../open-with/says-what-it-opens.nix), and each reader keeps the
@@ -31,7 +33,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colours terminal;
+  inherit (config.jitsusama.theme) colours font terminal;
 
   says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
   reader = says { package = pkgs.callPackage ./package.nix { }; };
@@ -51,6 +53,11 @@ let
       accent
       on_accent
       ;
+    faces = {
+      text = font.sans.family;
+      wide = font.wide.family;
+      code = font.mono.family;
+    };
     code = "${
       import ../theme/tmtheme.nix {
         inherit

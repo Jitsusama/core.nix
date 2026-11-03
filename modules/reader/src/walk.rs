@@ -57,7 +57,7 @@ impl Pieces {
             "theme": "base",
             "htmlLabels": false,
             "flowchart": { "htmlLabels": false },
-            "fontFamily": "Mona Sans",
+            "fontFamily": ink.faces.text,
             "themeVariables": {
                 "background": ink.background.hex(),
                 "primaryColor": ink.raised.hex(),
@@ -601,7 +601,7 @@ impl Walker<'_> {
                         let c = style.foreground;
                         let _ = write!(
                             self.out,
-                            "#text(fill: rgb({}, {}, {}), {})",
+                            "#text(fill: paint({}, {}, {}), {})",
                             c.r,
                             c.g,
                             c.b,
