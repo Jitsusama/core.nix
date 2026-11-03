@@ -63,6 +63,22 @@ And, as the design grew:
   assed shit can happen. Everything has to follow my design aesthetic which
   has been refined through our work."
 
+And the bar for everything since, set on 2 November 2026 after two looks at
+the desktop's keys and type failed:
+
+> i want greater emphasis on typography as well as excellent use of colour,
+> insanely tasteful UI design and UX. I want something you could put up in
+> an art museum that is also insanely functional, that fits my aesthetics
+> for form and function. no detail can be ignored. every pixel of
+> whitespace must be accounted for. alignments, available space, all
+> interactions, each must be amazing. the same story with how i interface
+> with a keyboard.
+
+The design document's Every Pixel Accounted For turns it into checks: type,
+colour, whitespace, alignment, the space available, every interaction and
+the keyboard on the ErgoDox. A design is shown to him with every check
+answered, never before.
+
 ## The Character
 
 In his words, a modernist, "with a bit of baja/nordic leanings, that also
@@ -135,6 +151,29 @@ constrain".
 
 ## What He's Turned Down
 
+- **Middling type, and a stock template.** The first look at the desktop's
+  keys and type: "the typography is middling. you are not leaning into my
+  aesthetic very well, and are not leveraging type and typesetting enough",
+  and "the existing launcher design has better typographic presence in some
+  ways than what you have presented. yours feels very much like something
+  lifted off of shit" (2026-11-02). Type is set as a typesetter sets it,
+  from his faces and this skill, and a redesign keeps what today's does
+  better.
+- **Keys that aren't Neovim's.** "the keymap feels way too alien from vim"
+  and, of the second look, "all of those ctrl keys do not feel very vim to
+  me" (2026-11-02). Keys start from Neovim's modes and his leader, Space,
+  never from a text box's Ctrl chords; on his ErgoDox, Ctrl is a held little
+  finger. "you need to keep in mind my ergodox keyboard for shortcuts."
+- **Polish that changes nothing he'd feel.** "i think you do have some
+  general improvements here, but the UI still doesn't feel materially
+  changed. what actually has impacted your design choices? you don't seem
+  to have dug very deep" (2026-11-02). A redesign changes what he sees at a
+  glance, and every choice says where it came from.
+- **Changing what he likes for no reason of his.** "the lock clock font
+  face is nicer as is, why the font change?" (2026-11-02). What's on his
+  screen and not turned down stays, unless he gave the reason to change it.
+- **Cluttered notices.** "i'm also seeing some whitespace issues with the
+  notifications, feeling quite cluttered" (2026-11-02).
 - **Too much roundness.** "you also have issues with consistency in
   padding and margin, and have often too much roundness" (2026-11-02). A
   corner is softened by the theme's radius, one unit, and parts are
@@ -173,7 +212,13 @@ constrain".
 
 ## Judging Without Him
 
-Before anything is shown or shipped, look at it full size, in every state,
+Nobody stands in for him. A panel judging in his voice passed the second
+look at the desktop's keys and type, and he failed it (2026-11-02). A
+reviewer checks facts, measurements and the design document's rules; the
+bar is whether it could hang in a museum and work as hard as he does.
+
+Before anything is shown or shipped, answer every check in the design
+document's Every Pixel Accounted For, look at it full size, in every state,
 and answer these for it:
 
 - Is there one focal point, and does the accent mark only where the keys go?
@@ -191,3 +236,8 @@ and answer these for it:
   the ErgoDox, and found by typing what it does?
 - Is there warmth at its threshold, and none in the way of the work?
 - Is it smooth: no jump, no jerk, no wait it could avoid?
+- Is every pixel of whitespace a step he could name, and every edge on a
+  column?
+- Does each choice say where it came from, his words, his configuration or
+  his keyboards, and is a choice of the designer's own marked as one?
+- Would he feel the change at a glance, beside what it replaces?

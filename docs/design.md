@@ -92,8 +92,164 @@ for judging before it's been judged here first.
   uses changes only for something clearly better by this document's own
   terms, and the change is said plainly when it ships: what moved, where it
   went, and why.
+- **Accounted for.** Every check in [Every Pixel Accounted For][pixel] has
+  its answer, and the answers are shown with it.
 - **Said, where it's unfinished.** Whatever hasn't met all of this is called
   unfinished when it's shown, never done.
+
+## Every Pixel Accounted For
+
+Joel's bar for everything he sees and touches, set on 2 November 2026,
+after the second look at the desktop's keys and type failed:
+
+> i want greater emphasis on typography as well as excellent use of colour,
+> insanely tasteful UI design and UX. I want something you could put up in
+> an art museum that is also insanely functional, that fits my aesthetics
+> for form and function. no detail can be ignored. every pixel of
+> whitespace must be accounted for. alignments, available space, all
+> interactions, each must be amazing. the same story with how i interface
+> with a keyboard.
+
+The quality bar says when a surface is done. This section says how each part
+of it is shown, so a design arrives with its proof rather than a claim. Each
+check is answered with a measurement, a file and line, or Joel's own words.
+A check left unanswered is a fault, not a gap to explain. Measurements are
+taken from full-size screenshots at every scale Joel's screens use, 1.5 and
+2 among them, cropped before they're read, with ink found by thresholding
+and trimming (`magick <png> -colorspace gray -threshold 45% -trim`), never
+by eye.
+
+### Type
+
+- **Type carries the design.** Hierarchy comes from face, weight, case and
+  colour role, set as a typesetter sets a page, never from a stock
+  template's sizes and boxes (the first look, 2026-11-02: "the typography is
+  middling ... not leveraging type and typesetting enough"). **Check:** a
+  table of every run of text on the surface, giving its face, step, weight,
+  colour role, OpenType features and line pitch, and why it differs from the
+  run nearest it. Two runs that differ for no written reason are a fault.
+- **Set, not styled.** Figures, case, ligatures, punctuation and breaks are
+  chosen: tabular figures where a number changes in place, a face's case
+  forms beside capitals, real punctuation, a name cut only at a whole word,
+  no widow and no hyphen break. **Check:** each feature named in the table
+  and seen in a crop at the device scale.
+- **At least what it replaces.** A redesign keeps whatever today's surface
+  does better (2026-11-02: "the existing launcher design has better
+  typographic presence in some ways than what you have presented").
+  **Check:** today's and the new, cropped side by side at one scale, with
+  what each does better written beneath them.
+- **What he likes stays.** A face, a size or a weight he hasn't turned down
+  changes only for a reason he gave (2026-11-02: "the lock clock font face
+  is nicer as is, why the font change?"). **Check:** every change to
+  something already on his screen names its reason and whose it is.
+
+### Colour
+
+- **Every colour is a role, and every pair is measured.** **Check:** each
+  pair of ink and ground on the surface, by role, with its contrast in every
+  theme at its size, against the thresholds of [Themes][themes]: text Lc 75
+  and muted Lc 60 by APCA, 4.5:1 for text and 3:1 for large text and glyphs
+  by WCAG, on the highlighted row as well as at rest.
+- **Colour says something.** The accent marks only where the keys go, once
+  per screen state; a glyph's hue says its kind; text keeps to the text
+  roles. **Check:** a list of every coloured thing on the surface and the
+  kind or state it says. Anything coloured that says nothing is a fault.
+- **Excellent, not just correct.** Colour gives the focal point and the
+  warmth, never the structure. **Check:** in a greyscale render the
+  hierarchy still reads in the same order; in colour the eye lands first on
+  the accent, then on the marks, then on the text.
+
+### Whitespace
+
+- **Every gap has a name.** Every space between two inks, inside a frame
+  and outside it, is a step of [Space][space] or a line pitch, measured to
+  the ink (a capital's top, a baseline, a mark's edge), never to a text box.
+  **Check:** the screenshot with each gap measured in device pixels and
+  named. A gap off its step by more than a device pixel, or one nobody can
+  name, is a fault.
+- **Equal where it says it is.** The room round a thing is the same on every
+  side, measured to the ink: a frame's padding, a notice's, the margin round
+  a highlight. **Check:** its four measurements, within a device pixel.
+- **Space groups, and only as far as it should.** What belongs together sits
+  closer than anything else does to it: a group's inner gap is at least one
+  step smaller than the gap round it. **Check:** each group's two gaps.
+- **Never cluttered.** A surface has only what Joel would act on or wonder
+  about (2026-11-02, of the notices: "whitespace issues ... feeling quite
+  cluttered"). **Check:** every element listed with what he'd do with it or
+  wonder about it; an element that answers neither goes, and a surface where
+  groups sit within one step of each other is cluttered.
+
+### Alignment
+
+- **Few edges, every one named.** Every left and right edge lies on a named
+  column: the frame's inset, the mark column, the text edge, the flush-right
+  edge. **Check:** the columns listed, and every ink edge on one within a
+  device pixel. An edge within four logical pixels of a column but not on it
+  is a near miss, and a fault.
+- **Baselines on the pitch, marks one height.** **Check:** every baseline
+  measured against the surface's line pitch, and every mark's ink the same
+  height on the text's middle line.
+- **Shared across neighbours.** A surface beside another (the launcher and
+  its drawer, a notice and the margin) lines up with it. **Check:** the
+  shared edges named and measured.
+
+### Space Available
+
+- **Room used on purpose.** Every region is content or a named space. An
+  empty region larger than huge needs its reason written beside it, and
+  text cut short while room is free beside it is a fault. **Check:** the
+  screenshot with its empty regions marked and their reasons.
+- **At every size.** **Check:** every state at every scale his screens use,
+  the longest name, the empty list and the full one among them.
+
+### Interactions
+
+- **Every interaction written before it's built.** **Check:** a table of
+  every state and every key in it: what it does, what the screen does in
+  answer, how long it takes against [Latency Budgets][budgets], and which of
+  the theme's motions carries it. A state Escape can't leave, a key with no
+  visible answer, or an answer that waits is a fault.
+- **Felt, not just correct.** **Check:** each transition recorded at the
+  panel's full refresh rate, with no dropped frame, no jump and no jitter.
+
+### The Keyboard, on Both Keyboards
+
+- **Every key named where it sits.** **Check:** each key a design uses,
+  with its place on the laptop's keyboard and on the ErgoDox (layer, hand,
+  finger), read from `modules/ergodox/keymap/keymap.c`.
+- **Neovim's way: modes and a leader, not chords.** What's done often is a
+  single key in a mode, or Space and then a letter, as in his Neovim
+  (2026-11-02: "all of those ctrl keys do not feel very vim to me"). On the
+  ErgoDox, Ctrl and Alt are held on the little and ring fingers' home keys
+  (A and O, R and I), so a Ctrl chord pins the weakest finger on a letter;
+  Super is held on the index finger's (T and N), which is why the desktop's
+  Super chords are comfortable. **Check:** every Ctrl and Alt chord in the
+  design listed with its reason. One for something done often is a fault,
+  unless a program already owns it and he uses it there (kitty's size, a
+  text box's own editing).
+- **Bare keys first.** What's done often ends on a key both keyboards have
+  bare: a letter, an arrow, Escape (both top corners on the ErgoDox),
+  Return, Tab, Space (both thumbs), and F1 to F10 on the ErgoDox's top row.
+
+### Where Each Choice Came From
+
+- **Every choice has a source.** **Check:** each choice names where it came
+  from: Joel's words with their date, his configuration by file and line,
+  his keyboards, this document or [the aesthetic skill][taste], or research,
+  cited. A choice with none is marked as the designer's own, so he sees it
+  (2026-11-02: "what actually has impacted your design choices? you don't
+  seem to have dug very deep").
+- **Changed enough to feel.** A redesign is shown beside what it replaces,
+  with the differences he'd notice at a glance listed first (2026-11-02:
+  "the UI still doesn't feel materially changed"). **Check:** that list. If
+  it holds only measurements, it isn't a redesign yet.
+
+### Who Judges
+
+A reviewer checks facts, measurements and these rules, and nobody stands in
+for Joel's eye: a panel judging in his voice passed the second look, and he
+failed it. A design goes to him once every check here is answered and its
+designer would hang it in a museum, never because a panel passed it.
 
 ## Type
 
@@ -1124,6 +1280,9 @@ comes along, and what to do.
   way in (Super+P for Print). A chord holds its modifiers on one hand and
   presses its key with the other, and never asks one little finger for two
   keys, which is why the terminal opens a window on N rather than Return.
+  On the ErgoDox, Ctrl and Alt are held on the little and ring fingers'
+  home keys and Super on the index finger's, so what's done often is never
+  a Ctrl chord ([The Keyboard, on Both Keyboards][pixel]).
 - **One "what's here" key per layer,** the same shape on each, showing that
   layer's actions and keys drawn from the real configuration, never a
   hand-kept copy.
@@ -2010,3 +2169,7 @@ What each studio round settled, newest first, with the reason.
 [surfaces]: #surfaces
 [decisions]: #decisions
 [taste]: ../modules/theme/SKILL.md
+[pixel]: #every-pixel-accounted-for
+[themes]: #themes
+[space]: #space
+[budgets]: #latency-budgets
