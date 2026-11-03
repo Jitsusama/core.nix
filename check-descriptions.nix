@@ -1610,6 +1610,10 @@
     before every sleep swayidle locks the screen and then turns the screens off, even when the
     lock is late, which still fails
   '';
+  the-serif-is-its-variable-files = ''
+    asked for the theme's serif face, the machine's fontconfig lists its two variable files and no
+    static cut, and gives the italic one for the italic
+  '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
