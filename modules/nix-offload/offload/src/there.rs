@@ -37,7 +37,9 @@
 //! attributes, are what a build tool that evaluates its own targets
 //! hands on. No machine could fetch them, so they're copied up to the
 //! lent builder with what they're built from, a few megabytes, and built
-//! there, never on a machine nearby.
+//! there, never on a machine nearby. What the builder would build that
+//! this machine already holds, and no cache has, goes up built, as a
+//! kernel built here does, rather than being built again.
 //!
 //! An attribute for a system a machine nearby takes, named by its second
 //! word as in `checks.aarch64-darwin.x`, goes to that machine instead
@@ -57,6 +59,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use crate::held;
 
 /// What a `there` was asked to build, and how.
 #[derive(Debug, PartialEq, Eq)]
@@ -457,28 +461,42 @@ fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
     }
 }
 
-/// Copies the derivations asked for, and what they're built from, into the
-/// builder's store, which builds only what it holds. The builder is asked
-/// once which of them it lacks, and only those go: `nix copy` asks it
-/// path by path, and through the tunnel that took 79 s on 1 November for
-/// the 710 a one-line build needs, every one already there, against 4 s
-/// asked once. Without an answer they go the slow way. Each is named by
-/// its contents, so the builder takes them unsigned.
+/// Puts what the derivations asked for are built from in the builder's
+/// store: the derivations themselves, and the outputs this machine holds
+/// of those it would build.
 fn up(asked: &Asked, lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) -> Result<(), String> {
     let paths: Vec<&str> = asked
         .attributes
         .iter()
         .map(|path| path.split('^').next().unwrap_or(path))
         .collect();
+    derivations_up(&paths, lent, scratch, [ssh, nix])?;
+    held_up(asked, &paths, lent, scratch, [ssh, nix]);
+    Ok(())
+}
+
+/// Copies the derivations at `paths`, and what they're built from, into
+/// the builder's store, which builds only what it holds. The builder is
+/// asked once which of them it lacks, and only those go: `nix copy` asks
+/// it path by path, and through the tunnel that took 79 s on 1 November
+/// for the 710 a one-line build needs, every one already there, against
+/// 4 s asked once. Without an answer they go the slow way. Each is named
+/// by its contents, so the builder takes them unsigned.
+fn derivations_up(
+    paths: &[&str],
+    lent: &Builder,
+    scratch: &Path,
+    [ssh, nix]: [&str; 2],
+) -> Result<(), String> {
     let mut copying = Command::new(nix);
-    match closure(&paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
+    match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
         Some(lacking) => copying
             .args(["copy", "--no-recursive", "--to", &lent.store])
             .args(lacking),
         None => copying
             .args(["copy", "--to", &lent.store, "--derivation"])
-            .args(&paths),
+            .args(paths),
     };
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let copied = copying
@@ -519,32 +537,130 @@ fn closure(paths: &[&str], nix: &str) -> Option<Vec<String>> {
 const LACKING: &str = "xargs -r nix-store --check-validity --print-invalid";
 
 /// Which of `paths` the lent builder lacks, asked in one go, or none when
-/// it couldn't say. They go as a file, since a closure of thousands would
-/// fill a pipe while the answer waits to be read.
+/// it couldn't say.
 fn lacking(lent: &Builder, paths: &[String], scratch: &Path, ssh: &str) -> Option<Vec<String>> {
-    let (mut command, known, said) = reach(lent, scratch, ssh).ok()?;
-    let asking = mine(scratch, "asking");
-    let answer = fs::write(&asking, paths.join("\n") + "\n")
-        .and_then(|()| fs::File::open(&asking))
-        .and_then(|asked| {
-            command
-                .arg(&lent.host)
-                .arg(LACKING)
-                .stdin(asked)
-                .stderr(Stdio::inherit())
-                .output()
-        });
-    for file in [&asking, &known, &said] {
-        let _ = fs::remove_file(file);
-    }
-    let answer = answer.ok().filter(|answer| answer.status.success())?;
+    let answer = answered(lent, LACKING, paths, scratch, ssh)?;
     Some(
-        String::from_utf8_lossy(&answer.stdout)
+        answer
             .lines()
             .filter(|line| line.starts_with("/nix/store/"))
             .map(str::to_owned)
             .collect(),
     )
+}
+
+/// What the lent builder prints running `command` with `lines` on its
+/// standard input, a line each, or none when it couldn't say. They go as
+/// a file, since a closure of thousands would fill a pipe while the
+/// answer waits to be read.
+fn answered<Line: AsRef<str>>(
+    lent: &Builder,
+    command: &str,
+    lines: &[Line],
+    scratch: &Path,
+    ssh: &str,
+) -> Option<String> {
+    let (mut asking, known, said) = reach(lent, scratch, ssh).ok()?;
+    let given = mine(scratch, "asking");
+    let text: String = lines
+        .iter()
+        .map(|line| line.as_ref().to_owned() + "\n")
+        .collect();
+    let answer = fs::write(&given, text)
+        .and_then(|()| fs::File::open(&given))
+        .and_then(|input| {
+            asking
+                .arg(&lent.host)
+                .arg(command)
+                .stdin(input)
+                .stderr(Stdio::inherit())
+                .output()
+        });
+    for file in [&given, &known, &said] {
+        let _ = fs::remove_file(file);
+    }
+    let answer = answer.ok().filter(|answer| answer.status.success())?;
+    Some(String::from_utf8_lossy(&answer.stdout).into_owned())
+}
+
+/// What the builder is asked, with the derivations on its standard input:
+/// what building them would take, which Nix says on its standard error.
+const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
+
+/// Sends up the outputs this machine holds of what the builder would
+/// build, which no cache has, so it isn't built again: a fresh builder
+/// compiled the running system's own kernel for over an hour on 3
+/// November, held here since it was built here. The builder is asked once
+/// what it would build, in 2.4 s through the tunnel for a whole system,
+/// and [`held::instead`] says which of those go up. What they reference
+/// goes only where no cache gives it the builder, which fetches the rest
+/// itself, as it would for a build. The builder's account is one its daemon trusts, so they go
+/// unsigned. When any of it fails, the builder builds them, as before.
+fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) {
+    let Some(planned) = answered(lent, PLANS, paths, scratch, ssh).map(|said| held::planned(&said))
+    else {
+        return;
+    };
+    if planned.is_empty() {
+        return;
+    }
+    let derivations = held::derivations(&json_of(
+        Command::new(nix)
+            .args(["derivation", "show"])
+            .args(&planned),
+    ));
+    let outputs = derivations
+        .values()
+        .flat_map(|derivation| derivation.outputs.values());
+    let holds = held::held(&json_of(
+        Command::new(nix)
+            .args(["path-info", "--json"])
+            .args(outputs),
+    ));
+    let wanted: Vec<_> = asked
+        .attributes
+        .iter()
+        .map(|word| held::wanted(word))
+        .collect();
+    let sending = held::instead(&planned, &derivations, &wanted, &holds);
+    if sending.is_empty() {
+        return;
+    }
+    let size = sending.iter().filter_map(|path| holds.get(path)).sum();
+    let (outputs, them) = match sending.len() {
+        1 => ("1 output".to_owned(), "it"),
+        count => (format!("{count} outputs"), "them"),
+    };
+    eprintln!(
+        "nix-offload: sending {outputs} of {} this machine holds rather than building {them} \
+         there",
+        sized(size)
+    );
+    // ssh's control socket goes in TMPDIR, as when what's built comes back.
+    let sent = Command::new(nix)
+        .args([
+            "copy",
+            "--to",
+            &lent.store,
+            "--no-check-sigs",
+            "--substitute-on-destination",
+        ])
+        .args(&sending)
+        .env("TMPDIR", "/tmp")
+        .status();
+    if !sent.is_ok_and(|sent| sent.success()) {
+        eprintln!("nix-offload: they couldn't be sent, so the builder builds {them}");
+    }
+}
+
+/// What `command` printed as JSON, or null when it printed none.
+fn json_of(command: &mut Command) -> serde_json::Value {
+    command
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .and_then(|output| serde_json::from_slice(&output.stdout).ok())
+        .unwrap_or_default()
 }
 
 /// What `there` exits with when no builder took a build and it wasn't
