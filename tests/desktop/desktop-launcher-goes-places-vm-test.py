@@ -1032,6 +1032,102 @@ def test_a_session_another_restores_goes_to_its_workspace_and_leaves_joel_his_fo
         desktop.as_account("rm -rf ~/near ~/far ~/focus-events")
 
 
+def test_a_session_another_starts_goes_to_its_senders_workspace_from_the_sessions_kitty(
+    desktop: Desktop,
+) -> None:
+    """A session another starts goes to its sender's workspace, the sender in the sessions' kitty.
+
+    On 2026-11-03 nine of ten builder sessions landed on the workspace Joel was on rather than
+    their senders'. Each sender ran in the kitty that holds every session, and a window of
+    that kitty is known only once kitty has said which of its windows is whose, which the
+    new session's own window had just made stale.
+    """
+    machine = desktop.machine
+    owner = "$XDG_RUNTIME_DIR/sendqa-owner"
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/first ~/spawned")
+    stand_in(desktop, "notes", "Notes")
+    notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
+    try:
+        # The sessions' kitty, started by the shell for a session of its own.
+        first = {"sessions": [{"id": "01ce-first", "cwd": "/home/jitsusama/first"}]}
+        answer = desktop.as_account(
+            f"qs ipc call sessions reopen {shlex.quote(json.dumps(first))}"
+        ).strip()
+        assert answer == "taken", answer
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json windows | grep -q 'pi --session 01ce-first'"),
+            timeout=dt.timedelta(seconds=300),
+        )
+        # The sender, a second window of that kitty, with pi's record of it.
+        desktop.as_account(
+            f"printf '%s\\n' '#!/bin/sh' 'echo \"$$ $KITTY_LISTEN_ON $KITTY_WINDOW_ID\" > {owner}'"
+            " 'exec sleep infinity' > ~/.sendqa-pi && chmod +x ~/.sendqa-pi"
+            " && echo Sender > $XDG_RUNTIME_DIR/sendqa-title"
+            " && niri msg action spawn -- kitty -1 --instance-group pi-sessions --title Sender"
+            " ~/.sendqa-pi"
+        )
+        machine.wait_until_succeeds(desktop.in_session(f"test -s {owner}"), timeout=SHELL_STARTS)
+        desktop.presence_says(
+            {"session": "01ce-sender", "quest": "QEST-20261103-SENDQA", "addresses": ["SENDQA"]},
+            address="SENDQA",
+        )
+        sender = desktop.window_titled("Sender")
+        # On the second of three workspaces with windows, neither focused nor last.
+        desktop.as_account(
+            f"niri msg action move-window-to-workspace --window-id {sender['id']} --focus false 2"
+        )
+        stand_in(desktop, "tide", "Tide")
+        tide = next(window for window in desktop.windows() if window["app_id"] == "tide")
+        desktop.as_account(
+            f"niri msg action move-window-to-workspace --window-id {tide['id']} --focus false 3"
+            f" && niri msg action focus-window --id {notes['id']}"
+        )
+        sender = desktop.window_titled("Sender")
+        notes = desktop.window_titled("Notes")
+        assert sender["workspace_id"] != notes["workspace_id"], (sender, notes)
+        watch_the_focus(desktop)
+        # As a quest's spawn hands one over: its own quest, the one that asked, no focus.
+        spawned = {
+            "id": "01ce-spawned",
+            "cwd": "/home/jitsusama/spawned",
+            "quest": "QEST-20261103-SPAWNQ",
+            "from": "01ce-sender",
+            "focus": False,
+        }
+        handed = shlex.quote(json.dumps({"sessions": [spawned]}))
+        answer = desktop.as_account(f"qs ipc call sessions reopen {handed}").strip()
+        assert answer == "taken", answer
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json windows | grep -q 'pi --session 01ce-spawned'"),
+            timeout=dt.timedelta(seconds=300),
+        )
+
+        def where() -> int:
+            """Give the workspace the session started sits on."""
+            return next(
+                int(window["workspace_id"])
+                for window in desktop.windows()
+                if "pi --session 01ce-spawned" in (window["title"] or "")
+            )
+
+        deadline = time.monotonic() + 60
+        while where() != sender["workspace_id"] and time.monotonic() < deadline:
+            time.sleep(1)
+        assert where() == sender["workspace_id"], (
+            f"not on its sender's workspace {sender['workspace_id']} but {where()},"
+            f" Notes' being {notes['workspace_id']}"
+        )
+        windows, workspaces = focus_given(desktop)
+        assert set(windows) <= {notes["id"]}, windows
+        assert set(workspaces) <= {notes["workspace_id"]}, workspaces
+    finally:
+        desktop.as_account(
+            f"pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays {PI_PRESENCE}/sendqa.json"
+            f"; pkill -f 'sleep 60[0]'; kill $(cut -d' ' -f1 {owner}); rm -f {owner}; true"
+        )
+        desktop.as_account("rm -rf ~/first ~/spawned ~/.sendqa-pi ~/focus-events")
+
+
 def apart_as_kept(back: dict[str, tuple[int, int]]) -> bool:
     """Whether near and far sit as kept, far on the workspace next after near's.
 
