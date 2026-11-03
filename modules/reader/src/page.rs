@@ -792,7 +792,7 @@ mod tests {
     #[test]
     fn a_pages_headings_land_on_the_half_line() {
         let markdown = format!(
-            "# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
+            "---\nkind: page\n---\n# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
         );
         // The eyebrow says the folder the test's file is in.
         let (pitch, lines) = baselines("headings", &markdown, "PITCH", "Omega");
@@ -813,7 +813,8 @@ mod tests {
         let markdown = format!(
             "{OPENING}| Alpha | Wraps | Count |\n|---|---|---:|\n| one | a cell long enough that it wraps onto a second line in its column, however narrow the face its words are set in | 12 |\n| two | `code` in a cell | 3 |\n| three | short | Omega |\n"
         );
-        let (pitch, lines) = baselines("table", &markdown, "Alpha", "Omega");
+        // The heads are eyebrows, in capitals.
+        let (pitch, lines) = baselines("table", &markdown, "ALPHA", "Omega");
         let steps = steps(pitch, &lines);
         assert!(steps.len() >= 4, "too few lines: {steps:?}");
         assert!(
