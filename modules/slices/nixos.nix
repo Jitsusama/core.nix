@@ -138,12 +138,13 @@ let
   };
 
   # The programs Joel works in, and agents' sessions beside them, keep their
-  # memory while a build fills the rest. With a build taking all but 2 GiB of a 62 GiB laptop, a program in
-  # app.slice walking 2 GiB of its own took 45 ms a pass at the median and up
-  # to 338 ms, against 24 ms and 26 ms with memory free. A soft floor of
-  # 8 GiB, MemoryLow, brought that to 32 ms and 143 ms: the kernel still took
-  # it back. A hard one, MemoryMin, to 26 ms and 68 ms, and nothing was
-  # ended. The floor is a share of memory, so it scales with the machine.
+  # memory while a build fills the rest. With a build taking all but 2 GiB
+  # of a 62 GiB laptop, a program in app.slice walking 2 GiB of its own
+  # took 45 ms a pass at the median and up to 338 ms, against 24 ms and
+  # 26 ms with memory free. A soft floor of 8 GiB, MemoryLow, brought that
+  # to 32 ms and 143 ms: the kernel still took it back. A hard one,
+  # MemoryMin, to 26 ms and 68 ms, and nothing was ended. The floor is a
+  # share of memory, so it scales with the machine.
   # At 13%, 8.1 GiB, it held too little of what Joel works in: on 29 October,
   # with about 17 agents' sessions open, app.slice held 17.6 GiB, 8.4 of it in
   # swap. Under builds it read 1 GiB of that back from swap every two minutes
