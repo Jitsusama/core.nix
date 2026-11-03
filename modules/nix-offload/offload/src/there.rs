@@ -357,6 +357,14 @@ pub fn run(
                 "nix-offload: ssh lost {}, so this waits for a builder to stand again",
                 lent.host
             );
+            // A builder that stayed up goes on with what it was building, and
+            // the build sent again waits on that, so it says how it ends but
+            // shows none of its log: a VM test cut off mid-test on 2 November
+            // passed there, and only its exit said so.
+            eprintln!(
+                "nix-offload: if it stays up, what it was building goes on there, and this \
+                 shows only how it ends; `nix log` on the builder has the rest"
+            );
             match again().and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
                 None => break ran,
