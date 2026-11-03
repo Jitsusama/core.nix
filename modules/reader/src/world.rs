@@ -18,6 +18,10 @@ use typst_kit::fonts::{FontPath, FontStore};
 /// index in that file, and what Typst knows of it.
 type Faces = Vec<(PathBuf, u32, FontInfo)>;
 
+/// The book's form, raised whenever what it holds for the same folders
+/// changes.
+const BOOK: u32 = 2;
+
 /// The faces in `dirs`, read from the book kept for them when there is one,
 /// and otherwise scanned and kept. Scanning reads every face of every file,
 /// 30 MB for the reader's folders, which a build's memory pressure leaves
@@ -26,6 +30,9 @@ type Faces = Vec<(PathBuf, u32, FontInfo)>;
 /// and a folder changed in place is scanned again.
 fn faces(dirs: &[String]) -> Faces {
     let mut key = DefaultHasher::new();
+    // What a book holds, so one written before faces were listed under
+    // each of their family names is scanned again.
+    BOOK.hash(&mut key);
     for dir in dirs {
         dir.hash(&mut key);
         std::fs::metadata(dir)
@@ -51,7 +58,15 @@ fn faces(dirs: &[String]) -> Faces {
     let faces: Faces = dirs
         .iter()
         .flat_map(|dir| typst_kit::fonts::scan(Path::new(dir)))
-        .map(|(path, info)| (path.path, path.index, info))
+        .flat_map(|(path, info)| {
+            let named = std::fs::read(&path.path)
+                .ok()
+                .and_then(|data| family_names(&data, path.index))
+                .unwrap_or_default();
+            also_named(info, &named)
+                .into_iter()
+                .map(move |info| (path.path.clone(), path.index, info))
+        })
         .collect();
     if let (Some(book), Ok(text)) = (book, serde_json::to_vec(&faces)) {
         // Written whole and moved into place, so a reader starting beside
@@ -66,6 +81,49 @@ fn faces(dirs: &[String]) -> Faces {
         }
     }
     faces
+}
+
+/// Every family name a face's file gives it: its typographic family's,
+/// in each language and platform the file has, or its family's where it
+/// has none.
+fn family_names(data: &[u8], index: u32) -> Option<Vec<String>> {
+    let face = ttf_parser::Face::parse(data, index).ok()?;
+    let names = |id| -> Vec<String> {
+        face.names()
+            .into_iter()
+            .filter(|name| name.name_id == id)
+            .filter_map(|name| name.to_string())
+            .collect()
+    };
+    let typographic = names(ttf_parser::name_id::TYPOGRAPHIC_FAMILY);
+    Some(if typographic.is_empty() {
+        names(ttf_parser::name_id::FAMILY)
+    } else {
+        typographic
+    })
+}
+
+/// A face as Typst knows it, and again under each other family name its
+/// file gives it. Typst takes one name of several, where fontconfig, and
+/// so the theme, may know the face by another: a Nerd Font's files name
+/// both its long family and its short one.
+fn also_named(info: FontInfo, names: &[String]) -> Vec<FontInfo> {
+    let mut others: Vec<String> = names
+        .iter()
+        .filter(|name| !name.eq_ignore_ascii_case(&info.family))
+        .cloned()
+        .collect();
+    others.sort_by_key(|name| name.to_lowercase());
+    others.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    let mut all = Vec::with_capacity(others.len() + 1);
+    for family in others {
+        all.push(FontInfo {
+            family,
+            ..info.clone()
+        });
+    }
+    all.insert(0, info);
+    all
 }
 
 pub fn id(path: &str) -> FileId {
@@ -188,5 +246,55 @@ impl World for PageWorld {
 
     fn today(&self, _offset: Option<Duration>) -> Option<Datetime> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn info(family: &str) -> FontInfo {
+        let (_, info) = typst_kit::fonts::embedded()
+            .next()
+            .expect("Typst carries its own faces");
+        FontInfo {
+            family: family.into(),
+            ..info
+        }
+    }
+
+    #[test]
+    fn a_face_is_found_by_every_family_name_its_file_gives() {
+        let names = [
+            "Some Mono NF".to_string(),
+            "Some Mono Long Font".to_string(),
+        ];
+        let families: Vec<String> = also_named(info("Some Mono NF"), &names)
+            .into_iter()
+            .map(|info| info.family)
+            .collect();
+        assert_eq!(families, ["Some Mono NF", "Some Mono Long Font"]);
+    }
+
+    #[test]
+    fn a_face_named_once_is_kept_once() {
+        let names = ["Some Sans".to_string(), "some sans".to_string()];
+        assert_eq!(also_named(info("Some Sans"), &names).len(), 1);
+        assert_eq!(also_named(info("Some Sans"), &[]).len(), 1);
+    }
+
+    #[test]
+    fn a_files_family_names_are_read_from_it() {
+        let (face, info) = typst_kit::fonts::embedded()
+            .next()
+            .expect("Typst carries its own faces");
+        let names = family_names(face.data(), face.index()).expect("a face to parse");
+        assert!(
+            names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(&info.family)),
+            "{names:?} {}",
+            info.family
+        );
     }
 }
