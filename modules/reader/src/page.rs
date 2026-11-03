@@ -282,7 +282,19 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   if out > 0pt { pad(left: -out, right: -out, shown) } else { shown }
  })
 })
-#let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
+#let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, inset: 12pt, align(center + horizon, text(fill: ink.muted, hyphenate: false, alt)))
+// A picture standing alone is centred, as wide as it is up to the measure
+// and past it as far as a table spreads. Its height rounds up to the half
+// line so the words after it stay on the grid, and its alt text is its
+// caption, in the italic, muted and centred, a line under it.
+#let alone(body, caption) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, pad(left: -spread, right: -spread, layout(size => {
+  let shown = align(center, body)
+  let h = measure(block(width: size.width, shown)).height
+  block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, shown)
+  if caption != [] {
+    block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(style: "italic", fill: ink.muted, hyphenate: false, caption))))
+  }
+})))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true
 #let pic(path, alt, w) = if not pictures { picture(alt, 320pt, 160pt) } else {
