@@ -76,10 +76,10 @@ onLinux {
 
   # The reader draws a long page in the account's theme and takes Neovim's
   # keys: G goes to the end, gg to the top, 5j five lines, Ctrl+F a screen,
-  # Ctrl+O back, / finds and n goes on, Space ? lists the keys, Escape puts
-  # the list away and q closes it (tests/reader-takes-its-keys.sh). The
-  # page is on the theme's background, its heading in the strong text.
-  # Markdown files open in the reader.
+  # Ctrl+O back, Ctrl+Equal and Ctrl+0 zoom in and back, / finds and n goes
+  # on, Space ? lists the keys, Escape puts the list away and q closes it
+  # (tests/reader-takes-its-keys.sh). The page is on the theme's background,
+  # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
     let
       opens = graphical.config.xdg.mime.defaultApplications."text/markdown" or "";
@@ -107,18 +107,13 @@ onLinux {
             echo "Paragraph $n says enough to take a line or two of the page, so that every key here has somewhere to go."
           done
         } > page.md
-        timeout 300 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png > ran 2>&1 || true
+        timeout 300 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
+          '${srgb colours.strong}' > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran said 2> /dev/null; exit 1; fi
 
         at() { magick "$1" -format "%[pixel:p{$2}]" info:; }
-        many() {
-          magick "$1" -fill black +opaque "$2" -fill white -opaque "$2" \
-            -format '%[fx:round(mean*w*h)]' info:
-        }
         [ "$(at page.png 2,2)" = "${srgb colours.background}" ] \
           || { echo "the page is $(at page.png 2,2), not the theme's background"; exit 1; }
-        [ "$(many page.png '${srgb colours.strong}')" -gt 100 ] \
-          || { echo "the page's heading isn't drawn in the theme's strong text"; exit 1; }
         mkdir $out
         cp page.png $out
       '';

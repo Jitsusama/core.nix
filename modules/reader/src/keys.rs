@@ -53,6 +53,11 @@ pub enum Act {
     JumpBack,
     JumpForward,
     Close,
+    /// The page larger, smaller, or at its own size again, as a browser's
+    /// Ctrl+=, Ctrl+- and Ctrl+0.
+    ZoomIn,
+    ZoomOut,
+    ZoomBack,
     /// Lists every key here, as Space ? in Joel's Neovim.
     ShowKeys,
     /// Escape at rest: nothing was in progress. In a window it does
@@ -95,10 +100,14 @@ pub const TABLE: &[(&[Key], Act)] = &[
     (&[Char('Z'), Char('Z')], Act::Close),
     (&[Char(' '), Char('w')], Act::Close),
     (&[Char(' '), Char('?')], Act::ShowKeys),
+    (&[Ctrl('=')], Act::ZoomIn),
+    (&[Ctrl('+')], Act::ZoomIn),
+    (&[Ctrl('-')], Act::ZoomOut),
+    (&[Ctrl('0')], Act::ZoomBack),
 ];
 
 /// The key list's groups, in the order it shows them.
-pub const GROUPS: &[&str] = &["Moving", "Jumping", "Searching", "Marks", "Closing"];
+pub const GROUPS: &[&str] = &["Moving", "Jumping", "Searching", "Marks", "The Page"];
 
 /// What the key list says an act does, and its group, in the words his
 /// Neovim's key map uses: a sentence, as keys.nix's `does`. Acts that do
@@ -124,8 +133,11 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::Previous => ("Searching", "The match before"),
         Act::SetMark(_) => ("Marks", "Mark this place with a letter"),
         Act::GoToMark(_) => ("Marks", "Go to a letter's mark"),
-        Act::Close => ("Closing", "Close the page"),
-        Act::ShowKeys => ("Closing", "Show every key here"),
+        Act::ZoomIn => ("The Page", "Larger"),
+        Act::ZoomOut => ("The Page", "Smaller"),
+        Act::ZoomBack => ("The Page", "Back to its own size"),
+        Act::ShowKeys => ("The Page", "Show every key here"),
+        Act::Close => ("The Page", "Close the page"),
         Act::Left | Act::Right | Act::Rest => return None,
     })
 }
@@ -135,6 +147,10 @@ fn shown(key: Key) -> String {
     match key {
         Char(' ') => "Space".into(),
         Char(c) => c.to_string(),
+        // The keys a chord joins with +, by name, as the key map spells them.
+        Ctrl('=') => "Ctrl+Equal".into(),
+        Ctrl('+') => "Ctrl+Plus".into(),
+        Ctrl('-') => "Ctrl+Minus".into(),
         Ctrl(c) => format!("Ctrl+{}", c.to_ascii_uppercase()),
         Key::Escape => "Escape".into(),
         Key::Return => "Return".into(),
@@ -223,6 +239,7 @@ pub fn chords() -> Vec<(String, String, &'static str)> {
             let group = match group {
                 "Marks" => "jumping".to_string(),
                 "Moving" => "scrolling".to_string(),
+                "The Page" => "page".to_string(),
                 other => other.to_lowercase(),
             };
             Some((group, chord, does))
@@ -334,15 +351,15 @@ mod tests {
             .expect("Jumping")
             .1;
         assert!(jumping.iter().any(|(ways, _)| ways == &["gg"]));
-        let closing = &listing
+        let page = &listing
             .iter()
-            .find(|(group, _)| *group == "Closing")
-            .expect("Closing")
+            .find(|(group, _)| *group == "The Page")
+            .expect("The Page")
             .1;
+        assert!(page.iter().any(|(ways, _)| ways == &["q", "ZZ", "Space w"]));
         assert!(
-            closing
-                .iter()
-                .any(|(ways, _)| ways == &["q", "ZZ", "Space w"])
+            page.iter()
+                .any(|(ways, _)| ways == &["Ctrl+Equal", "Ctrl+Plus"])
         );
         assert!(listing.iter().all(|(_, rows)| !rows.is_empty()));
     }

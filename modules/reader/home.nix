@@ -71,7 +71,7 @@ let
   moving = key "scrolling";
   jumping = key "jumping";
   searching = key "searching";
-  closing = key "closing";
+  page = key "page";
   keys = [
     (moving "j" "Down a line")
     (moving "Down" "Down a line")
@@ -97,10 +97,14 @@ let
     (searching "?" "Search up the page")
     (searching "n" "The next match")
     (searching "N" "The match before")
-    (closing "q" "Close the page")
-    (closing "Z Z" "Close the page")
-    (closing "Space w" "Close the page")
-    (closing "Space ?" "Show every key here")
+    (page "Ctrl+Equal" "Larger")
+    (page "Ctrl+Plus" "Larger")
+    (page "Ctrl+Minus" "Smaller")
+    (page "Ctrl+0" "Back to its own size")
+    (page "Space ?" "Show every key here")
+    (page "q" "Close the page")
+    (page "Z Z" "Close the page")
+    (page "Space w" "Close the page")
   ];
 in
 {

@@ -929,6 +929,18 @@ impl App {
                 }
             }
             Act::Close => self.exit = true,
+            // A tenth larger or smaller a step, as a browser's, the view on
+            // the same words, within half and three times its own size.
+            Act::ZoomIn | Act::ZoomOut | Act::ZoomBack => {
+                let step = match act {
+                    Act::ZoomIn => 1.1_f64.powf(n),
+                    Act::ZoomOut => 1.1_f64.powf(-n),
+                    _ => 1.0 / self.zoom,
+                };
+                self.jump = None;
+                self.set_zoom((self.zoom * step).clamp(ZOOM_LEAST, ZOOM_MOST));
+                self.clamp();
+            }
             Act::SearchForward | Act::SearchBackward => {
                 self.typing = Some(search::Typing::new(
                     act == Act::SearchForward,
@@ -2094,6 +2106,10 @@ impl CompositorHandler for App {
 
 /// A key as the reader's table knows it: by what it types, so Colemak's
 /// letters are vi's, with Ctrl named apart since it changes what's typed.
+/// How far the page zooms: half its own size, and three times it.
+const ZOOM_LEAST: f64 = 0.5;
+const ZOOM_MOST: f64 = 3.0;
+
 fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
     Some(match event.keysym {
         Keysym::Escape => keys::Key::Escape,

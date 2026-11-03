@@ -2972,9 +2972,9 @@
       "name": "Searching"
     },
     {
-      "id": "shortcuts:reader:closing",
+      "id": "shortcuts:reader:page",
       "in": "shortcuts",
-      "name": "Closing"
+      "name": "The Page"
     },
     {
       "id": "shortcuts:zathura:turning",
