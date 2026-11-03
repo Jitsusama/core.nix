@@ -28,14 +28,42 @@ pub const WIDTH_PT: f64 = MEASURE_PT + 2.0 * SPREAD_PT;
 /// their capitals' height (Typst's top edge), so the margin is the gap.
 pub const TOP_PT: f64 = 24.0;
 
-/// The page's look, after its measure and margins (template).
+/// The page's line: 28 px, seven of Space's 4 px units, from one baseline
+/// to the next, and what j and k move by. Every baseline lands on a half
+/// of it.
+pub const PITCH_PT: f64 = 21.0;
+
+/// The page's look, after its measure, margins, size and line (template).
+///
+/// The words are the theme's serif, a variable face, at the axes it was
+/// drawn for at a reading size: optical size 14, half soft and without its
+/// wonky forms, at 380 (`text-axes`). Headings and ornaments take its
+/// poster's cut, optical size 144, fully soft and wonky (`display-axes`).
+/// Typst sets a face's optical size to the text's by itself, and every
+/// other axis from `variations`, the later winning, so these name all
+/// three. A line is a capital's height and the leading below it, so the
+/// leading is the pitch less the capitals, and a gap between paragraphs is
+/// said as baseline to baseline (`gap`).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
-#set text(font: face.text, size: 13.1pt, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), weight: 380)
-#set par(justify: false, linebreaks: "optimized", leading: 0.62em, spacing: 1.2em)
+#let text-axes = (opsz: 14, SOFT: 50, WONK: 0)
+#let display-axes = (opsz: 144, SOFT: 100, WONK: 1)
+#let half = pitch / 2
+#let gap(n) = n * pitch - cap
+#set text(font: face.text, size: body-size, weight: 380, variations: text-axes, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
+#set par(justify: false, linebreaks: "optimized", leading: pitch - cap, spacing: gap(1.5))
+// Strong is the words a step heavier, at 480, in the strong text: Typst's
+// own adds 300, which draws this face black.
+#set strong(delta: 100)
+#show strong: set text(fill: ink.strong)
 #show heading: set text(font: face.wide, weight: 700, fill: ink.strong, hyphenate: false)
+// A heading's lines keep their own leading, by their size, not the words'.
+#show heading: set par(leading: 0.62em)
 #show heading.where(level: 1): set text(size: 40pt)
 #show heading.where(level: 2): set text(size: 16.4pt)
-#show raw: set text(font: face.code, size: 11.5pt)
+// Code in his mono at 0.93 of the words, so its x-height meets theirs
+// (1035 and 964 of 2000), in the text's colour and with no box. Typst's
+// raw takes 0.8 em of its own, so the size is said whole.
+#show raw: set text(font: face.code, size: 0.93 * body-size)
 // A link's words in the strong text with a hairline under them, as his
 // Neovim sets a link, since a hue is a glyph's and never text's.
 #show link: it => underline(stroke: 0.75pt + ink.rule, offset: 2.5pt, text(fill: ink.strong, it))
@@ -127,7 +155,11 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
 })
-#let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, text(font: face.code, size: 11.5pt, body))
+#let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, {
+  // Code keeps its own line, by its size, not the words'.
+  set par(leading: 0.62em)
+  text(font: face.code, size: 11.5pt, body)
+})
 #let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true
@@ -139,13 +171,17 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 }
 "#;
 
-/// What every page is set with: the theme's ink, then the page's look.
-pub fn template() -> &'static str {
+/// What every page is set with: the theme's ink, then the page's look,
+/// its words' capitals read from the face `world` finds for them.
+pub fn template(world: &PageWorld) -> &'static str {
     static TEMPLATE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     TEMPLATE.get_or_init(|| {
+        let theme = crate::theme::get();
+        let size = theme.sizes.text;
+        let cap = world.capitals_pt(&theme.faces.text, size);
         format!(
-            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n{PAGE}",
-            ink = crate::theme::get().typst(),
+            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n{PAGE}",
+            ink = theme.typst(),
         )
     })
 }
@@ -178,10 +214,11 @@ pub fn new_world() -> PageWorld {
 const FIRST_CHARS: usize = 6000;
 
 /// The bottom margin the page ends on: Space's xxl below the last line's
-/// descenders, which hang 0.32 em of the body face below its baseline,
-/// where Typst ends a line. A page set from the file's first blocks lays
-/// out as the whole file's does down to here.
-pub const BOTTOM_PT: f64 = 28.2;
+/// descenders, which hang 0.245 em of the words' 13.69 pt below their
+/// baseline (a g's 490 of the serif's 2000), where Typst ends a line. A
+/// page set from the file's first blocks lays out as the whole file's does
+/// down to here.
+pub const BOTTOM_PT: f64 = 27.4;
 
 /// The file set as far as its first screen, and what sets the rest.
 pub struct First {
@@ -252,7 +289,7 @@ pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
     let program = timed(&mut parts, "walk", || {
         walk::program(&markdown, base, &pieces, &world, &mut costs)
     });
-    let (head, blocks) = walk::blocks(&program);
+    let (head, blocks) = walk::blocks(&program, &world);
     let mut first = head;
     let mut chars = 0;
     let mut all = true;
@@ -388,7 +425,8 @@ mod tests {
     use super::Setter;
 
     /// Every baseline from the first run holding `from` to the last holding
-    /// `to`, top to bottom, and the page's pitch from its first paragraph.
+    /// `to`, top to bottom, and the page's pitch from its first paragraph,
+    /// which is the page's line.
     fn baselines(name: &str, markdown: &str, from: &str, to: &str) -> (f64, Vec<f64>) {
         let dir = std::env::temp_dir().join(format!("reader-pitch-{}-{name}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("a folder");
@@ -404,6 +442,11 @@ mod tests {
         all.sort_by(f64::total_cmp);
         all.dedup_by(|a, b| (*a - *b).abs() < 0.01);
         let pitch = all[1] - all[0];
+        assert!(
+            (pitch - super::PITCH_PT).abs() < 0.01,
+            "the words step {pitch} pt, not the page's line of {} pt",
+            super::PITCH_PT
+        );
         let top = runs
             .iter()
             .filter(|run| text(run).contains(from))
@@ -438,6 +481,25 @@ mod tests {
     }
 
     const OPENING: &str = "The opening paragraph runs long enough to wrap onto a second line and a third, so the page's pitch can be read from its first two baselines without guessing at what Typst set.\n\n";
+
+    #[test]
+    fn the_words_land_on_the_pitch_a_paragraph_one_and_a_half() {
+        let markdown = format!(
+            "{OPENING}The second paragraph runs long enough to wrap onto a second line as well, so a step between paragraphs sits among steps between lines, at Omega.\n"
+        );
+        let (pitch, lines) = baselines("words", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        assert!(steps.len() >= 4, "too few lines: {steps:?}");
+        assert_eq!(
+            steps.iter().filter(|s| **s == 150).count(),
+            1,
+            "one step between paragraphs, of one and a half lines: {steps:?}"
+        );
+        assert!(
+            steps.iter().all(|s| *s == 100 || *s == 150),
+            "a line steps one pitch, a paragraph one and a half: {steps:?}"
+        );
+    }
 
     #[test]
     fn a_tables_lines_land_on_the_pitch() {

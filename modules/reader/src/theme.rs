@@ -1,12 +1,12 @@
 //! The theme's look, by role, which every surface the reader draws takes
 //! from: its colours for the page, its code, its diagrams, the prompt and
-//! the marks search lays over the page, and its faces for the text, the
-//! headings and code. The module writes them as a file under the
+//! the marks search lays over the page, its faces for the text, the
+//! headings and code, and the size its words are set at. The module writes them as a file under the
 //! configuration home, reader/theme.json, so a theme the account picks
 //! reaches the reader as it reaches everything else; `READER_THEME` names
 //! another file. The reader names no colour or face of its own: without a
 //! file it sets the page as Typst does by itself, dark ink on white paper
-//! in Typst's own faces.
+//! in Typst's own faces at Typst's own size.
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -48,11 +48,21 @@ pub struct Faces {
     pub code: String,
 }
 
+/// The sizes the reader sets at, in points, by what they're for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Sizes {
+    /// The page's words.
+    pub text: f64,
+}
+
 /// The face Typst sets in when nothing names one.
-const TYPSTS_OWN: &str = "libertinus serif";
+pub const TYPSTS_OWN: &str = "libertinus serif";
+
+/// The size Typst sets at when nothing names one.
+const TYPSTS_SIZE: f64 = 11.0;
 
 /// The roles the reader draws with, as the theme names them.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
     pub background: Colour,
     pub sunken: Colour,
@@ -64,6 +74,7 @@ pub struct Theme {
     pub accent: Colour,
     pub on_accent: Colour,
     pub faces: Faces,
+    pub sizes: Sizes,
     /// The theme as a `TextMate` theme, for code; two-face's Nord without one.
     pub code: Option<PathBuf>,
 }
@@ -88,6 +99,7 @@ impl Theme {
                 wide: TYPSTS_OWN.into(),
                 code: TYPSTS_OWN.into(),
             },
+            sizes: Sizes { text: TYPSTS_SIZE },
             code: None,
         }
     }
@@ -126,6 +138,14 @@ impl Theme {
                     *slot = family.to_string();
                 }
             }
+        }
+        if let Some(size) = roles
+            .get("sizes")
+            .and_then(|sizes| sizes.get("text"))
+            .and_then(serde_json::Value::as_f64)
+            .filter(|size| *size > 0.0)
+        {
+            theme.sizes.text = size;
         }
         theme.code = named("code").map(PathBuf::from);
         theme
@@ -190,6 +210,7 @@ mod tests {
             "background": paper.hex().to_uppercase(),
             "text": ink.hex(),
             "faces": {"text": "A Text Face", "code": "A Code Face"},
+            "sizes": {"text": 13.69},
             "code": "/a/theme.tmTheme",
         });
         let theme = Theme::read(&file.to_string());
@@ -202,6 +223,11 @@ mod tests {
         );
         assert_eq!(theme.faces.text, "A Text Face");
         assert_eq!(theme.faces.wide, Theme::plain().faces.wide);
+        assert!((theme.sizes.text - 13.69).abs() < 1e-9, "{:?}", theme.sizes);
+        assert!(
+            (Theme::plain().sizes.text - 11.0).abs() < 1e-9,
+            "without a size, Typst's own"
+        );
         assert_eq!(
             theme.code.as_deref(),
             Some(std::path::Path::new("/a/theme.tmTheme"))

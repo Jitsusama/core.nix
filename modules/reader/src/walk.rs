@@ -143,7 +143,7 @@ pub fn program(
 
     let t = Instant::now();
     let mut out = String::with_capacity(markdown.len() * 3);
-    out.push_str(crate::page::template());
+    out.push_str(crate::page::template(world));
     let mut walker = Walker {
         pieces,
         world,
@@ -159,8 +159,8 @@ pub fn program(
 }
 
 /// Each block of the program on its own, for setting the first screen alone.
-pub fn blocks(program: &str) -> (String, Vec<String>) {
-    let (head, body) = program.split_at(crate::page::template().len());
+pub fn blocks(program: &str, world: &PageWorld) -> (String, Vec<String>) {
+    let (head, body) = program.split_at(crate::page::template(world).len());
     (
         head.to_string(),
         body.split("\n// block\n").map(str::to_string).collect(),
