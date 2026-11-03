@@ -272,12 +272,10 @@ const FIRST_CHARS: usize = 6000;
 /// down to here.
 pub const BOTTOM_PT: f64 = 27.4;
 
-/// The eyebrow's words over the title: the file's name without its
-/// extension, and when it last changed.
+/// The eyebrow's words over the title: where the file lives, and when it
+/// last changed. The title says the file's own name.
 fn about(file: &std::path::Path) -> String {
-    let name = file
-        .file_stem()
-        .map_or_else(String::new, |stem| stem.to_string_lossy().into_owned());
+    let name = lives(file);
     let changed = std::fs::metadata(file)
         .and_then(|it| it.modified())
         .ok()
@@ -289,6 +287,29 @@ fn about(file: &std::path::Path) -> String {
         "{name} \u{b7} changed {}",
         when(&changed.to_zoned(zone), &now)
     )
+}
+
+/// Where a file lives: in a repository, its name and the folders down to
+/// the file, each after a middot; elsewhere, its folder's name.
+fn lives(file: &std::path::Path) -> String {
+    let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let Some(folder) = file.parent() else {
+        return String::new();
+    };
+    let named = |path: &std::path::Path| {
+        path.file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+    };
+    let Some(root) = folder.ancestors().find(|it| it.join(".git").exists()) else {
+        return named(folder);
+    };
+    let below = folder
+        .strip_prefix(root)
+        .unwrap_or(std::path::Path::new(""));
+    std::iter::once(named(root))
+        .chain(below.iter().map(|part| part.to_string_lossy().into_owned()))
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
 }
 
 /// When a file changed, as briefly as says it: a clock's time today, a day
@@ -524,6 +545,23 @@ mod tests {
     }
 
     #[test]
+    fn a_file_lives_in_its_repositorys_folders_or_else_its_own() {
+        let dir = std::env::temp_dir().join(format!("reader-lives-{}", std::process::id()));
+        let repo = dir.join("core.nix");
+        std::fs::create_dir_all(repo.join(".git")).expect("a repository");
+        std::fs::create_dir_all(repo.join("docs/notes")).expect("its folders");
+        std::fs::create_dir_all(dir.join("loose")).expect("a folder");
+        assert_eq!(lives(&repo.join("README.md")), "core.nix");
+        assert_eq!(lives(&repo.join("docs/design.md")), "core.nix \u{b7} docs");
+        assert_eq!(
+            lives(&repo.join("docs/notes/a.md")),
+            "core.nix \u{b7} docs \u{b7} notes"
+        );
+        assert_eq!(lives(&dir.join("loose/page.md")), "loose");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+    }
+
+    #[test]
     fn a_change_is_said_as_briefly_as_says_when() {
         let now = at(2026, 11, 3, 9, 40);
         assert_eq!(when(&at(2026, 11, 3, 9, 14), &now), "09:14");
@@ -624,7 +662,8 @@ mod tests {
         let markdown = format!(
             "# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
         );
-        let (pitch, lines) = baselines("headings", &markdown, "PAGE", "Omega");
+        // The eyebrow says the folder the test's file is in.
+        let (pitch, lines) = baselines("headings", &markdown, "PITCH", "Omega");
         let steps = steps(pitch, &lines);
         assert!(
             steps.iter().all(|s| s % 50 == 0),
