@@ -119,8 +119,11 @@
     # so a laptop started on a dock with its lid shut lit its own panel and
     # laid the monitor out beside it, then took the panel away 67 ms later.
     # The patch (lid-read-before-outputs.patch) asks logind whether the
-    # lid is shut before any screen connects, so a shut panel never is;
-    # the screens test starts with its stand-in lid shut to show it.
+    # lid is shut before any screen connects, so a shut panel never is,
+    # waiting a second at most; the screens test starts with its stand-in
+    # lid shut to show it. It doesn't cover a monitor that comes up only
+    # after niri has started, as one behind an MST hub can: until it does,
+    # niri has the shut panel alone and keeps it dark.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch

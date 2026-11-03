@@ -13,19 +13,22 @@ watchers carry on as before; when they report the same, nothing
 changes. If logind can't be asked, niri goes on as it did.
 
 diff --git a/src/dbus/freedesktop_login1.rs b/src/dbus/freedesktop_login1.rs
-index 5964d45..c945484 100644
+index 5964d45..3a4b93f 100644
 --- a/src/dbus/freedesktop_login1.rs
 +++ b/src/dbus/freedesktop_login1.rs
-@@ -6,6 +6,24 @@ pub enum Login1ToNiri {
+@@ -6,6 +6,27 @@ pub enum Login1ToNiri {
      LidClosedChanged(bool),
  }
  
 +/// Whether logind says the lid is shut now, asked and answered before niri goes on.
 +///
 +/// niri connects its outputs as it starts, before the watcher below first reports the lid, so
-+/// without this a shut laptop's panel was connected and taken away again a moment later.
++/// without this a shut laptop's panel was connected and taken away again a moment later. A
++/// logind that doesn't answer within a second holds the start no longer than that.
 +pub fn lid_closed() -> anyhow::Result<bool> {
-+    let conn = zbus::blocking::Connection::system()?;
++    let conn = zbus::blocking::connection::Builder::system()?
++        .method_timeout(std::time::Duration::from_secs(1))
++        .build()?;
 +    let proxy = zbus::blocking::fdo::PropertiesProxy::new(
 +        &conn,
 +        "org.freedesktop.login1",
