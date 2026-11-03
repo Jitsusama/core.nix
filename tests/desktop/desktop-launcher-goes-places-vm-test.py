@@ -4317,13 +4317,16 @@ def transcripts_listed(desktop: Desktop) -> None:
     desktop.type_in("transcripts", selecting="Transcripts")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Standup"])
-    things = desktop.showing()["things"]
-    assert [thing["side"] for thing in things] == ["call", "meeting"], things
-    for thing, length in zip(things, ["32 min", "15 min"], strict=True):
+    for name, side, length in [
+        ("Ada Lovelace", "call", "32 min"),
+        ("Standup", "meeting", "15 min"),
+    ]:
+        desktop.down_to(name)
+        selected = desktop.showing()["selected"]
+        assert selected["side"] == side, selected
         when = rf"(today|yesterday) \d\d:\d\d \u00b7 {length}"
-        assert re.fullmatch(when, thing["note"]), thing
+        assert re.fullmatch(when, selected["note"]), selected
     # Its drawer holds its summary, else how its transcript opens.
-    desktop.down_to("Standup")
     drawer = desktop.showing()["selected"]["drawer"]
     assert drawer["body"] == "\u2022 Ship it on Friday", drawer
     # Inside, what can be done with it, Copy the Path last.
@@ -4338,7 +4341,7 @@ def transcripts_listed(desktop: Desktop) -> None:
 
 
 def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
-    """See Ada's Recent hold the call with her, and Standup offer its transcript after See It."""
+    """See Ada's Recent hold the call with her, and Standup offer its transcript."""
     desktop.answer("ada lovelace")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
@@ -4355,10 +4358,12 @@ def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
         lambda shown: (shown["selected"] or {}).get("is") == "calendar:meeting:standup"
     )
     desktop.step_in()
+    # See It leads, as Return's own act; the transcript comes after the
+    # ways to reach the meeting and before Joel's answers.
     desktop.launcher_until(
         lambda shown: (
-            "Open the Transcript" in shown["rows"]
-            and shown["rows"].index("Open the Transcript") == shown["rows"].index("See It") + 1
+            shown["rows"][:5]
+            == ["See It", "Join the Meeting", "Write to the Guests", "Open the Transcript", "Going"]
         )
     )
 
@@ -4377,12 +4382,15 @@ def test_the_transcripts_list_each_call_written_down_and_return_opens_it_in_the_
         machine.wait_until_fails(
             desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
         )
-        reading = f"pgrep -u {desktop.account} -f '[r]eader .*/Calls/ada/transcript.md'"
-        machine.wait_until_succeeds(reading, timeout=dt.timedelta(seconds=60))
-        machine.wait_until_succeeds(
-            desktop.in_session('niri msg --json focused-window | grep -q \'"app_id":"reader"\''),
-            timeout=dt.timedelta(seconds=60),
+        reading = desktop.in_session(
+            'niri msg --json focused-window | grep -q \'"app_id":"reader"\''
         )
+        machine.wait_until_succeeds(reading, timeout=dt.timedelta(seconds=60))
+        # What it reads is Ada's call's transcript, as niri's window says by
+        # the program it runs.
+        window = json.loads(desktop.as_account("niri msg --json focused-window"))
+        ran = machine.succeed(f"tr '\\0' ' ' < /proc/{window['pid']}/cmdline")
+        assert "/Calls/ada/transcript.md" in ran, ran
         machine.send_key("q")
         machine.wait_until_fails(reading, timeout=dt.timedelta(seconds=10))
         found_with_ada_and_in_standup(desktop, ada)
