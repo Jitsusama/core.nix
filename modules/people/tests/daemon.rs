@@ -1,7 +1,9 @@
 //! The daemon over its socket, with stand-in sources of its own: a get is
 //! a step-in, answered within its patience; a watch asks ahead, says what's
 //! held, then each change, a burst gathered into one, and how a source
-//! stands once that changes; a source signed out is never waited on; one that stops is started again and asked again
+//! stands once that changes; a source signed out is never waited on, and
+//! once back, as one that put someone off is, is asked again about
+//! everyone watched; one that stops is started again and asked again
 //! about everyone watched; a roster is searched and watched by who it
 //! lists; and an ask or kind it doesn't know is refused.
 
@@ -36,6 +38,30 @@ done
 /// A source whose sign-in is refused, as slack-people says it.
 const SIGNED_OUT: &str = r#"
 while read -r line; do echo '{"signedOut":true}'; done
+"#;
+
+/// A source that can't answer until `$log.in` is there, saying so as
+/// `UNABLE` says, later for each address or else signed out, then knows
+/// everyone by their address, as vault-people does once pi signs in or
+/// Vault is reached again. Grace it knows all along, as vault-people
+/// says someone it kept. Each line is logged once it's answered, so a
+/// test that sees it logged knows how it was answered.
+const RECOVERING: &str = r#"
+log=$1
+while read -r line; do
+  case $line in
+    '?'*) address=${line#?} ;;
+    *) address=$line ;;
+  esac
+  if [ -e "$log.in" ] || [ "$address" = grace@example.com ]; then
+    printf '{"email":"%s","name":"%s"}\n' "$address" "${address%@*}"
+  elif [ "$UNABLE" = later ]; then
+    printf '{"email":"%s","later":true}\n' "$address"
+  else
+    echo '{"signedIn":false}'
+  fi
+  printf '%s\n' "$line" >> "$log"
+done
 "#;
 
 /// A source that answers one line, then stops, as a crash would.
@@ -288,11 +314,77 @@ fn a_watch_hears_a_source_sign_out_as_it_says_so() {
         assert!(Instant::now() < deadline, "slack never started");
         std::thread::sleep(Duration::from_millis(20));
     }
-    client.ask(&json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]}));
+    writeln!(
+        client.stream,
+        "{}",
+        json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]})
+    )
+    .unwrap();
     // The ask ahead has it say it's signed out, which the watch hears
-    // without asking, as a client learns a sign-in went.
-    let said = client.next();
-    assert_eq!(said, json!({"id": 2, "sources": {"slack": "signed-out"}}));
+    // without asking, as a client learns a sign-in went. The source may
+    // say so before the watch is answered, so either comes first.
+    let said = [client.next(), client.next()];
+    let pushed = json!({"id": 2, "sources": {"slack": "signed-out"}});
+    assert!(said.contains(&pushed), "{said:?}");
+    assert!(
+        said.iter().any(|line| line.get("records").is_some()),
+        "{said:?}"
+    );
+}
+
+/// A source that put Ada off as she was watched, signed out or saying
+/// later, is asked about her again, by nobody asking, once it says who
+/// someone else is; and only about her, never about Grace, whom it
+/// answered, so someone it says while still unable to answer the rest
+/// asks it again once, not over and over.
+fn a_source_back_is_asked_again_about_everyone_watched(test: &str, unable: &str) {
+    let script = format!("UNABLE={unable}\n{RECOVERING}");
+    let running = Running::with(test, &[("vault", &script)]);
+    let mut watching = running.client();
+    watching.ask(&json!({"id": 1, "ask": "watch", "keys": [
+        "person:ada@example.com", "person:grace@example.com"]}));
+    until("Ada was never asked again after Grace", || {
+        running.asked("vault") == ["?ada@example.com", "?grace@example.com", "?ada@example.com"]
+    });
+    std::fs::write(running.folder.join("vault.log.in"), "").unwrap();
+    // Joel steps into Eve, and the source says who she is: it's back.
+    // One signed out isn't waited on, so the step-in may answer first.
+    running
+        .client()
+        .ask(&json!({"id": 2, "ask": "get", "keys": ["person:eve@example.com"], "patience": 5000}));
+    loop {
+        let changed = watching.changed();
+        let ada = changed["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|record| record["key"] == "person:ada@example.com")
+            .cloned();
+        if let Some(ada) = ada {
+            assert_eq!(ada["sources"]["vault"]["name"], "ada", "{ada}");
+            break;
+        }
+    }
+    until("Ada was never asked ahead again, or Grace was", || {
+        running.asked("vault")
+            == [
+                "?ada@example.com",
+                "?grace@example.com",
+                "?ada@example.com",
+                "eve@example.com",
+                "?ada@example.com",
+            ]
+    });
+}
+
+#[test]
+fn a_source_signed_out_and_back_is_asked_again_about_everyone_watched() {
+    a_source_back_is_asked_again_about_everyone_watched("back-in", "signed-out");
+}
+
+#[test]
+fn a_source_that_said_later_and_answers_again_is_asked_again_about_everyone_watched() {
+    a_source_back_is_asked_again_about_everyone_watched("back-later", "later");
 }
 
 #[test]

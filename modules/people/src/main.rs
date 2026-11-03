@@ -16,7 +16,9 @@
 //! once, then each change, gathered and said at most four times a second,
 //! so a burst of answers is one change to the client, and how every
 //! source stands, `{"id", "sources"}` as hello says it, whenever that
-//! changes.
+//! changes. Each address is asked ahead once while a source runs; one a
+//! source couldn't answer, signed out or saying later, is asked again
+//! once that source next says who someone is.
 //!
 //! A source whose first line is `{"roster": true}`, as Tuple's is, says
 //! everyone it knows without being asked, thousands of them, and is never
@@ -35,7 +37,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use people::{Ask, Book, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
+use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -81,6 +83,9 @@ struct Daemon {
     inputs: HashMap<String, ChildStdin>,
     /// Each source's addresses asked ahead while it has run this time.
     ahead: HashMap<String, HashSet<String>>,
+    /// Each source's addresses it said later of, to be asked again once
+    /// it says who someone is.
+    put_off: HashMap<String, HashSet<String>>,
     /// The addresses a get waits on, each with how many wait on it, so a
     /// source that starts while one waits is asked too.
     stepping: HashMap<String, usize>,
@@ -122,6 +127,7 @@ fn main() {
             book: Book::of(&names),
             inputs: HashMap::new(),
             ahead: HashMap::new(),
+            put_off: HashMap::new(),
             stepping: HashMap::new(),
             watches: Vec::new(),
             took: VecDeque::new(),
@@ -219,13 +225,8 @@ fn run(shared: &Shared, source: &Source) {
                         tell(&mut daemon, std::slice::from_ref(&source.name), address);
                     }
                     // Everyone watched is asked about again.
-                    let watched: Vec<String> = daemon
-                        .watches
-                        .iter()
-                        .filter_map(|watch| watch.keys.as_ref())
-                        .flatten()
-                        .cloned()
-                        .collect();
+                    daemon.put_off.remove(&source.name);
+                    let watched = watched(&daemon);
                     ask_ahead(&mut daemon, &watched);
                 }
                 if let Some(stdout) = stdout {
@@ -268,6 +269,29 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
     let mut daemon = lock(shared);
     let stood = standings(&daemon);
     let heard = heard(line);
+    // A source back, saying who someone is after it stood signed out or
+    // refused, or after it put someone off, never said who anyone asked
+    // ahead meanwhile was, nor will unasked: they're asked again.
+    let back = match &heard {
+        Heard::Person { .. } => {
+            matches!(
+                daemon.book.standings().get(source),
+                Some(Standing::SignedOut | Standing::Refused(_))
+            ) || daemon
+                .put_off
+                .get(source)
+                .is_some_and(|put| !put.is_empty())
+        }
+        Heard::Later { address } => {
+            daemon
+                .put_off
+                .entry(source.to_owned())
+                .or_default()
+                .insert(address.clone());
+            false
+        }
+        _ => false,
+    };
     // Whether they were listed before, so a watch of the listed hears of
     // one who stops being.
     let was_listed = daemon
@@ -290,7 +314,42 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
         }
     }
     tell_standings(&daemon, &stood);
+    if back {
+        daemon.put_off.remove(source);
+        // Only those it hasn't said, since one it said may be all it can
+        // say yet, as someone kept is, and asking it again about everyone
+        // would have it say them again, and be back again, without end.
+        let unsaid: Vec<String> = watched(&daemon)
+            .into_iter()
+            .filter(|key| {
+                !daemon
+                    .book
+                    .record(key)
+                    .is_some_and(|record| record.sources.contains_key(source))
+            })
+            .collect();
+        if let Some(ahead) = daemon.ahead.get_mut(source) {
+            for key in &unsaid {
+                if let Some(address) = address(key) {
+                    ahead.remove(address);
+                }
+            }
+        }
+        ask_ahead_of(&mut daemon, &[source.to_owned()], &unsaid);
+    }
     shared.1.notify_all();
+}
+
+/// Everyone a watch names, as a source is asked ahead about once it can
+/// answer again.
+fn watched(daemon: &Daemon) -> Vec<String> {
+    daemon
+        .watches
+        .iter()
+        .filter_map(|watch| watch.keys.as_ref())
+        .flatten()
+        .cloned()
+        .collect()
 }
 
 /// Tells every watch how each source stands, once that's no longer as
@@ -325,6 +384,12 @@ fn tell(daemon: &mut Daemon, sources: &[String], line: &str) {
 /// Asks each running source ahead about each key it hasn't been asked.
 fn ask_ahead(daemon: &mut Daemon, keys: &[String]) {
     let sources: Vec<String> = daemon.inputs.keys().cloned().collect();
+    ask_ahead_of(daemon, &sources, keys);
+}
+
+/// Asks these sources ahead about each of the keys none has been asked
+/// ahead about while it has run this time.
+fn ask_ahead_of(daemon: &mut Daemon, sources: &[String], keys: &[String]) {
     for source in sources {
         let fresh: Vec<String> = keys
             .iter()
@@ -339,7 +404,7 @@ fn ask_ahead(daemon: &mut Daemon, keys: &[String]) {
             .map(|address| format!("?{address}"))
             .collect();
         for line in fresh {
-            tell(daemon, std::slice::from_ref(&source), &line);
+            tell(daemon, std::slice::from_ref(source), &line);
         }
     }
 }
