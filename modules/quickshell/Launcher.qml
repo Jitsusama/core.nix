@@ -614,29 +614,66 @@ Scope {
     property var spots: []
     property bool spotsMade: false
 
+    // Each held thing's spots as last made, by where it's held
+    // (`computer/sound`, `home/machine:disk`), with how many times its
+    // source had changed then (changesIn), so a closing makes again only
+    // those whose source changed since. It made all of them each time:
+    // Sound's 111 rows on every closing of Joel's, with no change to Sound
+    // (2026-11-03). What the last making made and kept, for the closing's
+    // report.
+    property var spotsKept: ({})
+    property var spotsSaid: ({ made: [], kept: [] })
+
     // An answer's parts are spots too, as Battery's Health is, from the
     // answers a place holds and those home is, such as Disk: asked already
-    // as their places are made, so finding them asks nothing more.
+    // as their places are made, so finding them asks nothing more. Each
+    // place's collections' spots come before its answers'.
     function spotsFrom() {
+        const kept = {};
+        const said = { made: [], kept: [] };
+        const piece = (where, id, make) => {
+            const name = Words.of(id).provider ?? id;
+            const stamp = sources.some(one => one.settings.name === name)
+                ? root.changesIn[name] ?? 0 : -1;
+            const before = root.spotsKept[where];
+            const same = before !== undefined && before.stamp === stamp;
+            kept[where] = same ? before : Object.assign({ stamp: stamp }, make());
+            (same ? said.kept : said.made).push(where);
+            return kept[where];
+        };
         let out = [];
         for (const shown of categories) {
-            const held = members(shown.category);
-            const collections = held.filter(row => row.from
-                && spotCollections.includes(row.opens));
-            for (const collection of collections)
-                for (const thing of collection.verbs())
-                    for (const part of (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing)))
-                        if (isSpot(part))
-                            out.push(spotOf(part, [shown, collection, thing]));
-            for (const said of held.filter(row => row.answered))
-                out = out.concat(answerSpots(said, [shown, said]));
+            const pieces = holdings(shown.category).filter(id => !root.placeNamed(id))
+                .map(id => piece(`${shown.category.id}/${id}`, id,
+                    () => root.heldSpots(shown, id)));
+            for (const each of pieces.filter(one => !one.answers))
+                out = out.concat(each.spots);
+            for (const each of pieces.filter(one => one.answers))
+                out = out.concat(each.spots);
         }
-        for (const id of Words.home.filter(one => !placeNamed(one))) {
-            const place = answerPlace(id);
-            if (place && place.answered)
-                out = out.concat(answerSpots(place, [place]));
-        }
+        for (const id of Words.home.filter(one => !root.placeNamed(one)))
+            out = out.concat(piece(`home/${id}`, id, () => {
+                const place = root.answerPlace(id);
+                return { answers: true,
+                    spots: place && place.answered ? root.answerSpots(place, [place]) : [] };
+            }).spots);
+        spotsKept = kept;
+        spotsSaid = said;
         return out;
+    }
+
+    // The spots of one thing a place holds: a device collection's, each
+    // thing's parts, or an answer's parts.
+    function heldSpots(shown, id) {
+        const row = resolved(id);
+        const spots = [];
+        if (row && row.from && spotCollections.includes(row.opens))
+            for (const thing of row.verbs())
+                for (const part of (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing)))
+                    if (isSpot(part))
+                        spots.push(spotOf(part, [shown, row, thing]));
+        const answers = !!row && row.answered === true;
+        return { answers: answers, spots: answers ? answerSpots(row, [shown, row]) : spots };
     }
 
     // What's asked whole at the top, by any thing's words: a part named
@@ -3855,7 +3892,7 @@ Scope {
         freshen();
         spots = spotsFrom();
         spotsMade = true;
-        Report.say("spots made while closed");
+        Report.say(`spots made while closed ${JSON.stringify(spotsSaid)}`);
     }
 
     // So is every text a collection's search looks through, which each
