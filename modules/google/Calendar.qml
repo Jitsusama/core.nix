@@ -209,7 +209,8 @@ Singleton {
 
     // Its acts, in the one order every surface lists them (VKCF3Z's
     // design, RSCH-20261028-2NK1E5): Join the Meeting when it has a call,
-    // Write to the Guests when anyone else is asked, See It, then, for an
+    // Write to the Guests when anyone else is asked, See It, Open the
+    // Transcript once its call has been written down, then, for an
     // invitation, Going, Maybe and Not Going, inline since answering is
     // what's done most after joining, each keeping the launcher, the one
     // he gave noted as his answer; for one Google lets him
@@ -244,6 +245,9 @@ Singleton {
                 run: () => Niri.spawn(["google-opens", writing])
             }));
         rows.push(root.seeing(meeting, provider));
+        const transcript = root.transcribing(meeting, provider);
+        if (transcript)
+            rows.push(transcript);
         if (root.invited(meeting))
             for (const said of ["yes", "maybe", "no"])
                 rows.push(root.answering(meeting, provider, said));
@@ -259,6 +263,32 @@ Singleton {
         if (meeting.link || meeting.page)
             rows.push(root.linking(meeting, provider));
         return rows;
+    }
+
+    // Open the Transcript, for a meeting whose call call-transcripts wrote
+    // down: it opens the transcript in the reader, closing the launcher,
+    // as Return on the call's own row does, its summary or how it opens
+    // in the drawer beside it. It's asked of any provider holding `transcriptOf`
+    // (call-transcripts' Transcribed.qml), so a machine without
+    // call-transcripts offers none; nor does a call with nothing yet
+    // written.
+    function transcribing(meeting, provider) {
+        const calls = (provider.launcher?.sources ?? []).find(source => typeof source.transcriptOf
+            === "function");
+        const call = calls ? calls.transcriptOf(meeting.id) : null;
+        if (!call || call.verb === "more")
+            return null;
+        const key = "verb:calendar:transcript";
+        return provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            later: true,
+            run: call.run,
+            drawer: call.drawer
+        });
     }
 
     // Guests steps in to who holds it, unless that's Joel, and then each

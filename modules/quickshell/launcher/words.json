@@ -3731,6 +3731,7 @@
       "name": "People",
       "noun": "people",
       "glyph": "people",
+      "parts": ["transcripts"],
       "ask": "who?",
       "empty": "Nobody you've met or written lately."
     },
@@ -3874,6 +3875,70 @@
       "name": "Recent",
       "verb": "more",
       "glyph": "recent"
+    },
+    {
+      "id": "transcripts",
+      "in": "people",
+      "name": "Transcripts",
+      "term": "Programs/transcript",
+      "noun": "transcripts",
+      "what": "transcript",
+      "glyph": "lines",
+      "ask": "which transcript?",
+      "empty": "No calls written down yet."
+    },
+    {
+      "id": "transcript",
+      "in": "transcripts",
+      "name": "Transcript",
+      "verb": "open",
+      "glyph": "lines",
+      "states": {
+        "untitled": {
+          "name": "Call With {who}"
+        },
+        "unknown": {
+          "name": "Call at {time}"
+        }
+      },
+      "said": {
+        "meeting": "meeting",
+        "person": "call",
+        "call": "call",
+        "writing": "being written down",
+        "on": "not written down"
+      }
+    },
+    {
+      "id": "transcript:length",
+      "in": "transcript",
+      "name": "Length"
+    },
+    {
+      "id": "transcript:with",
+      "in": "transcript",
+      "name": "With"
+    },
+    {
+      "id": "verb:transcript:open",
+      "in": "transcript",
+      "name": "Open the Transcript",
+      "verb": "open",
+      "glyph": "lines"
+    },
+    {
+      "id": "verb:transcript:folder",
+      "in": "transcript",
+      "name": "Open Its Folder",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:transcript:copy",
+      "in": "transcript",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "tuple",
@@ -4580,6 +4645,13 @@
       "name": "See It",
       "verb": "see",
       "glyph": "meetingDetails"
+    },
+    {
+      "id": "verb:calendar:transcript",
+      "in": "calendar:meeting",
+      "name": "Open the Transcript",
+      "verb": "open",
+      "glyph": "lines"
     },
     {
       "id": "verb:calendar:guests",

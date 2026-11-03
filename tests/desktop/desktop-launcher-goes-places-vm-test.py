@@ -4259,6 +4259,138 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def written_down(desktop: Desktop, folder: str, meta: Json, files: dict[str, str]) -> None:
+    """Leave a call in the Calls folder as call-transcripts leaves one: its meta.json and files."""
+    folder = f"~/Documents/Calls/{folder}"
+    desktop.as_account(f"mkdir -p {folder}")
+    for name, text in {"meta.json": json.dumps(meta), **files}.items():
+        desktop.as_account(f"printf '%s\\n' {shlex.quote(text)} > {folder}/{name}")
+
+
+def calls_written_down(desktop: Desktop) -> str:
+    """Leave Standup's call, summed up, and one with Ada, and have call-transcripts read them.
+
+    It reads the calls back from their folders as it starts, as it does after a restart, since
+    no call can be made here. It gives the key of Ada's.
+    """
+    now = int(desktop.as_account("date +%s%3N"))
+    hour, minute = 3_600_000, 60_000
+    transcript = "# Transcript\n\n**Joel**, 0:00: Shall we ship it?\n\n**Others**, 0:03: Friday."
+    standup = {
+        "key": "call:standup",
+        "title": "Standup",
+        "started": now - 3 * hour,
+        "ended": now - 3 * hour + 15 * minute,
+        "event": "standup",
+        "person": None,
+    }
+    ada = {
+        "key": f"call:person:ada@example.com:{now - 2 * hour}",
+        "title": "Ada Lovelace",
+        "started": now - 2 * hour,
+        "ended": now - 2 * hour + 32 * minute,
+        "event": None,
+        "person": "ada@example.com",
+    }
+    written_down(
+        desktop,
+        "standup",
+        standup,
+        {"transcript.md": transcript, "summary.md": "- Ship it on Friday"},
+    )
+    written_down(desktop, "ada", ada, {"transcript.md": transcript})
+    desktop.as_account("systemctl --user restart call-transcripts.service")
+    desktop.machine.wait_until_succeeds(
+        "test -S /run/user/1000/daemons/calls.sock", timeout=dt.timedelta(seconds=30)
+    )
+    return str(ada["key"])
+
+
+def transcripts_listed(desktop: Desktop) -> None:
+    """See People's Transcripts list the calls, each its words, its drawer and its acts."""
+    machine = desktop.machine
+    # People holds Transcripts, which lists them newest first, each
+    # saying what it was and when, and how long it went on.
+    desktop.answer("people")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "People")
+    desktop.step_in()
+    desktop.type_in("transcripts", selecting="Transcripts")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Standup"])
+    things = desktop.showing()["things"]
+    assert [thing["side"] for thing in things] == ["call", "meeting"], things
+    for thing, length in zip(things, ["32 min", "15 min"], strict=True):
+        when = rf"(today|yesterday) \d\d:\d\d \u00b7 {length}"
+        assert re.fullmatch(when, thing["note"]), thing
+    # Its drawer holds its summary, else how its transcript opens.
+    desktop.down_to("Standup")
+    drawer = desktop.showing()["selected"]["drawer"]
+    assert drawer["body"] == "\u2022 Ship it on Friday", drawer
+    # Inside, what can be done with it, Copy the Path last.
+    desktop.step_in()
+    acts = ["Open the Transcript", "Open Its Folder", "Copy the Path"]
+    desktop.launcher_until(lambda shown: shown["rows"] == acts)
+    machine.send_key("left")
+    desktop.down_to("Ada Lovelace")
+    drawer = desktop.showing()["selected"]["drawer"]
+    assert drawer["body"].startswith("<b>Joel</b>, 0:00: Shall we ship it?"), drawer
+    assert drawer["facts"][-1] == {"label": "With", "value": "Ada Lovelace"}, drawer
+
+
+def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
+    """See Ada's Recent hold the call with her, and Standup offer its transcript after See It."""
+    desktop.answer("ada lovelace")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
+    )
+    desktop.step_in("ret")
+    desktop.down_to("Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Ada Lovelace" in shown["rows"])
+    things = desktop.showing()["things"]
+    assert any(thing["is"] == f"transcript:{ada}" for thing in things), things
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.answer("standup")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "calendar:meeting:standup"
+    )
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            "Open the Transcript" in shown["rows"]
+            and shown["rows"].index("Open the Transcript") == shown["rows"].index("See It") + 1
+        )
+    )
+
+
+@pytest.mark.usefixtures("google")
+def test_the_transcripts_list_each_call_written_down_and_return_opens_it_in_the_reader(
+    desktop: Desktop,
+) -> None:
+    """Each call written down is a transcript, in Transcripts, a person's Recent and its meeting."""
+    machine = desktop.machine
+    try:
+        ada = calls_written_down(desktop)
+        transcripts_listed(desktop)
+        # Return opens its transcript in the reader, leaving the launcher.
+        machine.send_key("ret")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+        reading = f"pgrep -u {desktop.account} -f '[r]eader .*/Calls/ada/transcript.md'"
+        machine.wait_until_succeeds(reading, timeout=dt.timedelta(seconds=60))
+        machine.wait_until_succeeds(
+            desktop.in_session('niri msg --json focused-window | grep -q \'"app_id":"reader"\''),
+            timeout=dt.timedelta(seconds=60),
+        )
+        machine.send_key("q")
+        machine.wait_until_fails(reading, timeout=dt.timedelta(seconds=10))
+        found_with_ada_and_in_standup(desktop, ada)
+    finally:
+        desktop.as_account("rm -rf ~/Documents/Calls/standup ~/Documents/Calls/ada")
+        desktop.as_account("systemctl --user restart call-transcripts.service")
+
+
 @pytest.mark.usefixtures("google")
 def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: Desktop) -> None:
     """Docs' Recent lists what Joel opened lately, as search finds it, and Return opens it."""

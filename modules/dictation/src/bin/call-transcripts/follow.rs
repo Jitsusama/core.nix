@@ -188,6 +188,7 @@ fn start(
         event: on.event,
         person: on.person,
         transcript: None,
+        opening: None,
         summary: None,
         transcribing: true,
     });

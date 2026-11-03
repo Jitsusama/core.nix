@@ -26,7 +26,14 @@
 #
 # The shell reads the calls from the service, over
 # $XDG_RUNTIME_DIR/daemons/calls.sock in the shell's daemon interface,
-# never from the folder.
+# never from the folder (Transcripts.qml). Each call is a thing in the
+# launcher, in its Transcripts (Transcribed.qml): Return opens its
+# transcript in the reader, and inside it can be opened, its folder
+# opened or its path copied, its summary or how it opens in the drawer.
+# It's in the Recent of whoever a Tuple call was with
+# (TranscriptSource.qml), and a meeting whose call was written down
+# offers Open the Transcript.
+{ people, quickshell }:
 {
   config,
   lib,
@@ -38,6 +45,29 @@ let
   model = pkgs.callPackage ../dictation/parakeet.nix { };
 in
 {
+  imports = [
+    people
+    quickshell
+  ];
+
+  xdg.configFile = {
+    "quickshell/Transcripts.qml".source = ./Transcripts.qml;
+    "quickshell/Transcripts.js".source = ./Transcripts.js;
+  };
+
+  # Just after Tuple's calls, since a transcript is what a call leaves.
+  jitsusama.quickshell.launcher.providers.transcripts = {
+    order = 46;
+    source = ./Transcribed.qml;
+  };
+
+  # After the programs that know who someone is, since it knows nobody of
+  # its own and only lists what was said with them.
+  jitsusama.people.sources.transcripts = {
+    order = 40;
+    source = ./TranscriptSource.qml;
+  };
+
   # What Whisper compiled for calls before they moved to Parakeet, 0.9 GB
   # that nothing reads any more. Kept until no machine still has it.
   systemd.user.tmpfiles.rules = [ "R %C/call-transcripts/whisper - - - -" ];

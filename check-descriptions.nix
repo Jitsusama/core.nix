@@ -1708,6 +1708,12 @@
     it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
     meeting and says how one asked for stands
   '';
+  the-shell-reads-the-transcripts = ''
+    the shell says what each call written down was, when it was in words and how long it went on,
+    or that it's being written down; sets its summary or its transcript's opening from markdown as
+    styled text, nothing it said read as markup; says who it was with; and lists the calls newest
+    first, those with someone by any of their addresses, and a meeting's own
+  '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
