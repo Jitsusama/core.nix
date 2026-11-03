@@ -26,9 +26,11 @@ JOBS = f"{ACCOUNT}/jobs.slice"
 TIMED = f"{JOBS}/jobs-timed.slice"
 WORK = f"{JOBS}/jobs-work.slice"
 MIB = 2**20
-# The memory shares the module keeps for apps, and for every slice above them.
-APPS_SHARE = 0.20
-ABOVE_SHARE = 0.25
+# The memory shares the module keeps for apps, for agents' sessions beside them, and for
+# every slice above both.
+APPS_SHARE = 0.10
+AGENTS_SHARE = 0.15
+ABOVE_SHARE = 0.30
 SESSION_FLOOR = 2560 * MIB
 # The share of memory past which work in jobs is slowed.
 JOBS_HIGH = 0.5
@@ -131,7 +133,7 @@ def account(started: None, machine: BaseMachine, values: dict[str, Any]) -> Acco
     del started
     machine.wait_for_unit("user@1000.service")
     held = Account(machine, values)
-    for name in ["app", "session", "background"]:
+    for name in ["app", "agents", "session", "background"]:
         held.hold(name)
     machine.succeed(f"systemd-run --slice=machine.slice --unit=in-machine {held.sleep} infinity")
     machine.wait_for_unit("in-machine.service")
@@ -201,10 +203,11 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 
 
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
-    """Apps keep a hard share of memory, and every slice above more."""
+    """Apps and agents' sessions keep hard shares of memory, and every slice above more."""
     total = account.memory()
     for path, share in [
         (f"{ACCOUNT}/app.slice", APPS_SHARE),
+        (f"{ACCOUNT}/agents.slice", AGENTS_SHARE),
         (ACCOUNT, ABOVE_SHARE),
         ("/sys/fs/cgroup/user.slice/user-1000.slice", ABOVE_SHARE),
         ("/sys/fs/cgroup/user.slice", ABOVE_SHARE),

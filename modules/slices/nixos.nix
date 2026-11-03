@@ -137,28 +137,35 @@ let
     text = builtins.readFile ./disk-order.sh;
   };
 
-  # The programs Joel works in keep their memory while a build fills the
-  # rest. With a build taking all but 2 GiB of a 62 GiB laptop, a program in
-  # app.slice walking 2 GiB of its own took 45 ms a pass at the median and up
-  # to 338 ms, against 24 ms and 26 ms with memory free. A soft floor of
-  # 8 GiB, MemoryLow, brought that to 32 ms and 143 ms: the kernel still took
-  # it back. A hard one, MemoryMin, to 26 ms and 68 ms, and nothing was
-  # ended. The floor is a share of memory, so it scales with the machine.
+  # The programs Joel works in, and agents' sessions beside them, keep their
+  # memory while a build fills the rest. With a build taking all but 2 GiB
+  # of a 62 GiB laptop, a program in app.slice walking 2 GiB of its own
+  # took 45 ms a pass at the median and up to 338 ms, against 24 ms and
+  # 26 ms with memory free. A soft floor of 8 GiB, MemoryLow, brought that
+  # to 32 ms and 143 ms: the kernel still took it back. A hard one,
+  # MemoryMin, to 26 ms and 68 ms, and nothing was ended. The floor is a
+  # share of memory, so it scales with the machine.
   # At 13%, 8.1 GiB, it held too little of what Joel works in: on 29 October,
   # with about 17 agents' sessions open, app.slice held 17.6 GiB, 8.4 of it in
   # swap. Under builds it read 1 GiB of that back from swap every two minutes
   # and waited on memory 2.6% of the time, over the 1% past which the machine
   # queue holds builds, so the builds waited too. 20%, 12.5 GiB there, holds
-  # what it kept in memory and what it read back. A floor its programs
-  # don't fill costs work only what they leave unused. Every slice above
-  # app.slice claims a little more, to cover session.slice's 1.5 GiB beside
-  # it. What the floors below leave unused the kernel shares among the
-  # account's other slices. Work in jobs, background and containers has the
-  # rest of memory, and when that runs out, it's what swaps. The account's
-  # 25% covers app.slice's 12.5 GiB and session.slice's 2.5 on a 62 GiB
-  # machine.
-  apps = "20%";
-  account = "25%";
+  # what it kept in memory and what it read back. On 3 November, with 38
+  # sessions open, they held 12.0 GiB of app.slice's 13.1 and Joel's
+  # programs 1.1, Chrome with 1.55 GiB in swap: the sessions filled the
+  # floor and the apps were what swapped. So the sessions have a slice and a
+  # floor of their own, agents.slice's 15%, 9.3 GiB, and app.slice keeps 10%,
+  # 6.2 GiB, for Joel's programs alone. A floor its programs don't fill
+  # costs work only what they leave unused. Every slice above them claims a
+  # little more, to cover session.slice's 2.5 GiB beside them. What the
+  # floors below leave unused the kernel shares among the account's other
+  # slices. Work in jobs, background and containers has the rest of memory,
+  # and when that runs out, it's what swaps. The account's 30% covers
+  # app.slice's 6.2 GiB, agents.slice's 9.3 and session.slice's 2.5 on a
+  # 62 GiB machine.
+  apps = "10%";
+  agents = "15%";
+  account = "30%";
 in
 {
   options.jitsusama.slices.disks = lib.mkOption {
@@ -217,6 +224,23 @@ in
 
     systemd.user.slices.app.sliceConfig = {
       MemoryMin = apps;
+    }
+    // latency;
+
+    # Agents' sessions, pi in a window of kitty's each, beside the apps at
+    # their weight rather than among them. A task in app.slice is preempted
+    # whenever a sibling there wakes on its processor: on 3 November the
+    # sessions and mycelium woke 2,627 times a second, Joel's programs under
+    # 100, and a task spinning 300 ms in app.slice waited a median 27 ms and
+    # at worst 57, against 5.6 ms and 16 in an empty slice of the same
+    # weight. Raising app.slice's weight to 500 changed nothing, as it can't
+    # reach what competes inside it. Beside it, the sessions meet Joel's
+    # programs as one group of the same weight, as the empty slice's probe
+    # met app.slice. Whoever starts
+    # their terminal names this slice, and kitty puts each window's scope
+    # in its own.
+    systemd.user.slices.agents.sliceConfig = {
+      MemoryMin = agents;
     }
     // latency;
 
@@ -377,6 +401,10 @@ in
         Slice = "session.slice";
         ExecStart = lib.escapeShellArgs [
           "${sorter}/bin/jobs-sorter"
+          "--under"
+          "app.slice"
+          "--under"
+          "agents.slice"
           "--home"
           "kitty-"
           "--keep"
