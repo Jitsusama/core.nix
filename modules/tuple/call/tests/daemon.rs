@@ -105,12 +105,6 @@ impl Running {
         std::fs::set_permissions(&tuple, std::fs::Permissions::from_mode(0o755)).unwrap();
         let socket = folder.join("run/daemons/tuple.sock");
         let tuples = answering.then(|| answering_at(&folder));
-        // A call's file, as a run that was stopped mid-call leaves it.
-        std::fs::write(
-            folder.join("run/tuple-call.json"),
-            "{\"since\":1,\"with\":[]}\n",
-        )
-        .unwrap();
         let program = env!("CARGO_BIN_EXE_tuple-call");
         let mut command = match launcher.split_first() {
             Some((first, arguments)) => {
@@ -286,10 +280,6 @@ fn a_stopped_tuple_is_never_started_and_its_call_is_none() {
     std::thread::sleep(Duration::from_millis(300));
     assert!(running.read("bin/followed").is_empty());
     assert!(running.read("bin/asked").is_empty());
-    assert!(
-        !running.path("run/tuple-call.json").exists(),
-        "a call's file left behind was kept"
-    );
 }
 
 #[test]
@@ -310,20 +300,10 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
     assert!(record["heard"].as_i64().is_some());
     let said = client.ask(&json!({"id": 2, "ask": "get", "keys": ["call:current"]}));
     assert_eq!(said["records"][0]["state"], "connected");
-    let kept: Value = serde_json::from_str(&running.read("run/tuple-call.json").concat()).unwrap();
-    assert_eq!(
-        kept,
-        json!({"since": 1000, "with": [
-            {"id": 7, "name": "Ada Brightwater", "email": "ada@example.com"}]})
-    );
     running.streams("{\"type\":\"current_call\",\"data\":null}");
     client.until("the call's end wasn't said", |record| {
         record["state"] == "none"
     });
-    assert!(
-        !running.path("run/tuple-call.json").exists(),
-        "the call's file outlived it"
-    );
 }
 
 #[test]

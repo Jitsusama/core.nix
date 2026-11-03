@@ -51,9 +51,9 @@
 # for the shell and anything else that asks, on
 # $XDG_RUNTIME_DIR/daemons/tuple.sock in the shell's daemon interface,
 # and does the call's acts through Tuple's own command. Its socket is
-# systemd's, held whether or not it runs, as people's is. It keeps who a
-# call is with in $XDG_RUNTIME_DIR/tuple-call.json too, for a transcript
-# to name its folder by (modules/dictation).
+# systemd's, held whether or not it runs, as people's is. A call's
+# transcript (modules/dictation) names its folder by who the call is with,
+# asked of it there.
 #
 # The tuple command completes in zsh through Tuple's own completion, which
 # its command writes, so it knows every command and flag the version has.
