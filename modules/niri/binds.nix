@@ -625,8 +625,10 @@ in
 
   # Print means capturing something: it opens the launcher's Capture
   # collection, where the whole screen comes first, so Print then Return
-  # takes it, and a window, a region, a recording or the camera is found by
-  # typing (Quickshell's launcher/Capture.qml). A region is picked by the
+  # or Print twice takes it, and a window, a region, a recording or the
+  # camera is found by typing (Quickshell's launcher/Capture.qml). Over the
+  # launcher showing anything else it takes the screen as it is, the
+  # launcher in it, and leaves the launcher as it was. A region is picked by the
   # keys (Picker.qml), since niri's own picker takes only the pointer. The
   # chords after it are shortcuts to Capture's rows, shown beside them.
   # The ErgoDox has Print only on a layer, so Super+P opens Capture too,

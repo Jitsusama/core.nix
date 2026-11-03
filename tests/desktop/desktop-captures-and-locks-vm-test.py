@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import re
 import shlex
-import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -35,6 +34,11 @@ KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
+# How far apart, from 0 to 255, the screen with the launcher and without it are where the
+# card is drawn, past what the clock and a cursor change; and the least of the screen the
+# card covers for a picture to be judged by it.
+CARD_APART = 32
+CARD_LEAST = 0.02
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -63,44 +67,90 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
         desktop.machine.send_key("ret")
 
 
-def test_the_capture_keys_take_the_launcher_in_and_leave_it_open(desktop: Desktop) -> None:
-    """Shift+Print and Ctrl+Print, pressed while the launcher shows, take it in and leave it open.
+def test_print_over_the_launcher_takes_it_in_and_leaves_it_on_its_row(desktop: Desktop) -> None:
+    """Print, pressed while the launcher shows a row, takes the screen with it and leaves it so.
 
-    Joel captures what the launcher shows by the keys he captures anything with, so the
-    picture and the recording are of the screen as he sees it, the launcher in it. Each is
-    judged against the screen with the launcher and the screen without it, as QEMU has them.
+    Joel pressed Print to capture what the launcher showed, and it stepped into Capture
+    instead, so the key takes the screen as it is (docs/design.md, A Capture Key Takes the
+    Screen as It Is). The picture is judged on the card's own pixels.
+    """
+    machine = desktop.machine
+    bare, seen, shown = the_launcher_on_a_row(desktop)
+    with desktop.captured():
+        machine.send_key("sysrq")
+    still_shown(desktop, shown)
+    picture = the_newest_picture(desktop, "taken-over-the-launcher.png")
+    the_card_in(picture, seen, bare)
+
+
+def test_print_in_capture_closes_it_and_takes_what_is_beneath(desktop: Desktop) -> None:
+    """Print, pressed again in Capture, closes the launcher and takes the screen beneath it.
+
+    So Print twice always captures the work, whatever Print does over the launcher.
+    """
+    machine = desktop.machine
+    quiet(desktop)
+    bare = desktop.settled_screen("capture-beneath-closed")
+    desktop.capture()
+    seen = desktop.settled_screen("capture-beneath-open")
+    with desktop.captured():
+        machine.send_key("sysrq")
+    desktop.launcher_until(lambda now: not now["open"])
+    picture = the_newest_picture(desktop, "taken-beneath-capture.png")
+    the_card_in(picture, bare, seen)
+
+
+def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
+    """Ctrl+Print, pressed while the launcher shows a row, records it and leaves it so.
+
+    The same chord stops it. Its first and last frames are judged on the card's pixels, as
+    a picture is; a video's colours are near the screen's, not the same.
     """
     machine = desktop.machine
     recorder = "pgrep -u 1000 -f '[w]f-recorder -y --file'"
-    mark = "/run/user/1000/before-capturing"
+    mark = "/run/user/1000/before-recording"
     desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
-    bare = desktop.settled_screen("capture-the-launcher-closed")
-    machine.send_key("meta_l-spc")
-    desktop.launcher_ready()
-    shown = desktop.showing()
-    seen = desktop.settled_screen("capture-the-launcher-open")
-    with desktop.captured():
-        machine.send_key("shift-sysrq")
-    still_shown(desktop, shown)
-    picture = desktop.as_account(f"ls -t {desktop.pictures}/*.png | head -1").strip()
-    machine.succeed(f"cp {shlex.quote(picture)} /run/user/1000/taken-picture.png")
-    the_screen_with_the_launcher(desktop, "/run/user/1000/taken-picture.png", seen, bare)
+    bare, seen, shown = the_launcher_on_a_row(desktop)
     machine.send_key("ctrl-sysrq")
     machine.wait_until_succeeds(desktop.in_session(recorder), timeout=WAKING)
     still_shown(desktop, shown)
-    # A few seconds of the launcher still, so its last frame is as seen.
-    time.sleep(3)
+    videos = f"-newer {mark} -type f -name '*.mp4'"
+    # Something recorded before it's stopped, so the video holds a frame.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"find ~/Videos/Recordings {videos} -size +0 | grep -q ."),
+        timeout=WAKING,
+    )
     machine.send_key("ctrl-sysrq")
     machine.wait_until_fails(desktop.in_session(recorder), timeout=WAKING)
     still_shown(desktop, shown)
-    videos = f"-newer {mark} -type f -name '*.mp4'"
     # Named by the time it began, so with a space in it.
     recorded = desktop.as_account(f"find ~/Videos/Recordings {videos}").splitlines()
     assert len(recorded) == 1, recorded
+    video = shlex.quote(recorded[0])
     ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
-    frame = "/run/user/1000/taken-video.png"
-    machine.succeed(f"{ffmpeg} -sseof -1 -i {shlex.quote(recorded[0])} -update 1 -y {frame}")
-    the_screen_with_the_launcher(desktop, frame, seen, bare)
+    for name, where in (("recorded-first.png", ""), ("recorded-last.png", "-sseof -1")):
+        frame = f"/run/user/1000/{name}"
+        machine.succeed(f"{ffmpeg} {where} -i {video} -frames:v 1 -update 1 -y {frame}")
+        the_card_in(kept(desktop, frame), seen, bare)
+
+
+def the_launcher_on_a_row(desktop: Desktop) -> tuple[Image.Image, Image.Image, Json]:
+    """Open the launcher on its second row, giving the screen without it, with it, and it.
+
+    The second, so a launcher that went back to where it opens would be seen to.
+    """
+    quiet(desktop)
+    bare = desktop.settled_screen("capture-the-launcher-closed")
+    desktop.machine.send_key("meta_l-spc")
+    desktop.launcher_ready()
+    desktop.down_to(desktop.showing()["rows"][1])
+    shown = desktop.showing()
+    return bare, desktop.settled_screen("capture-the-launcher-open"), shown
+
+
+def quiet(desktop: Desktop) -> None:
+    """Wait until no notice shows, since one is on the screen but kept out of a picture."""
+    desktop.machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 
 
 def still_shown(desktop: Desktop, shown: Json) -> None:
@@ -115,25 +165,41 @@ def still_shown(desktop: Desktop, shown: Json) -> None:
     )
 
 
-def the_screen_with_the_launcher(
-    desktop: Desktop, taken: str, seen: Image.Image, bare: Image.Image
-) -> None:
-    """Fail unless what was taken is far nearer the screen with the launcher than without it.
+def the_newest_picture(desktop: Desktop, name: str) -> Image.Image:
+    """Give the newest screenshot, kept in the gallery by this name."""
+    newest = desktop.as_account(f"ls -t {desktop.pictures}/*.png | head -1").strip()
+    desktop.machine.succeed(f"cp {shlex.quote(newest)} /run/user/1000/{name}")
+    return kept(desktop, f"/run/user/1000/{name}")
 
-    A video's colours are near the screen's, not the same, so it's judged by which it's
-    nearer, kept for the gallery either way.
-    """
+
+def kept(desktop: Desktop, taken: str) -> Image.Image:
+    """Copy what was taken out of the machine, for the gallery, and give it."""
     desktop.machine.copy_from_vm(taken)
-    name = taken.rsplit("/", 1)[1]
-    picture = Image.open(desktop.machine.out_dir / name).convert("RGB").resize(seen.size)
-    near, far = unlike(picture, seen), unlike(picture, bare)
-    assert near * 4 < far, f"{name} is {near:.1f} from the launcher open, {far:.1f} from closed"
+    return Image.open(desktop.machine.out_dir / taken.rsplit("/", 1)[1]).convert("RGB")
 
 
-def unlike(one: Image.Image, other: Image.Image) -> float:
-    """Give how far apart two pictures of one size are, on average, from 0 to 255."""
-    apart = ImageChops.difference(one, other).convert("L")
-    return float(ImageStat.Stat(apart).mean[0])
+def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> None:
+    """Fail unless, where the launcher's card is drawn, what was taken is the one screen's.
+
+    The card is where the screen with the launcher and without it differ, so it's found
+    from the pixels alone. What was taken must be at least four times nearer the one than
+    the other there; the rest of the screen is the same in both, and says nothing.
+    """
+    differs = ImageChops.difference(like, unlike).convert("L")
+    card = differs.point(lambda v: 255 if v > CARD_APART else 0)
+    shown = ImageStat.Stat(card).mean[0] / 255
+    assert shown > CARD_LEAST, (
+        f"the card covers only {shown:.1%} of the screen, too little"
+    )
+    picture = taken.resize(like.size)
+    near, far = apart(picture, like, card), apart(picture, unlike, card)
+    assert near * 4 < far, f"on the card: {near:.1f} from the one meant, {far:.1f} from the other"
+
+
+def apart(one: Image.Image, other: Image.Image, where: Image.Image) -> float:
+    """Give how far apart two pictures of one size are where the mask is, from 0 to 255."""
+    difference = ImageChops.difference(one, other).convert("L")
+    return float(ImageStat.Stat(difference, where).mean[0])
 
 
 def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop: Desktop) -> None:

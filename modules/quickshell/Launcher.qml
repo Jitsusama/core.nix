@@ -3176,7 +3176,7 @@ Scope {
                     if (words[0] === "toggle")
                         root.open = !root.open;
                     else if (words[0] === "collection")
-                        root.into(words.slice(1).join(" "));
+                        root.pressed(words.slice(1).join(" "));
                     else
                         console.warn(`The launcher was told "${line}", which it doesn't know.`);
                 }
@@ -3564,6 +3564,19 @@ Scope {
     // program's keys Shortcuts leads with (launcher/KeyMap.qml).
     function cameFrom() {
         return Pasting.under();
+    }
+
+    // A key that opens a collection, pressed (launcher-say): with the
+    // launcher closed it opens into the collection, and while it shows, the
+    // collection may take the key for what it means there, as Print takes
+    // the screen with the launcher in it rather than changing what's shown
+    // (Capture.qml). With no shell listening, qs ipc carries the key to
+    // into, the launcher being closed then anyway.
+    function pressed(name) {
+        const source = collections.find(s => s.settings.name === name);
+        if (open && source && source.pressedOver(held.length > 0 && held[0].row.from === source))
+            return;
+        into(name);
     }
 
     // Opens straight into a collection, all of it shown until something's
