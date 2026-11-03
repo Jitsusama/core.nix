@@ -13,7 +13,7 @@ watchers carry on as before; when they report the same, nothing
 changes. If logind can't be asked, niri goes on as it did.
 
 diff --git a/src/dbus/freedesktop_login1.rs b/src/dbus/freedesktop_login1.rs
-index 5964d45..055562f 100644
+index 5964d45..c945484 100644
 --- a/src/dbus/freedesktop_login1.rs
 +++ b/src/dbus/freedesktop_login1.rs
 @@ -6,6 +6,24 @@ pub enum Login1ToNiri {
@@ -26,7 +26,7 @@ index 5964d45..055562f 100644
 +/// without this a shut laptop's panel was connected and taken away again a moment later.
 +pub fn lid_closed() -> anyhow::Result<bool> {
 +    let conn = zbus::blocking::Connection::system()?;
-+    let proxy = fdo::PropertiesProxyBlocking::new(
++    let proxy = zbus::blocking::fdo::PropertiesProxy::new(
 +        &conn,
 +        "org.freedesktop.login1",
 +        "/org/freedesktop/login1",
