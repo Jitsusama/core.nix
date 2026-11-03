@@ -1,6 +1,6 @@
 # The faces the theme draws with, for every account on the machine, on NixOS
 # and a Mac alike.
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 let
   # The serif face as its two variable files, upright and italic, with every
   # axis: the package's static cuts carry the same family name at each
@@ -10,13 +10,11 @@ let
     mkdir -p $out/share/fonts/truetype
     ln -s ${pkgs.fraunces}/share/fonts/truetype/*'[SOFT,WONK,opsz,wght].ttf' $out/share/fonts/truetype/
   '';
-  # The script face's Hebrew and Arabic alone, rather than every script
-  # Noto draws, which would be a gigabyte of fonts nothing names.
+  # The script face's families alone, rather than every script Noto draws,
+  # which would be a gigabyte of fonts nothing names; its CJK family comes
+  # in a package of its own.
   scripts = pkgs.noto-fonts.override {
-    variants = [
-      "Noto Sans Hebrew"
-      "Noto Naskh Arabic"
-    ];
+    variants = lib.filter (family: !lib.hasInfix "CJK" family) (import ../theme/scripts.nix);
   };
 in
 {

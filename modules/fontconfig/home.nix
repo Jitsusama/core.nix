@@ -10,8 +10,9 @@
 # fontconfig doesn't know, as each of the theme's is, falls back through
 # sans-serif, so that list serves every face. It's bound strongly, which
 # defaultFonts can't say: a weakly bound family ranks below a font's
-# language, so DejaVu Sans, which covers English as well as Hebrew, would
-# still win a Hebrew letter over Noto Sans Hebrew, which covers only Hebrew.
+# language, so the machine's default sans, which covers English as well as
+# Hebrew, would still win a Hebrew letter over the script face's Hebrew,
+# which covers only Hebrew.
 { config, lib, ... }:
 let
   inherit (config.jitsusama.theme.font) mono sans script;
