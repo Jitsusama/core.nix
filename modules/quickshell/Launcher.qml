@@ -1715,9 +1715,9 @@ Scope {
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
         // The drawer's keys, only while it holds more than fits, keeping
-        // their word as Ctrl+Return does, since a chord isn't an arrow.
+        // their word, since Shift and the arrows aren't the arrows alone.
         if (choice === selected && drawerOut && drawerCard.more)
-            keys.push(["Ctrl+\u2191\u2193", "scroll"]);
+            keys.push(["\u21e7\u2191\u2193", "scroll"]);
         return keys;
     }
 
@@ -3425,6 +3425,16 @@ Scope {
     // name is never broken across lines, and its time tells two apart.
     readonly property int drawerLeast: 288
     readonly property real drawerGap: Theme.space.m
+    // The card's lines the drawer's are set on, down from its top: the
+    // field's centre, the prompt an inset inside the frame, and the first
+    // row's, below the field, its hairline and the list's inset.
+    readonly property real fieldLine: Theme.border + Theme.inset + prompt.height / 2
+    readonly property real rowLine: Theme.border + prompt.height + 2 * Theme.inset
+        + Theme.border + Theme.inset + Theme.space.xxxl / 2
+    // A length to a hundredth, as reports say one, or null for none.
+    function hundredths(length) {
+        return length === null || length === undefined ? null : Math.round(length * 100) / 100;
+    }
     readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
     readonly property real drawerRoom: !screenHere ? 0
         : screenHere.width - centred - width - drawerGap - Theme.space.xl
@@ -3498,6 +3508,28 @@ Scope {
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
                     .map(fact => fact.label ?? ""),
                 body: root.drawerShows?.body ?? "",
+                eyebrow: root.drawerShows?.eyebrow ?? "",
+                // Where its lines' baselines are and the card's they're
+                // set on, down from the top the two share, to a hundredth.
+                lines: {
+                    eyebrow: root.hundredths(drawerCard.baselines.eyebrow),
+                    eyebrowMiddle: root.hundredths(drawerCard.baselines.eyebrowMiddle),
+                    title: root.hundredths(drawerCard.baselines.title),
+                    words: root.hundredths(drawerCard.baselines.words),
+                    facts: drawerCard.baselines.facts.map(line => root.hundredths(line))
+                },
+                cardLines: {
+                    field: root.hundredths(root.fieldLine),
+                    // Each of the first twenty rows' names' baselines,
+                    // null for one not drawn.
+                    rows: root.matches.slice(0, 20)
+                        .map((_, at) => root.hundredths(list.baselineOf(at)))
+                },
+                // The facts it draws, by name, whether each name is on one
+                // line whole, and where its last line's box may end.
+                drawnFacts: drawerCard.facts.map(fact => fact.label ?? ""),
+                labelsWhole: drawerCard.labelsWhole,
+                foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
@@ -3977,11 +4009,14 @@ Scope {
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        // With Ctrl, the arrows scroll the drawer instead,
-                        // since Page Up and Page Down page the list.
+                        // With Shift, the arrows scroll the drawer instead,
+                        // since Page Up and Page Down page the list: the
+                        // outer column and the right hand's arrows, never
+                        // the little finger's Ctrl (Joel, 2026-11-02: "all
+                        // of those ctrl keys do not feel very vim to me").
                         Keys.onUpPressed: event => {
                             root.searchNow();
-                            if (event.modifiers & Qt.ControlModifier) {
+                            if (event.modifiers & Qt.ShiftModifier) {
                                 drawerCard.scroll(-1);
                                 return;
                             }
@@ -3989,7 +4024,7 @@ Scope {
                         }
                         Keys.onDownPressed: event => {
                             root.searchNow();
-                            if (event.modifiers & Qt.ControlModifier) {
+                            if (event.modifiers & Qt.ShiftModifier) {
                                 drawerCard.scroll(1);
                                 return;
                             }
@@ -4179,6 +4214,14 @@ Scope {
                                 return Theme.space.xxxl + (root.matches[at]?.gap ? list.apart : 0);
                             }
 
+                            // Where a row's name has its baseline, down
+                            // from the card's top, or null while it isn't
+                            // drawn: the line the drawer's title sits on.
+                            function baselineOf(at) {
+                                const entry = list.itemAtIndex(at);
+                                return entry ? entry.mapToItem(card, 0, entry.nameBaseline).y : null;
+                            }
+
                             // Scrolls just far enough to show the row, as
                             // positionViewAtIndex's Contain does, gliding
                             // there when the selection glides.
@@ -4276,7 +4319,12 @@ Scope {
                                 width: list.width
                                 height: Theme.space.xxxl + (modelData.gap ? list.apart : 0)
 
+                                // Its name's baseline, down from its top.
+                                readonly property real nameBaseline: choice.y
+                                    + choice.nameBaseline
+
                                 Choice {
+                                    id: choice
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
                                     // Seen until the closing card has faded.
@@ -4575,13 +4623,16 @@ Scope {
             }
         }
 
-        // Out of the card's right side, top aligned and as tall as it.
+        // Out of the card's right side, top aligned and as tall as it,
+        // its lines set on the card's.
         Drawer {
             id: drawerCard
             x: card.reach + root.width + root.drawerGap
             y: card.reach
             width: root.drawerWidth
             tall: card.height
+            fieldLine: root.fieldLine
+            rowLine: root.rowLine
             out: root.drawerOut
             given: root.drawerShows
         }

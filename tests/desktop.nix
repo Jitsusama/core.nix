@@ -34,6 +34,13 @@
   pkgs,
   area,
   gallery ? false,
+  # The screen's size in pixels. Every area but looks keeps the one its
+  # pictures were taken on; looks has the laptop's, so the launcher and its
+  # drawer fit at both of Joel's scales.
+  screen ? {
+    width = 1280;
+    height = 800;
+  },
 }:
 let
   account = "jitsusama";
@@ -536,7 +543,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       virtualisation = {
         memorySize = 4096;
         cores = 4;
-        qemu.options = [ "-vga none -device virtio-gpu-pci,xres=1280,yres=800" ];
+        qemu.options = [
+          "-vga none -device virtio-gpu-pci,xres=${toString screen.width},yres=${toString screen.height}"
+        ];
       };
 
       users.users.${account} = {
@@ -798,7 +807,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 }
 // pkgs.lib.optionalAttrs (!gallery) {
   gallery = import ./desktop.nix {
-    inherit self pkgs area;
+    inherit
+      self
+      pkgs
+      area
+      screen
+      ;
     gallery = true;
   };
 }

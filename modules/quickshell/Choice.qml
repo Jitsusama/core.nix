@@ -104,6 +104,9 @@ Rectangle {
     // reads whole; given up by the selection, or no longer seen, both are
     // back at their start at once.
     readonly property bool reads: row.selected && row.shown
+    // Where its name has its baseline, down from its top, which the
+    // launcher's drawer sets its title on.
+    readonly property real nameBaseline: nameBox.y + nameBox.baselineOffset
     readonly property bool nameCut: nameBox.over > 0
     readonly property bool sideCut: right.sided && sideText.over > 0
     property bool sidesTurn: false

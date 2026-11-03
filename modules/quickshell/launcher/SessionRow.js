@@ -40,21 +40,21 @@ function acts(standing, windowed) {
     return ids;
 }
 
-// What its drawer says: what it works on, its step, what it waits on Joel
-// for, what it's spent today, since when it's run, its address and the
-// machine it runs on, each as a name and a figure, its title over them.
-// Nothing it hasn't said is guessed.
+// What its drawer says: since when it's run as the eyebrow over its title,
+// then what it works on, its step, what it waits on Joel for, what it's
+// spent today, its address and the machine it runs on, each as a name and
+// a figure. Nothing it hasn't said is guessed.
 function drawer(title, presence, said) {
     const known = {
         works: presence?.worksOn,
         step: presence?.step,
         wants: presence?.wants?.said,
         spent: said.spent,
-        started: said.started,
         address: said.address,
         machine: said.machine
     };
     const facts = Object.keys(known).filter(id => (known[id] ?? "") !== "")
         .map(id => ({ label: said.named(id), value: known[id] }));
-    return { title, facts, body: "" };
+    const eyebrow = (said.started ?? "") === "" ? "" : `${said.named("started")} ${said.started}`;
+    return { eyebrow, title, facts, body: "" };
 }

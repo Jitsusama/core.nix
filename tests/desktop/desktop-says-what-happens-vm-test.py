@@ -170,6 +170,50 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     machine.send_key("esc")
 
 
+# How far Shift and an arrow scroll the launcher's drawer: three of its lines of 24, so what
+# it shows stays on the card's lines (vm-desktop-looks measures them).
+SCROLLED = 3 * 24
+
+
+def test_a_notices_drawer_says_who_sent_it_and_shift_scrolls_it(desktop: Desktop) -> None:
+    """A notice's drawer says who sent it and when, and Shift with the arrows scrolls it.
+
+    Shift and an arrow scroll it three of its lines at a time, said in the foot while it holds
+    more than fits, and leave the selection where it was.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    body = "\n".join(f"step {at} of the long build went by" for at in range(1, 41))
+    desktop.as_account(f"notify-send 'Long build log' {shlex.quote(body)}")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg layers | grep -q notifications"),
+        timeout=timedelta(seconds=60),
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("long build log")
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] and shown["drawer"]["title"] == "Long build log"
+    )
+    drawer = desktop.showing()["drawer"]
+    # Signed as a card signs it: a program known by no other name by its own, in title case.
+    assert re.fullmatch(r"Desktop \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
+    assert drawer["more"], f"forty lines fit the drawer: {drawer}"
+    assert "\u21e7\u2191\u2193 scroll" in desktop.showing()["selected"]["told"], desktop.showing()
+    desktop.photograph("launcher-plate")
+    # Shift and the arrows scroll it, the list where it was.
+    selected = desktop.showing()["selected"]["name"]
+    title = drawer["lines"]["title"]
+    machine.send_key("shift-down")
+    desktop.launcher_until(lambda shown: shown["drawer"]["scrolled"] == SCROLLED)
+    scrolled = desktop.showing()
+    assert scrolled["selected"]["name"] == selected, scrolled
+    assert round(title - scrolled["drawer"]["lines"]["title"]) == SCROLLED, scrolled["drawer"]
+    machine.send_key("shift-up")
+    desktop.launcher_until(lambda shown: shown["drawer"]["scrolled"] == 0)
+    machine.send_key("esc")
+
+
 def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     desktop: Desktop,
 ) -> None:

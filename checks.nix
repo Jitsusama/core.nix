@@ -320,6 +320,16 @@ let
       inherit self pkgs;
       area = "keeps-pace";
     };
+    # How the launcher is laid out at Joel's scales, which needs a screen
+    # as large as the laptop's.
+    vm-desktop-looks = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
     # once it has.
