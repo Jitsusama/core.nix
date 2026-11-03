@@ -1025,7 +1025,9 @@
   '';
   reopening-finds-each-screen = ''
     Reopen Them All puts each session back on its own screen, found by its maker, model and serial
-    rather than its connector, and a gone screen's workspaces after the one in use's
+    rather than its connector, and on the one it was kept on of two alike, a gone screen's
+    workspaces after the one in use's and then to it, each to its rank, once it's back, and each
+    window that reopens itself by its program and title, beside the windows kept with it
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
@@ -2063,8 +2065,9 @@
     margin and dictation's bar stay on the other and the margin comes back on both; the launcher
     opens, finds and runs a row on either of two screens as each goes and comes back, as both go,
     and after a sleep, its foot still telling the time after the wake; Quickshell warns of nothing
-    meanwhile; and desk-facts stops naming the screen once it's gone and names it again once it's
-    back
+    meanwhile; desk-facts stops naming the screen once it's gone and names it again once it's
+    back; and sessions reopened while the screen they sat on is gone go to it, in their order, once
+    it comes back
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it; the firmware starts the loader by

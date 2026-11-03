@@ -534,6 +534,106 @@ def test_niri_held_each_screens_first_frame_for_the_desktop(booted: Screens) -> 
         ), f"niri never said it held {screen}'s first frame: {said}"
 
 
+def test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back(
+    booted: Screens,
+) -> None:
+    """Sessions reopened while the screen they sat on is gone go to it, in order, once it's back.
+
+    A screen can come well after niri does, as the monitor came 52 s after it on 2026-11-02, so
+    the sessions kept on it open on the other first. Once it's back, their workspaces must go
+    to it in their order, and the session kept on the other stays there.
+    """
+    machine = booted.machine
+    account = booted.account
+
+    def as_account(command: str) -> str:
+        """Run a command as the account inside its niri session, and give what it said."""
+        return machine.succeed(booted.in_niri(command))
+
+    def keep(path: str, read: dict[str, Any]) -> None:
+        """Write a file the agents keep, whole, as they do."""
+        as_account(f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}")
+
+    def on(output: str, workspace: int, column: int) -> dict[str, Any]:
+        """Give a place kept on a screen by its connector.
+
+        The VM's two cards describe themselves alike, so each place names its connector, as one
+        kept before screens were named by what they are does.
+        """
+        return {"output": output, "workspace": workspace, "column": column, "tile": 1}
+
+    def sat() -> dict[str, tuple[str, int, int]]:
+        """Give each stand-in session's screen, workspace and column, by its session."""
+        spaces = {one["id"]: one for one in json.loads(as_account("niri msg --json workspaces"))}
+        return {
+            window["title"].split()[2]: (
+                spaces[window["workspace_id"]]["output"],
+                spaces[window["workspace_id"]]["idx"],
+                window["layout"]["pos_in_scrolling_layout"][0],
+            )
+            for window in json.loads(as_account("niri msg --json windows"))
+            if window["title"].startswith("pi --session 01c5-")
+        }
+
+    def home(now: dict[str, tuple[str, int, int]]) -> bool:
+        """Whether each is on its own screen, in its order there."""
+        if len(now) < len(where):
+            return False
+        left, right, up = now["01c5-left"], now["01c5-right"], now["01c5-up"]
+        return (
+            now["01c5-there"][0] == "Virtual-1"
+            and left[:2] == right[:2] == ("Virtual-2", 1)
+            and left[2] < right[2]
+            and up[:2] == ("Virtual-2", 2)
+        )
+
+    where = {
+        "01c5-there": on("Virtual-1", 1, 1),
+        "01c5-left": on("Virtual-2", 1, 1),
+        "01c5-right": on("Virtual-2", 1, 2),
+        "01c5-up": on("Virtual-2", 2, 1),
+    }
+    sessions = [{"id": one, "cwd": f"/home/{account}"} for one in where]
+    boot = machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
+    machine.wait_until_succeeds(
+        booted.in_niri("ls -d ~/.local/state/quickshell/by-shell/*"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    folder = as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    # A first zsh makes its completions first, which on a busy machine can
+    # take longer than Reopen Them All waits for a window.
+    machine.succeed(booted.in_niri("zsh -lic true"), timeout=300)
+    try:
+        as_account("touch $XDG_RUNTIME_DIR/pi-stays")
+        keep(
+            "~/.local/state/pi/restore.json",
+            {"v": 1, "boot": "a-boot-before", "sessions": sessions},
+        )
+        keep(f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
+        booted.plug("off", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=False)
+        handed = shlex.quote(json.dumps({"sessions": sessions}))
+        taken = as_account(f"qs ipc call sessions reopen {handed}")
+        assert taken.strip() == "taken", taken
+        # The screen comes once the first has opened, with the rest to come.
+        machine.wait_until_succeeds(
+            booted.in_niri("niri msg --json windows | grep -q 'pi --session 01c5-'"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        booted.plug("detect", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=True)
+        deadline = time.monotonic() + 120
+        while not home(now := sat()):
+            assert time.monotonic() < deadline, f"not on their own screen in order: {now}"
+            time.sleep(1)
+    finally:
+        # Its own pattern bracketed, so pkill doesn't match the shell it runs in.
+        as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+        keep("~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        booted.plug("detect", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=True)
+
+
 def test_a_niri_from_before_the_hold_takes_the_settings_a_switch_brings(booted: Screens) -> None:
     """A niri started before the hold came in takes the account's settings, as at a switch."""
     older = "/etc/niri-before-the-hold/bin/niri"

@@ -67,6 +67,14 @@ QtObject {
             Places.placed([docked[0], docked[2]], { "DP-4": "Dell Inc. DELL U2723QE 7XY" }, "DP-4")
                 .map(at => at.workspace), [1, 3]);
 
+        // Two monitors alike, with no serial to tell them apart: each
+        // place goes to the one it was kept on.
+        const twin = "QEMU QEMU Monitor";
+        expect("two screens alike, each place on its own",
+            Places.placed([{ screen: twin, output: "Virtual-2", workspace: 1, column: 1, tile: 1 }],
+                { "Virtual-1": twin, "Virtual-2": twin }, "Virtual-1").map(at => at.output),
+            ["Virtual-2"]);
+
         // Kept before screens were named so: found by its connector.
         const older = [{ output: "eDP-1", workspace: 2, column: 1, tile: 1 }];
         expect("a place without a screen, by its connector",
@@ -81,6 +89,78 @@ QtObject {
         expect("no screen in use leaves a gone one as kept",
             Places.placed([docked[2]], { "DP-4": monitor }, null)
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
+
+        // A gone screen's place says where it belongs, so its workspace
+        // can go there when the screen comes; one on its screen doesn't.
+        expect("a gone screen's place says where it belongs",
+            Places.placed(docked, { "DP-4": monitor }, "DP-4").map(at => at.away ?? null), [
+                null, null,
+                { screen: panel, workspace: 2 },
+                { screen: panel, workspace: 1 }
+            ]);
+
+        // The monitor comes after the reopen began: the workspaces given
+        // the panel in its place go to it, each to its rank by kept number,
+        // lowest first, since where niri puts each can't be foretold; one
+        // gone stays gone, and one there already keeps its place.
+        const away = { [monitor]: [
+            { id: 11, workspace: 1 }, { id: 13, workspace: 3 }, { id: 12, workspace: 2 },
+            { id: 14, workspace: 4 }, { id: 15, workspace: 5 }
+        ] };
+        const workspaces = [
+            { id: 11, output: "eDP-1" }, { id: 12, output: "eDP-1" }, { id: 13, output: "eDP-1" },
+            { id: 15, output: "DP-4" }, { id: 16, output: "DP-4" }
+        ];
+        expect("a screen come back takes its workspaces, each to its rank",
+            Places.homeward(away, { "eDP-1": panel, "DP-4": monitor }, workspaces), {
+                moves: [{ output: "DP-4", id: 11, index: 1 },
+                    { output: "DP-4", id: 12, index: 2 },
+                    { output: "DP-4", id: 13, index: 3 }],
+                home: [monitor]
+            });
+        expect("a screen still gone keeps its workspaces waiting",
+            Places.homeward(away, { "eDP-1": panel }, workspaces), { moves: [], home: [] });
+
+        // Windows that reopen themselves, matched by program and title,
+        // else the first of that program, each kept window used once.
+        const others = [
+            { app: "google-chrome", title: "Docs" },
+            { app: "google-chrome", title: "Open · Acceluary" },
+            { app: "slack", title: "Slack" }
+        ];
+        expect("a window is the kept one of its program with its title",
+            Places.matchOther(others, [], "google-chrome", "Open · Acceluary"), 1);
+        expect("else the first of its program not used yet",
+            Places.matchOther(others, [0], "google-chrome", "New Tab"), 1);
+        expect("a program kept nowhere goes nowhere",
+            Places.matchOther(others, [], "firefox", "Docs"), -1);
+        expect("each kept window is used once",
+            Places.matchOther(others, [2], "slack", "Slack"), -1);
+
+        // Put back beside what's back: the session kept with Chrome on the
+        // monitor's fifth came back as its fourth, since a workspace below
+        // that held only other windows isn't made again.
+        // A window Joel opened since sits first there, so it goes by its
+        // neighbours, not by a column number.
+        const session = (id, workspace, column, at) => ({
+            id,
+            at: { screen: monitor, output: "DP-4", workspace, column, tile: 1 },
+            workspace: { id: 20 + at, idx: at, output: "DP-4" },
+            column: column + 1
+        });
+        const beside = [session(1, 4, 1, 3), session(2, 5, 1, 4), session(3, 5, 3, 4),
+            session(4, 5, 2, 4), session(5, 7, 1, 5)];
+        const kept5 = column => ({ screen: monitor, output: "DP-4", workspace: 5, column, tile: 1 });
+        expect("a window joins the workspace its session came back to, after the nearest left",
+            Places.whereBack(kept5(3), beside), { join: 24, after: 4 });
+        expect("before the nearest right when it sat first",
+            Places.whereBack(kept5(1), beside.slice(2)), { join: 24, before: 4 });
+        expect("a workspace that held no session is made after the one below it",
+            Places.whereBack({ screen: monitor, output: "DP-4", workspace: 6, column: 1, tile: 1 },
+                beside), { make: true, output: "DP-4", index: 5 });
+        expect("first on its screen when nothing sat below it",
+            Places.whereBack({ screen: panel, output: "eDP-1", workspace: 2, column: 1, tile: 1 },
+                beside), { make: true, output: null, index: 1 });
 
         if (failures.length > 0) {
             for (const failure of failures)

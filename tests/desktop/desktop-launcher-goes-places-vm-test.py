@@ -1049,6 +1049,132 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     desktop.as_account("rm -rf ~/east ~/north ~/west")
 
 
+def stand_in(desktop: Desktop, app: str, title: str) -> None:
+    """Open a window of another program's, as niri starts one, and wait for it."""
+    desktop.as_account(
+        f"niri msg action spawn -- kitty --class {app} --title {shlex.quote(title)} sleep 600"
+    )
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f'niri msg --json windows | grep -q \'"app_id":"{app}"\''),
+        timeout=dt.timedelta(seconds=60),
+    )
+
+
+def where_now(desktop: Desktop, prefix: str, titles: set[str]) -> dict[str, tuple[int, int]]:
+    """Give each stand-in session's workspace and column, and each titled window's."""
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    idx = {one["id"]: one["idx"] for one in spaces}
+    windows = {
+        window["title"]: (
+            idx[window["workspace_id"]],
+            window["layout"]["pos_in_scrolling_layout"][0],
+        )
+        for window in desktop.windows()
+        if window["title"] in titles
+    }
+    return {**sat(desktop, prefix), **windows}
+
+
+def put_back(now: dict[str, tuple[int, int]]) -> bool:
+    """Whether the browser sits between its sessions, and the chat on its own after them."""
+    if not {"01c4-left", "01c4-right", "01c4-up", "Open Acceluary", "Chat"} <= set(now):
+        return False
+    left, right, up = now["01c4-left"], now["01c4-right"], now["01c4-up"]
+    browser, chat = now["Open Acceluary"], now["Chat"]
+    return (
+        left[0] == browser[0] == right[0]
+        and browser[1] == left[1] + 1
+        and right[1] == browser[1] + 1
+        and chat == (left[0] + 1, 1)
+        and up[0] == left[0] + 2
+    )
+
+
+def kept_with(desktop: Desktop, arranged: str, boot: str, app: str) -> dict[str, Any]:
+    """Give the places kept once the shell keeps a window of a program's for a boot."""
+    deadline = time.monotonic() + 30
+    while True:
+        read = json.loads(desktop.as_account(f"cat {arranged}"))
+        if any(one["app"] == app for one in read.get("others", {}).get(boot, [])):
+            return cast("dict[str, Any]", read)
+        assert time.monotonic() < deadline, f"no {app} window kept for {boot}: {read}"
+        time.sleep(1)
+
+
+def test_agents_puts_back_the_windows_that_reopen_themselves(desktop: Desktop) -> None:
+    """Reopen Them All puts back the windows that reopen themselves, beside their sessions."""
+    machine = desktop.machine
+    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    arranged = f"{folder}/session-arrangement.json"
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    [(output, said)] = json.loads(desktop.as_account("niri msg --json outputs")).items()
+    screen = " ".join(part for part in (said["make"], said["model"], said["serial"]) if part)
+    on = {"screen": screen, "output": output, "tile": 1}
+    # The last boot's: a browser between two sessions on the first
+    # workspace, a chat alone on the second, and a session on the third,
+    # whose workspace is the second once reopened, as the chat's isn't.
+    where = {
+        "01c4-left": {**on, "workspace": 1, "column": 1},
+        "01c4-right": {**on, "workspace": 1, "column": 3},
+        "01c4-up": {**on, "workspace": 3, "column": 1},
+    }
+    others = [
+        {"app": "stand-in-browser", "title": "Open Acceluary", **on, "workspace": 1, "column": 2},
+        {"app": "stand-in-chat", "title": "Chat", **on, "workspace": 2, "column": 1},
+    ]
+    lost = {
+        "v": 1,
+        "boot": "a-boot-before",
+        "sessions": [
+            {"id": one, "title": one[5:].title(), "cwd": f"/home/jitsusama/{one[5:]}"}
+            for one in where
+        ],
+    }
+    try:
+        desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/left ~/right ~/up")
+        # The chat is open before Reopen Them All, the browser after it.
+        desktop.as_account("niri msg action focus-workspace 1")
+        stand_in(desktop, "stand-in-chat", "Chat")
+        kept(desktop, "~/.local/state/pi/restore.json", lost)
+        kept(
+            desktop,
+            arranged,
+            {"v": 1, "boots": {"a-boot-before": where}, "others": {"a-boot-before": others}},
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("to reopen", selecting="Sessions to Reopen")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        machine.send_key("ret")
+        opening = "niri msg --json windows | grep -o 'pi --session 01c4-' | wc -l"
+        machine.wait_until_succeeds(
+            desktop.in_session(f"[ $({opening}) = 3 ]"), timeout=dt.timedelta(seconds=60)
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+        # The harness names another boot once every session is back, as
+        # it did on 2026-11-02; the places kept for this one stay.
+        kept(
+            desktop,
+            "~/.local/state/pi/restore.json",
+            {"v": 1, "boot": "another-boot", "sessions": []},
+        )
+        stand_in(desktop, "stand-in-browser", "Open Acceluary")
+        deadline = time.monotonic() + 60
+        while not put_back(now := where_now(desktop, "01c4-", {"Open Acceluary", "Chat"})):
+            assert time.monotonic() < deadline, f"not put back where they sat: {now}"
+            time.sleep(1)
+        # The shell's first keep with the browser in this boot's windows
+        # comes after the harness named another boot.
+        read = kept_with(desktop, arranged, boot, "stand-in-browser")
+        assert "a-boot-before" in read["boots"], sorted(read["boots"])
+    finally:
+        # Its own pattern bracketed, so pkill doesn't match the shell it runs in.
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+        kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        desktop.as_account("rm -rf ~/left ~/right ~/up")
+
+
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(
     desktop: Desktop,
 ) -> None:
