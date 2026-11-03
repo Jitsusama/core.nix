@@ -2446,6 +2446,11 @@ Scope {
         if (open)
             freshen();
         const due = refreshing;
+        // When each began, by the shell's clock, which the pacing goes by:
+        // a report said as one ends is moved by its own work.
+        if (open)
+            for (const source of due)
+                Report.say(`refresh of ${source.settings.name} began ${refreshedAt}`);
         refreshing = [];
         for (const source of due)
             refreshNow(source);
