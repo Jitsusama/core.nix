@@ -324,10 +324,10 @@ mod tests {
     fn a_jobs_folder_is_made_passable_and_a_jobs_own_folder_in_it_private() {
         let dir = tempfile::tempdir().unwrap();
         let jobs = dir.path().join("jobs");
-        let made = folder(&jobs).unwrap();
-        assert_eq!(made.parent(), Some(jobs.as_path()));
+        let own = folder(&jobs).unwrap();
+        assert_eq!(own.parent(), Some(jobs.as_path()));
         let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
-        assert_eq!((mode(&jobs), mode(&made)), (0o711, 0o700));
+        assert_eq!((mode(&jobs), mode(&own)), (0o711, 0o700));
     }
 
     #[test]
