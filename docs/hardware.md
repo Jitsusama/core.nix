@@ -1080,6 +1080,7 @@ the kernel's tree adds.
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, and the clock the firmware sets it from kept true |
 | Sensors  | the Aggregator's thermal sensors and fan, through a kernel patch          |
+| Power    | the charger and battery kept from asking the Aggregator while it sleeps   |
 | Touch    | the touchscreen and pen, through a driver out of the kernel's tree        |
 | Wi-Fi    | the country the access points give, taken while connected                 |
 | Mics     | their gain held at their own level, so a call doesn't clip                |
@@ -1298,8 +1299,9 @@ Enable for the chosen mode. On this laptop (firmware 4.355.140) that entry is
 the integer 1 rather than a register, so the write fails with -95 on every
 CPU, the driver doesn't register, and acpi-cpufreq runs instead. The
 module's kernel patch
-([`kernel/amd-pstate-fixed-autonomous-selection.patch`][24]) takes the
-refused write as success when the fixed value is what the mode wants.
+([`kernel/amd-pstate-skip-matching-auto-sel.patch`][24], mainline's
+b400642c5e93 until a 7.3 stable release has it) skips the write when the
+fixed value is already what the mode wants.
 Passive mode is still refused, since this firmware always selects
 autonomously. Active mode, the kernel's default, would fail next: it writes
 the Energy Performance Preference, which the kernel does only when the
@@ -1424,7 +1426,7 @@ sealed to.
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
 [22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
 [23]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
-[24]: ../hardware/microsoft-surface-laptop-4-1958/kernel/amd-pstate-fixed-autonomous-selection.patch
+[24]: ../hardware/microsoft-surface-laptop-4-1958/kernel/amd-pstate-skip-matching-auto-sel.patch
 [25]: ../hardware/microsoft-surface-laptop-4-1958/kernel/iwlmvm-country-while-associated.patch
 [26]: ../hardware/microsoft-surface-laptop-4-1958/clock/clock.nix
 [27]: https://github.com/avgbob/SL4A_TouchScreen/tree/eccedfb606e579242950052de2022d445dee028c

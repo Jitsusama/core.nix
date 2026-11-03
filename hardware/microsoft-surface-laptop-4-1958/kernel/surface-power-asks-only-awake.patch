@@ -1,0 +1,161 @@
+power: supply: surface: ask the controller only while awake
+
+On a resume from s2idle, amdgpu's late init asks the power-supply core
+whether the system runs on mains, and it can do so before the Surface
+Aggregator's controller has resumed. The core asks each supply's
+get_property, and surface_charger sends the controller a request there,
+which ssam_request_do_sync_with_buffer() refuses with -ENODEV and a
+WARN, since the controller isn't started:
+
+  WARNING: drivers/platform/surface/aggregator/controller.c:1703 at
+  ssam_request_do_sync_with_buffer
+  ... spwr_ac_get_property <- power_supply_is_system_supplied <-
+  smu_late_init <- amdgpu resume
+
+A Surface Laptop 4 (AMD) logged it at 3 of 9 wakes over two boots,
+each time from surface_charger, and was left tainted with W.
+surface_battery's get_property sends the same request whenever its
+cached state is stale, so it can hit the same refusal. Both drivers are
+the controller's children, so they suspend before it and resume after
+it. Mark each suspended under its own lock from its suspend callback
+until its resume callback, and while marked, answer from the last state
+the controller gave rather than asking.
+
+surface_charger's get_property also returned 1 whenever the adapter's
+state had just changed, which the power-supply core reads as a failure,
+so the first answer after each change was dropped. Return 0 there.
+
+diff --git a/drivers/power/supply/surface_battery.c b/drivers/power/supply/surface_battery.c
+--- a/drivers/power/supply/surface_battery.c
++++ b/drivers/power/supply/surface_battery.c
+@@ -134,6 +134,7 @@ struct spwr_battery_device {
+ 	struct spwr_bix bix;
+ 	struct spwr_bst bst;
+ 	u32 alarm;
++	bool suspended;
+ };
+ 
+ 
+@@ -216,6 +217,13 @@ static int spwr_battery_update_bst_unlocked(struct spwr_battery_device *bat, boo
+ 	if (cached && bat->timestamp && time_is_after_jiffies(cache_deadline))
+ 		return 0;
+ 
++	/*
++	 * The controller may be suspended, so keep the last state it gave
++	 * rather than ask it.
++	 */
++	if (bat->suspended)
++		return 0;
++
+ 	status = spwr_battery_load_sta(bat);
+ 	if (status)
+ 		return status;
+@@ -245,6 +253,9 @@ static int spwr_battery_update_bix_unlocked(struct spwr_battery_device *bat)
+ 
+ 	lockdep_assert_held(&bat->lock);
+ 
++	if (bat->suspended)
++		return 0;
++
+ 	status = spwr_battery_load_sta(bat);
+ 	if (status)
+ 		return status;
+@@ -808,11 +819,29 @@ static int spwr_battery_register(struct spwr_battery_device *bat)
+ 
+ /* -- Driver setup. --------------------------------------------------------- */
+ 
++static int __maybe_unused surface_battery_suspend(struct device *dev)
++{
++	struct spwr_battery_device *bat = dev_get_drvdata(dev);
++
++	mutex_lock(&bat->lock);
++	bat->suspended = true;
++	mutex_unlock(&bat->lock);
++
++	return 0;
++}
++
+ static int __maybe_unused surface_battery_resume(struct device *dev)
+ {
+-	return spwr_battery_recheck_full(dev_get_drvdata(dev));
++	struct spwr_battery_device *bat = dev_get_drvdata(dev);
++
++	mutex_lock(&bat->lock);
++	bat->suspended = false;
++	mutex_unlock(&bat->lock);
++
++	return spwr_battery_recheck_full(bat);
+ }
+-static SIMPLE_DEV_PM_OPS(surface_battery_pm_ops, NULL, surface_battery_resume);
++static SIMPLE_DEV_PM_OPS(surface_battery_pm_ops, surface_battery_suspend,
++			 surface_battery_resume);
+ 
+ static int surface_battery_probe(struct ssam_device *sdev)
+ {
+diff --git a/drivers/power/supply/surface_charger.c b/drivers/power/supply/surface_charger.c
+--- a/drivers/power/supply/surface_charger.c
++++ b/drivers/power/supply/surface_charger.c
+@@ -59,6 +59,7 @@ struct spwr_ac_device {
+ 	struct mutex lock;  /* Guards access to state below. */
+ 
+ 	__le32 state;
++	bool suspended;
+ };
+ 
+ 
+@@ -71,6 +72,13 @@ static int spwr_ac_update_unlocked(struct spwr_ac_device *ac)
+ 
+ 	lockdep_assert_held(&ac->lock);
+ 
++	/*
++	 * The controller may be suspended, so keep the last state it gave
++	 * rather than ask it.
++	 */
++	if (ac->suspended)
++		return 0;
++
+ 	status = ssam_retry(ssam_bat_get_psrc, ac->sdev, &ac->state);
+ 	if (status < 0)
+ 		return status;
+@@ -145,8 +153,9 @@ static int spwr_ac_get_property(struct power_supply *psy, enum power_supply_prop
+ 	mutex_lock(&ac->lock);
+ 
+ 	status = spwr_ac_update_unlocked(ac);
+-	if (status)
++	if (status < 0)
+ 		goto out;
++	status = 0;
+ 
+ 	switch (psp) {
+ 	case POWER_SUPPLY_PROP_ONLINE:
+@@ -222,11 +231,28 @@ static int spwr_ac_register(struct spwr_ac_device *ac)
+ 
+ /* -- Driver setup. --------------------------------------------------------- */
+ 
++static int __maybe_unused surface_ac_suspend(struct device *dev)
++{
++	struct spwr_ac_device *ac = dev_get_drvdata(dev);
++
++	mutex_lock(&ac->lock);
++	ac->suspended = true;
++	mutex_unlock(&ac->lock);
++
++	return 0;
++}
++
+ static int __maybe_unused surface_ac_resume(struct device *dev)
+ {
+-	return spwr_ac_recheck(dev_get_drvdata(dev));
++	struct spwr_ac_device *ac = dev_get_drvdata(dev);
++
++	mutex_lock(&ac->lock);
++	ac->suspended = false;
++	mutex_unlock(&ac->lock);
++
++	return spwr_ac_recheck(ac);
+ }
+-static SIMPLE_DEV_PM_OPS(surface_ac_pm_ops, NULL, surface_ac_resume);
++static SIMPLE_DEV_PM_OPS(surface_ac_pm_ops, surface_ac_suspend, surface_ac_resume);
+ 
+ static int surface_ac_probe(struct ssam_device *sdev)
+ {
