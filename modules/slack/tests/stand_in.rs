@@ -515,14 +515,14 @@ fn wanting(line: &str) -> String {
 }
 
 /// slack-unreads, started over the stand-in with this sign-in, asking
-/// every 50 ms, keeping what it reads in `file` and what it asks of Joel
-/// beside it (`waiting`).
-fn unreads(stand_in: &StandIn, credentials: &std::path::Path, file: &std::path::Path) -> Child {
+/// every 50 ms, answering on a socket beside `run`, a path of the test's
+/// own, and keeping what it asks of Joel beside it too (`waiting`).
+fn unreads(stand_in: &StandIn, credentials: &std::path::Path, run: &std::path::Path) -> Child {
     unreads_from(
         Command::new(env!("CARGO_BIN_EXE_slack-unreads")),
         stand_in,
         credentials,
-        file,
+        run,
     )
 }
 
@@ -531,13 +531,12 @@ fn unreads_from(
     mut command: Command,
     stand_in: &StandIn,
     credentials: &std::path::Path,
-    file: &std::path::Path,
+    run: &std::path::Path,
 ) -> Child {
     command
         .arg(credentials)
-        .arg(file)
-        .arg(socket(file))
-        .arg(waiting(file))
+        .arg(socket(run))
+        .arg(waiting(run))
         .arg(&stand_in.origin)
         .arg("50")
         .stderr(Stdio::null())
@@ -545,20 +544,20 @@ fn unreads_from(
         .unwrap()
 }
 
-/// Where a run keeping `file` asks Joel to sign in again.
-fn waiting(file: &std::path::Path) -> PathBuf {
-    file.with_extension("waiting.json")
+/// Where `run` asks Joel to sign in again.
+fn waiting(run: &std::path::Path) -> PathBuf {
+    run.with_extension("waiting.json")
 }
 
-/// Where a run keeping `file` answers asks.
-fn socket(file: &std::path::Path) -> PathBuf {
-    file.with_extension("daemons").join("slack.sock")
+/// Where `run` answers asks.
+fn socket(run: &std::path::Path) -> PathBuf {
+    run.with_extension("daemons").join("slack.sock")
 }
 
 /// Asks a running slack-unreads one thing over its socket, and what it
 /// answered.
-fn asked(file: &std::path::Path, ask: &serde_json::Value) -> serde_json::Value {
-    let mut stream = std::os::unix::net::UnixStream::connect(socket(file)).unwrap();
+fn asked(run: &std::path::Path, ask: &serde_json::Value) -> serde_json::Value {
+    let mut stream = std::os::unix::net::UnixStream::connect(socket(run)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
@@ -577,58 +576,65 @@ fn until(what: &str, held: impl Fn() -> bool) {
     }
 }
 
-/// What the file says, once it says anything whole.
+/// What a file says, once it says anything whole.
 fn kept(file: &std::path::Path) -> Option<serde_json::Value> {
     serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()
 }
 
+/// What's held of `kind`, each thing as its record says it, in the order
+/// listed.
+fn listed(run: &std::path::Path, kind: &str) -> Vec<serde_json::Value> {
+    let held = asked(
+        run,
+        &serde_json::json!({"id": kind, "ask": "list", "kind": kind}),
+    );
+    held["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| record[kind].clone())
+        .collect()
+}
+
 #[test]
-fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
+fn what_wants_joel_is_held_whole_each_conversation_named_once() {
     let stand_in = StandIn::new(wanting);
     let path = credentials("unreads");
-    let file = path.with_extension("unreads.json");
+    let run = path.with_extension("unreads");
     // Asked before, as when Slack refused the sign-in an earlier run had.
-    std::fs::write(waiting(&file), "{}").unwrap();
-    let mut program = unreads(&stand_in, &path, &file);
-    until("the file never said anything", || kept(&file).is_some());
-    let said = kept(&file).unwrap();
-    assert_eq!(said["state"], "ok");
+    std::fs::write(waiting(&run), "{}").unwrap();
+    let mut program = unreads(&stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
+    until("Slack was never heard", || {
+        !listed(&run, "slack-unread").is_empty()
+    });
     // Slack answering, nothing waits on Joel's signing in.
     until("Joel was still asked to sign in", || {
-        !waiting(&file).exists()
+        !waiting(&run).exists()
     });
     assert_eq!(
-        said["conversations"],
-        serde_json::json!([
-            {"id": "D1", "name": "Ada Lovelace", "kind": "dm", "count": 2,
-             "link": "slack://channel?team=T1&id=D1"},
-            {"id": "C2", "name": "#launcher", "kind": "mention", "count": 1,
-             "link": "slack://channel?team=T1&id=C2"},
-            {"id": "threads", "name": "Threads", "kind": "thread", "count": 3,
-             "link": "slack://open?team=T1"},
-            {"id": "C3", "name": "#random", "kind": "unread", "count": 0,
-             "link": "slack://channel?team=T1&id=C3"}
-        ])
+        listed(&run, "slack-unread"),
+        [
+            serde_json::json!({"id": "D1", "name": "Ada Lovelace", "kind": "dm", "count": 2,
+                "link": "slack://channel?team=T1&id=D1", "latest": ""}),
+            serde_json::json!({"id": "C2", "name": "#launcher", "kind": "mention", "count": 1,
+                "link": "slack://channel?team=T1&id=C2", "latest": ""}),
+            serde_json::json!({"id": "threads", "name": "Threads", "kind": "thread",
+                "count": 3, "link": "slack://open?team=T1", "latest": ""}),
+            serde_json::json!({"id": "C3", "name": "#random", "kind": "unread", "count": 0,
+                "link": "slack://channel?team=T1&id=C3", "latest": ""}),
+        ]
     );
     // What he read last, newest first, named as the unread are.
     assert_eq!(
-        said["recent"],
-        serde_json::json!([
-            {"id": "C3", "name": "#random", "kind": "channel", "count": 0,
-             "link": "slack://channel?team=T1&id=C3"},
-            {"id": "D1", "name": "Ada Lovelace", "kind": "dm", "count": 0,
-             "link": "slack://channel?team=T1&id=D1"}
-        ])
+        listed(&run, "slack-recent"),
+        [
+            serde_json::json!({"id": "C3", "name": "#random", "kind": "channel",
+                "link": "slack://channel?team=T1&id=C3", "read": "1730200000.000100"}),
+            serde_json::json!({"id": "D1", "name": "Ada Lovelace", "kind": "dm",
+                "link": "slack://channel?team=T1&id=D1", "read": "1730100000.000100"}),
+        ]
     );
-    // Written aside and renamed in, so nothing of it is left aside, and
-    // nothing beside it in the folder the shell watches. Other tests
-    // write aside in the same folder, so only this file's own name is
-    // looked for.
-    let folder = file.parent().unwrap();
-    let name = file.file_name().unwrap();
-    assert!(folder.join(".writing").is_dir());
-    assert!(!folder.join(".writing").join(name).exists());
-    assert!(!file.with_extension("new").exists());
     // Asked again and again, each conversation is named only once a run.
     let asked = |method: &str| {
         stand_in
@@ -651,7 +657,7 @@ fn what_wants_joel_is_kept_whole_in_a_file_each_conversation_named_once() {
                     || header == "Authorization: Bearer xoxc-mine")),
         "{heard:?}"
     );
-    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -691,16 +697,16 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     // would leave that ask on one nobody accepts from.
     let stand_in = StandIn::new(wanting);
     let path = credentials("unreads-handed");
-    let file = path.with_extension("handed.json");
-    std::fs::create_dir_all(socket(&file).parent().unwrap()).unwrap();
+    let run = path.with_extension("handed");
+    std::fs::create_dir_all(socket(&run).parent().unwrap()).unwrap();
     let mut launcher = Command::new("systemd-socket-activate");
     launcher
-        .arg(format!("--listen={}", socket(&file).display()))
+        .arg(format!("--listen={}", socket(&run).display()))
         .arg(env!("CARGO_BIN_EXE_slack-unreads"));
-    let mut program = unreads_from(launcher, &stand_in, &path, &file);
-    until("the socket never came", || socket(&file).exists());
+    let mut program = unreads_from(launcher, &stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
     let hello = asked(
-        &file,
+        &run,
         &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
     );
     assert_eq!(hello["domain"], "slack");
@@ -712,12 +718,12 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
 fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     let stand_in = StandIn::new(searching);
     let path = credentials("unreads-search");
-    let file = path.with_extension("search.json");
-    let mut program = unreads(&stand_in, &path, &file);
-    until("the socket never came", || socket(&file).exists());
+    let run = path.with_extension("search");
+    let mut program = unreads(&stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
     let hello = || {
         asked(
-            &file,
+            &run,
             &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
         )
     };
@@ -727,7 +733,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         hello()["sources"]["slack"] == "answering"
     });
     let found = asked(
-        &file,
+        &run,
         &serde_json::json!({"id": 2, "ask": "search", "words": "launcher"}),
     );
     let record = &found["records"][0];
@@ -747,7 +753,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         )
     );
     let near = asked(
-        &file,
+        &run,
         &serde_json::json!({"id": 3, "ask": "get", "keys": [record["key"]]}),
     );
     let around: Vec<(&str, bool)> = near["records"][0]["around"]
@@ -763,7 +769,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         .collect();
     assert_eq!(around, [("Is it?", false), ("The launcher is fast", true)]);
     let busy = asked(
-        &file,
+        &run,
         &serde_json::json!({"id": 4, "ask": "search", "words": "busy"}),
     );
     assert_eq!(busy["error"]["code"], "too-many");
@@ -778,8 +784,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         "{:?}",
         stand_in.heard()
     );
-    let _ = std::fs::remove_file(&file);
-    let _ = std::fs::remove_dir_all(socket(&file).parent().unwrap());
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -813,8 +818,8 @@ struct Connection {
 }
 
 impl Connection {
-    fn to(file: &std::path::Path) -> Connection {
-        let stream = std::os::unix::net::UnixStream::connect(socket(file)).unwrap();
+    fn to(run: &std::path::Path) -> Connection {
+        let stream = std::os::unix::net::UnixStream::connect(socket(run)).unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
@@ -863,13 +868,13 @@ fn keys(records: &serde_json::Value) -> Vec<&str> {
 fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
     let stand_in = StandIn::new(reading);
     let path = credentials("unreads-watch");
-    let file = path.with_extension("watch.json");
-    let mut program = unreads(&stand_in, &path, &file);
-    until("the socket never came", || socket(&file).exists());
-    let mut shell = Connection::to(&file);
+    let run = path.with_extension("watch");
+    let mut program = unreads(&stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
+    let mut shell = Connection::to(&run);
     until("Slack was never heard", || {
         let listed = asked(
-            &file,
+            &run,
             &serde_json::json!({"id": 1, "ask": "list", "kind": "slack-account"}),
         );
         listed["records"][0]["slack-account"]["standing"] == "ok"
@@ -945,39 +950,32 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
     );
     program.kill().unwrap();
     program.wait().unwrap();
-    let _ = std::fs::remove_file(&file);
-    let _ = std::fs::remove_dir_all(socket(&file).parent().unwrap());
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
 #[test]
-fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
+fn a_refused_sign_in_is_held_as_signed_out_with_nothing_counted() {
     let stand_in = StandIn::new(|_| r#"{"ok": false, "error": "invalid_auth"}"#.into());
     let path = credentials("unreads-refused");
-    let file = path.with_extension("unreads.json");
-    let mut program = unreads(&stand_in, &path, &file);
-    until("the file never said anything", || kept(&file).is_some());
+    let run = path.with_extension("refused");
+    let mut program = unreads(&stand_in, &path, &run);
     until("Joel was never asked to sign in", || {
-        kept(&waiting(&file)).is_some()
+        kept(&waiting(&run)).is_some()
     });
     // Over the socket, only the account is held, saying so.
-    let held = asked(&file, &serde_json::json!({"id": 1, "ask": "list"}));
+    let held = asked(&run, &serde_json::json!({"id": 1, "ask": "list"}));
     assert_eq!(
         held["records"],
         serde_json::json!([{"key": "slack-account:slack", "kind": "slack-account",
             "slack-account": {"standing": "signedOut"}, "heard": held["records"][0]["heard"]}])
     );
-    let hello = asked(&file, &serde_json::json!({"id": 2, "ask": "hello"}));
+    let hello = asked(&run, &serde_json::json!({"id": 2, "ask": "hello"}));
     assert_eq!(hello["sources"]["slack"], "signed-out");
     program.kill().unwrap();
     program.wait().unwrap();
-    let said = kept(&file).unwrap();
-    assert_eq!(
-        (&said["state"], &said["conversations"]),
-        (&serde_json::json!("signedOut"), &serde_json::json!([]))
-    );
     // As Needs You reads it, once, done when he signs in again.
-    let asked = kept(&waiting(&file)).unwrap();
+    let asked = kept(&waiting(&run)).unwrap();
     assert_eq!(
         (
             &asked["items"][0]["title"],
@@ -988,21 +986,28 @@ fn a_refused_sign_in_is_kept_as_signed_out_with_nothing_counted() {
             &serde_json::json!("signin:slack")
         )
     );
-    let _ = std::fs::remove_file(&file);
-    let _ = std::fs::remove_file(waiting(&file));
+    let _ = std::fs::remove_file(waiting(&run));
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
 #[test]
-fn with_no_sign_in_nothing_is_kept_and_slack_is_never_asked() {
+fn with_no_sign_in_nothing_is_held_and_slack_is_never_asked() {
     let stand_in = StandIn::new(wanting);
     let missing = std::env::temp_dir().join("slack-unreads-no-such-file.json");
-    let file = std::env::temp_dir().join(format!("slack-unreads-none-{}.json", std::process::id()));
-    let mut program = unreads(&stand_in, &missing, &file);
+    let run = std::env::temp_dir().join(format!("slack-unreads-none-{}", std::process::id()));
+    let mut program = unreads(&stand_in, &missing, &run);
+    until("the socket never came", || socket(&run).exists());
     // Long enough for several rounds of asking.
     thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        listed(&run, "slack-account"),
+        [serde_json::json!({"standing": "none"})]
+    );
+    assert!(listed(&run, "slack-unread").is_empty());
     program.kill().unwrap();
     program.wait().unwrap();
-    assert!(!file.exists());
+    assert!(!waiting(&run).exists());
     assert!(stand_in.heard().is_empty());
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
 }

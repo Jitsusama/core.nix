@@ -1,17 +1,15 @@
-//! slack-unreads CREDENTIALS FILE SOCKET WAITING [ORIGIN [PACE]]
+//! slack-unreads CREDENTIALS SOCKET WAITING [ORIGIN [PACE]]
 //!
-//! What in Slack is unread and what Joel read last, kept in FILE for the
-//! shell's Now and Slack's program (lib's `unreads` says what it is and
-//! how it's read): Slack is asked every half minute, and FILE is written
-//! whole only when what it says changes, or every five minutes so the
-//! shell can tell a quiet Slack from this program gone. It's written in a
-//! `.writing` folder beside FILE and renamed in, so a shell watching
-//! FILE's folder hears one change. Slack refusing the sign-in is
-//! said at once; Slack out of reach only once two asks in a row have
-//! failed, so one lost answer doesn't blank the count. With no sign-in in
-//! CREDENTIALS, the harness's file, FILE is taken away and nothing is
-//! asked until there is one. ORIGIN is Slack's and PACE, in milliseconds,
-//! half a minute, unless a test names a stand-in and a quicker pace.
+//! Slack's daemon: what in Slack is unread and what Joel read last, for
+//! the shell's Now and Slack's program (lib's `unreads` says what it is
+//! and how it's read), held on SOCKET as the shell's daemon interface
+//! says (lib's `daemon`), for any watch to hear as it changes. Slack is
+//! asked every half minute. Slack refusing the sign-in is said at once;
+//! Slack out of reach only once two asks in a row have failed, so one
+//! lost answer doesn't blank the count. With no sign-in in CREDENTIALS,
+//! the harness's file, nothing is held and nothing is asked until there
+//! is one. ORIGIN is Slack's and PACE, in milliseconds, half a minute,
+//! unless a test names a stand-in and a quicker pace.
 //!
 //! While Slack refuses the sign-in, signing in again waits on Joel in
 //! Needs You, through WAITING, a file of what waits on him as each
@@ -21,29 +19,22 @@
 //! nothing of the sign-in.
 //!
 //! Run by systemd, it tells its watchdog after each ask, so one that hangs
-//! is restarted, and its unit takes FILE away however it stops: a count
-//! said "ok" never outlives the program that read it.
-//!
-//! It's Slack's daemon too: on SOCKET it answers the shell's daemon
-//! interface (lib's `daemon`), holding what each ask of Slack found for
-//! any watch to hear as it changes, and searching Slack when Joel asks,
-//! so nothing is started to search.
+//! is restarted; a count said "ok" never outlives the program that read
+//! it, since the shell lets what it held go once the socket stops
+//! answering. It searches Slack when Joel asks too, so nothing is started
+//! to search.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use slack_people::unreads::{
-    Conversation, Counted, Counts, Kind, Said, State, due, link, sign_in_waits,
+    Conversation, Counted, Counts, Kind, Said, State, link, sign_in_waits,
 };
 use slack_people::{Account, Refused, Slack};
 
 /// How often Slack is asked, unless a test says otherwise.
 const EVERY: Duration = Duration::from_secs(30);
-
-/// How old the file may grow while nothing changes, in milliseconds: the
-/// shell takes one ten minutes old as unknown.
-const STALE: u64 = 5 * 60 * 1000;
 
 /// How many asks in a row may fail before Slack is said to be out of
 /// reach.
@@ -51,10 +42,9 @@ const MISSES: u32 = 2;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (Some(credentials), Some(file), Some(socket), Some(waiting)) =
-        (args.next(), args.next(), args.next(), args.next())
+    let (Some(credentials), Some(socket), Some(waiting)) = (args.next(), args.next(), args.next())
     else {
-        eprintln!("usage: slack-unreads CREDENTIALS FILE SOCKET WAITING [ORIGIN [PACE]]");
+        eprintln!("usage: slack-unreads CREDENTIALS SOCKET WAITING [ORIGIN [PACE]]");
         std::process::exit(64);
     };
     let waiting = PathBuf::from(waiting);
@@ -69,17 +59,13 @@ fn main() {
         .next()
         .and_then(|every| every.parse().ok())
         .map_or(EVERY, Duration::from_millis);
-    let (credentials, file) = (PathBuf::from(credentials), PathBuf::from(file));
+    let credentials = PathBuf::from(credentials);
     let mut names = HashMap::new();
-    let mut written: Option<Said> = None;
     let mut misses = 0;
     loop {
         // The file is read each time, so signing in again from pi is
         // taken without a restart.
         let Some(account) = Account::read(&credentials) else {
-            if written.take().is_some() || file.exists() {
-                let _ = std::fs::remove_file(&file);
-            }
             daemon.say(None, millis());
             ask_joel(&waiting, false);
             std::thread::sleep(every);
@@ -95,7 +81,6 @@ fn main() {
                 ))
             });
         let none = |state| Said {
-            checked,
             state,
             conversations: Vec::new(),
             recent: Vec::new(),
@@ -104,7 +89,6 @@ fn main() {
             Ok((conversations, recent)) => {
                 misses = 0;
                 Some(Said {
-                    checked,
                     state: State::Ok,
                     conversations,
                     recent,
@@ -124,14 +108,6 @@ fn main() {
         }
         if let Some(said) = &said {
             daemon.say(Some(said), checked);
-        }
-        if let Some(said) = said
-            && due(written.as_ref(), &said, STALE)
-        {
-            match write(&file, &said) {
-                Ok(()) => written = Some(said),
-                Err(error) => eprintln!("<4>couldn't write {}: {error}", file.display()),
-            }
         }
         alive();
         std::thread::sleep(every);
@@ -230,15 +206,6 @@ fn ask_joel(waiting: &Path, asks: bool) {
     if let Err(error) = done {
         eprintln!("<4>couldn't change {}: {error}", waiting.display());
     }
-}
-
-/// Writes what's said whole, beside the file and then over it, so the
-/// shell never reads half of it.
-fn write(file: &Path, said: &Said) -> std::io::Result<()> {
-    whole(
-        file,
-        &serde_json::to_string(said).map_err(std::io::Error::other)?,
-    )
 }
 
 /// Writes `text` in a `.writing` folder beside `file` and then renames it
