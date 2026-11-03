@@ -138,7 +138,6 @@
         ./full-range-when-selectable.patch
         ./warp-after-a-close.patch
         ./spawn-behind-the-lock.patch
-        ./virtual-keys-are-activity.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
