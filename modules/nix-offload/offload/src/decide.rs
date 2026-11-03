@@ -83,6 +83,17 @@ pub fn give_back(hours: Hours, tick: Tick, used: u64, ends: u64, gone: bool) -> 
     }
 }
 
+/// Whether a builder last used at `used`, asked to live until `ends`, is
+/// asked whether a run outliving its caller still builds there: only once
+/// it would otherwise be given back idle, so it's asked once each idle
+/// spell rather than every tick, and never once its time is up, since
+/// nothing holds a builder past that. With its caller gone, no ssh here
+/// reaches it, and a prebuild's kernel would be given back mid-compile.
+pub fn asks_outliving(hours: Hours, tick: Tick, used: u64, ends: u64) -> bool {
+    let over = tick.now >= ends || past_deadline(hours, tick.into_day);
+    !over && tick.now.saturating_sub(used) >= IDLE
+}
+
 /// When the next builder may be asked for, after one last used at `used`
 /// ends with `event`. One given back idle while work still `wants` it is
 /// one that work couldn't use, so it waits as long as after a failure;
@@ -277,6 +288,16 @@ mod tests {
             next_after(Event::Stopped, true, used, LATER, true, woken.now),
             woken.now
         );
+    }
+
+    #[test]
+    fn a_builder_is_asked_about_runs_outliving_their_callers_only_when_idle_within_its_time() {
+        let noon = at(12 * 3600, false);
+        assert!(!asks_outliving(HOURS, noon, noon.now - 60, LATER));
+        assert!(asks_outliving(HOURS, noon, noon.now - IDLE, LATER));
+        assert!(!asks_outliving(HOURS, noon, noon.now - IDLE, noon.now));
+        let late = at(20 * 3600, false);
+        assert!(!asks_outliving(HOURS, late, late.now - IDLE, LATER));
     }
 
     #[test]

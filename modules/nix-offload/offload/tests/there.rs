@@ -137,6 +137,35 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
 }
 
 #[test]
+fn a_build_asked_to_outlive_its_caller_is_sent_to_go_on_alone() {
+    // A prebuild whose caller hit its own time limit at 05:14 on 3
+    // November lost the kernel it was compiling five minutes later.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    let outliving = |extra: &[&str]| {
+        let ran = there_with(folder.path(), &offload, extra);
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let given = fs::read_to_string(folder.path().join("ssh-was-given")).unwrap();
+        assert_eq!(
+            given_to(folder.path()),
+            "nix-offload\nnix build --no-link -L --keep-going 'github:o/r/abc#checks.x.a'\n"
+        );
+        given.contains("NIX_OFFLOAD_OUTLIVE") && given.contains("nix-offload-outliving-$$")
+    };
+    assert!(
+        outliving(&["--outlive"]),
+        "it wasn't sent to outlive its caller"
+    );
+    assert!(
+        !outliving(&[]),
+        "one not asked to was sent to outlive its caller"
+    );
+}
+
+#[test]
 fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     // A build tool's targets come as derivations evaluated here, with no
     // flake a builder could fetch, so they're copied up and built there.
@@ -975,7 +1004,7 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\nderivation\n"
+        "tree\napply\nout\nwants\nfolder\nchanged\nhere\nprint\nderivation\noutlive\n"
     );
 }
 
