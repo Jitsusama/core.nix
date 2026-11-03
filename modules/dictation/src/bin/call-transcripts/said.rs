@@ -1,8 +1,7 @@
 //! What a call's words amount to. A take that's only what a speech model
 //! writes for a click or a breath is no turn; a call of greetings and
 //! little else is too little to sum up, so no model is asked to make
-//! something of it; and a summary naming what the call never named isn't
-//! kept, since a wrong summary is worse than none.
+//! something of it.
 
 use std::collections::HashSet;
 
@@ -54,41 +53,6 @@ pub fn too_little(transcript: &str) -> bool {
     said.len() < LEAST_WORDS
 }
 
-/// The names `summary` gives that `transcript` never says, each once, in
-/// the order the summary gives them. A name is a word written with a
-/// capital where a sentence or a list's line doesn't start.
-pub fn strays(summary: &str, transcript: &str) -> Vec<String> {
-    let known: HashSet<String> = words(transcript).collect();
-    let mut strays: Vec<String> = Vec::new();
-    for line in summary.lines() {
-        let mut starts = true;
-        for word in line.split_whitespace() {
-            let bare = word
-                .trim_matches(|c: char| !c.is_alphanumeric())
-                .trim_end_matches("'s")
-                .trim_end_matches("\u{2019}s");
-            // A word opening a bracket, as "(All of them)", may be
-            // capitalised as a sentence's first word is.
-            let named = !starts
-                && !word.starts_with(['(', '[', '"'])
-                && bare != "I"
-                && !bare.starts_with("I'")
-                && bare.chars().any(char::is_uppercase);
-            if named && !known.contains(&bare.to_lowercase()) && !strays.iter().any(|s| s == bare) {
-                strays.push(bare.to_owned());
-            }
-            // A sentence's end inside markdown's marks, as "**Decided:**"
-            // or "(at ten).", still ends it, and a dash or a bullet on
-            // its own starts what follows.
-            starts = bare.is_empty()
-                || word
-                    .trim_end_matches(['*', '_', ')', '"', '\''])
-                    .ends_with(['.', '!', '?', ':', ';']);
-        }
-    }
-    strays
-}
-
 /// `text`'s words, lowercase, without what's around them or a
 /// possessive's ending, so "Joel's" is Joel.
 fn words(text: &str) -> impl Iterator<Item = String> + '_ {
@@ -118,13 +82,6 @@ mod tests {
          **Others**, 0:43: Binks.\n\n**Joel**, 0:46: Hello, hello, hello. Hello? Thank you.\n\n\
          **Others**, 8:15: Hello. Hello. Hello. Hello.\n\n**Others**, 9:15: Thank you. Go. Hi.\n\n\
          **Others**, 10:54: You\n";
-
-    /// That call's summary, which the model made up from little more.
-    const MADE_UP: &str = "The call was primarily about Quorvex, a company or project \
-         associated with Binks and Tallimander. The group discussed:\n\n\
-         - The positive and negative aspects of Quorvex\n\
-         - Joel's gratitude for the discussion and his inquiries\n\
-         - Joel's greeting and introduction, followed by the group's acknowledgment\n";
 
     #[test]
     fn what_whisper_writes_for_a_sound_is_no_turn() {
@@ -160,31 +117,5 @@ mod tests {
     #[test]
     fn nothing_written_down_is_too_little_to_sum_up() {
         assert!(too_little("# Transcript\n"));
-    }
-
-    #[test]
-    fn a_summary_naming_what_the_call_never_did_strays() {
-        assert_eq!(strays(MADE_UP, HELLOS), ["Quorvex", "Tallimander"]);
-    }
-
-    #[test]
-    fn a_summary_naming_only_what_the_call_did_doesnt_stray() {
-        let summary = "The call moved the review to Thursday.\n\n\
-             - Others said Thursday morning works for everyone.\n\
-             - Me thanked them.\n";
-        assert!(strays(summary, SHORT).is_empty());
-    }
-
-    #[test]
-    fn a_name_is_known_however_its_written() {
-        let summary = "They agreed on THURSDAY, and Joel's review moves.";
-        assert!(strays(summary, "**Joel**, 0:00: The review is thursday.").is_empty());
-    }
-
-    #[test]
-    fn a_sentence_starts_after_markdowns_marks() {
-        let summary = "**Decided:** All agreed on Thursday (morning). Everyone's in - \
-             Others too (Each said so).";
-        assert!(strays(summary, SHORT).is_empty());
     }
 }

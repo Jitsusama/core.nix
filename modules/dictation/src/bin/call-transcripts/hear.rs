@@ -6,14 +6,10 @@
 //! holds no memory between calls. A take's sound is let go once it's
 //! heard.
 //!
-//! A call written down whole is summed up once no call is being heard:
-//! Parakeet is let go first and the language model after, so the two are
-//! never held at once, and a call that starts meanwhile waits its turn.
-//! A call with too little said isn't given to the model, and a summary
-//! naming what the call never did isn't kept (said.rs). With no
-//! summarizer, a call written down whole is said so in a notice that
-//! opens its transcript, and nothing is summed up. What can't be heard
-//! or summed up is said in a notice (notices.rs).
+//! A call written down whole is given to be summed up (summarizer.rs)
+//! once no call is being heard and Parakeet is let go, so the two models
+//! are never held at once. What can't be heard is said in a notice
+//! (notices.rs).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -23,9 +19,8 @@ use dictation::parakeet::Parakeet;
 use dictation::transcript::{self, Line, Side, markdown};
 
 use crate::Settings;
-use crate::book::{self, Record, SUMMARY, Shared, TRANSCRIPT, write_whole};
-use crate::summary::Summed;
-use crate::{notices, said, summary};
+use crate::book::{self, Record, Shared, TRANSCRIPT, write_whole};
+use crate::{notices, said};
 
 /// How long Parakeet is kept once the last call is written, so a call
 /// rejoined soon after needn't load it again.
@@ -53,13 +48,13 @@ struct Writing {
     done: HashSet<Side>,
 }
 
-/// Hears every take given, until nothing more can be; `again` is where
-/// a notice's Try Again gives its call back.
+/// Hears every take given, until nothing more can be; each call written
+/// down whole, or given back by a notice's Try Again, goes to `sums`.
 pub fn hear(
     settings: &Settings,
     book: &Shared,
     jobs: &Receiver<Job>,
-    again: &Sender<Job>,
+    sums: &Sender<String>,
     me: &str,
 ) {
     let mut speech: Option<Parakeet> = None;
@@ -72,7 +67,9 @@ pub fn hear(
             if speech.take().is_some() {
                 eprintln!("call-transcripts: Parakeet let go");
             }
-            sum_up(settings, book, &std::mem::take(&mut unsummed), again);
+            for key in unsummed.drain(..) {
+                let _ = sums.send(key);
+            }
         }
         let job = if calls.is_empty() && speech.is_some() {
             match jobs.recv_timeout(UNUSED) {
@@ -164,150 +161,6 @@ fn title_of(book: &Shared, key: &str) -> String {
         .record(key)
         .map(|record| record.title.clone())
         .unwrap_or_default()
-}
-
-/// Says a call couldn't be summed up, and why, offering Try Again when
-/// the cause can pass and the transcript either way.
-fn not_summed_up(record: &Record, why: &str, can_pass: bool, again: &Sender<Job>) {
-    eprintln!("call-transcripts: {} wasn't summed up: {why}", record.key);
-    let notice = notices::not_summed_up(&record.title, why, can_pass);
-    let (key, again) = (record.key.clone(), again.clone());
-    let transcript = record.transcript.clone();
-    notices::show(&notice, move |chosen| match chosen {
-        "again" => {
-            let _ = again.send(Job::SumUp { key });
-        }
-        "transcript" => {
-            if let Some(file) = transcript {
-                notices::open(&file);
-            }
-        }
-        _ => {}
-    });
-}
-
-/// Sums up each call `keys` names that has a transcript, loading the
-/// language model for those with enough said and letting it go after.
-fn sum_up(settings: &Settings, book: &Shared, keys: &[String], again: &Sender<Job>) {
-    let records: Vec<Record> = {
-        let book = book.lock();
-        keys.iter()
-            .filter_map(|key| book.record(key).cloned())
-            .filter(|record| record.transcript.is_some())
-            .collect()
-    };
-    // A transcript that can't be read can't pass, so it offers no Try
-    // Again; a call with too little said is told so, with no model asked.
-    let mut readable = Vec::new();
-    for record in records {
-        match record.transcript.as_ref().map(std::fs::read_to_string) {
-            Some(Ok(text)) if said::too_little(&text) => {
-                eprintln!(
-                    "call-transcripts: too little was said on {} to sum up",
-                    record.key
-                );
-                keep(book, &record, said::TOO_LITTLE, again);
-            }
-            Some(Ok(text)) => readable.push((record, text)),
-            Some(Err(why)) => {
-                let why = format!("Its transcript can't be read: {why}");
-                not_summed_up(&record, &why, false, again);
-            }
-            None => {}
-        }
-    }
-    if readable.is_empty() {
-        return;
-    }
-    if settings.summarizer.is_none() {
-        for (record, _) in &readable {
-            written_down(record);
-        }
-        return;
-    }
-    // A model that won't load and a summary that fails can each pass, as
-    // the NPU frees, so each offers Try Again. A summary naming what the
-    // call never did is written once more, told not to; one that still
-    // does would likely stray again, so it offers none.
-    let mut model = match settings.load_summarizer() {
-        Ok(model) => model,
-        Err(why) => {
-            eprintln!("call-transcripts: the summarizer didn't load: {why}");
-            let why = format!("The summarizer didn't load: {why}");
-            for (record, _) in &readable {
-                not_summed_up(record, &why, true, again);
-            }
-            return;
-        }
-    };
-    for (record, text) in readable {
-        match summary::grounded(&mut model, &record.title, &text) {
-            Ok(Summed::Kept(written)) => keep(book, &record, &written, again),
-            Ok(Summed::Strayed(strays)) => {
-                let why = format!(
-                    "Its summary named {}, which the call never did, so it wasn't kept.",
-                    strays.join(", ")
-                );
-                not_summed_up(&record, &why, false, again);
-            }
-            Err(why) => not_summed_up(&record, &why, true, again),
-        }
-    }
-    eprintln!("call-transcripts: the summarizer let go");
-}
-
-/// Writes `written` as the call's summary, says it's ready, and puts it
-/// in the call's record. A disk with no room can pass, as room is made,
-/// so failing to write offers Try Again.
-fn keep(book: &Shared, record: &Record, written: &str, again: &Sender<Job>) {
-    let file = record.folder.join(SUMMARY);
-    if let Err(why) = write_whole(&file, &format!("{written}\n")) {
-        let why = format!("{} couldn't be written: {why}", file.display());
-        not_summed_up(record, &why, true, again);
-        return;
-    }
-    eprintln!("call-transcripts: {} summed up", record.key);
-    tell(&record.title, written, &file);
-    let mut book = book.lock();
-    if let Some(now) = book.record(&record.key).cloned() {
-        book.put(Record {
-            summary: Some(written.to_owned()),
-            ..now
-        });
-    }
-}
-
-/// Says a call is written down, with no summarizer to sum it up, in a
-/// notice that opens its transcript.
-fn written_down(record: &Record) {
-    eprintln!(
-        "call-transcripts: {} is written down, with no summary",
-        record.key
-    );
-    let transcript = record.transcript.clone();
-    notices::show(&notices::written_down(&record.title), move |chosen| {
-        if let ("transcript" | "default", Some(file)) = (chosen, &transcript) {
-            notices::open(file);
-        }
-    });
-}
-
-/// Says a call's summary is ready, in a notice whose Read It opens it.
-fn tell(title: &str, written: &str, file: &std::path::Path) {
-    // The summary's first line, without a bullet's marker, since a
-    // notice's line is no list.
-    let first = written
-        .lines()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or_default()
-        .trim_start_matches(['-', '*', ' '])
-        .to_owned();
-    let file = file.to_owned();
-    notices::show(&notices::summed_up(title, &first), move |chosen| {
-        if chosen == "read" {
-            notices::open(&file);
-        }
-    });
 }
 
 /// What a call already says, taken up again: what the transcript of a

@@ -20,11 +20,13 @@ if TYPE_CHECKING:
 # Where Joel's PipeWire and the daemon's socket are.
 RUNTIME = "/run/user/1000"
 SOCKET = f"{RUNTIME}/daemons/calls.sock"
-# The meeting on, as the google program's daemon holds it, and the one after, which is stopped.
-# The stand-in daemon answers every ask with what's in its file, as the meetings it holds.
+# The meeting on, as the google program's daemon holds it, the one that starts while it's summed
+# up, and the one after, which is stopped. The stand-in daemon answers every ask with what's in
+# its file, as the meetings it holds.
 GOOGLE = f"{RUNTIME}/daemons/google.sock"
 MEETINGS = f"{RUNTIME}/google-meetings"
 MEETING = "Review Planning"
+INTERRUPTION = "Interruption"
 STANDUP = "Standup"
 # How long the daemon has to answer, and to start and finish hearing the call.
 ANSWERS_WITHIN = timedelta(minutes=1)
@@ -37,6 +39,17 @@ TOLD = "/home/joel/told"
 CLIPS = "/etc/call-clips"
 # The daemon's ask for every call it holds.
 LIST = json.dumps({"id": "list", "ask": "list", "kind": "call"})
+# Where the stand-in for the summarizer's model says it started, and its process's id, and
+# the pipe that holds its first answer until the test writes to it.
+SUMMARIZER_LOG = "/home/joel/summarizer-log"
+SUMMARIZER_PID = "/home/joel/summarizer-pid"
+GATE = "/home/joel/gate"
+# How many times it starts: once to be stopped by the other call, and once to the end.
+STARTS = 2
+# What a summary says of itself, as summary.rs has it.
+HOW_MADE = "These are the lines a language model on this laptop picked"
+# Who holds a delay on sleep while a call is summed up, as systemd-inhibit lists it.
+HOLDER = "Summing up a call"
 
 
 class Joel:
@@ -103,6 +116,14 @@ class Joel:
         """Give the daemon's record of one call."""
         return next(record for record in self.calls() if record["key"] == key)
 
+    def sleep_held(self) -> bool:
+        """Say whether the summarizer holds a delay on sleep."""
+        return HOLDER in self.run("systemd-inhibit --list --no-pager")
+
+    def starts(self) -> int:
+        """Give how many times the stand-in for the summarizer's model has started."""
+        return int(self.run(f"grep -cx started {SUMMARIZER_LOG} || true").strip())
+
     def explain(self) -> None:
         """Print what PipeWire and the daemon said, for a test that failed."""
         print(self.run("pw-link -l || true"))
@@ -133,6 +154,7 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
     # PipeWire's PulseAudio server names a stream for the program that opened it.
     joel.run('cp "$(readlink -f "$(command -v pacat)")" zoom')
     joel.meeting_on("e1", MEETING)
+    joel.run(f"mkfifo {GATE}")
     joel.run(f"systemd-run --user --unit=notices stand-in-notices {TOLD}")
     joel.wait_for("busctl --user status org.freedesktop.Notifications", ANSWERS_WITHIN)
     joel.run(
@@ -140,7 +162,8 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
         " --setenv=DICTATION_CACHE=$HOME/.cache/call-transcripts/parakeet"
         f" --setenv=OPENVINO_TOKENIZERS_PATH_GENAI={values['tokenizers']}"
         " --setenv=PATH=/run/current-system/sw/bin"
-        f" call-transcripts serve {SOCKET} {values['model']} $HOME/Documents/Calls"
+        f" call-transcripts serve {SOCKET} {values['model']} {values['summarizer']}"
+        " $HOME/Documents/Calls"
     )
     joel.wait_for(f"test -S {SOCKET}", ANSWERS_WITHIN)
     joel.run(
@@ -177,13 +200,43 @@ def call(joel: Joel) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def written(joel: Joel, call: dict[str, Any]) -> dict[str, Any]:
-    """Wait for the notice that the call is written down, giving its record then."""
+def interrupted(joel: Joel, call: dict[str, Any]) -> dict[str, bool]:
+    """Wait for the call to be summed up, then start another call, which stops it."""
+    seen = {}
     try:
-        joel.wait_for(f"grep -qxF '{MEETING} Is Written Down' {TOLD}", ANSWERS_WITHIN)
+        joel.wait_for(f"test -s {SUMMARIZER_LOG}", ANSWERS_WITHIN)
+        seen["held while summing"] = joel.sleep_held()
+        joel.meeting_on("e3", INTERRUPTION)
+        joel.run(
+            "systemd-run --user --collect --unit=interruption"
+            " ./zoom --record --device=microphone /dev/null"
+        )
+        joel.wait_for(f"! kill -0 $(cat {SUMMARIZER_PID})", ANSWERS_WITHIN)
+        joel.wait_for(
+            f"! systemd-inhibit --list --no-pager | grep -qF {shlex.quote(HOLDER)}",
+            ANSWERS_WITHIN,
+        )
+        seen["written once stopped"] = joel.record(call["key"])["summary"] is not None
+        seen["started during the call"] = joel.starts() > 1
     except Exception:
         joel.explain()
         raise
+    finally:
+        joel.run("systemctl --user stop interruption || true")
+    return seen
+
+
+@pytest.fixture(scope="module")
+def written(joel: Joel, call: dict[str, Any], interrupted: dict[str, bool]) -> dict[str, Any]:
+    """Let the summary started again after the other call go on, giving the record once done."""
+    try:
+        joel.wait_for(f"test $(grep -cx started {SUMMARIZER_LOG}) -ge {STARTS}", ANSWERS_WITHIN)
+        joel.run(f"echo open > {GATE}")
+        joel.wait_for(f"grep -qxF 'Summary of {MEETING} Is Ready' {TOLD}", ANSWERS_WITHIN)
+    except Exception:
+        joel.explain()
+        raise
+    assert interrupted
     record = joel.record(call["key"])
     assert record["key"] == "call:e1"
     return record
@@ -262,26 +315,60 @@ def test_an_ended_call_lets_the_machine_go_idle(joel: Joel, call: dict[str, Any]
     )
 
 
-def test_a_call_is_written_down_with_no_summary(joel: Joel, written: dict[str, Any]) -> None:
-    """With no summarizer, the call has no summary, and a notice from Calls says why."""
-    assert written["summary"] is None
-    joel.run(f"test ! -e {shlex.quote(written['folder'])}/summary.md")
-    [(app, _, body)] = [n for n in joel.told() if n[1] == f"{MEETING} Is Written Down"]
-    assert app == "Calls"
-    assert "isn't summed up" in body
+def test_a_summary_holds_off_sleep_while_it_runs(interrupted: dict[str, bool]) -> None:
+    """While the model's process runs, a delay on sleep is held; it's let go once stopped."""
+    assert interrupted["held while summing"]
 
 
-def test_the_notice_opens_the_transcript_in_the_sessions_reader(
+def test_a_call_starting_stops_a_summary_which_writes_nothing(
+    interrupted: dict[str, bool],
+) -> None:
+    """Another call starting ends the model's process, nothing is written, none starts again."""
+    assert not interrupted["written once stopped"]
+    assert not interrupted["started during the call"]
+
+
+def test_the_summary_is_the_calls_own_words(joel: Joel, written: dict[str, Any]) -> None:
+    """Started again once the other call ended, the summary quotes Joel's line, word for word."""
+    summary = joel.run(f"cat {shlex.quote(written['folder'])}/summary.md")
+    print(summary)
+    assert summary == f"{written['summary']}\n"
+    assert summary.startswith(f"# {MEETING}\n\n{HOW_MADE}")
+    [asked] = [
+        line
+        for line in transcript(joel, written).splitlines()
+        if "thursday" in line.lower() and not line.startswith("**Others**")
+    ]
+    said = asked.split(": ", 1)[1]
+    stamp = asked.split(", ", 1)[1].split(": ", 1)[0]
+    # The stand-in copies the line whole, and the quote keeps the line's words from its first to
+    # its last, so only the closing mark is left behind.
+    assert f'to the others: "{said.rstrip("?.!")}" [{stamp}]' in summary
+
+
+def test_the_model_is_let_go_once_the_summary_is_written(
     joel: Joel, written: dict[str, Any]
 ) -> None:
-    """Open the Transcript shows it on the session's screen, said after the daemon started."""
-    joel.choose(f"{MEETING} Is Written Down", "transcript")
+    """Nothing of the summarizer stays: neither its process nor its delay on sleep."""
+    assert written["summary"] is not None
+    joel.wait_for(f"! kill -0 $(cat {SUMMARIZER_PID})", ANSWERS_WITHIN)
+    assert not joel.sleep_held()
+    assert joel.starts() == STARTS
+
+
+def test_the_notice_opens_the_summary_in_the_sessions_reader(
+    joel: Joel, written: dict[str, Any]
+) -> None:
+    """Read It shows the summary on the session's screen, said after the daemon started."""
+    [(app, _, _)] = [n for n in joel.told() if n[1] == f"Summary of {MEETING} Is Ready"]
+    assert app == "Calls"
+    joel.choose(f"Summary of {MEETING} Is Ready", "read")
     try:
         joel.wait_for("test -s read", ANSWERS_WITHIN)
     except Exception:
         joel.explain()
         raise
-    assert joel.run("cat read").strip() == f"{SCREEN} {written['transcript']}"
+    assert joel.run("cat read").strip() == f"{SCREEN} {written['folder']}/summary.md"
 
 
 def test_a_call_starting_offers_the_line_for_its_chat(joel: Joel, call: dict[str, Any]) -> None:

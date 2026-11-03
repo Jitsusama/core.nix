@@ -170,7 +170,7 @@ be read, marked unread and archived.
 | person | someone Joel deals with, the same one by their email across mail, meetings, calls and chat | | |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | transcript | what was said on a call, Joel's words and the others' in the order they were said, written on the machine as the call goes | | `call-transcripts` |
-| summary | a call's transcript summed up once it ends: what it was about, what was decided and who said they'd do what, written on the machine | | `summary.md` |
+| summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when | | `summary.md` |
 | noise cancelled | a microphone's voice with the sounds around it taken out on the machine, offered as a microphone of its own named for it | noise suppression, denoised | `noise-cancelled` |
 | join | going into a meeting's call, or a call another sends | | |
 | see | looking at a meeting's details in the launcher: when, its call, who's going | | |

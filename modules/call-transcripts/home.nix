@@ -17,12 +17,18 @@
 # in a cache of its own, since a load removes whatever else is in the
 # folder it's given.
 #
-# Once a call is written down whole, a notice says so, and its Open the
-# Transcript opens it in the session's reader. Nothing sums it up: the
-# daemon is given no summarizer, since Phi-3.5-mini, the one it had,
-# wrote summaries of hour-long calls that named decisions never made,
-# and a wrong summary is worse than none. A model that sums a long call
-# up truly is given to it once one is found.
+# Once a call is written down whole, it's summed up in its own words:
+# Gemma 4 26B-A4B (summarizer.nix) on the GPU picks the lines worth
+# reading and the words in each worth keeping, and the daemon copies
+# those words from the line, keeping none it doesn't find there, so the
+# summary holds only quotes, each with who said it to whom and when.
+# Every model before wrote sentences of its own, and each bent or made
+# up what was said, and a wrong summary is worse than none. The model
+# runs in a process of its own, `call-transcripts ask`, for one summary
+# at a time: only on mains power, never during a call, with a delay on
+# sleep held, and only once the memory it needs is free
+# (src/bin/call-transcripts/summarizer.rs says how). Its compiled model
+# is kept in a cache of its own.
 #
 # The shell reads the calls from the service, over
 # $XDG_RUNTIME_DIR/daemons/calls.sock in the shell's daemon interface,
@@ -44,6 +50,10 @@
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ../dictation/parakeet.nix { };
+  # The program the daemon asks a summary's questions of.
+  summarizer = pkgs.writeShellScript "call-summarizer" ''
+    exec ${dictation}/bin/call-transcripts ask ${pkgs.callPackage ./summarizer.nix { }}
+  '';
 in
 {
   imports = [
@@ -71,7 +81,12 @@ in
 
   # What Whisper compiled for calls before they moved to Parakeet, 0.9 GB
   # that nothing reads any more. Kept until no machine still has it.
-  systemd.user.tmpfiles.rules = [ "R %C/call-transcripts/whisper - - - -" ];
+  # And what Phi-3.5-mini compiled for the NPU, the summarizer before
+  # Gemma, that nothing reads either.
+  systemd.user.tmpfiles.rules = [
+    "R %C/call-transcripts/whisper - - - -"
+    "R %C/call-transcripts/summarizer - - - -"
+  ];
 
   systemd.user.services.call-transcripts = {
     Unit = {
@@ -83,7 +98,7 @@ in
     Service = {
       ExecStart = lib.concatStringsSep " " [
         "${dictation}/bin/call-transcripts serve"
-        "%t/daemons/calls.sock ${model} %h/Documents/Calls"
+        "%t/daemons/calls.sock ${model} ${summarizer} %h/Documents/Calls"
       ];
       ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/calls.sock";
       Slice = "background.slice";
@@ -92,6 +107,7 @@ in
       RestartSec = 5;
       Environment = [
         "DICTATION_CACHE=%C/call-transcripts/parakeet"
+        "SUMMARIZER_CACHE=%C/call-transcripts/gemma"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"
@@ -102,8 +118,11 @@ in
         "PATH=${
           lib.makeBinPath [
             # cat, which systemd-inhibit runs to keep the laptop awake
-            # through a call (follow.rs says why).
+            # through a call (follow.rs says why), and to hold a delay on
+            # sleep while a summary is made (summarizer.rs).
             pkgs.coreutils
+            # gdbus, which hears logind say the laptop is about to sleep.
+            pkgs.glib.bin
             pkgs.libnotify
             pkgs.pipewire
             pkgs.systemd
