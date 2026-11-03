@@ -798,8 +798,8 @@ mod tests {
         let markdown = format!(
             "---\nkind: page\n---\n# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
         );
-        // The eyebrow says the folder the test's file is in.
-        let (pitch, lines) = baselines("headings", &markdown, "PITCH", "Omega");
+        // The eyebrow says the kind the front matter gives.
+        let (pitch, lines) = baselines("headings", &markdown, "PAGE", "Omega");
         let steps = steps(pitch, &lines);
         assert!(
             steps.iter().all(|s| s % 50 == 0),
