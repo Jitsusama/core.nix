@@ -6,7 +6,10 @@
 //! (account.rs), and hands what it learns to the shell over a socket
 //! (socket.rs): the whole state as one JSON line when a shell connects,
 //! and again whenever it changes (state.rs), and the same line left in
-//! google.json beside the socket for the shell to watch.
+//! google.json beside the socket for the shell to watch. Given a third
+//! socket, or handed one by systemd, it serves the same in the shell's
+//! daemon interface there too, a record for each thing it holds
+//! (daemon.rs).
 //!
 //! Google only pushes changes to a public web address, which a laptop
 //! hasn't got, so this program asks: once a minute while answers come,
@@ -34,8 +37,9 @@
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
-//! usage: google SOCKET CREDENTIALS, the harness's file; the account asked
-//! as is the file's default, as pi's own is.
+//! usage: google SOCKET CREDENTIALS [DAEMON], CREDENTIALS the harness's
+//! file, the account asked as being the file's default, as pi's own is,
+//! and DAEMON the daemon interface's socket.
 
 use std::env;
 use std::path::Path;
@@ -45,10 +49,11 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use jiff::Zoned;
+use jiff::{Timestamp, Zoned};
 
 use google::api::{Google, Origins};
 use google::ask::{self, Ask};
+use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
 use google::saves;
@@ -69,7 +74,7 @@ fn main() -> ExitCode {
         args.next().map(PathBuf::from),
         args.next().map(PathBuf::from),
     ) else {
-        eprintln!("<3>usage: google SOCKET CREDENTIALS");
+        eprintln!("<3>usage: google SOCKET CREDENTIALS [DAEMON]");
         return ExitCode::from(2);
     };
     let told = path.with_extension("json");
@@ -79,6 +84,18 @@ fn main() -> ExitCode {
         Err(error) => {
             eprintln!("<3>couldn't listen at {}: {error}", path.display());
             return ExitCode::FAILURE;
+        }
+    };
+    // Without it, the shell still has the socket above.
+    let daemon = args.next().map(PathBuf::from).and_then(|at| {
+        Daemon::listen(&at, asks.clone(), Timestamp::now().as_millisecond())
+            .inspect_err(|error| eprintln!("<4>couldn't serve at {}: {error}", at.display()))
+            .ok()
+    });
+    let tell = |state: &State| {
+        socket.say(state.line());
+        if let Some(daemon) = &daemon {
+            daemon.say(state, Timestamp::now().as_millisecond());
         }
     };
     let staged = saves::root(env::var_os("XDG_STATE_HOME"), env::var_os("HOME"));
@@ -116,7 +133,7 @@ fn main() -> ExitCode {
                 _ => 0,
             };
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
-            socket.say(state.line());
+            tell(state);
         }
         // A shell's ask is done the moment it comes; otherwise the clock
         // is looked at again a tick on.
@@ -133,28 +150,28 @@ fn main() -> ExitCode {
                     // Said as it starts, so the shell can say so while
                     // Gmail answers, then again once it's done.
                     Some(Ask::Fetch { id, file, how, to }) => {
-                        socket.say(watch.fetching(&id, file, how, to, &now).line());
+                        tell(watch.fetching(&id, file, how, to, &now));
                         watch.fetch(&places, &now)
                     }
                     Some(Ask::Make {}) => {
-                        socket.say(watch.making(&now).line());
+                        tell(watch.making(&now));
                         watch.make(&now)
                     }
                     Some(Ask::List { folder }) => watch.list(&folder, &now),
                     Some(Ask::Download { file, how, to }) => {
-                        socket.say(watch.downloading(&file, how, to, &now).line());
+                        tell(watch.downloading(&file, how, to, &now));
                         watch.download(&places, &now)
                     }
                     Some(Ask::Upload { path }) => {
                         let Some(file) = saves::staged(&staged, Path::new(&path)) else {
                             continue;
                         };
-                        socket.say(watch.uploading(&file, &now).line());
+                        tell(watch.uploading(&file, &now));
                         watch.upload(&now)
                     }
                     None => continue,
                 };
-                socket.say(state.line());
+                tell(state);
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => thread::sleep(TICK),

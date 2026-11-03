@@ -20,6 +20,23 @@ onLinux {
       "A switch stops google before reloading, so google.path starts the old one again."
       (((account graphical).systemd.user.services.google.Unit.X-SwitchMethod or null) == "restart");
 
+  # google serves the daemon interface on a socket systemd holds, made only
+  # once pi has signed in, as google itself starts only then.
+  google-answers-on-systemds-socket =
+    let
+      user = (account graphical).systemd.user;
+      socket = user.sockets.google;
+      unit = user.services.google;
+    in
+    holds "google-answers-on-systemds-socket"
+      "google's daemon socket isn't systemd's, made once pi signs in, or google's to serve."
+      (
+        socket.Socket.ListenStream == "%t/daemons/google.sock"
+        && socket.Unit.ConditionPathExists == user.paths.google.Path.PathExists
+        && lib.elem "google.socket" unit.Unit.Requires
+        && lib.any (lib.hasSuffix " %t/daemons/google.sock") (lib.toList unit.Service.ExecStart)
+      );
+
   # google's tests run as it builds: the harness's file is read for its
   # default or first account and never written, pi's fresh token is used
   # and a stale one refreshed in memory, a refused sign-in is signed out
@@ -34,6 +51,10 @@ onLinux {
   # again at once, the documents of each kind are told, Drive asked again
   # only after a while and kept while it fails, the shell asks only what's
   # read strictly, it hears the state on connecting and each change once,
+  # the same served in the daemon interface, a watch hearing its records
+  # and then only those a change touched and those gone, of the kinds it
+  # watches, an act handed on as the socket's asks are, on the socket
+  # systemd hands it,
   # and a save staged by the picker goes up once it settles, as a new file
   # and then new versions of it, never a second file for one it may not
   # replace. A stand-in on the machine answers for Google.
