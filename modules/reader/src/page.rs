@@ -74,7 +74,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let section-size = 17.1pt
 // An eyebrow: the mono's capitals, small, tracked as every eyebrow on the
 // desktop is.
-#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: 0.16em, fill: ink.muted, upper(body))
+#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: eyebrow-tracking, fill: ink.muted, upper(body))
 #show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
 // A title's lines two and a half lines apart, a section's one.
 #show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em, top-edge: caps * title-size)
