@@ -15,7 +15,8 @@ use std::process::{Command, Output};
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
 /// is refused with 64, as a changed-checks from before it was refuses it.
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
-/// beside it, when there is one, and nothing else.
+/// beside it, when there is one, and nothing else, and a dry run of a
+/// build prints the `plans` file, when there is one, and nothing else.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -29,6 +30,7 @@ printf '%s\n' "$1" >> "$here/ssh-hosts"
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
+  *--dry-run*) cat "$here/plans" 2>/dev/null; exit 0 ;;
 esac
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
@@ -52,12 +54,17 @@ fn executable(path: &Path, script: &str) {
 /// nix as it builds here: it records its arguments, each call's after the
 /// last in `nix-calls`, and exits 0, or as the `nix-status` file beside it
 /// says. While the `nix-fails` file counts above 0, a call fails with 1
-/// and counts it down.
+/// and counts it down. `derivation show` prints the `derivations` file and
+/// `path-info --json` the `held` file, when there is one.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
 echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
+case "$1 $2" in
+  "derivation show") cat "$here/derivations" 2>/dev/null ;;
+  "path-info --json") cat "$here/held" 2>/dev/null ;;
+esac
 fails=$(cat "$here/nix-fails" 2>/dev/null || echo 0)
 if [ "$fails" -gt 0 ]; then
   echo $((fails - 1)) > "$here/nix-fails"
@@ -267,6 +274,119 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
             "copy --to {} --derivation /nix/store/aaaa-x.drv\n",
             STORE.trim()
         )
+    );
+}
+
+/// `there` given exactly `arguments`, with the stand-ins in `folder`.
+fn there_given(folder: &Path, offload: &Path, arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .arg("there")
+        .args(arguments)
+        .env(
+            "PATH",
+            format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder)
+        .env("XDG_STATE_HOME", folder)
+        .env("XDG_CONFIG_HOME", folder)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn what_the_builder_would_build_and_this_machine_holds_goes_up_instead() {
+    // A fresh builder compiled the running system's own kernel for over an
+    // hour on 3 November, though this machine held it, since no cache did.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    // It would build the system, the kernel and a tool, and fetch the rest.
+    fs::write(
+        folder.path().join("plans"),
+        "these 3 derivations will be built:\n\
+         \x20 /nix/store/aaaa-system.drv\n\
+         \x20 /nix/store/bbbb-kernel.drv\n\
+         \x20 /nix/store/cccc-tool.drv\n\
+         this path will be fetched (1.0 MiB download, 2.0 MiB unpacked):\n\
+         \x20 /nix/store/dddd-libc\n",
+    )
+    .unwrap();
+    // The system takes the kernel's own output, not its headers.
+    fs::write(
+        folder.path().join("derivations"),
+        r#"{"version": 4, "derivations": {
+            "aaaa-system.drv": {
+                "outputs": {"out": {"path": "aaaa-system"}},
+                "inputs": {"drvs": {
+                    "bbbb-kernel.drv": {"outputs": ["out"]},
+                    "cccc-tool.drv": {"outputs": ["out"]},
+                    "dddd-libc.drv": {"outputs": ["out"]}}}},
+            "bbbb-kernel.drv": {
+                "outputs": {"out": {"path": "bbbb-kernel"}, "dev": {"path": "bbbb-kernel-dev"}},
+                "inputs": {"drvs": {}}},
+            "cccc-tool.drv": {
+                "outputs": {"out": {"path": "cccc-tool"}},
+                "inputs": {"drvs": {}}}}}"#,
+    )
+    .unwrap();
+    // This machine holds the kernel, though not its headers, and no more.
+    fs::write(
+        folder.path().join("held"),
+        r#"{"/nix/store/aaaa-system": null,
+            "/nix/store/bbbb-kernel": {"narSize": 24000000},
+            "/nix/store/bbbb-kernel-dev": null,
+            "/nix/store/cccc-tool": null}"#,
+    )
+    .unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    let sent: Vec<&str> = calls
+        .lines()
+        .filter(|call| call.starts_with("copy ") && !call.contains(".drv"))
+        .collect();
+    assert_eq!(
+        sent,
+        [format!(
+            "copy --to {} --no-check-sigs --substitute-on-destination /nix/store/bbbb-kernel",
+            STORE.trim()
+        )],
+        "{calls}"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("sending 1 output of 24.0 MB this machine holds rather than building it"),
+        "{said}"
+    );
+    // Asked once, after the derivations went up and before the build.
+    let commands = fs::read_to_string(folder.path().join("ssh-commands")).unwrap();
+    let commands: Vec<&str> = commands.lines().collect();
+    assert_eq!(
+        commands[..2],
+        [
+            "xargs -r nix-store --check-validity --print-invalid",
+            "xargs -r nix-store --realise --dry-run 2>&1",
+        ]
+    );
+    assert_eq!(commands.len(), 3, "{commands:?}");
+    assert_eq!(
+        given_to(folder.path()),
+        "nix-offload\nnix build --no-link '/nix/store/aaaa-system.drv^*'\n"
+    );
+
+    // A builder that can't say what it would build is sent nothing more.
+    fs::remove_file(folder.path().join("plans")).unwrap();
+    fs::remove_file(folder.path().join("nix-calls")).unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    assert!(
+        calls.lines().all(|call| !call.starts_with("copy --to")),
+        "{calls}"
     );
 }
 
