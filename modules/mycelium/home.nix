@@ -311,6 +311,11 @@ let
       # restarts it.
       Restart = "on-failure";
       RestartSec = "5s";
+      # The node wakes with every session it carries, so it runs among
+      # them rather than among Joel's programs, whose tasks each wakeup
+      # would preempt. Moving it restarts it once, which the sessions,
+      # in their terminals' scopes, outlive.
+      Slice = "agents.slice";
     };
     Install.WantedBy = [ "default.target" ];
   };

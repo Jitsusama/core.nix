@@ -676,6 +676,10 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
+  mycelium-runs-among-the-sessions = ''
+    on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
+    them
+  '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its quests and the sessions to
     restore, from the realm's own folders, and the home realm's alone the machine's waiting,
