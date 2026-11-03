@@ -18,7 +18,7 @@
 { self, pkgs }:
 let
   dictation = pkgs.callPackage ../modules/dictation/package.nix { };
-  model = pkgs.callPackage ../modules/dictation/model.nix { };
+  model = pkgs.callPackage ../modules/dictation/parakeet.nix { };
   # The session's reader for Markdown, noting where it was shown and what.
   reader = pkgs.writeShellApplication {
     name = "stand-in-reader";
@@ -69,8 +69,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
   nodes.machine = {
     imports = [ "${self}/modules/pipewire/nixos.nix" ];
-    # Whisper on the CPU, as dictation's checks run it, since a VM has no
-    # NPU, needs the room.
+    # Parakeet on the CPU, as call-transcripts' checks run it, since a VM
+    # has no NPU, needs the room.
     virtualisation.memorySize = 6144;
     virtualisation.cores = 4;
     users.users.joel.isNormalUser = true;

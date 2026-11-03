@@ -2,7 +2,7 @@
 
 tests/call-transcripts.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the tests prove. The call is held once for the module, since
-Whisper on the VM's CPU takes a while to hear it, and each test reads what that call left.
+Parakeet on the VM's CPU takes a while to hear it, and each test reads what that call left.
 """
 
 from __future__ import annotations
@@ -124,7 +124,7 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
     joel.wait_for("busctl --user status org.freedesktop.Notifications", ANSWERS_WITHIN)
     joel.run(
         "systemd-run --user --unit=call-transcripts --setenv=DICTATION_DEVICE=CPU"
-        " --setenv=DICTATION_CACHE=$HOME/.cache/call-transcripts/whisper"
+        " --setenv=DICTATION_CACHE=$HOME/.cache/call-transcripts/parakeet"
         f" --setenv=OPENVINO_TOKENIZERS_PATH_GENAI={values['tokenizers']}"
         " --setenv=PATH=/run/current-system/sw/bin"
         f" call-transcripts serve {SOCKET} {values['model']} $HOME/Documents/Calls"
@@ -220,8 +220,9 @@ def test_both_sides_are_written_in_the_order_they_spoke(joel: Joel, call: dict[s
     turns = [line for line in transcript(joel, call).splitlines() if line.startswith("**")]
     asked, answered, thanked = turns
     assert not asked.startswith("**Others**")
-    # Whisper on the VM's processor hears a word wrong now and then ("review" as "renew"),
-    # so each turn is known by a word it hears every time; dictation's checks hold the words.
+    # A speech model on the VM's processor can hear a word wrong (Whisper heard "review" as
+    # "renew"), so each turn is known by a word it hears every time; dictation's checks hold
+    # the words.
     assert "thursday" in asked.lower()
     assert answered.startswith("**Others**")
     assert "morning" in answered.lower()

@@ -1,13 +1,13 @@
 //! Hears each take as it comes, on a thread of its own, and writes the
 //! call's transcript again after each, so it's ready when the call ends.
 //!
-//! Whisper is loaded with a call's first take, at the NPU's background
+//! Parakeet is loaded with a call's first take, at the NPU's background
 //! priority, and let go once no call has needed it for a while, so it
 //! holds no memory between calls. A take's sound is let go once it's
 //! heard.
 //!
 //! A call written down whole is summed up once no call is being heard:
-//! Whisper is let go first and the language model after, so the two are
+//! Parakeet is let go first and the language model after, so the two are
 //! never held at once, and a call that starts meanwhile waits its turn.
 //! A call with too little said isn't given to the model, and a summary
 //! naming what the call never did isn't kept (said.rs). With no
@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use dictation::speech::Speech;
+use dictation::parakeet::Parakeet;
 use dictation::transcript::{self, Line, Side, markdown};
 
 use crate::Settings;
@@ -27,7 +27,7 @@ use crate::book::{Record, SUMMARY, Shared, TRANSCRIPT, write_whole};
 use crate::summary::Summed;
 use crate::{notices, said, summary};
 
-/// How long Whisper is kept once the last call is written, so a call
+/// How long Parakeet is kept once the last call is written, so a call
 /// rejoined soon after needn't load it again.
 const UNUSED: Duration = Duration::from_mins(2);
 
@@ -62,7 +62,7 @@ pub fn hear(
     again: &Sender<Job>,
     me: &str,
 ) {
-    let mut speech: Option<Speech> = None;
+    let mut speech: Option<Parakeet> = None;
     let mut calls: HashMap<String, Writing> = HashMap::new();
     let mut unsummed: Vec<String> = Vec::new();
     // The calls already told they couldn't be heard, so it's said once.
@@ -70,7 +70,7 @@ pub fn hear(
     loop {
         if calls.is_empty() && !unsummed.is_empty() {
             if speech.take().is_some() {
-                eprintln!("call-transcripts: Whisper let go");
+                eprintln!("call-transcripts: Parakeet let go");
             }
             sum_up(settings, book, &std::mem::take(&mut unsummed), again);
         }
@@ -79,7 +79,7 @@ pub fn hear(
                 Ok(job) => job,
                 Err(RecvTimeoutError::Timeout) => {
                     speech = None;
-                    eprintln!("call-transcripts: Whisper let go");
+                    eprintln!("call-transcripts: Parakeet let go");
                     continue;
                 }
                 Err(RecvTimeoutError::Disconnected) => return,
@@ -104,19 +104,21 @@ pub fn hear(
                     match settings.load() {
                         Ok(loaded) => speech = Some(loaded),
                         Err(why) => {
-                            eprintln!("call-transcripts: Whisper didn't load: {why}");
+                            eprintln!("call-transcripts: Parakeet didn't load: {why}");
                             if told.insert(key.clone()) {
                                 let title = title_of(book, &key);
-                                let why = format!("Whisper didn't load: {why}");
+                                let why = format!("The speech model didn't load: {why}");
                                 notices::show(&notices::not_transcribed(&title, &why), |_| {});
                             }
                         }
                     }
                 }
-                let Some(whisper) = &mut speech else { continue };
-                let text = match whisper.transcribe(&samples) {
+                let Some(parakeet) = &mut speech else {
+                    continue;
+                };
+                let text = match parakeet.transcribe(&samples) {
                     Ok((text, took)) => {
-                        eprintln!("call-transcripts: {took}");
+                        eprintln!("call-transcripts: {}", took.describe(&parakeet.device));
                         text.trim().to_owned()
                     }
                     Err(why) => {

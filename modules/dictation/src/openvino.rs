@@ -1,4 +1,4 @@
-//! The few calls of OpenVINO's C API that running Whisper takes, declared
+//! The few calls of OpenVINO's C API that running these models takes, declared
 //! by hand, behind owners that free what they hold. The non-variadic forms
 //! are used, the ones OpenVINO offers for callers other than C.
 
@@ -110,6 +110,14 @@ unsafe extern "C" {
         properties: *const Property,
         compiled: *mut *mut OvCompiled,
     ) -> i32;
+    fn ov_core_compile_model_from_file_props(
+        core: *const OvCore,
+        path: *const c_char,
+        device: *const c_char,
+        count: usize,
+        properties: *const Property,
+        compiled: *mut *mut OvCompiled,
+    ) -> i32;
     fn ov_compiled_model_free(compiled: *mut OvCompiled);
     fn ov_compiled_model_create_infer_request(
         compiled: *const OvCompiled,
@@ -124,6 +132,11 @@ unsafe extern "C" {
     fn ov_infer_request_get_tensor(
         request: *const OvRequest,
         name: *const c_char,
+        tensor: *mut *mut OvTensor,
+    ) -> i32;
+    fn ov_infer_request_get_output_tensor_by_index(
+        request: *const OvRequest,
+        index: usize,
         tensor: *mut *mut OvTensor,
     ) -> i32;
     fn ov_infer_request_infer(request: *mut OvRequest) -> i32;
@@ -246,11 +259,7 @@ impl Core {
     /// When the device is missing or can't run the model.
     pub fn compile(&self, model: &Model, device: &str, priority: Priority) -> Result<Compiled> {
         let name = c_string(device)?;
-        let priority = [Property {
-            key: c"MODEL_PRIORITY".as_ptr(),
-            value: priority.name().as_ptr().cast(),
-        }];
-        let properties: &[Property] = if device == "NPU" { &priority } else { &[] };
+        let properties = priority_on(device, priority);
         let mut compiled = ptr::null_mut();
         // SAFETY: the model is alive, the properties' strings are static and
         // counted, and the out pointer is valid.
@@ -266,6 +275,38 @@ impl Core {
                 )
             },
             &format!("compiling for {device}"),
+        )?;
+        Ok(Compiled(compiled))
+    }
+
+    /// The model in `xml` compiled for `device` as `compile` compiles
+    /// one, read by OpenVINO itself. With a cache, what's cached is then
+    /// found by the file, where a model read first is found by hashing
+    /// all of it, which for one of a gigabyte takes half a minute.
+    ///
+    /// # Errors
+    ///
+    /// When the file can't be read, or the device is missing or can't run
+    /// the model.
+    pub fn compile_file(&self, xml: &Path, device: &str, priority: Priority) -> Result<Compiled> {
+        let path = c_path(xml)?;
+        let name = c_string(device)?;
+        let properties = priority_on(device, priority);
+        let mut compiled = ptr::null_mut();
+        // SAFETY: the names outlive the call, the properties' strings are
+        // static and counted, and the out pointer is valid.
+        check(
+            unsafe {
+                ov_core_compile_model_from_file_props(
+                    self.0,
+                    path.as_ptr(),
+                    name.as_ptr(),
+                    properties.len(),
+                    properties.as_ptr(),
+                    &raw mut compiled,
+                )
+            },
+            &format!("compiling {} for {device}", xml.display()),
         )?;
         Ok(Compiled(compiled))
     }
@@ -299,6 +340,19 @@ impl Core {
             "compiling for the CPU on one thread",
         )?;
         Ok(Compiled(compiled))
+    }
+}
+
+/// What a compile tells `device`: its `priority`, on the NPU alone, the
+/// one device that takes it.
+fn priority_on(device: &str, priority: Priority) -> Vec<Property> {
+    if device == "NPU" {
+        vec![Property {
+            key: c"MODEL_PRIORITY".as_ptr(),
+            value: priority.name().as_ptr().cast(),
+        }]
+    } else {
+        Vec::new()
     }
 }
 
@@ -408,6 +462,17 @@ impl Request {
         output: &str,
         tail: Option<usize>,
     ) -> Result<(Vec<i64>, Vec<f32>)> {
+        self.infer(inputs)?;
+        self.read(output, tail)
+    }
+
+    /// Runs the model on `inputs`, its outputs read after, for a model
+    /// whose output wanted has no name or isn't a float.
+    ///
+    /// # Errors
+    ///
+    /// When an input is refused or the run fails.
+    pub fn infer(&mut self, inputs: &[Input<'_>]) -> Result<()> {
         for input in inputs {
             let (name, dims, kind, data, len) = match input {
                 Input::F32(name, dims, values) => (
@@ -442,8 +507,7 @@ impl Request {
         check(
             unsafe { ov_infer_request_infer(self.0) },
             "running the model",
-        )?;
-        self.read(output, tail)
+        )
     }
 
     fn set(&mut self, name: &str, dims: &[i64], kind: i32, data: *const c_void) -> Result<()> {
@@ -496,35 +560,37 @@ impl Request {
         self.read(name, tail)
     }
 
-    fn read(&self, name: &str, tail: Option<usize>) -> Result<(Vec<i64>, Vec<f32>)> {
-        let c_name = c_string(name)?;
+    /// Reads the f32 output at `index` of the last run, for a model whose
+    /// output has no name to ask for it by.
+    ///
+    /// # Errors
+    ///
+    /// When there's no such output or it isn't a float.
+    pub fn output_at(&self, index: usize) -> Result<(Vec<i64>, Vec<f32>)> {
         let mut tensor = ptr::null_mut();
         // SAFETY: the out pointer is valid for the call.
         check(
-            unsafe { ov_infer_request_get_tensor(self.0, c_name.as_ptr(), &raw mut tensor) },
-            &format!("reading {name}"),
+            unsafe { ov_infer_request_get_output_tensor_by_index(self.0, index, &raw mut tensor) },
+            &format!("reading output {index}"),
         )?;
-        // SAFETY: the tensor is alive until it's freed at the end, its shape
-        // is copied out before the shape is freed, and its data holds as
-        // many values of its element type as its shape says.
+        // SAFETY: the tensor was just given, and is freed once in values.
+        unsafe { values(tensor, &format!("output {index}"), None) }
+    }
+
+    /// Reads the integer output `name` of the last run, such as a length a
+    /// model counts what it made by.
+    ///
+    /// # Errors
+    ///
+    /// When the output isn't there or isn't an integer.
+    pub fn integers(&self, name: &str) -> Result<Vec<i64>> {
+        let tensor = self.tensor(name)?;
+        // SAFETY: as in values: the tensor is alive until it's freed at the
+        // end, and holds as many values of its type as its shape says.
         unsafe {
-            let mut shape = Shape {
-                rank: 0,
-                dims: ptr::null_mut(),
-            };
-            let mut kind = 0;
-            let mut data = ptr::null_mut();
-            let read = check(
-                ov_tensor_get_shape(tensor, &raw mut shape),
-                "reading a shape",
-            )
-            .and_then(|()| {
-                let rank = usize::try_from(shape.rank).map_err(|_| "a negative rank".to_owned())?;
-                let dims = std::slice::from_raw_parts(shape.dims, rank).to_vec();
-                ov_shape_free(&raw mut shape);
-                Ok(dims)
-            })
-            .and_then(|dims| {
+            let read = dims_of(tensor).and_then(|dims| {
+                let mut kind = 0;
+                let mut data = ptr::null_mut();
                 check(
                     ov_tensor_get_element_type(tensor, &raw mut kind),
                     "reading a type",
@@ -532,20 +598,99 @@ impl Request {
                 check(ov_tensor_data(tensor, &raw mut data), "reading values")?;
                 let count =
                     usize::try_from(dims.iter().product::<i64>()).map_err(|_| "a negative size")?;
-                let skip = tail.map_or(0, |tail| count.saturating_sub(tail));
-                let values = match kind {
-                    F32 => std::slice::from_raw_parts(data.cast::<f32>(), count)[skip..].to_vec(),
-                    F16 => std::slice::from_raw_parts(data.cast::<u16>(), count)[skip..]
+                match kind {
+                    I64 => Ok(std::slice::from_raw_parts(data.cast::<i64>(), count).to_vec()),
+                    I32 => Ok(std::slice::from_raw_parts(data.cast::<i32>(), count)
                         .iter()
-                        .map(|&h| half(h))
-                        .collect(),
-                    other => return Err(format!("{name} is of type {other}, not a float")),
-                };
-                Ok((dims, values))
+                        .map(|&n| i64::from(n))
+                        .collect()),
+                    other => Err(format!("{name} is of type {other}, not an integer")),
+                }
             });
             ov_tensor_free(tensor);
             read
         }
+    }
+
+    fn tensor(&self, name: &str) -> Result<*mut OvTensor> {
+        let c_name = c_string(name)?;
+        let mut tensor = ptr::null_mut();
+        // SAFETY: the out pointer is valid for the call.
+        check(
+            unsafe { ov_infer_request_get_tensor(self.0, c_name.as_ptr(), &raw mut tensor) },
+            &format!("reading {name}"),
+        )?;
+        Ok(tensor)
+    }
+
+    fn read(&self, name: &str, tail: Option<usize>) -> Result<(Vec<i64>, Vec<f32>)> {
+        let tensor = self.tensor(name)?;
+        // SAFETY: the tensor was just given, and is freed once in values.
+        unsafe { values(tensor, name, tail) }
+    }
+}
+
+/// A tensor's shape.
+///
+/// # Safety
+///
+/// `tensor` must be alive.
+unsafe fn dims_of(tensor: *const OvTensor) -> Result<Vec<i64>> {
+    let mut shape = Shape {
+        rank: 0,
+        dims: ptr::null_mut(),
+    };
+    // SAFETY: the tensor is alive, and its shape is copied out before the
+    // shape is freed.
+    unsafe {
+        check(
+            ov_tensor_get_shape(tensor, &raw mut shape),
+            "reading a shape",
+        )?;
+        let rank = usize::try_from(shape.rank).map_err(|_| "a negative rank".to_owned());
+        let dims = rank.map(|rank| std::slice::from_raw_parts(shape.dims, rank).to_vec());
+        ov_shape_free(&raw mut shape);
+        dims
+    }
+}
+
+/// A float tensor's shape and values, keeping only its last `tail` values
+/// when given, freeing the tensor.
+///
+/// # Safety
+///
+/// `tensor` must be alive and not freed elsewhere.
+unsafe fn values(
+    tensor: *mut OvTensor,
+    name: &str,
+    tail: Option<usize>,
+) -> Result<(Vec<i64>, Vec<f32>)> {
+    // SAFETY: the tensor is alive until it's freed at the end, and its data
+    // holds as many values of its element type as its shape says.
+    unsafe {
+        let mut kind = 0;
+        let mut data = ptr::null_mut();
+        let read = dims_of(tensor).and_then(|dims| {
+            check(
+                ov_tensor_get_element_type(tensor, &raw mut kind),
+                "reading a type",
+            )?;
+            check(ov_tensor_data(tensor, &raw mut data), "reading values")?;
+            let count =
+                usize::try_from(dims.iter().product::<i64>()).map_err(|_| "a negative size")?;
+            let skip = tail.map_or(0, |tail| count.saturating_sub(tail));
+            let values = match kind {
+                F32 => std::slice::from_raw_parts(data.cast::<f32>(), count)[skip..].to_vec(),
+                F16 => std::slice::from_raw_parts(data.cast::<u16>(), count)[skip..]
+                    .iter()
+                    .map(|&h| half(h))
+                    .collect(),
+                other => return Err(format!("{name} is of type {other}, not a float")),
+            };
+            Ok((dims, values))
+        });
+        ov_tensor_free(tensor);
+        read
     }
 }
 
