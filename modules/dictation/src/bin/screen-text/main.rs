@@ -197,7 +197,7 @@ fn serve(socket: &Path, models: &Path, folder: &Path, records: &Path) -> Result<
         let began = Instant::now();
         match Picture::read(&path).and_then(|picture| reading.lines(&picture)) {
             Ok(lines) => {
-                eprintln!(
+                let read = format!(
                     "screen-text: {} read, {} lines in {} ms",
                     path.display(),
                     lines.len(),
@@ -209,6 +209,9 @@ fn serve(socket: &Path, models: &Path, folder: &Path, records: &Path) -> Result<
                     size,
                     lines,
                 });
+                // Said once the record is kept, so whoever waits on this line can stop
+                // the daemon and still find the screenshot read when it starts again.
+                eprintln!("{read}");
             }
             Err(why) => eprintln!("screen-text: {} wasn't read: {why}", path.display()),
         }
