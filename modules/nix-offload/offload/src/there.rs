@@ -1039,16 +1039,21 @@ fn brought_from(
 }
 
 /// How a build waits for a builder when none stands: how long the lender
-/// has to start making one, since it reads what's wanted every 20 s, and
-/// how long one may take to stand, about 70 s on 29 October.
+/// has to start making one, since it reads what's wanted every 20 s, how
+/// long a lender that stopped may take to start again, and how long one
+/// may take to stand, about 70 s on 29 October.
 #[derive(Clone, Copy)]
 pub struct Waiting {
     pub answered: std::time::Duration,
+    pub restarting: std::time::Duration,
     pub longest: std::time::Duration,
 }
 
 pub const WAITING: Waiting = Waiting {
     answered: std::time::Duration::from_secs(30),
+    // A switch stops the lender and starts it again once it's done the
+    // rest: 1 s apart at 20:15 on 2 November, and 35 s apart at 21:14.
+    restarting: std::time::Duration::from_secs(120),
     longest: std::time::Duration::from_secs(240),
 };
 
@@ -1104,8 +1109,9 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
 /// store may still name the builder whose tunnel just went, and waits as
 /// `waited` does once the store is empty. Only a lender running stands one
 /// again, but a build is most often lost because its lender restarted, as
-/// a switch does, so a lender that isn't running is waited for up to
-/// `waiting.answered` after `since`.
+/// a switch does, so a lender that stopped, whose pid is left in `dir`'s
+/// `lender`, is waited for up to `waiting.restarting` after `since`, and
+/// one that never ran here up to `waiting.answered`.
 pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> Option<String> {
     loop {
         if since.elapsed() >= waiting.longest {
@@ -1118,7 +1124,12 @@ pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> O
                 .filter(|store| !store.trim().is_empty())
                 .or_else(|| waited(dir, waiting));
         }
-        if since.elapsed() >= waiting.answered {
+        let bound = if dir.join("lender").exists() {
+            waiting.restarting
+        } else {
+            waiting.answered
+        };
+        if since.elapsed() >= bound {
             return None;
         }
     }
@@ -1818,6 +1829,7 @@ mod tests {
 
     const QUICK: Waiting = Waiting {
         answered: std::time::Duration::from_millis(300),
+        restarting: std::time::Duration::from_secs(1),
         longest: std::time::Duration::from_secs(5),
     };
 
@@ -1888,6 +1900,37 @@ mod tests {
             Some("ssh-ng://far\n")
         );
         restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_build_lost_as_its_lender_restarts_slowly_still_waits_for_it() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("lender"), "999999999\n").unwrap();
+        let lender = dir.path().to_owned();
+        // Back after longer than a lender takes to answer, as a switch
+        // that does much else between stopping and starting it is.
+        let restarting = std::thread::spawn(move || {
+            std::thread::sleep(QUICK.answered * 2);
+            fs::write(lender.join("store"), "ssh-ng://far\n").unwrap();
+            fs::write(lender.join("lender"), format!("{}\n", std::process::id())).unwrap();
+        });
+        assert_eq!(
+            stood_again(dir.path(), QUICK, std::time::Instant::now()).as_deref(),
+            Some("ssh-ng://far\n")
+        );
+        restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_build_lost_where_no_lender_ever_ran_waits_only_for_an_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("store"), "ssh-ng://far\n").unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(stood_again(dir.path(), QUICK, began), None);
+        assert!(
+            began.elapsed() < QUICK.restarting,
+            "it waited as for a lender restarting"
+        );
     }
 
     #[test]
