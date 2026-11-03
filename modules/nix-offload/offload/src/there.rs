@@ -1167,10 +1167,18 @@ fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::proc
     Ok(status)
 }
 
+/// How many times a copy back is tried before `there` gives up on it. A
+/// tunnel's connection can stop part way through a big output and ssh
+/// gives up on it: twice running on 3 November, on a 9.5 GB path. Each try
+/// skips the paths already here whole, though one cut off part way comes
+/// again from its start, since Nix can't take up a path where it stopped.
+const COPY_TRIES: u32 = 3;
+
 /// Runs `command`, a build that prints its output paths, then copies them
-/// from `store` into this machine's, and prints them once they're here, so
+/// from `store` into this machine's, trying again up to [`COPY_TRIES`]
+/// times when the copy breaks off, and prints them once they're here, so
 /// a caller never reads a path this store lacks. Its status is the build's,
-/// or 1 when the copy fails. This machine's account is one its daemon
+/// or 1 when every copy fails. This machine's account is one its daemon
 /// trusts, so the builder's paths need no signature.
 fn brought_from(
     command: &mut Command,
@@ -1189,16 +1197,31 @@ fn brought_from(
     }
     let printed = String::from_utf8_lossy(&built.stdout).into_owned();
     let paths: Vec<&str> = printed.split_whitespace().collect();
-    // ssh's control socket goes in TMPDIR, and a long one is past what a
-    // socket's path may be.
-    let copied = Command::new(nix)
-        .args(["copy", "--no-check-sigs", "--from", store])
-        .args(&paths)
-        .env("TMPDIR", "/tmp")
-        .status()?;
-    if !copied.success() {
-        eprintln!("nix-offload: couldn't bring what was built from {store} into this store");
-        return Ok(std::process::ExitStatus::from_raw(1 << 8));
+    let mut tries = 1;
+    loop {
+        // ssh's control socket goes in TMPDIR, and a long one is past what
+        // a socket's path may be.
+        let copied = Command::new(nix)
+            .args(["copy", "--no-check-sigs", "--from", store])
+            .args(&paths)
+            .env("TMPDIR", "/tmp")
+            .status()?;
+        if copied.success() {
+            break;
+        }
+        if tries == COPY_TRIES {
+            eprintln!(
+                "nix-offload: couldn't bring what was built from {store} into this store, \
+                 in {COPY_TRIES} tries"
+            );
+            return Ok(std::process::ExitStatus::from_raw(1 << 8));
+        }
+        tries += 1;
+        eprintln!(
+            "nix-offload: bringing back what was built broke off, so it's tried again \
+             ({tries} of {COPY_TRIES}): the paths that came whole stay, and one cut off \
+             part way comes again from its start"
+        );
     }
     let mut stdout = std::io::stdout();
     for path in paths {

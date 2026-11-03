@@ -49,12 +49,21 @@ fn executable(path: &Path, script: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// nix as it builds here: it records its arguments and exits 0, or as
-/// the `nix-status` file beside it says.
+/// nix as it builds here: it records its arguments, each call's after the
+/// last in `nix-calls`, and exits 0, or as the `nix-status` file beside it
+/// says. While the `nix-fails` file counts above 0, a call fails with 1
+/// and counts it down.
 const NIX: &str = r#"#!/bin/sh
-echo "$@" > "$(dirname "$0")/nix-was-given"
-echo "${WORK_RUNS_ELSEWHERE:-}" > "$(dirname "$0")/nix-marked"
-exit "$(cat "$(dirname "$0")/nix-status" 2>/dev/null || echo 0)"
+here=$(dirname "$0")
+echo "$@" > "$here/nix-was-given"
+echo "$@" >> "$here/nix-calls"
+echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
+fails=$(cat "$here/nix-fails" 2>/dev/null || echo 0)
+if [ "$fails" -gt 0 ]; then
+  echo $((fails - 1)) > "$here/nix-fails"
+  exit 1
+fi
+exit "$(cat "$here/nix-status" 2>/dev/null || echo 0)"
 "#;
 
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
@@ -312,6 +321,63 @@ fn a_built_path_that_cant_be_brought_here_fails_and_prints_nothing() {
     let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
     assert_eq!(ran.status.code(), Some(1), "{ran:?}");
     assert_eq!(String::from_utf8_lossy(&ran.stdout), "");
+}
+
+// A tunnel's connection can stop part way through bringing a big output
+// back, and ssh gives up on it: twice running on 3 November, on a 9.5 GB
+// path. Trying again keeps the paths that came whole.
+#[test]
+fn a_copy_back_that_breaks_off_is_tried_again_and_says_what_it_keeps() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(folder.path().join("nix-fails"), "1").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
+    let copy = format!(
+        "copy --no-check-sigs --from {} /nix/store/aaaa-a\n",
+        STORE.trim()
+    );
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-calls")).unwrap(),
+        copy.repeat(2)
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "nix-offload: bringing back what was built broke off, so it's tried again \
+             (2 of 3): the paths that came whole stay, and one cut off part way comes \
+             again from its start"
+        ),
+        "{ran:?}"
+    );
+}
+
+#[test]
+fn a_copy_back_that_breaks_off_three_times_running_fails_and_says_so() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(folder.path().join("nix-fails"), "3").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "");
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    assert_eq!(calls.lines().count(), 3, "{calls}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(&format!(
+            "nix-offload: couldn't bring what was built from {} into this store, \
+             in 3 tries",
+            STORE.trim()
+        )),
+        "{ran:?}"
+    );
 }
 
 #[test]
