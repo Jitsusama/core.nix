@@ -1172,7 +1172,9 @@ works the same way everywhere.
   it in place of the question, and Return or the right arrow steps into
   an answer with parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
   40", is an answer that does: Return sets it. The field's end says where
-  an answer came from.
+  an answer came from. An answer that comes to nothing says why once, as
+  its one quiet row with the nothing-found mark, where its asking row
+  stood; the field finishes nothing, and its end says nothing more.
   Nothing leaves the machine unless the question needs the network, never
   for a private address, and never with the launcher's `lookups` off.
 - **Large sets are one row each.** The clipboard's history, past notices
@@ -1657,11 +1659,12 @@ the result beside the source before calling it done.
   role or a face. A check holds that across every module, listing each
   remaining exception with the reason until it's gone.
 - **Legibility is a check.** Each theme's text pairs are measured for WCAG
-  contrast as the machine is evaluated: 4.5:1 for text, 3:1 for large text and
-  glyphs. The text roles are measured by APCA as well, which weighs how light
+  contrast as the machine is evaluated: 4.5:1 for every pair a surface draws
+  text in. The text roles are measured by APCA as well, which weighs how light
   the background is: on the background, sunken and deepest, text and strong
-  need Lc 75, as body text does, and muted Lc 60. A theme that fails doesn't
-  build.
+  need Lc 75, as body text does, and muted Lc 60. Each mark's hue needs Lc 45,
+  as a fine mark does, on those grounds and on the selection as a floating
+  surface draws it. A theme that fails doesn't build.
 - **Proven whole.** Swapping themes rebuilds the initrd, so the proof goes the
   whole way: switch, reboot, the TPM still opens the disk, and the new theme is
   on the first frame after the firmware's.
