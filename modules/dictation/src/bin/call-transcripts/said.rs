@@ -1,8 +1,8 @@
-//! What a call's words amount to. A take that's only what a speech model writes
-//! for a click or a breath is no turn; a call of greetings and little else
-//! is too little to sum up, so no model is asked to make something of it;
-//! and a summary naming what the call never named isn't kept, since a
-//! wrong summary is worse than none.
+//! What a call's words amount to. A take that's only what a speech model
+//! writes for a click or a breath is no turn; a call of greetings and
+//! little else is too little to sum up, so no model is asked to make
+//! something of it; and a summary naming what the call never named isn't
+//! kept, since a wrong summary is worse than none.
 
 use std::collections::HashSet;
 

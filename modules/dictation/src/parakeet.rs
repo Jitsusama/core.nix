@@ -10,9 +10,10 @@
 //! joint run once a token or a frame on so little that a hop to an
 //! accelerator, or across every core, costs more than the work.
 //!
-//! The export reads 15 s at a time, so a longer take is heard as windows
-//! of 15 s, the decoder's state carried from one to the next so a window's
-//! first word follows the last one's. Decoding is greedy, as TDT's is:
+//! The export reads 15 s at a time. Call-transcripts' takes are cut to fit
+//! one (takes.rs), since a word at a window's edge can be lost; a longer
+//! sound is still heard, as windows of 15 s, the decoder's state carried
+//! from one to the next so a window's first word follows the last one's. Decoding is greedy, as TDT's is:
 //! at each frame the joint names a token and how many frames to move on,
 //! a blank writes nothing, and a frame writes at most `MOST_PER_FRAME`.
 //!
@@ -30,7 +31,7 @@ use crate::openvino::{Core, Input, Priority, Request, Result};
 /// The rate it hears at.
 pub const RATE: usize = 16_000;
 /// The samples the export reads at once: 15 s.
-const WINDOW: usize = 15 * RATE;
+pub const WINDOW: usize = 15 * RATE;
 /// The spectrogram's mel bands, and its frames for a window.
 const MELS: i64 = 128;
 const MEL_FRAMES: i64 = 1501;

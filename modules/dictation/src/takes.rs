@@ -1,7 +1,7 @@
-//! One side of a call cut into takes Whisper can hear: each under its 30 s
-//! window, cut where the speaker pauses so no word is split, and only where
-//! someone spoke, since Whisper given silence or hum writes words nobody
-//! said.
+//! One side of a call cut into takes Parakeet can hear: each inside its
+//! 15 s window, so no word falls across a window's edge, cut where the
+//! speaker pauses so no word is split, and only where someone spoke, since
+//! a speech model given silence or hum writes words nobody said.
 //!
 //! Speech is told from the quiet by loudness against the side's own floor,
 //! its quietest 20 ms of the last ten seconds, so a fan or a far end's
@@ -13,7 +13,7 @@
 
 use std::collections::VecDeque;
 
-use crate::mel::RATE;
+use crate::parakeet::{RATE, WINDOW};
 
 /// The loudness of each 20 ms is judged once.
 const FRAME: usize = RATE / 50;
@@ -22,8 +22,10 @@ const PAUSE_FRAMES: usize = 25;
 /// What's kept before speech starts and after it ends, so a word's soft
 /// start and end stay in.
 const EDGE_FRAMES: usize = 10;
-/// A take is cut by this length at the latest, under Whisper's 30 s.
-const LONGEST_FRAMES: usize = 28 * 50;
+/// A take is cut by this length at the latest, a second inside
+/// Parakeet's window, so it's heard whole.
+const LONGEST_FRAMES: usize = 14 * 50;
+const _: () = assert!(LONGEST_FRAMES * FRAME < WINDOW);
 /// Where a take that long is cut: at its quietest 20 ms in its last few
 /// seconds.
 const CUT_WITHIN_FRAMES: usize = 5 * 50;
@@ -258,11 +260,12 @@ mod tests {
     }
 
     #[test]
-    fn talk_with_no_pause_is_cut_under_whispers_window_and_nothing_is_lost() {
+    fn talk_with_no_pause_is_cut_inside_one_window_and_nothing_is_lost() {
         let sound = [quiet(1.0), spoken(70.0)].concat();
         let takes = cut(&sound);
-        assert!(takes.len() >= 3, "{}", takes.len());
-        assert!(takes.iter().all(|take| seconds(take.samples.len()) <= 28.0));
+        assert!(takes.len() >= 5, "{}", takes.len());
+        assert!(takes.iter().all(|take| take.samples.len() < WINDOW));
+        assert!(takes.iter().all(|take| seconds(take.samples.len()) <= 14.0));
         let heard: usize = takes.iter().map(|take| take.samples.len()).sum();
         assert!(seconds(heard) >= 70.0, "{}", seconds(heard));
         for pair in takes.windows(2) {
