@@ -75,6 +75,11 @@ pub fn read(root: &Path) -> Sets {
             set.push(path.to_string());
         }
     }
+    // The recorder's probes measure the line too, so they go first.
+    let recorder = "system.slice/shaper-record.service";
+    if exists(recorder) {
+        sets.voice2.push(recorder.to_string());
+    }
     for manager in managers(root) {
         for slice in ACCOUNT_BULK {
             let path = format!("{manager}/{slice}");
@@ -265,6 +270,22 @@ mod tests {
         let sets = read(&root);
         assert_eq!(sets.bulk1, ["build.slice", "machine.slice"]);
         assert_eq!(sets.bulk2, ["system.slice/nix-daemon.service"]);
+    }
+
+    #[test]
+    fn the_shapers_probes_and_the_recorders_go_first() {
+        let root = tree(&[
+            "system.slice/shaper.service",
+            "system.slice/shaper-record.service",
+        ]);
+        let sets = read(&root);
+        assert_eq!(
+            sets.voice2,
+            [
+                "system.slice/shaper.service",
+                "system.slice/shaper-record.service"
+            ]
+        );
     }
 
     #[test]

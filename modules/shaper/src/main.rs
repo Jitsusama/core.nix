@@ -219,12 +219,16 @@ fn recording(folder: &Path) -> ExitCode {
         };
         let network = network_of(&uplink);
         let gateway = uplink.gateway.as_ref().and_then(|g| g.parse().ok());
+        // The same uplink on the same network: a router that hadn't yet
+        // answered names its network once it does, and the pool and the
+        // record start over under that name.
         let still = || {
             uplinks().iter().find(|u| {
                 u.gateway
                     .as_ref()
                     .is_some_and(|g| g.parse::<std::net::Ipv4Addr>().is_ok())
             }) == Some(&uplink)
+                && network_of(&uplink) == network
         };
         record::record(&uplink.name, &network, gateway, folder, &still);
         thread::sleep(Duration::from_secs(2));
