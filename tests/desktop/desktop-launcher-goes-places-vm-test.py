@@ -2095,6 +2095,10 @@ def test_the_launcher_loses_no_letter_typed_straight_after_its_chord(desktop: De
 def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> None:
     """The launcher switches to a window by its title."""
     machine = desktop.machine
+    # A window to go back to before Notes for Tuesday, so the subtest
+    # stands alone as well as after those that leave one (UTMDGL,
+    # 2026-11-03: alone, focus-window-previous had nowhere to go).
+    desktop.focused_kitty()
     desktop.as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
     machine.wait_until_succeeds(
         desktop.in_session("niri msg windows | grep -q 'Notes for Tuesday'"),
