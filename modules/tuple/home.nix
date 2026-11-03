@@ -43,7 +43,7 @@
 # in What's on, the launcher's rows to open his room, join a call whose link
 # was copied, and leave, Tuple's own acts in Programs › Tuple, and notices
 # as people come and go, which Tuple on Linux doesn't give yet. Tuple.qml
-# follows the daemon's log for them all. Tuple's contacts are People's, one
+# holds them all through tuple-call. Tuple's contacts are People's, one
 # of its sources (TupleSource.qml), so calling someone is with their mail
 # and meetings, not in a place of Tuple's own.
 #
@@ -51,7 +51,9 @@
 # for the shell and anything else that asks, on
 # $XDG_RUNTIME_DIR/daemons/tuple.sock in the shell's daemon interface,
 # and does the call's acts through Tuple's own command. Its socket is
-# systemd's, held whether or not it runs, as people's is.
+# systemd's, held whether or not it runs, as people's is. It keeps who a
+# call is with in $XDG_RUNTIME_DIR/tuple-call.json too, for a transcript
+# to name its folder by (modules/dictation).
 #
 # The tuple command completes in zsh through Tuple's own completion, which
 # its command writes, so it knows every command and flag the version has.
@@ -129,7 +131,6 @@ in
   home.packages = [
     package
     completion
-    following
   ];
 
   xdg.configFile = {

@@ -2614,9 +2614,8 @@ onLinux {
       touch $out
     '';
 
-  # Whether Joel's in a Tuple call comes from the daemon's log, which only a
-  # real call writes, so tests/tuple.qml gives Tuple.js lines like its own:
-  # what starts a call, what ends one, when it began, and a call's link.
+  # How the shell says a Tuple call, who's in it and for how long, and a
+  # call's link in what was copied (tests/tuple.qml, over Tuple.js).
   the-shell-follows-tuple-calls =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2631,14 +2630,16 @@ onLinux {
       touch $out
     '';
 
-  # How the call Joel's in stands comes from Tuple's stream, as tuple-people
-  # says it (tests/tuple-call.qml): the shell's Tuple reads it as a stand-in
-  # helper says a call's lines, one at a time as the test writes them, and
-  # tells who comes and goes through a stand-in notify-send that keeps what
-  # it's asked. The helper's own reading of Tuple's stream is its unit
-  # tests', run as it builds.
+  # How the call Joel's in stands comes from tuple-call, the real daemon,
+  # over its socket (tests/tuple-call.qml): it follows a stand-in tuple
+  # whose stream says each line the test writes, and whose other commands
+  # are kept, while a listener stands in for Tuple's daemon answering. The
+  # shell tells who comes and goes through a stand-in notify-send that keeps
+  # what it's asked. The daemon's own reading of Tuple is its tests', run as
+  # it builds (tuple-call-holds-the-call).
   the-shell-hears-tuples-call =
     let
+      calls = pkgs.callPackage ../tuple/call/package.nix { };
       niri = pkgs.writeText "Niri.qml" ''
         pragma Singleton
         import Quickshell
@@ -2646,28 +2647,46 @@ onLinux {
         Singleton {
           property var windows: ({})
           property var casts: ({})
-          function spawn(command) { }
+          property var spawned: []
+          function spawn(command) { spawned = spawned.concat([command]); }
           function act(request) { }
         }
       '';
-      # Each run follows a feed of its own, the first call-feed and every
-      # later one call-feed.next, until a line says END.
-      people = pkgs.writeShellApplication {
-        name = "tuple-people";
-        runtimeInputs = [ pkgs.coreutils ];
-        text = ''
-          runs=$XDG_RUNTIME_DIR/runs
-          ran=$(cat "$runs" 2>/dev/null || echo 0)
-          echo $((ran + 1)) > "$runs"
-          feed=$XDG_RUNTIME_DIR/call-feed
-          [ "$ran" -eq 0 ] || feed=$feed.next
-          touch "$feed"
-          while read -r line; do
-            [ "$line" = END ] && exit 0
-            echo "$line"
-          done < <(tail -n +1 -f "$feed")
-        '';
-      };
+      # Tuple's stream says each line of the runtime folder's stream as
+      # it's written; `new` opens a room, and every other command is kept.
+      tuple = pkgs.writeShellScript "tuple" ''
+        if [ "$3 $4" = "state follow" ]; then
+          exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
+        fi
+        echo "$*" >> "$XDG_RUNTIME_DIR/asked"
+        if [ "$*" = new ]; then echo "Joining https://tuple.app/c/opened"; fi
+      '';
+      # Tuple's state as its stream opens: someone signed in, one contact,
+      # and Joel's own rooms, the newest of which is his. Tuple names a
+      # line's type first, which is all tuple-call reads of a line it
+      # skips, so the type isn't left to toJSON's order.
+      state = ''{"type":"state","data":${
+        builtins.toJSON {
+          sign_in = "signed_in";
+          contacts = [
+            {
+              id = 7;
+              full_name = "Ada Brightwater";
+              email = "ada@example.com";
+            }
+          ];
+          rooms.personal = [
+            {
+              http_value = "https://tuple.app/c/older";
+              created_at = "2025-04-11T12:00:00Z";
+            }
+            {
+              http_value = "https://tuple.app/c/listed";
+              created_at = "2026-07-31T12:00:00Z";
+            }
+          ];
+        }
+      }}'';
       notify = pkgs.writeShellApplication {
         name = "notify-send";
         text = ''
@@ -2679,6 +2698,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
+      cp ${./Daemon.qml} Daemon.qml
       # Tuple's rows are named as the launcher's vocabulary says.
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
@@ -2688,11 +2708,17 @@ onLinux {
       cp ${../../tests/tuple-call.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
-      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PATH=${people}/bin:${notify}/bin:${paste}/bin:$PATH
-      mkdir -m 700 $XDG_RUNTIME_DIR
+      export XDG_STATE_HOME=$TMPDIR/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PATH=${notify}/bin:${paste}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/daemons
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told
+      printf '%s\n' ${lib.escapeShellArg state} > $XDG_RUNTIME_DIR/stream
+      ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork /dev/null &
+      # Tuple's daemon answers before tuple-call first looks, which would
+      # otherwise look again only five seconds on.
+      timeout 10 sh -c 'until [ -S "$0" ]; do sleep 0.05; done' $XDG_RUNTIME_DIR/tuple-0
+      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple.sock ${tuple} &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

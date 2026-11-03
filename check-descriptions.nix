@@ -1647,12 +1647,13 @@
     socket nothing listens on once, never looping
   '';
   the-shell-follows-tuple-calls = ''
-    the shell reads from Tuple's log lines a call's start, end and length, who's in it, sharing or
-    ringing, Joel's mute, and a call's link
+    the shell says who a Tuple call is with and how long it's gone on, and finds a call's link in
+    what was copied
   '';
   the-shell-hears-tuples-call = ''
-    the shell's Tuple reads a call from tuple-people's stream, who's in it, since when, mutes,
-    screens and cameras, tells comings and goings, and wakes on Tuple's log
+    the shell's Tuple holds the call through the real tuple-call: who's in it, since when, mutes,
+    screens and cameras, Joel's room, comings and goings told, a ring and a missed call from
+    Tuple's log, and muting and opening the room asked of the daemon
   '';
   the-shell-holds-a-daemons-records = ''
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
