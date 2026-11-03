@@ -36,6 +36,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
     # The module leaves it off until its rebuild; the test runs it.
     systemd.services.shaper.wantedBy = [ "multi-user.target" ];
+    systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
     jitsusama.shaper.vpns = [ "wg0" ];
     users.users.alice = {
       isNormalUser = true;

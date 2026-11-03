@@ -17,14 +17,18 @@
 //!                   [--runtime DIR] (`SHAPER_HOSTS` stands for --hosts)
 //!        shaper status
 //!        shaper stop
+//!        shaper record [--state DIR]
 
 mod classes;
+mod icmp;
 mod links;
 mod memory;
 mod probe;
 mod qdisc;
 mod quiet;
 mod rate;
+mod record;
+mod stamp;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
@@ -118,8 +122,9 @@ fn main() -> ExitCode {
             stop();
             ExitCode::SUCCESS
         }
+        Some("record") => recording(&options(rest).state),
         _ => {
-            eprintln!("usage: shaper run | status | stop");
+            eprintln!("usage: shaper run | status | stop | record");
             ExitCode::from(2)
         }
     }
@@ -196,6 +201,37 @@ impl Shaped {
         self.counted = (tx, rx, Instant::now());
         let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
         (kbit(tx, tx0), kbit(rx, rx0))
+    }
+}
+
+/// Record the signal of the first uplink with an IPv4 gateway, and of the
+/// next when it changes, until stopped.
+fn recording(folder: &Path) -> ExitCode {
+    loop {
+        let first = uplinks().into_iter().find(|u| {
+            u.gateway
+                .as_ref()
+                .is_some_and(|g| g.parse::<std::net::Ipv4Addr>().is_ok())
+        });
+        let Some(uplink) = first else {
+            thread::sleep(Duration::from_secs(5));
+            continue;
+        };
+        let network = network_of(&uplink);
+        let gateway = uplink.gateway.as_ref().and_then(|g| g.parse().ok());
+        // The same uplink on the same network: a router that hadn't yet
+        // answered names its network once it does, and the pool and the
+        // record start over under that name.
+        let still = || {
+            uplinks().iter().find(|u| {
+                u.gateway
+                    .as_ref()
+                    .is_some_and(|g| g.parse::<std::net::Ipv4Addr>().is_ok())
+            }) == Some(&uplink)
+                && network_of(&uplink) == network
+        };
+        record::record(&uplink.name, &network, gateway, folder, &still);
+        thread::sleep(Duration::from_secs(2));
     }
 }
 

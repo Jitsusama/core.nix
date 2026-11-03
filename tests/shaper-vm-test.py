@@ -481,6 +481,26 @@ def test_pings(connection: Connection) -> None:
     retry(pinged, timeout=HOLDING)
 
 
+def test_each_direction_is_recorded(connection: Connection) -> None:
+    """The recorder writes each direction's delay from the server's timestamps, and the gateway's.
+
+    The server's kernel answers ICMP timestamps itself, as a public resolver's does, and the
+    router answers the recorder's echo; the recorder runs as its own user with a raw socket alone.
+    """
+
+    def recorded(_last_try: bool) -> bool:
+        """Say whether a day's file holds the server's one-way delays and a gateway round trip."""
+        text = connection.client.succeed("cat /var/lib/shaper-record/*.jsonl 2>/dev/null || true")
+        heard: list[Json] = [json.loads(line) for line in text.splitlines() if line.strip()]
+        stamped = any(
+            h.get("reflector") == connection.far and "out" in h and "back" in h for h in heard
+        )
+        gateway = any(isinstance(h.get("gateway"), float) for h in heard)
+        return stamped and gateway
+
+    retry(recorded, timeout=COMING_UP)
+
+
 def test_slice_made_again(connection: Connection) -> None:
     """A slice made again keeps its class.
 
