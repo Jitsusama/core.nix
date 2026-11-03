@@ -62,6 +62,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     networking.firewall.checkReversePath = "loose";
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
+    # The module leaves it off until its rebuild; the test runs it.
+    systemd.services.shaper.wantedBy = [ "multi-user.target" ];
     users.users.alice = {
       isNormalUser = true;
       linger = true;

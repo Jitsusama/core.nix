@@ -96,7 +96,13 @@ in
 
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
-    wantedBy = [ "multi-user.target" ];
+    # Wanted by nothing, so no boot or switch starts it, until its rebuild
+    # on one-way delays passes the bar its review set: five faults in four
+    # days came from guessing whose queue a round trip shows and learning
+    # rates from its own cuts, and on 3 November it held a 312 Mbit/s
+    # download at 81. A router's own SQM shapes the line meanwhile. Its
+    # VM tests start it themselves.
+    wantedBy = [ ];
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.
     wants = [ "network-pre.target" ];
