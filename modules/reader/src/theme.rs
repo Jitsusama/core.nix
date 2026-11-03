@@ -1,9 +1,12 @@
-//! The theme's colours, by role, which every surface the reader draws takes
-//! its ink from: the page, its code, its diagrams, the prompt and the marks
-//! search lays over the page. The module writes them as a file under the
+//! The theme's look, by role, which every surface the reader draws takes
+//! from: its colours for the page, its code, its diagrams, the prompt and
+//! the marks search lays over the page, and its faces for the text, the
+//! headings and code. The module writes them as a file under the
 //! configuration home, reader/theme.json, so a theme the account picks
 //! reaches the reader as it reaches everything else; `READER_THEME` names
-//! another file. Without one the reader wears Osaka Jade.
+//! another file. The reader names no colour or face of its own: without a
+//! file it sets the page as Typst does by itself, dark ink on white paper
+//! in Typst's own faces.
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -12,7 +15,7 @@ use std::sync::OnceLock;
 pub struct Colour(pub [u8; 3]);
 
 impl Colour {
-    /// Reads `#rrggbb`.
+    /// Reads a hash and six hex digits, as the theme writes a colour.
     pub fn parse(hex: &str) -> Option<Self> {
         let hex = hex.strip_prefix('#')?;
         if hex.len() != 6 {
@@ -22,7 +25,7 @@ impl Colour {
         Some(Colour([channel(0)?, channel(2)?, channel(4)?]))
     }
 
-    /// As `#rrggbb`.
+    /// As a hash and six hex digits.
     pub fn hex(self) -> String {
         let [r, g, b] = self.0;
         format!("#{r:02x}{g:02x}{b:02x}")
@@ -33,6 +36,20 @@ impl Colour {
         self.0.map(|channel| f32::from(channel) / 255.0)
     }
 }
+
+/// The faces the reader sets in, by the theme's families.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Faces {
+    /// What's read: the page's text, a diagram's words.
+    pub text: String,
+    /// Titles and headings, in the theme's wide face.
+    pub wide: String,
+    /// Code, the prompt, the key list and the labels over links.
+    pub code: String,
+}
+
+/// The face Typst sets in when nothing names one.
+const TYPSTS_OWN: &str = "libertinus serif";
 
 /// The roles the reader draws with, as the theme names them.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,42 +63,44 @@ pub struct Theme {
     pub rule: Colour,
     pub accent: Colour,
     pub on_accent: Colour,
+    pub faces: Faces,
     /// The theme as a `TextMate` theme, for code; two-face's Nord without one.
     pub code: Option<PathBuf>,
 }
 
 impl Theme {
-    /// Osaka Jade, the theme's own pigments.
-    fn osaka_jade() -> Self {
-        let c = |hex| Colour::parse(hex).unwrap_or(Colour([0, 0, 0]));
+    /// Typst's page as it is with nothing asked of it: ink on white, a grey
+    /// between them for what's quieter, in the faces Typst carries.
+    fn plain() -> Self {
+        let grey = |level: u8| Colour([level; 3]);
         Theme {
-            background: c("#111c18"),
-            sunken: c("#0c1512"),
-            raised: c("#23372b"),
-            text: c("#d6d5bc"),
-            strong: c("#f7e8b2"),
-            muted: c("#b7b69d"),
-            rule: c("#53685b"),
-            accent: c("#509475"),
-            on_accent: c("#090f0d"),
+            background: grey(255),
+            sunken: grey(242),
+            raised: grey(230),
+            text: grey(0),
+            strong: grey(0),
+            muted: grey(96),
+            rule: grey(160),
+            accent: grey(0),
+            on_accent: grey(255),
+            faces: Faces {
+                text: TYPSTS_OWN.into(),
+                wide: TYPSTS_OWN.into(),
+                code: TYPSTS_OWN.into(),
+            },
             code: None,
         }
     }
 
-    /// Reads the theme's file: every role it names, Osaka Jade's for any it
-    /// doesn't.
+    /// Reads the theme's file: every role it names, Typst's plain page's for
+    /// any it doesn't.
     fn read(text: &str) -> Self {
-        let mut theme = Self::osaka_jade();
+        let mut theme = Self::plain();
         let Ok(serde_json::Value::Object(roles)) = serde_json::from_str::<serde_json::Value>(text)
         else {
             return theme;
         };
-        let role = |name: &str| {
-            roles
-                .get(name)
-                .and_then(serde_json::Value::as_str)
-                .and_then(Colour::parse)
-        };
+        let named = |name: &str| roles.get(name).and_then(serde_json::Value::as_str);
         for (name, slot) in [
             ("background", &mut theme.background),
             ("sunken", &mut theme.sunken),
@@ -93,18 +112,27 @@ impl Theme {
             ("accent", &mut theme.accent),
             ("on_accent", &mut theme.on_accent),
         ] {
-            if let Some(colour) = role(name) {
+            if let Some(colour) = named(name).and_then(Colour::parse) {
                 *slot = colour;
             }
         }
-        theme.code = roles
-            .get("code")
-            .and_then(serde_json::Value::as_str)
-            .map(PathBuf::from);
+        if let Some(serde_json::Value::Object(faces)) = roles.get("faces") {
+            for (name, slot) in [
+                ("text", &mut theme.faces.text),
+                ("wide", &mut theme.faces.wide),
+                ("code", &mut theme.faces.code),
+            ] {
+                if let Some(family) = faces.get(name).and_then(serde_json::Value::as_str) {
+                    *slot = family.to_string();
+                }
+            }
+        }
+        theme.code = named("code").map(PathBuf::from);
         theme
     }
 
-    /// The page's colours as Typst names them, set before its template.
+    /// The page's colours and faces as Typst names them, set before its
+    /// template: `paint` makes a colour of the theme's red, green and blue.
     pub fn typst(&self) -> String {
         let roles = [
             ("background", self.background),
@@ -115,12 +143,19 @@ impl Theme {
             ("muted", self.muted),
             ("rule", self.rule),
             ("accent", self.accent),
+            ("on_accent", self.on_accent),
         ];
         let named: Vec<String> = roles
             .iter()
-            .map(|(name, colour)| format!("{name}: rgb(\"{}\")", colour.hex()))
+            .map(|(name, Colour([r, g, b]))| format!("{name}: paint({r}, {g}, {b})"))
             .collect();
-        format!("#let ink = ({})\n", named.join(", "))
+        format!(
+            "#let paint = rgb\n#let ink = ({})\n#let face = (text: {:?}, wide: {:?}, code: {:?})\n",
+            named.join(", "),
+            self.faces.text,
+            self.faces.wide,
+            self.faces.code
+        )
     }
 }
 
@@ -139,7 +174,7 @@ pub fn get() -> &'static Theme {
     static THEME: OnceLock<Theme> = OnceLock::new();
     THEME.get_or_init(|| match file().map(std::fs::read_to_string) {
         Some(Ok(text)) => Theme::read(&text),
-        _ => Theme::osaka_jade(),
+        _ => Theme::plain(),
     })
 }
 
@@ -148,22 +183,35 @@ mod tests {
     use super::{Colour, Theme};
 
     #[test]
-    fn a_theme_names_its_roles_and_keeps_osaka_jade_for_the_rest() {
-        let theme = Theme::read(
-            r##"{"background": "#FFFCF0", "text": "#100F0F", "code": "/a/theme.tmTheme"}"##,
-        );
-        assert_eq!(theme.background, Colour([0xff, 0xfc, 0xf0]));
-        assert_eq!(theme.text.hex(), "#100f0f");
+    fn a_theme_names_its_roles_and_faces_and_keeps_the_plain_page_for_the_rest() {
+        let paper = Colour([250, 245, 230]);
+        let ink = Colour([20, 15, 15]);
+        let file = serde_json::json!({
+            "background": paper.hex().to_uppercase(),
+            "text": ink.hex(),
+            "faces": {"text": "A Text Face", "code": "A Code Face"},
+            "code": "/a/theme.tmTheme",
+        });
+        let theme = Theme::read(&file.to_string());
+        assert_eq!(theme.background, paper);
+        assert_eq!(theme.text, ink);
         assert_eq!(
             theme.strong,
-            Theme::osaka_jade().strong,
+            Theme::plain().strong,
             "a role it doesn't name stays"
         );
+        assert_eq!(theme.faces.text, "A Text Face");
+        assert_eq!(theme.faces.wide, Theme::plain().faces.wide);
         assert_eq!(
             theme.code.as_deref(),
             Some(std::path::Path::new("/a/theme.tmTheme"))
         );
-        assert!(theme.typst().contains(r##"background: rgb("#fffcf0")"##));
+        let typst = theme.typst();
+        assert!(
+            typst.contains("background: paint(250, 245, 230)"),
+            "{typst}"
+        );
+        assert!(typst.contains("code: \"A Code Face\""), "{typst}");
     }
 
     #[test]
@@ -172,10 +220,12 @@ mod tests {
         reason = "one channel's division, done the same way on both sides"
     )]
     fn a_colour_is_six_hex_digits_after_a_hash() {
-        assert_eq!(Colour::parse("#509475"), Some(Colour([0x50, 0x94, 0x75])));
-        assert_eq!(Colour::parse("509475"), None);
-        assert_eq!(Colour::parse("#5094"), None);
-        assert_eq!(Colour::parse("#50947g"), None);
-        assert_eq!(Colour([80, 148, 117]).gl()[0], 80.0 / 255.0);
+        let jade = Colour([80, 148, 117]);
+        assert_eq!(Colour::parse(&jade.hex()), Some(jade));
+        assert_eq!(Colour::parse(&jade.hex().to_uppercase()), Some(jade));
+        assert_eq!(Colour::parse(jade.hex().trim_start_matches('#')), None);
+        assert_eq!(Colour::parse(&jade.hex()[..5]), None);
+        assert_eq!(Colour::parse(&jade.hex().replace('5', "g")), None);
+        assert_eq!(jade.gl()[0], 80.0 / 255.0);
     }
 }

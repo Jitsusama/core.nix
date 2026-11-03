@@ -138,7 +138,7 @@ fn source(ask: &Ask) -> String {
     };
     format!(
         r#"{ink}#set page(width: {width}pt, height: {row}pt, margin: (left: 210pt, right: 80pt, y: 0pt), fill: ink.sunken)
-#set text(font: "Monaspace Neon", size: 11.5pt, fill: ink.text, features: ("calt",))
+#set text(font: face.code, size: 11.5pt, fill: ink.text, features: ("calt",))
 #align(horizon, grid(columns: (1fr, auto),
   [#raw({typed}){cursor}],
   text(fill: ink.muted, {count})))
@@ -184,7 +184,7 @@ fn key_list() -> String {
     }
     format!(
         r#"{}#set page(width: auto, height: auto, margin: 18pt, fill: ink.sunken)
-#set text(font: "Monaspace Neon", size: 11.5pt, fill: ink.text)
+#set text(font: face.code, size: 11.5pt, fill: ink.text)
 #context {{
   let keys = (({}), ({})).map(column => calc.max(0pt, ..column.map(it => measure(text(it)).width)))
   stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, row-gutter: 12pt, {}),
