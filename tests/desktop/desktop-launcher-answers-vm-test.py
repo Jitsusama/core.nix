@@ -898,6 +898,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         desktop.answer(typed)
         machine.send_key("esc")
     desktop.answer("weather tokyo")
+    # Come to nothing, it says why once, as its one row, quietly: the
+    # field finishes nothing and its end adds nothing (VKCF3Z, 2026-11-02:
+    # "= no forecast" beside "Open-Meteo didn't a..." said it twice).
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Open-Meteo didn't answer."]
+            and shown["completion"] == ""
+            and shown["footer"] == ""
+            and shown["kind"] == ""
+        )
+    )
     desktop.photograph("launcher-offline")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
@@ -916,8 +927,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.launcher_until(
         lambda shown: (
             (
-                (shown["selected"] or {}).get("name") == "no forecast"
-                and shown["footer"] == "Open-Meteo didn't answer"
+                (shown["selected"] or {}).get("name") == "Open-Meteo didn't answer."
+                and shown["footer"] == ""
             )
             or (
                 re.fullmatch(rained, (shown["selected"] or {}).get("name", "")) is not None
@@ -1131,8 +1142,8 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     asked(
         lambda shown: (
             (
-                (shown["selected"] or {}).get("name") == "no forecast"
-                and shown["footer"] == "Open-Meteo didn't answer"
+                (shown["selected"] or {}).get("name") == "Open-Meteo didn't answer."
+                and shown["footer"] == ""
             )
             or shown["footer"] == found
         )

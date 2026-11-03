@@ -42,14 +42,11 @@ Provider {
             return null;
         const said = ask(`https://api.frankfurter.dev/v1/latest?base=${from}&symbols=${to}`,
             60 * 60 * 1000);
+        // One that came to nothing says why once, as its row's name.
         if (!said.value || !said.value.rates || said.value.rates[to] === undefined)
-            return {
-                headline: said.failed ? "no rate" : "\u2026",
-                copy: "",
-                rows: [],
-                note: said.failed ? "Frankfurter didn't answer" : "asking Frankfurter",
-                asking: !said.failed
-            };
+            return said.failed
+                ? { headline: "Frankfurter didn't answer.", copy: "", rows: [], missed: true }
+                : { headline: "\u2026", copy: "", rows: [], note: "asking Frankfurter", asking: true };
         const each = said.value.rates[to];
         const total = amount * each;
         const [year, month, day] = (said.value.date ?? "").split("-").map(Number);

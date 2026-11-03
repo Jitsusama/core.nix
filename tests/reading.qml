@@ -1,5 +1,5 @@
-// How a long name slides, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `a-long-name-reads-at-one-pace` check copies
+// How a long name slides, and how words too long for their room give way,
+// run in Qt's own JavaScript engine, the one the shell runs it in. The `a-long-name-reads-at-one-pace` check copies
 // Reading.js beside this file and runs `qml -platform offscreen reading.qml`.
 import QtQuick
 import "Reading.js" as Reading
@@ -62,6 +62,20 @@ QtObject {
             < near, Reading.slide(600, pace));
         // Nothing to slide takes no time.
         expect("nothing over", Reading.slide(0, pace).seconds === 0, Reading.slide(0, pace));
+        // Words too long for their room give way at a whole word, in a
+        // face ten pixels a character, as the field's monospace is.
+        const width = words => words.length * 10;
+        const cut = (words, room) => Reading.wholeWords(words, room, width);
+        const missed = "Open-Meteo didn't answer";
+        expect("whole where they fit", cut(missed, 240) === missed, cut(missed, 240));
+        // "Open-Meteo didn't a\u2026" is what a cut by the letter left.
+        expect("a word short", cut(missed, 230) === "Open-Meteo didn't\u2026", cut(missed, 230));
+        expect("two words short", cut(missed, 170) === "Open-Meteo\u2026", cut(missed, 170));
+        expect("not even a word", cut(missed, 100) === "", cut(missed, 100));
+        // A separator left at the end goes before the ellipsis.
+        const where = "Tokyo, Japan \u00b7 Open-Meteo";
+        expect("no separator dangling", cut(where, 200) === "Tokyo, Japan\u2026", cut(where, 200));
+        expect("no comma dangling", cut(where, 120) === "Tokyo\u2026", cut(where, 120));
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

@@ -24,7 +24,8 @@
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
-    settling back to it in at most a fifth of a second at each end, never stepping back
+    settling back to it in at most a fifth of a second at each end, never stepping back; and words
+    too long for the field's end give way at a whole word, no separator left before the ellipsis
   '';
   a-low-charge-is-said-once = ''
     a battery that reports only its charge runs low at its mark and critical at its own, only ever
