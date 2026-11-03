@@ -139,6 +139,34 @@ class Rig:
             "systemd-run -M alice@ --user --wait --collect --slice=app.slice"
             f" -p StandardOutput=file:/tmp/{name}.txt {BIN}/ping -n -c 40 -i 0.25 {self.far}"
         )
+        return self.answered(name)
+
+    def ping_reading(self, name: str) -> tuple[float, list[int]]:
+        """Give an app's median round trip, and the rates the shaper sent at meanwhile.
+
+        The rate is read once a second while the pings go, since any one reading can
+        find the shaper just past a cut, under where it settles: on a busy builder, one
+        reading taken after the pings was 5974 kbit/s, against 6000.
+        """
+        self.client.succeed(
+            f"systemd-run -M alice@ --user --collect --slice=app.slice --unit=ping-{name}"
+            f" -p StandardOutput=file:/tmp/{name}.txt {BIN}/ping -n -c 40 -i 0.25 {self.far}"
+        )
+        rates: list[int] = []
+
+        def ended(_last_try: bool) -> bool:
+            """Read the rate, and say whether the pings are done."""
+            rates.append(self.up())
+            status, _ = self.client.execute(
+                f"systemctl -M alice@ --user is-active --quiet ping-{name}"
+            )
+            return status != 0
+
+        retry(ended, timeout=SENDING)
+        return self.answered(name), rates
+
+    def answered(self, name: str) -> float:
+        """Give the median round trip of the pings an app wrote to its file, in ms."""
         text = self.client.succeed(f"cat /tmp/{name}.txt")
         words = text.split()
         times = [float(word.removeprefix("time=")) for word in words if word.startswith("time=")]
@@ -199,10 +227,10 @@ def returned(dropped: Rig) -> Rig:
 
 def test_finds_the_connection(loaded: Rig) -> None:
     """The shaper finds the connection and an app's pings stay near it."""
-    shaped = loaded.ping("shaped")
-    rate = loaded.up()
-    assert SETTLED < rate < PROBED, rate
-    assert shaped < SHAPED, f"{shaped} ms shaped at {rate} kbit/s"
+    shaped, rates = loaded.ping_reading("shaped")
+    rate = statistics.median(rates)
+    assert SETTLED < rate < PROBED, rates
+    assert shaped < SHAPED, f"{shaped} ms shaped at {rates} kbit/s"
 
 
 def test_app_upload(loaded: Rig) -> None:
