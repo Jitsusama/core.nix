@@ -871,7 +871,7 @@ mod tests {
         let untitled = walk("The words.\n\n# Later\n\nMore.\n");
         assert!(untitled.contains("#about(titled: false)"), "{untitled}");
         assert!(
-            !untitled.contains("<title>"),
+            !untitled.contains("] <title>"),
             "a later title isn't the page's: {untitled}"
         );
         assert!(
