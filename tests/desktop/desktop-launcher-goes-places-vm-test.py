@@ -215,13 +215,25 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         assert len(heard) >= writes // 3, f"only {len(heard)} changes heard, too few to tell"
         # Taken one by one, each change heard was a refresh of its own, some
         # a tenth of a second after the last (2026-10-30). Together, there's
-        # one at once and then at most four a second while they come, a
-        # quarter second apart, less what a refresh's own work moves its
-        # report by.
+        # one at once and then at most four a second while they come, each
+        # begun a quarter second after the last began. That's read from the
+        # shell's own clock as each begins: the journal hears a refresh's
+        # report as it ends, and on a loaded machine one slowed refresh put
+        # its report 0.06 s before the next one's (2026-11-03).
         most = 2 + int(sum(heard) * 4)
         assert len(refreshes) <= most, f"{len(heard)} changes, {len(refreshes)} refreshes"
-        closest = min(refreshes[1:], default=1.0)
-        assert closest >= 0.18, f"refreshes {closest:.2f} s apart: {refreshes}"  # noqa: PLR2004
+        began = [
+            int(line.split("report[refresh of jobs began ", 1)[1].removesuffix("]"))
+            for line in desktop.as_account(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)}"
+            ).splitlines()
+            if "report[refresh of jobs began " in line
+        ]
+        apart = [later - sooner for sooner, later in itertools.pairwise(began)]
+        assert len(began) >= len(refreshes), f"{len(began)} begun, {len(refreshes)} said"
+        # A coarse timer, Qt's own, may wake up to 5% early: 12 ms of 250.
+        assert min(apart, default=1000) >= 235, f"refreshes began {apart} ms apart"  # noqa: PLR2004
     finally:
         machine.send_key("esc")
         machine.wait_until_fails(
