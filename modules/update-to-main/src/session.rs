@@ -6,17 +6,19 @@
 //! runs where they answer, and launchd lets the account start one there
 //! itself.
 //!
-//! Root writes the command down in a folder of its own and gives the folder
-//! to the account, which starts a job running `update-to-main job` on it;
+//! Root writes the command down in a folder of its own, made in the jobs
+//! folder the config names, and gives the folder to the account, which starts a job running `update-to-main job` on it;
 //! `job` runs the command and writes down what it said and how it ended,
 //! and root waits for that. With no launchctl, or nobody logged in as the
 //! account, the command runs as it would anywhere else.
 
+use crate::config::Session;
 use crate::run::{self, Account, Failure};
 use serde_json::{Value, json};
 use std::ffi::{CString, OsStr};
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -37,10 +39,10 @@ const ERR: &str = "err";
 const STATUS: &str = "status";
 
 /// Runs `command`, made by `run::command_as` for `account`, as
-/// `run::output` would: in the account's login session when `launchctl` is
-/// given and the session is open, and otherwise as it is.
+/// `run::output` would: in the account's login session when `session` is
+/// given and the login session is open, and otherwise as it is.
 pub fn output<I, S>(
-    launchctl: Option<&Path>,
+    session: Option<&Session>,
     account: &Account,
     mut command: Command,
     what: &str,
@@ -51,9 +53,9 @@ where
     S: AsRef<OsStr>,
 {
     command.args(args);
-    match launchctl {
-        Some(launchctl) if open(launchctl, account) => {
-            in_session(launchctl, account, &command, what)
+    match session {
+        Some(session) if open(&session.launchctl, account) => {
+            in_session(session, account, &command, what)
         }
         _ => run::output(command, what, std::iter::empty::<&str>()),
     }
@@ -82,13 +84,14 @@ fn launchctl_as(launchctl: &Path, account: &Account) -> Command {
 }
 
 fn in_session(
-    launchctl: &Path,
+    session: &Session,
     account: &Account,
     command: &Command,
     what: &str,
 ) -> Result<String, Failure> {
+    let launchctl = session.launchctl.as_path();
     let failed = |e: std::io::Error| Failure::new(format!("{what} in the login session: {e}"));
-    let folder = folder().map_err(failed)?;
+    let folder = folder(&session.jobs).map_err(failed)?;
     let label = format!(
         "org.jitsusama.update-to-main.{}",
         folder.file_name().unwrap_or_default().to_string_lossy()
@@ -113,10 +116,23 @@ fn in_session(
     })
 }
 
-/// A new folder only root can reach, given to the account once root has
-/// written the command in it. Root then only reads what the job leaves.
-fn folder() -> std::io::Result<PathBuf> {
-    let template = std::env::temp_dir().join("update-to-main.XXXXXX");
+/// A new folder only root can reach, in `jobs`, given to the account once
+/// root has written the command in it. Root then only reads what the job
+/// leaves. `jobs` is made root's and passable by anyone, so the account can
+/// reach the folder; a folder there that isn't root's, or a link, is
+/// refused rather than trusted.
+fn folder(jobs: &Path) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(jobs)?;
+    let found = fs::symlink_metadata(jobs)?;
+    // SAFETY: geteuid only reads.
+    if !found.is_dir() || found.uid() != unsafe { libc::geteuid() } {
+        return Err(std::io::Error::other(format!(
+            "{} isn't a folder of this account's own",
+            jobs.display()
+        )));
+    }
+    fs::set_permissions(jobs, fs::Permissions::from_mode(0o711))?;
+    let template = jobs.join("update-to-main.XXXXXX");
     let template = CString::new(template.as_os_str().as_bytes())?;
     let raw = template.into_raw();
     // SAFETY: `raw` is a C string this frame owns, which mkdtemp rewrites in
@@ -302,6 +318,27 @@ mod tests {
             format!("a & b in {}, HOME=unset\n", here.display())
         );
         assert_eq!(read(ERR), "said\n");
+    }
+
+    #[test]
+    fn a_jobs_folder_is_made_passable_and_a_jobs_own_folder_in_it_private() {
+        let dir = tempfile::tempdir().unwrap();
+        let jobs = dir.path().join("jobs");
+        let made = folder(&jobs).unwrap();
+        assert_eq!(made.parent(), Some(jobs.as_path()));
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!((mode(&jobs), mode(&made)), (0o711, 0o700));
+    }
+
+    #[test]
+    fn a_jobs_folder_that_is_a_link_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        let jobs = dir.path().join("jobs");
+        std::os::unix::fs::symlink(&elsewhere, &jobs).unwrap();
+        assert!(folder(&jobs).is_err());
+        assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
     }
 
     #[test]

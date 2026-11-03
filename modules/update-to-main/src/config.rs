@@ -76,6 +76,9 @@ pub struct Config {
     pub power_supplies: PathBuf,
     /// The programs it runs, by their paths in the store.
     pub tools: Tools,
+    /// How a command is run in an account's login session, where a Mac's
+    /// keychain answers; none on Linux.
+    pub session: Option<Session>,
     /// The path the running system gives update-to-main at, which it starts
     /// itself again from once it has switched, so the newest one serves;
     /// none to serve on as it is.
@@ -179,9 +182,19 @@ pub struct Tools {
     pub tar: PathBuf,
     /// macOS's pmset, which says how a Mac is powered; none on Linux.
     pub pmset: Option<PathBuf>,
-    /// macOS's launchctl, which runs a command in an account's login
-    /// session, where its keychain answers; none on Linux.
-    pub launchctl: Option<PathBuf>,
+}
+
+/// How a command is run in an account's login session (src/session.rs).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Session {
+    /// macOS's launchctl, which starts a job in the session.
+    pub launchctl: PathBuf,
+    /// The folder each job's own folder is made in: root's, and passable by
+    /// any account but readable and writable by none, so the account can
+    /// reach the folder it's given. A root daemon's temporary folder on a
+    /// Mac is root's alone.
+    pub jobs: PathBuf,
 }
 
 impl Config {
