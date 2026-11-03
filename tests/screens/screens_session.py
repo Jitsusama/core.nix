@@ -333,9 +333,13 @@ class Screens:
             lambda shown: shown["typed"] == typed and (shown["selected"] or {}).get("name") == row,
             f"found {row!r} on {screen}",
         )
-        # Keep Awake is a setting, which Return does and stays to show;
-        # Ctrl+Return does it and closes.
-        self.machine.send_key("ctrl-ret")
+        # Keep Awake is a setting, which Return does and stays to show; the
+        # right arrow, from normal mode, then Return does it and closes.
+        self.machine.send_key("esc")
+        self.launcher_until(lambda shown: shown["mode"] == "normal", f"normal on {screen}")
+        self.machine.send_key("right")
+        self.launcher_until(lambda shown: len(shown["held"]) > 0, f"stepped into {row!r}")
+        self.machine.send_key("ret")
         self.launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")
         deadline = time.monotonic() + 30
         while self.awake() == was:

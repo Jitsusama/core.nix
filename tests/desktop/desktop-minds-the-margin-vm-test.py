@@ -90,9 +90,10 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.type_in("keep awake")
     desktop.photograph("launcher-keep-awake")
-    # Keeping it awake changes something, so Return would stay; Ctrl+Return
-    # does it and closes.
-    machine.send_key("ctrl-ret")
+    # Keeping it awake changes something, so Return would stay; the right
+    # arrow then Return does it and closes.
+    desktop.step_in()
+    machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(
@@ -352,7 +353,9 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("do not disturb")
-    machine.send_key("ctrl-ret")
+    # The right arrow then Return holds them for an hour and closes.
+    desktop.step_in()
+    machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.wait_for_surface("margin")
     # The shell decides as the notice arrives, so once it says it held

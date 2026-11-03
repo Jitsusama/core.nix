@@ -50,7 +50,6 @@ KEYS = {
     "up": ["-k", "Up"],
     "down": ["-k", "Down"],
     "ctrl-left": ["-M", "ctrl", "-k", "Left", "-m", "ctrl"],
-    "ctrl-ret": ["-M", "ctrl", "-k", "Return", "-m", "ctrl"],
     "ctrl-y": ["-M", "ctrl", "-k", "y", "-m", "ctrl"],
     # The notices read a letter by what it types (NoticeKeys.js), so Shift and g come as the
     # G they type, typed as text: wtype finds a key's name without its case, so -k G is a g.

@@ -428,8 +428,8 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     fewest = 4
     desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
     home = marks_in(desktop.showing()["glance"])
-    # A step's row with the most keys: Return, Ctrl+Return, the right
-    # arrow and the left. Every mark stays beside them (Joel, 2026-10-28:
+    # A step's row with the most keys: Return, the right arrow and the
+    # left, and no chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
     # "i want icons to be able to be there as much as possible").
     machine.send_chars("desktop ")
     desktop.launcher_until(
@@ -437,7 +437,9 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     )
     desktop.down_to("Do Not Disturb")
     shown = desktop.showing()
-    assert "Ctrl+\u21b5 close" in shown["selected"]["told"], shown["selected"]
+    told = shown["selected"]["told"]
+    assert "\u2192" in told, shown["selected"]
+    assert not any(key.startswith("Ctrl") for key in told), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()
     # A switch restarts the shell: the first foot it draws has every mark,

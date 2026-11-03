@@ -1157,8 +1157,10 @@ works the same way everywhere.
   volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
   Disturb, Keep Awake, the power profile, the desk light, a keyboard's
   light or layer, a program's playing) keeps it open, and its row says
-  the new state at once; Ctrl+Return does it and closes, and the foot
-  says so on those rows. A copy closes saying so: the keys go back to the
+  the new state at once. The right arrow on one, in normal mode, steps
+  into its acts, led by Return's own, which there does it and closes, so
+  there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
+  keys do not feel very vim to me"). A copy closes saying so: the keys go back to the
   window at once, and the card stays a moment with "copied" where
   Return's key was, its done mark in the success colour, then leaves.
 - **Answers first.** A sum is answered in grey right after what's typed,
