@@ -1,22 +1,25 @@
 power: supply: surface: ask the controller only while awake
 
 On a resume from s2idle, amdgpu's late init asks the power-supply core
-whether the system runs on mains, before the Surface Aggregator's
-controller has resumed. The core asks each supply's get_property, and
-surface_charger and surface_battery each send the controller a request
-there, which ssam_request_do_sync_with_buffer() refuses with -ENODEV and
-a WARN, since the controller isn't started:
+whether the system runs on mains, and it can do so before the Surface
+Aggregator's controller has resumed. The core asks each supply's
+get_property, and surface_charger sends the controller a request there,
+which ssam_request_do_sync_with_buffer() refuses with -ENODEV and a
+WARN, since the controller isn't started:
 
   WARNING: drivers/platform/surface/aggregator/controller.c:1703 at
   ssam_request_do_sync_with_buffer
   ... spwr_ac_get_property <- power_supply_is_system_supplied <-
   smu_late_init <- amdgpu resume
 
-Each Surface Laptop 4 (AMD) wake logged it and left the kernel tainted
-with W. Both drivers are the controller's children, so they suspend
-before it and resume after it. Mark each suspended under its own lock
-from its suspend callback until its resume callback, and while marked,
-answer from the last state the controller gave rather than asking.
+A Surface Laptop 4 (AMD) logged it at 3 of 9 wakes over two boots,
+each time from surface_charger, and was left tainted with W.
+surface_battery's get_property sends the same request whenever its
+cached state is stale, so it can hit the same refusal. Both drivers are
+the controller's children, so they suspend before it and resume after
+it. Mark each suspended under its own lock from its suspend callback
+until its resume callback, and while marked, answer from the last state
+the controller gave rather than asking.
 
 surface_charger's get_property also returned 1 whenever the adapter's
 state had just changed, which the power-supply core reads as a failure,

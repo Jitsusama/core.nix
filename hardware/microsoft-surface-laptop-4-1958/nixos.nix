@@ -197,8 +197,8 @@
       name = "amd-pstate-skip-matching-auto-sel";
       patch = ./kernel/amd-pstate-skip-matching-auto-sel.patch;
     }
-    # A wake asked the charger and battery for their state before the
-    # controller had resumed, so each wake warned and tainted the kernel.
+    # A wake could ask the charger for its state before the controller had
+    # resumed, which warned and tainted the kernel.
     {
       name = "surface-power-asks-only-awake";
       patch = ./kernel/surface-power-asks-only-awake.patch;
