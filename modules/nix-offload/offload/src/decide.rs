@@ -8,14 +8,37 @@ pub const IDLE: u64 = 15 * 60;
 /// How long after a builder fails, or goes on its own, before another is
 /// asked for, so a helper that keeps failing doesn't make one a minute.
 pub const AFTER_FAILING: u64 = 30 * 60;
+/// How near its end a builder that goes on its own ended on time, rather
+/// than being lost: one asked to live until 23:59 on 2 November was
+/// deleted at 23:55:43, and counted lost, which lent none for 30 minutes.
+pub const NEAR_ITS_END: u64 = 10 * 60;
 
 /// The day's hours, in seconds into the local day: lends start from
-/// `first` and before `last`, and every builder is gone by `deadline`.
+/// `first` and before `last`, and every builder is gone by `deadline`,
+/// unless each lives `longest` from its asking instead.
 #[derive(Clone, Copy, Debug)]
 pub struct Hours {
     pub first: u32,
     pub last: u32,
     pub deadline: u32,
+    /// The longest a builder lives from its asking, in seconds, in place
+    /// of the deadline, so one lent at any hour isn't ended mid-build at
+    /// midnight, as two were on 2 November.
+    pub longest: Option<u32>,
+}
+
+/// When a builder asked for at `asked` ends, as seen `now`, `into_day`
+/// seconds into the local day.
+pub fn ends(hours: Hours, asked: u64, now: u64, into_day: u32) -> u64 {
+    match hours.longest {
+        Some(longest) => asked + u64::from(longest),
+        None => now + u64::from(hours.deadline.saturating_sub(into_day)),
+    }
+}
+
+/// Whether the day's deadline has come for every builder.
+pub fn past_deadline(hours: Hours, into_day: u32) -> bool {
+    hours.longest.is_none() && into_day >= hours.deadline
 }
 
 /// What's known at one tick.
@@ -38,7 +61,7 @@ pub struct Tick {
 pub fn lend(hours: Hours, tick: Tick, not_before: u64, unreturned: usize) -> Option<u64> {
     let within = (hours.first..hours.last).contains(&tick.into_day);
     (tick.wants && within && tick.now >= not_before && unreturned == 0)
-        .then(|| u64::from(hours.deadline - tick.into_day))
+        .then(|| u64::from(hours.longest.unwrap_or(hours.deadline - tick.into_day)))
 }
 
 /// With one lent and last used at `used`, asked to live until `ends`: why
@@ -49,10 +72,11 @@ pub fn lend(hours: Hours, tick: Tick, not_before: u64, unreturned: usize) -> Opt
 /// One gone just after a sleep went unused, as its own idle delete takes
 /// it, so it isn't lost either.
 pub fn give_back(hours: Hours, tick: Tick, used: u64, ends: u64, gone: bool) -> Option<Event> {
-    let over = tick.now >= ends || tick.into_day >= hours.deadline;
-    if gone && !over && !tick.woke {
+    let over = tick.now >= ends || past_deadline(hours, tick.into_day);
+    let near_its_end = tick.now + NEAR_ITS_END >= ends;
+    if gone && !over && !near_its_end && !tick.woke {
         Some(Event::Lost)
-    } else if over || tick.now.saturating_sub(used) >= IDLE {
+    } else if over || gone || tick.now.saturating_sub(used) >= IDLE {
         Some(Event::Stopped)
     } else {
         None
@@ -99,7 +123,45 @@ mod tests {
         first: 8 * 3600,
         last: 19 * 3600 + 30 * 60,
         deadline: 20 * 3600,
+        longest: None,
     };
+
+    /// Lent at any hour, each builder living at most 12 hours.
+    const ANY_HOUR: Hours = Hours {
+        first: 0,
+        last: 23 * 3600 + 59 * 60,
+        deadline: 23 * 3600 + 59 * 60,
+        longest: Some(12 * 3600),
+    };
+
+    #[test]
+    fn lent_for_a_span_it_lives_that_long_whatever_the_hour() {
+        let late = 23 * 3600 + 50 * 60;
+        assert_eq!(lend(ANY_HOUR, at(late, true), 0, 0), Some(12 * 3600));
+        // Past the deadline it's still in use, so it isn't given back.
+        let past = at(23 * 3600 + 59 * 60 + 30, false);
+        assert_eq!(give_back(ANY_HOUR, past, past.now, LATER, false), None);
+        let now = 1_000_000;
+        assert_eq!(ends(ANY_HOUR, now - 600, now, 0), now - 600 + 12 * 3600);
+        assert_eq!(ends(HOURS, now - 600, now, 12 * 3600), now + 8 * 3600);
+    }
+
+    #[test]
+    fn one_gone_just_before_its_end_ended_on_time() {
+        // Asked to live until 23:59 on 2 November, a builder was deleted at
+        // 23:55:43, and counted lost, lending none for 30 minutes.
+        let tick = at(12 * 3600, false);
+        let ends = tick.now + 200;
+        assert_eq!(
+            give_back(HOURS, tick, tick.now, ends, true),
+            Some(Event::Stopped)
+        );
+        let ends = tick.now + NEAR_ITS_END + 1;
+        assert_eq!(
+            give_back(HOURS, tick, tick.now, ends, true),
+            Some(Event::Lost)
+        );
+    }
 
     /// An end past every tick these tests make, for a builder whose time
     /// hasn't run out.

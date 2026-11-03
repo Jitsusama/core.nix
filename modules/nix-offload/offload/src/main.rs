@@ -2,8 +2,8 @@
 //! a builder could take, and gives it back once it's idle.
 //!
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
-//! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
-//! PATH] [--beside PATH] [--dir DIR] [--only-there]`, or `nix-offload stand [--standing PATH]
+//! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--longest HH:MM]
+//! [--standing PATH] [--beside PATH] [--dir DIR] [--only-there]`, or `nix-offload stand [--standing PATH]
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
@@ -31,7 +31,10 @@
 //! deadline comes, it takes the line out first, so no build
 //! is sent to a builder that's going, then gives the builder back. It
 //! starts none outside the day's hours, so none is made overnight or to
-//! live only minutes.
+//! live only minutes. With `--longest`, each builder lives that long from
+//! its asking instead of until the deadline, so one lent at any hour is
+//! never ended mid-build at midnight; the deadline then only says when
+//! the day's builders others left are named.
 //!
 //! It gives back only builders it asked for: each ask is journalled before
 //! the helper runs, and a builder counts as gone only once the helper said
@@ -147,7 +150,7 @@ const USAGE: i32 = 64;
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
-                    [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
+                    [--longest HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
@@ -672,6 +675,14 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 eprintln!("nix-offload: serve needs each of its settings\n{USED}");
                 return ExitCode::from(64);
             };
+            let longest = match given("--longest").map(|text| second_of(&text)) {
+                None => None,
+                Some(Some(longest)) if longest > 0 => Some(longest),
+                Some(_) => {
+                    eprintln!("nix-offload: --longest takes HH:MM, more than none\n{USED}");
+                    return ExitCode::from(64);
+                }
+            };
             if !(first <= last && last <= deadline) {
                 eprintln!("nix-offload: the day's hours must run first, last, deadline\n{USED}");
                 return ExitCode::from(64);
@@ -696,6 +707,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                     first,
                     last,
                     deadline,
+                    longest,
                 },
                 queue: runtime.join("jobs/queue.json"),
                 standing: given("--standing").map(PathBuf::from),
@@ -991,7 +1003,7 @@ fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard)> {
 /// use, so its idle time runs on. One that can't be held is given back by
 /// the first tick, as any left builder is.
 fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<Lent> {
-    if into_day >= settings.hours.deadline {
+    if decide::past_deadline(settings.hours, into_day) {
         return None;
     }
     let journal = fs::read_to_string(&settings.journal).unwrap_or_default();
@@ -1025,7 +1037,7 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
         rate: rate.or(left.rate),
         since: left.asked,
         used: ended.at,
-        ends: now() + u64::from(settings.hours.deadline - into_day),
+        ends: decide::ends(settings.hours, left.asked, now(), into_day),
     })
 }
 
@@ -1329,6 +1341,7 @@ exit 1
                 first: 0,
                 last: 80_000,
                 deadline: 86_000,
+                longest: None,
             },
             queue: folder.join("queue.json"),
             standing: None,

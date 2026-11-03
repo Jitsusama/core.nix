@@ -36,7 +36,8 @@ let
     "serve --helper ${cfg.helper} --rate ${cfg.rate}"
     "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
     "--deadline ${cfg.deadline}"
-  ];
+  ]
+  ++ lib.optional (cfg.longest != null) "--longest ${cfg.longest}";
   # Named here, since glibc without it reads a zone it can't find as UTC,
   # and says nothing.
   zoned = [
@@ -105,6 +106,16 @@ in
       type = time;
       default = "20:00";
       description = "The time of day every builder is given back by.";
+    };
+    longest = lib.mkOption {
+      type = lib.types.nullOr time;
+      default = null;
+      example = "12:00";
+      description = ''
+        The longest each builder lives from its asking, in hours and minutes,
+        in place of the deadline, so one lent at any hour isn't ended
+        mid-build at midnight. Idle time still gives it back first.
+      '';
     };
     vmTests = lib.mkOption {
       type = lib.types.nullOr (
