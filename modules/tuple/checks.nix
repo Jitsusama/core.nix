@@ -10,6 +10,17 @@
   ...
 }:
 onLinux {
+  # The people daemon's Tuple source reads Tuple's contacts, says only who
+  # changed, and waits longer each time Tuple's follow ends at once, as it
+  # does while nobody is signed in, up to a minute.
+  tuple-people-follows-the-contacts =
+    pkgs.runCommandCC "tuple-people-follows-the-contacts" { nativeBuildInputs = [ pkgs.rustc ]; }
+      ''
+        rustc --edition 2024 --test -D warnings -o tests ${./people.rs}
+        ./tests
+        touch $out
+      '';
+
   # Tuple shares a screen through the portal: the switch writes the setting
   # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
   # and a value not written as it writes one, has to read it back. So the
