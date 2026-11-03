@@ -116,7 +116,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
 #let rule() = line(length: 100%, stroke: 0.5pt + ink.rule)
-#let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt, y: 1pt), radius: 2pt, body)
+// A key, in the mono, framed: the frame stands outside the line's room,
+// over the capitals and under the descenders, so a line with one still
+// steps one line.
+#let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt), outset: (top: 2pt, bottom: 0.3em), radius: 2pt, text(font: face.code, size: 0.93 * body-size, body))
 // Lists hang their marks in the margin, so the words keep the measure's
 // edge: an accent bullet, a muted number, a task's box. An item steps one
 // line and a list stands one and a half from what's around it. A list in a
@@ -151,7 +154,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // An alert is a quote's shape with its rule in its kind's hue and the kind
 // as an eyebrow, one line over its words.
 #let alert-hues = (note: ink.voice, tip: ink.accent, important: ink.program, warning: ink.action, caution: ink.machine)
-#let alert(kind, body) = hung-rule(alert-hues.at(kind, default: ink.accent), first: 0.73 * 8.4pt, {
+#let alert(kind, body) = hung-rule(alert-hues.at(kind, default: ink.accent), first: code-caps * 8.4pt, {
   block(below: pitch - cap, eyebrow(kind))
   body
 })
@@ -689,6 +692,20 @@ mod tests {
         assert!(
             steps.iter().all(|s| *s == 100 || *s == 150),
             "a line steps one pitch, a paragraph one and a half: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_holding_a_key_steps_one_line_as_any_other() {
+        let markdown = format!(
+            "{OPENING}Press <kbd>Ctrl</kbd>+<kbd>O</kbd> to go back to where you were, and <kbd>Ctrl</kbd>+<kbd>I</kbd> to come forward again, in a paragraph long enough to wrap onto a second line and a third, whichever face it's set in, before it ends at Omega.\n"
+        );
+        let (pitch, lines) = baselines("keys", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        assert!(steps.len() >= 4, "too few lines: {steps:?}");
+        assert!(
+            steps.iter().all(|s| *s == 100 || *s == 150),
+            "a key's frame grew its line: {steps:?}"
         );
     }
 
