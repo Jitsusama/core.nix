@@ -12,9 +12,12 @@ pragma ComponentBehavior: Bound
 //
 // A daemon that's down is said, never waited on: `state` is "starting"
 // until it first answers, then the daemon's own word, or "not answering"
-// while its socket is gone, and the connection is tried again every two
-// seconds. What was held stays held through a gap, and is replaced
-// whole by what the daemon says once it answers again.
+// while its socket is gone. A socket that refuses is tried again every
+// two seconds; one that isn't there at all, as Slack's isn't before Joel
+// signs in, is tried again only once it appears, so a machine without it
+// isn't asked, and warned of, every two seconds for as long as it runs.
+// What was held stays held through a gap, and is replaced whole by what
+// the daemon says once it answers again.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -200,11 +203,37 @@ Scope {
                     again.restart();
                 }
             }
-            onError: {
+            onError: failed => {
                 daemon.gone();
-                again.restart();
+                if (failed !== daemon.serverNotFound)
+                    again.restart();
             }
         }
+    }
+
+    // QLocalSocket::ServerNotFoundError: nothing at the socket's path.
+    readonly property int serverNotFound: 2
+
+    // The socket's file, watched and never read, so one made after the
+    // last try is tried at once. Its folder, $XDG_RUNTIME_DIR/daemons, is
+    // there wherever a daemon is, made by the people daemon's socket unit,
+    // and the watch covers it, so only a socket made or taken away there
+    // wakes it.
+    FileView {
+        path: daemon.socket
+        preload: false
+        printErrors: false
+        watchChanges: true
+        onFileChanged: {
+            if (daemon.wire === null)
+                daemon.connectAgain();
+        }
+    }
+
+    function connectAgain() {
+        again.stop();
+        link.active = false;
+        link.active = true;
     }
 
     // Gone: said so, and every answer awaited given none.
@@ -222,9 +251,6 @@ Scope {
         id: again
 
         interval: 2000
-        onTriggered: {
-            link.active = false;
-            link.active = true;
-        }
+        onTriggered: daemon.connectAgain()
     }
 }
