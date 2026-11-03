@@ -772,27 +772,32 @@ def test_the_reader_closed_straight_after_a_jump_keeps_its_place_and_dies_in_not
     machine.succeed(f"rm {page}")
 
 
-def reader_opened(desktop: Desktop, page: str) -> str:
-    """Open a page in the reader as a click would, and give the reader's process id.
+def reader_opened(desktop: Desktop, page: str) -> tuple[str, int]:
+    """Open a page in the reader as a click would, and give its process id and kernel lines.
 
     Its command line is the inner wrapper's path and the file, since each wrapper script
     starts the next by its path, so a pattern of the command's own name never matches it:
-    the reader is known by its id instead.
+    the reader is known by its id instead. The kernel's lines so far are counted, so only
+    what this reader did is read for faults.
     """
+    kernel_lines = int(desktop.machine.succeed("dmesg | wc -l"))
     desktop.opens_in(page, "text/markdown", "reader")
-    return desktop.as_account("pgrep -u $(id -u) -n -x .reader-wrapped").strip()
+    pid = desktop.as_account("pgrep -u $(id -u) -n -x .reader-wrapped").strip()
+    return pid, kernel_lines
 
 
-def reader_closed_at(desktop: Desktop, pid: str) -> dict[str, object]:
+def reader_closed_at(desktop: Desktop, reader: tuple[str, int]) -> dict[str, object]:
     """Where the reader closed, once its process has gone, having faulted nowhere."""
     machine = desktop.machine
+    pid, kernel_lines = reader
     # Gone, or ended and not yet reaped.
     machine.wait_until_fails(
         f"test -e /proc/{pid}/status && ! grep -q '^State:[[:space:]]*Z' /proc/{pid}/status",
         timeout=timedelta(seconds=10),
     )
     faults = machine.execute(
-        "dmesg | grep -E ' (\\.reader-wrapped|loader|painter-[0-9]+|setter|reloader)"
+        f"dmesg | tail -n +{kernel_lines + 1} | grep -E"
+        " ' (\\.reader-wrapped|loader|painter-[0-9]+|setter|reloader)"
         "\\[[0-9]+\\]: segfault'"
     )[1]
     assert not faults, f"a thread of the reader faulted:\n{faults}"
