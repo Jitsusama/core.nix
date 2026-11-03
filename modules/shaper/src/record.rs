@@ -2,8 +2,8 @@
 //! direction's own delay, from ICMP timestamps to a pool of reflectors,
 //! the gateway's round trip, which crosses the air and not the modem, and
 //! what the link carried each way. A week of it is what a new controller is
-//! replayed over before it shapes anything, and `shaper record` writes it
-//! while the shaper stays off.
+//! replayed over before it shapes anything (src/replay.rs), and `shaper
+//! record` writes it while the shaper stays off.
 //!
 //! The pool is chosen on each new network from public resolvers that
 //! answer timestamps, one per operator first, since one operator's outage
@@ -130,7 +130,7 @@ pub fn day_file(folder: &Path, at: SystemTime) -> PathBuf {
 
 /// The date a count of days since 1970 falls on (Howard Hinnant's
 /// days-to-civil).
-fn civil(days: i64) -> (i64, u32, u32) {
+pub fn civil(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);

@@ -1140,7 +1140,10 @@
     retries no cut near one confirmed; never cuts Wi-Fi more than 5% under the best it carried,
     while following a cable down, unless a busy direction's queue stands six seconds at that floor,
     or 40% while real-time traffic flows, which a call's packets turn on for 30 s; remembers the
-    line's best, not its latest cut; reads sets, routes and queues from what the kernel prints
+    line's best, not its latest cut; reads sets, routes and queues from what the kernel prints;
+    replays recorded days as one stay per network across midnight, each second's carried rate from
+    the counters and each direction's own delay voted from its reflectors, and names a cut with no
+    queue of its own, a rate held low on an idle line and one starved under a full one
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests

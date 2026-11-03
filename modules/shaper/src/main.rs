@@ -18,6 +18,7 @@
 //!        shaper status
 //!        shaper stop
 //!        shaper record [--state DIR]
+//!        shaper replay [--base UP,DOWN] [--json] FILES...
 
 mod classes;
 mod icmp;
@@ -28,6 +29,7 @@ mod qdisc;
 mod quiet;
 mod rate;
 mod record;
+mod replay;
 mod stamp;
 
 use memory::{Held, Memory};
@@ -123,8 +125,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("record") => recording(&options(rest).state),
+        Some("replay") => replay::command(rest),
         _ => {
-            eprintln!("usage: shaper run | status | stop | record");
+            eprintln!("usage: shaper run | status | stop | record | replay");
             ExitCode::from(2)
         }
     }
