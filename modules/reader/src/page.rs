@@ -504,7 +504,7 @@ mod tests {
     #[test]
     fn a_tables_lines_land_on_the_pitch() {
         let markdown = format!(
-            "{OPENING}| Alpha | Wraps | Count |\n|---|---|---:|\n| one | a cell long enough that it wraps onto a second line in its column | 12 |\n| two | `code` in a cell | 3 |\n| three | short | Omega |\n"
+            "{OPENING}| Alpha | Wraps | Count |\n|---|---|---:|\n| one | a cell long enough that it wraps onto a second line in its column, however narrow the face its words are set in | 12 |\n| two | `code` in a cell | 3 |\n| three | short | Omega |\n"
         );
         let (pitch, lines) = baselines("table", &markdown, "Alpha", "Omega");
         let steps = steps(pitch, &lines);

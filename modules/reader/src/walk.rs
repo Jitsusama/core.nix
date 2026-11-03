@@ -236,6 +236,17 @@ fn tag(node: &Handle) -> Option<String> {
     }
 }
 
+/// The tag of the element `node` sits in, where it sits in one.
+fn parent_tag(node: &Handle) -> Option<String> {
+    let parent = node.parent.take();
+    let tag = parent
+        .as_ref()
+        .and_then(std::rc::Weak::upgrade)
+        .and_then(|p| tag(&p));
+    node.parent.set(parent);
+    tag
+}
+
 fn text_of(node: &Handle) -> String {
     fn go(n: &Handle, s: &mut String) {
         if let NodeData::Text { contents } = &n.data {
@@ -333,7 +344,11 @@ impl Walker<'_> {
             NodeData::Document => self.children(node),
             NodeData::Text { contents } => {
                 let text = collapse(&contents.borrow());
-                if !text.is_empty() {
+                // The line breaks between blocks are no words: set, a space
+                // there would be a paragraph of its own, a blank line and a
+                // second gap between the blocks either side of it.
+                let between_blocks = text == " " && parent_tag(node).as_deref() == Some("body");
+                if !text.is_empty() && !between_blocks {
                     self.out.push('#');
                     self.out.push_str(&literal(&text));
                 }
@@ -345,11 +360,7 @@ impl Walker<'_> {
 
     fn element(&mut self, node: &Handle) {
         let name = tag(node).unwrap_or_default();
-        let top = node.parent.take().is_some_and(|p| {
-            let parent = p.upgrade();
-            node.parent.set(Some(p));
-            parent.and_then(|p| tag(&p)).is_some_and(|t| t == "body")
-        });
+        let top = parent_tag(node).as_deref() == Some("body");
         if top && BLOCKS.contains(&name.as_str()) {
             // Each block says where it starts on the page, so a place on it
             // is kept as a block and a distance into it, which the first
