@@ -39,6 +39,8 @@ WAKING = timedelta(seconds=60)
 # card covers for a picture to be judged by it.
 CARD_APART = 32
 CARD_LEAST = 0.02
+# A part of a picture: its left, top, right and bottom.
+type Box = tuple[int, int, int, int]
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -107,12 +109,12 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     a picture is; a video's colours are near the screen's, not the same.
     """
     machine = desktop.machine
-    recorder = "pgrep -u 1000 -f '[w]f-recorder -y --file'"
     mark = "/run/user/1000/before-recording"
     desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
     bare, seen, shown = the_launcher_on_a_row(desktop)
-    machine.send_key("ctrl-sysrq")
-    machine.wait_until_succeeds(desktop.in_session(recorder), timeout=WAKING)
+    # The margin wears recording's mark from the start, as niri says it records.
+    with desktop.told("holds margin recording", timeout=WAKING):
+        machine.send_key("ctrl-sysrq")
     still_shown(desktop, shown)
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Something recorded before it's stopped, so the video holds a frame.
@@ -120,8 +122,10 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
         desktop.in_session(f"find ~/Videos/Recordings {videos} -size +0 | grep -q ."),
         timeout=WAKING,
     )
-    machine.send_key("ctrl-sysrq")
-    machine.wait_until_fails(desktop.in_session(recorder), timeout=WAKING)
+    # Its notice comes once the file is finished, which its process outlives, waiting on
+    # the notice's Play It.
+    with desktop.told("shows card Recording saved", timeout=WAKING):
+        machine.send_key("ctrl-sysrq")
     still_shown(desktop, shown)
     # Named by the time it began, so with a space in it.
     recorded = desktop.as_account(f"find ~/Videos/Recordings {videos}").splitlines()
@@ -188,12 +192,32 @@ def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> N
     differs = ImageChops.difference(like, unlike).convert("L")
     card = differs.point(lambda v: 255 if v > CARD_APART else 0)
     shown = ImageStat.Stat(card).mean[0] / 255
-    assert shown > CARD_LEAST, (
-        f"the card covers only {shown:.1%} of the screen, too little"
-    )
-    picture = taken.resize(like.size)
-    near, far = apart(picture, like, card), apart(picture, unlike, card)
+    assert shown > CARD_LEAST, f"the card covers only {shown:.1%} of the screen, too little"
+    box = where_taken(taken, like, card)
+    like, unlike, card = like.crop(box), unlike.crop(box), card.crop(box)
+    near, far = apart(taken, like, card), apart(taken, unlike, card)
+    print(f"on the card, at {box[:2]}: {near:.1f} from the one meant, {far:.1f} from the other")
     assert near * 4 < far, f"on the card: {near:.1f} from the one meant, {far:.1f} from the other"
+
+
+def where_taken(taken: Image.Image, screen: Image.Image, card: Image.Image) -> Box:
+    """Give the box of QEMU's screen that niri's output, and so what was taken, fills.
+
+    QEMU's screen is larger than the output niri draws (1280 by 800 to 1272 by 768), so a
+    picture is laid on it where it best matches, judged off the card, where every screen
+    meant is the same.
+    """
+    wide, high = taken.size
+    off = ImageChops.invert(card)
+
+    def box(x: int, y: int) -> Box:
+        return (x, y, x + wide, y + high)
+
+    places = [
+        (x, y) for x in range(screen.width - wide + 1) for y in range(screen.height - high + 1)
+    ]
+    x, y = min(places, key=lambda at: apart(taken, screen.crop(box(*at)), off.crop(box(*at))))
+    return box(x, y)
 
 
 def apart(one: Image.Image, other: Image.Image, where: Image.Image) -> float:
