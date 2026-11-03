@@ -1370,6 +1370,52 @@ fn unpacked() -> String {
     format!(".cache/nix-offload/there/{}", std::process::id())
 }
 
+/// Whether a machine nearby can fetch the flake `asked` names, asked once
+/// before anything is built there. A folder here goes with the build, so
+/// it's never fetched. One that answers ssh but can't fetch fails every
+/// build: on 2 November a Mac whose resolver was down failed two runs in
+/// a row on `Could not resolve host: github.com`, while the lent builder
+/// could have built them. The fetch is kept, so the build reuses it.
+pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bool {
+    if folder_of(&asked.flake).is_some() {
+        return true;
+    }
+    if fs::create_dir_all(scratch).is_err() {
+        return false;
+    }
+    let said = mine(scratch, "fetch.log");
+    let fetched = reaching(ssh, &said)
+        .arg(&machine.host)
+        .arg(far(&format!(
+            "nix flake metadata {} > /dev/null",
+            quoted(&asked.flake)
+        )))
+        .stdout(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    let _ = fs::remove_file(&said);
+    if !fetched {
+        eprintln!(
+            "nix-offload: {} couldn't fetch {}, so what it takes goes the other way",
+            machine.host, asked.flake
+        );
+    }
+    fetched
+}
+
+/// `part` put back with `rest`, what was left for the lent builder or
+/// here, as one build of both's attributes.
+pub fn rejoined(rest: Option<Asked>, part: &Asked) -> Asked {
+    match rest {
+        Some(rest) => {
+            let mut attributes = rest.attributes.clone();
+            attributes.extend(part.attributes.iter().cloned());
+            rest.with(&rest.flake, attributes)
+        }
+        None => part.with(&part.flake, part.attributes.clone()),
+    }
+}
+
 /// Builds what was asked on a machine nearby, or here when ssh can't reach
 /// it, sending a flake that's a folder here with it. `tar` and `nix` are
 /// the programs run here, beside `ssh`.
