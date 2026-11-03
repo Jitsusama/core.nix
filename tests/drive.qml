@@ -1,5 +1,5 @@
 // The documents Joel looked at lately, as the shell reads and says them:
-// read from the program's line, which program opens each kind, what a
+// read from the program's state, which program opens each kind, what a
 // row says beside its title and what the drawer says, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-shell-reads-the-documents` check copies Drive.js, Mail.js,
@@ -39,13 +39,13 @@ QtObject {
             viewed: at(28, 14, 2), changed: at(26, 9, 30), owner: "Ada Lovelace"
         };
 
-        // Read from the program's line, and none from one before documents.
-        check("the documents read", Google.heard(JSON.stringify({
+        // Read from the program's state, and none from one saying none.
+        check("the documents read", Google.stateOf({
             account: "ready", meetings: [], documents: [plan], heard: now
-        })).documents, [plan]);
-        check("none from a program before them", Google.heard(JSON.stringify({
+        }).documents, [plan]);
+        check("none from a program before them", Google.stateOf({
             account: "ready", meetings: []
-        })).documents, []);
+        }).documents, []);
 
         // Which program opens each kind, by its desktop entry.
         check("Docs opens documents", Drive.kindOf("google-docs"), "document");
@@ -90,12 +90,12 @@ QtObject {
             { file: "f1", how: "pick", asked: now + 1, path: "/run/f1/old.pdf", failed: null }
         ];
         const drive = { listings, downloads };
-        check("a folder listed and the downloads, read", Google.heard(JSON.stringify({
+        check("a folder listed and the downloads, read", Google.stateOf({
             account: "ready", meetings: [], drive
-        })).drive, Object.assign({}, drive, { uploads: [] }));
-        check("no Drive said, none held", Google.heard(JSON.stringify({
+        }).drive, Object.assign({}, drive, { uploads: [] }));
+        check("no Drive said, none held", Google.stateOf({
             account: "ready", meetings: []
-        })).drive, { listings: [], downloads: [], uploads: [] });
+        }).drive, { listings: [], downloads: [], uploads: [] });
         check("each folder asked together is found, none asked before", [
             Google.listing(drive, "drives", now),
             Google.listing(drive, "root", now),
@@ -173,18 +173,18 @@ QtObject {
             ""
         ]);
 
-        // Saves into Drive: read from the program's line, and none from one
+        // Saves into Drive: read from the program's state, and none from one
         // before them; asked again by the line Try Again writes.
         const notes = {
             path: "/s/google/drive-saves/f1/Notes.txt", folder: "f1", name: "Notes.txt",
             asked: now, id: "n1", link: "https://drive.google.com/file/d/n1/view", failed: null
         };
-        check("the saves read", Google.heard(JSON.stringify({
+        check("the saves read", Google.stateOf({
             account: "ready", meetings: [], drive: { listings: [], downloads: [], uploads: [notes] }
-        })).drive.uploads, [notes]);
-        check("none from a program before them", Google.heard(JSON.stringify({
+        }).drive.uploads, [notes]);
+        check("none from a program before them", Google.stateOf({
             account: "ready", meetings: [], drive: { listings: [], downloads: [] }
-        })).drive.uploads, []);
+        }).drive.uploads, []);
         check("Try Again's line", Google.upload(notes.path),
             '{"upload":{"path":"/s/google/drive-saves/f1/Notes.txt"}}\n');
 

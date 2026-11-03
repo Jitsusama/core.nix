@@ -3,12 +3,12 @@
 //!
 //! It asks Google's own API as the account the harness signed in (pi's
 //! `/google-auth`), reading the harness's file and never writing it
-//! (account.rs), and hands what it learns to the shell over a socket
-//! (socket.rs): the whole state as one JSON line when a shell connects,
-//! and again whenever it changes (state.rs), and the same line left in
-//! google.json beside the socket for the shell to watch. Given a third
-//! socket, or handed one by systemd, it serves the same in the shell's
-//! daemon interface there too, a record for each thing it holds
+//! (account.rs), and hands what it learns over a socket (socket.rs): the
+//! whole state as one JSON line when a client connects, and again
+//! whenever it changes (state.rs), and the same line left in google.json
+//! beside the socket, which call transcripts read. Given a third socket,
+//! or handed one by systemd, it serves the same in the daemon interface
+//! the shell holds it through, a record for each thing it holds
 //! (daemon.rs).
 //!
 //! Google only pushes changes to a public web address, which a laptop

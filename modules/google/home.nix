@@ -1,10 +1,10 @@
 # The Google account, for the desktop: google asks Google's own API for the
 # meetings on Joel's calendar and the mail that wants him, and keeps them
-# for the shell on a socket, $XDG_RUNTIME_DIR/google.sock, and in a file
-# beside it, google.json, which the shell watches (src/main.rs says how).
-# It serves the same in the shell's daemon interface too, a record for
-# each thing it holds, on $XDG_RUNTIME_DIR/daemons/google.sock, a socket
-# systemd holds for it (src/daemon.rs).
+# for the shell in its daemon interface, a record for each thing it holds,
+# on $XDG_RUNTIME_DIR/daemons/google.sock, a socket systemd holds for it
+# (src/daemon.rs). It says the same as one state on
+# $XDG_RUNTIME_DIR/google.sock, and in a file beside it, google.json,
+# which call transcripts read (src/main.rs says how).
 #
 # It asks as the account the harness signed in, from the harness's own
 # file, which pi writes when Joel signs in with /google-auth and rewrites

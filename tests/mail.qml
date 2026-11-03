@@ -1,4 +1,4 @@
-// What the shell reads of the google program's file, when mail came in
+// What the shell reads of the google program's records, when mail came in
 // words, and the lines marking it read or archiving it, run in Qt's own
 // JavaScript engine, the one the shell runs them in. The
 // `the-shell-reads-the-mail` check copies Google.js, Mail.js and
@@ -40,40 +40,60 @@ QtObject {
             page: "https://mail.google.com/mail/u/0/#inbox/t_1"
         };
 
-        // What the file says: [what, the line, what's read of it]
+        // What the daemon holds, by key, as src/daemon.rs makes each record.
         const unmade = { granted: false, made: null };
         const undriven = { listings: [], downloads: [], uploads: [] };
-        const lines = [
-            ["the whole state",
-                JSON.stringify({
-                    account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    heard: 1793042446024
-                }),
+        const record = (kind, id, thing, heard) => ({
+            [`${kind}:${id}`]: { key: `${kind}:${id}`, kind, heard, [kind]: thing }
+        });
+        const account = (standing, more, heard) => record("account", "google",
+            Object.assign({ standing, unread: null, fetched: null, meet: unmade,
+                drive: undriven }, more), heard);
+        const none = {
+            account: "none", meetings: [], mail: [], unread: null, documents: [],
+            heard: null, fetched: null, meet: unmade, drive: undriven
+        };
+        const later = Object.assign({}, standup, { id: "later", start: now + 60_000 });
+        const older = Object.assign({}, mail, { id: "m_0", at: now - 60_000 });
+        const sheet = { id: "s1", kind: "spreadsheet", viewed: now };
+        const doc = { id: "d1", kind: "document", viewed: now - 60_000 };
+        const newer = { id: "d2", kind: "document", viewed: now };
+        // [what, what's held, whether the daemon answers, what's read of it]
+        const held = [
+            ["the whole account",
+                Object.assign({}, record("meeting", "standup", standup, 1),
+                    record("mail", "m_1", mail, 1),
+                    account("ready", { unread: 3 }, 1793042446024)),
+                true,
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
                     documents: [], heard: 1793042446024, fetched: null, meet: unmade,
                     drive: undriven
                 }],
-            ["a state with nothing heard yet",
-                '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
+            ["each kind in its order, whatever order it's held in",
+                Object.assign({}, record("meeting", "later", later, 1),
+                    record("meeting", "standup", standup, 1), record("mail", "m_0", older, 1),
+                    record("mail", "m_1", mail, 1), record("file", "s1", sheet, 1),
+                    record("file", "d1", doc, 1), record("file", "d2", newer, 1),
+                    account("ready", {}, 2)),
+                true,
                 {
-                    account: "none", meetings: [], mail: [], unread: null, documents: [],
-                    heard: null, fetched: null, meet: unmade, drive: undriven
+                    account: "ready", meetings: [standup, later], mail: [mail, older],
+                    unread: null, documents: [newer, doc, sheet], heard: 2, fetched: null,
+                    meet: unmade, drive: undriven
                 }],
-            ["a state from before mail",
-                '{"account":"ready","meetings":[],"heard":1}',
-                {
-                    account: "ready", meetings: [], mail: [], unread: null, documents: [],
-                    heard: 1, fetched: null, meet: unmade, drive: undriven
-                }],
-            ["half a line", '{"account":"rea', null],
-            ["a line that isn't the state", '{"hello":1}', null],
-            ["an account with no meetings said", '{"account":"ready"}', null]
+            ["a signed-out account, alone", account("signedOut", {}, 3), true,
+                Object.assign({}, none, { account: "signedOut", heard: 3 })],
+            ["nothing held yet", {}, true, none],
+            ["no account once the daemon stops answering",
+                Object.assign({}, record("meeting", "standup", standup, 1),
+                    account("ready", {}, 1)),
+                false, none]
         ];
-        for (const [what, line, meant] of lines)
-            check(what, Google.heard(line), meant);
-        check("making a meeting granted", Google.heard(JSON.stringify({ account: "ready",
-            meetings: [], meet: { granted: true, made: null } })).meet,
+        for (const [what, records, answering, meant] of held)
+            check(what, Google.gathered(records, answering), meant);
+        check("making a meeting granted", Google.gathered(account("ready",
+            { meet: { granted: true, made: null } }, 1), true).meet,
             { granted: true, made: null });
 
         // A new Meet meeting, asked for at 100: how it stands as the
@@ -280,16 +300,16 @@ QtObject {
         check("none with none open before", Mail.superseded([], [6]), []);
 
         // Only the parts whose text changed are taken again.
-        const answered = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
-            mail: [mail], unread: 2, heard: now }));
+        const answered = Google.stateOf({ account: "ready", meetings: [standup],
+            mail: [mail], unread: 2, heard: now });
         const first = Google.changed({}, answered);
         check("every part is taken the first time", first.parts, Object.keys(answered));
-        const later = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
-            mail: [mail], unread: 2, heard: now + minute }));
-        const after = Google.changed(first.texts, later);
+        const minuteOn = Google.stateOf({ account: "ready", meetings: [standup],
+            mail: [mail], unread: 2, heard: now + minute });
+        const after = Google.changed(first.texts, minuteOn);
         check("a minute on, only when Google answered", after.parts, ["heard"]);
-        const more = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
-            mail: [], unread: 1, heard: now + 2 * minute }));
+        const more = Google.stateOf({ account: "ready", meetings: [standup],
+            mail: [], unread: 1, heard: now + 2 * minute });
         check("mail read, the mail and its count too",
             Google.changed(after.texts, more).parts, ["mail", "unread", "heard"]);
 

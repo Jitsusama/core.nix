@@ -1,20 +1,54 @@
 // What the shell reads of the Google account the google program keeps
-// (src/state.rs), from the one line it leaves in google.json. Google.qml
-// holds what's read, and the checks run it in Qt's own engine
+// (src/state.rs), from the records its daemon serves (src/daemon.rs).
+// Google.qml holds what's read, and the checks run it in Qt's own engine
 // (tests/mail.qml).
 .pragma library
 
-// What the program said, or null when the line isn't its state, so a
-// half-written line or a stray one changes nothing. Mail, the unread
-// count and the documents are optional, as a program from before them
-// doesn't say them.
-function heard(line) {
-    let said;
-    try {
-        said = JSON.parse(line);
-    } catch (_error) {
-        return null;
+// The account's one record, which says how it stands and when Google
+// last answered.
+const ACCOUNT = "account:google";
+
+// The kinds of document, in the order the program looks them up
+// (src/drive.rs's Kind::ALL), each kind's last looked at first.
+const DOCUMENTS = ["document", "spreadsheet", "presentation"];
+
+// The account as the program keeps it, gathered from the daemon's
+// records, held by key. A record carries no place, so each kind is put
+// back in its order by its own fields: meetings by when they start, mail
+// newest first, documents by kind and then last looked at first. Until
+// the daemon answers and says how the account stands, as on a machine
+// nobody signed in to Google on, there's no account; nor once it stops
+// answering, since what it held may not be Joel's to see any more.
+function gathered(held, answering) {
+    const account = answering ? held?.[ACCOUNT] : undefined;
+    if (typeof account?.account?.standing !== "string") {
+        return stateOf({ account: "none", meetings: [] });
     }
+    const of = kind => Object.values(held)
+        .filter(record => record?.kind === kind && record[kind])
+        .map(record => record[kind]);
+    const rank = kind => {
+        const at = DOCUMENTS.indexOf(kind);
+        return at < 0 ? DOCUMENTS.length : at;
+    };
+    return stateOf({
+        account: account.account.standing,
+        meetings: of("meeting").sort((one, other) => one.start - other.start),
+        mail: of("mail").sort((one, other) => other.at - one.at),
+        unread: account.account.unread,
+        documents: of("file").sort((one, other) => rank(one.kind) - rank(other.kind)
+            || (other.viewed ?? 0) - (one.viewed ?? 0)),
+        heard: account.heard,
+        fetched: account.account.fetched,
+        meet: account.account.meet,
+        drive: account.account.drive
+    });
+}
+
+// The account in the program's shape, or null when `said` isn't one.
+// Mail, the unread count, the documents and the rest are optional, each
+// taken as none when it isn't said.
+function stateOf(said) {
     if (!said || typeof said.account !== "string" || !Array.isArray(said.meetings)) {
         return null;
     }
@@ -37,8 +71,8 @@ function heard(line) {
 
 // The parts of what the program said whose text differs from `held`, the
 // text each part was last taken from, with the texts to hold now. The
-// program writes its file whole each time Google answers, most minutes
-// only to say when, and a part assigned again, even the same, remakes
+// account's record changes each time Google answers, most minutes only
+// to say when, and a part assigned again, even the same, remakes
 // everything bound to it: People's whole list, each minute, was most of
 // the closed shell's time (2026-10-30).
 function changed(held, said) {
