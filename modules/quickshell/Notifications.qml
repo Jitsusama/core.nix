@@ -1176,8 +1176,23 @@ Scope {
                                     width: parent.width
                                     height: Theme.space.xxl
 
+                                    // At a fractional scale the card falls
+                                    // between device pixels, and each
+                                    // hairline is drawn out to whole ones,
+                                    // so the band's edges are rounded out
+                                    // too, to sit as far from either, at the
+                                    // window's own ratio, the one it's drawn
+                                    // at; its screen's left the band where
+                                    // it was at 1.5.
                                     Rectangle {
-                                        anchors.fill: parent
+                                        readonly property real ratio: window.devicePixelRatio
+                                        readonly property real startsAt: verb.chosen
+                                            ? verb.mapToItem(null, 0, 0).x : 0
+
+                                        x: Math.floor(startsAt * ratio) / ratio - startsAt
+                                        width: Math.ceil((startsAt + verb.width) * ratio) / ratio
+                                            - startsAt - x
+                                        height: parent.height
                                         radius: Theme.inner
                                         color: Qt.alpha(Theme.selection, Theme.floating.selection)
                                         visible: verb.chosen
