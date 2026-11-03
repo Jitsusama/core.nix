@@ -162,7 +162,7 @@ pub fn program(
     // wherever it starts, and sits closer over a title than over words.
     let titled = walker.titled;
     out.insert_str(
-        crate::page::template().len(),
+        crate::page::template(world).len(),
         &format!("#about(titled: {titled})[#{}]\n", literal(about)),
     );
     costs.walk = t.elapsed();
