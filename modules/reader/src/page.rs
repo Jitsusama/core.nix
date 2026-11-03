@@ -11,13 +11,15 @@ use typst_layout::{Page, PagedDocument};
 use crate::walk::{self, Costs, Pieces};
 use crate::world::PageWorld;
 
-/// The measure: 34 em of the body face at 13.1 pt, about 66 of its
-/// average characters, the most a line should hold.
-pub const MEASURE_PT: f64 = 445.4;
+/// The measure: 580 px, about 66 characters of the text face, the most a
+/// line should hold.
+pub const MEASURE_PT: f64 = 435.0;
 
 /// How far a wide table may spread past the measure on each side, which
-/// the page keeps as its side margins.
-pub const SPREAD_PT: f64 = 56.0;
+/// the page keeps as its side margins: in a window half the laptop's panel
+/// wide (720 px, 540 pt), what's left once Space's xxl stays inside each
+/// edge, so a spread table never reaches the window's edge.
+pub const SPREAD_PT: f64 = 28.5;
 
 /// The page's width: its measure and the room on each side.
 pub const WIDTH_PT: f64 = MEASURE_PT + 2.0 * SPREAD_PT;
