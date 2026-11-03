@@ -438,6 +438,10 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  google-answers-on-systemds-socket = ''
+    google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, made only
+    once pi has signed in to Google, as google itself starts only then
+  '';
   google-opens-its-links = ''
     a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages,
     documents included, open in a window of their own, any other link in the browser, and what
@@ -469,7 +473,10 @@
     saves through the picker up to Drive once it's written and left a moment, a new file and then
     new versions of it, never a second file for one it may not replace, saying which program
     saved each as the picker named it, keeping each staged copy and letting go of those sent a
-    week ago, with what was kept beside them
+    week ago, with what was kept beside them, and serves the same in the daemon interface, a record
+    for each meeting, mail, document and the account, a watch told them all and then only those a
+    change touched and those gone, of the kinds it watches, an act handed on as the old socket's
+    asks are, on the socket systemd hands it
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units

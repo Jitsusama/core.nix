@@ -2,6 +2,9 @@
 # meetings on Joel's calendar and the mail that wants him, and keeps them
 # for the shell on a socket, $XDG_RUNTIME_DIR/google.sock, and in a file
 # beside it, google.json, which the shell watches (src/main.rs says how).
+# It serves the same in the shell's daemon interface too, a record for
+# each thing it holds, on $XDG_RUNTIME_DIR/daemons/google.sock, a socket
+# systemd holds for it (src/daemon.rs).
 #
 # It asks as the account the harness signed in, from the harness's own
 # file, which pi writes when Joel signs in with /google-auth and rewrites
@@ -212,9 +215,29 @@ in
       Install.WantedBy = [ "default.target" ];
     };
 
+    # The daemon interface's socket is systemd's, so whatever asks finds it
+    # there while google starts or starts again, and asking starts it. Like
+    # google itself, it's only made once pi has signed in, so a machine
+    # nobody signed in to Google on starts nothing.
+    systemd.user.sockets.google = {
+      Unit = {
+        Description = "Where the shell asks the Google account's daemon";
+        ConditionPathExists = credentials;
+      };
+      Socket = {
+        ListenStream = "%t/daemons/google.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+
     systemd.user.services.google = {
       Unit = {
         Description = "Keeps the Google account's meetings and mail for the shell";
+        # Its daemon socket is systemd's, handed to it as it starts.
+        Requires = [ "google.socket" ];
+        After = [ "google.socket" ];
         # Stopped before a switch reloads the units, google.path starts it
         # again at once, from the old unit, since the credentials are still
         # there, and the switch's start then finds it running; restarted
@@ -223,7 +246,12 @@ in
       };
       Service = {
         Slice = "background.slice";
-        ExecStart = "${lib.getExe google} %t/google.sock ${lib.escapeShellArg credentials}";
+        ExecStart = lib.concatStringsSep " " [
+          (lib.getExe google)
+          "%t/google.sock"
+          (lib.escapeShellArg credentials)
+          "%t/daemons/google.sock"
+        ];
         Restart = "on-failure";
         RestartSec = 10;
         # What it held goes with it, so the shell shows no account rather than
