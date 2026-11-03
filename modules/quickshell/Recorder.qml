@@ -4,6 +4,9 @@ pragma Singleton
 // screenshots' (Videos/Recordings, named by when it began). The chord or
 // action that starts a recording stops it too, so there's one gesture to
 // remember, and the margin shows it while it runs (pieces/Recording.qml).
+// The mark shows the moment the screen or a region is asked for, and the
+// recording begins once the margin has drawn it (Margin.qml), so its first
+// frame holds the mark: one without it would look as if nothing recorded.
 //
 // A region's picture is taken here too, since niri's own picker takes only
 // the pointer. It's saved where niri saves its screenshots, named as niri
@@ -51,12 +54,21 @@ Singleton {
     // Between asking for a recording and niri saying it began, so a second
     // press can't start another.
     property bool starting: false
+    // From asking for the screen or a region until niri says it began,
+    // the mark shows ahead of the recording.
+    property bool announced: false
+    // The command a screen or region waits to run until its mark is drawn,
+    // or null while none waits.
+    property var held: null
     // What the last one recorded, in words, since niri sees a region as the
     // screen it's cut from.
     property string what: "the whole screen"
     readonly property string folder: `${Quickshell.env("HOME")}/Videos/Recordings`
 
-    onRecordingChanged: starting = false
+    onRecordingChanged: {
+        starting = false;
+        announced = false;
+    }
 
     // The process recording a cast: niri's own casts say it, and a window's
     // is record-window's.
@@ -242,7 +254,28 @@ Singleton {
             'esac',
             'wf-recorder -y --file "$file" "$@" > /dev/null 2>&1 || exit'
         ].concat(saved).join("\n");
-        Niri.spawn(["sh", "-c", script, "recorder", folder].concat(given));
+        announced = true;
+        held = ["sh", "-c", script, "recorder", folder].concat(given);
+        unmarked.restart();
+    }
+
+    // The margin has drawn the recording's mark, so what waits for it
+    // begins.
+    function marked(): void {
+        unmarked.stop();
+        if (held === null)
+            return;
+        const command = held;
+        held = null;
+        Niri.spawn(command);
+    }
+
+    // Begins a recording anyway when no margin draws its mark, as with no
+    // screen named, a second at most after it was asked for.
+    Timer {
+        id: unmarked
+        interval: 1000
+        onTriggered: root.marked()
     }
 
     // Records a window into a new file: its id, then the video's width and
@@ -273,7 +306,10 @@ Singleton {
     Timer {
         id: settled
         interval: 5000
-        onTriggered: root.starting = false
+        onTriggered: {
+            root.starting = false;
+            root.announced = false;
+        }
     }
 
     IpcHandler {

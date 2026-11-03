@@ -39,6 +39,8 @@ WAKING = timedelta(seconds=60)
 # card covers for a picture to be judged by it.
 CARD_APART = 32
 CARD_LEAST = 0.02
+# How far down the screen the margin's marks are drawn, and more, above the launcher's card.
+MARGIN_HIGH = 48
 # A part of a picture: its left, top, right and bottom.
 type Box = tuple[int, int, int, int]
 # Now's row for a recording, and how long it says it has run.
@@ -63,7 +65,8 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
     desktop.capture()
     screen = desktop.showing()["selected"]
     assert screen["name"] == "The Whole Screen"
-    assert screen["chord"] == "\u21e7 Print", "the whole screen's row shows its chord"
+    # Print, pressed here, takes it, so that's its chord here rather than Shift+Print.
+    assert screen["chord"] == "Print", "the whole screen's row shows its chord"
     desktop.photograph("capture")
     with desktop.told("shows card Screenshot captured"), desktop.captured():
         desktop.machine.send_key("ret")
@@ -106,7 +109,9 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     """Ctrl+Print, pressed while the launcher shows a row, records it and leaves it so.
 
     The same chord stops it. Its first and last frames are judged on the card's pixels, as
-    a picture is; a video's colours are near the screen's, not the same.
+    a picture is; a video's colours are near the screen's, not the same. Each holds the
+    margin's recording mark as the screen does while it records, since a first frame
+    without it would look as if the screen wasn't being recorded.
     """
     machine = desktop.machine
     mark = "/run/user/1000/before-recording"
@@ -116,6 +121,7 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     with desktop.told("holds margin recording", timeout=WAKING):
         machine.send_key("ctrl-sysrq")
     still_shown(desktop, shown)
+    marked = desktop.settled_screen("recording-the-launcher")
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Something recorded before it's stopped, so the video holds a frame.
     machine.wait_until_succeeds(
@@ -135,7 +141,9 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     for name, where in (("recorded-first.png", ""), ("recorded-last.png", "-sseof -1")):
         frame = f"/run/user/1000/{name}"
         machine.succeed(f"{ffmpeg} {where} -i {video} -frames:v 1 -update 1 -y {frame}")
-        the_card_in(kept(desktop, frame), seen, bare)
+        taken = kept(desktop, frame)
+        box = the_card_in(taken, seen, bare)
+        the_mark_in(taken, marked.crop(box), seen.crop(box))
 
 
 def the_launcher_on_a_row(desktop: Desktop) -> tuple[Image.Image, Image.Image, Json]:
@@ -182,12 +190,30 @@ def kept(desktop: Desktop, taken: str) -> Image.Image:
     return Image.open(desktop.machine.out_dir / taken.rsplit("/", 1)[1]).convert("RGB")
 
 
-def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> None:
+def the_mark_in(frame: Image.Image, marked: Image.Image, unmarked: Image.Image) -> None:
+    """Fail unless a recording's frame holds the margin's mark, as the screen recording does.
+
+    The mark is where the screen while recording and before it differ along the top edge,
+    above the card. The frame must be at least four times nearer the one than the other
+    there.
+    """
+    top = (0, 0, frame.width, MARGIN_HIGH)
+    frame, marked, unmarked = frame.crop(top), marked.crop(top), unmarked.crop(top)
+    differs = ImageChops.difference(marked, unmarked).convert("L")
+    mark = differs.point(lambda v: 255 if v > CARD_APART else 0)
+    assert mark.getbbox() is not None, "the screen while recording holds no mark along the top"
+    near, far = apart(frame, marked, mark), apart(frame, unmarked, mark)
+    print(f"on the mark, at {mark.getbbox()}: {near:.1f} from marked, {far:.1f} from before")
+    assert near * 4 < far, f"on the mark: {near:.1f} from marked, {far:.1f} from before"
+
+
+def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> Box:
     """Fail unless, where the launcher's card is drawn, what was taken is the one screen's.
 
     The card is where the screen with the launcher and without it differ, so it's found
     from the pixels alone. What was taken must be at least four times nearer the one than
-    the other there; the rest of the screen is the same in both, and says nothing.
+    the other there; the rest of the screen is the same in both, and says nothing. Gives
+    the box of the screens what was taken fills.
     """
     differs = ImageChops.difference(like, unlike).convert("L")
     card = differs.point(lambda v: 255 if v > CARD_APART else 0)
@@ -198,6 +224,7 @@ def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> N
     near, far = apart(taken, like, card), apart(taken, unlike, card)
     print(f"on the card, at {box[:2]}: {near:.1f} from the one meant, {far:.1f} from the other")
     assert near * 4 < far, f"on the card: {near:.1f} from the one meant, {far:.1f} from the other"
+    return box
 
 
 def where_taken(taken: Image.Image, screen: Image.Image, card: Image.Image) -> Box:
