@@ -183,15 +183,18 @@ fn source(ask: &Ask) -> String {
     } else {
         ""
     };
+    let width = ask.width_pt.max(290.0 + 72.0);
     format!(
-        r#"{ink}#set page(width: {width}pt, height: {row}pt, margin: (left: 210pt, right: 80pt, y: 0pt), fill: ink.sunken)
+        r#"{ink}#set page(width: {width}pt, height: {row}pt, margin: (x: {side}pt, y: 0pt), fill: ink.sunken)
 #set text(font: face.code, size: 11.5pt, fill: ink.text, features: ("calt",))
 #align(horizon, grid(columns: (1fr, auto),
   [#raw({typed}){cursor}],
   text(fill: ink.muted, {count})))
 "#,
         ink = crate::theme::get().typst(),
-        width = ask.width_pt.max(290.0 + 72.0),
+        // Its words start where the page's measure does, as the window
+        // centres the page, and end where it ends.
+        side = ((width - crate::page::WIDTH_PT) / 2.0).max(0.0) + crate::page::SPREAD_PT,
         row = ROW_PT,
         typed = quoted(&format!("{mark}{}", ask.typed)),
         count = quoted(&count),
