@@ -1,0 +1,95 @@
+drm/dp_mst, drm/i915/dp: drive a branch that won't answer as one stream
+
+A USB-C monitor's MST hub can stop answering sideband messages, and then
+drm_dp_send_link_address() fails with -EIO at every probe. The topology
+is left with no ports, so nothing behind the hub lights, and nothing
+asks it again until the next hotplug: the monitor stays dark, through
+warm reboots and its own power button, until its mains are pulled. The
+hub still answers native AUX, and such a hub passes a single stream to
+its first sink.
+
+So the topology manager counts a primary branch's failed link addresses,
+and sends a hotplug event at the first, so the detect that follows runs.
+i915 then chooses SST for an MST sink whose primary failed, says so once,
+and tries MST again once the sink goes away. A hub that answers clears
+the count, so a working hub is never driven as one stream.
+
+diff --git a/drivers/gpu/drm/display/drm_dp_mst_topology.c b/drivers/gpu/drm/display/drm_dp_mst_topology.c
+index 7ce9e21..bc7d976 100644
+--- a/drivers/gpu/drm/display/drm_dp_mst_topology.c
++++ b/drivers/gpu/drm/display/drm_dp_mst_topology.c
+@@ -2694,6 +2694,20 @@ static void drm_dp_mst_link_probe_work(struct work_struct *work)
+ 	}
+ 
+ 	ret = drm_dp_check_and_send_link_address(mgr, mstb);
++
++	/*
++	 * A primary branch that won't answer its link address gives no
++	 * ports, so nothing on it can light, and nothing asks it again until
++	 * the next hotplug. Count it, and send a hotplug event the first
++	 * time, so the detect that follows can drive the sink as a single
++	 * stream instead.
++	 */
++	if (ret < 0 && !mstb->link_address_sent) {
++		if (mgr->primary_link_address_failures++ == 0)
++			ret = 1;
++	} else if (ret >= 0) {
++		mgr->primary_link_address_failures = 0;
++	}
+ 	drm_dp_mst_topology_put_mstb(mstb);
+ 
+ 	mutex_unlock(&mgr->probe_lock);
+diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/display/intel_dp.c
+index 3152122..cc1b20f 100644
+--- a/drivers/gpu/drm/i915/display/intel_dp.c
++++ b/drivers/gpu/drm/i915/display/intel_dp.c
+@@ -4970,6 +4970,20 @@ intel_dp_mst_mode_choose(struct intel_dp *intel_dp,
+ 	    !(intel_dp->dpcd[DP_MAIN_LINK_CHANNEL_CODING] & DP_CAP_ANSI_128B132B))
+ 		return DRM_DP_SST;
+ 
++	/*
++	 * A branch that didn't answer its link address offers no ports, so
++	 * as MST nothing behind it lights. Drive it as a single stream, which
++	 * such a hub passes to its first sink, until the sink goes away.
++	 */
++	if (sink_mst_mode == DRM_DP_MST &&
++	    READ_ONCE(intel_dp->mst.mgr.primary_link_address_failures)) {
++		drm_info_once(display->drm,
++			      "[ENCODER:%d:%s] MST branch didn't answer its link address, so it's driven as a single stream\n",
++			      dp_to_dig_port(intel_dp)->base.base.base.id,
++			      dp_to_dig_port(intel_dp)->base.base.name);
++		return DRM_DP_SST;
++	}
++
+ 	return sink_mst_mode;
+ }
+ 
+@@ -6365,6 +6379,8 @@ intel_dp_detect(struct drm_connector *_connector,
+ 		connector->dp.panel_replay_caps.dsc_support =
+ 			INTEL_DP_PANEL_REPLAY_DSC_NOT_SUPPORTED;
+ 
++		/* A sink plugged in again gets MST tried again. */
++		WRITE_ONCE(intel_dp->mst.mgr.primary_link_address_failures, 0);
+ 		intel_dp_mst_disconnect(intel_dp);
+ 
+ 		intel_dp_tunnel_disconnect(intel_dp);
+diff --git a/include/drm/display/drm_dp_mst_helper.h b/include/drm/display/drm_dp_mst_helper.h
+index 27658bf..1ff8c17 100644
+--- a/include/drm/display/drm_dp_mst_helper.h
++++ b/include/drm/display/drm_dp_mst_helper.h
+@@ -713,6 +713,15 @@ struct drm_dp_mst_topology_mgr {
+ 	 */
+ 	bool reset_rx_state : 1;
+ 
++	/**
++	 * @primary_link_address_failures: How many times in a row
++	 * @mst_primary didn't answer its link address, which leaves the
++	 * topology with no ports and so nothing to light. A driver may drive
++	 * the sink as a single stream instead, and clear this when the sink
++	 * goes away. Written by the probe work, under @probe_lock.
++	 */
++	unsigned int primary_link_address_failures;
++
+ 	/**
+ 	 * @payload_count: The number of currently active payloads in hardware. This value is only
+ 	 * intended to be used internally by MST helpers for payload tracking, and is only safe to

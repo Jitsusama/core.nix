@@ -108,6 +108,14 @@
       patch = ./local/edp-reads-display-control-awake.patch;
     }
     {
+      # A monitor's MST hub that stopped answering left the monitor dark
+      # through warm reboots and its own power button, until its mains
+      # were pulled; the hub now gets driven as one stream instead.
+      # Written here; the patch says why.
+      name = "dp-mst-falls-back-to-one-stream";
+      patch = ./local/dp-mst-falls-back-to-one-stream.patch;
+    }
+    {
       # The EC sends an event Dell's driver has no key for about hourly,
       # and each one logged an unknown key. Nothing acts on it; written
       # here, and the patch says what's known of it.
