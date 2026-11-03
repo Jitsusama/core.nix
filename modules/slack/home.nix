@@ -33,8 +33,8 @@ in
     # What the source decides, beside it, where its import finds it.
     "quickshell/launcher/people/Slack.js".source = ./Slack.js;
     # A Slack conversation's one row, which every surface showing one
-    # takes (SlackConversation.qml), and what in Slack wants Joel, read
-    # from slack-unreads' file (SlackUnreads.qml).
+    # takes (SlackConversation.qml), and what in Slack wants Joel, watched
+    # on Slack's daemon (SlackUnreads.qml).
     "quickshell/SlackConversation.qml".source = ./SlackConversation.qml;
     "quickshell/SlackUnreads.qml".source = ./SlackUnreads.qml;
     "quickshell/SlackUnreads.js".source = ./SlackUnreads.js;

@@ -1,46 +1,62 @@
-// What in Slack is unread and what Joel read last, as slack-unreads keeps
-// it in the runtime folder's slack-unreads.json (src/bin/slack-unreads.rs),
-// Now's Slack piece says what of it wants him (SlackUnreads.qml,
-// NewSlack.qml) and Slack's program lists it as Unread and Recent
-// (SlackProgram.qml): whether what the file says is current, how many to
-// read, from whom, and each conversation's row's words. A
-// count is current only while Slack answered and the file was written in
-// the last ten minutes, since it's written at least every five: an old
-// count is never shown as though it were Slack's (Joel, 2026-10-28: "out
-// of date information also sucks ass"). Why there's no count is said on
-// Slack's program row (SlackProgram.qml), not in Now, since Slack out of
-// reach doesn't want Joel (VKCF3Z, b8c8920e). Kept apart from the QML so
-// Qt's own engine runs it (tests/slack-unreads.qml).
+// What in Slack is unread and what Joel read last, as Slack's daemon holds
+// it (src/daemon.rs) and the shell watches it (SlackUnreads.qml), Now's
+// Slack piece says what of it wants him (NewSlack.qml) and Slack's
+// program lists it as Unread and Recent (SlackProgram.qml): how what's
+// held stands, how many to read, from whom, and each conversation's row's
+// words. A count is shown only while the daemon answers and Slack answered
+// it, since the daemon holds conversations only then and the shell lets
+// them go once it stops answering: an old count is never shown as though
+// it were Slack's (Joel, 2026-10-28: "out of date information also sucks
+// ass"). Why there's no count is said on Slack's program row
+// (SlackProgram.qml), not in Now, since Slack out of reach doesn't want
+// Joel (VKCF3Z, b8c8920e). Kept apart from the QML so Qt's own engine runs
+// it (tests/slack-unreads.qml).
 .pragma library
 
-// How long a check holds: twice the longest the service goes between
-// writes, so one slow ask doesn't make Now say it can't check.
-const fresh = 10 * 60 * 1000;
+// The order what's unread comes in, as Slack's daemon says it: direct
+// messages first, then channels mentioning him, then threads, then
+// channels merely unread (VKCF3Z, f0c8ef61 and d7c0f933).
+const groups = { dm: 0, mention: 1, thread: 2, unread: 3 };
 
-// The file's words as { checked, state, conversations, recent }, or null
-// when there's no file or it isn't one slack-unreads wrote. A conversation
-// is kept when it's whole: a channel merely unread, or one in Recent,
-// has no count, and anything else has one.
-function read(text) {
-    let told;
-    try {
-        told = JSON.parse(text);
-    } catch (_error) {
+// Newest first by one of Slack's timestamps, which are of fixed width and
+// so sort as text, and by id where two are the same, so the order never
+// rests on the order records were heard in.
+function newest(field) {
+    return (one, other) => {
+        const at = String(other[field] ?? "").localeCompare(String(one[field] ?? ""));
+        return at !== 0 ? at : one.id.localeCompare(other.id);
+    };
+}
+
+// What the daemon holds, by key (Daemon.qml's `held`), as { state,
+// conversations, recent }, or null while it doesn't answer or hasn't yet
+// said how Slack stands. A conversation is kept when it's whole: a channel
+// merely unread, or one in Recent, has no count, and anything else has
+// one.
+function gathered(held, answering) {
+    if (!answering || held === null || typeof held !== "object") {
         return null;
     }
-    if (told === null || typeof told !== "object" || typeof told.checked !== "number") {
+    const account = held["slack-account:slack"]?.["slack-account"];
+    if (account === null || typeof account !== "object"
+        || typeof account.standing !== "string") {
         return null;
     }
     const whole = one => one !== null && typeof one === "object"
         && typeof one.id === "string" && typeof one.name === "string"
         && typeof one.link === "string";
-    const listed = list => Array.isArray(list) ? list.filter(whole) : [];
+    const of = kind => Object.values(held)
+        .filter(record => record?.kind === kind)
+        .map(record => record[kind])
+        .filter(whole);
+    const first = newest("latest");
     return {
-        checked: told.checked,
-        state: typeof told.state === "string" ? told.state : "",
-        conversations: listed(told.conversations)
-            .filter(one => one.kind === "unread" || one.count > 0),
-        recent: listed(told.recent)
+        state: account.standing,
+        conversations: of("slack-unread")
+            .filter(one => one.kind === "unread" || one.count > 0)
+            .sort((one, other) => ((groups[one.kind] ?? 4) - (groups[other.kind] ?? 4))
+                || first(one, other)),
+        recent: of("slack-recent").sort(newest("read"))
     };
 }
 
@@ -54,25 +70,17 @@ function wanting(told) {
     return told.conversations.filter(wants);
 }
 
-// How what it says stands: "none" with no file, "ok" while Slack answered
-// and it's fresh, "signedOut" once Slack refused pi's sign-in, and
-// "unknown" when Slack couldn't be reached or the file has gone stale.
-function standing(told, now) {
-    if (told === null) {
+// How what's held stands: "none" while the daemon isn't answering or has
+// no sign-in to ask Slack with, "ok" while Slack answers, "signedOut" once
+// Slack refused pi's sign-in, and "unknown" while Slack can't be reached.
+function standing(told) {
+    if (told === null || told.state === "none") {
         return "none";
     }
     if (told.state === "signedOut") {
         return "signedOut";
     }
-    if (told.state !== "ok" || now - told.checked > fresh) {
-        return "unknown";
-    }
-    return "ok";
-}
-
-// When a fresh file goes stale, as a time, or null when it can't.
-function staleAt(told) {
-    return told === null || told.state !== "ok" ? null : told.checked + fresh;
+    return told.state === "ok" ? "ok" : "unknown";
 }
 
 function count(told) {
@@ -98,19 +106,13 @@ function hint(told, stands) {
     return all === 1 ? "A Slack message wants you" : `${all} Slack messages want you`;
 }
 
-// Why there's no count, as Slack's program row's note: signed out, or
-// since when it can't be checked, as a time of day, which stays true
-// without a clock ticking to keep it so; nothing while there's a count or
-// no file.
-function programNote(told, stands) {
+// Why there's no count, as Slack's program row's note: signed out, or that
+// Slack can't be reached; nothing while there's a count or nothing to ask.
+function programNote(stands) {
     if (stands === "signedOut") {
         return "signed out";
     }
-    if (stands !== "unknown") {
-        return "";
-    }
-    return told.state === "ok" ? `can't be checked since ${clock(told.checked)}`
-        : "Slack can't be reached";
+    return stands === "unknown" ? "Slack can't be reached" : "";
 }
 
 // Its note: who and where, the first two named and how many more, of
@@ -124,12 +126,6 @@ function context(told, stands, every) {
         return names.join(" and ");
     }
     return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
-}
-
-function clock(at) {
-    const when = new Date(at);
-    const two = number => String(number).padStart(2, "0");
-    return `${two(when.getHours())}:${two(when.getMinutes())}`;
 }
 
 // A conversation's row's words: how many to read beside it, when it's
