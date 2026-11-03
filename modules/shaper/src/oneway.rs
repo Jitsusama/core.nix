@@ -26,14 +26,6 @@
 //! when no timestamps are answered. Cuts alone don't trip it: a line
 //! filling its buffer is rightly cut each second until it drains.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the replay and the shaper's setting take it up next"
-    )
-)]
-
 use std::collections::VecDeque;
 
 /// A direction's own delay past this, standing, is a queue.
@@ -143,10 +135,6 @@ impl Way {
             let kbit = self.rate.round() as u64;
             kbit
         })
-    }
-
-    pub fn base(&self) -> Option<f64> {
-        self.base
     }
 
     /// Whether carrying `carried` leaves this direction idle: no flow, or
@@ -322,9 +310,69 @@ impl Controller {
     }
 }
 
+/// Under replay, a recorded second is what the controller sees, and the
+/// rates it answers hold through the next.
+impl crate::replay::Controller for Controller {
+    fn second(&mut self, s: &crate::replay::Second) -> crate::replay::Rates {
+        let limits = self.step(&Seen {
+            at_s: s.t_s,
+            up_delay_ms: s.up_delay_ms,
+            down_delay_ms: s.down_delay_ms,
+            gateway_ms: s.gateway_ms,
+            up_kbit: s.up_kbit,
+            down_kbit: s.down_kbit,
+        });
+        crate::replay::Rates {
+            up: limits.up,
+            down: limits.down,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::replay::{self, Base, Stay};
+
+    #[test]
+    fn a_replayed_queue_is_cut_with_cause_and_an_idle_line_isnt_held_low() {
+        let second = |t: u64, down_ms: f64, down_kbit: f64| replay::Second {
+            t_s: crate::rate::float(t),
+            up_kbit: 300.0,
+            down_kbit,
+            up_delay_ms: Some(0.0),
+            down_delay_ms: Some(down_ms),
+            gateway_ms: Some(3.0),
+        };
+        // Two seconds full with a queue standing, as a cut drains it, then
+        // five minutes idle.
+        let seconds = (0..2)
+            .map(|t| second(t, 40.0, 200_000.0))
+            .chain((2..302).map(|t| second(t, 1.0, 100.0)))
+            .collect();
+        let stay = Stay {
+            network: "home".into(),
+            began_ms: 0,
+            seconds,
+        };
+        let base = Base {
+            up: 10_000,
+            down: 200_000,
+        };
+        let report = replay::replay(&[stay], Some(base), || Controller::new(None, None));
+        assert_eq!(report.down.cuts, 1, "{:?}", report.down);
+        assert_eq!(
+            report.down.unfounded, 0,
+            "{:?}",
+            report.stays[0].unfounded_cuts
+        );
+        assert_eq!(report.up.cuts, 0);
+        assert_eq!(
+            report.down.held_idle_s, 0,
+            "drifted back: {:?}",
+            report.down
+        );
+    }
 
     /// A tenth of a second at a time from `from` to `to`, each moment as
     /// `seen` makes it.
@@ -406,7 +454,7 @@ mod tests {
         // 300,000 × 0.9 × (1 − 0.04).
         assert_eq!(limits.down, Some(259_200));
         assert_eq!(limits.up, None, "the upload's own delay never rose");
-        assert_eq!(c.down.base().map(f64::round), Some(270_000.0));
+        assert_eq!(c.down.base.map(f64::round), Some(270_000.0));
     }
 
     #[test]
@@ -457,7 +505,7 @@ mod tests {
             at += 2.0;
         }
         // The first, 100, is gone; of the rest the middle is 600.
-        assert_eq!(way.base().map(f64::round), Some(540_000.0));
+        assert_eq!(way.base.map(f64::round), Some(540_000.0));
     }
 
     #[test]
@@ -585,7 +633,7 @@ mod tests {
     fn a_single_cut_under_another_machines_flow_keeps_a_known_base() {
         let mut c = Controller::new(None, Some(200_000.0));
         run(&mut c, 0.0, 1.2, queued(40.0, 50_000.0));
-        assert_eq!(c.down.base().map(f64::round), Some(200_000.0));
+        assert_eq!(c.down.base.map(f64::round), Some(200_000.0));
     }
 
     #[test]

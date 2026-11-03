@@ -1143,7 +1143,11 @@
     line's best, not its latest cut; reads sets, routes and queues from what the kernel prints;
     replays recorded days as one stay per network across midnight, each second's carried rate from
     the counters and each direction's own delay voted from its reflectors, and names a cut with no
-    queue of its own, a rate held low on an idle line and one starved under a full one
+    queue of its own, a rate held low on an idle line and one starved under a full one; the rebuilt
+    controller cuts a direction only once its own delay has stood a second, a tenth under what got
+    through, climbs a quarter a second until it nears its last queue and 5% after, takes the air's
+    lateness and an idle direction's path off, leaves the line unlimited with no timestamps, and
+    goes back to its base when a queue outlasts half a minute of cuts
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests

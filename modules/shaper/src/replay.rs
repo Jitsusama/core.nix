@@ -9,6 +9,7 @@
 //! own to cause it, and a rate held under half the line while traffic
 //! wanted more.
 
+use crate::oneway;
 use crate::rate::{float, whole};
 use crate::record;
 use serde::Serialize;
@@ -685,10 +686,23 @@ pub fn summary(report: &Report) -> String {
     out
 }
 
+const USAGE: &str = "shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...";
+
+/// Which controller a replay runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Choice {
+    /// The rebuilt controller, from each direction's own delay
+    /// (src/oneway.rs), starting each stay as on a network it never met.
+    OneWay,
+    /// The stand-in that limits nothing, for what the line alone scores.
+    Unlimited,
+}
+
 /// What `shaper replay` was asked.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Asked {
     pub base: Option<Base>,
+    pub controller: Choice,
     pub json: bool,
     pub files: Vec<PathBuf>,
 }
@@ -696,6 +710,7 @@ pub struct Asked {
 pub fn asked(args: &[String]) -> Result<Asked, String> {
     let mut asked = Asked {
         base: None,
+        controller: Choice::OneWay,
         json: false,
         files: Vec::new(),
     };
@@ -710,6 +725,13 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
                     .ok_or_else(|| format!("--base takes UP,DOWN in kbit/s, not {value:?}"))?;
                 asked.base = Some(Base { up, down });
             }
+            "--controller" => {
+                asked.controller = match it.next().map_or("", String::as_str) {
+                    "one-way" => Choice::OneWay,
+                    "none" => Choice::Unlimited,
+                    other => return Err(format!("--controller is one-way or none, not {other:?}")),
+                };
+            }
             "--json" => asked.json = true,
             file => asked.files.push(file.into()),
         }
@@ -720,14 +742,15 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     Ok(asked)
 }
 
-/// `shaper replay [--base UP,DOWN] [--json] FILES...`: replays the files
-/// through the stand-in until a real controller is replayed, and prints
-/// the summary, or the report as JSON.
+/// `shaper replay [--base UP,DOWN] [--controller one-way|none] [--json]
+/// FILES...`: replays the files through the controller chosen, the rebuilt
+/// one unless told otherwise, and prints the summary, or the report as
+/// JSON.
 pub fn command(args: &[String]) -> ExitCode {
     let asked = match asked(args) {
         Ok(asked) => asked,
         Err(e) => {
-            eprintln!("{e}\nusage: shaper replay [--base UP,DOWN] [--json] FILES...");
+            eprintln!("{e}\nusage: {USAGE}");
             return ExitCode::from(2);
         }
     };
@@ -738,7 +761,10 @@ pub fn command(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let report = replay(&stays, asked.base, || Unlimited);
+    let report = match asked.controller {
+        Choice::OneWay => replay(&stays, asked.base, || oneway::Controller::new(None, None)),
+        Choice::Unlimited => replay(&stays, asked.base, || Unlimited),
+    };
     let text = if asked.json {
         serde_json::to_string(&report).expect("a report serialises") + "\n"
     } else {
@@ -1259,14 +1285,20 @@ mod tests {
             asked(&args("--base 10000,50000 --json a.jsonl b.jsonl")),
             Ok(Asked {
                 base: Some(BASE),
+                controller: Choice::OneWay,
                 json: true,
                 files: vec!["a.jsonl".into(), "b.jsonl".into()],
             })
         );
         assert_eq!(
-            asked(&args("a.jsonl")).map(|a| (a.base, a.json)),
-            Ok((None, false))
+            asked(&args("a.jsonl")).map(|a| (a.base, a.controller, a.json)),
+            Ok((None, Choice::OneWay, false))
         );
+        assert_eq!(
+            asked(&args("--controller none a.jsonl")).map(|a| a.controller),
+            Ok(Choice::Unlimited)
+        );
+        assert!(asked(&args("--controller cake a.jsonl")).is_err());
         assert!(asked(&args("--base 10000 a.jsonl")).is_err());
         assert!(asked(&args("--json")).is_err(), "no files");
     }
