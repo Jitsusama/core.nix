@@ -47,6 +47,12 @@
 # of its sources (TupleSource.qml), so calling someone is with their mail
 # and meetings, not in a place of Tuple's own.
 #
+# tuple-call (call/) holds the call Joel's in, a ring and a missed call
+# for the shell and anything else that asks, on
+# $XDG_RUNTIME_DIR/daemons/tuple.sock in the shell's daemon interface,
+# and does the call's acts through Tuple's own command. Its socket is
+# systemd's, held whether or not it runs, as people's is.
+#
 # The tuple command completes in zsh through Tuple's own completion, which
 # its command writes, so it knows every command and flag the version has.
 #
@@ -75,6 +81,8 @@ let
   # Tuple's people for the shell (people.rs): who's in Tuple's contacts and
   # how they stand, said only as it changes, since Tuple prints all of
   # them, over a megabyte, on every change of anyone's presence.
+  calls = pkgs.callPackage ./call/package.nix { };
+
   following = pkgs.callPackage ../quickshell/pi-helper.nix {
     name = "tuple-people";
     source = ./people.rs;
@@ -191,6 +199,39 @@ in
       LimitRTPRIO = 0;
     };
     Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  # The call, held for the shell. It isn't in background.slice: a ring is
+  # said as it happens, and leaving or muting is done the moment Joel asks.
+  systemd.user.services.tuple-call = {
+    Unit = {
+      Description = "Holds the Tuple call Joel's in for the shell";
+      # Restarted after a switch reloads the units, it comes back as the
+      # new one.
+      X-SwitchMethod = "restart";
+      # Its socket is systemd's, handed to it as it starts.
+      Requires = [ "tuple-call.socket" ];
+      After = [ "tuple-call.socket" ];
+    };
+    Service = {
+      ExecStart = "${lib.getExe calls} %t/daemons/tuple.sock ${tuple}";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  # Its socket, held by systemd whether or not the daemon runs, so the
+  # shell asking while it starts, or starts again, waits on it rather
+  # than finding no socket; asking starts it, should it have stopped.
+  systemd.user.sockets.tuple-call = {
+    Unit.Description = "Where the shell asks after Tuple's call";
+    Socket = {
+      ListenStream = "%t/daemons/tuple.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+    Install.WantedBy = [ "sockets.target" ];
   };
 
   # Tuple reads the value only as it writes it, with no newline after it.
