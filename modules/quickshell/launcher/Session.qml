@@ -34,7 +34,7 @@ Provider {
     }
 
     readonly property var awake: said("session:awake", Caffeinate.on ? "on" : "", {
-        side: !Caffeinate.on ? "" : Caffeinate.lid ? "awake, lid shut too" : "awake while open",
+        side: !Caffeinate.on ? "" : Caffeinate.lidShutToo ? "awake, lid shut too" : "awake while open",
         hue: "machine",
         stays: true,
         run: () => Caffeinate.on ? Caffeinate.release() : Caffeinate.keep()

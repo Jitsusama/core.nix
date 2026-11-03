@@ -835,6 +835,25 @@ onLinux {
       touch $out
     '';
 
+  # Keeping awake holds the lid only where a shut lid on the charger would
+  # suspend: a machine with the lid module, whose lid on the charger runs on,
+  # has no lid holder and its shell says so; one without it keeps both.
+  keeping-awake-holds-the-lid-only-where-it-sleeps =
+    let
+      lidded = bareNixos [
+        self.nixosModules.graphical
+        self.nixosModules.lid
+      ];
+      holder = machine: (account machine).systemd.user.services ? caffeinate-lid;
+      says =
+        machine:
+        lib.hasInfix "lidSleepsOnPower: true"
+          (account machine).xdg.configFile."quickshell/Options.qml".text;
+    in
+    holds "keeping-awake-holds-the-lid-only-where-it-sleeps"
+      "the lid's holder and the shell's word should both follow whether a shut lid on the charger suspends"
+      (holder graphical && says graphical && !holder lidded && !says lidded);
+
   # The keyboard's backlight is heard when its firmware changes it, over a
   # folder laid out as the kernel's lights are, through Quickshell itself.
   the-keyboard-light-is-heard = pkgs.runCommandLocal "the-keyboard-light-is-heard" { } ''
