@@ -1,6 +1,7 @@
 // The screen, a region, a window or the camera being recorded (Recorder.qml):
 // true while niri says such a screencast streams or the camera's viewfinder
-// says it records, and for how long. The clock
+// says it records, and from the moment the screen or a region is asked
+// for, so its first frame holds the mark, and for how long. The clock
 // ticks only while it's true, so it costs nothing otherwise. Recorder.qml
 // starts and stops it.
 import qs
@@ -29,7 +30,7 @@ Piece {
     readonly property string length:
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
 
-    active: Recorder.recording
+    active: Recorder.recording || Recorder.announced
     kind: "onAir"
     onActiveChanged: seen = active ? Date.now() : 0
     value: length

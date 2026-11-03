@@ -227,6 +227,14 @@ Scope {
     function opened() {
     }
 
+    // The key that opens a collection, pressed while the launcher shows,
+    // `inside` it or showing anything else. One that answers true has done
+    // what the key means there; false steps into it, as the key does with
+    // the launcher closed. Capture's takes the screen as it is.
+    function pressedOver(inside) {
+        return false;
+    }
+
     // What one of its rows is, in a word, said beside the field while one
     // is selected so a completion says what sort of thing it is: "window",
     // "program", "emoji". An answer's rows are called answers wherever they

@@ -2,10 +2,12 @@
 // window, a region, or from the camera, so one key means capturing anything
 // and the rest is chosen here, found by typing what it's of. A camera glyph
 // says a picture comes of it and the recording glyph a video; the words say
-// what of. The whole screen comes first, so Print then Return takes it, and
-// while anything records, stopping it comes first instead, so the gesture
-// that started it stops it. Each row shows its own chord where it has one,
-// to learn by use and never to need.
+// what of. The whole screen comes first, so Print then Return takes it,
+// and Print twice always does. While anything records, stopping it comes
+// first instead, so the gesture that started it stops it. Print over the
+// launcher showing anything else takes the screen with the launcher in it
+// and leaves it as it was (`pressedOver`). Each row shows its own chord
+// where it has one, to learn by use and never to need.
 //
 // Typing a window's title finds it on any workspace, since niri takes a
 // window's picture wherever it is. A region is picked by the keys
@@ -108,18 +110,51 @@ Provider {
         run: () => Recorder.stop()
     })
 
+    function shootScreen() {
+        Niri.act({ ScreenshotScreen: { write_to_disk: true, show_pointer: false } });
+    }
+
+    // The shortest chord that opens Capture, Print rather than Super+P.
+    // Pressed here it takes the whole screen (`pressedOver`), so that row
+    // shows it: a row's chord is the key that does it from where Joel
+    // stands, and Shift+Print is longer here (VKCF3Z, 2026-11-03).
+    readonly property var opening: (Shortcuts.layers.find(layer => layer.name === "desktop")
+        ?.binds ?? [])
+        .filter(found => found.run.join(" ") === `launcher-say collection ${settings.name}`)
+        .map(found => found.chord)
+        .reduce((shortest, one) => shortest === null || one.length < shortest.length ? one
+            : shortest, null)
+
+    readonly property var wholeScreen: member({
+        key: "capture:screen",
+        verb: "take",
+        name: Words.name("capture:screen"),
+        keywords: "screenshot picture",
+        glyph: picture,
+        hue: "action",
+        chord: opening ?? chord("niri msg action screenshot-screen"),
+        later: true,
+        run: () => provider.shootScreen()
+    })
+
+    // Print or Super+P, pressed while the launcher shows, never changes
+    // what's on the screen first (VKCF3Z, Joel's yes of 2026-11-03). Here
+    // in Capture it's pressed twice, so it takes the work underneath, as
+    // Return on the whole screen does, the launcher gone first. Over
+    // anything else it takes the screen as it is, the launcher in it, and
+    // leaves the launcher as it was, the keys on the same row: Joel pressed
+    // it to capture what the launcher showed and found it gone. niri's
+    // notice says it was taken, kept out of the next picture (config.kdl).
+    function pressedOver(inside) {
+        if (inside)
+            provider.launcher.run(provider.wholeScreen, false, false);
+        else
+            provider.shootScreen();
+        return true;
+    }
+
     readonly property var fixed: (Recorder.recording ? [stop] : []).concat([
-        member({
-            key: "capture:screen",
-            verb: "take",
-            name: Words.name("capture:screen"),
-            keywords: "screenshot picture",
-            glyph: picture,
-            hue: "action",
-            chord: chord("niri msg action screenshot-screen"),
-            later: true,
-            run: () => Niri.act({ ScreenshotScreen: { write_to_disk: true, show_pointer: false } })
-        })
+        wholeScreen
     ], focused === null ? [] : [
         member({
             key: "capture:window",

@@ -205,6 +205,30 @@ Scope {
 
             onPointedChanged: later()
 
+            // A recording waits for its mark to be drawn, so its first frame
+            // holds it (Recorder.qml). A frame begun before the mark came may
+            // still be shown after, without it, so only a frame begun since
+            // tells it.
+            readonly property bool marking: Recorder.held !== null
+                && root.on.some(thing => thing.mark === "recording")
+            property bool markBegun: false
+
+            onMarkingChanged: markBegun = false
+
+            Connections {
+                target: marks.Window.window
+                enabled: window.marking
+
+                function onAfterAnimating() {
+                    window.markBegun = true;
+                }
+
+                function onFrameSwapped() {
+                    if (window.markBegun)
+                        Recorder.marked();
+                }
+            }
+
             // Says what's drawn once the pieces' words have caught up.
             function later() {
                 if (Options.reports)

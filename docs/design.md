@@ -1198,7 +1198,20 @@ works the same way everywhere.
   first, by the keys, then the history), Super+Shift+/ the shortcuts.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
-  Super+Return is kitty, and the screenshot keys are Capture's rows.
+  Super+Return is kitty, and Shift+Print and Alt+Print are Capture's rows.
+  A row draws the shortest key that does it from where Joel stands, so in
+  Capture the whole screen's row reads Print.
+- **A capture key takes the screen as it is.** Print and Super+P never
+  change what's on the screen first. With nothing of the shell's open they
+  open Capture, the whole screen first; pressed again there, they close it
+  and take what's underneath, so Print twice always captures the work. Over
+  the launcher showing anything else they take the screen with the launcher
+  in it, and it stays as it was, the keys on the same row. Ctrl+Print
+  records the screen as it stands, the launcher included, and stops on the
+  same chord; the margin's recording mark shows the moment it's pressed,
+  and the recording begins once the mark is drawn, so every frame holds
+  it. The launcher is kept out of a call's share and the notices out
+  of screenshots, never the launcher out of his own pictures.
 - **Return pastes where the launcher opened.** On a copy in Super+V or an
   emoji in Super+E, Return puts it on the clipboard and pastes it into the
   window the launcher opened over, Ctrl+Shift+V in a terminal and Ctrl+V

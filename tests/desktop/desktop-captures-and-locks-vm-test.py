@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -32,6 +34,15 @@ KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
+# How far apart, from 0 to 255, the screen with the launcher and without it are where the
+# card is drawn, past what the clock and a cursor change; and the least of the screen the
+# card covers for a picture to be judged by it.
+CARD_APART = 32
+CARD_LEAST = 0.02
+# How far down the screen the margin's marks are drawn, and more, above the launcher's card.
+MARGIN_HIGH = 48
+# A part of a picture: its left, top, right and bottom.
+type Box = tuple[int, int, int, int]
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -54,10 +65,192 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
     desktop.capture()
     screen = desktop.showing()["selected"]
     assert screen["name"] == "The Whole Screen"
-    assert screen["chord"] == "\u21e7 Print", "the whole screen's row shows its chord"
+    # Print, pressed here, takes it, so that's its chord here rather than Shift+Print.
+    assert screen["chord"] == "Print", "the whole screen's row shows its chord"
     desktop.photograph("capture")
     with desktop.told("shows card Screenshot captured"), desktop.captured():
         desktop.machine.send_key("ret")
+
+
+def test_print_over_the_launcher_takes_it_in_and_leaves_it_on_its_row(desktop: Desktop) -> None:
+    """Print, pressed while the launcher shows a row, takes the screen with it and leaves it so.
+
+    Joel pressed Print to capture what the launcher showed, and it stepped into Capture
+    instead, so the key takes the screen as it is (docs/design.md, A Capture Key Takes the
+    Screen as It Is). The picture is judged on the card's own pixels.
+    """
+    machine = desktop.machine
+    bare, seen, shown = the_launcher_on_a_row(desktop)
+    with desktop.captured():
+        machine.send_key("sysrq")
+    still_shown(desktop, shown)
+    picture = the_newest_picture(desktop, "taken-over-the-launcher.png")
+    the_card_in(picture, seen, bare)
+
+
+def test_print_in_capture_closes_it_and_takes_what_is_beneath(desktop: Desktop) -> None:
+    """Print, pressed again in Capture, closes the launcher and takes the screen beneath it.
+
+    So Print twice always captures the work, whatever Print does over the launcher.
+    """
+    machine = desktop.machine
+    quiet(desktop)
+    bare = desktop.settled_screen("capture-beneath-closed")
+    desktop.capture()
+    seen = desktop.settled_screen("capture-beneath-open")
+    with desktop.captured():
+        machine.send_key("sysrq")
+    desktop.launcher_until(lambda now: not now["open"])
+    picture = the_newest_picture(desktop, "taken-beneath-capture.png")
+    the_card_in(picture, bare, seen)
+
+
+def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
+    """Ctrl+Print, pressed while the launcher shows a row, records it and leaves it so.
+
+    The same chord stops it. Its first and last frames are judged on the card's pixels, as
+    a picture is; a video's colours are near the screen's, not the same. Each holds the
+    margin's recording mark as the screen does while it records, since a first frame
+    without it would look as if the screen wasn't being recorded.
+    """
+    machine = desktop.machine
+    mark = "/run/user/1000/before-recording"
+    desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
+    bare, seen, shown = the_launcher_on_a_row(desktop)
+    # The margin wears recording's mark from the start, as niri says it records.
+    with desktop.told("holds margin recording", timeout=WAKING):
+        machine.send_key("ctrl-sysrq")
+    still_shown(desktop, shown)
+    marked = desktop.settled_screen("recording-the-launcher")
+    videos = f"-newer {mark} -type f -name '*.mp4'"
+    # Something recorded before it's stopped, so the video holds a frame.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"find ~/Videos/Recordings {videos} -size +0 | grep -q ."),
+        timeout=WAKING,
+    )
+    # Its notice comes once the file is finished, which its process outlives, waiting on
+    # the notice's Play It.
+    with desktop.told("shows card Recording saved", timeout=WAKING):
+        machine.send_key("ctrl-sysrq")
+    still_shown(desktop, shown)
+    # Named by the time it began, so with a space in it.
+    recorded = desktop.as_account(f"find ~/Videos/Recordings {videos}").splitlines()
+    assert len(recorded) == 1, recorded
+    video = shlex.quote(recorded[0])
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    for name, where in (("recorded-first.png", ""), ("recorded-last.png", "-sseof -1")):
+        frame = f"/run/user/1000/{name}"
+        machine.succeed(f"{ffmpeg} {where} -i {video} -frames:v 1 -update 1 -y {frame}")
+        taken = kept(desktop, frame)
+        box = the_card_in(taken, seen, bare)
+        the_mark_in(taken, marked.crop(box), seen.crop(box))
+
+
+def the_launcher_on_a_row(desktop: Desktop) -> tuple[Image.Image, Image.Image, Json]:
+    """Open the launcher on its second row, giving the screen without it, with it, and it.
+
+    The second, so a launcher that went back to where it opens would be seen to.
+    """
+    quiet(desktop)
+    bare = desktop.settled_screen("capture-the-launcher-closed")
+    desktop.machine.send_key("meta_l-spc")
+    desktop.launcher_ready()
+    desktop.down_to(desktop.showing()["rows"][1])
+    shown = desktop.showing()
+    return bare, desktop.settled_screen("capture-the-launcher-open"), shown
+
+
+def quiet(desktop: Desktop) -> None:
+    """Wait until no notice shows, since one is on the screen but kept out of a picture."""
+    desktop.machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+
+
+def still_shown(desktop: Desktop, shown: Json) -> None:
+    """Wait until the launcher shows as it did, open and holding the keys on the same row."""
+    desktop.launcher_until(
+        lambda now: (
+            now["open"]
+            and now["keys"]
+            and now["held"] == shown["held"]
+            and (now["selected"] or {}).get("name") == (shown["selected"] or {}).get("name")
+        )
+    )
+
+
+def the_newest_picture(desktop: Desktop, name: str) -> Image.Image:
+    """Give the newest screenshot, kept in the gallery by this name."""
+    newest = desktop.as_account(f"ls -t {desktop.pictures}/*.png | head -1").strip()
+    desktop.machine.succeed(f"cp {shlex.quote(newest)} /run/user/1000/{name}")
+    return kept(desktop, f"/run/user/1000/{name}")
+
+
+def kept(desktop: Desktop, taken: str) -> Image.Image:
+    """Copy what was taken out of the machine, for the gallery, and give it."""
+    desktop.machine.copy_from_machine(taken)
+    return Image.open(desktop.machine.out_dir / taken.rsplit("/", 1)[1]).convert("RGB")
+
+
+def the_mark_in(frame: Image.Image, marked: Image.Image, unmarked: Image.Image) -> None:
+    """Fail unless a recording's frame holds the margin's mark, as the screen recording does.
+
+    The mark is where the screen while recording and before it differ along the top edge,
+    above the card. The frame must be at least four times nearer the one than the other
+    there.
+    """
+    top = (0, 0, frame.width, MARGIN_HIGH)
+    frame, marked, unmarked = frame.crop(top), marked.crop(top), unmarked.crop(top)
+    differs = ImageChops.difference(marked, unmarked).convert("L")
+    mark = differs.point(lambda v: 255 if v > CARD_APART else 0)
+    assert mark.getbbox() is not None, "the screen while recording holds no mark along the top"
+    near, far = apart(frame, marked, mark), apart(frame, unmarked, mark)
+    print(f"on the mark, at {mark.getbbox()}: {near:.1f} from marked, {far:.1f} from before")
+    assert near * 4 < far, f"on the mark: {near:.1f} from marked, {far:.1f} from before"
+
+
+def the_card_in(taken: Image.Image, like: Image.Image, unlike: Image.Image) -> Box:
+    """Fail unless, where the launcher's card is drawn, what was taken is the one screen's.
+
+    The card is where the screen with the launcher and without it differ, so it's found
+    from the pixels alone. What was taken must be at least four times nearer the one than
+    the other there; the rest of the screen is the same in both, and says nothing. Gives
+    the box of the screens what was taken fills.
+    """
+    differs = ImageChops.difference(like, unlike).convert("L")
+    card = differs.point(lambda v: 255 if v > CARD_APART else 0)
+    shown = ImageStat.Stat(card).mean[0] / 255
+    assert shown > CARD_LEAST, f"the card covers only {shown:.1%} of the screen, too little"
+    box = where_taken(taken, like, card)
+    like, unlike, card = like.crop(box), unlike.crop(box), card.crop(box)
+    near, far = apart(taken, like, card), apart(taken, unlike, card)
+    print(f"on the card, at {box[:2]}: {near:.1f} from the one meant, {far:.1f} from the other")
+    assert near * 4 < far, f"on the card: {near:.1f} from the one meant, {far:.1f} from the other"
+    return box
+
+
+def where_taken(taken: Image.Image, screen: Image.Image, card: Image.Image) -> Box:
+    """Give the box of QEMU's screen that niri's output, and so what was taken, fills.
+
+    QEMU's screen is larger than the output niri draws (1280 by 800 to 1272 by 768), so a
+    picture is laid on it where it best matches, judged off the card, where every screen
+    meant is the same.
+    """
+    wide, high = taken.size
+    off = ImageChops.invert(card)
+
+    def box(x: int, y: int) -> Box:
+        return (x, y, x + wide, y + high)
+
+    places = [
+        (x, y) for x in range(screen.width - wide + 1) for y in range(screen.height - high + 1)
+    ]
+    x, y = min(places, key=lambda at: apart(taken, screen.crop(box(*at)), off.crop(box(*at))))
+    return box(x, y)
+
+
+def apart(one: Image.Image, other: Image.Image, where: Image.Image) -> float:
+    """Give how far apart two pictures of one size are where the mask is, from 0 to 255."""
+    difference = ImageChops.difference(one, other).convert("L")
+    return float(ImageStat.Stat(difference, where).mean[0])
 
 
 def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop: Desktop) -> None:
