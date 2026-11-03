@@ -20,6 +20,10 @@
 # Only the Mac reaches the VM, on a port of its own loopback. Another machine
 # that builds there jumps through the Mac's SSH to that port, and signs in to
 # the VM with a key of its own, given in `authorizedKeys`.
+#
+# A VM that wedges is cured by restarting it and the Nix daemon, which takes
+# sudo. The accounts in `restartableBy` may run exactly those two restarts
+# with no password, so someone at another machine can cure it over SSH.
 {
   config,
   lib,
@@ -55,6 +59,16 @@ let
     ];
   };
   guest = builder.nixosConfig;
+
+  # The two restarts, each the whole command with its arguments, so sudo lets
+  # nothing else through. sudoers reads these characters in an argument as
+  # its own.
+  restarts =
+    map (label: "/bin/launchctl kickstart -k system/${lib.escape [ "\\" "," ":" "=" ] label}")
+      [
+        config.launchd.daemons.linux-builder-vz.serviceConfig.Label
+        cfg.nixDaemon
+      ];
 
   # Not nix-darwin's /var/lib/linux-builder, which it empties at every switch
   # while its own builder is off.
@@ -140,6 +154,16 @@ in
         jumps through the Mac to it.
       '';
     };
+    restartableBy = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[a-z_][a-z0-9._-]*");
+      default = [ ];
+      example = [ "someone" ];
+      description = ''
+        Accounts that may restart the VM and the Nix daemon with sudo and no
+        password, and run nothing else that way, so a wedged VM is cured from
+        another machine. None by default, which writes no sudo rule.
+      '';
+    };
     nixDaemon = lib.mkOption {
       type = lib.types.str;
       default = "systems.determinate.nix-daemon";
@@ -199,6 +223,12 @@ in
         WorkingDirectory = home;
       };
     };
+
+    security.sudo.extraConfig = lib.mkIf (cfg.restartableBy != [ ]) (
+      lib.concatMapStrings (
+        account: "${account} ALL=(root) NOPASSWD: ${lib.concatStringsSep ", " restarts}\n"
+      ) cfg.restartableBy
+    );
 
     environment.etc."ssh/ssh_config.d/100-linux-builder.conf".text = ''
       Host linux-builder
