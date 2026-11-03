@@ -4572,7 +4572,7 @@
       "in": "calendar:meeting",
       "name": "Open in Calendar",
       "verb": "open",
-      "glyph": "meeting"
+      "glyph": "calendar"
     },
     {
       "id": "verb:calendar:see",

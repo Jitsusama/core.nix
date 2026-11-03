@@ -511,7 +511,7 @@ Scope {
         "pi": "mark:agent",
         "tuple": "f1218",
         "google-mail": "f02ab",
-        "google-calendar": "mark:meeting",
+        "google-calendar": "mark:calendar",
         "google-drive": "f02b6",
         "google-docs": "f0dc8",
         "google-sheets": "f09f7",

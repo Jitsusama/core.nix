@@ -624,8 +624,10 @@ in
     console = "-";
     means = "forgetting what's kept: the clipboard's copies, a network or a paired device";
   };
+  # Filled, with lines on it, since an outline among filled marks reads
+  # as an empty checkbox (VKCF3Z, 2026-11-02).
   clipboard = {
-    glyph = nerd "f0a38";
+    glyph = nerd "f014d";
     console = "C";
     means = "the clipboard and what it's kept";
   };
@@ -824,8 +826,9 @@ in
     console = "%";
     means = "where a secret is typed: a password or a passphrase";
   };
+  # Filled, as the clipboard's is, rather than an outline.
   program = {
-    glyph = nerd "f0614";
+    glyph = nerd "f08c6";
     console = "a";
     means = "a program, where it has no glyph of its own";
   };
@@ -1232,11 +1235,19 @@ in
     console = "d";
     means = "a date: today, or the day it is somewhere";
   };
+  # A month's page, for the calendar itself, apart from a meeting on it,
+  # so the program and what it holds don't wear one mark (VKCF3Z,
+  # 2026-11-02).
+  calendar = {
+    glyph = nerd "f0e17";
+    console = "d";
+    means = "the calendar, the program holding Joel's meetings";
+  };
   # A calendar with a person on it, since a meeting is a day with others.
   meeting = {
     glyph = nerd "f0ed7";
     console = "m";
-    means = "a meeting on Joel's calendar, and the calendar holding them";
+    means = "a meeting on Joel's calendar";
     # A calendar page on its two rings, its day marked.
     drawn = drawing [
       "M2.5 0H4V2H2.5Z"

@@ -199,10 +199,10 @@ in
       source = ./Meet.qml;
     };
     # Each wears a mark of its own in Programs rather than the program
-    # mark every window without a logo shares: Calendar the meeting's,
-    # which it holds, and Mail Gmail's own logo.
+    # mark every window without a logo shares: Calendar the calendar's,
+    # apart from a meeting's, and Mail Gmail's own logo.
     jitsusama.quickshell.launcher.providers.applications.glyphs = {
-      google-calendar = "f0ed7";
+      google-calendar = "mark:calendar";
       google-mail = "f02ab";
     };
 
