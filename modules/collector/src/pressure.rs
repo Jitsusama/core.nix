@@ -5,7 +5,9 @@
 //! long something there waited for the processor, for memory or for the
 //! disk (pressure stall information). Read each second, a second in which
 //! something waited at least a tenth of it starts a wait, and three quiet
-//! seconds end it.
+//! seconds end it. A wait for the machine's memory also names the five
+//! programs holding most of it as it ends, so it says what the machine was
+//! short for, not only that it was.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -35,6 +37,10 @@ const RESOURCES: [&str; 3] = ["cpu", "memory", "io"];
 /// The slices whose waits are Joel's: what he runs, and the session that
 /// draws it.
 const SLICES: [&str; 2] = ["app.slice", "session.slice"];
+
+/// How many of the programs holding most memory a machine's memory wait
+/// names.
+const HOLDERS: usize = 5;
 
 /// One place whose waits for one resource are read.
 #[derive(Debug, Clone, PartialEq)]
@@ -174,16 +180,20 @@ impl Waits {
     }
 }
 
-/// The sources being read, each with its readings so far.
-pub struct Watching(Vec<(Source, Waits)>);
+/// The sources being read, each with its readings so far, and where the
+/// cgroups are, to name what holds memory when the machine waits for it.
+pub struct Watching(Vec<(Source, Waits)>, PathBuf);
 
 impl Watching {
     /// Takes every source's first reading at once, so what's read later is
     /// measured from now. A file that can't be read is passed over each
     /// time: a cgroup without one of the controllers, or a kernel without
     /// pressure information.
-    pub fn start(sources: Vec<Source>) -> Self {
-        let mut watching = Watching(sources.into_iter().map(|s| (s, Waits::default())).collect());
+    pub fn start(sources: Vec<Source>, cgroups: PathBuf) -> Self {
+        let mut watching = Watching(
+            sources.into_iter().map(|s| (s, Waits::default())).collect(),
+            cgroups,
+        );
         watching.read(now());
         watching
     }
@@ -207,6 +217,7 @@ impl Watching {
 
     fn read(&mut self, at: i64) -> Vec<Span> {
         let mut ended = Vec::new();
+        let cgroups = &self.1;
         for (source, waits) in &mut self.0 {
             let Some(totals) = fs::read_to_string(&source.file)
                 .ok()
@@ -216,10 +227,70 @@ impl Watching {
                 continue;
             };
             if let Some(wait) = waits.read(at, totals) {
-                ended.push(span(source, &wait, (random(16), random(8))));
+                let mut kept = span(source, &wait, (random(16), random(8)));
+                // Read as the wait ends, three quiet seconds after its
+                // last waiting one; what a program holds changes slowly
+                // beside that.
+                if source.resource == "memory" && source.place == "the machine" {
+                    kept.attributes
+                        .insert("holders".into(), json!(holders(cgroups)));
+                }
+                ended.push(kept);
             }
         }
         ended
+    }
+}
+
+/// The programs holding most anonymous memory, the memory reclaim can
+/// only swap, as the cgroups below `cgroups` with none below them, largest
+/// first: each by its last two parts and its size, "nix-daemon.service/
+/// nix-build-uid-872415232 5.9 GiB". A wait for memory says only that the
+/// machine was short; this says what it was short for.
+pub fn holders(cgroups: &Path) -> String {
+    let mut held = Vec::new();
+    leaves(cgroups, &mut held);
+    held.sort_by_key(|&(_, anon)| std::cmp::Reverse(anon));
+    held.iter()
+        .take(HOLDERS)
+        .map(|(dir, anon)| {
+            let parts: Vec<_> = dir.iter().rev().take(2).collect();
+            let name: PathBuf = parts.into_iter().rev().collect();
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "bytes shown to a tenth of a GiB"
+            )]
+            let gib = *anon as f64 / f64::from(1u32 << 30);
+            format!("{} {gib:.1} GiB", name.display())
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Every cgroup at or below `dir` with none below it, and the anonymous
+/// memory it holds.
+fn leaves(dir: &Path, held: &mut Vec<(PathBuf, u64)>) {
+    let below: Vec<PathBuf> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.path())
+        .collect();
+    if below.is_empty() {
+        let anon = fs::read_to_string(dir.join("memory.stat"))
+            .ok()
+            .and_then(|stat| {
+                stat.lines()
+                    .find_map(|line| line.strip_prefix("anon "))
+                    .and_then(|bytes| bytes.trim().parse().ok())
+            });
+        if let Some(anon) = anon {
+            held.push((dir.to_path_buf(), anon));
+        }
+    }
+    for dir in below {
+        leaves(&dir, held);
     }
 }
 
@@ -387,6 +458,35 @@ mod tests {
         assert_eq!(found.len(), 8, "{files:?}");
         // Outside an account's manager there are no slices of its own.
         assert_eq!(sources(Path::new("/r"), "0::/\n").len(), 2);
+    }
+
+    // Only cgroups with none below them count, since a parent's figure
+    // holds its children's; the five largest are named, largest first.
+    #[test]
+    fn a_memory_wait_names_the_programs_holding_most_memory() {
+        let root = tempfile::tempdir().unwrap();
+        let gib = 1u64 << 30;
+        let held = [
+            ("build.slice", 9 * gib),
+            ("build.slice/nix-daemon.service", 8 * gib),
+            ("build.slice/nix-daemon.service/nix-build-uid-7", 6 * gib),
+            ("build.slice/nix-daemon.service/nix-daemon", gib / 10),
+            ("app.slice/app-slack.scope", 3 * gib + gib / 2),
+            ("app.slice/app-kitty.scope", gib),
+            ("machine.slice/qemu.scope", 2 * gib),
+            ("system.slice/sshd.service", gib / 100),
+        ];
+        for (cgroup, anon) in held {
+            let dir = root.path().join(cgroup);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("memory.stat"), format!("anon {anon}\nfile 4096\n")).unwrap();
+        }
+        assert_eq!(
+            holders(root.path()),
+            "nix-daemon.service/nix-build-uid-7 6.0 GiB, app.slice/app-slack.scope 3.5 GiB, \
+             machine.slice/qemu.scope 2.0 GiB, app.slice/app-kitty.scope 1.0 GiB, \
+             nix-daemon.service/nix-daemon 0.1 GiB"
+        );
     }
 
     #[test]

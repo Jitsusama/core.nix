@@ -33,7 +33,8 @@ pub fn serve(socket: &Path, store: Store, root: &Path) -> Result<(), String> {
     // Read before the socket is made, so a sender that finds the socket
     // knows the first reading is taken.
     let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let watching = pressure::Watching::start(pressure::sources(root, &cgroup));
+    let watching =
+        pressure::Watching::start(pressure::sources(root, &cgroup), root.join("sys/fs/cgroup"));
     {
         let store = Arc::clone(&store);
         thread::spawn(move || watching.run(&store));
