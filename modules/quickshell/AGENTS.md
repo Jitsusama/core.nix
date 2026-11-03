@@ -43,8 +43,7 @@ Joel sees.
   the shell; `quests.rs` and `runs.rs`, the launcher's quests and runs,
   built by `pi-helper.nix`; `keyboard-lights.rs`, which says whether caps
   lock is on, run by `nixos.nix`; [`record-window/`][record], one
-  window's recording for the recorder; [`last-minute/`][last-minute],
-  the last minute of the screen kept in memory for the recorder; and [`whereabouts/`][whereabouts],
+  window's recording for the recorder; and [`whereabouts/`][whereabouts],
   where the laptop is, from GeoClue, for the weather's here.
 - [`maths/`][maths]: libqalculate as a QML module, `Maths`, which the
   launcher's sums and measures are worked out by in the shell's own
@@ -118,7 +117,6 @@ a change to one surface can move another.
 [desktop]: ../../tests/desktop.nix
 [home]: home.nix
 [record]: record-window/
-[last-minute]: last-minute/
 [whereabouts]: whereabouts/
 [launcher]: launcher/
 [maths]: maths/
