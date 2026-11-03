@@ -257,8 +257,16 @@ Singleton {
             ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
         const pi = fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`;
         const telling = typeof told === "string" && told !== "";
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd]
-            .concat(quest, ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)],
+        // One another session started opens without the focus, by niri's
+        // rule for its class (modules/niri/config.kdl), and without the
+        // activation token niri hands what it spawns, which kitty would
+        // spend on taking the focus once its window shows.
+        const quiet = one.quiet === true;
+        const untold = quiet ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"]
+            : [];
+        const apart = quiet ? ["--class", "pi-spawned"] : [];
+        Niri.spawn(untold.concat(["kitty", "-1", "--instance-group", "pi-sessions"], apart,
+            ["--directory", cwd], quest, ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)],
                 telling ? [told] : []));
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
     }
@@ -565,7 +573,14 @@ Singleton {
             going.taken.push(key);
             going.late = going.late.slice(1);
             root.besideKept(id, late.kept);
-            const entry = { id, at: late.at, away: late.away };
+            if (late.quiet && late.at === null) {
+                root.placeQuietly(id, late);
+                if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
+                    && !going.looking && !going.settling)
+                    root.reopenDone();
+                return;
+            }
+            const entry = { id, at: late.at, away: late.away, quiet: late.quiet === true };
             const running = going.queue.length > 0 || going.waiting !== null || going.looking;
             // Placed now while the rest are still being reopened, and by
             // the check after them; once that's done, by its own check.
@@ -599,21 +614,51 @@ Singleton {
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened === null || !Niri.windows[waiting.opened])
             return;
-        const entry = { id: waiting.opened, at: waiting.at, away: waiting.away };
+        const entry = { id: waiting.opened, at: waiting.at, away: waiting.away,
+            quiet: waiting.quiet === true };
         if (entry.at !== null) {
             if (root.placeSession(entry, root.besideOf(reopening.placed)) === "waiting")
                 return;
             reopening.placed.push(entry);
+        } else if (entry.quiet && root.placeQuietly(entry.id, waiting) === "waiting") {
+            return;
         }
         root.besideKept(entry.id, waiting.kept);
         reopening.waiting = null;
         reopenPatience.stop();
         reopenSoon();
     }
+    // Puts a session another session started, with no place kept, with its
+    // quest's sessions, or beside the one that started it, else leaves it
+    // where it opened, beside Joel's column, all without the focus: Joel types on in his
+    // window, and his workspace stays (Joel, 2026-11-02: "when quests load
+    // up new sessions, i often end up typing into them by accident"). niri
+    // puts a window moved so just right of the column last active there.
+    // "waiting" while niri hasn't laid it out.
+    function placeQuietly(id, waiting) {
+        const window = Niri.windows[id];
+        if (!window || !Niri.workspace(window.workspace_id))
+            return "waiting";
+        const others = root.running.filter(session => session.window
+            && session.window.id !== id);
+        const kin = others.find(session => waiting.quest !== ""
+            && session.presence.quest === waiting.quest)
+            ?? others.find(session => waiting.from !== ""
+                && session.presence.session === waiting.from);
+        const into = kin?.window.workspace_id ?? window.workspace_id;
+        if (into === window.workspace_id)
+            return "held";
+        Niri.act({ MoveWindowToWorkspace: { window_id: id, reference: { Id: into },
+            focus: false } });
+        return "moved";
+    }
     // Puts a session reopened where whereBack says, beside the sessions
     // back before it (Places.js), when it isn't there already: "held" when
     // it was, "moved", or "waiting" while niri hasn't laid it out or its
-    // screen has no workspace yet, as while a screen comes back.
+    // screen has no workspace yet, as while a screen comes back. One
+    // another session handed over (`quiet`), as `quest restore` does, goes
+    // to its workspace without the focus, and so wherever niri puts it
+    // there, since only a column that's focused can be moved.
     function placeSession(entry, beside) {
         const window = Niri.windows[entry.id];
         const workspace = window ? Niri.workspace(window.workspace_id) : null;
@@ -623,11 +668,14 @@ Singleton {
         const found = Places.whereBack(entry.at, beside);
         const where = found.make ? Object.assign({}, found,
             { output: found.output ?? entry.at.output }) : found;
-        if (Places.holds(where, { workspace, column }, beside)) {
+        const holds = entry.quiet === true && !where.make ? workspace.id === where.join
+            : Places.holds(where, { workspace, column }, beside);
+        if (holds) {
             root.noteAway(entry.away, workspace.id);
             return "held";
         }
-        const into = root.moveTo(window, where, workspace, column, beside);
+        const into = entry.quiet === true ? root.moveQuietly(window, where, workspace)
+            : root.moveTo(window, where, workspace, column, beside);
         if (into === null)
             return "waiting";
         root.noteAway(entry.away, into);
@@ -644,10 +692,7 @@ Singleton {
     function moveTo(window, where, workspace, column, beside) {
         const id = window.id;
         if (where.make) {
-            const alone = Object.values(Niri.windows).every(other => other.id === id
-                || other.workspace_id !== workspace.id);
-            const into = alone && workspace.output === where.output ? workspace.id
-                : root.lastOn(where.output);
+            const into = root.madeFor(id, where, workspace);
             if (into === null)
                 return null;
             if (into !== workspace.id)
@@ -671,6 +716,28 @@ Singleton {
         if (where.under)
             Niri.act({ ConsumeOrExpelWindowLeft: { id } });
         return where.join;
+    }
+    // Moves a window to the workspace whereBack says without the focus,
+    // answering it as moveTo does: Joel's window and workspace stay his.
+    function moveQuietly(window, where, workspace) {
+        const into = where.make ? root.madeFor(window.id, where, workspace) : where.join;
+        if (into === null)
+            return null;
+        if (into !== workspace.id)
+            Niri.act({ MoveWindowToWorkspace: { window_id: window.id,
+                reference: { Id: into }, focus: false } });
+        if (where.make)
+            Niri.act({ MoveWorkspaceToIndex: { index: where.index, reference: { Id: into } } });
+        return into;
+    }
+    // The workspace a window given one of its own goes to: the one it's on
+    // when it's alone there on its screen, else the empty one niri keeps
+    // last, or null when its screen has none.
+    function madeFor(id, where, workspace) {
+        const alone = Object.values(Niri.windows).every(other => other.id === id
+            || other.workspace_id !== workspace.id);
+        return alone && workspace.output === where.output ? workspace.id
+            : root.lastOn(where.output);
     }
 
     // Once the last is placed, each session reopened is checked again, the
@@ -730,9 +797,12 @@ Singleton {
         reopenSettling.stop();
         root.putBackOpen();
         arranging.restart();
-        if (going.back !== null)
+        // Only when a session reopened moved it: one another session
+        // started leaves Joel's focus where he has it.
+        if (going.back !== null && going.focused)
             Niri.act({ FocusWindow: { id: going.back } });
         going.back = null;
+        going.focused = false;
         if (going.late.length === 0)
             reopening = null;
     }
@@ -821,7 +891,8 @@ Singleton {
             taken: [],
             placed: [],
             settling: false,
-            rounds: 0
+            rounds: 0,
+            focused: false
         };
         reopenNext();
     }
@@ -852,7 +923,9 @@ Singleton {
             && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
             && typeof one.cwd === "string" && one.cwd.startsWith("/"))
             .map(one => ({ id: String(one.id), cwd: one.cwd, fresh: one.fresh === true,
-                quest: typeof one.quest === "string" ? one.quest : "" }));
+                quest: typeof one.quest === "string" ? one.quest : "",
+                from: typeof one.from === "string" ? one.from : "",
+                quiet: one.focus !== true }));
         if (given.length === 0)
             return "refused: no session with an id and a folder";
         console.info(`sessions: reopening ${given.length} handed over`);
@@ -883,15 +956,19 @@ Singleton {
                 return;
             }
             // Where it goes is focused first, so it most often opens there
-            // and is seldom seen to move.
-            if (next.at) {
+            // and is seldom seen to move, but for one another session
+            // started, which never moves the focus.
+            const quiet = next.one.quiet === true;
+            if (!quiet)
+                reopening.focused = true;
+            if (!quiet && next.at) {
                 // A screen gone was given the screen in use (Places.js);
                 // with none known, it stays on the one in use.
                 if (Object.values(Niri.workspaces).some(one => one.output === next.at.output))
                     Niri.act({ FocusMonitor: { output: next.at.output } });
                 Niri.act({ FocusWorkspace: { reference: { Index: next.at.workspace } } });
                 Niri.act({ FocusColumnLast: {} });
-            } else if (reopening.back !== null) {
+            } else if (!quiet && reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
             // Placed by its connector and the number it's given now, so it
@@ -899,7 +976,8 @@ Singleton {
             const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
                 column: next.at.column, tile: next.at.tile ?? 1 } : null;
             reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null,
-                away: next.at?.away ?? null, kept: next.kept ?? null };
+                away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
+                quest: next.one.quest ?? "", from: next.one.from ?? "" };
             reopenStartedAt = Date.now();
             reopened(next.one, next.one.cwd, next.told);
             reopenPatience.restart();

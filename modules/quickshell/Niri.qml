@@ -100,6 +100,16 @@ Singleton {
         return null;
     }
 
+    // A window as the shell knows it. A session another opened is classed
+    // apart, as pi-spawned, only so niri's rule opens it without taking the
+    // focus from Joel (modules/niri/config.kdl); it's kitty's all the same,
+    // to every list, mark and key the shell has.
+    function heard(window: var): var {
+        if (window.app_id === "pi-spawned")
+            window.app_id = "kitty";
+        return window;
+    }
+
     function hear(event: var): void {
         if (event.OverviewOpenedOrClosed) {
             overview = event.OverviewOpenedOrClosed.is_open;
@@ -107,14 +117,14 @@ Singleton {
             const all = {};
             focused = null;
             for (const window of event.WindowsChanged.windows) {
-                all[window.id] = window;
+                all[window.id] = root.heard(window);
                 if (window.is_focused)
                     focused = window.id;
             }
             windows = all;
             revision++;
         } else if (event.WindowOpenedOrChanged) {
-            const window = event.WindowOpenedOrChanged.window;
+            const window = root.heard(event.WindowOpenedOrChanged.window);
             windows[window.id] = window;
             // One that's focused takes focus from every other, as niri's IPC
             // documents, without an event for each of them.

@@ -346,8 +346,10 @@ class Screens:
         return self.machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
 
     def reopen(self, where: dict[str, dict[str, Any]]) -> None:
-        """Hand the shell the sessions kept, as the harness does, and see it take them."""
-        sessions = [{"id": one, "cwd": f"/home/{self.account}"} for one in where]
+        """Hand the shell the sessions kept, to reopen as Reopen Them All does, and see it."""
+        # With the focus, as Joel's own press reopens them: only that puts
+        # each in its column, which needs the column focused to move it.
+        sessions = [{"id": one, "cwd": f"/home/{self.account}", "focus": True} for one in where]
         handed = shlex.quote(json.dumps({"sessions": sessions}))
         taken = self.machine.succeed(self.in_niri(f"qs ipc call sessions reopen {handed}"))
         assert taken.strip() == "taken", taken
