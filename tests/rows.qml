@@ -8,7 +8,8 @@
 // beside a long note, and a short note keeps to the field's right end
 // however wide a room it holds. Words that fit are left whole. Selected,
 // a row with both its name and what it is cut reads each on in turn, the
-// name first, never both moving at once. What the shell says in its voice,
+// name first, never both moving at once, and its name at rest ends in its
+// ellipsis rather than cut through a letter. What the shell says in its voice,
 // a quiet row's words and the launcher's hint, is drawn in the serif face
 // on the baseline the mono's would take. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
@@ -160,6 +161,18 @@ ShellRoot {
             .join(", ");
     }
 
+    // The piece under an item that reads these words on (ReadsOn.qml).
+    function readsOn(item, words) {
+        for (const child of item.children) {
+            if (child.over !== undefined && child.text === words)
+                return child;
+            const found = readsOn(child, words);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
     // A row's texts keep inside it and clear of each other.
     function apart(row, edge) {
         const texts = drawn(row, []).sort((a, b) => a.from - b.from);
@@ -259,7 +272,8 @@ ShellRoot {
             const texts = root.drawn(taking, []);
             const name = texts.find(t => t.text === taking.name);
             const side = texts.find(t => t.text === taking.side);
-            return { name: name.from, side: side.from };
+            return { name: name.from, side: side.from, ended: name.truncated,
+                resting: root.readsOn(taking, taking.name)?.moving !== true };
         }
         function begin() {
             turns.rest = turns.where();
@@ -273,6 +287,8 @@ ShellRoot {
             let failed = "";
             if (nameMoved && sideMoved)
                 failed = "a row's name and what it is both moved at once";
+            else if (now.resting && !now.ended)
+                failed = "a selected name at rest cut through a letter, not in its ellipsis";
             else if (sideMoved && !turns.named)
                 failed = "what a row is read on before its name";
             else if (turns.left === 0)
