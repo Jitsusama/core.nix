@@ -1,16 +1,23 @@
-//! What a call is, from what's already written in the runtime folder, with
-//! no network: a Tuple call from tuple-call.json, which the shell's Tuple
-//! writes while one is on, naming who it's with; or a meeting from
-//! google.json, which the google program keeps, the one on now. Each
-//! call's folder is named by when it started and what it was, so the file
-//! picker and search find it by its title.
+//! What a call is, from what this machine already knows, with no network:
+//! a Tuple call from tuple-call, the daemon following Tuple's, asked on
+//! its socket who it's with; or a meeting from google.json, which the
+//! google program keeps, the one on now. Each call's folder is named by
+//! when it started and what it was, so the file picker and search find it
+//! by its title.
 
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// How early a meeting can be joined and still be the one on.
 const EARLY_MS: u64 = 10 * 60 * 1000;
+/// How long tuple-call is given to answer. It answers from what it holds,
+/// so a second is long; a call starting is written down either way, under
+/// a meeting's name or a bare time.
+const TUPLE_ANSWERS_WITHIN: Duration = Duration::from_secs(1);
 
 /// What a call was.
 #[derive(Debug, PartialEq, Default)]
@@ -22,22 +29,37 @@ pub struct Meeting {
     pub person: Option<String>,
 }
 
-/// The call on at `now`, from the files in `runtime`; a Tuple call first,
-/// since its file is there only while one is on, and a meeting otherwise.
+/// The call on at `now`, from what's in `runtime`; a Tuple call first,
+/// since it has people only while one is on, and a meeting otherwise.
 pub fn on(runtime: &Path, now: u64) -> Meeting {
-    let read = |name: &str| -> Value {
-        std::fs::read_to_string(runtime.join(name))
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
-    };
-    tuple(&read("tuple-call.json"))
-        .or_else(|| meeting(&read("google.json"), now))
+    let google = std::fs::read_to_string(runtime.join("google.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    tuple_call(&runtime.join("daemons/tuple.sock"))
+        .as_ref()
+        .and_then(tuple)
+        .or_else(|| meeting(&google, now))
         .unwrap_or_default()
 }
 
+/// tuple-call's record of the call, by the daemons' interface; or none
+/// when it isn't there or doesn't answer in time.
+fn tuple_call(socket: &Path) -> Option<Value> {
+    let stream = UnixStream::connect(socket).ok()?;
+    stream.set_read_timeout(Some(TUPLE_ANSWERS_WITHIN)).ok()?;
+    stream.set_write_timeout(Some(TUPLE_ANSWERS_WITHIN)).ok()?;
+    let asked = json!({"id": 1, "ask": "get", "keys": ["call:current"]});
+    writeln!(&stream, "{asked}").ok()?;
+    let mut line = String::new();
+    BufReader::new(&stream).read_line(&mut line).ok()?;
+    let said: Value = serde_json::from_str(&line).ok()?;
+    said["records"].get(0).cloned()
+}
+
+/// A Tuple call, named by who it's with.
 fn tuple(call: &Value) -> Option<Meeting> {
-    let with = call["with"].as_array()?;
+    let with = call["people"].as_array()?;
     let first = with.first()?;
     let name = |person: &Value| person["name"].as_str().unwrap_or_default().to_owned();
     let mut title = name(first);
@@ -161,14 +183,61 @@ mod tests {
 
     #[test]
     fn a_tuple_call_is_named_by_who_its_with() {
-        let call = json!({"since": NOW, "with": [
-            {"id": 7, "name": "Ada Lovelace", "email": "Ada@Example.com"},
-            {"id": 8, "name": "Grace Hopper", "email": "grace@example.com"},
+        let call = json!({"key": "call:current", "state": "connected", "since": NOW, "people": [
+            {"id": "7", "name": "Ada Lovelace", "email": "Ada@Example.com"},
+            {"id": "8", "name": "Grace Hopper", "email": "grace@example.com"},
         ]});
         let on = tuple(&call).unwrap();
         assert_eq!(on.title, "Ada Lovelace and 1 more");
         assert_eq!(on.person.as_deref(), Some("ada@example.com"));
-        assert_eq!(tuple(&json!({"since": null, "with": []})), None);
+        let none = json!({"key": "call:current", "state": "ringing", "since": null, "people": []});
+        assert_eq!(tuple(&none), None);
+    }
+
+    /// A stand-in tuple-call on a socket in a fresh runtime folder,
+    /// answering its one ask with `record`, and google.json beside it.
+    fn runtime(name: &str, record: &Value) -> std::path::PathBuf {
+        let runtime = std::env::temp_dir().join(format!("meeting-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(runtime.join("daemons")).unwrap();
+        let google = json!({"meetings": [
+            {"id": "e1", "title": "Planning", "start": NOW - MINUTE, "end": NOW + MINUTE},
+        ]});
+        std::fs::write(runtime.join("google.json"), google.to_string()).unwrap();
+        let socket = runtime.join("daemons/tuple.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let record = record.clone();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            let asked: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(asked["keys"], json!(["call:current"]));
+            writeln!(
+                &stream,
+                "{}",
+                json!({"id": asked["id"], "records": [record]})
+            )
+            .unwrap();
+        });
+        runtime
+    }
+
+    #[test]
+    fn tuple_call_is_asked_and_a_tuple_call_comes_before_a_meeting() {
+        let call = json!({"state": "connected", "people": [{"name": "Ada", "email": "a@x"}]});
+        let on = on(&runtime("tuple", &call), NOW);
+        assert_eq!(on.title, "Ada");
+        assert_eq!(on.event, None);
+    }
+
+    #[test]
+    fn with_no_tuple_call_on_the_meeting_is_the_call() {
+        let none = json!({"state": "none", "since": null, "people": []});
+        assert_eq!(on(&runtime("none", &none), NOW).title, "Planning");
+        let gone = runtime("gone", &none);
+        std::fs::remove_file(gone.join("daemons/tuple.sock")).unwrap();
+        assert_eq!(on(&gone, NOW).title, "Planning");
     }
 
     #[test]
