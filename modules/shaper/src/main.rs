@@ -24,6 +24,7 @@ mod classes;
 mod icmp;
 mod links;
 mod memory;
+mod oneway;
 mod probe;
 mod qdisc;
 mod quiet;
