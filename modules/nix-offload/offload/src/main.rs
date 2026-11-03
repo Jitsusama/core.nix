@@ -71,7 +71,9 @@
 //! `--only-there` has it lend only while a `there` build waits on it. A
 //! `there` build sends the attributes the patterns in XDG's config folder,
 //! `nix-offload/vm-tests`, describe to that lender's builder while it
-//! runs, so VM tests never share a builder with big builds.
+//! runs, so VM tests never share a builder with big builds. A changed-checks
+//! run sent to the lent builder (`there --changed`) names what changed
+//! there first meanwhile, and sends the VM tests it names the same way.
 //!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
@@ -421,7 +423,12 @@ fn changed_there(arguments: &[String]) -> ExitCode {
         there::Source::Bundled { bundle, .. } => Some(bundle.clone()),
         there::Source::Pushed { .. } => None,
     };
-    let code = changed_somewhere(arguments, &dir, &scratch, &folder, &source);
+    let vm_dir =
+        env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
+    let vm_apart = there::lends(&vm_dir)
+        && fs::read_to_string(config().join("nix-offload/vm-tests"))
+            .is_ok_and(|text| !there::patterns(&text).is_empty());
+    let code = changed_somewhere(arguments, &dir, &scratch, &folder, &source, vm_apart);
     if let Some(bundle) = bundle {
         let _ = fs::remove_file(bundle);
     }
@@ -429,16 +436,30 @@ fn changed_there(arguments: &[String]) -> ExitCode {
 }
 
 /// Where `there --changed` runs, in its order, or none when nowhere did.
+/// With `vm_apart`, VM tests go to a builder of their own, as any `there`
+/// sends them.
 fn changed_somewhere(
     arguments: &[String],
     dir: &Path,
     scratch: &Path,
     folder: &Path,
     source: &there::Source,
+    vm_apart: bool,
 ) -> Option<ExitCode> {
     let exited = |status: i32| ExitCode::from(u8::try_from(status).unwrap_or(1));
+    let wanted = changed::wanted(arguments);
     let on_builder = |store: Option<String>| {
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
+        if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
+            let apart = Apart {
+                lent: &lent,
+                source,
+                folder,
+                scratch,
+                system,
+            };
+            return apart.changed(arguments);
+        }
         let sending = changed::sending(source.clone(), arguments);
         match there::on(&lent, &sending, there::Bring::Nothing, scratch, "ssh") {
             Ok(ran) if ran.status != there::UNREACHED => Some(exited(ran.status)),
@@ -454,7 +475,6 @@ fn changed_somewhere(
     if let Some(code) = on_builder(store) {
         return Some(code);
     }
-    let wanted = changed::wanted(arguments);
     // An evaluator only names; what it names is built as any `there` build
     // is, since a machine that evaluates well may build slowly.
     let mut evaluating: Vec<String> = arguments
@@ -520,6 +540,104 @@ fn changed_somewhere(
     }
     // Asked for and waited on, as any `there` waits, while a lender runs.
     on_builder(there::waited(dir, there::WAITING))
+}
+
+/// A changed-checks run on the lent builder whose VM tests build apart. Run
+/// whole there, they shared it with big builds: nine at a load of 100 on
+/// its 32 cores on 2 November, with a builder for VM tests standing apart.
+struct Apart<'a> {
+    lent: &'a there::Builder,
+    source: &'a there::Source,
+    folder: &'a Path,
+    scratch: &'a Path,
+    system: &'a str,
+}
+
+impl Apart<'_> {
+    /// The builder names what changed, then builds all but the VM tests,
+    /// evaluating nothing again, since changed-checks keeps a commit's
+    /// derivations; meanwhile the VM tests it named go as any `there`
+    /// build goes, to their own builder. None when ssh couldn't reach it.
+    fn changed(&self, arguments: &[String]) -> Option<ExitCode> {
+        let exited = |status: i32| ExitCode::from(u8::try_from(status).unwrap_or(1));
+        let mut naming: Vec<String> = arguments
+            .iter()
+            .filter(|word| *word != "--build")
+            .cloned()
+            .collect();
+        naming.push("--name-only".to_owned());
+        let sending = changed::sending(self.source.clone(), &naming);
+        let (named, printed) = match there::printed_on(self.lent, &sending, self.scratch, "ssh") {
+            Ok((named, printed)) if named.status != there::UNREACHED => (named, printed),
+            _ => {
+                eprintln!("nix-offload: ssh couldn't reach {}", self.lent.host);
+                return None;
+            }
+        };
+        match named.status {
+            0 => {}
+            // A commit's changed-checks from before --name-only refuses it,
+            // and runs whole, VM tests and all, as it always did.
+            USAGE => return Some(exited(self.run(arguments))),
+            status => {
+                print!("{printed}");
+                return Some(exited(status));
+            }
+        }
+        let vm: Vec<String> = changed::to_build(&printed, true)
+            .into_iter()
+            .filter(|name| name.starts_with("vm-"))
+            .collect();
+        let testing = if vm.is_empty() {
+            None
+        } else {
+            match changed::building(self.folder, self.system, &vm).spawn() {
+                Ok(testing) => Some(testing),
+                Err(error) => {
+                    eprintln!("nix-offload: couldn't send the VM tests on: {error}");
+                    return Some(ExitCode::FAILURE);
+                }
+            }
+        };
+        let mut rest = arguments.to_vec();
+        rest.push("--no-vm".to_owned());
+        let built = self.run(&rest);
+        let tested = testing.map(|testing| tested(testing, vm.len()));
+        // The first that failed says how the whole did.
+        Some(exited(if built == 0 {
+            tested.unwrap_or(0)
+        } else {
+            built
+        }))
+    }
+
+    /// changed-checks run on the lent builder with `arguments`, its status.
+    fn run(&self, arguments: &[String]) -> i32 {
+        let sending = changed::sending(self.source.clone(), arguments);
+        let bring = there::Bring::Nothing;
+        match there::on(self.lent, &sending, bring, self.scratch, "ssh") {
+            Ok(ran) => ran.status,
+            Err(why) => {
+                eprintln!("nix-offload: {why}");
+                there::UNREACHED
+            }
+        }
+    }
+}
+
+/// How the `there` sending `named` VM tests on did, once it ends: never
+/// `NOT_TAKEN`, which would have changed-checks run it all here.
+fn tested(mut testing: Child, named: usize) -> i32 {
+    match testing.wait().ok().and_then(|status| status.code()) {
+        Some(there::UNSENT) => {
+            eprintln!(
+                "nix-offload: {named} VM tests were named, but no builder took their build, \
+                 so they weren't built"
+            );
+            i32::from(changed::UNBUILT)
+        }
+        code => code.unwrap_or(1),
+    }
 }
 
 /// `serve`: lends builders while the queue has builds one could take.

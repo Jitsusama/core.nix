@@ -948,6 +948,38 @@ pub fn on(
     })
 }
 
+/// Runs a command on the lent builder as `on` does, bringing nothing back,
+/// and gives what it printed rather than passing it on.
+pub fn printed_on(
+    lent: &Builder,
+    sending: &Sending,
+    scratch: &Path,
+    ssh: &str,
+) -> Result<(Ran, String), String> {
+    let (mut command, known, said) = reach(lent, scratch, ssh)?;
+    command
+        .arg(&lent.host)
+        .arg(far(&sending.command))
+        .stdout(Stdio::piped());
+    if let Some(bundle) = &sending.bundle {
+        let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
+        command.stdin(bundle);
+    }
+    let output = command
+        .spawn()
+        .and_then(std::process::Child::wait_with_output);
+    let sent = fs::read_to_string(&said).ok().and_then(|log| sent(&log));
+    let _ = fs::remove_file(&known);
+    let _ = fs::remove_file(&said);
+    let output = output.map_err(|error| format!("couldn't run {ssh}: {error}"))?;
+    let ran = Ran {
+        on: Some(lent.host.clone()),
+        status: output.status.code().unwrap_or(UNREACHED),
+        sent,
+    };
+    Ok((ran, String::from_utf8_lossy(&output.stdout).into_owned()))
+}
+
 /// ssh to the lent builder with its key and host key, as every command
 /// sent there goes, and the two files it writes in `scratch`, the host
 /// key and ssh's log, to remove once it's run.

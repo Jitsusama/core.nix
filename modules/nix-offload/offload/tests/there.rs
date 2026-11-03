@@ -8,7 +8,8 @@ use std::process::{Command, Output};
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
-/// command) apart, each command after the last in `ssh-commands`, prints
+/// command) apart, each command after the last in `ssh-commands` and each
+/// host after the last in `ssh-hosts`, prints
 /// what the `says` file beside it holds and, on stderr, what the
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
@@ -22,6 +23,7 @@ while [ "$#" -gt 2 ]; do
 done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
+printf '%s\n' "$1" >> "$here/ssh-hosts"
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
 esac
@@ -1085,6 +1087,101 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     drop(answering);
     let ran = run();
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+}
+
+#[test]
+fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_own() {
+    // On 2 November nine VM tests of runs sent whole to the lent builder
+    // shared it with big builds, at a load of 100 on its 32 cores, while a
+    // builder for VM tests stood apart.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let config = folder.path().join("gitconfig");
+    fs::write(
+        &config,
+        "[user]\nname = Tester\nemail = tester@example.com\n",
+    )
+    .unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    let git = |arguments: &[&str]| git(&tree, &config, arguments);
+    git(&["init", "-q", "-b", "main"]);
+    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+    fs::write(tree.join("flake.nix"), "{ }").unwrap();
+    git(&["add", "flake.nix"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    let head = git(&["rev-parse", "HEAD"]);
+    git(&["update-ref", "refs/remotes/origin/main", &head]);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    // A lender for VM tests runs, as this test does, with its builder lent.
+    let vm = folder.path().join("offload-vm");
+    fs::create_dir(&vm).unwrap();
+    fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/vm-tests"),
+        "checks.*.vm-*\n",
+    )
+    .unwrap();
+    fs::write(bin.join("says"), "changed  a\nadded    vm-b\nremoved  c\n").unwrap();
+
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "--changed", "--build", "--system", "x86_64-linux"])
+        .current_dir(&tree)
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_VM_DIR", &vm)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let commands = fs::read_to_string(bin.join("ssh-commands")).unwrap();
+    let hosts = fs::read_to_string(bin.join("ssh-hosts")).unwrap();
+    let sent: Vec<(&str, &str)> = hosts.lines().zip(commands.lines()).collect();
+    let asked = |host: &str, part: &str| {
+        sent.iter()
+            .any(|(to, command)| *to == host && command.contains(part))
+    };
+    assert!(
+        asked(
+            "nix-offload",
+            "changed-checks -- --system x86_64-linux --name-only"
+        ),
+        "the lent builder names what changed first: {sent:?}"
+    );
+    assert!(
+        asked(
+            "nix-offload",
+            "changed-checks -- --build --system x86_64-linux --no-vm"
+        ),
+        "and builds all but the VM tests: {sent:?}"
+    );
+    assert!(
+        asked("nix-offload-vm", "vm-b"),
+        "the VM test goes to its own builder: {sent:?}"
+    );
+    assert!(
+        !sent
+            .iter()
+            .any(|(to, command)| *to == "nix-offload-vm" && command.contains("#a")),
+        "and nothing else does: {sent:?}"
+    );
 }
 
 #[test]
