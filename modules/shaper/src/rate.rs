@@ -876,11 +876,12 @@ impl Controller {
             }
             let beside = self.beside(filling, [sent, received]);
             let held_here = [beside[0], shares[1] > s.held_here || beside[1]];
+            let others = self.others_queue(&s, [sent, received]);
             for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
                 .enumerate()
             {
-                dir.pinned(&s, now, carried, filling[i], self.live);
+                dir.pinned(&s, now, carried, filling[i] && !others[i], self.live);
                 cuts[i] |= dir.thin(&s, now, carried, held_here[i], drain, self.live);
             }
             if cuts[0] || cuts[1] {
@@ -943,6 +944,33 @@ impl Controller {
         let floored = [self.up.floored_since, self.down.floored_since].map(|f| f.is_some());
         [0, 1].map(|i| {
             filling[1 - i] && (carried[i] < carried[1 - i] * ACKS || !self.live && floored[1 - i])
+        })
+    }
+
+    /// Which directions, up and down, are busy while the other, held at its
+    /// floor and loaded, carries a smaller share of its rate, so the queue
+    /// standing is the other's: the one carrying more of what it's given
+    /// gets through, and the one carrying less is the one the connection
+    /// can't take. Only that one is cut, and the other once it's alone at
+    /// its floor. On 3 November an upload held at its
+    /// floor of 16.3 Mbit/s carried 8 to 12 over a modem that takes about
+    /// 11, and ten downloads beside it filled their rate, so the download
+    /// read as busy at its floor and its best was cut a tenth at a time
+    /// from 235 Mbit/s to 22. Live, Joel chose the call, so both give.
+    fn others_queue(&self, s: &Settings, carried: [f64; 2]) -> [bool; 2] {
+        let dirs = [&self.up, &self.down];
+        let shares = [0, 1].map(|i| carried[i] / float(dirs[i].rate.max(1)));
+        let floored = dirs.map(|dir| {
+            let least = whole(float(dir.best) * s.least_of_best).max(dir.bounds.min);
+            dir.held <= least
+        });
+        [0, 1].map(|i| {
+            let other = 1 - i;
+            !self.live
+                && shares[i] >= s.busy
+                && floored[other]
+                && shares[other] >= s.loaded
+                && shares[other] < shares[i]
         })
     }
 
@@ -1402,6 +1430,57 @@ mod tests {
         assert!(c.up.rate < 11_000, "{}", c.up.rate);
         assert!(worst < 60.0, "{worst} ms");
         assert!(c.down.best >= 128_100, "{}", c.down.best);
+    }
+
+    #[test]
+    fn a_full_download_keeps_its_best_beside_an_upload_the_modem_queues() {
+        // At home on 3 November the upload's floor held it at 16.3 Mbit/s
+        // while it carried 8 to 12 on a modem that takes about 11, and the
+        // modem's queue stood. Beside it, ten downloads filled the
+        // download's rate, so the download read as busy at its floor with
+        // the queue standing, and its best was cut a tenth at a time from
+        // 235 Mbit/s to 22 within 36 minutes, the queue still there.
+        let mut c = wi_fi(17_115);
+        c.down.best = 235_400;
+        c.down.peak = 235_400;
+        c.down.held = 235_400;
+        c.down.rate = 235_400;
+        pings(&mut c, 20.0, 6);
+        let (connection, buffer) = (11_000.0, 3_300.0);
+        let (mut at, mut queue_kbit) = (0.0_f64, 0.0_f64);
+        while at < 600.0 {
+            let offered = float(c.up.rate).min(12_000.0);
+            queue_kbit = (queue_kbit + (offered - connection) * 0.2).clamp(0.0, buffer);
+            let sent = if queue_kbit >= buffer {
+                connection
+            } else {
+                offered
+            };
+            let delay = queue_kbit / connection * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            // Ten flows arrive past the rate now and then, held back here.
+            let burst = if (at * 5.0).round() % 7.0 == 0.0 {
+                1.1
+            } else {
+                0.99
+            };
+            c.step(at, sent, float(c.down.rate) * burst);
+        }
+        assert!(
+            c.up.rate < 11_000,
+            "the upload's queue stays: {}",
+            c.up.rate
+        );
+        assert!(
+            c.down.best >= 223_000,
+            "down best {} rate {}, up best {} rate {}",
+            c.down.best,
+            c.down.rate,
+            c.up.best,
+            c.up.rate
+        );
+        assert!(c.down.rate >= 223_000, "{}", c.down.rate);
     }
 
     #[test]
