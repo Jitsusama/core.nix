@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 # Where Joel's PipeWire and the daemon's socket are.
 RUNTIME = "/run/user/1000"
 SOCKET = f"{RUNTIME}/daemons/calls.sock"
-# The meeting on, as the google program writes it, and the one after, which is stopped.
+# The meeting on, as the google program's daemon holds it, and the one after, which is stopped.
+# The stand-in daemon answers every ask with what's in its file, as the meetings it holds.
+GOOGLE = f"{RUNTIME}/daemons/google.sock"
+MEETINGS = f"{RUNTIME}/google-meetings"
 MEETING = "Review Planning"
 STANDUP = "Standup"
 # How long the daemon has to answer, and to start and finish hearing the call.
@@ -81,10 +84,20 @@ class Joel:
         )
 
     def meeting_on(self, key: str, title: str) -> None:
-        """Write the meeting on now, for an hour, as the google program would."""
+        """Hold the meeting on now, for an hour, as the google program's daemon would."""
         now = int(self.machine.succeed("date +%s%3N"))
         meeting = {"id": key, "title": title, "start": now, "end": now + 3_600_000}
-        self.run(f"echo {shlex.quote(json.dumps({'meetings': [meeting]}))} > {RUNTIME}/google.json")
+        record = {"key": f"meeting:{key}", "kind": "meeting", "heard": now, "meeting": meeting}
+        answer = json.dumps({"id": 1, "records": [record]})
+        self.run(f"echo {shlex.quote(answer)} > {MEETINGS}")
+        self.run(
+            f"mkdir -p -m 700 {RUNTIME}/daemons;"
+            " systemctl --user is-active -q stand-in-google ||"
+            " systemd-run --user --unit=stand-in-google"
+            f" socat UNIX-LISTEN:{GOOGLE},fork,unlink-early"
+            f" SYSTEM:{shlex.quote(f'cat {MEETINGS}')}"
+        )
+        self.machine.wait_until_succeeds(f"test -S {GOOGLE}", timeout=ANSWERS_WITHIN)
 
     def record(self, key: str) -> dict[str, Any]:
         """Give the daemon's record of one call."""
