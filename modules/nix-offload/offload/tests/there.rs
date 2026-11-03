@@ -509,6 +509,57 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     assert_eq!(fs::read_to_string(out.join("guide")).unwrap(), "a guide");
 }
 
+/// No builder standing changes what a flake takes from this machine, so
+/// its refusal mustn't send a caller back to wait for one, as 75 does: it
+/// sent a run of 93 checks round three times on 3 November.
+#[test]
+fn a_folder_with_inputs_only_here_says_how_to_send_it_and_not_to_wait() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", "#!/bin/sh\nexit 1\n")] {
+        executable(&bin.join(name), script);
+    }
+    let copy = folder.path().join("copy");
+    fs::create_dir(&copy).unwrap();
+    fs::write(copy.join("flake.nix"), "{ }").unwrap();
+    fs::write(
+        copy.join("flake.lock"),
+        r#"{"nodes": {"mint": {"locked": {"type": "path", "path": "/nix/store/x-mint"}}}}"#,
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(bin.join("status"), "0").unwrap();
+    let flake = format!("path:{}", copy.display());
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", flake.as_str(), "packages.x.guide"])
+        .env("NIX_OFFLOAD_MORE_DIR", folder.path().join("no-second"))
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(64), "{said}");
+    assert!(!bin.join("ssh-was-given").exists(), "not sent");
+    assert!(
+        said.contains("takes mint from this machine alone"),
+        "{said}"
+    );
+    assert!(!said.contains("once a builder stands"), "{said}");
+    assert!(
+        said.contains("evaluate it here and give its derivations, or give --here"),
+        "{said}"
+    );
+}
+
 #[test]
 fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
     let folder = tempfile::tempdir().unwrap();
