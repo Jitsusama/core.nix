@@ -1088,8 +1088,9 @@
     clippy finds nothing in the single-file programs or their tests
   '';
   sccache-shares-builds-across-worktrees = ''
-    two workspaces in folders of their own build one dependency through the wrapper an account's
-    shells and user manager are given, and the second's compile of it comes from sccache's cache
+    sccache's server runs among the jobs, started as its unit starts it, and two workspaces in
+    folders of their own build one dependency through what an account's shells and user manager
+    are given, finding that server's socket, and the second's compile of it comes from the cache
   '';
   screen-text-finds-a-screenshot-by-its-words = ''
     screen-text's daemon, on the CPU, reads a screenshot moved into its folder and finds it by its
