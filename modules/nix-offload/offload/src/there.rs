@@ -1089,6 +1089,58 @@ pub const WAITING: Waiting = Waiting {
     longest: std::time::Duration::from_secs(240),
 };
 
+/// A builder whose CPUs are this busy, as the share of the last minute
+/// some task there waited for one, is full: every build sent it is slowed.
+/// At 00:33 on 3 November the lent builder ran at load 50 to 63 on its 32
+/// CPUs, waiting 48 to 55% of the time.
+pub const FULL: f64 = 40.0;
+
+/// The share of the last minute some task waited for a CPU, as
+/// /proc/pressure/cpu's `some avg60` says, in percent.
+pub fn pressure_of(text: &str) -> Option<f64> {
+    let some = text.lines().find(|line| line.starts_with("some "))?;
+    some.split_whitespace()
+        .find_map(|field| field.strip_prefix("avg60="))?
+        .parse()
+        .ok()
+}
+
+/// The CPU pressure on the builder a store names, read there, or none
+/// when it can't be read.
+pub fn pressure(store: &str, scratch: &Path, ssh: &str) -> Option<f64> {
+    let builder = builder(store.lines().next()?.trim())?;
+    let reading = Sending {
+        command: "cat /proc/pressure/cpu".to_owned(),
+        bundle: None,
+    };
+    let (ran, printed) = printed_on(&builder, &reading, scratch, ssh).ok()?;
+    (ran.status == 0).then(|| pressure_of(&printed)).flatten()
+}
+
+/// A second builder as a build going there finds it.
+pub enum Second {
+    /// None stands, so one is asked for and waited on.
+    Unlent,
+    /// One stands, with its CPU pressure when that can be read.
+    Stands(Option<f64>),
+}
+
+/// Whether a build goes to a second builder rather than the first, given
+/// the first's CPU pressure: only while the first is full, so the second
+/// takes what overflows and is given back idle once the first has room,
+/// and never to one standing that's as busy or can't be read. A first
+/// whose pressure can't be read keeps the build, since its own run says
+/// what's wrong with it.
+pub fn to_second(first: Option<f64>, second: &Second) -> bool {
+    first.is_some_and(|first| {
+        first >= FULL
+            && match second {
+                Second::Unlent => true,
+                Second::Stands(second) => second.is_some_and(|second| second < first),
+            }
+    })
+}
+
 /// Whether a pid runs, as signal 0 says.
 fn runs(pid: i32) -> bool {
     // SAFETY: signal 0 only asks whether the process exists.
@@ -2163,6 +2215,45 @@ mod tests {
 
         let darwin = super::asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
         assert_eq!(shared(&darwin, &machines, |_| true).1, None);
+    }
+
+    #[test]
+    fn a_builders_cpu_pressure_is_its_last_minute_of_some_waiting() {
+        let read = "some avg10=53.71 avg60=48.10 avg300=55.00 total=1299145659\n\
+                    full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n";
+        assert_eq!(pressure_of(read), Some(48.10));
+        assert_eq!(pressure_of("full avg60=3.00\n"), None);
+        assert_eq!(pressure_of(""), None);
+    }
+
+    #[test]
+    fn a_second_builder_takes_only_what_overflows_a_full_first() {
+        let room = FULL - 1.0;
+        assert!(
+            to_second(Some(FULL), &Second::Unlent),
+            "full, so one is asked for"
+        );
+        assert!(
+            !to_second(Some(room), &Second::Unlent),
+            "room left on the first"
+        );
+        assert!(
+            to_second(Some(60.0), &Second::Stands(Some(5.0))),
+            "one less busy"
+        );
+        assert!(
+            !to_second(Some(room), &Second::Stands(Some(5.0))),
+            "room on the first"
+        );
+        assert!(
+            !to_second(Some(60.0), &Second::Stands(Some(70.0))),
+            "one busier"
+        );
+        assert!(!to_second(Some(90.0), &Second::Stands(None)), "one unread");
+        assert!(
+            !to_second(None, &Second::Unlent),
+            "a first that can't be read keeps it"
+        );
     }
 
     #[test]

@@ -14,6 +14,8 @@ use std::process::{Command, Output};
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
 /// is refused with 64, as a changed-checks from before it was refuses it.
+/// A read of the builder's CPU pressure prints the `pressure-<host>` file
+/// beside it, when there is one, and nothing else.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -26,6 +28,7 @@ printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
+  */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
 esac
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
@@ -1182,6 +1185,75 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
             .any(|(to, command)| *to == "nix-offload-vm" && command.contains("#a")),
         "and nothing else does: {sent:?}"
     );
+}
+
+/// CPU pressure as a builder's /proc/pressure/cpu says it, `some` waiting
+/// `avg60` percent of the last minute.
+fn pressure(avg60: &str) -> String {
+    format!(
+        "some avg10={avg60} avg60={avg60} avg300={avg60} total=1\n\
+         full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+    )
+}
+
+// A builder whose CPUs are all taken slows every build sent it: at 00:33
+// on 3 November the lent one ran at load 50 to 63 on its 32. So while a
+// second lender runs, a build goes to its builder once the first is full,
+// and stays on the first while that has room.
+#[test]
+fn a_build_goes_to_a_second_builder_while_the_first_is_full() {
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let more = folder.path().join("offload-more");
+    fs::create_dir(&more).unwrap();
+    fs::write(more.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        more.join("store"),
+        STORE.replace("nix-offload", "nix-offload-more"),
+    )
+    .unwrap();
+    fs::write(
+        folder.path().join("pressure-nix-offload-more"),
+        pressure("5.00"),
+    )
+    .unwrap();
+    let built_on = |first: &str| {
+        fs::write(folder.path().join("pressure-nix-offload"), pressure(first)).unwrap();
+        let _ = fs::remove_file(folder.path().join("ssh-hosts"));
+        let _ = fs::remove_file(folder.path().join("ssh-commands"));
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L", "github:o/r/abc", "checks.x.a"])
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    folder.path().display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", &more)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let hosts = fs::read_to_string(folder.path().join("ssh-hosts")).unwrap();
+        let commands = fs::read_to_string(folder.path().join("ssh-commands")).unwrap();
+        let built: Vec<&str> = hosts
+            .lines()
+            .zip(commands.lines())
+            .filter(|(_, command)| command.contains("nix build"))
+            .map(|(host, _)| host)
+            .collect();
+        built.join(" ")
+    };
+    assert_eq!(built_on("55.00"), "nix-offload-more", "the first is full");
+    assert_eq!(built_on("10.00"), "nix-offload", "the first has room");
 }
 
 #[test]
