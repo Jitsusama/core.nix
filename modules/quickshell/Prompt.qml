@@ -251,8 +251,6 @@ Item {
     // reached through the other rather than as tags side by side.
     readonly property string between: " \u203a "
 
-    // Each step's words' width: what it needs where it fits, and otherwise
-    // an even share of what the shorter ones leave.
     // The hint's face: the voice's, since it's the shell speaking to Joel.
     FontMetrics {
         id: voiceFace
@@ -262,6 +260,8 @@ Item {
         font.variableAxes: Theme.serif.axes
     }
 
+    // Each step's words' width: what it needs where it fits, and otherwise
+    // an even share of what the shorter ones leave.
     // The room kept for typing: the hint's, or a dozen characters.
     readonly property real typingRoom: Math.max(
         (voiced ? voiceFace : chipFace).advanceWidth(hint),
