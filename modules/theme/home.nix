@@ -9,6 +9,7 @@
 let
   cfg = config.jitsusama.theme;
   contrast = import ./contrast.nix { inherit lib; };
+  mix = import ./mix.nix { inherit lib; };
   apca = import ./apca.nix { inherit lib; };
 
   themes = {
@@ -236,9 +237,11 @@ let
   # light the background is, finds too dim for reading. Text and strong are
   # body text, which APCA asks Lc 75 of; muted gives context in labels and
   # hints, held to the 60 it asks of any text. A mark's hue is a glyph, not
-  # words, held to the 45 APCA asks of a fine mark. The raised and selection
-  # surfaces stay with WCAG alone: they're drawn translucent over another,
-  # so the colour behind their text isn't the role's own.
+  # words, held to the 45 APCA asks of a fine mark. A row's marks are read
+  # on the selection too, as a floating surface draws it: the selection at
+  # its opacity over the deepest shade. Its text stays with WCAG alone, since
+  # the raised surface and the terminal's selection are drawn translucent
+  # over what changes.
   dim =
     let
       grounds = [
@@ -249,35 +252,44 @@ let
       held = least: names: {
         inherit least names;
       };
+      marks = [
+        "action"
+        "program"
+        "machine"
+        "person"
+        "voice"
+      ];
+      selected = mix (builtins.fromJSON cfg.floating.selection) cfg.colours.selection cfg.colours.deepest;
     in
     lib.filter (pair: apca.lightness pair.fg pair.bg < pair.least) (
-      lib.concatMap
-        (
-          rule:
-          lib.concatMap (
-            ground:
-            map (name: {
-              inherit (rule) least;
-              name = "${name} on ${ground}";
-              fg = cfg.colours.${name};
-              bg = cfg.colours.${ground};
-            }) rule.names
-          ) grounds
-        )
-        [
-          (held 75 [
-            "text"
-            "strong"
-          ])
-          (held 60 [ "muted" ])
-          (held 45 [
-            "action"
-            "program"
-            "machine"
-            "person"
-            "voice"
-          ])
-        ]
+      map (name: {
+        least = 45;
+        name = "${name} on a selected row";
+        fg = cfg.colours.${name};
+        bg = selected;
+      }) marks
+      ++
+        lib.concatMap
+          (
+            rule:
+            lib.concatMap (
+              ground:
+              map (name: {
+                inherit (rule) least;
+                name = "${name} on ${ground}";
+                fg = cfg.colours.${name};
+                bg = cfg.colours.${ground};
+              }) rule.names
+            ) grounds
+          )
+          [
+            (held 75 [
+              "text"
+              "strong"
+            ])
+            (held 60 [ "muted" ])
+            (held 45 marks)
+          ]
     );
 
   # A table the theme file may leave out, and a value in it, falling back to

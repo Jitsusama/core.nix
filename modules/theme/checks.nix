@@ -47,6 +47,9 @@
       faint = refused { muted = "#53685B"; };
       dim = refused { text = "#C1C497"; };
       faintMark = refused { person = "#D2689C"; };
+      # Reads on the ground but not on a selected row, as floating surfaces
+      # draw one.
+      faintSelected = refused { person = "#D77AA8"; };
     in
     holds "a-faint-theme-is-refused" "A theme with text too faint to read wasn't refused." (
       contrast.show (contrast.ratio "#000000" "#ffffff") == "21.00"
@@ -57,6 +60,8 @@
       && apca.lc "#ffffff" "#000000" < 0
       && lib.any (lib.hasInfix "text on background: Lc 67.6, under 75") dim
       && lib.any (lib.hasInfix "person on background: Lc 39.5, under 45") faintMark
+      && lib.any (lib.hasInfix "person on a selected row: Lc 42.1, under 45") faintSelected
+      && !lib.any (lib.hasInfix "person on background") faintSelected
       && refused { } == [ ]
     );
 
