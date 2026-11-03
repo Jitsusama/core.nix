@@ -12,7 +12,7 @@
   ...
 }:
 {
-  # The kernel protects session.slice's and app.slice's memory only as far as
+  # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
   # every slice above them is protected, so a floor one of them lacks is a
   # floor nobody has, and nothing says so. Only a hard floor counts: the
   # kernel takes a soft one back under pressure, and the compositor reads keys
@@ -29,10 +29,11 @@
       floors = parents ++ [
         systemd.user.slices.session.sliceConfig.MemoryMin or null
         systemd.user.slices.app.sliceConfig.MemoryMin or null
+        systemd.user.slices.agents.sliceConfig.MemoryMin or null
       ];
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice or app.slice lacks its hard memory floor, so they have none."
+      "A slice above session.slice, app.slice or agents.slice lacks its hard memory floor, so they have none."
       (lib.all (floor: floor != null) floors && lib.all (floor: floor == lib.head parents) parents);
 
   # The compositor and the shell are how Joel drives the machine, so inside
@@ -62,6 +63,20 @@
           mib systemd.user.slices.session.sliceConfig.MemoryMin
           >= mib niri.MemoryMin + mib shell.MemoryMin + 1024
       );
+
+  # Agents' sessions sit beside Joel's programs at their weight, not among
+  # them, where each of their wakeups preempted his. The sorter watches
+  # both, so a session's busy work still goes to jobs.
+  sessions-sit-beside-the-apps =
+    let
+      inherit (graphical.config.systemd.user) slices services;
+      weight = slice: slice.sliceConfig.CPUWeight or 100;
+      watches =
+        slice: lib.hasInfix " --under ${slice} " "${services.jobs-sorter.serviceConfig.ExecStart} ";
+    in
+    holds "sessions-sit-beside-the-apps"
+      "Agents' sessions have no slice beside the apps at their weight, or the sorter doesn't watch it."
+      (weight slices.agents == weight slices.app && watches "app.slice" && watches "agents.slice");
 
   # Work in jobs swaps its own memory past half of it, rather than pushing
   # out what an app reaches for next, and is only ever slowed there: a hard

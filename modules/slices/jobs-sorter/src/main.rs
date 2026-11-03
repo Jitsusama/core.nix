@@ -51,7 +51,10 @@
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
 //!
-//! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
+//! Terminals sit in each `--under` slice: Joel's apps' and, apart from
+//! them, the agents' sessions'.
+//!
+//! Usage: jobs-sorter [--under app.slice]... [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
@@ -78,7 +81,7 @@ const MS_PER_TICK: u64 = 10;
 const CGROUPS: &str = "/sys/fs/cgroup";
 
 struct Settings {
-    under: String,
+    under: Vec<String>,
     homes: Vec<String>,
     keep: Vec<String>,
     jobs: String,
@@ -446,11 +449,11 @@ fn weigh(weights: &mut quests::Weights, slice: &str, weight: u64) {
     }
 }
 
-/// The windows weighed low: the scopes under `under` whose names start
-/// with one of `prefixes`, while every pi in one is marked in `dir`, at
-/// `weight`.
+/// The windows weighed low: the scopes in the `under` slices whose names
+/// start with one of `prefixes`, while every pi in one is marked in `dir`,
+/// at `weight`.
 struct Windows<'a> {
-    under: &'a Path,
+    under: &'a [PathBuf],
     prefixes: &'a [String],
     dir: &'a Path,
     weight: u64,
@@ -489,11 +492,12 @@ fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
         dir,
         weight,
     } = *windows;
-    let windows: Vec<(String, bool)> = homes(under, prefixes)
+    let windows: Vec<(String, bool)> = under
         .iter()
+        .flat_map(|slice| homes(slice, prefixes))
         .filter_map(|scope| {
             let unit = scope.file_name()?.to_str()?.to_owned();
-            let pis: Vec<u32> = samples(scope)
+            let pis: Vec<u32> = samples(&scope)
                 .iter()
                 .filter(|proc| proc.comm == "pi")
                 .map(|proc| proc.pid)
@@ -724,9 +728,9 @@ fn send(jobs: &Path, pids: &[u32], warned: &mut bool) {
     }
 }
 
-fn settings() -> Result<Settings, String> {
+fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> {
     let mut settings = Settings {
-        under: "app.slice".into(),
+        under: Vec::new(),
         homes: Vec::new(),
         keep: Vec::new(),
         jobs: "jobs.slice/jobs.service".into(),
@@ -742,11 +746,10 @@ fn settings() -> Result<Settings, String> {
         weigh: Vec::new(),
         revive: None,
     };
-    let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
         match flag.as_str() {
-            "--under" => settings.under = value()?,
+            "--under" => settings.under.push(value()?),
             "--home" => settings.homes.push(value()?),
             "--keep" => settings.keep.push(value()?),
             "--jobs" => settings.jobs = value()?,
@@ -769,18 +772,49 @@ fn settings() -> Result<Settings, String> {
             _ => return Err(format!("unknown argument {flag}")),
         }
     }
+    if settings.under.is_empty() {
+        settings.under.push("app.slice".into());
+    }
     if settings.homes.is_empty() {
         settings.homes.push("kitty-".into());
     }
     Ok(settings)
 }
 
+#[cfg(test)]
+mod settings_tests {
+    use super::settings;
+
+    fn given(words: &str) -> Vec<String> {
+        settings(words.split_whitespace().map(str::to_owned))
+            .unwrap()
+            .under
+    }
+
+    #[test]
+    fn the_apps_slice_is_watched_when_none_is_named() {
+        assert_eq!(given(""), ["app.slice"]);
+    }
+
+    #[test]
+    fn every_slice_named_is_watched() {
+        assert_eq!(
+            given("--under app.slice --under agents.slice"),
+            ["app.slice", "agents.slice"]
+        );
+    }
+}
+
 fn run() -> Result<(), String> {
-    let settings = settings()?;
+    let settings = settings(std::env::args().skip(1))?;
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
     let manager = manager_of(&own).ok_or("not running under a user manager")?;
     let root = Path::new(CGROUPS).join(manager.trim_start_matches('/'));
-    let under = root.join(&settings.under);
+    let under: Vec<PathBuf> = settings
+        .under
+        .iter()
+        .map(|slice| root.join(slice))
+        .collect();
     let jobs = root.join(&settings.jobs);
     let slice = format!(
         "/{}",
@@ -790,8 +824,8 @@ fn run() -> Result<(), String> {
         return Err(format!("{} doesn't exist", jobs.display()));
     }
     eprintln!(
-        "Sorting busy work from {}/{}* into {}.",
-        under.display(),
+        "Sorting busy work from {} ({}*) into {}.",
+        settings.under.join(", "),
         settings.homes.join("*, "),
         jobs.display()
     );
@@ -829,7 +863,7 @@ fn run() -> Result<(), String> {
         }
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
         let mut alive = HashSet::new();
-        for scope in homes(&under, &settings.homes) {
+        for scope in under.iter().flat_map(|slice| homes(slice, &settings.homes)) {
             let procs = samples(&scope);
             alive.extend(procs.iter().map(|proc| proc.pid));
             let name = scope.file_name().unwrap_or_default().to_string_lossy();
@@ -838,7 +872,10 @@ fn run() -> Result<(), String> {
                 eprintln!("{}", found.says);
             }
         }
-        for scope in strays(&under, &settings.homes) {
+        for scope in under
+            .iter()
+            .flat_map(|slice| strays(slice, &settings.homes))
+        {
             let procs = samples(&scope);
             if procs.is_empty() || !unlimited(|file| fs::read_to_string(scope.join(file)).ok()) {
                 continue;
@@ -892,7 +929,7 @@ mod tests {
 
     fn settings() -> Settings {
         Settings {
-            under: "app.slice".into(),
+            under: vec!["app.slice".into()],
             homes: vec!["kitty-".into()],
             keep: vec!["pi".into()],
             jobs: "jobs.slice/jobs.service".into(),
