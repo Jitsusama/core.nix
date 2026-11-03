@@ -906,6 +906,25 @@ fn a_hosted_main_is_built_from_its_folder_unsigned() {
     assert_eq!(world.read("tokens"), "asked\n");
 }
 
+/// The folder's own tree is archived, not the commit with the folder as a
+/// pathspec, which reads the commit's whole tree into an index for its
+/// attributes first: a monorepo's took minutes and gigabytes. So what the
+/// rest of main says about the folder's files never leaves one out.
+#[test]
+fn a_hosted_mains_folder_is_unpacked_from_its_own_tree() {
+    let world = World::hosted_from(World::new(), counted_token);
+    fs::write(
+        world.origin.join(".gitattributes"),
+        "machine/file export-ignore\n",
+    )
+    .unwrap();
+    git(&world.origin, &["add", ".gitattributes"]);
+    let head = world.hosted_commit("one", None);
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.read("seen"), "one");
+}
+
 #[test]
 fn a_hosted_main_the_checkout_lacks_is_fetched_there_first() {
     let world = World::hosted_from(World::new(), counted_token);
