@@ -43,7 +43,8 @@ while read -r line; do echo '{"signedOut":true}'; done
 /// A source that can't answer until `$log.in` is there, saying so as
 /// `UNABLE` says, later for each address or else signed out, then knows
 /// everyone by their address, as vault-people does once pi signs in or
-/// Vault is reached again. Each line is logged once it's answered, so a
+/// Vault is reached again. Grace it knows all along, as vault-people
+/// says someone it kept. Each line is logged once it's answered, so a
 /// test that sees it logged knows how it was answered.
 const RECOVERING: &str = r#"
 log=$1
@@ -52,7 +53,7 @@ while read -r line; do
     '?'*) address=${line#?} ;;
     *) address=$line ;;
   esac
-  if [ -e "$log.in" ]; then
+  if [ -e "$log.in" ] || [ "$address" = grace@example.com ]; then
     printf '{"email":"%s","name":"%s"}\n' "$address" "${address%@*}"
   elif [ "$UNABLE" = later ]; then
     printf '{"email":"%s","later":true}\n' "$address"
@@ -333,28 +334,46 @@ fn a_watch_hears_a_source_sign_out_as_it_says_so() {
 
 /// A source that put Ada off as she was watched, signed out or saying
 /// later, is asked about her again, by nobody asking, once it says who
-/// someone else is.
+/// someone else is; and only about her, never about Grace, whom it
+/// answered, so someone it says while still unable to answer the rest
+/// asks it again once, not over and over.
 fn a_source_back_is_asked_again_about_everyone_watched(test: &str, unable: &str) {
     let script = format!("UNABLE={unable}\n{RECOVERING}");
     let running = Running::with(test, &[("vault", &script)]);
     let mut watching = running.client();
-    watching.ask(&json!({"id": 1, "ask": "watch", "keys": ["person:ada@example.com"]}));
-    until("Ada was never asked ahead", || {
-        running.asked("vault") == ["?ada@example.com"]
+    watching.ask(&json!({"id": 1, "ask": "watch", "keys": [
+        "person:ada@example.com", "person:grace@example.com"]}));
+    until("Ada was never asked again after Grace", || {
+        running.asked("vault") == ["?ada@example.com", "?grace@example.com", "?ada@example.com"]
     });
     std::fs::write(running.folder.join("vault.log.in"), "").unwrap();
-    // Joel steps into Grace, and the source says who she is: it's back.
+    // Joel steps into Eve, and the source says who she is: it's back.
     // One signed out isn't waited on, so the step-in may answer first.
-    running.client().ask(
-        &json!({"id": 2, "ask": "get", "keys": ["person:grace@example.com"], "patience": 5000}),
-    );
-    let changed = watching.changed();
-    assert_eq!(
-        changed["changed"][0]["sources"]["vault"]["name"], "ada",
-        "{changed}"
-    );
-    until("Ada was never asked ahead again", || {
-        running.asked("vault") == ["?ada@example.com", "grace@example.com", "?ada@example.com"]
+    running
+        .client()
+        .ask(&json!({"id": 2, "ask": "get", "keys": ["person:eve@example.com"], "patience": 5000}));
+    loop {
+        let changed = watching.changed();
+        let ada = changed["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|record| record["key"] == "person:ada@example.com")
+            .cloned();
+        if let Some(ada) = ada {
+            assert_eq!(ada["sources"]["vault"]["name"], "ada", "{ada}");
+            break;
+        }
+    }
+    until("Ada was never asked ahead again, or Grace was", || {
+        running.asked("vault")
+            == [
+                "?ada@example.com",
+                "?grace@example.com",
+                "?ada@example.com",
+                "eve@example.com",
+                "?ada@example.com",
+            ]
     });
 }
 

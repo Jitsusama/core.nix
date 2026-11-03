@@ -19,9 +19,10 @@ onLinux {
   # held and gathers a burst of changes into one, a source running is
   # answering before it's asked anything, a source signed out is never
   # waited on, and once back, as one that said later is once it answers,
-  # is asked again about everyone watched, one that stops is started again
-  # and asked again about everyone watched, a get nothing answers in time is not ready, and an
-  # ask or a kind it doesn't know is refused. Stand-in sources in the
+  # is asked again about everyone watched it hasn't said, one that stops
+  # is started again and asked again about everyone watched, a get nothing
+  # answers in time is not ready, and an ask or a kind it doesn't know is
+  # refused. Stand-in sources in the
   # shell answer for the real ones.
   people-holds-everyone-ready = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the people daemon, its tests included.

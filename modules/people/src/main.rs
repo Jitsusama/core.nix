@@ -315,10 +315,27 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
     }
     tell_standings(&daemon, &stood);
     if back {
-        daemon.ahead.remove(source);
         daemon.put_off.remove(source);
-        let watched = watched(&daemon);
-        ask_ahead_of(&mut daemon, &[source.to_owned()], &watched);
+        // Only those it hasn't said, since one it said may be all it can
+        // say yet, as someone kept is, and asking it again about everyone
+        // would have it say them again, and be back again, without end.
+        let unsaid: Vec<String> = watched(&daemon)
+            .into_iter()
+            .filter(|key| {
+                !daemon
+                    .book
+                    .record(key)
+                    .is_some_and(|record| record.sources.contains_key(source))
+            })
+            .collect();
+        if let Some(ahead) = daemon.ahead.get_mut(source) {
+            for key in &unsaid {
+                if let Some(address) = address(key) {
+                    ahead.remove(address);
+                }
+            }
+        }
+        ask_ahead_of(&mut daemon, &[source.to_owned()], &unsaid);
     }
     shared.1.notify_all();
 }
