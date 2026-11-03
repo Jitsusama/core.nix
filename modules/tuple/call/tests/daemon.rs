@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 /// Tuple's command, in the shell the tests run in: `state follow` says
 /// each line of `stream` in its folder as it's written there, until the
-/// file `ends` appears; any other command is written to `asked`, a line
+/// file `ends` appears or the folder goes; any other command is written to `asked`, a line
 /// each, `new` printing the room's link, and `call accept` failing as
 /// Tuple does with nothing ringing.
 const TUPLE: &str = r#"
@@ -24,7 +24,9 @@ here=$(dirname "$0")
 if [ "$3 $4" = "state follow" ]; then
   echo started >> "$here/followed"
   n=0
-  while [ ! -e "$here/ends" ]; do
+  # Its folder gone is its test over, should the daemon have been killed
+  # with it still following.
+  while [ -d "$here" ] && [ ! -e "$here/ends" ]; do
     lines=$(wc -l < "$here/stream" 2>/dev/null || echo 0)
     if [ "$lines" -gt "$n" ]; then
       tail -n +$((n + 1)) "$here/stream" | head -n $((lines - n))
