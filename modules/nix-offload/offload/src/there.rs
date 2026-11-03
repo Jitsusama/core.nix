@@ -72,6 +72,9 @@ pub struct Asked {
     /// Whether it may build here when no builder takes it, as `--here`
     /// says.
     here: bool,
+    /// Whether the build goes on to its end there once this caller is
+    /// gone, as `--outlive` asks.
+    pub outlive: bool,
     /// Whether the attributes are derivations' paths, with no flake.
     derivations: bool,
 }
@@ -85,6 +88,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
     let (mut apply, mut out, mut print, mut here) = (None, None, false, false);
+    let mut outlive = false;
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -97,6 +101,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             "--out" => out = Some(PathBuf::from(arguments.next()?)),
             "--print-out-paths" => print = true,
             "--here" => here = true,
+            "--outlive" => outlive = true,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
         }
@@ -111,6 +116,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             out,
             print,
             here,
+            outlive,
             derivations: true,
         });
     }
@@ -125,6 +131,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         out,
         print,
         here,
+        outlive,
         derivations: false,
     })
 }
@@ -152,6 +159,7 @@ impl Asked {
             out: self.out.clone(),
             print: self.print,
             here: self.here,
+            outlive: self.outlive,
             derivations: self.derivations,
         }
     }
@@ -871,14 +879,35 @@ const GRACE: u32 = 300;
 /// it names this machine's pid. The watcher ends the group only once no
 /// claimer has lived for the grace period. The run sent again waits on
 /// what the first is building through Nix's lock on each derivation.
+/// Once the command itself has ended, the watcher ends too, as there's
+/// nothing left to wait for.
 pub fn far(command: &str) -> String {
+    far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"))
+}
+
+/// How long, at most, a run asked to outlive its callers goes on alone: as
+/// long as a builder lives.
+pub const OUTLIVE: u32 = 12 * 3600;
+
+/// A command sent far that runs to its end even once every caller is gone,
+/// as a prebuild asks: one whose caller hit its own time limit at 05:14 on
+/// 3 November lost the kernel it was compiling. The lender holds a builder
+/// while it builds, whoever asked.
+pub fn outliving(command: &str) -> String {
+    far_within(command, &format!("${{NIX_OFFLOAD_OUTLIVE:-{OUTLIVE}}}"))
+}
+
+/// `far`'s wrapper, ending what's left once no caller has lived for `grace`
+/// seconds, as the far shell reads them.
+fn far_within(command: &str, grace: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::hash::DefaultHasher::new();
     command.hash(&mut hasher);
     let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{:016x}", hasher.finish());
     format!(
         "claims=\"{claims}\"; mkdir -p \"$claims\" && : > \"$claims/$PPID\"; \
-         (gone=0; while [ \"$gone\" -lt \"${{NIX_OFFLOAD_GRACE:-{GRACE}}}\" ]; do sleep 1; \
+         (gone=0; while [ \"$gone\" -lt \"{grace}\" ]; do sleep 1; \
+         kill -0 $$ 2>/dev/null || break; \
          held=; for caller in $(ls \"$claims\" 2>/dev/null); do \
          if kill -0 \"$caller\" 2>/dev/null; then held=1; else rm -f \"$claims/$caller\"; fi; \
          done; if [ -n \"$held\" ]; then gone=0; else gone=$((gone + 1)); fi; done; \
@@ -1826,6 +1855,7 @@ mod tests {
             .args(["-c", "sh -c \"$1\" & read -r line", "caller", run])
             .env("TMPDIR", scratch)
             .env("NIX_OFFLOAD_GRACE", "1")
+            .env("NIX_OFFLOAD_OUTLIVE", "60")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .process_group(0)
@@ -1868,6 +1898,34 @@ mod tests {
         drop(again.stdin.take());
         again.wait().unwrap();
         assert!(both, "the first run ended with its caller");
+    }
+
+    #[test]
+    fn a_run_asked_to_outlive_its_caller_finishes_its_work_alone() {
+        // A prebuild's caller can hit its own time limit, as one did at
+        // 05:14 on 3 November, and the kernel it asked for was dropped
+        // mid-compile. Its work lasts past the grace a run cut off has,
+        // and ends well before the outliving one's.
+        let folder = tempfile::tempdir().unwrap();
+        let done = folder.path().join("done");
+        let run = outliving(&format!("echo started; sleep 4; touch {}", done.display()));
+        let mut caller = calling(&run, folder.path());
+        let mut said = BufReader::new(caller.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        assert_eq!(line, "started\n");
+        drop(caller.stdin.take());
+        caller.wait().unwrap();
+        let (ended, closed) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut rest = String::new();
+            let _ = std::io::Read::read_to_string(&mut said, &mut rest);
+            let _ = ended.send(());
+        });
+        // Once its work ends, nothing of it stays to wait out the 60 s.
+        let gone = closed.recv_timeout(Duration::from_secs(20)).is_ok();
+        assert!(done.exists(), "its work ended with its caller");
+        assert!(gone, "it stayed on after its work ended");
     }
 
     #[test]
