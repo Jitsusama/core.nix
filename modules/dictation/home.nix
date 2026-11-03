@@ -78,7 +78,7 @@ in
         Environment = [
           "DICTATION_CACHE=%C/dictation"
           "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
-          "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
+          "OPENVINO_TOKENIZERS_PATH_GENAI=${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
           "OV_NPU_LOG_LEVEL=LOG_ERROR"
           "PATH=${
             lib.makeBinPath [

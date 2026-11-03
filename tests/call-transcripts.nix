@@ -98,7 +98,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       builtins.toJSON {
         inherit model;
         # The library the service names, given as it gives it.
-        tokenizers = "${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so";
+        tokenizers = "${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so";
       }
     );
 

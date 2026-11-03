@@ -93,7 +93,7 @@ in
       Environment = [
         "DICTATION_CACHE=%C/call-transcripts/parakeet"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
-        "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
+        "OPENVINO_TOKENIZERS_PATH_GENAI=${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"
         # The profile's last, for the program a transcript opens in:
         # xdg-open finds it by its desktop entry, which names it bare. A
