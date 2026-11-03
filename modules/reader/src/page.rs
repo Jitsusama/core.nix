@@ -130,9 +130,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   // Its ink stands evenly between the words either side: from the
   // baseline above, and to the capitals below.
   box(width: 2.3 * s.width, height: cap, {
-    place(top + center, star)
-    place(bottom + left, dy: 1.15 * s.height, star)
-    place(bottom + right, dy: 1.15 * s.height, star)
+    place(top + center, dy: -0.49 * s.height, star)
+    place(bottom + left, dy: 0.66 * s.height, star)
+    place(bottom + right, dy: 0.66 * s.height, star)
   })
 }
 #let rule() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, fleuron))
