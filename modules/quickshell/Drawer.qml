@@ -101,35 +101,37 @@ Floating {
 
     // Where its lines' baselines are, down from its top, for the launcher
     // to report: the eyebrow's and the middle of its line, the title's,
-    // each fact's first line's and the words' first line's.
-    readonly property real contentTop: Theme.border - view.contentY
-    readonly property var baselines: ({
-        eyebrow: eyebrowText.visible ? contentTop + eyebrowText.y + eyebrowText.baselineOffset
-            : null,
-        eyebrowMiddle: eyebrowText.visible ? contentTop + eyebrowText.y
-            + eyebrowText.height / 2 : null,
-        words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
-            + bodyText.baselineOffset : null,
-        title: titleText.visible ? contentTop + flow.y + titleText.y + titleText.baselineOffset
-            : null,
-        facts: factsShown.visible ? Array.from({ length: factRows.count }, (_, at) => {
-            const row = factRows.itemAt(at);
-            return row ? contentTop + flow.y + factsShown.y + row.y + row.base : null;
-        }) : [],
-        // The moment's: the time's and its seconds', what needs Joel's, and
-        // each group's facts'.
-        time: drawer.moment ? contentTop + timeText.y + timeText.baselineOffset : null,
-        timeMiddle: drawer.moment ? contentTop + timeText.y + timeText.baselineOffset
-            - timeFace.tightBoundingRect("H").height / 2 : null,
-        seconds: drawer.moment ? contentTop + secondsText.y + secondsText.baselineOffset
-            : null,
-        say: drawer.moment && sayText.visible ? contentTop + sayText.y + sayText.baselineOffset
-            : null,
-        groups: drawer.moment ? Array.from({ length: groupsShown.count }, (_, at) => {
-            const group = groupsShown.itemAt(at);
-            return group ? group.bases.map(base => contentTop + group.y + base) : [];
-        }) : []
-    })
+    // each fact's first line's and the words' first line's. Worked out
+    // only when asked, since nothing drawn depends on them.
+    function baselines() {
+        const contentTop = Theme.border - view.contentY;
+        const shown = item => item.visible ? contentTop + item.y + item.baselineOffset : null;
+        const flowed = item => item.visible ? contentTop + flow.y + item.y + item.baselineOffset
+            : null;
+        return {
+            eyebrow: shown(eyebrowText),
+            eyebrowMiddle: eyebrowText.visible ? contentTop + eyebrowText.y
+                + eyebrowText.height / 2 : null,
+            words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
+                + bodyText.baselineOffset : null,
+            title: flowed(titleText),
+            facts: factsShown.visible ? Array.from({ length: factRows.count }, (_, at) => {
+                const row = factRows.itemAt(at);
+                return row ? contentTop + flow.y + factsShown.y + row.y + row.base : null;
+            }) : [],
+            // The moment's: the time's and its seconds', what needs Joel's,
+            // and each group's facts'.
+            time: drawer.moment ? shown(timeText) : null,
+            timeMiddle: drawer.moment ? shown(timeText)
+                - timeFace.tightBoundingRect("H").height / 2 : null,
+            seconds: drawer.moment ? shown(secondsText) : null,
+            say: drawer.moment ? shown(sayText) : null,
+            groups: drawer.moment ? Array.from({ length: groupsShown.count }, (_, at) => {
+                const group = groupsShown.itemAt(at);
+                return group ? group.bases.map(base => contentTop + group.y + base) : [];
+            }) : []
+        };
+    }
 
     // A row's line of the card, by its place in the card's rows, its middle.
     function lineOf(at) {
@@ -215,9 +217,10 @@ Floating {
         column.width - labelsGap - factFace.advanceWidth("00000000"),
         Math.ceil(Math.max(0, ...allFacts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
     // Whether every name fits its column on one line, for the launcher to
-    // report.
-    readonly property bool labelsWhole: allFacts.every(fact =>
-        factFace.advanceWidth(fact.label ?? "") <= labelsWide)
+    // report when asked.
+    function labelsWhole() {
+        return allFacts.every(fact => factFace.advanceWidth(fact.label ?? "") <= labelsWide);
+    }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
     // Between a name and its value, a run's width apart, so the two never
@@ -285,7 +288,7 @@ Floating {
                 font.pointSize: Theme.mono.body
                 font.weight: Font.Medium
                 font.capitalization: Font.AllUppercase
-                font.letterSpacing: Theme.mono.body * 4 / 3 * 0.16
+                font.letterSpacing: Theme.mono.body * 4 / 3 * Theme.eyebrow.tracking
                 font.features: { "case": 1 }
             }
 
@@ -313,10 +316,9 @@ Floating {
                     color: Theme.strong
                     font.family: Theme.serif.family
                     font.pointSize: Theme.serif.display
-                    font.letterSpacing: -0.01 * Theme.serif.display * 4 / 3
+                    font.letterSpacing: Theme.serif.tracking.display * Theme.serif.display * 4 / 3
                     font.features: { "lnum": 1, "tnum": 1 }
-                    font.variableAxes: Object.assign({}, Theme.serif.axes,
-                        { wght: 400, WONK: 0, opsz: 144 })
+                    font.variableAxes: Theme.serif.upright.display
                 }
 
                 // Its seconds after it, quiet and counting, in the italic,
@@ -335,8 +337,7 @@ Floating {
                     font.italic: true
                     font.pointSize: Theme.serif.title
                     font.features: { "lnum": 1, "tnum": 1 }
-                    font.variableAxes: Object.assign({}, Theme.serif.axes,
-                        { wght: 400, WONK: 1, opsz: 72 })
+                    font.variableAxes: Theme.serif.slanted.title
                 }
 
                 // What needs Joel, or that nothing does, in the voice, on
@@ -469,8 +470,7 @@ Floating {
                         color: Theme.strong
                         font.family: Theme.serif.family
                         font.pointSize: Theme.serif.title
-                        font.variableAxes: Object.assign({}, Theme.serif.axes,
-                            { wght: 500, opsz: 72 })
+                        font.variableAxes: Theme.serif.upright.title
                     }
                 }
 

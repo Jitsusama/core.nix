@@ -3504,6 +3504,7 @@ Scope {
     // presses a key, rather than guessing how long the launcher takes.
     function showing() {
         const row = root.selected;
+        const lines = drawerCard.baselines();
         return JSON.stringify({
             open: root.open,
             keys: root.open && prompt.Window.active,
@@ -3564,17 +3565,16 @@ Scope {
                 // Where its lines' baselines are and the card's they're
                 // set on, down from the top the two share, to a hundredth.
                 lines: {
-                    eyebrow: root.hundredths(drawerCard.baselines.eyebrow),
-                    eyebrowMiddle: root.hundredths(drawerCard.baselines.eyebrowMiddle),
-                    title: root.hundredths(drawerCard.baselines.title),
-                    words: root.hundredths(drawerCard.baselines.words),
-                    facts: drawerCard.baselines.facts.map(line => root.hundredths(line)),
-                    time: root.hundredths(drawerCard.baselines.time),
-                    timeMiddle: root.hundredths(drawerCard.baselines.timeMiddle),
-                    seconds: root.hundredths(drawerCard.baselines.seconds),
-                    say: root.hundredths(drawerCard.baselines.say),
-                    groups: drawerCard.baselines.groups
-                        .map(group => group.map(line => root.hundredths(line)))
+                    eyebrow: root.hundredths(lines.eyebrow),
+                    eyebrowMiddle: root.hundredths(lines.eyebrowMiddle),
+                    title: root.hundredths(lines.title),
+                    words: root.hundredths(lines.words),
+                    facts: lines.facts.map(line => root.hundredths(line)),
+                    time: root.hundredths(lines.time),
+                    timeMiddle: root.hundredths(lines.timeMiddle),
+                    seconds: root.hundredths(lines.seconds),
+                    say: root.hundredths(lines.say),
+                    groups: lines.groups.map(group => group.map(line => root.hundredths(line)))
                 },
                 // What the moment's plate says, line by line.
                 moment: drawerCard.moment ? {
@@ -3601,7 +3601,7 @@ Scope {
                 // The facts it draws, by name, whether each name is on one
                 // line whole, and where its last line's box may end.
                 drawnFacts: drawerCard.facts.map(fact => fact.label ?? ""),
-                labelsWhole: drawerCard.labelsWhole,
+                labelsWhole: drawerCard.labelsWhole(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
