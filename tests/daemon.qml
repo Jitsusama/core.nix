@@ -6,14 +6,13 @@
 // at once; once the daemon starts the client connects by itself and says
 // hello, which names the source; a watch narrowed to those listed holds
 // them alone; a search's answer is given to it and never held; one no
-// source knows any more is let go; the keys
-// it watches ahead come to be
+// source knows any more is let go; the keys it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
 // daemon stopping is said, keeping what was held and giving a get none,
 // unless the client is one that lets what it held go in a gap; and once
 // it starts again, the client connects again by itself, asks ahead
-// again, and the one that let go holds again. Each step waits on what the client says, at most ten
-// seconds. It exits 0 once every case holds, and otherwise 1, saying
+// again, and the one that let go holds again. Each step waits on what
+// the client says, at most ten seconds. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import Quickshell
 import Quickshell.Io

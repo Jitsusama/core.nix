@@ -6169,7 +6169,8 @@ def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop:
             f"journalctl --user -u quickshell --since @{since} --no-pager -o cat"
             f" | grep -c {missing}; true"
         ).strip()
-        assert int(tries) <= 4, f"the shell tried a missing socket {tries} times in 12 s"  # noqa: PLR2004
+        allowed = 4
+        assert int(tries) <= allowed, f"the shell tried a missing socket {tries} times in 12 s"
         # Once it's made, the shell says hello, with no clock to wait on.
         desktop.as_account("systemctl --user start slack-stand-in.service")
         machine.wait_until_succeeds(f"test -s {hellos}", timeout=30)
