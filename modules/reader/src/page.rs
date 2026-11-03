@@ -275,7 +275,10 @@ fn about(file: &std::path::Path) -> String {
     let Some(changed) = changed else { return name };
     let zone = jiff::tz::TimeZone::system();
     let now = jiff::Timestamp::now().to_zoned(zone.clone());
-    format!("{name} \u{b7} changed {}", when(&changed.to_zoned(zone), &now))
+    format!(
+        "{name} \u{b7} changed {}",
+        when(&changed.to_zoned(zone), &now)
+    )
 }
 
 /// When a file changed, as briefly as says it: a clock's time today, a day
@@ -535,7 +538,18 @@ mod tests {
         let mut all: Vec<f64> = runs.iter().map(|run| run.baseline_pt).collect();
         all.sort_by(f64::total_cmp);
         all.dedup_by(|a, b| (*a - *b).abs() < 0.01);
-        let pitch = all[1] - all[0];
+        // The opening paragraph's first two lines, past the eyebrow and any
+        // title over it.
+        let opening = runs
+            .iter()
+            .filter(|run| text(run).contains("opening"))
+            .map(|run| run.baseline_pt)
+            .fold(f64::INFINITY, f64::min);
+        let next = all
+            .iter()
+            .find(|b| **b > opening + 0.01)
+            .expect("a second line");
+        let pitch = next - opening;
         assert!(
             (pitch - super::PITCH_PT).abs() < 0.01,
             "the words step {pitch} pt, not the page's line of {} pt",
@@ -592,6 +606,24 @@ mod tests {
         assert!(
             steps.iter().all(|s| *s == 100 || *s == 150),
             "a line steps one pitch, a paragraph one and a half: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_pages_headings_land_on_the_half_line() {
+        let markdown = format!(
+            "# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
+        );
+        let (pitch, lines) = baselines("headings", &markdown, "PAGE", "Omega");
+        let steps = steps(pitch, &lines);
+        assert!(
+            steps.iter().all(|s| s % 50 == 0),
+            "every baseline lands on the half line: {steps:?}"
+        );
+        assert_eq!(
+            steps[..2],
+            [200, 150],
+            "the title two lines under the eyebrow, the lede one and a half under the title"
         );
     }
 
