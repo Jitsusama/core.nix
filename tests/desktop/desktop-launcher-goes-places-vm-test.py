@@ -3886,8 +3886,13 @@ def test_slack_is_asked_about_a_person_through_the_people_daemon_alone(
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(f"crowd person {number}")
+        # Picked by name, since what leads depends on what answered first:
+        # Ask has led "crowd person 4323", with the person below it.
+        name = f"Crowd Person {number}"
+        desktop.launcher_until(lambda shown: name in shown["rows"])
+        desktop.down_to(name)
         key = f"person:crowd{number}@crowd.test"
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == key)
+        assert desktop.showing()["selected"]["is"] == key, desktop.showing()["selected"]
         desktop.step_in("ret")
 
     def close() -> None:
