@@ -66,7 +66,7 @@ index 3532078..58e070a 100644
 +        if matches!(request, zwp_virtual_keyboard_v1::Request::Key { .. })
 +            && state.niri.monitors_active
 +        {
-+            state.niri.notify_activity();
++            let _ = &state.niri;
 +        }
 +
 +        <VirtualKeyboardManagerState as Dispatch<
