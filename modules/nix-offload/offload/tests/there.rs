@@ -503,10 +503,14 @@ fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
         !folder.path().join("nix-was-given").exists(),
         "never built here"
     );
+    let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
-        String::from_utf8_lossy(&ran.stderr).contains("waits for a builder to stand again"),
-        "{ran:?}"
+        said.contains("waits for a builder to stand again"),
+        "{said}"
     );
+    // A builder that stayed up may finish what it was building, and the
+    // build sent again then only waits on it, showing none of its log.
+    assert!(said.contains("nix log"), "{said}");
 }
 
 /// ssh as a nearby machine answers: it adds its last two words to a
