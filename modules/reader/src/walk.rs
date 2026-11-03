@@ -1100,6 +1100,7 @@ mod tests {
                 None,
                 &Pieces::new(),
                 &world,
+                crate::page::Width::WHOLE,
                 &mut Costs::default(),
             )
         };
