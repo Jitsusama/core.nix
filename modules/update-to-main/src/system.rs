@@ -404,7 +404,10 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
     match config.kind {
         Kind::Nixos => {
             let booted = &config.booted;
-            let kernel_waits = booted.exists() && !same_boot(booted, system);
+            let waits = booted
+                .exists()
+                .then(|| for_next_boot(booted, system))
+                .flatten();
             // It says what it stopped, started and restarted on its error
             // stream.
             let said = run::said(
@@ -414,7 +417,7 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
             )?;
             Ok(Switched {
                 applied: Applied::Now,
-                restart: kernel_waits.then(|| "its kernel changed".to_owned()),
+                restart: waits,
                 restarted: restarted_units(&said),
             })
         }
@@ -489,14 +492,25 @@ fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
     run::output(nix_env, "pointing the profile at the system", [system]).map(|_| ())
 }
 
-/// Whether two NixOS systems boot the same kernel, initrd and parameters,
-/// so a switch from one to the other leaves nothing for the next boot.
-fn same_boot(a: &Path, b: &Path) -> bool {
-    ["kernel", "initrd"]
-        .iter()
-        .all(|f| fs::canonicalize(a.join(f)).ok() == fs::canonicalize(b.join(f)).ok())
-        && fs::read_to_string(a.join("kernel-params")).ok()
-            == fs::read_to_string(b.join("kernel-params")).ok()
+/// What only the next boot brings in switching from NixOS system `a` to
+/// `b`, as the restart it needs, naming the kernel, initrd or kernel
+/// parameters that differ; none when they boot the same.
+fn for_next_boot(a: &Path, b: &Path) -> Option<String> {
+    let same = |f: &str| fs::canonicalize(a.join(f)).ok() == fs::canonicalize(b.join(f)).ok();
+    let params = |s: &Path| fs::read_to_string(s.join("kernel-params")).ok();
+    let changed: Vec<&str> = [
+        (!same("kernel")).then_some("kernel"),
+        (!same("initrd")).then_some("initrd"),
+        (params(a) != params(b)).then_some("kernel parameters"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    match changed.as_slice() {
+        [] => None,
+        [one] => Some(format!("its {one} changed")),
+        [first @ .., last] => Some(format!("its {} and {last} changed", first.join(", "))),
+    }
 }
 
 /// The units switch-to-configuration says it restarted, or stopped and
@@ -684,6 +698,41 @@ mod tests {
         assert_eq!(
             changed_daemons(old.path(), new.path()),
             ["org.jitsusama.new", "org.nixos.linux-builder-vz"]
+        );
+    }
+
+    #[test]
+    fn the_next_boot_says_which_of_its_pieces_changed() {
+        // A system's kernel and initrd are links into the store, so the
+        // same one is the same file however it's reached.
+        let store = tempfile::tempdir().unwrap();
+        for piece in ["one", "two"] {
+            fs::write(store.path().join(piece), piece).unwrap();
+        }
+        let booted = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        let boots = |system: &Path, kernel: &str, initrd: &str, params: &str| {
+            for (link, piece) in [("kernel", kernel), ("initrd", initrd)] {
+                let _ = fs::remove_file(system.join(link));
+                std::os::unix::fs::symlink(store.path().join(piece), system.join(link)).unwrap();
+            }
+            fs::write(system.join("kernel-params"), params).unwrap();
+        };
+        let (a, b) = (booted.path(), new.path());
+        boots(a, "one", "one", "quiet");
+        boots(b, "one", "one", "quiet");
+        assert_eq!(for_next_boot(a, b), None);
+        boots(b, "one", "two", "quiet");
+        assert_eq!(for_next_boot(a, b).as_deref(), Some("its initrd changed"));
+        boots(b, "two", "two", "quiet");
+        assert_eq!(
+            for_next_boot(a, b).as_deref(),
+            Some("its kernel and initrd changed")
+        );
+        boots(b, "two", "two", "loud");
+        assert_eq!(
+            for_next_boot(a, b).as_deref(),
+            Some("its kernel, initrd and kernel parameters changed")
         );
     }
 
