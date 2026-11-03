@@ -1,6 +1,6 @@
 //! What the reader sets apart from the page: the search prompt at the
-//! window's foot, as Neovim's command line, and Space ?'s key list, as his
-//! which-key. Both are set by Typst in the page's code face on a thread of
+//! window's foot, as Neovim's command line, Space ?'s key list, as his
+//! which-key, and g x's labels over links, as his flash. Each is set by Typst in the page's code face on a thread of
 //! their own, whose world is made once, so a key never waits on fonts or
 //! setting.
 use std::sync::mpsc;
@@ -20,6 +20,9 @@ pub struct Ask {
     pub serial: u32,
     /// The key list rather than the prompt: only `px_per_pt` then counts.
     pub keys: bool,
+    /// Labels for links rather than the prompt, each set apart: only
+    /// `px_per_pt` then counts besides.
+    pub labels: Vec<String>,
     pub forward: bool,
     pub typed: String,
     /// Whether it's still being typed, so the cursor shows.
@@ -40,6 +43,24 @@ pub struct Set {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// Each label asked for, set on a page of its own, in the order asked.
+    pub labels: Vec<Label>,
+}
+
+/// One link's label, as pixels.
+pub struct Label {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+}
+
+/// Which of the three an ask is, so only the newest of each is set.
+fn slot(ask: &Ask) -> usize {
+    if ask.labels.is_empty() {
+        usize::from(ask.keys)
+    } else {
+        2
+    }
 }
 
 pub struct Prompt {
@@ -58,6 +79,7 @@ impl Prompt {
                 world.set_main(&source(&Ask {
                     serial: 0,
                     keys: false,
+                    labels: Vec::new(),
                     forward: true,
                     typed: String::new(),
                     cursor: true,
@@ -68,15 +90,21 @@ impl Prompt {
                 let _ = typst::compile::<PagedDocument>(&world);
                 while let Ok(first) = waiting.recv() {
                     // Only the newest ask of each is worth setting.
-                    let mut newest: [Option<Ask>; 2] = [None, None];
-                    let slot = usize::from(first.keys);
-                    newest[slot] = Some(first);
+                    let mut newest: [Option<Ask>; 3] = [None, None, None];
+                    let at = slot(&first);
+                    newest[at] = Some(first);
                     while let Ok(newer) = waiting.try_recv() {
-                        let slot = usize::from(newer.keys);
-                        newest[slot] = Some(newer);
+                        let at = slot(&newer);
+                        newest[at] = Some(newer);
                     }
                     for ask in newest.into_iter().flatten() {
-                        let text = if ask.keys { key_list() } else { source(&ask) };
+                        let text = if !ask.labels.is_empty() {
+                            labels(&ask.labels)
+                        } else if ask.keys {
+                            key_list()
+                        } else {
+                            source(&ask)
+                        };
                         world.set_main(&text);
                         let document = match typst::compile::<PagedDocument>(&world).output {
                             Ok(document) => document,
@@ -91,20 +119,39 @@ impl Prompt {
                                 continue;
                             }
                         };
-                        let Some(first) = document.pages().first() else {
-                            continue;
-                        };
                         let options = typst_render::RenderOptions {
                             pixel_per_pt: ask.px_per_pt.into(),
                             ..Default::default()
                         };
-                        let pixmap = typst_render::render(first, &options);
-                        let set = Set {
-                            serial: ask.serial,
-                            keys: ask.keys,
-                            width: pixmap.width(),
-                            height: pixmap.height(),
-                            pixels: pixmap.take(),
+                        let mut pages = document.pages().iter().map(|page| {
+                            let pixmap = typst_render::render(page, &options);
+                            Label {
+                                width: pixmap.width(),
+                                height: pixmap.height(),
+                                pixels: pixmap.take(),
+                            }
+                        });
+                        let set = if ask.labels.is_empty() {
+                            let Some(first) = pages.next() else {
+                                continue;
+                            };
+                            Set {
+                                serial: ask.serial,
+                                keys: ask.keys,
+                                width: first.width,
+                                height: first.height,
+                                pixels: first.pixels,
+                                labels: Vec::new(),
+                            }
+                        } else {
+                            Set {
+                                serial: ask.serial,
+                                keys: false,
+                                width: 0,
+                                height: 0,
+                                pixels: Vec::new(),
+                                labels: pages.collect(),
+                            }
                         };
                         if done.send(set).is_err() {
                             return;
@@ -198,6 +245,24 @@ fn key_list() -> String {
     )
 }
 
+/// The labels' Typst, as his flash draws a label: the letters in strong
+/// weight in the colour on the accent, on the accent, each on a page of its
+/// own just round its letters, with Space's xs at its sides.
+fn labels(each: &[String]) -> String {
+    let pages: Vec<String> = each
+        .iter()
+        .map(|label| format!("#text({})", quoted(label)))
+        .collect();
+    format!(
+        r#"{}#set page(width: auto, height: auto, margin: (x: 3pt, y: 0pt), fill: ink.accent)
+#set text(font: face.code, size: 11.5pt, weight: 700, fill: ink.on_accent, top-edge: "ascender", bottom-edge: "descender")
+{}
+"#,
+        crate::theme::get().typst(),
+        pages.join("\n#pagebreak()\n")
+    )
+}
+
 /// A Typst string holding `text` as it is.
 fn quoted(text: &str) -> String {
     let mut out = String::from("\"");
@@ -223,10 +288,29 @@ mod tests {
     }
 
     #[test]
+    fn labels_set_one_page_each_in_the_themes_ink() {
+        let mut world = page::new_world();
+        world.set_main(&labels(&["a".into(), "sd".into()]));
+        let document = typst::compile::<PagedDocument>(&world)
+            .output
+            .unwrap_or_else(|errors| {
+                panic!(
+                    "{:?}",
+                    errors
+                        .iter()
+                        .map(|e| e.message.to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert_eq!(document.pages().len(), 2);
+    }
+
+    #[test]
     fn the_prompt_says_when_nothing_matches_only_once_something_is_typed() {
         let ask = |typed: &str, count| Ask {
             serial: 1,
             keys: false,
+            labels: Vec::new(),
             forward: true,
             typed: typed.into(),
             cursor: true,

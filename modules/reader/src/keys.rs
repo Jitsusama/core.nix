@@ -53,6 +53,10 @@ pub enum Act {
     JumpBack,
     JumpForward,
     Close,
+    /// Labels every link in view, as flash labels a jump in his Neovim; the
+    /// label typed follows it. Neovim's gx opens the link under the cursor,
+    /// and a page has no cursor, so the label stands for it.
+    Links,
     /// The page larger, smaller, or at its own size again, as a browser's
     /// Ctrl+=, Ctrl+- and Ctrl+0.
     ZoomIn,
@@ -96,6 +100,7 @@ pub const TABLE: &[(&[Key], Act)] = &[
     (&[Char('`'), Char('`')], Act::LastJump),
     (&[Ctrl('o')], Act::JumpBack),
     (&[Ctrl('i')], Act::JumpForward),
+    (&[Char('g'), Char('x')], Act::Links),
     (&[Char('q')], Act::Close),
     (&[Char('Z'), Char('Z')], Act::Close),
     (&[Char(' '), Char('w')], Act::Close),
@@ -127,6 +132,7 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::LastJump => ("Jumping", "Back to before the last jump"),
         Act::JumpBack => ("Jumping", "Back through the jumps"),
         Act::JumpForward => ("Jumping", "Forward through the jumps"),
+        Act::Links => ("Jumping", "Follow a link on screen, by its label"),
         Act::SearchForward => ("Searching", "Search down the page"),
         Act::SearchBackward => ("Searching", "Search up the page"),
         Act::Next => ("Searching", "On to the next match"),
@@ -432,8 +438,9 @@ mod tests {
     #[test]
     fn a_wrong_second_key_drops_the_sequence_as_vi_does() {
         let mut machine = Machine::default();
-        assert_eq!(typed(&mut machine, "gx"), []);
+        assert_eq!(typed(&mut machine, "gq"), []);
         assert!(!machine.busy());
+        assert_eq!(typed(&mut machine, "gx"), [(Act::Links, None)]);
         assert_eq!(typed(&mut machine, "j"), [(Act::Down, None)]);
     }
 

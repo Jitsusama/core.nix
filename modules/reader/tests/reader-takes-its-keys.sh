@@ -94,6 +94,18 @@ logged '^key ShowKeys None' 1
 press -k Escape
 logged '^key Rest None' 1
 
+# The link at the page's end, back to its heading, by its label.
+ends=$(grep -c -a '^key Last None' said || true)
+press G
+logged '^key Last None' $((ends + 1))
+press gx
+logged '^links: 1 in view' 1
+press a
+logged '^link: #every-key-neovim-has' 1
+press j
+logged '^key Down None' 1
+awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt, not the top"
+
 press q
 wait "$reader" || true
 touch passed

@@ -16,7 +16,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #set page(width: 720pt, height: auto, margin: (left: 210pt, right: 80pt, y: 36pt), fill: ink.background)
 #set text(font: face.text, size: 13.1pt, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), weight: 380)
 #set par(justify: false, linebreaks: "optimized", leading: 0.62em, spacing: 1.2em)
-#show heading: set text(font: face.wide, weight: 700, fill: ink.strong)
+#show heading: set text(font: face.wide, weight: 700, fill: ink.strong, hyphenate: false)
 #show heading.where(level: 1): set text(size: 40pt)
 #show heading.where(level: 2): set text(size: 16.4pt)
 #show raw: set text(font: face.code, size: 11.5pt)

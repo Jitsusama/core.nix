@@ -98,6 +98,7 @@ let
     (jumping "` `" "Back to before the last jump")
     (jumping "Ctrl+O" "Back through the jumps")
     (jumping "Ctrl+I" "Forward through the jumps")
+    (jumping "g x" "Follow a link on screen, by its label")
     (jumping "m" "Mark this place with a letter")
     (jumping "'" "Go to a letter's mark")
     (searching "/" "Search down the page")
