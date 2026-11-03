@@ -773,7 +773,7 @@ def test_the_reader_closed_straight_after_a_jump_keeps_its_place_and_dies_in_not
 
 
 def reader_opened(desktop: Desktop, page: str) -> str:
-    """Opens a page in the reader as a click would, giving the reader's process id.
+    """Open a page in the reader as a click would, and give the reader's process id.
 
     Its command line is the inner wrapper's path and the file, since each wrapper script
     starts the next by its path, so a pattern of the command's own name never matches it:
