@@ -196,6 +196,7 @@
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         reader = ./modules/reader/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
+        sccache = ./modules/sccache/home.nix;
         screen-text = ./modules/screen-text/home.nix;
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;

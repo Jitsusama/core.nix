@@ -1087,6 +1087,11 @@
   rust-programs-pass-clippy = ''
     clippy finds nothing in the single-file programs or their tests
   '';
+  sccache-shares-builds-across-worktrees = ''
+    sccache's server runs among the jobs, started as its unit starts it, and two workspaces in
+    folders of their own build one dependency through what an account's shells and user manager
+    are given, finding that server's socket, and the second's compile of it comes from the cache
+  '';
   screen-text-finds-a-screenshot-by-its-words = ''
     screen-text's daemon, on the CPU, reads a screenshot moved into its folder and finds it by its
     words, with the line that matched, giving its lines by key; lets its record go once it's
