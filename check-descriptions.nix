@@ -1160,7 +1160,8 @@
     socket lists and watches what's unread, what Joel read last and how Slack stands as records,
     each said to a watch only as it changes and as gone once read, only the account held while
     Slack refuses the sign-in; and says each message a search finds by where it is, who said it
-    and its first words, the messages around one oldest first, and Slack too busy apart from signed out or out of reach
+    and its first words, the messages around one oldest first, and Slack too busy apart from
+    signed out or out of reach
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
