@@ -719,6 +719,73 @@ def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they
             booted.outputs_say(screen, there=True)
 
 
+def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window(
+    booted: Screens,
+) -> None:
+    """A screen coming back takes back each workspace it had, in order, one given a window too.
+
+    An undock puts the monitor's workspaces on the laptop's screen, and niri gives one back
+    only if nothing opened in it meanwhile: on 2026-11-03 a session handed over while Joel was
+    undocked made his first workspace the laptop's, so redocking would have left it there.
+    """
+    machine = booted.machine
+    opened: list[str] = []
+
+    def open_on(title: str) -> None:
+        """Open a window with this title where the focus is, and wait until niri lists it."""
+        opened.append(title)
+        machine.succeed(booted.in_niri(f"niri msg action spawn -- kitty --title {title}"))
+        machine.wait_until_succeeds(
+            booted.in_niri(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
+            timeout=dt.timedelta(seconds=120),
+        )
+
+    def where() -> dict[str, tuple[str, int]]:
+        """Give each window opened here's screen and workspace, by its title."""
+        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
+        spaces = {one["id"]: one for one in listed}
+        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+        return {
+            window["title"]: (
+                spaces[window["workspace_id"]]["output"],
+                spaces[window["workspace_id"]]["idx"],
+            )
+            for window in windows
+            if window["title"] in opened
+        }
+
+    try:
+        machine.succeed(booted.in_niri("niri msg action focus-monitor Virtual-2"))
+        machine.succeed(booted.in_niri("niri msg action focus-workspace 1"))
+        open_on("Tide")
+        machine.succeed(booted.in_niri("niri msg action focus-workspace 2"))
+        open_on("Reef")
+        assert where() == {"Tide": ("Virtual-2", 1), "Reef": ("Virtual-2", 2)}, where()
+        booted.plug("off", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=False)
+        reef = next(
+            window["id"]
+            for window in json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+            if window["title"] == "Reef"
+        )
+        machine.succeed(booted.in_niri(f"niri msg action focus-window --id {reef}"))
+        open_on("Shell")
+        assert where()["Shell"] == where()["Reef"], where()
+        booted.plug("detect", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=True)
+        home = {"Tide": ("Virtual-2", 1), "Reef": ("Virtual-2", 2), "Shell": ("Virtual-2", 2)}
+        deadline = time.monotonic() + 60
+        while (now := where()) != home:
+            assert time.monotonic() < deadline, f"not back on their own screen in order: {now}"
+            time.sleep(1)
+    finally:
+        booted.plug("detect", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=True)
+        for window in json.loads(machine.succeed(booted.in_niri("niri msg --json windows"))):
+            if window["title"] in opened:
+                machine.succeed(booted.in_niri(f"niri msg action close-window --id {window['id']}"))
+
+
 def test_a_niri_from_before_the_hold_takes_the_settings_a_switch_brings(booted: Screens) -> None:
     """A niri started before the hold came in takes the account's settings, as at a switch."""
     older = "/etc/niri-before-the-hold/bin/niri"

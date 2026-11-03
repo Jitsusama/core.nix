@@ -101,7 +101,10 @@ function placed(places, screens, inUse) {
 // order once all are moved: niri puts a moved workspace after the screen's
 // active one, and makes it the active one when it held the focus, so where
 // each lands can't be foretold. One gone already isn't moved, and one on the
-// screen already keeps its place. `home` names the screens connected again,
+// screen already (`there`) is only set to its index, since niri gives a
+// screen coming back its workspaces after those it holds: one the other
+// screen had made its own goes after the rest when that screen goes too, as
+// a laptop shut on its dock does. `home` names the screens connected again,
 // which are done with.
 function homeward(away, screens, workspaces) {
     const moves = [];
@@ -116,9 +119,8 @@ function homeward(away, screens, workspaces) {
                 .sort((a, b) => a.workspace - b.workspace);
             ranked.forEach((one, at) => {
                 const now = workspaces.find(each => each.id === one.id);
-                if (now.output !== output) {
-                    moves.push({ output, id: one.id, index: at + 1 });
-                }
+                moves.push(now.output === output ? { output, id: one.id, index: at + 1, there: true }
+                    : { output, id: one.id, index: at + 1 });
             });
         }
     }

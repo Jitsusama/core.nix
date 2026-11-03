@@ -102,7 +102,7 @@ QtObject {
         // The monitor comes after the reopen began: the workspaces given
         // the panel in its place go to it, each to its rank by kept number,
         // lowest first, since where niri puts each can't be foretold; one
-        // gone stays gone, and one there already keeps its place.
+        // gone stays gone, and one there already is only set to its rank.
         const away = { [monitor]: [
             { id: 11, workspace: 1 }, { id: 13, workspace: 3 }, { id: 12, workspace: 2 },
             { id: 14, workspace: 4 }, { id: 15, workspace: 5 }
@@ -115,7 +115,8 @@ QtObject {
             Places.homeward(away, { "eDP-1": panel, "DP-4": monitor }, workspaces), {
                 moves: [{ output: "DP-4", id: 11, index: 1 },
                     { output: "DP-4", id: 12, index: 2 },
-                    { output: "DP-4", id: 13, index: 3 }],
+                    { output: "DP-4", id: 13, index: 3 },
+                    { output: "DP-4", id: 15, index: 4, there: true }],
                 home: [monitor]
             });
         expect("a screen still gone keeps its workspaces waiting",
