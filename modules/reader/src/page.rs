@@ -535,7 +535,7 @@ pub fn trim() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Setter, when};
+    use super::{Setter, lives, when};
 
     fn at(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> jiff::Zoned {
         jiff::civil::date(year, month, day)
