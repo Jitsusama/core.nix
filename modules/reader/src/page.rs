@@ -55,16 +55,63 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // own adds 300, which draws this face black.
 #set strong(delta: 100)
 #show strong: set text(fill: ink.strong)
-#show heading: set text(variations: display-axes, weight: 700, fill: ink.strong, hyphenate: false)
-// A heading's lines keep their own leading, by their size, not the words'.
-#show heading: set par(leading: 0.62em)
-#show heading.where(level: 1): set text(size: 40pt)
-#show heading.where(level: 2): set text(size: 16.4pt)
 // Code in his mono at 0.93 of the words, as the spec has it: its x-height
 // (1035 of 2000) stands a little over theirs (938 at optical size 14), in
 // the text's colour and with no box. Typst's
 // raw takes 0.8 em of its own, so the size is said whole.
 #show raw: set text(font: face.code, size: 0.93 * body-size)
+// Headings, set by lines: more room above a heading than below it, so it
+// belongs to what follows. A gap is baseline to baseline, rounded to the
+// half line so every baseline stays on the grid. A block's top edge is its
+// capitals (`caps` of an em in the words' face, the same at both sets of
+// axes, and `code-caps` in the mono), so a gap takes the cap height of what
+// follows off. A heavier or italic cut of a face that has cuts may stand
+// its capitals a little higher or lower, so headings and the lede say
+// their top edge as the regular's capitals, keeping every baseline where
+// the gaps put it.
+#let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
+#let title-size = 42pt
+#let section-size = 17.1pt
+// An eyebrow: the mono's capitals, small, tracked as every eyebrow on the
+// desktop is.
+#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: 0.16em, fill: ink.muted, upper(body))
+#show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
+// A title's lines two and a half lines apart, a section's one.
+#show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em, top-edge: caps * title-size)
+#show heading.where(level: 1): set par(leading: 2.5 * pitch - caps * title-size)
+#show heading.where(level: 1): set block(above: lines(3, caps * title-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 2): set text(size: section-size, weight: 520, top-edge: caps * section-size)
+#show heading.where(level: 2): set par(leading: pitch - caps * section-size)
+#show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 3): set text(variations: text-axes, style: "italic", size: body-size, weight: 460, top-edge: cap)
+#show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
+#show heading.where(level: 4): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 5): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 6): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
+// A title of more than one line has its lines balanced: set at the
+// narrowest width that keeps the lines it needs at the full measure, found
+// in a few halvings, so no word is left alone on its last line.
+#show heading.where(level: 1): it => layout(size => {
+  let tall(width) = measure(block(width: width, {
+    set par(leading: 2.5 * pitch - caps * title-size)
+    text(font: face.text, variations: display-axes, size: title-size, weight: 540, tracking: -0.02em, hyphenate: false, top-edge: caps * title-size, it.body)
+  })).height
+  let full = tall(size.width)
+  if full < 2.5 * pitch { return it }
+  let (low, high) = (size.width / 2, size.width)
+  for _ in range(8) {
+    let middle = (low + high) / 2
+    if tall(middle) > full { low = middle } else { high = middle }
+  }
+  set block(width: high)
+  it
+})
+// What the file is and when it changed, over the title and one line above
+// it, or over the words when there's no title.
+#show <title>: set block(above: 0pt)
+#let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
+// The paragraph after the title, in the text face's italic.
+#let lede(body) = par(text(style: "italic", weight: 360, top-edge: cap, body))
 // A link's words in the strong text with a hairline under them, as his
 // Neovim sets a link, since a hue is a glyph's and never text's.
 #show link: it => underline(stroke: 0.75pt + ink.rule, offset: 2.5pt, text(fill: ink.strong, it))
@@ -180,8 +227,12 @@ pub fn template(world: &PageWorld) -> &'static str {
         let theme = crate::theme::get();
         let size = theme.sizes.text;
         let cap = world.capitals_pt(&theme.faces.text, size);
+        // Each face's capitals in ems, for the gaps over a heading and an
+        // eyebrow, so the page holds its line in whatever faces it finds.
+        let caps = cap / size;
+        let code_caps = world.capitals_pt(&theme.faces.code, 1.0);
         format!(
-            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n{PAGE}",
+            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}",
             ink = theme.typst(),
         )
     })
@@ -220,6 +271,59 @@ const FIRST_CHARS: usize = 6000;
 /// page set from the file's first blocks lays out as the whole file's does
 /// down to here.
 pub const BOTTOM_PT: f64 = 27.4;
+
+/// The eyebrow's words over the title: where the file lives, and when it
+/// last changed. The title says the file's own name.
+fn about(file: &std::path::Path) -> String {
+    let name = lives(file);
+    let changed = std::fs::metadata(file)
+        .and_then(|it| it.modified())
+        .ok()
+        .and_then(|at| jiff::Timestamp::try_from(at).ok());
+    let Some(changed) = changed else { return name };
+    let zone = jiff::tz::TimeZone::system();
+    let now = jiff::Timestamp::now().to_zoned(zone.clone());
+    format!(
+        "{name} \u{b7} changed {}",
+        when(&changed.to_zoned(zone), &now)
+    )
+}
+
+/// Where a file lives: in a repository, its name and the folders down to
+/// the file, each after a middot; elsewhere, its folder's name.
+fn lives(file: &std::path::Path) -> String {
+    let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let Some(folder) = file.parent() else {
+        return String::new();
+    };
+    let named = |path: &std::path::Path| {
+        path.file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+    };
+    let Some(root) = folder.ancestors().find(|it| it.join(".git").exists()) else {
+        return named(folder);
+    };
+    let below = folder
+        .strip_prefix(root)
+        .unwrap_or(std::path::Path::new(""));
+    std::iter::once(named(root))
+        .chain(below.iter().map(|part| part.to_string_lossy().into_owned()))
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
+/// When a file changed, as briefly as says it: a clock's time today, a day
+/// this year, a day and its year before that.
+fn when(changed: &jiff::Zoned, now: &jiff::Zoned) -> String {
+    let form = if changed.date() == now.date() {
+        "%H:%M"
+    } else if changed.year() == now.year() {
+        "%-d %b"
+    } else {
+        "%-d %b %Y"
+    };
+    changed.strftime(form).to_string()
+}
 
 /// The file set as far as its first screen, and what sets the rest.
 pub struct First {
@@ -287,8 +391,9 @@ pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
             dir
         }
     });
+    let about = about(std::path::Path::new(file));
     let program = timed(&mut parts, "walk", || {
-        walk::program(&markdown, base, &pieces, &world, &mut costs)
+        walk::program(&markdown, &about, base, &pieces, &world, &mut costs)
     });
     let (head, blocks) = walk::blocks(&program, &world);
     let mut first = head;
@@ -370,7 +475,14 @@ impl Setter {
             }
         });
         let mut costs = Costs::default();
-        let program = walk::program(&markdown, base, &self.pieces, &self.world, &mut costs);
+        let program = walk::program(
+            &markdown,
+            &about(path),
+            base,
+            &self.pieces,
+            &self.world,
+            &mut costs,
+        );
         let page = set_page(&mut self.world, &program)?;
         Ok((page, start.elapsed().as_secs_f64() * 1000.0))
     }
@@ -423,7 +535,39 @@ pub fn trim() {
 
 #[cfg(test)]
 mod tests {
-    use super::Setter;
+    use super::{Setter, lives, when};
+
+    fn at(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> jiff::Zoned {
+        jiff::civil::date(year, month, day)
+            .at(hour, minute, 0, 0)
+            .to_zoned(jiff::tz::TimeZone::fixed(jiff::tz::offset(-5)))
+            .expect("a time in a fixed zone")
+    }
+
+    #[test]
+    fn a_file_lives_in_its_repositorys_folders_or_else_its_own() {
+        let dir = std::env::temp_dir().join(format!("reader-lives-{}", std::process::id()));
+        let repo = dir.join("core.nix");
+        std::fs::create_dir_all(repo.join(".git")).expect("a repository");
+        std::fs::create_dir_all(repo.join("docs/notes")).expect("its folders");
+        std::fs::create_dir_all(dir.join("loose")).expect("a folder");
+        assert_eq!(lives(&repo.join("README.md")), "core.nix");
+        assert_eq!(lives(&repo.join("docs/design.md")), "core.nix \u{b7} docs");
+        assert_eq!(
+            lives(&repo.join("docs/notes/a.md")),
+            "core.nix \u{b7} docs \u{b7} notes"
+        );
+        assert_eq!(lives(&dir.join("loose/page.md")), "loose");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+    }
+
+    #[test]
+    fn a_change_is_said_as_briefly_as_says_when() {
+        let now = at(2026, 11, 3, 9, 40);
+        assert_eq!(when(&at(2026, 11, 3, 9, 14), &now), "09:14");
+        assert_eq!(when(&at(2026, 11, 2, 23, 5), &now), "2 Nov");
+        assert_eq!(when(&at(2025, 10, 30, 8, 0), &now), "30 Oct 2025");
+    }
 
     /// Every baseline from the first run holding `from` to the last holding
     /// `to`, top to bottom, and the page's pitch from its first paragraph,
@@ -442,7 +586,18 @@ mod tests {
         let mut all: Vec<f64> = runs.iter().map(|run| run.baseline_pt).collect();
         all.sort_by(f64::total_cmp);
         all.dedup_by(|a, b| (*a - *b).abs() < 0.01);
-        let pitch = all[1] - all[0];
+        // The opening paragraph's first two lines, past the eyebrow and any
+        // title over it.
+        let opening = runs
+            .iter()
+            .filter(|run| text(run).contains("opening"))
+            .map(|run| run.baseline_pt)
+            .fold(f64::INFINITY, f64::min);
+        let next = all
+            .iter()
+            .find(|b| **b > opening + 0.01)
+            .expect("a second line");
+        let pitch = next - opening;
         assert!(
             (pitch - super::PITCH_PT).abs() < 0.01,
             "the words step {pitch} pt, not the page's line of {} pt",
@@ -499,6 +654,25 @@ mod tests {
         assert!(
             steps.iter().all(|s| *s == 100 || *s == 150),
             "a line steps one pitch, a paragraph one and a half: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_pages_headings_land_on_the_half_line() {
+        let markdown = format!(
+            "# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
+        );
+        // The eyebrow says the folder the test's file is in.
+        let (pitch, lines) = baselines("headings", &markdown, "PITCH", "Omega");
+        let steps = steps(pitch, &lines);
+        assert!(
+            steps.iter().all(|s| s % 50 == 0),
+            "every baseline lands on the half line: {steps:?}"
+        );
+        assert_eq!(
+            steps[..2],
+            [200, 150],
+            "the title two lines under the eyebrow, the lede one and a half under the title"
         );
     }
 
