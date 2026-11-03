@@ -36,14 +36,17 @@ const KEPT: [&str; 12] = [
 /// build run, whatever its manifest allows. The lockfile is followed
 /// where it agrees with these and not refused where it doesn't, as pi's
 /// own install does: a package whose lockfile was written with peers
-/// installed still installs.
-const INSTALL: [&str; 8] = [
+/// installed still installs. The pnpm a package names is never fetched,
+/// under pnpm 10's name for that and pnpm 11's (`pm-on-fail`): a fetched
+/// pnpm is a prebuilt binary NixOS won't run without nix-ld.
+const INSTALL: [&str; 9] = [
     "install",
     "--prod",
     "--config.auto-install-peers=false",
     "--config.strict-peer-dependencies=false",
     "--config.strict-dep-builds=false",
     "--config.manage-package-manager-versions=false",
+    "--config.pm-on-fail=ignore",
     "--config.package-manager-strict=false",
     "--config.dangerously-allow-all-builds=true",
 ];

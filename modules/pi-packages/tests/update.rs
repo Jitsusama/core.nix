@@ -445,6 +445,31 @@ fn an_unbuilt_native_module_is_not_swapped_in() {
 }
 
 #[test]
+fn a_package_naming_another_pnpm_installs_with_this_one() {
+    // pnpm downloads the pnpm a manifest names and runs that instead, and
+    // a prebuilt pnpm is one NixOS won't run without nix-ld, so a
+    // machine without it never installed a package that named pnpm
+    // 9.15.0. With the registry out of reach, a download fails the update.
+    let mut fixture = Fixture::new();
+    for name in ["npm_config_registry", "pnpm_config_registry"] {
+        fixture
+            .config
+            .env
+            .push((name.to_owned(), "http://127.0.0.1:9/".to_owned()));
+    }
+    fs::write(
+        fixture.upstream.join("package.json"),
+        r#"{"name":"fixture","version":"1.0.0","packageManager":"pnpm@9.15.0","dependencies":{"dep":"file:./dep"}}"#,
+    )
+    .expect("the manifest");
+    fixture.commit("names pnpm 9");
+
+    let outcome = fixture.update();
+
+    assert!(matches!(outcome.done, Done::Moved { .. }), "{outcome:?}");
+}
+
+#[test]
 fn a_branch_already_current_is_left_alone() {
     let fixture = Fixture::new();
     fixture.update();
