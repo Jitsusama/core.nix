@@ -2,18 +2,20 @@
 # machine, into a folder of its own in ~/Documents/Calls, named by when it
 # started and what it was, so the file picker and search find it. A call
 # is what modules/calls counts as one, the rule pause-for-calls follows.
-# Nothing of a call's sound is kept: it's held in memory until Whisper has
-# heard it, and only the words are written.
+# Nothing of a call's sound is kept: it's held in memory until it's been
+# heard, and only the words are written.
 #
-# The program is dictation's second, call-transcripts, sharing its Whisper
-# (modules/dictation/src/bin/call-transcripts/main.rs says how), but not
-# the words dictation is given: told them, Whisper writes them back for a
-# take with no speech, and a call came out as those words. Whisper runs
-# on the NPU at its background priority, behind dictation and anything
-# live, and the service in background.slice, since nobody waits on a
-# transcript; it's loaded with a call's first words and let go after.
-# Its compiled models are kept in a cache of its own, since a load removes
-# whatever else is in the folder it's given.
+# The program is dictation's second, call-transcripts, sharing its code
+# but not its Whisper: it hears through NVIDIA's Parakeet
+# (modules/dictation/parakeet.nix), which misheard a fifth fewer words of
+# meetings. Whisper's one gain, the words dictation is given, a call never
+# had: told them, Whisper wrote them back for a take with no speech, and a
+# call came out as those words. Parakeet's encoder runs on the NPU at its
+# background priority, behind dictation and anything live, and the service
+# in background.slice, since nobody waits on a transcript; it's loaded
+# with a call's first words and let go after. Its compiled models are kept
+# in a cache of its own, since a load removes whatever else is in the
+# folder it's given.
 #
 # Once a call is written down whole, a notice says so, and its Open the
 # Transcript opens it in the session's reader. Nothing sums it up: the
@@ -33,9 +35,13 @@
 }:
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
-  model = pkgs.callPackage ../dictation/model.nix { };
+  model = pkgs.callPackage ../dictation/parakeet.nix { };
 in
 {
+  # What Whisper compiled for calls before they moved to Parakeet, 0.9 GB
+  # that nothing reads any more. Kept until no machine still has it.
+  systemd.user.tmpfiles.rules = [ "R %C/call-transcripts/whisper - - - -" ];
+
   systemd.user.services.call-transcripts = {
     Unit = {
       Description = "Writes down what's said on each call";
@@ -54,7 +60,7 @@ in
       Restart = "on-failure";
       RestartSec = 5;
       Environment = [
-        "DICTATION_CACHE=%C/call-transcripts/whisper"
+        "DICTATION_CACHE=%C/call-transcripts/parakeet"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${pkgs.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"

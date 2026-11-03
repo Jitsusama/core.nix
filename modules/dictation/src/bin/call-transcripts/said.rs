@@ -1,4 +1,4 @@
-//! What a call's words amount to. A take that's only what Whisper writes
+//! What a call's words amount to. A take that's only what a speech model writes
 //! for a click or a breath is no turn; a call of greetings and little else
 //! is too little to sum up, so no model is asked to make something of it;
 //! and a summary naming what the call never named isn't kept, since a
@@ -17,16 +17,16 @@ pub const TOO_LITTLE: &str = "Too little was said to sum up.";
 const LEAST_WORDS: usize = 6;
 
 /// Words that carry nothing a summary could use: greetings, thanks,
-/// short answers, and what Whisper writes for a click or a breath
-/// ("You", "Thank you.").
+/// short answers, and what a speech model writes for a click or a breath
+/// (Whisper's "You", "Thank you.").
 const FILLER: [&str; 22] = [
     "bye", "cool", "go", "great", "hello", "hey", "hi", "hmm", "huh", "mm", "no", "oh", "ok",
     "okay", "so", "thank", "thanks", "uh", "um", "wow", "yeah", "you",
 ];
 
-/// What a take's words say, without what Whisper writes of the sound
-/// itself in brackets ("[static]", "(wind blowing)"); or nothing when
-/// that leaves only filler, which is what Whisper writes for sound that
+/// What a take's words say, without what a speech model writes of the
+/// sound itself in brackets ("[static]", "(wind blowing)"); or nothing
+/// when that leaves only filler, which is what one writes for sound that
 /// holds no speech.
 pub fn spoken(text: &str) -> Option<String> {
     let mut said = String::new();

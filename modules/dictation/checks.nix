@@ -120,10 +120,11 @@
   # answers in another voice while his side is quiet, and Joel answers
   # back. Each side's pauses cut it into takes, so three paragraphs, the
   # middle one the others', prove the cutting, the times and the order.
+  # Parakeet hears them on the CPU, as a machine with no NPU runs it.
   call-transcripts-writes-down-both-sides =
     let
       dictation = pkgs.callPackage ./package.nix { };
-      model = pkgs.callPackage ./model.nix { };
+      model = pkgs.callPackage ./parakeet.nix { };
     in
     pkgs.runCommand "call-transcripts-writes-down-both-sides"
       {
@@ -169,16 +170,12 @@
 
   # A call writes down only what was said. Joel's side is a quiet room, a
   # second of loud noise with no speech in it, then his question; the far
-  # end's is silence with a click. Dictation's words are set, as they are
-  # on a machine that has them, since Whisper told them writes them back
-  # for a take with no speech, as a real call's did. One turn, Joel's
-  # question, with none of those words and no "[static]" for the noise,
-  # proves the noise and the silence gave none.
+  # end's is silence with a click. One turn, Joel's question, with no
+  # "[static]" for the noise, proves the noise and the silence gave none.
   call-transcripts-writes-only-what-was-said =
     let
       dictation = pkgs.callPackage ./package.nix { };
-      model = pkgs.callPackage ./model.nix { };
-      words = pkgs.writeText "dictation-words" "Quorvex\nTallimander\n";
+      model = pkgs.callPackage ./parakeet.nix { };
     in
     pkgs.runCommand "call-transcripts-writes-only-what-was-said"
       {
@@ -197,13 +194,9 @@
         made silence.wav trim 0 5
         sox room.wav noise.wav room.wav ask.wav room.wav mine.wav
         sox silence.wav click.wav silence.wav silence.wav theirs.wav
-        DICTATION_DEVICE=CPU DICTATION_WORDS=${words} ${dictation}/bin/call-transcripts \
+        DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts \
           transcribe ${model} mine.wav theirs.wav > transcript.md
         cat transcript.md
-        if grep -qiE 'quorvex|tallimander' transcript.md; then
-          echo "Whisper wrote dictation's words, which nobody said"
-          exit 1
-        fi
         if grep -qE '[][()]' transcript.md; then
           echo "the transcript says what the noise sounded like, which nobody said"
           exit 1

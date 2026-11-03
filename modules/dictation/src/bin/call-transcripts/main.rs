@@ -1,15 +1,17 @@
 //! call-transcripts: writes down what's said on Joel's calls, on this
-//! machine, with Whisper on the NPU taking its turn behind dictation and
-//! anything live, since nobody waits on a transcript.
+//! machine, with Parakeet (dictation's parakeet.rs) on the NPU taking its
+//! turn behind dictation and anything live, since nobody waits on a
+//! transcript.
 //!
 //! Each side is heard apart, Joel's microphone and the call's own sound,
 //! so who said what needs no guessing. Each side is cut at its pauses into
 //! takes (takes.rs), each take is heard, and the two sides are laid out
-//! in the order they spoke (transcript.rs). Whisper isn't told the words
-//! dictation is: given a take with no speech in it, it writes back what
-//! it was told, so a call came out as those words over and over, and its
-//! summary as a call about them. A take that's only what Whisper writes
-//! for a sound is no turn (said.rs).
+//! in the order they spoke (transcript.rs). Parakeet, not dictation's
+//! Whisper, hears them: it misheard a fifth fewer words of meetings, and
+//! the one thing Whisper did better, writing the names in dictation's
+//! words, a call couldn't use, since Whisper told them wrote them back
+//! for a take with no speech in it. A take that's only what a speech
+//! model writes for a sound is no turn (said.rs).
 //!
 //! Usage:
 //!
@@ -22,6 +24,9 @@
 //! call-transcripts transcribe MODEL_DIR MINE.wav THEIRS.wav
 //!     print, as Markdown, the transcript of a call's two sides, each a
 //!     16 kHz mono WAV starting at the call's start
+//! call-transcripts hear MODEL_DIR CLIP.wav...
+//!     print what's said in each 16 kHz mono WAV, heard whole as one take,
+//!     a line each, which is how a model's mishearings are counted
 //! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md
 //!     print the summary of the call titled TITLE that a transcript
 //!     writes down (summary.rs), or that too little was said to sum up,
@@ -56,13 +61,14 @@ use std::sync::{Arc, mpsc};
 
 use dictation::language::LanguageModel;
 use dictation::openvino::Priority;
-use dictation::speech::Speech;
+use dictation::parakeet::Parakeet;
 use dictation::takes::{Cutter, Take};
 use dictation::transcript::{Line, Side, markdown};
 use dictation::wav;
 
 const USAGE: &str = "usage: call-transcripts serve SOCKET MODEL_DIR [SUMMARIZER_DIR] CALLS \
     | transcribe MODEL_DIR MINE.wav THEIRS.wav \
+    | hear MODEL_DIR CLIP.wav... \
     | summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md";
 
 fn main() -> ExitCode {
@@ -86,6 +92,7 @@ fn main() -> ExitCode {
         ["transcribe", model, mine, theirs] => {
             transcribe(Path::new(model), Path::new(mine), Path::new(theirs))
         }
+        ["hear", model, ref clips @ ..] if !clips.is_empty() => hear_clips(Path::new(model), clips),
         _ => Err(format!("{USAGE} (got {args:?})")),
     };
     match result {
@@ -97,8 +104,8 @@ fn main() -> ExitCode {
     }
 }
 
-/// Where Whisper runs, as dictation's does, and where the summarizer is,
-/// if there's one.
+/// Where Parakeet runs, as dictation's Whisper does, and where the
+/// summarizer is, if there's one.
 pub struct Settings {
     pub model: PathBuf,
     pub device: String,
@@ -131,13 +138,12 @@ impl Settings {
         )
     }
 
-    /// Whisper, at the NPU's background priority, told no words.
-    pub fn load(&self) -> Result<Speech, String> {
-        Speech::load(
+    /// Parakeet, at the NPU's background priority.
+    pub fn load(&self) -> Result<Parakeet, String> {
+        Parakeet::load(
             &self.model,
             &self.device,
             self.cache.as_deref(),
-            "",
             Priority::Background,
         )
     }
@@ -191,7 +197,7 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
         for take in takes(&wav::samples(&bytes)?) {
             let (text, took) = speech.transcribe(&take.samples)?;
-            eprintln!("call-transcripts: {took}");
+            eprintln!("call-transcripts: {}", took.describe(&speech.device));
             if let Some(text) = said::spoken(&text) {
                 lines.push(Line {
                     side,
@@ -203,6 +209,20 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
         }
     }
     print!("{}", markdown(&lines, &own_name()));
+    Ok(())
+}
+
+fn hear_clips(model: &Path, clips: &[&str]) -> Result<(), String> {
+    let mut speech = Settings::read(model.to_owned(), None).load()?;
+    for clip in clips {
+        let bytes = std::fs::read(clip).map_err(|e| format!("reading {clip}: {e}"))?;
+        let (text, took) = speech.transcribe(&wav::samples(&bytes)?)?;
+        eprintln!(
+            "call-transcripts: {clip}: {}",
+            took.describe(&speech.device)
+        );
+        println!("{}", text.replace('\n', " "));
+    }
     Ok(())
 }
 

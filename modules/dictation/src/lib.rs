@@ -1,8 +1,9 @@
-//! Whisper on this machine, shared by the programs that hear speech:
-//! dictation (main.rs), which types what Joel says, and call-transcripts
-//! (bin/call-transcripts), which writes down what's said on a call and
-//! sums it up with a language model (language.rs). One copy of the
-//! models' code keeps the two hearing alike. screen-text
+//! Speech models on this machine, shared by the programs that hear
+//! speech: dictation (main.rs), which types what Joel says with Whisper,
+//! and call-transcripts (bin/call-transcripts), which writes down what's
+//! said on a call with Parakeet (parakeet.rs) and sums it up with a
+//! language model (language.rs). The two share OpenVINO's calls and the
+//! cache of what's compiled. screen-text
 //! (bin/screen-text), which reads the words in screenshots, shares its
 //! OpenVINO calls, and it and call-transcripts serve the shell alike
 //! (daemon.rs).
@@ -14,6 +15,7 @@ pub mod graph;
 pub mod language;
 pub mod mel;
 pub mod openvino;
+pub mod parakeet;
 pub mod speech;
 pub mod takes;
 pub mod transcript;

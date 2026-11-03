@@ -191,8 +191,7 @@
   '';
   call-transcripts-writes-only-what-was-said = ''
     a call writes down only what was said: a loud noise with no speech in it and a silent far end
-    give no turn and no bracketed sound, and none of the words dictation is told, which Whisper
-    writes back for no speech
+    give no turn and no bracketed sound
   '';
   calls-passes-clippy = ''
     clippy finds nothing in calls or its tests

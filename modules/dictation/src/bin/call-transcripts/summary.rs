@@ -1,6 +1,6 @@
 //! Sums a call up from its transcript, with a language model on the NPU
 //! (dictation's language.rs) at its background priority, once the call is
-//! written and Whisper let go.
+//! written and Parakeet let go.
 //!
 //! The NPU's model reads a prompt of at most `PROMPT_TOKENS`, so a call
 //! too long for one is read in parts: notes are taken on each, and the
