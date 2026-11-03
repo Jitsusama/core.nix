@@ -6046,6 +6046,33 @@ def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
     assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
+def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop: Desktop) -> None:
+    """A daemon whose socket isn't there is asked again only once it appears, not every 2 s."""
+    machine = desktop.machine
+    runtime = "/run/user/1000"
+    made = f"{runtime}/daemons/slack.sock"
+    hellos = f"{runtime}/slack-hellos"
+    missing = "ServerNotFoundError"
+    # Slack's daemon as it is before Joel signs in: no socket at all.
+    since = desktop.as_account("date +%s").strip()
+    desktop.as_account(f"systemctl --user stop slack-stand-in.service; rm -f {made} {hellos}")
+    try:
+        # A span to show the shell isn't trying: one every 2 s would be 6.
+        # The socket going may cost a try or two, as a dropped connection
+        # is tried again once and the file going is heard.
+        time.sleep(12)
+        tries = desktop.as_account(
+            f"journalctl --user -u quickshell --since @{since} --no-pager -o cat"
+            f" | grep -c {missing}; true"
+        ).strip()
+        assert int(tries) <= 2, f"the shell tried a missing socket {tries} times in 12 s"  # noqa: PLR2004
+        # Once it's made, the shell says hello, with no clock to wait on.
+        desktop.as_account("systemctl --user start slack-stand-in.service")
+        machine.wait_until_succeeds(f"test -s {hellos}", timeout=30)
+    finally:
+        desktop.as_account(f"systemctl --user stop slack-stand-in.service; rm -f {made} {hellos}")
+
+
 @pytest.fixture
 def slack(desktop: Desktop) -> Iterator[str]:
     """Start the stand-in Slack daemon for one test, and stop it after, giving its runtime folder.
