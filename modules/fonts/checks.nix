@@ -76,9 +76,10 @@ onLinux {
   # Asked for a letter of Hebrew, Arabic or CJK in any of the theme's faces,
   # none of which has them, the machine's fontconfig, with the account's own
   # beside it, gives the script face's family for that script, in its order,
-  # and not DejaVu Sans, which they fell back to before. English, the
-  # locale's, is asked for too, as a program's fallback asks for it, since a
-  # face that covers it would otherwise outrank the script face.
+  # and not the machine's default sans, which they fell back to before.
+  # English, the locale's, is asked for too, as a program's fallback asks
+  # for it, since a face that covers it would otherwise outrank the script
+  # face.
   the-scripts-are-the-script-faces =
     let
       inherit ((account graphical).fonts.fontconfig) configFile;
