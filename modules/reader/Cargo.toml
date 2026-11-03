@@ -13,6 +13,10 @@ comrak = { version = "0.59.0", default-features = false, features = ["shortcodes
 glow = "0.18.0"
 html5ever = "0.39"
 imagesize = "0.14"
+# The time a file changed, in the machine's own zone, for the eyebrow
+# over its title; the time crate Typst brings won't read the zone in a
+# program with threads.
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 khronos-egl = { version = "6.0.0", features = ["static"] }
 markup5ever_rcdom = "0.39.0"
 merman = "0.9.3"

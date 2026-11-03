@@ -221,6 +221,35 @@ const FIRST_CHARS: usize = 6000;
 /// down to here.
 pub const BOTTOM_PT: f64 = 27.4;
 
+/// The eyebrow's words over the title: the file's name without its
+/// extension, and when it last changed.
+fn about(file: &std::path::Path) -> String {
+    let name = file
+        .file_stem()
+        .map_or_else(String::new, |stem| stem.to_string_lossy().into_owned());
+    let changed = std::fs::metadata(file)
+        .and_then(|it| it.modified())
+        .ok()
+        .and_then(|at| jiff::Timestamp::try_from(at).ok());
+    let Some(changed) = changed else { return name };
+    let zone = jiff::tz::TimeZone::system();
+    let now = jiff::Timestamp::now().to_zoned(zone.clone());
+    format!("{name} \u{b7} changed {}", when(&changed.to_zoned(zone), &now))
+}
+
+/// When a file changed, as briefly as says it: a clock's time today, a day
+/// this year, a day and its year before that.
+fn when(changed: &jiff::Zoned, now: &jiff::Zoned) -> String {
+    let form = if changed.date() == now.date() {
+        "%H:%M"
+    } else if changed.year() == now.year() {
+        "%-d %b"
+    } else {
+        "%-d %b %Y"
+    };
+    changed.strftime(form).to_string()
+}
+
 /// The file set as far as its first screen, and what sets the rest.
 pub struct First {
     pub page: Page,
@@ -287,8 +316,9 @@ pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
             dir
         }
     });
+    let about = about(std::path::Path::new(file));
     let program = timed(&mut parts, "walk", || {
-        walk::program(&markdown, base, &pieces, &world, &mut costs)
+        walk::program(&markdown, &about, base, &pieces, &world, &mut costs)
     });
     let (head, blocks) = walk::blocks(&program, &world);
     let mut first = head;
@@ -370,7 +400,14 @@ impl Setter {
             }
         });
         let mut costs = Costs::default();
-        let program = walk::program(&markdown, base, &self.pieces, &self.world, &mut costs);
+        let program = walk::program(
+            &markdown,
+            &about(path),
+            base,
+            &self.pieces,
+            &self.world,
+            &mut costs,
+        );
         let page = set_page(&mut self.world, &program)?;
         Ok((page, start.elapsed().as_secs_f64() * 1000.0))
     }
@@ -423,7 +460,22 @@ pub fn trim() {
 
 #[cfg(test)]
 mod tests {
-    use super::Setter;
+    use super::{Setter, when};
+
+    fn at(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> jiff::Zoned {
+        jiff::civil::date(year, month, day)
+            .at(hour, minute, 0, 0)
+            .to_zoned(jiff::tz::TimeZone::fixed(jiff::tz::offset(-5)))
+            .expect("a time in a fixed zone")
+    }
+
+    #[test]
+    fn a_change_is_said_as_briefly_as_says_when() {
+        let now = at(2026, 11, 3, 9, 40);
+        assert_eq!(when(&at(2026, 11, 3, 9, 14), &now), "09:14");
+        assert_eq!(when(&at(2026, 11, 2, 23, 5), &now), "2 Nov");
+        assert_eq!(when(&at(2025, 10, 30, 8, 0), &now), "30 Oct 2025");
+    }
 
     /// Every baseline from the first run holding `from` to the last holding
     /// `to`, top to bottom, and the page's pitch from its first paragraph,

@@ -120,9 +120,11 @@ fn sanitizer() -> ammonia::Builder<'static> {
     b
 }
 
-/// The page's program, with what each step took.
+/// The page's program, with what each step took. `about` is the eyebrow's
+/// words over the title: what the file is and when it changed.
 pub fn program(
     markdown: &str,
+    about: &str,
     base: Option<&std::path::Path>,
     pieces: &Pieces,
     world: &PageWorld,
@@ -152,8 +154,17 @@ pub fn program(
         base,
         pictures: 0,
         blocks: 0,
+        after_title: false,
+        titled: false,
     };
     walker.children(&dom.document);
+    // The eyebrow goes before any block, so the first set carries it
+    // wherever it starts, and sits closer over a title than over words.
+    let titled = walker.titled;
+    out.insert_str(
+        crate::page::template().len(),
+        &format!("#about(titled: {titled})[#{}]\n", literal(about)),
+    );
     costs.walk = t.elapsed();
     out
 }
@@ -214,6 +225,11 @@ struct Walker<'a> {
     pictures: usize,
     /// How many blocks the page has, to number the next.
     blocks: usize,
+    /// Whether the block just walked was the title, so the next paragraph
+    /// is its lede.
+    after_title: bool,
+    /// Whether the page opens with its title.
+    titled: bool,
 }
 
 fn attr(node: &Handle, name: &str) -> Option<String> {
@@ -368,6 +384,16 @@ impl Walker<'_> {
             let _ = write!(self.out, "\n// block\n#metadata({})\n", self.blocks);
             self.blocks += 1;
         }
+        // The paragraph right after the title is its lede, and a title
+        // opening the page sits under the eyebrow.
+        let lede = top && self.after_title && name == "p";
+        let opening = top && self.blocks == 1 && name == "h1";
+        if opening {
+            self.titled = true;
+        }
+        if top && BLOCKS.contains(&name.as_str()) {
+            self.after_title = name == "h1";
+        }
         match name.as_str() {
             "html" | "body" | "span" | "section" | "picture" | "thead" | "tbody" => {
                 if let Some(style) = attr(node, "data-math-style") {
@@ -377,10 +403,12 @@ impl Walker<'_> {
                 }
             }
             "head" | "source" | "p_alert_title" => {}
+            "p" if lede => self.wrap("#lede[", node, "]\n"),
             "p" => self.wrap("#par[", node, "]\n"),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = &name[1..];
-                self.wrap(&format!("#heading(level: {level})["), node, "]\n");
+                let end = if opening { "] <title>\n" } else { "]\n" };
+                self.wrap(&format!("#heading(level: {level})["), node, end);
             }
             "em" | "i" => self.wrap("#emph[", node, "]"),
             "strong" | "b" => self.wrap("#strong[", node, "]"),
