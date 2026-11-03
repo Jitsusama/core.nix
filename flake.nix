@@ -390,8 +390,8 @@
           account ? null,
           # The system the stick is written from: an x86-64 Linux machine,
           # or a Mac, as aarch64-darwin. The stick and what it installs are
-          # x86-64 Linux either way, so a Mac builds them on a Linux builder
-          # or takes them from a cache.
+          # x86-64 Linux either way, so a Mac takes them from a cache or an
+          # x86-64 Linux builder (docs/recovering.md says why not its own).
           host ? "x86_64-linux",
         }:
         let
