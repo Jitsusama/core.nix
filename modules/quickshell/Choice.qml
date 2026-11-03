@@ -107,6 +107,11 @@ Rectangle {
     // Where its name has its baseline, down from its top, which the
     // launcher's drawer sets its title on.
     readonly property real nameBaseline: nameBox.y + nameBox.baselineOffset
+    // Where its words have theirs, which is the name's.
+    readonly property real detailBaseline: countText.y + countText.baselineOffset
+    // How far its words stand from its name.
+    readonly property real detailGap: countText.x - nameBox.x - nameBox.width
+    readonly property string detailFace: countText.font.family
     readonly property bool nameCut: nameBox.over > 0
     readonly property bool sideCut: right.sided && sideText.over > 0
     property bool sidesTurn: false
@@ -119,10 +124,9 @@ Rectangle {
         width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.xxl
             - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
                 + Theme.space.m)))
-        // On the detail's baseline, which is laid out even when it says
-        // nothing, so the voice sits on the line the mono's name would,
-        // the two faces' line boxes differing.
-        anchors.baseline: countText.baseline
+        // On the mono's line, so the voice sits where the mono's name
+        // would, the faces' line boxes differing.
+        anchors.baseline: monoLine.baseline
         voiced: row.voiced
         text: row.name
         format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
@@ -136,6 +140,22 @@ Rectangle {
         }
     }
 
+    // A line of the mono through the row's middle, never drawn, whose
+    // baseline the name and its words both sit on, so neither face's line
+    // box moves the other.
+    Text {
+        id: monoLine
+        anchors.verticalCenter: parent.verticalCenter
+        visible: false
+        text: "0"
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.large
+    }
+
+    // What the row holds, or its note, in the sans at the name's size, so
+    // the eye finds the name, in the mono, first (look 3's gap 1). Muted,
+    // and on the selection the text colour, since muted there reads under
+    // the Lc 60 any text needs.
     Text {
         id: countText
         x: nameBox.x + nameBox.width + Theme.space.m
@@ -143,12 +163,13 @@ Rectangle {
         // short name's detail (what a category holds) says all it can.
         width: Math.min(implicitWidth, Math.max(row.width * 0.3, row.ends - x - Theme.space.xxl))
         elide: Text.ElideRight
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: monoLine.baseline
         visible: row.detail !== ""
         text: row.detail
-        color: Theme.muted
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        color: row.selected ? Theme.text : Theme.muted
+        font.family: Theme.sans.family
+        font.pointSize: Theme.sans.large
+        font.features: { "ss05": 1 }
     }
 
     Graph {

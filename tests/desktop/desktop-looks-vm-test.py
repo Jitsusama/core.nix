@@ -44,6 +44,11 @@ NEAR = 0.02
 # How far the text keeps from the plate's frame on every side, its foot included: an inset and a
 # step, 4 and 16, inside the border.
 INSIDE = 20
+# A row's words stand a step from its name (Theme.space.m), in the sans, and on its baseline to
+# half a device pixel.
+WORDS_GAP = 12
+WORDS_FACE = "Mona Sans"
+HALF_A_PIXEL = 0.5
 
 
 @pytest.fixture(scope="module")
@@ -93,6 +98,46 @@ def plate_shown(desktop: Desktop, scale: str) -> Json:
         f"at {scale} the title is off the first row's baseline: {drawer}"
     )
     return cast("Json", drawer)
+
+
+def words_on_their_names(card: Json, scale: str) -> int:
+    """Hold each drawn row's words to its name's baseline, the gap and the sans; say how many."""
+    drawn = [
+        (name, words)
+        for name, words in zip(card["rows"], card["words"], strict=True)
+        if name is not None and words is not None
+    ]
+    for name, words in drawn:
+        off = abs(words["baseline"] - name) * float(scale)
+        assert off <= HALF_A_PIXEL, (
+            f"at {scale} a row's words are {off:.2f} device pixels off its name's baseline: {card}"
+        )
+        assert abs(words["gap"] - WORDS_GAP) <= NEAR, (
+            f"at {scale} a row's words stand {words['gap']} from its name: {card}"
+        )
+        assert words["face"] == WORDS_FACE, f"at {scale} a row's words are in {words['face']}"
+    return len(drawn)
+
+
+def test_a_rows_words_are_in_the_sans_on_its_names_baseline(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Home's lists and a found row's note are in the sans, on the name's baseline, a step on."""
+    machine = desktop.machine
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: shown["drawer"]["out"] is True)
+        card = desktop.showing()["drawer"]["cardLines"]
+        assert words_on_their_names(card, scale) > 1, f"at {scale} home's rows say nothing: {card}"
+        desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
+        desktop.type_in("kitty")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+        card = desktop.showing()["drawer"]["cardLines"]
+        assert words_on_their_names(card, scale) > 0, f"at {scale} kitty's row says nothing: {card}"
+        desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
+        machine.send_key("esc")
 
 
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(

@@ -1011,6 +1011,11 @@ works the same way everywhere.
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
   as fit, so a glance reminds Joel what there is; a place that measures
   something says how it stands instead, as Processor says "99% busy".
+  What a row holds, and a found row's note ("1 window · 14 tabs"), is set
+  in Mona Sans at the name's size, on its baseline and a step after it,
+  while the name stays in the mono, so the eye finds the name first; it's
+  muted, and the text colour on the selection, where muted reads under Lc
+  60. What's on the right, a kind, a chord or a count, stays in the mono.
   Inside a place, things come by importance and relation, never A to Z,
   and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
@@ -2250,7 +2255,9 @@ What each studio round settled, newest first, with the reason.
   beside the block, a glyph at the end of its first line, a drop cap and a
   sender written into the border were all tried for notices and prompts,
   and each read as slightly off. What stayed: the padlock beside the dots,
-  and a notice signed in its footer.
+  and a notice signed in its footer. Look 3's first gap (2026-11-03) gave
+  a row's words back to Mona Sans, at the name's size and on its baseline
+  beside the mono name, so the name is found first without a second size.
 
 - **Windows are framed by a hairline, rounded a little** (2026-10-10). Of
   seven directions shown on the panel, from square 2 px borders to a ring
