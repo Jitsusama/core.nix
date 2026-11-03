@@ -69,8 +69,12 @@ Provider {
             verb: nowhere ? "more" : opened || !from.window ? "open" : "go",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
-            // The whole of what it said, summary over body.
-            reads: said,
+            // The whole of what it said, each part once: the summary as
+            // the drawer's title, then the body, rather than the row's
+            // name, which already holds both, over both again (VKCF3Z,
+            // 2026-11-02). With no body it would only repeat the name, so
+            // there's no drawer (Launcher.qml's drawerAdds).
+            drawer: { title: notice.summary, body: notice.body },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml).
             glyph: String.fromCodePoint(notice.glyph),
