@@ -76,8 +76,9 @@ the desktop's keys and type failed:
 
 The design document's Every Pixel Accounted For turns it into checks: type,
 colour, whitespace, alignment, the space available, every interaction and
-the keyboard on the ErgoDox. A design is still judged without him, and
-shown to him only once every check is answered.
+the keyboard on both his keyboards. A design is still judged without him,
+and shown to him as finished only once every check is answered; anything
+shown sooner is called unfinished.
 
 ## The Character
 

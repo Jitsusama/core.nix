@@ -115,19 +115,25 @@ of it is shown, so a design arrives with its proof rather than a claim. Each
 check is answered with a measurement, a file and line, or Joel's own words.
 A check left unanswered is a fault, not a gap to explain.
 
-Measurements come from full-size screenshots at every scale Joel's screens
-use, 1.5 and 2 among them, cropped to the part being measured before
-they're read, never judged by eye. Ink is found by thresholding the crop
-midway between the grey of its ground and the grey of the faintest ink in
-it, so muted text and hairlines count, then trimming it and printing what's
-left, in device pixels, as width, height and offset (here at 30%):
+Measurements come from full-size screenshots at the scales Joel's screens
+use, 1.5 and 2 today and any he adds, cropped to the part being measured
+before they're read, never judged by eye. A grey is read as the mean of a
+flat patch of it (`-colorspace gray -format '%[fx:mean]' info:`). Ink is
+found by thresholding the crop midway between the grey of its ground and
+the grey of the faintest ink in it, so muted text and hairlines count,
+then trimming it and printing what's left, in device pixels, as width,
+height and offset (here at 30%):
 
 ```sh
 magick crop.png -colorspace gray -threshold 30% -trim -format '%wx%h%O\n' info:
 ```
 
-A line's pitch is the distance from its baseline to the next line's. Each
-surface names its pitch, and a row's height is its pitch.
+On the wallpaper, where no ground is flat, ink is found by its colour
+instead: `-fill white -fuzz 6% -opaque '<ink>' -fill black +opaque white`
+before the trim. A baseline is the bottom of a crop holding only letters
+that don't descend, such as capitals and figures. A line's pitch is the
+distance from its baseline to the next line's: a surface names the pitch
+of each kind of line it sets, and a row's pitch is its height.
 
 ### Typesetting
 
@@ -158,12 +164,13 @@ surface names its pitch, and a row's height is its pitch.
 ### Colour's Use
 
 - **Every pair measured.** **Check:** each pair of ink and ground on the
-  surface, by role, with its contrast in every theme, against the thresholds
-  [Themes][themes] holds: on the background, sunken and deepest, text and
-  strong Lc 75 and muted Lc 60 by APCA; everywhere, 4.5:1 for text, and 3:1
-  for text at large and above and for glyphs, by WCAG. On the raised and
-  selection surfaces muted isn't drawn, as [Colour][colour] says, so what
-  would be muted is measured as text there.
+  surface, by role, with its contrast in every theme, measured on the
+  colours the screenshot shows, since a floating ground is translucent.
+  Each passes what the theme's build holds (`modules/theme/home.nix`, which
+  [Themes][themes] describes): 4.5:1 by WCAG for text, and by APCA Lc 75
+  for text and strong, Lc 60 for muted and Lc 45 for a mark's hue. On the
+  raised and selection surfaces muted isn't drawn, as [Colour][colour]
+  says, so what would be muted is measured as text there.
 - **Colour says something.** The accent marks only where the keys go, once
   per screen state; a glyph's hue says its kind; text keeps to the text
   roles. **Check:** a list of every coloured thing on the surface and the
@@ -171,7 +178,8 @@ surface names its pitch, and a row's height is its pitch.
   so is a second accent.
 - **Structure in type, warmth in colour.** Colour gives the focal point and
   the warmth, never the structure. **Check:** a greyscale render of the
-  surface, in which its hierarchy reads in the same order as in colour.
+  surface, in which the runs ranked by grey and weight fall in the type
+  table's order of hierarchy.
 
 ### Whitespace
 
@@ -186,9 +194,10 @@ surface names its pitch, and a row's height is its pitch.
   side, measured to the ink: a frame's padding, a notice's, the margin round
   a highlight. **Check:** its four measurements, within a device pixel.
 - **Space groups.** What belongs together sits closer than anything else
-  does to it: a group's inner gap is at least one step of Space smaller than
-  the gap round it. **Check:** each group's two gaps. A pair less than one
-  step apart is a fault, and the surface reads as cluttered.
+  does to it: a group's inner gap is at most the step of Space below the gap
+  round it, each gap taken as the step it's nearest. **Check:** each
+  group's two gaps. A pair closer than that is a fault, and the surface
+  reads as cluttered.
 - **Never cluttered.** A surface has only what Joel would act on or wonder
   about (2026-11-02, of the notices: "whitespace issues ... feeling quite
   cluttered"). **Check:** every element listed with what he'd do with it or
@@ -224,7 +233,8 @@ surface names its pitch, and a row's height is its pitch.
   every state and every key in it: what it does, what the screen does in
   answer, how long it takes against [Latency Budgets][budgets], and which of
   the theme's motions carries it. A state Escape can't leave, a key with no
-  visible answer, or an answer that waits is a fault.
+  visible answer, or an answer that waits is a fault. So is a state with no
+  way out, where Escape does nothing on purpose and q doesn't close it.
 - **Felt, not just correct.** **Check:** each transition timed frame by
   frame at the panel's full refresh rate, from the program's own frame
   times or a screen recording stepped through a frame at a time, with no
@@ -233,27 +243,32 @@ surface names its pitch, and a row's height is its pitch.
 ### The Keyboard, on Both Keyboards
 
 - **Every key named where it sits.** **Check:** each key a design uses,
-  with its place on the laptop's keyboard (`modules/keyd/colemak-dh.conf`)
-  and on the ErgoDox (layer, hand and finger, from
+  with its place on the laptop's keyboard (a letter from
+  `modules/keyd/colemak-dh.conf`, any other key where the laptop's keyboard
+  has it) and on the ErgoDox (layer, hand and finger, from
   `modules/ergodox/keymap/keymap.c`).
 - **The ErgoDox's facts.** On its base layer each hand's home row is
   tap-hold: held, the little finger is Ctrl (A and O), the ring finger Alt
   (R and I), the middle finger the symbols (S and E), the index finger Super
   (T and N) and the key inside it the number pad (G and M). Super is bare on
   both thumbs as well, beside Space and Backspace, and Escape is bare in
-  both top corners. F1 to F10 are bare across its top row; the laptop
-  reaches them as its own keyboard does.
+  both top corners. Shift is bare on each outer column, under the little
+  finger, so Ctrl and Shift held on one hand ask one little finger for two
+  keys. F1 to F10 are bare across its top row; the laptop reaches them as
+  its own keyboard does.
 - **Neovim's way: modes and a leader, not new chords.** What's done often
   is a single key in a mode, or Space and then a letter, as in his Neovim
   (2026-11-02: "all of those ctrl keys do not feel very vim to me"). On the
   ErgoDox a Ctrl chord pins the weakest finger on a letter, where Super's
   index finger is the strongest, which is why the desktop's Super chords are
   comfortable. A key held to repeat, such as a motion, is never a home-row
-  letter there, since those are modifiers when held. **Check:** every Ctrl
-  and Alt chord in the design, each with its reason. Neovim's own (Ctrl+D,
-  Ctrl+O and the rest [Vi's Keys][vi] keeps) and those of a layer he already
-  uses (the terminal's Ctrl+Shift) stand; a new one for something done often
-  is a fault.
+  letter there, since those are modifiers when held. **Check:** every chord
+  led by Ctrl or Alt in the design, each with its reason. Neovim's own (the
+  Ctrl+D, Ctrl+U, Ctrl+F and Ctrl+B that [Vi's Keys][vi] keeps), the
+  desktop's copy and paste, Super's second modifiers ([The
+  Keyboard][keyboard]) and the terminal's Ctrl+Shift layer, which he uses
+  and which waits for its own review against the little-finger rule, stand;
+  a new one for something done often is a fault.
 - **Bare keys first.** What's done often ends on a key both keyboards have
   bare, as [The Keyboard][keyboard] lists them. **Check:** each key for
   something done often, and that both keyboards have it bare.
