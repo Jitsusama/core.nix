@@ -592,9 +592,10 @@ onLinux {
     '';
 
   # Reopen Them All puts each session back on its own screen, found by what
-  # the screen is rather than its connector, and a gone screen's workspaces
-  # after the one in use's, as tests/places.qml holds Places.js to it in
-  # Qt's own engine.
+  # the screen is rather than its connector, a gone screen's workspaces
+  # after the one in use's and to it once it's back, and each window that
+  # reopens itself beside those kept with it, as tests/places.qml holds
+  # Places.js to it in Qt's own engine.
   reopening-finds-each-screen =
     let
       qt = pkgs.qt6.qtdeclarative;

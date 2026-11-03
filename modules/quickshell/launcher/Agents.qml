@@ -355,11 +355,12 @@ Provider {
             hue: "action"
         }, () => [act("all", {
             later: true,
-            // Each back where it sat (Sessions.qml's reopenAll), a carried
-            // one beside where Joel is, since it never sat here. Each is
-            // told to carry on as it opens, so none waits to be poked; one
-            // reopened alone from its own row isn't, since Joel is there.
-            run: () => Sessions.reopenAll(lost, unopened, null, Sessions.carryOn)
+            // Each back where it sat (Sessions.qml's reopenThemAll), a
+            // carried one beside where Joel is, since it never sat here,
+            // and then the windows that reopen themselves. Each is told to
+            // carry on as it opens, so none waits to be poked; one reopened
+            // alone from its own row isn't, since Joel is there.
+            run: () => Sessions.reopenThemAll(lost, unopened)
         })].concat(lost.map(closed), booted === 0 ? [] : [act("notNow", {
             run: () => Sessions.putOffLastBoot()
         })]));

@@ -10,8 +10,9 @@
 # be there again after each; after the wake, the shell must still hear what
 # it's told over the bus, dictation's socket and a unit's state. Last, as a
 # dock's two screens, one goes and comes back: the margin and dictation's
-# bar must stay on the other and the margin come back on both. The script
-# is screens-vm-test.py.
+# bar must stay on the other and the margin come back on both. Sessions
+# reopened while a screen they were kept on is gone must go to it, in their
+# order, once it comes back. The script is screens-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -119,6 +120,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           });
         })
       ];
+
+      # pi, as the shell opens a session it reopens, since the VM has none.
+      environment.systemPackages = [ (import ./pi-stand-in.nix { inherit pkgs; }) ];
 
       # The machine's niri as it was before the hold on its first frame came
       # in, as a niri started before a switch still is, for the script to
