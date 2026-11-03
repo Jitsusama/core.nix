@@ -357,13 +357,15 @@ pub fn run(
                 "nix-offload: ssh lost {}, so this waits for a builder to stand again",
                 lent.host
             );
-            // A builder that stayed up goes on with what it was building, and
-            // the build sent again waits on that, so it says how it ends but
-            // shows none of its log: a VM test cut off mid-test on 2 November
-            // passed there, and only its exit said so.
+            // A builder that stayed up goes on with what it was building for
+            // `far`'s grace period, and the build sent again waits on that, so
+            // it says how it ends but shows none of its log: a VM test cut off
+            // mid-test on 2 November passed there, and only its exit said so.
             eprintln!(
-                "nix-offload: if it stays up, what it was building goes on there, and this \
-                 shows only how it ends; `nix log` on the builder has the rest"
+                "nix-offload: if it stands again within {} minutes, what it was building \
+                 goes on there, and this shows only how it ends; `nix log` on the builder \
+                 has the rest",
+                GRACE / 60
             );
             match again().and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
@@ -842,31 +844,53 @@ pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
     })
 }
 
-/// ssh to `host`, never asking anything, logging where `said` names, whose
-/// verbose log ends with what it sent, which is what a build put on the
-/// connection.
-/// `command` as a far shell is given it, so it ends with its caller.
+/// How many seconds a run cut off from its caller goes on, waiting for the
+/// same run to be sent again, before it ends. A lender restarting cuts
+/// every ssh to its builder, and a run sends again once one stands, which
+/// the lender's two minutes for a restart bound; five minutes covers that.
+const GRACE: u32 = 300;
+
+/// `command` as a far shell is given it, so it ends once its caller has
+/// been gone for `GRACE` seconds with nothing sent again to claim it.
 ///
 /// A shell ssh starts without a terminal hears nothing when its session
 /// ends, and a build or an evaluation waiting on its builds never writes,
 /// so on 1 November runs whose callers were a day gone still held builders.
 /// sshd starts the shell as its session's process group, under a process
-/// of the same account, so a watcher that sees that process gone ends the
+/// of the same account, so a watcher that sees no caller left ends the
 /// whole group: the shell, what it started, and the watcher. Its streams go
-/// nowhere, so it never holds the session open, and once the run has ended
-/// it ends too when the session does. Hung up or ended, the shell exits,
-/// so the command's own EXIT trap still cleans up; the `exit` after it
-/// keeps zsh from running its last command in the shell's own process,
+/// nowhere, so it never holds the session open. Hung up or ended, the shell
+/// exits, so the command's own EXIT trap still cleans up; the `exit` after
+/// it keeps zsh from running its last command in the shell's own process,
 /// which would leave nothing to run that trap.
+///
+/// Ending at once lost work: on 3 November a lender's restart cut a VM
+/// test mid-compile, and the run sent again built linux from the start.
+/// So each caller claims the run in a folder named for the command, which
+/// is the same each time one run sends it and differs between runs, since
+/// it names this machine's pid. The watcher ends the group only once no
+/// claimer has lived for the grace period. The run sent again waits on
+/// what the first is building through Nix's lock on each derivation.
 pub fn far(command: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    command.hash(&mut hasher);
+    let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{:016x}", hasher.finish());
     format!(
-        "caller=$PPID; \
-         (while kill -0 \"$caller\" 2>/dev/null; do sleep 5; done; kill -TERM 0) \
+        "claims=\"{claims}\"; mkdir -p \"$claims\" && : > \"$claims/$PPID\"; \
+         (gone=0; while [ \"$gone\" -lt \"${{NIX_OFFLOAD_GRACE:-{GRACE}}}\" ]; do sleep 1; \
+         held=; for caller in $(ls \"$claims\" 2>/dev/null); do \
+         if kill -0 \"$caller\" 2>/dev/null; then held=1; else rm -f \"$claims/$caller\"; fi; \
+         done; if [ -n \"$held\" ]; then gone=0; else gone=$((gone + 1)); fi; done; \
+         rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
          </dev/null >/dev/null 2>&1 & \
          trap 'exit 143' HUP TERM; {command}; exit $?"
     )
 }
 
+/// ssh to `host`, never asking anything, logging where `said` names, whose
+/// verbose log ends with what it sent, which is what a build put on the
+/// connection.
 pub fn reaching(ssh: &str, said: &Path) -> Command {
     let mut command = Command::new(ssh);
     command
@@ -1774,13 +1798,7 @@ mod tests {
             "trap 'touch {}' EXIT; echo started; sleep 120",
             cleaned.display()
         ));
-        let mut caller = Command::new("sh")
-            .args(["-c", "sh -c \"$1\" & read -r line", "caller", &run])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .process_group(0)
-            .spawn()
-            .unwrap();
+        let mut caller = calling(&run, folder.path());
         let mut said = BufReader::new(caller.stdout.take().unwrap());
         let mut line = String::new();
         said.read_line(&mut line).unwrap();
@@ -1798,6 +1816,58 @@ mod tests {
             "the run outlived its caller"
         );
         assert!(cleaned.exists(), "it cleaned up as it ended");
+    }
+
+    /// A caller standing in for an ssh session: it starts `run` in a
+    /// process group of its own, as sshd does, and ends once its input
+    /// closes. A run cut off waits a second for another to claim it.
+    fn calling(run: &str, scratch: &Path) -> std::process::Child {
+        Command::new("sh")
+            .args(["-c", "sh -c \"$1\" & read -r line", "caller", run])
+            .env("TMPDIR", scratch)
+            .env("NIX_OFFLOAD_GRACE", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_run_cut_off_goes_on_while_the_same_run_is_sent_again() {
+        // A lender restarting cuts every ssh to its builder, and the run
+        // sent again waits on what the first was building. Each run writes
+        // its shell's pid once its work is done, so two lines say the
+        // first went on past its caller.
+        let folder = tempfile::tempdir().unwrap();
+        let done = folder.path().join("done");
+        let run = far(&format!(
+            "echo started; sleep 8; echo $$ >> {}",
+            done.display()
+        ));
+        let mut first = calling(&run, folder.path());
+        let mut said = BufReader::new(first.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        assert_eq!(line, "started\n");
+        drop(first.stdin.take());
+        first.wait().unwrap();
+        let mut again = calling(&run, folder.path());
+        let mut said = BufReader::new(again.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        let (ended, closed) = mpsc::channel();
+        let watched = done.clone();
+        std::thread::spawn(move || {
+            while fs::read_to_string(&watched).map_or(0, |done| done.lines().count()) < 2 {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let _ = ended.send(());
+        });
+        let both = closed.recv_timeout(Duration::from_secs(20)).is_ok();
+        drop(again.stdin.take());
+        again.wait().unwrap();
+        assert!(both, "the first run ended with its caller");
     }
 
     #[test]
