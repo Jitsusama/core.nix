@@ -598,6 +598,14 @@ let
   # the machine keeps it with systemd-timesyncd.
   timekeeping = pkgs.callPackage ./timekeeping/package.nix { };
   keepsTime = osConfig.services.timesyncd.enable or false;
+  # Whether shutting the lid on the charger suspends the machine, as logind
+  # does unless told otherwise; the lid module tells it to ignore it. Only
+  # where it suspends does keeping awake need to hold the lid too. Only
+  # what's said for the charger counts, so a machine that ignores its lid
+  # everywhere, as the test VM's does, still holds it, which changes
+  # nothing there.
+  lidSleepsOnPower =
+    (osConfig.services.logind.settings.Login.HandleLidSwitchExternalPower or "suspend") != "ignore";
   followsTheLaptop =
     (launcher.providers.weather.enable or false)
     && (launcher.providers.weather.lookups or launcher.lookups)
@@ -1598,6 +1606,8 @@ in
           Singleton {
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
+              // Whether a shut lid suspends the machine on the charger.
+              readonly property bool lidSleepsOnPower: ${lib.boolToString lidSleepsOnPower}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
               // The sound a want makes, and what plays it; "" for none.
               readonly property var sounds: ${
@@ -1878,7 +1888,9 @@ in
       Description = "Keeps the machine from sleeping while work runs";
       PartOf = [ "graphical-session.target" ];
     };
-    systemd.user.services.caffeinate-lid = holding {
+    # Only where a shut lid on the charger suspends: elsewhere it never does,
+    # and holding the lid would change nothing.
+    systemd.user.services.caffeinate-lid = lib.mkIf lidSleepsOnPower (holding {
       what = "handle-lid-switch";
       flag = "caffeinated-lid";
       Description = "Keeps the machine running with its lid shut, while there's power";
@@ -1892,7 +1904,7 @@ in
         "sys-subsystem-power_supply-mains.device"
       ];
       ConditionACPower = true;
-    };
+    });
 
     systemd.user.services.quickshell = {
       Unit = {
