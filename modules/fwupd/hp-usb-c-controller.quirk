@@ -1,0 +1,10 @@
+# HP's USB-C monitors share one Genesys hub controller, and fwupd's
+# genesys plugin puts it in its programming mode while setting it up,
+# just to read its version, and never takes it out. An HP Z27k G3 then
+# reset itself, dropping its USB devices and its display, within
+# seconds of fwupd starting on six of eight docked boots. LVFS offers
+# no firmware for its controllers, so fwupd leaves the controller be.
+# The finer instance IDs are only known once setup has run, so this
+# holds for every HP monitor with this controller.
+[USB\VID_03F0&PID_0610]
+Flags = no-probe
