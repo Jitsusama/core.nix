@@ -117,10 +117,14 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let broken(s) = text(fill: ink.muted, raw(s))
 // The page's thresholds carry its whimsy, never its reading. The ground
 // glows faintly at the head: the background lifted 18% toward raised at
-// most, so muted keeps Lc 60 on its lightest, fading to the background
-// before the page's sides and 900 pt down.
+// most, so muted keeps Lc 60 on its lightest. It's an ellipse wider than
+// it is tall, centred on the page's top edge: as wide as the page, which a
+// measure and a half would pass, and gone 360 pt down, by the first
+// section. A gradient relative to its rect is as wide and as tall as the
+// rect, and its stop halfway eases it out, so it shows no edge.
 #let glow = color.mix((ink.background, 82%), (ink.raised, 18%), space: rgb)
-#set page(background: place(top + center, rect(width: 100%, height: 1800pt, fill: gradient.radial(glow, ink.background, center: (50%, 0%), radius: 50%, relative: "self"))))
+#let glow-half = color.mix((glow, 35%), (ink.background, 65%), space: rgb)
+#set page(background: place(top + center, rect(width: 100%, height: 720pt, fill: gradient.radial((glow, 0%), (glow-half, 50%), (ink.background, 100%), center: (50%, 0%), radius: 50%, relative: "self"))))
 // A thematic break is a fleuron: an asterism of Fraunces Display's
 // asterisks in the accent, centred, standing as a line two lines from the
 // words either side.
