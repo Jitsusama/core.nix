@@ -403,7 +403,7 @@ ShellRoot {
         const facts = plate.facts.map(fact => `${fact.label} ${fact.value}`).join(", ");
         expect("a file's plate says its name and its facts at once, before it's previewed",
             plate.title === "a.md" && plate.preview === undefined
-            && /^Size 0\u00a0B, Changed today, \d\d:\d\d, Where ~\/notes$/.test(facts),
+            && facts === "Size 0\u00a0B, Changed just now, Where ~/notes",
             `${plate.title}: ${facts}`);
         expect("each file is drawn as every file is", rows.every(row => row.component
             || row.key.startsWith("file-chooser:")), rows.map(row => row.key).join(" "));

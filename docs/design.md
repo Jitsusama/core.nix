@@ -1300,11 +1300,14 @@ works the same way everywhere.
   this year, and its day and year before that, muted in the side slot. A
   row listed away from its folder says its folder instead. The drawer is
   its preview (VKCF3Z, 2026-11-03): the eyebrow its kind with its numbers
-  ("PNG · 2400 × 1600", "PDF · 12 pages", "MP4 · 3:41"), its name, then
+  ("PNG · 2400 × 1600", "PDF · 12 pages", "MP4 · 3:41", a text's by
+  its kind's own name, "Markdown · 4 lines"), its name, then
   a picture as wide as the plate in its own shape (a picture itself, a
   PDF's first page, a video's frame a tenth of the way in), a text's
   first whole lines or a folder's first items, quiet, in the mono on the
-  pitch, then Size, Changed and Where. Anything else shows its facts
+  pitch, then Size (a folder's Items, its number alone), Changed, said
+  as its row says it so the two never read as two dates, and Where.
+  Anything else shows its facts
   alone, with no stand-in. The facts draw at once from the folder read;
   the preview fades in once it's made, kept by path and change, and no
   key ever waits on it.

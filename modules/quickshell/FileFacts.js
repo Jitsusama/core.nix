@@ -22,6 +22,14 @@ const UNITS = [[THOUSAND ** 4, "TB"], [THOUSAND ** 3, "GB"], [THOUSAND ** 2, "MB
     [THOUSAND, "kB"]];
 // Under this a size keeps one decimal: 9.95 rounds to 10, which doesn't.
 const KEEPS_A_DECIMAL = 9.95;
+// A file of text's kind by its own name, where its ending isn't one, by
+// the ending file-preview says; any other is said as its ending.
+const TEXT_NAMED = {
+    C: "C", CSS: "CSS", CSV: "CSV", GO: "Go", HTML: "HTML", JS: "JavaScript",
+    JSON: "JSON", LOG: "Log", MARKDOWN: "Markdown", MD: "Markdown", NIX: "Nix",
+    PY: "Python", QML: "QML", RS: "Rust", SH: "Shell", TOML: "TOML", TS: "TypeScript",
+    TXT: "Text", XML: "XML", YAML: "YAML", YML: "YAML"
+};
 
 // A size in SI units, with one decimal under 10: 12 B, 940 kB, 2.4 MB.
 function weighed(bytes) {
@@ -82,14 +90,6 @@ function when(changed, now) {
     return sameDay(at, today) ? clock(at) : day(at, today);
 }
 
-// When it last changed, as the drawer says it, to the minute: "today,
-// 14:32", "28 Oct, 14:32" or "28 Oct 2024, 14:32".
-function whenExactly(changed, now) {
-    const at = new Date(changed);
-    const today = new Date(now);
-    return `${sameDay(at, today) ? "today" : day(at, today)}, ${clock(at)}`;
-}
-
 // How much is in it, as its row says: a file's size, or a folder's count
 // once it's known and nothing until then.
 function amount(entry, count) {
@@ -115,25 +115,31 @@ function length(seconds) {
     return hours > 0 ? `${hours}:${twoFigures(minutes)}:${rest}` : `${minutes}:${rest}`;
 }
 
-// What kind of file it is: its ending, or, with none, "Text" or "File".
+// What kind of file it is: its ending, a file of text's by its own name,
+// or, with none, "Text" or "File".
 function kindOf(said) {
+    const text = said.lines !== undefined;
     if (said.kind !== undefined) {
-        return said.kind;
+        return text ? TEXT_NAMED[said.kind] ?? said.kind : said.kind;
     }
-    return said.lines === undefined ? "File" : "Text";
+    return text ? "Text" : "File";
+}
+
+function counted(count, one, many) {
+    return `${count}${KEPT}${count === 1 ? one : many}`;
 }
 
 // The eyebrow over its plate: its kind with its numbers, "PNG · 2400 ×
-// 1600", "PDF · 12 pages", "MP4 · 3:41", a picture's numbers only when
-// the picture is the file itself (`path`); a folder's "Folder"; anything
-// else its kind alone.
+// 1600", "PDF · 12 pages", "MP4 · 3:41", "Markdown · 4 lines", a
+// picture's numbers only when the picture is the file itself (`path`); a
+// folder's "Folder"; anything else its kind alone.
 function eyebrow(said, path) {
     if (said.items !== undefined) {
         return "Folder";
     }
     const kind = kindOf(said);
     if (said.pages !== undefined) {
-        return `${kind}${BETWEEN}${said.pages}${KEPT}${said.pages === 1 ? "page" : "pages"}`;
+        return `${kind}${BETWEEN}${counted(said.pages, "page", "pages")}`;
     }
     if (said.seconds !== undefined) {
         return `${kind}${BETWEEN}${length(said.seconds)}`;
@@ -141,14 +147,18 @@ function eyebrow(said, path) {
     if (said.picture === path && said.across) {
         return `${kind}${BETWEEN}${said.across}${KEPT}\u00d7${KEPT}${said.down}`;
     }
+    if (said.count !== undefined) {
+        return `${kind}${BETWEEN}${counted(said.count, "line", "lines")}`;
+    }
     return kind;
 }
 
-// Its first fact: a folder's count, null until it's said, or a file's
-// size, null while it's unknown.
+// Its first fact: a folder's count, the number alone since its label says
+// what it counts, null until it's said; or a file's size, null while it's
+// unknown.
 function firstFact(folder, size, said) {
     if (folder) {
-        return { label: "Items", value: said ? items(said.items) : null };
+        return { label: "Items", value: said ? String(said.items) : null };
     }
     return { label: "Size", value: size === undefined ? null : weighed(size) };
 }
@@ -183,7 +193,8 @@ function plate(file, said, now) {
         title: name,
         facts: [
             firstFact(folder, said?.size ?? entry?.size, said),
-            { label: "Changed", value: changed === undefined ? null : whenExactly(changed, now) },
+            // Said as its row says it, so the two never read as two dates.
+            { label: "Changed", value: changed === undefined ? null : when(changed, now) },
             { label: "Where", value: where }
         ]
     };

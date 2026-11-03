@@ -315,7 +315,7 @@ PICKED = {
     "drafts": ("Folder", "lines"),
     "archive.zip": ("ZIP", None),
     "clip.mp4": ("MP4 \u00b7 0:20", "picture"),
-    "notes.md": ("MD", "lines"),
+    "notes.md": ("Markdown \u00b7 5\u00a0lines", "lines"),
     "plan.pdf": ("PDF \u00b7 1\u00a0page", "picture"),
     "wide.png": ("PNG \u00b7 1600\u00a0\u00d7\u00a01000", "picture"),
 }

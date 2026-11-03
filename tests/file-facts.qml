@@ -59,10 +59,6 @@ QtObject {
             kept("28_Oct_2024"));
         expect("a moment ahead of now is said as today's", FileFacts.when(now + 3_600_000, now),
             "17:30");
-        expect("the drawer says it to the minute, today",
-            FileFacts.whenExactly(at(2026, 11, 3, 14, 32), now), "today, 14:32");
-        expect("the drawer says it to the minute, another day",
-            FileFacts.whenExactly(at(2024, 10, 28, 14, 32), now), kept("28_Oct_2024, 14:32"));
 
         const file = { folder: false, size: 2_400_000, modified: at(2026, 10, 28, 14, 32) };
         expect("a file's row says its size and its day", FileFacts.side(file, undefined, now),
@@ -89,6 +85,14 @@ QtObject {
         expect("a video's, its length", FileFacts.eyebrow({ kind: "MP4", seconds: 221 }, "/v.mp4"),
             "MP4 \u00b7 3:41");
         expect("text with no ending is text", FileFacts.eyebrow({ lines: ["a"] }, "/notes"), "Text");
+        expect("text is its kind by its own name, with its lines", FileFacts.eyebrow(
+            { kind: "MD", lines: ["# Plan"], count: 4 }, "/a.md"), kept("Markdown \u00b7 4_lines"));
+        expect("one line is one", FileFacts.eyebrow({ kind: "TXT", lines: ["a"], count: 1 },
+            "/a.txt"), kept("Text \u00b7 1_line"));
+        expect("text of an ending with no name of its own is its ending", FileFacts.eyebrow(
+            { kind: "CONF", lines: ["a"], count: 120 }, "/a.conf"), kept("CONF \u00b7 120_lines"));
+        expect("an ending that names text names nothing else", FileFacts.eyebrow(
+            { kind: "MD" }, "/a.md"), "MD");
         expect("anything else with none is a file", FileFacts.eyebrow({ size: 1 }, "/blob"), "File");
         expect("a folder is a folder", FileFacts.eyebrow({ items: 3, names: [] }, "/f"), "Folder");
 
@@ -96,7 +100,7 @@ QtObject {
         const before = FileFacts.plate(shot, null, now);
         expect("until it's said, a plate is its facts alone, from its folder", before, {
             eyebrow: "", title: "shot.png", facts: [{ label: "Size", value: kept("2.4_MB") },
-                { label: "Changed", value: kept("28_Oct, 14:32") }, { label: "Where", value: "~" }]
+                { label: "Changed", value: kept("28_Oct") }, { label: "Where", value: "~" }]
         });
         const said = { kind: "PNG", size: 2_400_000, changed: file.modified, across: 2400,
             down: 1600, picture: picture };
@@ -108,12 +112,14 @@ QtObject {
             { kind: "MD", size: 9, changed: now, lines: ["# Plan", "one"] }, now);
         expect("a file of text previews its first lines, its facts from what's said",
             [text.preview, text.facts[0].value], [{ lines: ["# Plan", "one"] }, kept("9_B")]);
+        expect("its change said as its row says it", text.facts[1].value,
+            FileFacts.when(now, now));
         const sub = { path: "/n/sub", name: "sub", where: "~/n", entry: folder };
         const listed = FileFacts.plate(sub,
             { size: 4096, changed: now, items: 2, names: ["deep/", "z.md"] }, now);
         expect("a folder previews its first items, quiet, and counts them",
             [listed.eyebrow, listed.preview, listed.facts[0]], ["Folder",
-                { lines: ["deep/", "z.md"], quiet: true }, { label: "Items", value: kept("2_items") }]);
+                { lines: ["deep/", "z.md"], quiet: true }, { label: "Items", value: "2" }]);
         const waiting = FileFacts.plate(sub, null, now);
         expect("a folder not yet counted shows the placeholder", waiting.facts[0],
             { label: "Items", value: null });

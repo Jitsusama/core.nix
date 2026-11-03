@@ -9,7 +9,7 @@
 //! says how many `pages` it has and a video how many `seconds` it runs,
 //! each with a `picture` made of its first page or of a frame a tenth of
 //! the way in, and that picture's width and height. A file of text gives
-//! its first whole `lines`, a folder how many `items` it shows and the
+//! its first whole `lines` and the `count` of all of them, a folder how many `items` it shows and the
 //! `names` of its first, and anything else only its facts.
 //!
 //! `file-preview items FOLDER` prints one line of JSON saying, for each
@@ -115,6 +115,9 @@ fn shown(path: &Path) -> Result<Value, String> {
         picture_of(&mut said, made(&version, |from, to| frame_at(from, to, at)));
     } else if let Some(lines) = text_lines(path) {
         said.insert("lines".into(), json!(lines));
+        if let Some(count) = lines_in(path) {
+            said.insert("count".into(), json!(count));
+        }
     }
     Ok(Value::Object(said))
 }
@@ -192,6 +195,28 @@ fn text_lines(path: &Path) -> Option<Vec<String>> {
         .read_to_end(&mut read)
         .ok()?;
     lines_of(&read)
+}
+
+/// How many lines a file of text has in all, read through once: its
+/// line ends, and one more for a last line with none.
+fn lines_in(path: &Path) -> Option<u64> {
+    let mut file = fs::File::open(path).ok()?;
+    let mut buffer = vec![0; 64 * 1024];
+    let mut count = 0;
+    let mut last = b'\n';
+    loop {
+        let read = file.read(&mut buffer).ok()?;
+        if read == 0 {
+            break;
+        }
+        count += counted_ends(&buffer[..read]);
+        last = buffer[read - 1];
+    }
+    Some(if last == b'\n' { count } else { count + 1 })
+}
+
+fn counted_ends(read: &[u8]) -> u64 {
+    read.iter().filter(|each| **each == b'\n').map(|_| 1).sum()
 }
 
 fn lines_of(read: &[u8]) -> Option<Vec<String>> {
@@ -386,6 +411,23 @@ mod tests {
         let mut read = vec![b'a'; READ - 1];
         read.extend("é\n".as_bytes());
         assert!(lines_of(&read).is_some());
+    }
+
+    #[test]
+    fn text_counts_all_its_lines_past_what_it_shows() {
+        let folder = folder("counted");
+        let long = folder.join("long.md");
+        fs::write(&long, "a line\n".repeat(20_000)).unwrap();
+        let said = shown(&long).unwrap();
+        assert_eq!(said["count"], 20_000);
+        assert_eq!(said["lines"].as_array().unwrap().len(), LINES);
+        let unended = folder.join("unended.txt");
+        fs::write(&unended, "one\ntwo").unwrap();
+        assert_eq!(shown(&unended).unwrap()["count"], 2);
+        let empty = folder.join("empty.txt");
+        fs::write(&empty, "").unwrap();
+        assert_eq!(shown(&empty).unwrap()["count"], 0);
+        fs::remove_dir_all(folder).unwrap();
     }
 
     #[test]
