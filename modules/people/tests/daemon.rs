@@ -313,11 +313,22 @@ fn a_watch_hears_a_source_sign_out_as_it_says_so() {
         assert!(Instant::now() < deadline, "slack never started");
         std::thread::sleep(Duration::from_millis(20));
     }
-    client.ask(&json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]}));
+    writeln!(
+        client.stream,
+        "{}",
+        json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]})
+    )
+    .unwrap();
     // The ask ahead has it say it's signed out, which the watch hears
-    // without asking, as a client learns a sign-in went.
-    let said = client.next();
-    assert_eq!(said, json!({"id": 2, "sources": {"slack": "signed-out"}}));
+    // without asking, as a client learns a sign-in went. The source may
+    // say so before the watch is answered, so either comes first.
+    let said = [client.next(), client.next()];
+    let pushed = json!({"id": 2, "sources": {"slack": "signed-out"}});
+    assert!(said.contains(&pushed), "{said:?}");
+    assert!(
+        said.iter().any(|line| line.get("records").is_some()),
+        "{said:?}"
+    );
 }
 
 /// A source that put Ada off as she was watched, signed out or saying
