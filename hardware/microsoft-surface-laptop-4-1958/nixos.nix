@@ -192,9 +192,16 @@
     }
     # The firmware fixes _CPC's Autonomous Selection Enable at 1, which
     # amd-pstate refused to accept, so the CPU fell back to acpi-cpufreq.
+    # Mainline's fix, marked for stable, until a 7.3 release carries it.
     {
-      name = "amd-pstate-fixed-autonomous-selection";
-      patch = ./kernel/amd-pstate-fixed-autonomous-selection.patch;
+      name = "amd-pstate-skip-matching-auto-sel";
+      patch = ./kernel/amd-pstate-skip-matching-auto-sel.patch;
+    }
+    # A wake asked the charger and battery for their state before the
+    # controller had resumed, so each wake warned and tainted the kernel.
+    {
+      name = "surface-power-asks-only-awake";
+      patch = ./kernel/surface-power-asks-only-awake.patch;
     }
     # The AX200 joined Wi-Fi at boot before it had heard a country, and the
     # driver ignored the one it heard while connected, so it stayed on the
