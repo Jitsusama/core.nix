@@ -68,7 +68,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
 #let title-size = 42pt
 #let section-size = 17.1pt
-#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: 0.2em, fill: ink.muted, upper(body))
+// An eyebrow: the mono's capitals, small, tracked as every eyebrow on the
+// desktop is.
+#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: 0.16em, fill: ink.muted, upper(body))
 #show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
 // A title's lines two and a half lines apart, a section's one.
 #show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em)
