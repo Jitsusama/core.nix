@@ -26,12 +26,12 @@
 # are laid over the machine's packages, so the shell, the greeter and the
 # lock all run them.
 #
-# wf-recorder, which records the screen and keeps its last minute
-# (Recorder.qml), bound the compositor's linux-dmabuf at version 4 whatever
-# it offered, a protocol error where it offers less, as niri nested in a
-# window does; wf-recorder-dmabuf-version.patch binds what's offered, so
-# the VM tests can record the screen too. Where 4 is offered, as on a
-# machine's own screen, it does as before.
+# wf-recorder, which records the screen (Recorder.qml), bound the
+# compositor's linux-dmabuf at version 4 whatever it offered, a protocol
+# error where it offers less, as niri nested in a window does;
+# wf-recorder-dmabuf-version.patch binds what's offered, so the VM tests can
+# record the screen too. Where 4 is offered, as on a machine's own screen,
+# it does as before.
 #
 # The launcher works out sums and measures with libqalculate, in the shell's
 # own process rather than a calculator program started for each key, as a

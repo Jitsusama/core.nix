@@ -3580,45 +3580,6 @@
       "name": "A Video From the Camera"
     },
     {
-      "id": "capture:save-minute",
-      "in": "capture",
-      "name": "Save the Last Minute",
-      "verb": "save",
-      "glyph": "keeping"
-    },
-    {
-      "id": "capture:keep",
-      "in": "capture",
-      "name": "Keep the Last Minute",
-      "verb": "keep",
-      "glyph": "keeping",
-      "states": {
-        "kept": {
-          "verb": "stop"
-        }
-      },
-      "said": {
-        "yes": "yes, the screen and its sound",
-        "no": "no"
-      }
-    },
-    {
-      "id": "capture:keep-calls",
-      "in": "capture",
-      "name": "Keep It During Calls",
-      "verb": "keep",
-      "glyph": "keeping",
-      "states": {
-        "kept": {
-          "verb": "pause"
-        }
-      },
-      "said": {
-        "yes": "yes",
-        "no": "no"
-      }
-    },
-    {
       "id": "capture:recent",
       "in": "capture",
       "name": "Recent",

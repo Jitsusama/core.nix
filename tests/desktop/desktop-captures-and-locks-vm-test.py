@@ -19,7 +19,7 @@ import pytest
 from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -34,14 +34,6 @@ LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 WAKING = timedelta(seconds=60)
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
-# Seconds a saved minute holds at the least, kept from its keyframe while the
-# test opened a window and Capture twice.
-SOME_OF_A_MINUTE = 0.5
-# last-minute and the wf-recorder it runs, found by what each was asked, since
-# a wrapped program runs under another name. A bracket keeps the pattern
-# from finding the shell that runs it.
-KEEPER = "pgrep -u 1000 -f '[b]in/last-minute 60 '"
-RECORDING_KEPT = "pgrep -u 1000 -f '[w]f-recorder -y --muxer mpegts'"
 
 
 @pytest.fixture(scope="module")
@@ -434,120 +426,6 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
         desktop.as_account(f"rm -f {state}")
     desktop.launcher_until(lambda shown: length(shown) is None)
     desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
-
-
-def recordings_from_now(desktop: Desktop) -> Callable[[], str]:
-    """Mark now, and give what gives the one video written since, failing on another.
-
-    Kept in memory alone, the last minute writes nothing as it keeps, so the one it saves
-    is the only video anywhere Joel's programs write.
-    """
-    mark = "/run/user/1000/before-keeping"
-    desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
-    return lambda: the_one_recording_since(desktop, mark)
-
-
-def the_one_recording_since(desktop: Desktop, mark: str) -> str:
-    """Give the one video written since the mark was touched, failing if there's another."""
-    videos = f"-newer {mark} -type f \\( -name '*.mp4' -o -name '*.ts' -o -name '*.mkv' \\)"
-    # The document portal's mount, in the runtime folder, refuses even root,
-    # so the account looks through its own folders, and root through /tmp.
-    # systemd's folder there holds one kept from everyone, and no program
-    # writes in it, so it's left out.
-    written = (
-        desktop.as_account(
-            f'find ~ "$XDG_RUNTIME_DIR" -path "$XDG_RUNTIME_DIR/systemd" -prune -o {videos}'
-            " -printf '%p\\n'"
-        )
-        + desktop.machine.succeed(f"find /tmp {videos} -printf '%p\\n'")
-    ).split("\n")
-    saved = [path for path in written if path]
-    assert len(saved) == 1, saved
-    assert saved[0].startswith(f"/home/{desktop.account}/Videos/Recordings/"), saved
-    return saved[0]
-
-
-def test_the_last_minute_is_kept_in_memory_until_saved_as_a_recording(desktop: Desktop) -> None:
-    """The last minute is kept in memory while it's on, saved as a recording, then let go.
-
-    Turned on in Capture, its mark shows muted, as a mode left on, and nothing is written
-    until Save the Last Minute writes one recording from a keyframe, with a recording's
-    notice. A call pauses it, and turned off, nothing is left running (VKCF3Z, 2026-10-29).
-    """
-    machine = desktop.machine
-    ffprobe = f"{desktop.values['ffmpeg_headless']}/bin/ffprobe -v error -of csv=p=0"
-    keeper = f"{RECORDING_KEPT} && {KEEPER}"
-
-    def stands() -> Json:
-        return cast("Json", json.loads(desktop.as_account("qs ipc call recording lastMinute")))
-
-    def switch() -> None:
-        desktop.capture()
-        desktop.type_in("keep the last minute", selecting="Keep the Last Minute")
-        machine.send_key("ret")
-
-    def keeps_muted(rest: str) -> bool:
-        drawn = [(glyph["mark"], glyph["kind"], glyph["tone"]) for glyph in json.loads(rest)]
-        # Never on air: it records for nobody until it's saved.
-        marks = [mark for mark, _, _ in drawn]
-        return ("keeping", "leftOn", "muted") in drawn and "recording" not in marks
-
-    def kept() -> None:
-        try:
-            machine.wait_until_succeeds(keeper, timeout=timedelta(seconds=15))
-        except AssertionError:
-            print("the last minute stands", stands())
-            raise
-
-    recorded = recordings_from_now(desktop)
-    since = desktop.mark()
-    switch()
-    kept()
-    assert stands()["keeping"]
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("side") == "yes, the screen and its sound"
-    )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
-    desktop.reported("sets margin ", keeps_muted, since)
-
-    # Something to keep, then the minute saved from Capture's row.
-    pool = desktop.opened("Tidepool")
-    desktop.capture()
-    assert "Stop Recording" not in desktop.showing()["rows"]
-    desktop.type_in("save the last minute", selecting="Save the Last Minute")
-    with desktop.told("shows card Recording saved"):
-        machine.send_key("ret")
-    desktop.close(pool)
-    saved = recorded()
-    # It plays from its start: the first frame is a keyframe, and it's a
-    # video of some length.
-    first = machine.succeed(
-        f'{ffprobe} -select_streams v -show_frames -read_intervals "%+#1"'
-        f' -show_entries frame=key_frame "{saved}"'
-    )
-    # Its side data, the encoder's own notes, follows the flag.
-    assert first.split(",")[0].strip() == "1", first
-    length = float(machine.succeed(f'{ffprobe} -show_entries format=duration "{saved}"'))
-    assert length > SOME_OF_A_MINUTE, length
-
-    # A call pauses it, letting go what it kept, and it starts again after.
-    desktop.as_account("pw-record /tmp/call.wav > /dev/null 2>&1 &")
-    machine.wait_until_succeeds(
-        desktop.in_session("qs ipc call recording lastMinute | grep -qF '\"held\":true'"),
-        timeout=timedelta(seconds=15),
-    )
-    machine.wait_until_fails(RECORDING_KEPT, timeout=timedelta(seconds=15))
-    desktop.as_account("pkill -x pw-record; rm -f /tmp/call.wav")
-    kept()
-
-    # Turned off, nothing is left.
-    switch()
-    machine.wait_until_fails(KEEPER, timeout=timedelta(seconds=15))
-    machine.wait_until_fails(RECORDING_KEPT, timeout=timedelta(seconds=15))
-    assert not stands()["keeping"]
-    machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
