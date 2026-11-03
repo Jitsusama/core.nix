@@ -358,10 +358,12 @@ const FIRST_CHARS: usize = 6000;
 /// down to here.
 pub const BOTTOM_PT: f64 = 27.4;
 
-/// The eyebrow's words over the title: where the file lives, and when it
-/// last changed. The title says the file's own name.
-fn about(file: &std::path::Path) -> String {
-    let name = lives(file);
+/// The eyebrow's words over the title: what the file says it is in its
+/// front matter, its kind and id, or else where it lives; and when it last
+/// changed. The title says the file's own name, and the front matter
+/// itself never shows.
+fn about(file: &std::path::Path, markdown: &str) -> String {
+    let name = said(markdown).unwrap_or_else(|| lives(file));
     let changed = std::fs::metadata(file)
         .and_then(|it| it.modified())
         .ok()
@@ -396,6 +398,22 @@ fn lives(file: &std::path::Path) -> String {
         .chain(below.iter().map(|part| part.to_string_lossy().into_owned()))
         .collect::<Vec<_>>()
         .join(" \u{b7} ")
+}
+
+/// What a file's front matter says it is: its kind and its id, whichever
+/// it gives, joined as the eyebrow joins its parts.
+fn said(markdown: &str) -> Option<String> {
+    let rest = markdown.strip_prefix("---\n")?;
+    let end = rest.find("\n---")?;
+    let field = |key: &str| {
+        rest[..end].lines().find_map(|line| {
+            let value = line.strip_prefix(key)?.strip_prefix(':')?.trim();
+            let value = value.trim_matches(|c| c == '"' || c == '\'');
+            (!value.is_empty()).then(|| value.to_string())
+        })
+    };
+    let parts: Vec<String> = [field("kind"), field("id")].into_iter().flatten().collect();
+    (!parts.is_empty()).then(|| parts.join(" \u{b7} "))
 }
 
 /// When a file changed, as briefly as says it: a clock's time today, a day
@@ -477,7 +495,7 @@ pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
             dir
         }
     });
-    let about = about(std::path::Path::new(file));
+    let about = about(std::path::Path::new(file), &markdown);
     let program = timed(&mut parts, "walk", || {
         walk::program(&markdown, &about, base, &pieces, &world, &mut costs)
     });
@@ -563,7 +581,7 @@ impl Setter {
         let mut costs = Costs::default();
         let program = walk::program(
             &markdown,
-            &about(path),
+            &about(path, &markdown),
             base,
             &self.pieces,
             &self.world,
@@ -645,6 +663,20 @@ mod tests {
         );
         assert_eq!(lives(&dir.join("loose/page.md")), "loose");
         std::fs::remove_dir_all(&dir).expect("cleaned");
+    }
+
+    #[test]
+    fn a_file_says_what_it_is_in_its_front_matter() {
+        assert_eq!(
+            super::said("---\nid: QEST-1\nkind: subquest\nstatus: active\n---\n# Title\n"),
+            Some("subquest \u{b7} QEST-1".into())
+        );
+        assert_eq!(
+            super::said("---\ntitle: \"Tables\"\nid: 'tables'\n---\n"),
+            Some("tables".into())
+        );
+        assert_eq!(super::said("---\ntitle: Tables\n---\n"), None);
+        assert_eq!(super::said("# No front matter\n\nkind: words\n"), None);
     }
 
     #[test]
