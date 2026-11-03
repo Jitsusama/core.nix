@@ -1646,6 +1646,10 @@
     before every sleep swayidle locks the screen and then turns the screens off, even when the
     lock is late, which still fails
   '';
+  the-scripts-are-the-script-faces = ''
+    a letter of Hebrew, Arabic or CJK asked for in any of the theme's faces is drawn from the
+    script face's family for that script, not DejaVu Sans
+  '';
   the-serif-is-its-variable-files = ''
     asked for the theme's serif face, the machine's fontconfig lists its two variable files and no
     static cut, and gives the italic one for the italic

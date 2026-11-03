@@ -299,8 +299,9 @@ over any reviewer's.
 ## Type
 
 Two typefaces from one family. Monaspace and Mona Sans were drawn together by
-GitHub Next, so they share proportions, x-height and voice. Beside them, two
-faces for one job each: Hubot Sans, the family's wide cut, and a serif.
+GitHub Next, so they share proportions, x-height and voice. Beside them,
+faces for one job each: Hubot Sans, the family's wide cut, a serif, and a
+script face for the letters none of them has.
 
 - **Monospace** lives where characters line up or the content is code: the
   terminal, Neovim, a launcher's input, numbers that change in place (a clock,
@@ -323,6 +324,10 @@ faces for one job each: Hubot Sans, the family's wide cut, and a serif.
   It's sized by capitals, not by its em: Monaspace's stand 0.730 of an em
   and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large and sits on the
   line Monaspace would, aligned by baseline.
+- **Script** (Noto Sans Hebrew, Noto Naskh Arabic, Noto Sans CJK) draws the
+  letters the other faces lack, script by script, such as a calendar's date
+  in its own script. No surface names it: a letter missing from the face a
+  surface names comes from it, before any other font.
 - **Numbers are typography too.** Tabular figures wherever a number changes
   in place, so it never jiggles; units set smaller than the number; the same
   precision for the same quantity everywhere.

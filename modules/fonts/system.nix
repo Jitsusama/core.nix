@@ -10,6 +10,14 @@ let
     mkdir -p $out/share/fonts/truetype
     ln -s ${pkgs.fraunces}/share/fonts/truetype/*'[SOFT,WONK,opsz,wght].ttf' $out/share/fonts/truetype/
   '';
+  # The script face's Hebrew and Arabic alone, rather than every script
+  # Noto draws, which would be a gigabyte of fonts nothing names.
+  scripts = pkgs.noto-fonts.override {
+    variants = [
+      "Noto Sans Hebrew"
+      "Noto Naskh Arabic"
+    ];
+  };
 in
 {
   fonts.packages = [
@@ -17,6 +25,8 @@ in
     pkgs.nerd-fonts.fira-code
     pkgs.nerd-fonts.monaspace
     pkgs.nerd-fonts.victor-mono
+    pkgs.noto-fonts-cjk-sans
+    scripts
     serif
   ];
 }
