@@ -149,17 +149,23 @@ fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fail
 }
 
 /// Unpacks the flake's folder at `commit` into a folder of its own, the
-/// last one's taken away first.
+/// last one's taken away first. It archives the folder's own tree rather
+/// than the commit with the folder as a pathspec: git reads a commit's
+/// whole tree into an index first, for its attributes, which in a
+/// monorepo took 5 minutes and 4.9 GB for a folder of a few hundred files.
 fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Failure> {
     let source = config.source();
     let _ = fs::remove_dir_all(&source);
     let into = source.join(commit);
-    fs::create_dir_all(&into).map_err(|e| Failure::new(format!("{}: {e}", into.display())))?;
+    let folder = into.join(&hosted.directory);
+    fs::create_dir_all(&folder).map_err(|e| Failure::new(format!("{}: {e}", folder.display())))?;
+    let tree = if hosted.directory.is_empty() {
+        commit.to_owned()
+    } else {
+        format!("{commit}:{}", hosted.directory)
+    };
     let mut archive = git::git(&Repo::main(config));
-    archive.args(["archive", "--format=tar", commit]);
-    if !hosted.directory.is_empty() {
-        archive.args(["--", &hosted.directory]);
-    }
+    archive.args(["archive", "--format=tar", &tree]);
     let mut archive = archive
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -170,7 +176,7 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
         .take()
         .ok_or_else(|| Failure::new("unpacking main: git gave nothing"))?;
     let mut unpack = run::command(&config.tools.tar, &config.state);
-    unpack.arg("-x").arg("-C").arg(&into).stdin(tar);
+    unpack.arg("-x").arg("-C").arg(&folder).stdin(tar);
     let unpacked = run::output(unpack, "unpacking main", std::iter::empty::<&str>());
     let archived = archive
         .wait_with_output()
@@ -182,7 +188,6 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
         });
     }
     unpacked?;
-    let folder = into.join(&hosted.directory);
     if !folder.join("flake.nix").is_file() {
         return Err(Failure::new(format!(
             "main at {} has no flake in {}",
