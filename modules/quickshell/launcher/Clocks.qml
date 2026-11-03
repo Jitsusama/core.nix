@@ -52,6 +52,12 @@ Provider {
         return { headline: headline, copy: "", rows: [], note: note };
     }
 
+    // An answer that came to nothing, saying why in a sentence, once: the
+    // launcher shows it as a row of its own, as quietly as nothing found.
+    function missed(why) {
+        return { headline: why, copy: "", rows: [], missed: true };
+    }
+
     function answer(typed) {
         // Cheap enough for every key, so the zones are read only for a
         // question of time.
@@ -72,16 +78,16 @@ Provider {
         if (told.unknown !== undefined) {
             const asked = `\u201c${told.unknown}\u201d`;
             if (settings.lookups === false)
-                return plain("where?", `no time zone kept here is ${asked}`);
+                return missed(`No time zone kept here is ${asked}.`);
             const found = ask("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
                 + encodeURIComponent(told.unknown), 24 * 60 * 60 * 1000);
             if (!found.value)
-                return found.failed ? plain("no time", "Open-Meteo didn't answer")
+                return found.failed ? missed("Open-Meteo didn't answer.")
                     : plain("\u2026", "asking Open-Meteo");
             const place = (found.value.results ?? [])[0];
             const zone = place ? zones.zones[place.timezone] : null;
             if (!zone)
-                return plain("no such place", `Open-Meteo knows no ${asked}`);
+                return missed(`Open-Meteo knows no ${asked}.`);
             const mine = here ? zones.zones[here] ?? null : null;
             told = Zones.tell(zone, now, mine, local, place.name);
             const where = [place.name, place.country].filter(part => part).join(", ");

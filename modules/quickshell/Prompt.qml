@@ -16,6 +16,7 @@
 // remains, and one too long for its share ends in an ellipsis.
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Reading.js" as Reading
 
 Item {
     id: prompt
@@ -34,6 +35,18 @@ Item {
     property string aside
     readonly property bool capitals: secret && Lights.caps
     readonly property string said: capitals ? "caps lock" : aside
+    // How wide a text is in the field's face, a pixel to spare, so what's
+    // measured to fit is never cut again as it's drawn.
+    function measured(words) {
+        return Math.ceil(chipFace.advanceWidth(words)) + 1;
+    }
+    // How wide the aside is whole, measured rather than read off what's
+    // drawn, since what's drawn is cut to the room this gives it.
+    readonly property real asideWhole: said === "" ? 0 : measured(said)
+    onAsideWholeChanged: {
+        if (steady)
+            asideWidest = Math.max(asideWidest, Math.min(asideWhole, asideMost));
+    }
     // What's being acted on, each drawn as a chip: { text }.
     property var chips: []
     // Whether the left arrow takes what's typed away whole before it goes
@@ -83,13 +96,13 @@ Item {
     // the start of a long one's room sat far in from the edge (Joel,
     // 2026-10-25: "just now is inset an insane amount").
     readonly property real asideRoom: Math.min(prompt.asideMost, steady
-        ? Math.max(asideWidest, asideText.implicitWidth) : asideText.implicitWidth)
+        ? Math.max(asideWidest, asideWhole) : asideWhole)
 
     // Lets the aside's room go, as a new step starts, keeping what it says now.
     function forget() {
         crowded = false;
         typedWidest = typedWanted;
-        asideWidest = Math.min(asideText.implicitWidth, asideMost);
+        asideWidest = Math.min(asideWhole, asideMost);
     }
 
     // Where what's typed has to end: before the aside's room, and before
@@ -116,7 +129,7 @@ Item {
     // so they go at most once rather than coming and going with letters.
     readonly property var keysWorded: [chipFace.advanceWidth("\u21e5 complete"),
         Math.max(chipFace.advanceWidth("\u2190 clear"), chipFace.advanceWidth("\u2192 restore"))]
-    readonly property real asideWanted: Math.min(asideText.implicitWidth, width * 0.4)
+    readonly property real asideWanted: Math.min(asideWhole, width * 0.4)
     readonly property bool wordsFit: width - 2 * Theme.space.l - glyphWidth - Theme.space.m
         - pathWanted - Math.max(typingRoom, typedWanted)
         - Theme.space.xl - (asideWanted > 0 ? asideWanted + Theme.space.xl : 0)
@@ -203,13 +216,10 @@ Item {
         // drawn whole, over the hint that took the room.
         visible: prompt.asideRoom > 0
         horizontalAlignment: Text.AlignRight
+        // Too long for its room, it gives way at a whole word (Reading.js);
+        // the elision only guards a face that draws wider than measured.
         elide: Text.ElideRight
-        onImplicitWidthChanged: {
-            if (prompt.steady)
-                prompt.asideWidest = Math.max(prompt.asideWidest,
-                    Math.min(implicitWidth, prompt.asideMost));
-        }
-        text: prompt.said
+        text: Reading.wholeWords(prompt.said, prompt.asideRoom, words => prompt.measured(words))
         color: Theme.muted
         font.family: Theme.mono.family
         font.pointSize: Theme.mono.large

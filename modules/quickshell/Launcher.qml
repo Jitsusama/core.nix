@@ -236,7 +236,11 @@ Scope {
         // every row below it down a moment after typing, twice for the
         // weather (Joel, 2026-10-25: "it needs to be fucking stable").
         const holds = !!answer && (answer.asking === true || (!fresh && before === 1));
-        const rows = parted(answer) || holds ? [answered(answer)] : [];
+        // One that came to nothing is a row too, saying why once, where its
+        // asking row was, rather than "= no forecast" in the field beside
+        // the aside saying Open-Meteo didn't answer (VKCF3Z, 2026-11-02).
+        const missed = !!answer && answer.missed === true;
+        const rows = parted(answer) || holds || missed ? [answered(answer)] : [];
         // A category named as a thing is, or as an answer asks, gives way to
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
@@ -308,8 +312,11 @@ Scope {
     // doing what it does, and its detail behind the right arrow, each part
     // copied the same way. Its kind says it's an answer.
     function answered(said) {
-        // One whose parts wait to be looked at says its own glyph and hue.
-        const first = said.parted === true ? {} : said.rows[0] ?? {};
+        // One whose parts wait to be looked at says its own glyph and hue,
+        // and one that came to nothing reads as nothing found does.
+        const first = said.missed === true
+            ? { glyph: Theme.glyph.nothingFound, hue: "voice" }
+            : said.parted === true ? {} : said.rows[0] ?? {};
         const asked = said.question ?? Fuzzy.plainly(said.heard ?? typed);
         return {
             // Nothing to learn: an answer is always first for its question.
@@ -338,6 +345,8 @@ Scope {
             heard: said.heard ?? "",
             // An answer that is a thing, as a pi's whole words are, says so.
             thing: said.thing ?? false,
+            // Its name says why it came to nothing, so nothing else does.
+            missed: said.missed === true,
             live: said.live ?? null,
             about: said.about ?? "",
             side: "",
@@ -497,8 +506,9 @@ Scope {
     readonly property string kind: {
         if (typed === "" || held.length > 0 || !selected)
             return "";
+        // One that came to nothing isn't an answer, and says only why.
         if (selected === headline || selected.answered)
-            return "answer";
+            return answer && answer.missed === true ? "" : "answer";
         if (selected.category)
             return "category";
         // A collection's own row has no provider's kind; a shortcut that
@@ -1578,7 +1588,7 @@ Scope {
 
     function kindOf(row) {
         if (row && row.answered)
-            return "answer";
+            return row.missed ? "" : "answer";
         if (!row || row.opens || row.plain)
             return "";
         return kinds[row.what ?? ""] ?? "";
@@ -3436,6 +3446,8 @@ Scope {
             open: root.open,
             keys: root.open && prompt.Window.active,
             typed: root.typed,
+            // How the field finishes what's typed, as " = 4" after a sum.
+            completion: root.completion,
             held: root.held.map(step => step.row.chip ?? step.row.name),
             path: root.path,
             rows: root.matches.slice(0, 20).map(row => row.name),
@@ -4290,7 +4302,9 @@ Scope {
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).
+                                    // A miss is said as quietly as nothing found.
                                     quiet: !!entry.modelData.gone
+                                        || !!entry.modelData.answered && !!entry.modelData.missed
                                     onClicked: root.run(entry.modelData, false)
                                 }
                             }
@@ -4397,7 +4411,7 @@ Scope {
                             if ((choice.note ?? "") !== "")
                                 return choice.note;
                             if (choice.plain && root.answer)
-                                return root.answer.note ?? "";
+                                return root.answer.missed === true ? "" : root.answer.note ?? "";
                             if (root.held.length > 0)
                                 return root.held[0].row.context ?? "";
                             // What's typed is longer than it need be,

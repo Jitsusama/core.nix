@@ -7,6 +7,10 @@
 // Tested as it is by tests/reading.qml.
 .pragma library
 
+// What a cut leaves dangling at its end, a separator or a pause, which
+// goes before the ellipsis does.
+const DANGLING = /[\s\u00b7,;:]+$/u;
+
 // The longest each ramp lasts, in seconds. A slide the pace alone would
 // take less than two ramps for ramps for half that time, so the pace
 // still holds between them.
@@ -39,4 +43,23 @@ function slide(over, pace) {
             1 - 2 * time / 3, 1 - ground / 3, 1 - time / 3, 1, 1, 1
         ]
     };
+}
+
+// Words too long for their room, given way at the last whole word that
+// fits, an ellipsis after it, so what's said is never cut mid-word
+// (docs/design.md, Collapsing; VKCF3Z, 2026-11-02: "Open-Meteo didn't
+// a\u2026"). `width` measures a text in the face it's drawn in. Where not
+// even the first word fits, nothing is said, rather than a piece of one.
+function wholeWords(words, room, width) {
+    if (width(words) <= room) {
+        return words;
+    }
+    const parts = words.split(" ");
+    for (let count = parts.length - 1; count > 0; count -= 1) {
+        const cut = `${parts.slice(0, count).join(" ").replace(DANGLING, "")}\u2026`;
+        if (width(cut) <= room) {
+            return cut;
+        }
+    }
+    return "";
 }

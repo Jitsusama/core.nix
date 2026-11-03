@@ -240,12 +240,7 @@ Provider {
             return waiting(found, "Open-Meteo");
         const place = fixed ? here : (found.value.results ?? [])[0];
         if (!place)
-            return {
-                headline: "no such place",
-                copy: "",
-                rows: [],
-                note: `Open-Meteo knows no \u201c${name}\u201d`
-            };
+            return missed(`Open-Meteo knows no \u201c${name}\u201d.`);
         const units = imperial
             ? "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" : "";
         const forecast = ask("https://api.open-meteo.com/v1/forecast"
@@ -348,12 +343,14 @@ Provider {
     }
 
     function waiting(entry, who) {
-        return {
-            headline: entry.failed ? "no forecast" : "\u2026",
-            copy: "",
-            rows: [],
-            note: entry.failed ? `${who} didn't answer` : `asking ${who}`,
-            asking: !entry.failed
-        };
+        if (entry.failed)
+            return missed(`${who} didn't answer.`);
+        return { headline: "\u2026", copy: "", rows: [], note: `asking ${who}`, asking: true };
+    }
+
+    // An answer that came to nothing, saying why in a sentence, once: the
+    // launcher shows it as a row of its own, as quietly as nothing found.
+    function missed(why) {
+        return { headline: why, copy: "", rows: [], missed: true };
     }
 }
