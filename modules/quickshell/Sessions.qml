@@ -1773,7 +1773,7 @@ Singleton {
                 return;
             for (const file of Object.keys(records).sort()) {
                 const presence = records[file];
-                if ((presence.addresses ?? []).length > 0 && alive(presence.owner))
+                if (presence && (presence.addresses ?? []).length > 0 && alive(presence.owner))
                     next.push({
                         file: file,
                         presence: presence,
@@ -2088,11 +2088,20 @@ Singleton {
     }
     // Whether every record in the folder is read, so a node lost leaves
     // what it said shown until the folder says it all, never a moment with
-    // no sessions while the folder is listed.
+    // no sessions while the folder is listed. Each file's view is counted
+    // before it has told what it read, and the records were forgotten
+    // while the node answered, so a count alone let the folder say none.
     function folderRead() {
         const listing = presenceFolder.item;
-        return listing !== null && listing.status === FolderListModel.Ready
-            && presenceViews.count === listing.count;
+        if (listing === null || listing.status !== FolderListModel.Ready
+            || presenceViews.count !== listing.count)
+            return false;
+        for (let at = 0; at < presenceViews.count; at += 1) {
+            const view = presenceViews.objectAt(at);
+            if (view === null || view.path.startsWith(state) && !(view.path in records))
+                return false;
+        }
+        return true;
     }
     Instantiator {
         id: presenceViews
@@ -2130,14 +2139,15 @@ Singleton {
         // A folder Qt fell back to when the presence folder isn't there.
         if (!file.startsWith(state))
             return;
+        // One that isn't a record is kept as nothing, so it's known read.
         let record;
         try {
             record = JSON.parse(text);
         } catch (e) {
-            return;
+            record = null;
         }
         if (!record || typeof record !== "object")
-            return;
+            record = null;
         const next = Object.assign({}, records);
         next[file] = record;
         records = next;
