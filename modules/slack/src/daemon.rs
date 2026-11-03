@@ -63,7 +63,14 @@ pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
         fields.insert(kind.into(), thing);
         (key, Value::Object(fields))
     }
-    let shown = |one: &Conversation| json!({"id": one.id, "name": one.name, "kind": one.kind, "link": one.link});
+    let shown = |one: &Conversation| {
+        json!({
+            "id": one.id,
+            "name": one.name,
+            "kind": one.kind,
+            "link": one.link,
+        })
+    };
     let mut made = Vec::new();
     let standing = match said {
         None => json!("none"),
@@ -312,8 +319,9 @@ impl Daemon {
             let daemon = self.clone();
             let told = told.clone();
             std::thread::spawn(move || {
-                let answer = daemon.answer(&line, connection, &told);
-                let _ = told.send(answer.to_string());
+                if let Some(answer) = daemon.answer(&line, connection, &told) {
+                    let _ = told.send(answer.to_string());
+                }
             });
         }
         self.lock()
@@ -321,20 +329,56 @@ impl Daemon {
             .retain(|watch| watch.connection != connection);
     }
 
-    /// What one line asks, answered.
-    fn answer(&self, line: &str, connection: u64, told: &Sender<String>) -> Value {
+    /// What one line asks, answered, or none once a watch's answer has
+    /// been told already.
+    fn answer(&self, line: &str, connection: u64, told: &Sender<String>) -> Option<Value> {
         let Ok(said) = serde_json::from_str::<Value>(line) else {
-            return error(&Value::Null, "unknown-ask", "that isn't an ask");
+            return Some(error(&Value::Null, "unknown-ask", "that isn't an ask"));
         };
+        if said.get("ask").and_then(Value::as_str) == Some("watch") {
+            return self.watch(&said, connection, told);
+        }
+        Some(self.asked(&said, connection))
+    }
+
+    /// A watch, told what's held while the lock is still held and only
+    /// then added, so no change `say` tells it can come before the
+    /// records it changes; or why it can't be.
+    fn watch(&self, said: &Value, connection: u64, told: &Sender<String>) -> Option<Value> {
         let id = said.get("id").cloned().unwrap_or(Value::Null);
-        let asked = said.get("ask").and_then(Value::as_str).unwrap_or("");
-        let watch = |kinds| Watch {
+        let kinds = match kinds(said) {
+            Ok(kinds) => kinds,
+            Err(kind) => return Some(unknown(&id, &kind)),
+        };
+        let watch = Watch {
             connection,
             id: id.clone(),
             kinds,
-            keys: strings(&said, "keys").map(|keys| keys.into_iter().collect()),
+            keys: strings(said, "keys").map(|keys| keys.into_iter().collect()),
             told: told.clone(),
         };
+        let mut held = self.lock();
+        let records: Vec<&Value> = held
+            .order
+            .iter()
+            .filter(|key| watch.sees(key))
+            .filter_map(|key| held.records.get(key))
+            .collect();
+        let answer = json!({"id": id, "records": records});
+        if told.send(answer.to_string()).is_err() {
+            return None;
+        }
+        // A watch asked again by its id replaces the one before.
+        held.watches
+            .retain(|was| !(was.connection == connection && was.id == id));
+        held.watches.push(watch);
+        None
+    }
+
+    /// What any ask but a watch is answered with.
+    fn asked(&self, said: &Value, connection: u64) -> Value {
+        let id = said.get("id").cloned().unwrap_or(Value::Null);
+        let asked = said.get("ask").and_then(Value::as_str).unwrap_or("");
         match asked {
             "hello" => {
                 let (state, _) = self.lock().stands.word();
@@ -352,41 +396,28 @@ impl Daemon {
                     "records": held.records.len(), "watching": held.watches.len(),
                 })
             }
-            "list" | "watch" => {
-                let kinds = match kinds(&said) {
+            "list" => {
+                let kinds = match kinds(said) {
                     Ok(kinds) => kinds,
-                    Err(kind) => {
-                        return error(
-                            &id,
-                            "unknown-kind",
-                            &format!(
-                                "this daemon keeps slack-unread, slack-recent, \
-                                 slack-account and slack-message, not {kind}"
-                            ),
-                        );
-                    }
+                    Err(kind) => return unknown(&id, &kind),
                 };
                 let limit = said
                     .get("limit")
                     .and_then(Value::as_u64)
                     .and_then(|limit| usize::try_from(limit).ok())
                     .unwrap_or(usize::MAX);
-                let mut held = self.lock();
-                let watch = watch(kinds);
-                let records: Vec<Value> = held
+                let held = self.lock();
+                let seen = |key: &&String| {
+                    let kind = key.split_once(':').map_or(key.as_str(), |(kind, _)| kind);
+                    kinds.as_ref().is_none_or(|kinds| kinds.contains(kind))
+                };
+                let records: Vec<&Value> = held
                     .order
                     .iter()
-                    .filter(|key| watch.sees(key))
+                    .filter(seen)
                     .filter_map(|key| held.records.get(key))
-                    .take(if asked == "list" { limit } else { usize::MAX })
-                    .cloned()
+                    .take(limit)
                     .collect();
-                if asked == "watch" {
-                    // A watch asked again by its id replaces the one before.
-                    held.watches
-                        .retain(|was| !(was.connection == connection && was.id == id));
-                    held.watches.push(watch);
-                }
                 json!({"id": id, "records": records})
             }
             "unwatch" => {
@@ -395,8 +426,8 @@ impl Daemon {
                     .retain(|was| !(was.connection == connection && was.id == id));
                 json!({"id": id, "unwatched": true})
             }
-            "search" => self.search(&id, &said),
-            "get" => self.get(&id, &said),
+            "search" => self.search(&id, said),
+            "get" => self.get(&id, said),
             other => error(&id, "unknown-ask", &format!("no ask {other:?}")),
         }
     }
@@ -503,6 +534,18 @@ fn refused(id: &Value, failed: &Failed) -> Value {
             error(id, "refused", "Slack couldn't be reached")
         }
     }
+}
+
+/// A kind this daemon doesn't answer for, said so.
+fn unknown(id: &Value, kind: &str) -> Value {
+    error(
+        id,
+        "unknown-kind",
+        &format!(
+            "this daemon keeps slack-unread, slack-recent, slack-account and slack-message, \
+             not {kind}"
+        ),
+    )
 }
 
 fn error(id: &Value, code: &str, message: &str) -> Value {
@@ -618,8 +661,9 @@ mod tests {
         let asked = json!({"id": "all", "ask": "watch", "kind": "slack-message"});
         // Asked before Slack is, as a shell starting the daemon by its
         // socket asks.
-        let held = daemon.answer(&asked.to_string(), 1, &told);
-        assert_eq!(held["records"], json!([]));
+        // Its answer is told on the watch's own line, before anything
+        // else.
+        assert_eq!(daemon.answer(&asked.to_string(), 1, &told), None);
         let said = ok(vec![one("D1", Kind::Dm, 1, "1")], vec![]);
         daemon.say(Some(&said), 10);
         daemon.say(Some(&said), 20);
@@ -631,10 +675,40 @@ mod tests {
         assert_eq!(
             lines,
             [
+                json!({"id": "all", "records": []}),
                 json!({"id": "all", "sources": {"slack": "answering"}}),
                 json!({"id": "all", "sources": {"slack": "signed-out"}})
             ]
         );
+    }
+
+    #[test]
+    fn a_watch_hears_what_was_held_before_any_change_to_it() {
+        let daemon = Daemon::new(PathBuf::new(), String::new());
+        daemon.say(Some(&ok(vec![one("D1", Kind::Dm, 1, "1")], vec![])), 10);
+        let (told, heard) = mpsc::channel();
+        let asked = json!({"id": "all", "ask": "watch", "kind": "slack-unread"});
+        // A change said from another thread as the watch is asked: either
+        // before it, and in what it's told is held, or after, as a change.
+        let saying = daemon.clone();
+        let racing = std::thread::spawn(move || {
+            saying.say(Some(&ok(vec![one("D1", Kind::Dm, 2, "2")], vec![])), 20);
+        });
+        daemon.answer(&asked.to_string(), 1, &told);
+        racing.join().unwrap();
+        let lines: Vec<Value> = heard
+            .try_iter()
+            .map(|line: String| serde_json::from_str(&line).unwrap())
+            .collect();
+        let count = |line: &Value, field: &str| line[field][0]["slack-unread"]["count"].clone();
+        assert!(lines[0].get("records").is_some(), "{lines:?}");
+        let last = lines.last().unwrap();
+        let latest = if last.get("changed").is_some() {
+            count(last, "changed")
+        } else {
+            count(last, "records")
+        };
+        assert_eq!(latest, json!(2), "{lines:?}");
     }
 
     #[test]
