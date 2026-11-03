@@ -13,6 +13,8 @@ pub struct Link {
     pub left_pt: f64,
     pub top_pt: f64,
     pub height_pt: f64,
+    /// Where its words stand, which its label's letters stand on too.
+    pub baseline_pt: f64,
     pub href: String,
 }
 
@@ -42,6 +44,11 @@ pub fn links(frame: &Frame) -> Vec<Link> {
 }
 
 fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
+    // Typst sets a link's box in the frame of the text it covers, and a
+    // text item stands at its baseline.
+    let baseline = frame.items().find_map(|(place, item)| {
+        matches!(item, FrameItem::Text(_)).then_some((at.y + place.y).to_pt())
+    });
     for (place, item) in frame.items() {
         let here = at + *place;
         match item {
@@ -53,6 +60,7 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
                 left_pt: here.x.to_pt(),
                 top_pt: here.y.to_pt(),
                 height_pt: size.y.to_pt(),
+                baseline_pt: baseline.unwrap_or((here.y + size.y).to_pt()),
                 href: url.as_str().to_string(),
             }),
             _ => {}
@@ -60,19 +68,47 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
     }
 }
 
+/// Where a label is drawn, in whole device pixels down the view, so its
+/// letters' baseline, `baseline_px` below its top, stands on its link's,
+/// on a page `px_per_pt` device pixels a point with the view's top
+/// `offset_px` down it.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "pixels as f32, as GL takes them, within a page's few hundred thousand"
+)]
+pub fn label_top(link: &Link, baseline_px: f64, px_per_pt: f64, offset_px: f64) -> f32 {
+    (link.baseline_pt * px_per_pt - offset_px - baseline_px).round() as f32
+}
+
 /// Where a link goes.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Target {
-    /// A heading on this page, by the name GitHub gives its anchor.
+    /// A heading on this page, by the name GitHub gives its anchor, or its
+    /// top for none.
     Here(String),
+    /// Another markdown file, set in this window in this page's place, and
+    /// a heading on it, if one is named.
+    Page(PathBuf, Option<String>),
     /// Anything else: a site, an address, or a file, opened as the desktop
     /// opens it.
     Elsewhere(String),
 }
 
+/// Whether a file's name says it's markdown, as the desktop's type for
+/// markdown names its files.
+fn markdown(file: &Path) -> bool {
+    file.extension()
+        .and_then(|it| it.to_str())
+        .is_some_and(|it| {
+            ["md", "markdown", "mdown", "mkd", "mkdn"]
+                .iter()
+                .any(|ext| it.eq_ignore_ascii_case(ext))
+        })
+}
+
 /// Where `href` goes, from the page at `page`: a bare fragment, or this
-/// page's own name with one, is here; a path is taken from the page's
-/// folder.
+/// page's own name, is here; a path is taken from the page's folder, and
+/// one to markdown is a page of its own.
 pub fn target(href: &str, page: &Path) -> Target {
     if let Some(fragment) = href.strip_prefix('#') {
         return Target::Here(fragment.to_string());
@@ -87,13 +123,18 @@ pub fn target(href: &str, page: &Path) -> Target {
     } else {
         folder.join(path)
     };
-    if !fragment.is_empty() && same(&file, page) {
+    if same(&file, page) {
         return Target::Here(fragment.to_string());
+    }
+    if markdown(&file) {
+        let heading = (!fragment.is_empty()).then(|| fragment.to_string());
+        return Target::Page(file, heading);
     }
     Target::Elsewhere(file.to_string_lossy().into_owned())
 }
 
-fn same(a: &Path, b: &Path) -> bool {
+/// Whether two paths are one file, however each is written.
+pub fn same(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
@@ -210,15 +251,20 @@ mod tests {
         );
         assert_eq!(
             target("other.md", page),
-            Target::Elsewhere("/notes/other.md".into())
+            Target::Page("/notes/other.md".into(), None)
         );
         assert_eq!(
-            target("../up.md#top", page),
-            Target::Elsewhere("/notes/../up.md".into())
+            target("../up.MARKDOWN#top", page),
+            Target::Page("/notes/../up.MARKDOWN".into(), Some("top".into()))
         );
         assert_eq!(
             target("page.md#the-keys", page),
             Target::Here("the-keys".into())
+        );
+        assert_eq!(target("page.md", page), Target::Here(String::new()));
+        assert_eq!(
+            target("sheet.pdf", page),
+            Target::Elsewhere("/notes/sheet.pdf".into())
         );
         assert_eq!(
             target("/etc/hosts", page),

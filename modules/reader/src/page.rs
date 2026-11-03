@@ -307,6 +307,17 @@ impl Setter {
         }
     }
 
+    /// Sets another file from now on, keeping the world and its pieces, so
+    /// a link followed costs no fonts read again.
+    pub fn open(&mut self, file: &str) {
+        file.clone_into(&mut self.file);
+    }
+
+    /// The file it sets.
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
     /// The whole file as it is now, as one tall page, and how long that took.
     pub fn set(&mut self) -> Result<(Page, f64), String> {
         let start = Instant::now();

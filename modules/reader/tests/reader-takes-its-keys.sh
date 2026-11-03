@@ -106,6 +106,29 @@ press j
 logged '^key Down None' 1
 awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt, not the top"
 
+# The link near the top to another markdown file sets it in this window,
+# and Ctrl+O comes back to the place it left on the first, Ctrl+I goes on
+# to it again, and the file shown and its saves move with it.
+press 3j
+logged '^key Down Some\(3\)' 1
+left=$(heading)
+press gx
+logged '^links: 1 in view' 2
+press a
+logged '^link: second.md' 1
+logged '^opened: (.*/)?second.md, heading 0.0 pt' 1
+grep -q 'second.md$' state/reader/showing/[0-9]* \
+  || fail "the file shown is said as $(cat state/reader/showing/[0-9]*)"
+press -M ctrl o -m ctrl
+logged '^opened: (.*/)?page.md, ' 1
+back=$(grep -a -E '^opened: (.*/)?page.md, ' said | sed -E 's/.*heading ([0-9.]+) pt/\1/')
+awk "BEGIN { exit !($back - $left < 1 && $left - $back < 1) }" \
+  || fail "Ctrl+O came back to $back pt, not $left"
+press -M ctrl i -m ctrl
+logged '^opened: (.*/)?second.md, ' 2
+echo 'Written on since.' >> second.md
+logged '^saved: ' 1
+
 press q
 wait "$reader" || true
 touch passed

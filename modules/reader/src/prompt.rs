@@ -52,6 +52,34 @@ pub struct Label {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// How far below its top its letters stand, in device pixels.
+    pub baseline_px: f64,
+}
+
+/// Where a set page's first text stands, in points down it.
+fn baseline_pt(frame: &typst::layout::Frame) -> Option<f64> {
+    frame.items().find_map(|(place, item)| match item {
+        typst::layout::FrameItem::Text(_) => Some(place.y.to_pt()),
+        typst::layout::FrameItem::Group(group) => {
+            baseline_pt(&group.frame).map(|y| y + place.y.to_pt() + group.transform.ty.to_pt())
+        }
+        _ => None,
+    })
+}
+
+/// A set page as pixels, `px_per_pt` device pixels a point.
+fn rendered(page: &typst_layout::Page, px_per_pt: f64) -> Label {
+    let options = typst_render::RenderOptions {
+        pixel_per_pt: px_per_pt.into(),
+        ..Default::default()
+    };
+    let pixmap = typst_render::render(page, &options);
+    Label {
+        width: pixmap.width(),
+        height: pixmap.height(),
+        baseline_px: baseline_pt(&page.frame).unwrap_or(0.0) * px_per_pt,
+        pixels: pixmap.take(),
+    }
 }
 
 /// Which of the three an ask is, so only the newest of each is set.
@@ -119,18 +147,10 @@ impl Prompt {
                                 continue;
                             }
                         };
-                        let options = typst_render::RenderOptions {
-                            pixel_per_pt: ask.px_per_pt.into(),
-                            ..Default::default()
-                        };
-                        let mut pages = document.pages().iter().map(|page| {
-                            let pixmap = typst_render::render(page, &options);
-                            Label {
-                                width: pixmap.width(),
-                                height: pixmap.height(),
-                                pixels: pixmap.take(),
-                            }
-                        });
+                        let mut pages = document
+                            .pages()
+                            .iter()
+                            .map(|page| rendered(page, ask.px_per_pt));
                         let set = if ask.labels.is_empty() {
                             let Some(first) = pages.next() else {
                                 continue;
@@ -306,6 +326,62 @@ mod tests {
                 )
             });
         assert_eq!(document.pages().len(), 2);
+    }
+
+    #[test]
+    fn a_labels_letters_stand_on_its_links_baseline_within_a_pixel() {
+        let dir = std::env::temp_dir().join(format!("reader-label-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        let file = dir.join("page.md");
+        std::fs::write(
+            &file,
+            "# A Page\n\nWords before [a link](other.md) and after it.\n\n`code` then [another](#a-page).\n",
+        )
+        .expect("the file");
+        let (page, _) = page::Setter::new(file.to_str().expect("a path"))
+            .set()
+            .expect("set");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+        let found = crate::links::links(&page.frame);
+        assert_eq!(found.len(), 2);
+        // Each link's baseline is its words' own, as search reads them.
+        let lines = crate::text::lines(crate::text::runs(&page.frame));
+        for link in &found {
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| (line.baseline_pt - link.baseline_pt).abs() < 0.01),
+                "{link:?}"
+            );
+        }
+        let mut world = page::new_world();
+        world.set_main(&labels(&["x".into(), "sd".into()]));
+        let document = typst::compile::<PagedDocument>(&world)
+            .output
+            .expect("the labels set");
+        // Scales 1.5 and 2, at their own size and zoomed, and the view's
+        // top anywhere between two pixels.
+        for scale in [1.5, 2.0] {
+            for zoom in [1.0, 1.1, 1.0 / 1.1, 1.21] {
+                let px = scale / 0.75 * zoom;
+                for offset in [0.0, 0.25, 0.5, 0.75, 13.37] {
+                    for (link, label) in found.iter().zip(document.pages()) {
+                        let label = rendered(label, px);
+                        assert!(
+                            label.baseline_px > 0.0 && label.baseline_px < f64::from(label.height)
+                        );
+                        let top =
+                            f64::from(crate::links::label_top(link, label.baseline_px, px, offset));
+                        let words = link.baseline_pt * px - offset;
+                        assert!(
+                            (top + label.baseline_px - words).abs() <= 1.0,
+                            "at {px} px a point, {offset} down: the label's letters at {}, the link's at {words}",
+                            top + label.baseline_px
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

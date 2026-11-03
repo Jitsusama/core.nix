@@ -143,7 +143,46 @@ struct Incoming {
     /// When the save's page arrived, to say how long it took to show.
     since: Instant,
     set_ms: f64,
+    /// The file it's of, when it's another file a link or a jump opened
+    /// in this window rather than this one saved.
+    opens: Option<std::path::PathBuf>,
 }
+
+/// A place on the jump list: a file, and how far down it, in points.
+#[derive(Clone, Debug, PartialEq)]
+struct Spot {
+    file: std::path::PathBuf,
+    pt: f64,
+}
+
+/// Where the view lands on a file opened in the window's place.
+enum Landing {
+    /// A heading on it, by its anchor, as a link names one.
+    Heading(String),
+    /// A place on the jump list, in points.
+    At(f64),
+    /// Where he was when he last left it, as the reader opens a file.
+    Kept,
+}
+
+/// Another file being set for the window, and where it will land.
+struct Following {
+    file: std::path::PathBuf,
+    landing: Landing,
+}
+
+/// What the reloader is asked: the file saved, so set it again, or set
+/// another file from now on.
+enum Reload {
+    Saved,
+    Open(String),
+}
+
+/// A page the reloader set, of the file it names, or why it couldn't.
+type Reset = (
+    String,
+    Result<(typst_layout::Page, f64, Vec<text::Line>), String>,
+);
 
 /// Where the view's top line is on a new page: the same words, the same
 /// how-many-th time they come, at the same height in the view; the end of
@@ -301,9 +340,9 @@ struct App {
     start_pt: Option<f64>,
     /// Marks kept from the last time, whose blocks aren't set yet.
     kept_marks: Vec<(char, usize, f64)>,
-    /// The places jumped from, oldest first, and where Ctrl+O and Ctrl+I
-    /// stand in them; at its length, past the newest.
-    jumps: Vec<f64>,
+    /// The places jumped from, oldest first, each with its file, and where
+    /// Ctrl+O and Ctrl+I stand in them; at its length, past the newest.
+    jumps: Vec<Spot>,
     jump_at: usize,
     /// Where the last jump left from, for ''.
     last_jump: Option<f64>,
@@ -343,11 +382,21 @@ struct App {
     keys_canvas: Option<gl::Texture>,
     /// The file shown, which a link's path is taken from.
     file: std::path::PathBuf,
+    /// Another file being set to take this one's place, once it's drawn.
+    following: Option<Following>,
+    /// Asks the reloader to set the file again, or another file.
+    reload_to: Option<std::sync::mpsc::Sender<Reload>>,
+    /// The watch on the file shown, which moves with it.
+    watch: Option<watch::Watch>,
+    /// Whether the reader runs the measure, which says nothing of what
+    /// it shows.
+    measuring: bool,
     /// g x's labels while they show: what's typed of one, and the links in
     /// view they stand for, in the labels' order.
     labelling: Option<(links::Labelling, Vec<links::Link>)>,
     labels_set: Option<Vec<prompt::Label>>,
-    label_canvases: Vec<gl::Texture>,
+    /// Each label painted, and how far below its top its letters stand.
+    label_canvases: Vec<(gl::Texture, f64)>,
 }
 
 /// One line of the page's body text: 13.1 pt with its 0.62 em leading,
@@ -635,7 +684,10 @@ impl App {
     /// Puts a place, in points, on the jump list as the last jump's start.
     fn remember(&mut self, here: f64) {
         self.jumps.truncate(self.jump_at);
-        self.jumps.push(here);
+        self.jumps.push(Spot {
+            file: self.file.clone(),
+            pt: here,
+        });
         self.jump_at = self.jumps.len();
         self.last_jump = Some(here);
     }
@@ -869,8 +921,9 @@ impl App {
         }
     }
 
-    /// g x's labels, each over its link's first letters, on whole pixels so
-    /// its letters are sharp; a newly set batch is painted first.
+    /// g x's labels, each over its link's first letters with its letters'
+    /// baseline on the link's, on whole pixels so its letters are sharp; a
+    /// newly set batch is painted first.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
@@ -880,26 +933,26 @@ impl App {
         if self.labelling.is_none() {
             return;
         }
-        let px = self.px_per_pt() as f32;
-        let offset = self.offset as f32;
+        let px = self.px_per_pt();
+        let offset = self.offset;
         let left = self.page_x();
         let Some(gl) = self.gl.as_ref() else { return };
         if let Some(set) = self.labels_set.take() {
-            for old in self.label_canvases.drain(..) {
+            for (old, _) in self.label_canvases.drain(..) {
                 gl.forget(old);
             }
             for label in set {
                 if let Ok(canvas) = gl.canvas(label.width, label.height) {
                     gl.paint(&canvas, &label.pixels);
-                    self.label_canvases.push(canvas);
+                    self.label_canvases.push((canvas, label.baseline_px));
                 }
             }
         }
         if let Some((_, shown)) = self.labelling.as_ref() {
-            for (link, canvas) in shown.iter().zip(&self.label_canvases) {
+            for (link, (canvas, baseline_px)) in shown.iter().zip(&self.label_canvases) {
                 let (width, height) = (canvas.width as f32, canvas.height as f32);
-                let x = (link.left_pt as f32 * px).round() + left;
-                let y = (link.top_pt as f32 * px - offset).round();
+                let x = (link.left_pt * px).round() as f32 + left;
+                let y = links::label_top(link, *baseline_px, px, offset);
                 gl.draw(canvas, x, y, width, height);
             }
         }
@@ -952,7 +1005,7 @@ impl App {
             _ => None,
         };
         self.labelling = None;
-        for old in self.label_canvases.drain(..) {
+        for (old, _) in self.label_canvases.drain(..) {
             if let Some(gl) = self.gl.as_ref() {
                 gl.forget(old);
             }
@@ -981,6 +1034,14 @@ impl App {
                     Some(pt) => self.leap(pt.max(0.0) * self.px_per_pt()),
                     None => eprintln!("reader: no heading here is #{anchor}"),
                 }
+            }
+            links::Target::Page(file, heading) => {
+                if !file.is_file() {
+                    eprintln!("reader: there's no {}", file.display());
+                    return;
+                }
+                self.remember(self.heading() / self.px_per_pt());
+                self.open(file, heading.map_or(Landing::Kept, Landing::Heading));
             }
             links::Target::Elsewhere(to) => {
                 let opened = std::process::Command::new("xdg-open")
@@ -1026,9 +1087,52 @@ impl App {
         }
     }
 
-    /// Goes to a place on the jump list without adding to it.
-    fn revisit(&mut self, pt: f64) {
-        self.jump_to(pt * self.px_per_pt());
+    /// Goes to a place on the jump list without adding to it: on this page
+    /// as a jump, or on another file, set in this one's place.
+    fn revisit(&mut self, spot: Spot) {
+        if !links::same(&spot.file, &self.file) {
+            self.open(spot.file, Landing::At(spot.pt));
+            return;
+        }
+        // Back on the file shown before another took its place: the other
+        // is let go, and the reloader set on this one again.
+        if self.following.take().is_some() {
+            self.let_incoming_go();
+            self.set_on(&self.file);
+        }
+        self.jump_to(spot.pt * self.px_per_pt());
+    }
+
+    /// Sets another file to take this one's place in the window once its
+    /// bands cover the view, where `landing` says.
+    fn open(&mut self, file: std::path::PathBuf, landing: Landing) {
+        self.let_incoming_go();
+        self.set_on(&file);
+        self.following = Some(Following { file, landing });
+    }
+
+    /// Moves the reloader and the watch to `file`, which the reloader sets
+    /// at once and then at each save.
+    fn set_on(&self, file: &std::path::Path) {
+        if let Some(to) = self.reload_to.as_ref() {
+            let _ = to.send(Reload::Open(file.to_string_lossy().into_owned()));
+        }
+        if let Some(watch) = self.watch.as_ref()
+            && let Err(error) = watch.follow(file)
+        {
+            eprintln!("reader: can't watch {} for saves: {error}", file.display());
+        }
+    }
+
+    /// Lets go of a page set to take the page's place, and its bands.
+    fn let_incoming_go(&mut self) {
+        if let Some(old) = self.incoming.take()
+            && let Some(gl) = self.gl.as_ref()
+        {
+            for (_, texture) in old.textures {
+                gl.forget(texture);
+            }
+        }
     }
 
     /// Does what a key asks, `count` times where a count means anything.
@@ -1082,16 +1186,19 @@ impl App {
             Act::JumpBack => {
                 if self.jump_at > 0 {
                     if self.jump_at == self.jumps.len() {
-                        self.jumps.push(at / self.px_per_pt());
+                        self.jumps.push(Spot {
+                            file: self.file.clone(),
+                            pt: at / self.px_per_pt(),
+                        });
                     }
                     self.jump_at -= 1;
-                    self.revisit(self.jumps[self.jump_at]);
+                    self.revisit(self.jumps[self.jump_at].clone());
                 }
             }
             Act::JumpForward => {
                 if self.jump_at + 1 < self.jumps.len() {
                     self.jump_at += 1;
-                    self.revisit(self.jumps[self.jump_at]);
+                    self.revisit(self.jumps[self.jump_at].clone());
                 }
             }
             Act::Close => self.exit = true,
@@ -1821,20 +1928,40 @@ impl App {
     /// where the first screen's page settled and redrawing the rest in place.
     /// A save's page, set: it draws while the page before shows, from where
     /// the view's top words are on it.
-    fn saved(&mut self, page: typst_layout::Page, ms: f64, lines: Vec<text::Line>) {
-        if let (Some(gl), Some(old)) = (self.gl.as_ref(), self.incoming.take()) {
-            for (_, texture) in old.textures {
-                gl.forget(texture);
+    /// A page the reloader set: the file shown, saved, or the file being
+    /// opened in its place. One of a file no longer wanted is let go.
+    fn saved(&mut self, (file, set): Reset) {
+        let file = std::path::PathBuf::from(file);
+        let opens = match &self.following {
+            Some(following) if following.file == file => true,
+            None if file == self.file => false,
+            _ => return,
+        };
+        let (page, ms, lines) = match set {
+            Ok(set) => set,
+            Err(error) => {
+                eprintln!("reader: can't set {}: {error}", file.display());
+                if opens {
+                    // Left where it was, and saves of it heard again.
+                    self.following = None;
+                    self.set_on(&self.file);
+                }
+                return;
             }
-        }
+        };
+        self.let_incoming_go();
         let px_per_pt = self.px_per_pt();
         let screen_pt = self.screen_px() / px_per_pt;
         let new_most_pt = (page.frame.size().y.to_pt() - screen_pt).max(0.0);
-        let at_end = self.most() > 0.0 && self.offset >= self.most() - 1.0;
-        let top_pt = self.offset / px_per_pt;
-        let offset_pt = match &self.words {
-            Some(old) => anchored(old, &lines, top_pt, at_end, new_most_pt),
-            None => top_pt.min(new_most_pt),
+        let offset_pt = if opens {
+            self.landing(&file, &page, &lines, new_most_pt)
+        } else {
+            let at_end = self.most() > 0.0 && self.offset >= self.most() - 1.0;
+            let top_pt = self.offset / px_per_pt;
+            match &self.words {
+                Some(old) => anchored(old, &lines, top_pt, at_end, new_most_pt),
+                None => top_pt.min(new_most_pt),
+            }
         };
         let version = self.next_version.max(self.painter.version + 1);
         self.next_version = version + 1;
@@ -1849,8 +1976,38 @@ impl App {
             arrived: VecDeque::new(),
             since: Instant::now(),
             set_ms: ms,
+            opens: opens.then_some(file),
         });
         self.ask_incoming();
+    }
+
+    /// Where the view lands on a file opened in this one's place, in
+    /// points: the heading a link names, the place a jump left, or where
+    /// he last left the file, and otherwise its top.
+    fn landing(
+        &self,
+        file: &std::path::Path,
+        page: &typst_layout::Page,
+        lines: &[text::Line],
+        most_pt: f64,
+    ) -> f64 {
+        let Some(following) = self.following.as_ref() else {
+            return 0.0;
+        };
+        let pt = match &following.landing {
+            Landing::Heading(anchor) => links::heading_at(lines, anchor).unwrap_or_else(|| {
+                eprintln!("reader: no heading in {} is #{anchor}", file.display());
+                0.0
+            }),
+            Landing::At(pt) => *pt,
+            Landing::Kept => match place::read(file) {
+                Some(kept) if kept.at_end => most_pt,
+                Some(kept) => place::pt_of(&place::starts(&page.frame), kept.block, kept.into_pt)
+                    .unwrap_or(0.0),
+                None => 0.0,
+            },
+        };
+        pt.clamp(0.0, most_pt)
     }
 
     /// The bands the saved page needs to cover the view where it will show,
@@ -1909,6 +2066,11 @@ impl App {
         let Some(incoming) = self.incoming.take() else {
             return;
         };
+        // Another file's page: where the view was on this one is kept for
+        // the next time it's shown, from its own page, before it goes.
+        if incoming.opens.is_some() && !self.measuring {
+            self.keep_place();
+        }
         if let Some(gl) = self.gl.as_ref() {
             for (_, texture) in self.textures.drain() {
                 gl.forget(texture);
@@ -1927,7 +2089,7 @@ impl App {
         self.painter.take(incoming.page, incoming.version);
         self.offset = incoming.offset;
         self.clamp();
-        if std::env::var_os("READER_KEYS_LOG").is_some() {
+        if keys_logged() && incoming.opens.is_none() {
             eprintln!(
                 "saved: set {:.0} ms, shown {:.0} ms after, heading {:.1} pt",
                 incoming.set_ms,
@@ -1936,7 +2098,35 @@ impl App {
             );
         }
         self.words = Some(incoming.lines);
+        if let Some(file) = incoming.opens {
+            self.shown_now(file);
+        }
         self.refind();
+    }
+
+    /// Another file is the one shown: its marks come back, '' starts over,
+    /// and the launcher's Recent is told.
+    fn shown_now(&mut self, file: std::path::PathBuf) {
+        self.following = None;
+        self.marks.clear();
+        self.kept_marks = place::read(&file)
+            .map(|kept| kept.marks)
+            .unwrap_or_default();
+        self.take_kept_marks();
+        self.last_jump = None;
+        if !self.measuring
+            && let Err(error) = showing::keep(&file)
+        {
+            eprintln!("reader: can't say {} is shown: {error}", file.display());
+        }
+        if keys_logged() {
+            eprintln!(
+                "opened: {}, heading {:.1} pt",
+                file.display(),
+                self.offset / self.px_per_pt()
+            );
+        }
+        self.file = file;
     }
 
     /// Takes back the marks kept from the last time whose blocks the page
@@ -1958,9 +2148,10 @@ impl App {
         });
     }
 
-    /// Keeps where the view is, and the marks, for the next time the file
-    /// opens.
-    fn keep_place(&self, file: &std::path::Path) {
+    /// Keeps where the view is on the file shown, and its marks, for the
+    /// next time it opens.
+    fn keep_place(&self) {
+        let file = self.file.as_path();
         let starts = place::starts(&self.painter.page().frame);
         // Closed while a jump moves, it keeps where the keys sent it.
         let here = self.jump.as_ref().map_or(self.offset, |jump| jump.to);
@@ -2740,7 +2931,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(rest) = rest {
         set_rest(&handle, rest)?;
     }
-    reload_on_save(&handle, &file)?;
+    let (reload_to, watch) = reload_on_save(&handle, &file)?;
+    app.reload_to = Some(reload_to);
+    app.watch = watch;
     app.take_kept_marks();
     if !measuring && let Err(error) = showing::keep(std::path::Path::new(&file)) {
         eprintln!("reader: can't say {file} is shown: {error}");
@@ -2750,7 +2943,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !measuring {
         showing::forget();
-        app.keep_place(std::path::Path::new(&file));
+        app.keep_place();
     }
     // Let the last frames' feedback in before reading it.
     let _ = event_loop.dispatch(std::time::Duration::from_millis(100), &mut app);
@@ -2988,6 +3181,10 @@ impl App {
             keys_set: None,
             keys_canvas: None,
             file,
+            following: None,
+            reload_to: None,
+            watch: None,
+            measuring,
             labelling: None,
             labels_set: None,
             label_canvases: Vec::new(),
@@ -3014,43 +3211,56 @@ fn set_rest(
 }
 
 /// Sets the file again on a thread of its own at each save, or once a
-/// batch of web pictures has come. The thread's setter is made at the first
-/// save, so it costs the first screen nothing, and saves that come while
-/// one sets are taken as one, the newest.
+/// batch of web pictures has come, and sets another file when a link or a
+/// jump opens one in the window. The thread's setter is made at the first
+/// ask, so it costs the first screen nothing, and asks that come while one
+/// sets are taken as one: the newest file asked for, as it is now. Gives
+/// back what asks it, and the watch on the file's saves, which moves with
+/// the file shown.
 fn reload_on_save(
     handle: &LoopHandle<'static, App>,
     file: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let reset_to = heard(handle, |app: &mut App, (page, ms, lines)| {
-        app.saved(page, ms, lines);
-    })?;
-    let (save_to, saves) = std::sync::mpsc::channel::<()>();
-    let watched = file.to_string();
+) -> Result<(std::sync::mpsc::Sender<Reload>, Option<watch::Watch>), Box<dyn std::error::Error>> {
+    let reset_to = heard(handle, App::saved)?;
+    let (reload_to, asks) = std::sync::mpsc::channel::<Reload>();
+    let first = file.to_string();
     std::thread::Builder::new()
         .name("reloader".into())
         .spawn(move || {
             let mut setter: Option<page::Setter> = None;
-            while saves.recv().is_ok() {
-                while saves.try_recv().is_ok() {}
-                let setter = setter.get_or_insert_with(|| page::Setter::new(&watched));
-                match setter.set() {
-                    Ok((page, ms)) => {
-                        let lines = text::lines(text::runs(&page.frame));
-                        if reset_to.send((page, ms, lines)).is_err() {
-                            return;
-                        }
+            while let Ok(ask) = asks.recv() {
+                let mut open = match ask {
+                    Reload::Open(file) => Some(file),
+                    Reload::Saved => None,
+                };
+                while let Ok(newer) = asks.try_recv() {
+                    if let Reload::Open(file) = newer {
+                        open = Some(file);
                     }
-                    Err(error) => eprintln!("reader: can't set {watched} again: {error}"),
+                }
+                let setter = setter.get_or_insert_with(|| page::Setter::new(&first));
+                if let Some(file) = open {
+                    setter.open(&file);
+                }
+                let set = setter.set().map(|(page, ms)| {
+                    let lines = text::lines(text::runs(&page.frame));
+                    (page, ms, lines)
+                });
+                if reset_to.send((setter.file().to_string(), set)).is_err() {
+                    return;
                 }
             }
         })?;
     // Pictures fetched from the web set the page again, as a save does.
-    let fetched_to = save_to.clone();
+    let fetched_to = reload_to.clone();
     web::when_fetched(move || {
-        let _ = fetched_to.send(());
+        let _ = fetched_to.send(Reload::Saved);
     });
-    if let Err(error) = watch::saves(std::path::Path::new(file), move || save_to.send(()).is_ok()) {
-        eprintln!("reader: can't watch {file} for saves: {error}");
-    }
-    Ok(())
+    let save_to = reload_to.clone();
+    let watch = watch::saves(std::path::Path::new(file), move || {
+        save_to.send(Reload::Saved).is_ok()
+    })
+    .map_err(|error| eprintln!("reader: can't watch {file} for saves: {error}"))
+    .ok();
+    Ok((reload_to, watch))
 }
