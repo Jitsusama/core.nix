@@ -554,6 +554,7 @@ Singleton {
         // that comes may be where workspaces wait to go (comeHome), or
         // where a session reopened meanwhile goes.
         function onWorkspacesChanged() {
+            root.noteGone();
             if (Object.keys(root.awayFrom).length > 0)
                 arranging.restart();
             root.placeOpened();
@@ -1024,6 +1025,31 @@ Singleton {
         next[away.screen] = kept.concat([{ id, workspace: away.workspace }]);
         awayFrom = next;
     }
+    // Each workspace's screen and number as last seen with that screen
+    // connected, by niri's id. A screen going, as at an undock, sends its
+    // workspaces to another, and niri gives one back only if nothing opened
+    // in it meanwhile: on 2026-11-03 a session handed over while Joel was
+    // undocked made his first workspace the laptop's own. So each workspace
+    // moved for its screen going is noted away from it (awayFrom), and goes
+    // back in its place when the screen comes. One noted already keeps its
+    // first screen, so a laptop shut on its dock never takes the monitor's.
+    property var workspacesWere: ({})
+    function noteGone() {
+        const now = Object.values(Niri.workspaces);
+        const outputs = now.map(one => one.output ?? "");
+        const noted = Object.values(root.awayFrom)
+            .reduce((all, kept) => all.concat(kept.map(one => one.id)), []);
+        const next = {};
+        for (const one of now) {
+            const was = root.workspacesWere[one.id];
+            const left = was !== undefined && !outputs.includes(was.output);
+            if (left && was.output !== (one.output ?? "") && !noted.includes(one.id))
+                root.noteAway({ screen: root.screens[was.output] || was.output,
+                    workspace: was.idx }, one.id);
+            next[one.id] = left ? was : { output: one.output ?? "", idx: one.idx };
+        }
+        root.workspacesWere = next;
+    }
     function comeHome() {
         if (root.placingNow() || Object.keys(awayFrom).length === 0)
             return;
@@ -1037,7 +1063,8 @@ Singleton {
         }
         awayFrom = next;
         const back = Niri.current;
-        going.moves.forEach(move => Niri.act({ MoveWorkspaceToMonitor: { output: move.output,
+        const moving = going.moves.filter(move => move.there !== true);
+        moving.forEach(move => Niri.act({ MoveWorkspaceToMonitor: { output: move.output,
             reference: { Id: move.id } } }));
         // Then each to its index, lowest first, so each set stays put.
         going.moves.forEach(move => Niri.act({ MoveWorkspaceToIndex: { index: move.index,
@@ -1045,7 +1072,7 @@ Singleton {
         // A screen just connected keeps its empty workspace while it's the
         // active one there, so the first moved is focused, which lets niri
         // drop the empty one, and then Joel's window again.
-        const first = going.moves[0];
+        const first = moving[0];
         if (first !== undefined) {
             Niri.act({ FocusWorkspace: { reference: { Id: first.id } } });
             if (back !== null)
