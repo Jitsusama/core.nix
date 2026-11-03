@@ -1462,6 +1462,9 @@ onLinux {
         property var marked: []
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
+        // Who signs a notice, as its card says it: here by the name it
+        // came with, no sender being known.
+        function sender(name) { return { glyph: 0xf0f3, hue: "program", name: name }; }
         // A sender's window by its program's id, as Notices finds it, the
         // desktop's entries aside.
         function senderWindow(app) {
