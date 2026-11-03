@@ -929,6 +929,22 @@ mod tests {
     }
 
     #[test]
+    fn a_task_list_hangs_its_boxes_and_holds_each_tasks_words() {
+        let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+        let typst = program(
+            "- [x] Done it\n- [ ] Still to do\n",
+            "notes",
+            None,
+            &Pieces::new(),
+            &world,
+            &mut Costs::default(),
+        );
+        assert!(typst.contains("#list(marker: no-mark, "), "{typst}");
+        assert!(typst.contains("#task(true)[#\"Done it\"]"), "{typst}");
+        assert!(typst.contains("#task(false)[#\"Still to do\"]"), "{typst}");
+    }
+
+    #[test]
     fn a_picture_is_known_by_its_first_bytes_not_its_name() {
         assert_eq!(picture_kind(b"\x89PNG\r\n\x1a\n...."), Some("png"));
         assert_eq!(picture_kind(b"\xff\xd8\xff\xe0...."), Some("jpg"));
