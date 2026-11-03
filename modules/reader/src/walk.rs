@@ -120,14 +120,16 @@ fn sanitizer() -> ammonia::Builder<'static> {
     b
 }
 
-/// The page's program, with what each step took. `about` is the eyebrow's
-/// words over the title: what the file is and when it changed.
+/// The page's program at `width`, with what each step took. `about` is
+/// the eyebrow's words over the title: what the file is and when it
+/// changed.
 pub fn program(
     markdown: &str,
     about: &str,
     base: Option<&std::path::Path>,
     pieces: &Pieces,
     world: &PageWorld,
+    width: crate::page::Width,
     costs: &mut Costs,
 ) -> String {
     let t = Instant::now();
@@ -145,7 +147,8 @@ pub fn program(
 
     let t = Instant::now();
     let mut out = String::with_capacity(markdown.len() * 3);
-    out.push_str(crate::page::template(world));
+    let template = crate::page::template(world, width);
+    out.push_str(&template);
     let mut walker = Walker {
         pieces,
         world,
@@ -167,16 +170,21 @@ pub fn program(
     // The eyebrow goes before any block, so the first set carries it
     // wherever it starts, and sits closer over a title than over words.
     out.insert_str(
-        crate::page::template(world).len(),
+        template.len(),
         &format!("#about(titled: {titled})[#{}]\n", literal(about)),
     );
     costs.walk = t.elapsed();
     out
 }
 
-/// Each block of the program on its own, for setting the first screen alone.
-pub fn blocks(program: &str, world: &PageWorld) -> (String, Vec<String>) {
-    let (head, body) = program.split_at(crate::page::template(world).len());
+/// Each block of the program at `width` on its own, for setting the first
+/// screen alone.
+pub fn blocks(
+    program: &str,
+    world: &PageWorld,
+    width: crate::page::Width,
+) -> (String, Vec<String>) {
+    let (head, body) = program.split_at(crate::page::template(world, width).len());
     (
         head.to_string(),
         body.split("\n// block\n").map(str::to_string).collect(),
@@ -973,6 +981,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
+            crate::page::Width::WHOLE,
             &mut costs,
         );
         assert!(typst.contains("#broken(\"x^2\")"), "{typst}");
@@ -989,6 +998,7 @@ mod tests {
                 None,
                 &Pieces::new(),
                 &world,
+                crate::page::Width::WHOLE,
                 &mut Costs::default(),
             )
         };
@@ -1022,6 +1032,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
+            crate::page::Width::WHOLE,
             &mut Costs::default(),
         );
         assert!(typst.contains("#list(marker: no-mark, "), "{typst}");
@@ -1038,6 +1049,7 @@ mod tests {
             None,
             &Pieces::new(),
             &world,
+            crate::page::Width::WHOLE,
             &mut Costs::default(),
         );
         assert!(

@@ -116,6 +116,9 @@ const LOADING_AT_ONCE: usize = 4;
 /// times the screen's scale over this, so a band at one scale stands in
 /// for another's as a zoom's do.
 const REFERENCE_SCALE: f64 = 2.0;
+/// Points of the page a logical pixel of the window holds at zoom 1, as
+/// CSS has it.
+const PT_A_PX: f64 = 0.75;
 /// How long the first frame may wait for its screen's bands: design.md's
 /// first frame is complete, within the 250 ms the first screen is allowed.
 const FIRST_FRAME_AT_MOST: Duration = Duration::from_millis(250);
@@ -174,11 +177,13 @@ struct Following {
     landing: Landing,
 }
 
-/// What the reloader is asked: the file saved, so set it again, or set
-/// another file from now on.
+/// What the reloader is asked: the file saved, so set it again, set
+/// another file from now on, or set the page at another width from now on,
+/// for a window resized.
 enum Reload {
     Saved,
     Open(String),
+    Fit(page::Width),
 }
 
 /// A page the reloader set, of the file it names, or why it couldn't.
@@ -358,6 +363,9 @@ struct App {
     /// Whether a save has taken the page's place, after which the rest of
     /// the first set is older than what shows.
     reloaded: bool,
+    /// How wide the page is set for the window: what shows, or what the
+    /// reloader was last asked for when the window was resized.
+    width: page::Width,
     words_to: channel::Sender<(u32, Vec<text::Line>)>,
     /// A search being typed after / or ?.
     typing: Option<search::Typing>,
@@ -530,7 +538,7 @@ impl App {
     )]
     fn page_x(&self) -> f32 {
         let window = self.gl.as_ref().map_or(0.0, |gl| f64::from(gl.width));
-        ((window - page::WIDTH_PT * self.px_per_pt()) / 2.0)
+        ((window - self.painter.width_pt() * self.px_per_pt()) / 2.0)
             .max(0.0)
             .round() as f32
     }
@@ -895,6 +903,7 @@ impl App {
                 .map(|_| (self.current.map_or(0, |i| i + 1), self.found.len())),
             width_pt: f64::from(gl.width) / px_per_pt,
             px_per_pt,
+            page: self.width,
         });
         self.prompt_shown = true;
     }
@@ -919,6 +928,7 @@ impl App {
                 count: None,
                 width_pt: 0.0,
                 px_per_pt,
+                page: self.width,
             });
         }
     }
@@ -988,6 +998,7 @@ impl App {
                 count: None,
                 width_pt: 0.0,
                 px_per_pt: px,
+                page: self.width,
             });
         }
         self.labelling = Some((labelling, shown));
@@ -1113,6 +1124,22 @@ impl App {
         self.let_incoming_go();
         self.set_on(&file);
         self.following = Some(Following { file, landing });
+    }
+
+    /// Asks the page set again for the window's width, when that width
+    /// takes another page than the one asked for last: a window narrower
+    /// than the whole page's 540 pt, or one widened back past it. The page
+    /// shown stays until the new one is set, with the view on the same
+    /// words.
+    fn fit_window(&mut self) {
+        let width = page::Width::for_window(f64::from(self.size.0) * PT_A_PX);
+        if width == self.width {
+            return;
+        }
+        self.width = width;
+        if let Some(to) = self.reload_to.as_ref() {
+            let _ = to.send(Reload::Fit(width));
+        }
     }
 
     /// Moves the reloader and the watch to `file`, which the reloader sets
@@ -1953,6 +1980,11 @@ impl App {
                 return;
             }
         };
+        // One set for a width the window has since left is let go, since
+        // the reloader sets it again at the new one.
+        if !self.fits(&page) {
+            return;
+        }
         self.let_incoming_go();
         let px_per_pt = self.px_per_pt();
         let screen_pt = self.screen_px() / px_per_pt;
@@ -2090,7 +2122,20 @@ impl App {
         self.jump = None;
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
+        // Set again at another width, the page's blocks have moved, so each
+        // mark moves with the block it was in. A save keeps them where they
+        // were, as the words below them may have changed.
+        let reflowed = incoming.opens.is_none()
+            && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
+        let before = reflowed.then(|| place::starts(&self.painter.page().frame));
         self.painter.take(incoming.page, incoming.version);
+        if let Some(before) = before {
+            let after = place::starts(&self.painter.page().frame);
+            for pt in self.marks.values_mut() {
+                let (block, into_pt) = place::at(&before, *pt);
+                *pt = place::pt_of(&after, block, into_pt).unwrap_or(*pt);
+            }
+        }
         self.offset = incoming.offset;
         self.clamp();
         if keys_logged() && incoming.opens.is_none() {
@@ -2158,6 +2203,9 @@ impl App {
     /// Keeps where the view is on the file shown, and its marks, for the
     /// next time it opens.
     fn keep_place(&self) {
+        if let Err(error) = place::keep_window(f64::from(self.size.0) * PT_A_PX) {
+            eprintln!("reader: can't keep the window's width: {error}");
+        }
         let file = self.file.as_path();
         let starts = place::starts(&self.painter.page().frame);
         // Closed while a jump moves, it keeps where the keys sent it.
@@ -2185,9 +2233,15 @@ impl App {
         }
     }
 
+    /// Whether a page was set at the width the window asks for now.
+    fn fits(&self, page: &typst_layout::Page) -> bool {
+        (page.frame.size().x.to_pt() - self.width.page_pt()).abs() < 0.01
+    }
+
     fn replace(&mut self, page: typst_layout::Page, ms: f64) {
-        // A save set since is newer than the rest of the first set.
-        if self.reloaded || self.incoming.is_some() {
+        // A save set since is newer than the rest of the first set, and
+        // a window resized since wants the whole page at its own width.
+        if self.reloaded || self.incoming.is_some() || !self.fits(&page) {
             return;
         }
         self.held_pt = Some(self.painter.height_pt());
@@ -2682,6 +2736,7 @@ impl WindowHandler for App {
             width.map_or(960, std::num::NonZero::get),
             height.map_or(900, std::num::NonZero::get),
         );
+        self.fit_window();
         let (w, h) = self.buffer_size();
         if let Some(measure) = self.measure.as_mut()
             && measure.configured_ms.is_none()
@@ -2883,7 +2938,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         place::read(std::path::Path::new(&file))
     };
-    let first = page::set_first(&file, kept.as_ref().map(|place| place.block))?;
+    // Set for the window it last closed in, which niri most likely opens
+    // it in again, so the first screen seldom sets twice; measuring sets
+    // the whole page each time.
+    let width = if measuring {
+        page::Width::WHOLE
+    } else {
+        place::window_pt().map_or(page::Width::WHOLE, page::Width::for_window)
+    };
+    let first = page::set_first(&file, kept.as_ref().map(|place| place.block), width)?;
     let starts = place::starts(&first.page.frame);
     let start_pt = kept
         .as_ref()
@@ -2928,6 +2991,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kept_marks,
         set_ms,
         set_parts,
+        width,
     };
     let mut app = App::new(
         &globals,
@@ -2941,7 +3005,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(rest) = rest {
         set_rest(&handle, rest)?;
     }
-    let (reload_to, watch) = reload_on_save(&handle, &file)?;
+    let (reload_to, watch) = reload_on_save(&handle, &file, width)?;
     app.reload_to = Some(reload_to);
     app.watch = watch;
     app.take_kept_marks();
@@ -3094,6 +3158,7 @@ struct Opening {
     kept_marks: Vec<(char, usize, f64)>,
     set_ms: f64,
     set_parts: Vec<(&'static str, f64, f64)>,
+    width: page::Width,
 }
 
 impl Measure {
@@ -3139,6 +3204,7 @@ impl App {
             kept_marks,
             set_ms,
             set_parts,
+            width,
         } = opening;
         App {
             seats: SeatState::new(globals, &qh),
@@ -3188,6 +3254,7 @@ impl App {
             incoming: None,
             next_version: 1,
             reloaded: false,
+            width,
             words_to: senders.words_to,
             typing: None,
             searched: None,
@@ -3239,12 +3306,13 @@ fn set_rest(
 /// batch of web pictures has come, and sets another file when a link or a
 /// jump opens one in the window. The thread's setter is made at the first
 /// ask, so it costs the first screen nothing, and asks that come while one
-/// sets are taken as one: the newest file asked for, as it is now. Gives
-/// back what asks it, and the watch on the file's saves, which moves with
-/// the file shown.
+/// sets are taken as one: the newest file asked for, as it is now, at the
+/// newest width. Gives back what asks it, and the watch on the file's
+/// saves, which moves with the file shown.
 fn reload_on_save(
     handle: &LoopHandle<'static, App>,
     file: &str,
+    width: page::Width,
 ) -> Result<(std::sync::mpsc::Sender<Reload>, Option<watch::Watch>), Box<dyn std::error::Error>> {
     let reset_to = heard(handle, App::saved)?;
     let (reload_to, asks) = std::sync::mpsc::channel::<Reload>();
@@ -3254,18 +3322,25 @@ fn reload_on_save(
         .spawn(move || {
             let mut setter: Option<page::Setter> = None;
             while let Ok(ask) = asks.recv() {
-                let mut open = match ask {
-                    Reload::Open(file) => Some(file),
-                    Reload::Saved => None,
-                };
-                while let Ok(newer) = asks.try_recv() {
-                    if let Reload::Open(file) = newer {
-                        open = Some(file);
+                let mut open = None;
+                let mut fit = None;
+                for ask in std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())) {
+                    match ask {
+                        Reload::Open(file) => open = Some(file),
+                        Reload::Fit(width) => fit = Some(width),
+                        Reload::Saved => (),
                     }
                 }
-                let setter = setter.get_or_insert_with(|| page::Setter::new(&first));
+                let setter = setter.get_or_insert_with(|| {
+                    let mut setter = page::Setter::new(&first);
+                    setter.fit(width);
+                    setter
+                });
                 if let Some(file) = open {
                     setter.open(&file);
+                }
+                if let Some(width) = fit {
+                    setter.fit(width);
                 }
                 let set = setter.set().map(|(page, ms)| {
                     let lines = text::lines(text::runs(&page.frame));

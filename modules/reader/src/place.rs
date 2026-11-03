@@ -160,9 +160,51 @@ fn write_in(state: &Path, file: &Path, place: &Place) -> std::io::Result<()> {
     std::fs::rename(&fresh, &kept)
 }
 
+/// How wide the window was when the reader last closed, in points of the
+/// page at zoom 1, so the first screen is set for the window it will most
+/// likely open in again. One for the reader, since niri gives its window
+/// the same column whatever file it shows.
+pub fn window_pt() -> Option<f64> {
+    window_in(&state()?)
+}
+
+fn window_in(state: &Path) -> Option<f64> {
+    std::fs::read_to_string(state.join("reader").join("window"))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+        .filter(|pt: &f64| pt.is_finite() && *pt > 0.0)
+}
+
+/// Keeps how wide the window is, for the next time the reader opens.
+pub fn keep_window(pt: f64) -> std::io::Result<()> {
+    match state() {
+        Some(state) => keep_window_in(&state, pt),
+        None => Ok(()),
+    }
+}
+
+fn keep_window_in(state: &Path, pt: f64) -> std::io::Result<()> {
+    let folder = state.join("reader");
+    std::fs::create_dir_all(&folder)?;
+    let fresh = folder.join(format!("window.{}.part", std::process::id()));
+    std::fs::write(&fresh, format!("{pt}\n"))?;
+    std::fs::rename(&fresh, folder.join("window"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Place, at, pt_of, read_in, write_in};
+    use super::{Place, at, keep_window_in, pt_of, read_in, window_in, write_in};
+
+    #[test]
+    fn the_windows_width_is_kept_and_taken_back() {
+        let state = std::env::temp_dir().join(format!("reader-window-{}", std::process::id()));
+        assert_eq!(window_in(&state), None, "nothing kept yet");
+        keep_window_in(&state, 360.0).expect("kept");
+        assert_eq!(window_in(&state), Some(360.0));
+        std::fs::remove_dir_all(&state).expect("cleaned");
+    }
 
     #[test]
     fn a_place_is_the_last_block_starting_above_it_and_the_way_into_it() {

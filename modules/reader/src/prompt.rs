@@ -34,6 +34,9 @@ pub struct Ask {
     /// pixels a point.
     pub width_pt: f64,
     pub px_per_pt: f64,
+    /// How wide the page is set for the window, so the prompt's words start
+    /// where its measure does.
+    pub page: crate::page::Width,
 }
 
 /// The prompt set, as pixels.
@@ -114,6 +117,7 @@ impl Prompt {
                     count: None,
                     width_pt: 720.0,
                     px_per_pt: 1.0,
+                    page: crate::page::Width::WHOLE,
                 }));
                 let _ = typst::compile::<PagedDocument>(&world);
                 while let Ok(first) = waiting.recv() {
@@ -214,7 +218,7 @@ fn source(ask: &Ask) -> String {
         ink = crate::theme::get().typst(),
         // Its words start where the page's measure does, as the window
         // centres the page, and end where it ends.
-        side = ((width - crate::page::WIDTH_PT) / 2.0).max(0.0) + crate::page::SPREAD_PT,
+        side = ((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt,
         row = ROW_PT,
         typed = quoted(&format!("{mark}{}", ask.typed)),
         count = quoted(&count),
@@ -396,6 +400,7 @@ mod tests {
             count,
             width_pt: 720.0,
             px_per_pt: 2.0,
+            page: crate::page::Width::WHOLE,
         };
         assert!(source(&ask("cat", Some((0, 0)))).contains("Nothing matches."));
         assert!(!source(&ask("", Some((0, 0)))).contains("Nothing matches."));
