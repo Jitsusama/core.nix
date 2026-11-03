@@ -952,10 +952,15 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
     try:
         # Every focus niri gives from here on, and Joel typing numbered words
-        # until told to stop, so a key that went elsewhere leaves a gap.
+        # until told to stop, so a key that went elsewhere leaves a gap. Ten
+        # words a wtype, since each brings its own keymap, which Xwayland
+        # compiles: a word each, a loaded builder's slow window let it type
+        # 331, and Xwayland was still compiling them a minute into the next
+        # subtest, starving it (2026-11-03).
         watch_the_focus(desktop)
         typing = (
-            'i=0; while [ ! -e ~/typing-done ]; do i=$((i+1)); wtype "w$i ";'
+            "i=0; while [ ! -e ~/typing-done ]; do"
+            ' wtype "$(seq -f "w%.0f " $((i+1)) $((i+10)) | tr -d "\\n")"; i=$((i+10));'
             " echo $i > ~/typing-count; done; wtype -k Return"
         )
         desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
