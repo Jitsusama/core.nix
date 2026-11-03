@@ -31,6 +31,9 @@ Item {
     property string ghost
     // Said in muted type while nothing's typed.
     property string hint
+    // Whether the hint is said in the voice's face, as the launcher's is;
+    // the lock's and a password's prompts keep the mono for now.
+    property bool voiced: false
     // Said in muted type at the right end of the line.
     property string aside
     readonly property bool capitals: secret && Lights.caps
@@ -248,10 +251,20 @@ Item {
     // reached through the other rather than as tags side by side.
     readonly property string between: " \u203a "
 
+    // The hint's face: the voice's, since it's the shell speaking to Joel.
+    FontMetrics {
+        id: voiceFace
+        font.family: Theme.serif.family
+        font.italic: Theme.serif.italic
+        font.pointSize: Theme.serif.large
+        font.variableAxes: Theme.serif.axes
+    }
+
     // Each step's words' width: what it needs where it fits, and otherwise
     // an even share of what the shorter ones leave.
     // The room kept for typing: the hint's, or a dozen characters.
-    readonly property real typingRoom: Math.max(chipFace.advanceWidth(hint),
+    readonly property real typingRoom: Math.max(
+        (voiced ? voiceFace : chipFace).advanceWidth(hint),
         12 * chipFace.averageCharacterWidth)
 
     // How wide the path wants to be, whole, with the chip's own margins.
@@ -405,18 +418,27 @@ Item {
         // Once the left arrow has cleared what's typed, what it took stands
         // in its place as the ghost, which the right arrow puts back. The
         // keys that take them are said at the field's right edge.
+        // The hint is the shell's voice, in the serif's italic, sized by
+        // capitals and sat on the typed letters' baseline, since the two
+        // faces' line boxes differ; the cleared words and the ghost are
+        // letters typed, in the field's own face (look 3's piece 1).
         Text {
+            id: hintText
+            readonly property bool voiced: prompt.voiced && input.text === ""
+                && prompt.cleared === ""
             x: input.text === "" ? 0 : input.contentWidth
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.baseline: parent.baseline
             textFormat: Text.PlainText
             text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
                 : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
             color: Theme.muted
-            font.family: Theme.mono.family
-            font.pointSize: Theme.mono.large
+            font.family: hintText.voiced ? Theme.serif.family : Theme.mono.family
+            font.italic: hintText.voiced && Theme.serif.italic
+            font.pointSize: hintText.voiced ? Theme.serif.large : Theme.mono.large
+            font.variableAxes: hintText.voiced ? Theme.serif.axes : ({})
         }
     }
 }

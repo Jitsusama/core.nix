@@ -8,7 +8,9 @@
 // beside a long note, and a short note keeps to the field's right end
 // however wide a room it holds. Words that fit are left whole. Selected,
 // a row with both its name and what it is cut reads each on in turn, the
-// name first, never both moving at once. It exits 0 once every case holds,
+// name first, never both moving at once. What the shell says in its voice,
+// a quiet row's words and the launcher's hint, is drawn in the serif face
+// on the baseline the mono's would take. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -19,6 +21,7 @@ ShellRoot {
     // Joel's panel, in logical pixels.
     readonly property int panel: 677
     readonly property string long: "Heavy turns in Walgit Push Policy: Protect the Main Branch"
+    readonly property string voice: "Nothing needs you."
     readonly property string sentence: "$4,199 billed in the last 7 days against an allowance"
         + " of $15,000, which resets on Monday at midnight"
 
@@ -70,6 +73,11 @@ ShellRoot {
                 glyph: String.fromCodePoint(0xf0674)
                 name: "Nothing's on or waiting."
             }
+            // The same words said quietly in the mono and in the voice.
+            Choice { id: plainSaid; quiet: true; glyph: "$"; name: root.voice }
+            Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
+            Prompt { id: typedField; width: root.panel; text: root.voice }
+            Prompt { id: voicedField; width: root.panel; voiced: true; hint: root.voice }
             Prompt {
                 id: ghosted
                 width: root.panel
@@ -122,6 +130,29 @@ ShellRoot {
             drawn(child, into);
         }
         return into;
+    }
+
+    // Where the words are drawn under an item: their baseline, down from
+    // the item's top, and how wide they are.
+    function setting(item, words, under) {
+        const top = under ?? item;
+        for (const child of item.children) {
+            if (child.visible && child.text === words && child.contentWidth !== undefined)
+                return { base: child.mapToItem(top, 0, child.baselineOffset).y,
+                    wide: child.contentWidth };
+            const found = setting(child, words, top);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    // The voice is in a face of its own, as wide as the serif draws it
+    // rather than the mono, on the mono's baseline within a device pixel
+    // at a scale of 2.
+    function voicedLike(plain, voiced) {
+        return plain !== null && voiced !== null && Math.abs(plain.base - voiced.base) <= 0.5
+            && voiced.wide < plain.wide * 0.9;
     }
 
     function said(texts) {
@@ -185,6 +216,15 @@ ShellRoot {
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
+            const plainRow = root.setting(plainSaid, root.voice);
+            const voicedRow = root.setting(voicedSaid, root.voice);
+            expect("a row's words in the voice, on the mono's baseline",
+                root.voicedLike(plainRow, voicedRow),
+                `${JSON.stringify(plainRow)} against ${JSON.stringify(voicedRow)}`);
+            const typed = root.setting(typedField, root.voice);
+            const hint = root.setting(voicedField, root.voice);
+            expect("the launcher's hint in the voice, on the typed words' baseline",
+                root.voicedLike(typed, hint), `${JSON.stringify(typed)} against ${JSON.stringify(hint)}`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
