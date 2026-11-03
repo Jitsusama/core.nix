@@ -39,18 +39,19 @@
       );
 
   # The touchscreen's driver is installed with the panel's qualified settings,
-  # and loaded by a unit once the system is up, never while it starts.
+  # and loaded by a unit once the system is up, never while it starts. Its
+  # axes are given the panel's size in millimetres.
   the-surface-loads-its-touchscreen-once-up =
     let
       surface = bareNixos [
         self.nixosModules.laptop
         self.nixosModules.microsoft-surface-laptop-4-1958
       ];
-      inherit (surface.config) boot systemd;
+      inherit (surface.config) boot services systemd;
       touchscreen = systemd.services.surface-touchscreen;
     in
     holds "the-surface-loads-its-touchscreen-once-up"
-      "The Surface Laptop 4 lacks its touchscreen's driver or its panel's settings, or loads the driver before the system is up."
+      "The Surface Laptop 4 lacks its touchscreen's driver or its panel's settings, loads the driver before the system is up, or leaves its axes the wrong size."
       (
         lib.any (package: lib.hasPrefix "sl4a-touchscreen-" package.name) boot.extraModulePackages
         && lib.hasInfix "options sl4a_spi_hid raw_mode=N" boot.extraModprobeConfig
@@ -58,6 +59,8 @@
         && !(lib.elem "sl4a_spi_hid" boot.kernelModules)
         && lib.elem "multi-user.target" touchscreen.after
         && lib.hasSuffix "sl4a_spi_amd sl4a_spi_hid" touchscreen.serviceConfig.ExecStart
+        && lib.hasInfix "evdev:name:MSHW0231 Touchscreen:*" services.udev.extraHwdb
+        && lib.hasInfix "EVDEV_ABS_36=::173" services.udev.extraHwdb
       );
 
   # fwupd, run against this model's ESRT with the UEFI and the TPM behind,

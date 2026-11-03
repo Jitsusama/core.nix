@@ -1353,6 +1353,14 @@ gave 1,174 interrupts of touch reports in 12 s. The module
 the driver's installer, and loads it from a unit after `multi-user.target`,
 as the installer does, so a hang there leaves a login to recover from.
 
+The touchscreen's axes run 0 to 32767 at 112 and 198 units a millimetre,
+as its report descriptor gives them, which makes it 292 by 165 mm. The pen
+reads 282 by 189 mm over the same glass, the size a 13.5-inch 3:2 panel
+has. A touch still lands where it's made, since it's mapped to the
+display, but anything that measures it in millimetres reads the height
+13% short. The module's hwdb entry gives the touchscreen 116 and 173
+units a millimetre, the pen's size.
+
 ### The Ports and Bluetooth
 
 The firmware describes no USB-C connector to the OS: its ACPI has no

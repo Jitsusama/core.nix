@@ -1759,7 +1759,8 @@
   '';
   the-surface-loads-its-touchscreen-once-up = ''
     the Surface Laptop 4 installs its touchscreen's driver with the panel's qualified settings, and
-    loads it from a unit after multi-user.target rather than while the system starts
+    loads it from a unit after multi-user.target rather than while the system starts, and gives its
+    axes the panel's size in millimetres
   '';
   the-surface-offers-its-firmware-through-fwupd = ''
     fwupd, given the Surface Laptop 4's ESRT with its UEFI at 4.355.140 and its TPM at 7.2.2.0,
