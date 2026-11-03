@@ -4,10 +4,10 @@
 // says a picture comes of it and the recording glyph a video; the words say
 // what of. The whole screen comes first, so Print then Return takes it,
 // and Print twice always does. While anything records, stopping it comes
-// first instead, so the gesture that started it stops it. Print over the launcher
-// showing anything else takes the screen with the launcher in it and
-// leaves it as it was (`pressedOver`). Each row shows its own chord where it has one,
-// to learn by use and never to need.
+// first instead, so the gesture that started it stops it. Print over the
+// launcher showing anything else takes the screen with the launcher in it
+// and leaves it as it was (`pressedOver`). Each row shows its own chord
+// where it has one, to learn by use and never to need.
 //
 // Typing a window's title finds it on any workspace, since niri takes a
 // window's picture wherever it is. A region is picked by the keys
