@@ -1,0 +1,19 @@
+diff --git a/src/handlers/xdg_shell.rs b/src/handlers/xdg_shell.rs
+index 38440c9..ea86550 100644
+--- a/src/handlers/xdg_shell.rs
++++ b/src/handlers/xdg_shell.rs
+@@ -878,7 +878,13 @@ impl XdgShellHandler for State {
+         }
+ 
+         if was_active {
+-            self.maybe_warp_cursor_to_focus();
++            // A toplevel is destroyed with its client, from inside the
++            // client's destructor, in no set order: its wl_pointer may be
++            // gone already, and the pointer's leave to it would panic where
++            // nothing can unwind. Warp once the client is gone.
++            self.niri.event_loop.insert_idle(|state| {
++                state.maybe_warp_cursor_to_focus();
++            });
+         }
+ 
+         if let Some(output) = output {
