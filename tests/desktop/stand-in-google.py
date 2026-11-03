@@ -26,6 +26,7 @@ Budget is shared with him, and the Team shared drive is empty. A shell may ask w
 holds, and for a file in one, to open, pick or save, Google's own as their office files.
 """
 
+import copy
 import json
 import os
 import socket
@@ -301,7 +302,9 @@ class Account:
 
     def records(self) -> dict[str, dict[str, object]]:
         """Give each record the daemon would hold, by key, as src/daemon.rs makes them."""
-        state = self.state()
+        # A copy, since what's held changes in place, and what each watch was
+        # last told must stay as it was to find what changed.
+        state = copy.deepcopy(self.state())
         made: dict[str, dict[str, object]] = {}
         for kind, things in (("meeting", "meetings"), ("mail", "mail"), ("file", "documents")):
             for thing in cast("list[dict[str, object]]", state[things]):
