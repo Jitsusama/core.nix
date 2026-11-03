@@ -235,7 +235,8 @@ let
   # WCAG's ratio passes a dark theme's dim text that APCA, weighing how
   # light the background is, finds too dim for reading. Text and strong are
   # body text, which APCA asks Lc 75 of; muted gives context in labels and
-  # hints, held to the 60 it asks of any text. The raised and selection
+  # hints, held to the 60 it asks of any text. A mark's hue is a glyph, not
+  # words, held to the 45 APCA asks of a fine mark. The raised and selection
   # surfaces stay with WCAG alone: they're drawn translucent over another,
   # so the colour behind their text isn't the role's own.
   dim =
@@ -269,6 +270,13 @@ let
             "strong"
           ])
           (held 60 [ "muted" ])
+          (held 45 [
+            "action"
+            "program"
+            "machine"
+            "person"
+            "voice"
+          ])
         ]
     );
 
@@ -960,7 +968,8 @@ in
     {
       assertion = dim == [ ];
       message = ''
-        The theme draws text too dim to read by APCA. Text needs Lc 75, muted Lc 60:
+        The theme draws text or marks too dim to read by APCA. Text needs Lc 75,
+        muted Lc 60 and a mark's hue Lc 45:
         ${lib.concatMapStringsSep "\n" (
           pair: "  ${pair.name}: Lc ${apca.show (apca.lc pair.fg pair.bg)}, under ${toString pair.least}"
         ) dim}
