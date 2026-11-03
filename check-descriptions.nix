@@ -1026,6 +1026,30 @@
   quickshell-takes-its-shape-from-the-theme = ''
     every corner and border in the shell and in each module's surface is the theme's
   '';
+  reader-passes-clippy = ''
+    clippy finds nothing in the reader or its tests
+  '';
+  reader-says-the-file-it-shows = ''
+    the reader keeps the file it shows, read by its Recent's command as its process and whole path,
+    and nothing once q closes it; what a killed reader left is cleared as it starts
+  '';
+  reader-says-the-files-it-opens = ''
+    the reader says each file it's started with to the desktop's list of files opened lately, then
+    runs as it would
+  '';
+  reader-says-the-keys-it-takes = ''
+    the keys the launcher lists over the reader's window are the reader's own, chord for chord, with
+    what each does and its group
+  '';
+  reader-sets-its-pages = ''
+    the reader's tests pass as it builds: tables from their words and on the text's pitch, pictures
+    by their first bytes, places kept and read back, saves heard, the file shown said, the theme read,
+    search across a hyphen, an equation shown as written without MiTeX, and Neovim's counts and keys
+  '';
+  reader-takes-its-keys = ''
+    the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
+    zoom, / and n, Space ? and Escape, then closes on q; markdown files open in it
+  '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
   '';

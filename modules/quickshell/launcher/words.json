@@ -2346,7 +2346,7 @@
       "glyph": "picture"
     },
     {
-      "id": "shortcuts:inlyne",
+      "id": "shortcuts:reader",
       "in": "shortcuts",
       "name": "Markdown Reader",
       "glyph": "document"
@@ -2957,14 +2957,24 @@
       "name": "The Picture"
     },
     {
-      "id": "shortcuts:inlyne:scrolling",
+      "id": "shortcuts:reader:scrolling",
       "in": "shortcuts",
       "name": "Scrolling"
     },
     {
-      "id": "shortcuts:inlyne:zoom",
+      "id": "shortcuts:reader:jumping",
       "in": "shortcuts",
-      "name": "Zoom"
+      "name": "Jumping"
+    },
+    {
+      "id": "shortcuts:reader:searching",
+      "in": "shortcuts",
+      "name": "Searching"
+    },
+    {
+      "id": "shortcuts:reader:page",
+      "in": "shortcuts",
+      "name": "The Page"
     },
     {
       "id": "shortcuts:zathura:turning",

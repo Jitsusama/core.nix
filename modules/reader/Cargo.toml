@@ -1,0 +1,36 @@
+# The reader: a markdown file set as a page by Typst and scrolled on the
+# GPU, its keys Neovim's (src/main.rs says how).
+[package]
+name = "reader"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+ammonia = "4.2.4"
+comrak = { version = "0.59.0", default-features = false, features = ["shortcodes"] }
+glow = "0.18.0"
+html5ever = "0.39"
+imagesize = "0.14"
+khronos-egl = { version = "6.0.0", features = ["static"] }
+markup5ever_rcdom = "0.39.0"
+merman = "0.9.3"
+mitex = "0.2.4"
+rayon = "1"
+rustix = { version = "1.1", features = ["fs"] }
+serde_json = "1"
+smithay-client-toolkit = { version = "0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+tiny-skia = "0.12"
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-fancy"] }
+typst = "0.15.1"
+typst-kit = { version = "0.15.1", default-features = false, features = ["scan-fonts", "embedded-fonts"] }
+typst-layout = "0.15.1"
+typst-render = "0.15.1"
+# Web pictures, fetched without cookies; TLS by rustls, trusting the
+# machine's own certificates.
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier", "gzip"] }
+wayland-client = "0.31.15"
+wayland-egl = "0.32.11"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }

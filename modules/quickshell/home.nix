@@ -281,7 +281,7 @@ let
       "pi"
       "btop"
       "swayimg"
-      "inlyne"
+      "reader"
       "zathura"
       "mpv"
       "chrome"
@@ -465,7 +465,7 @@ let
     # The theme's picture, as the viewer shows pictures.
     swayimg = nerd "f02e9";
     # The theme's document, as the reader shows documents.
-    inlyne = nerd "f0219";
+    reader = nerd "f0219";
     # The theme's book, as the viewer shows documents of pages.
     zathura = nerd "f05da";
     # The theme's film, as the player plays films.

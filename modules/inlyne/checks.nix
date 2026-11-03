@@ -2,12 +2,26 @@
 # its opening comment says what each kind of check proves.
 {
   account,
-  graphical,
+  bareNixos,
   lib,
   onLinux,
   pkgs,
+  self,
   ...
 }:
+let
+  # The Linux desktop reads markdown in the reader now, and inlyne only on
+  # the Mac, whose screens no check here has, so its checks run on a Linux
+  # desktop with inlyne put back, markdown opening in it.
+  graphical = bareNixos [
+    self.nixosModules.graphical
+    self.nixosModules.inlyne
+    {
+      home-manager.sharedModules = [ self.homeModules.inlyne ];
+      xdg.mime.defaultApplications."text/markdown" = lib.mkForce "inlyne.desktop";
+    }
+  ];
+in
 onLinux {
   # inlyne draws a sheet with the account's settings, on a screen of
   # nobody's, with the theme's fonts and a software GPU: the page on the

@@ -231,7 +231,7 @@ ShellRoot {
             over("swayimg", "holiday.jpg");
             expect("over the picture viewer, its own", map.leading()?.name === "Picture Viewer"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
-            over("inlyne", "README.md");
+            over("reader", "README.md");
             expect("over the markdown reader, its own", map.leading()?.name === "Markdown Reader"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("org.pwmt.zathura", "paper.pdf");

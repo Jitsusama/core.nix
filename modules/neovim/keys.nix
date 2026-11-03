@@ -644,12 +644,13 @@ in
     does = "Show the folder as a file you can edit";
     command = "Oil";
   }
-  # inlyne follows the file as it's saved, so the page keeps up with the
-  # edit (../inlyne/home.nix).
+  # The reader, or inlyne on the Mac, sets the page again as the file is
+  # saved, so it keeps up with the edit (../reader/home.nix,
+  # ../inlyne/home.nix).
   {
     chord = "Space f v";
     does = "Read this markdown file as a page, beside the editor";
-    lua = "vim.system({ 'inlyne', 'view', vim.api.nvim_buf_get_name(0) }, { detach = true })";
+    lua = "local file = vim.api.nvim_buf_get_name(0); vim.system(vim.fn.executable('reader') == 1 and { 'reader', file } or { 'inlyne', 'view', file }, { detach = true })";
   }
   {
     chord = "-";
