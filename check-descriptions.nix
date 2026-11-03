@@ -82,6 +82,10 @@
     in, and gone once its record or its process is; and those to reopen are the last boot's until
     put off, then those another machine carried here, newest first, never put off
   '';
+  a-silent-hub-is-driven-as-one-stream = ''
+    the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
+    single stream until the sink goes away, so the monitor behind it still lights
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
   '';

@@ -495,6 +495,28 @@ in
       touch $out
     '';
 
+  # A monitor's MST hub that won't answer its link address is driven as
+  # one stream, so it still lights. Read from the XPS 14's patched source.
+  a-silent-hub-is-driven-as-one-stream =
+    let
+      dp = "drivers/gpu/drm/i915/display/intel_dp.c";
+      mst = "drivers/gpu/drm/display/drm_dp_mst_topology.c";
+    in
+    pkgs.runCommandLocal "a-silent-hub-is-driven-as-one-stream" { } ''
+      cd ${
+        kernelSource [
+          dp
+          mst
+        ]
+      }
+      if ! grep -Fq 'primary_link_address_failures))' ${dp} ||
+        ! grep -Fq 'mgr->primary_link_address_failures++' ${mst}; then
+        echo "A monitor whose MST hub won't answer its link address stays dark until its mains are pulled."
+        exit 1
+      fi
+      touch $out
+    '';
+
   # The XPS 14's panel gives its luminance only in DisplayID's Display
   # Parameters block, so a kernel that doesn't read it guesses the panel's
   # brightness range. Read from the XPS 14's patched source.
