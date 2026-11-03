@@ -103,7 +103,7 @@ Singleton {
     // once, so a window started that way blinked and went (Joel,
     // 2026-10-28).
     function start(quest, folder) {
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", folder,
+        root.inSessions("kitty", ["--directory", folder,
             "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "zsh", "-lic", held("pi")]);
         Report.say(`started a session on ${quest}`);
     }
@@ -113,8 +113,27 @@ Singleton {
     // through a login shell for the same reason. The words go as the
     // shell's $0, so nothing in them is read as the shell's own.
     function tell(words, folder, program) {
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", folder,
+        root.inSessions("kitty", ["--directory", folder,
             "zsh", "-lic", held(`${program ?? "pi"} -- "$0"`), words]);
+    }
+
+    // Opens a window of the sessions' own kitty, running `rest`, classed
+    // `classed`: kitty for one Joel starts, pi-spawned for one another
+    // session started, which niri opens without the focus
+    // (modules/niri/config.kdl), and pi-session for one Reopen Them All
+    // opens (Niri.qml's heard). Every window of that kitty opens here, so
+    // how it's started is said once. It starts in agents.slice
+    // (modules/slices), weighed beside Joel's programs rather than among
+    // them; kitty puts each window's scope in the slice it runs in, so
+    // every session goes with it. One opened aside goes without the
+    // activation token niri hands what it spawns, which kitty would spend
+    // on taking the focus once its window shows.
+    function inSessions(classed, rest) {
+        const untold = classed === "pi-spawned"
+            ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
+        Niri.spawn(untold.concat(["systemd-run", "--user", "--scope", "--collect", "--quiet",
+            "--slice=agents.slice", "--", "kitty", "-1", "--instance-group", "pi-sessions",
+            "--class", classed], rest));
     }
 
     // What a launcher start's login shell runs: `command`, kept by the
@@ -257,19 +276,12 @@ Singleton {
             ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
         const pi = fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`;
         const telling = typeof told === "string" && told !== "";
-        // One another session started opens without the focus, by niri's
-        // rule for its class (modules/niri/config.kdl), and without the
-        // activation token niri hands what it spawns, which kitty would
-        // spend on taking the focus once its window shows.
-        const quiet = one.quiet === true;
-        const untold = quiet ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"]
-            : [];
-        // Each classed as a session's (Niri.qml's heard), so a window Joel
-        // opens meanwhile isn't taken for it.
-        const apart = ["--class", quiet ? "pi-spawned" : "pi-session"];
-        Niri.spawn(untold.concat(["kitty", "-1", "--instance-group", "pi-sessions"], apart,
-            ["--directory", cwd], quest, ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)],
-                telling ? [told] : []));
+        // Classed as a session's either way, so a window Joel opens
+        // meanwhile isn't taken for it; one another session started opens
+        // aside.
+        root.inSessions(one.quiet === true ? "pi-spawned" : "pi-session",
+            ["--directory", cwd].concat(quest,
+                ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []));
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
     }
 
@@ -391,8 +403,7 @@ Singleton {
             return;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const open = there => {
-            Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"]
-                .concat(there ? ["--directory", lost.cwd] : [], lost.attach));
+            root.inSessions("kitty", (there ? ["--directory", lost.cwd] : []).concat(lost.attach));
             Report.say(`joined session ${lost.address} on ${lost.machine} again`);
         };
         if (lost.cwd === "")
@@ -1185,7 +1196,7 @@ Singleton {
             return;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"].concat(command));
+        root.inSessions("kitty", command);
         Report.say(`joined session ${session.address} on ${session.machine}`);
     }
 
@@ -1198,8 +1209,8 @@ Singleton {
         if (!holds || Date.now() - (attaching[id] ?? 0) < attachPatience)
             return;
         attaching = Object.assign({}, attaching, { [id]: Date.now() });
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions",
-            "zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"', realm, id]);
+        root.inSessions("kitty", ["zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"', realm,
+            id]);
         Report.say(`attached session ${id}`);
     }
 
@@ -1307,7 +1318,7 @@ Singleton {
             Report.say(`couldn't start a session on ${asked.quest}: ${why}`);
             return;
         }
-        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"].concat(begun.attach));
+        root.inSessions("kitty", begun.attach);
         Report.say(`started a session on ${asked.quest} on ${begun.machine}`);
     }
 
