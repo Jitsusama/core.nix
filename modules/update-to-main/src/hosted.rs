@@ -227,7 +227,7 @@ fn fetch_input(
     // An input's logins may be kept where only the account's login session
     // reaches, as a Mac's keychain is; the token and main's own fetch need
     // none of those, so they run as they are.
-    let launchctl = config.tools.launchctl.as_deref();
+    let session = config.session.as_ref();
     let in_store = locked["type"] == "path"
         && locked["path"]
             .as_str()
@@ -235,7 +235,7 @@ fn fetch_input(
     if in_store {
         let path = locked["path"].as_str().unwrap_or_default();
         session::output(
-            launchctl,
+            session,
             account,
             command,
             &what,
@@ -251,7 +251,7 @@ fn fetch_input(
     }
     command.env(LOCKED, locked.to_string());
     session::output(
-        launchctl,
+        session,
         account,
         command,
         &what,

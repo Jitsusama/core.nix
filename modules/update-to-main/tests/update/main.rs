@@ -20,7 +20,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
-use update_to_main::config::{Busy, Config, Follow, Here, Hosted, Kept, Kind, Signers, Tools};
+use update_to_main::config::{
+    Busy, Config, Follow, Here, Hosted, Kept, Kind, Session, Signers, Tools,
+};
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, serve, update};
 
@@ -195,8 +197,8 @@ impl World {
                 nix_env: stand_ins.join("nix-env"),
                 tar: program("tar"),
                 pmset: None,
-                launchctl: None,
             },
+            session: None,
             program: None,
             booted: root.join("booted"),
         };
@@ -994,7 +996,8 @@ impl World {
     /// A Mac's launchctl, stood in for: it writes down what it's asked, knows
     /// the account's login session while `session` is there, and runs a job
     /// it's given as launchd would, apart, by the plist's last two strings,
-    /// with the update-to-main these tests build.
+    /// with the update-to-main these tests build. Each plist it's given is
+    /// written down in `plists`.
     fn on_a_mac(&mut self) {
         let launchctl = self.root.join("launchctl");
         write_program(
@@ -1003,17 +1006,22 @@ impl World {
                 "{head}\necho \"$1 $2\" >> {asked}\n\
                  case $1 in\n\
                  print) [ -e {session} ] || exit 113;;\n\
-                 bootstrap) strings=$(sed -n 's|.*<string>\\(.*\\)</string>.*|\\1|p' \"$3\")\n\
+                 bootstrap) echo \"$3\" >> {plists}\n\
+                 strings=$(sed -n 's|.*<string>\\(.*\\)</string>.*|\\1|p' \"$3\")\n\
                  [ \"$(echo \"$strings\" | tail -n 2 | head -n 1)\" = job ] || exit 2\n\
                  {job} job \"$(echo \"$strings\" | tail -n 1)\" > /dev/null 2>&1 &;;\n\
                  esac\n",
                 head = stand_in_head(),
                 asked = self.root.join("launchctl-asked").display(),
+                plists = self.root.join("plists").display(),
                 session = self.root.join("session").display(),
                 job = env!("CARGO_BIN_EXE_update-to-main"),
             ),
         );
-        self.config.tools.launchctl = Some(launchctl);
+        self.config.session = Some(Session {
+            launchctl,
+            jobs: self.root.join("jobs"),
+        });
     }
 }
 
@@ -1047,6 +1055,17 @@ fn on_a_mac_private_inputs_are_fetched_in_the_login_session() {
         .filter(|l| l.starts_with(&format!("bootout {domain}/")))
         .count();
     assert_eq!((started, stopped), (2, 2), "{asked}");
+    // Each job's folder is made in the jobs folder, which the account can
+    // pass through, not in root's own temporary folder, which on a Mac it
+    // can't.
+    let jobs = world.root.join("jobs");
+    let plists = world.read("plists");
+    assert!(
+        plists.lines().all(|p| Path::new(p).starts_with(&jobs)),
+        "{plists}"
+    );
+    let mode = fs::metadata(&jobs).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o711);
 }
 
 #[test]

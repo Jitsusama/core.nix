@@ -39,9 +39,14 @@ in
         nix = "${nixBin}/nix";
         nix_env = "${nixBin}/nix-env";
         pmset = "/usr/bin/pmset";
-        # A Mac's keychain answers only in its account's login session, so
-        # a private input is fetched there (src/session.rs).
+      };
+      # A Mac's keychain answers only in its account's login session, so a
+      # private input is fetched there (src/session.rs). Each job's folder is
+      # made in a folder of root's the account may pass through, since a
+      # root daemon's own temporary folder is root's alone.
+      session = {
         launchctl = "/bin/launchctl";
+        jobs = "/var/run/update-to-main";
       };
     };
 
