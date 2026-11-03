@@ -31,7 +31,10 @@ nothing.
 The machine's stick is the one its repository writes with `nix run .#guide`
 (core's `lib.guide`), on any x86-64 Linux machine, or on a Mac where the
 repository offers the guide for one (`lib.guide` with `host =
-"aarch64-darwin"`), which builds the stick on its Linux builder. It carries the machine's
+"aarch64-darwin"`). The stick is x86-64 Linux either way, so a Mac takes it
+from a cache or an x86-64 Linux builder: an Apple silicon Mac's own Linux
+builder runs x86-64 programs through Rosetta, where some packages' tests
+fail, so it can't build a whole machine from nothing. It carries the machine's
 system, so an install needs no network, and its rescue bundle: the machine's
 Secure Boot keys, sealed to its YubiKeys and its recovery key, so a
 reinstall keeps them and never needs the firmware cleared. Any stick the
