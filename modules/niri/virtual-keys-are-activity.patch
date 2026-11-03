@@ -1,0 +1,94 @@
+diff --git a/src/handlers/mod.rs b/src/handlers/mod.rs
+index 3532078..58e070a 100644
+--- a/src/handlers/mod.rs
++++ b/src/handlers/mod.rs
+@@ -22,7 +22,15 @@ use smithay::reexports::rustix::fs::{fcntl_setfl, OFlags};
+ use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
+ use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
+ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+-use smithay::reexports::wayland_server::Resource;
++use smithay::reexports::wayland_protocols_misc::zwp_virtual_keyboard_v1::server::zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1;
++use smithay::reexports::wayland_protocols_misc::zwp_virtual_keyboard_v1::server::zwp_virtual_keyboard_v1::{
++    self, ZwpVirtualKeyboardV1,
++};
++use smithay::reexports::wayland_server::backend::ClientId;
++use smithay::reexports::wayland_server::{
++    delegate_dispatch, delegate_global_dispatch, Client, DataInit, Dispatch, DisplayHandle,
++    Resource,
++};
+ use smithay::utils::{Logical, Point, Rectangle, Serial};
+ use smithay::wayland::compositor::{get_parent, with_states};
+ use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
+@@ -58,6 +66,9 @@ use smithay::wayland::session_lock::{
+     LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
+ };
+ use smithay::wayland::tablet_manager::TabletSeatHandler;
++use smithay::wayland::virtual_keyboard::{
++    VirtualKeyboardManagerGlobalData, VirtualKeyboardManagerState, VirtualKeyboardUserData,
++};
+ use smithay::wayland::xdg_activation::{
+     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
+ };
+@@ -69,7 +80,7 @@ use smithay::{
+     delegate_pointer_gestures, delegate_presentation, delegate_primary_selection,
+     delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_session_lock,
+     delegate_single_pixel_buffer, delegate_tablet_manager, delegate_text_input_manager,
+-    delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation,
++    delegate_viewporter, delegate_xdg_activation,
+ };
+ 
+ pub use crate::handlers::xdg_shell::KdeDecorationsModeState;
+@@ -280,7 +291,52 @@ impl KeyboardShortcutsInhibitHandler for State {
+ 
+ delegate_input_method_manager!(State);
+ delegate_keyboard_shortcuts_inhibit!(State);
+-delegate_virtual_keyboard_manager!(State);
++
++// smithay hands a virtual keyboard's keys straight to the focused client,
++// past process_input_event(), so typing through one, as wtype does, never
++// counted as activity and the session went idle under it. The keyboard's
++// requests are dispatched here rather than by
++// delegate_virtual_keyboard_manager!(), to count each key as activity, as
++// a real key counts while the monitors are on, before smithay handles it.
++delegate_global_dispatch!(State: [ZwpVirtualKeyboardManagerV1: VirtualKeyboardManagerGlobalData] => VirtualKeyboardManagerState);
++delegate_dispatch!(State: [ZwpVirtualKeyboardManagerV1: ()] => VirtualKeyboardManagerState);
++
++impl Dispatch<ZwpVirtualKeyboardV1, VirtualKeyboardUserData<State>> for State {
++    fn request(
++        state: &mut Self,
++        client: &Client,
++        resource: &ZwpVirtualKeyboardV1,
++        request: zwp_virtual_keyboard_v1::Request,
++        data: &VirtualKeyboardUserData<State>,
++        dh: &DisplayHandle,
++        data_init: &mut DataInit<'_, Self>,
++    ) {
++        if matches!(request, zwp_virtual_keyboard_v1::Request::Key { .. })
++            && state.niri.monitors_active
++        {
++            state.niri.notify_activity();
++        }
++
++        <VirtualKeyboardManagerState as Dispatch<
++            ZwpVirtualKeyboardV1,
++            VirtualKeyboardUserData<State>,
++            State,
++        >>::request(state, client, resource, request, data, dh, data_init);
++    }
++
++    fn destroyed(
++        state: &mut Self,
++        client: ClientId,
++        resource: &ZwpVirtualKeyboardV1,
++        data: &VirtualKeyboardUserData<State>,
++    ) {
++        <VirtualKeyboardManagerState as Dispatch<
++            ZwpVirtualKeyboardV1,
++            VirtualKeyboardUserData<State>,
++            State,
++        >>::destroyed(state, client, resource, data);
++    }
++}
+ 
+ impl SelectionHandler for State {
+     type SelectionUserData = Arc<[u8]>;

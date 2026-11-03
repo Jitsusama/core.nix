@@ -106,6 +106,14 @@
     # (spawn-behind-the-lock.patch) starts a spawn asked for then behind
     # the lock, with no activation token; every other action, and every
     # key binding, is still refused while locked.
+    #
+    # niri counts only its own input as activity, and a virtual keyboard's
+    # keys go straight to the window, so typing through one, as dictation
+    # does through wtype, never kept the session awake: five minutes after
+    # the last real key the screen locked mid-sentence. The patch
+    # (virtual-keys-are-activity.patch) counts each such key as activity
+    # while the monitors are on, as a real key counts; it doesn't turn
+    # them back on.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -130,6 +138,7 @@
         ./full-range-when-selectable.patch
         ./warp-after-a-close.patch
         ./spawn-behind-the-lock.patch
+        ./virtual-keys-are-activity.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

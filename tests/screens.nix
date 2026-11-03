@@ -3,7 +3,8 @@
 # really go and come back, as at an undock. niri must first have held each
 # screen's first frame for the wallpaper, and a niri from before that hold
 # must still take the account's settings, as it reloads them at a switch
-# while it runs. The shell's surfaces must be
+# while it runs, and keys typed through the virtual keyboard, as dictation
+# types, must keep the session from going idle. The shell's surfaces must be
 # there again after: the launcher, a notice that was up, the margin's marks
 # and dictation listening. Then the console is switched away and back, and
 # the machine sleeps as a laptop does and wakes at a key, and they must all
@@ -121,8 +122,14 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         })
       ];
 
-      # pi, as the shell opens a session it reopens, since the VM has none.
-      environment.systemPackages = [ (import ./pi-stand-in.nix { inherit pkgs; }) ];
+      environment.systemPackages = [
+        # pi, as the shell opens a session it reopens, since the VM has none.
+        (import ./pi-stand-in.nix { inherit pkgs; })
+        # wtype, to type as dictation does, and a swayidle of the script's
+        # own to say whether niri took the session as idle meanwhile.
+        pkgs.wtype
+        pkgs.swayidle
+      ];
 
       # The machine's niri as it was before the hold on its first frame came
       # in, as a niri started before a switch still is, for the script to

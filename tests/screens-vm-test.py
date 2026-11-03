@@ -45,6 +45,13 @@ DRAWN = 64
 PASSWORD = "correct-horse"  # noqa: S105 (a test machine's, said in screens.nix)
 # Every surface the shell keeps up while a notice, Keep Awake and dictation are on.
 EVERY_SURFACE = ("wallpaper", "launcher", "notifications", "margin", "dictation")
+# How long, in whole seconds as swayidle takes them, the session sits untouched before a
+# watcher's swayidle says it's idle, and how many times that keys go on being typed through
+# the virtual keyboard, as dictation types its words.
+IDLE_AFTER = 5
+TYPED_FOR = 3
+# What the typing says when wtype itself fails, apart from the session going idle.
+WTYPE_FAILED = 2
 
 
 class Screens:
@@ -603,6 +610,37 @@ def test_niri_held_each_screens_first_frame_for_the_desktop(booted: Screens) -> 
             said,
             re.MULTILINE,
         ), f"niri never said it held {screen}'s first frame: {said}"
+
+
+def test_typing_through_the_virtual_keyboard_keeps_the_session_awake(booted: Screens) -> None:
+    """Keys typed through wtype count as activity, as dictation's do, so the session stays awake."""
+    idled = "/run/user/1000/idled-while-typed-to"
+    # A swayidle of its own, with a timeout far shorter than the session's, says when niri
+    # takes the session as idle. Shift alone types nothing into whatever has the keys.
+    typed, said = booted.machine.execute(
+        booted.in_niri(
+            f"rm -f {idled}"
+            " && systemd-run --user --collect --unit=idle-watch"
+            f" swayidle timeout {IDLE_AFTER} 'touch {idled}'"
+            f" && end=$((SECONDS + {IDLE_AFTER * TYPED_FOR}))"
+            " && while [ $SECONDS -lt $end ]; do"
+            f" wtype -k Shift_L || exit {WTYPE_FAILED};"
+            f" if [ -e {idled} ]; then echo idle after $SECONDS s; exit 1; fi;"
+            " sleep 0.5; done"
+        ),
+        timeout=dt.timedelta(seconds=IDLE_AFTER * TYPED_FOR + 30),
+    )
+    try:
+        assert typed != WTYPE_FAILED, f"wtype couldn't type: {said}"
+        assert typed == 0, (
+            f"niri took the session as idle while keys were typed through wtype: {said}"
+        )
+        # Once the typing stops, the watcher must say so, or it was never watching.
+        booted.machine.wait_until_succeeds(
+            f"test -e {idled}", timeout=dt.timedelta(seconds=IDLE_AFTER * 3)
+        )
+    finally:
+        booted.machine.execute(booted.in_niri("systemctl --user stop idle-watch"))
 
 
 def test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back(
