@@ -1167,8 +1167,11 @@
     messages with unreads, the channels mentioning Joel and his mentions in threads, never a
     channel merely unread, each named once a run and opening in Slack, a refused sign-in kept as
     signed out with nothing counted, and with no sign-in no file and nothing asked; and over its
-    socket says each message a search finds by where it is, who said it and its first words, the
-    messages around one oldest first, and Slack too busy apart from signed out or out of reach
+    socket lists and watches what's unread, what Joel read last and how Slack stands as records,
+    each said to a watch only as it changes and as gone once read, only the account held while
+    Slack refuses the sign-in; and says each message a search finds by where it is, who said it
+    and its first words, the messages around one oldest first, and Slack too busy apart from
+    signed out or out of reach
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests

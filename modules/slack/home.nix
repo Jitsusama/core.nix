@@ -128,7 +128,8 @@ in
         "${lookUp}/bin/slack-unreads"
         (lib.escapeShellArg credentials)
         "%t/slack-unreads.json"
-        # Slack's daemon, where the shell searches Slack (src/search.rs).
+        # Slack's daemon, where the shell watches what's unread and
+        # searches Slack (src/daemon.rs).
         "%t/daemons/slack.sock"
         (lib.escapeShellArg waiting)
       ];

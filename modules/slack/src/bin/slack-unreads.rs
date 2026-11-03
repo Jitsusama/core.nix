@@ -25,8 +25,9 @@
 //! said "ok" never outlives the program that read it.
 //!
 //! It's Slack's daemon too: on SOCKET it answers the shell's daemon
-//! interface, searching Slack when Joel asks (lib's `daemon`), so nothing
-//! is started to search.
+//! interface (lib's `daemon`), holding what each ask of Slack found for
+//! any watch to hear as it changes, and searching Slack when Joel asks,
+//! so nothing is started to search.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -58,7 +59,7 @@ fn main() {
     };
     let waiting = PathBuf::from(waiting);
     let origin = args.next().unwrap_or_else(|| "https://slack.com".into());
-    slack_people::daemon::listen(
+    let daemon = slack_people::daemon::listen(
         Path::new(&socket),
         PathBuf::from(&credentials),
         origin.clone(),
@@ -79,6 +80,7 @@ fn main() {
             if written.take().is_some() || file.exists() {
                 let _ = std::fs::remove_file(&file);
             }
+            daemon.say(None, millis());
             ask_joel(&waiting, false);
             std::thread::sleep(every);
             continue;
@@ -119,6 +121,9 @@ fn main() {
             Some(State::SignedOut) => ask_joel(&waiting, true),
             Some(State::Ok) => ask_joel(&waiting, false),
             _ => {}
+        }
+        if let Some(said) = &said {
+            daemon.say(Some(said), checked);
         }
         if let Some(said) = said
             && due(written.as_ref(), &said, STALE)
@@ -198,6 +203,7 @@ fn named(
             name,
             kind: counted.kind,
             count: counted.count,
+            at: counted.at,
         });
     }
     if let Some(why) = unnamed {
