@@ -18,7 +18,7 @@
 //!        shaper status
 //!        shaper stop
 //!        shaper record [--state DIR]
-//!        shaper replay [--base UP,DOWN] [--json] FILES...
+//!        shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...
 
 mod classes;
 mod icmp;
