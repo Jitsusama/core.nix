@@ -1589,7 +1589,7 @@ cursor = { glyph = "\u25b8", console = ">" }
 
 # How cloudy a floating surface is, its scrim and selection, and its shadows.
 [floating]
-opacity = "0.85"
+opacity = "0.9"
 
 # The pictures behind the desktop and the lock screen, by their path in the
 # wallpapers input, and the shadows that lift text set on them.

@@ -808,8 +808,10 @@ in
     floating = {
       opacity = lib.mkOption {
         type = number;
-        # Picked in step 1's studio: a cloud that hints at what's beneath.
-        default = given "floating" "opacity" "0.85";
+        # A cloud that hints at what's beneath, solid enough that muted words
+        # keep Lc 60 over the brightest patch of the wallpaper, blurred: at
+        # 0.85 they fell to 59.6 there, and at 0.9 they hold 60.6.
+        default = given "floating" "opacity" "0.9";
         description = ''
           How opaque a surface floating above the windows is, a launcher, a
           prompt, a notice or a meter, drawn in the deepest colour over a blur
