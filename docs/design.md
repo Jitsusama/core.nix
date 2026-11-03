@@ -113,13 +113,23 @@ after the second look at the desktop's keys and type failed:
 The quality bar says when a surface is done. This section says how each part
 of it is shown, so a design arrives with its proof rather than a claim. Each
 check is answered with a measurement, a file and line, or Joel's own words.
-A check left unanswered is a fault, not a gap to explain. Measurements are
-taken from full-size screenshots at every scale Joel's screens use, 1.5 and
-2 among them, cropped before they're read, with ink found by thresholding
-and trimming (`magick <png> -colorspace gray -threshold 45% -trim`), never
-by eye.
+A check left unanswered is a fault, not a gap to explain.
 
-### Type
+Measurements come from full-size screenshots at every scale Joel's screens
+use, 1.5 and 2 among them, cropped to the part being measured before
+they're read, never judged by eye. Ink is found by thresholding the crop
+midway between the grey of its ground and the grey of the faintest ink in
+it, so muted text and hairlines count, then trimming it and printing what's
+left, in device pixels, as width, height and offset (here at 30%):
+
+```sh
+magick crop.png -colorspace gray -threshold 30% -trim -format '%wx%h%O\n' info:
+```
+
+A line's pitch is the distance from its baseline to the next line's. Each
+surface names its pitch, and a row's height is its pitch.
+
+### Typesetting
 
 - **Type carries the design.** Hierarchy comes from face, weight, case and
   colour role, set as a typesetter sets a page, never from a stock
@@ -140,55 +150,61 @@ by eye.
   what each does better written beneath them.
 - **What he likes stays.** A face, a size or a weight he hasn't turned down
   changes only for a reason he gave (2026-11-02: "the lock clock font face
-  is nicer as is, why the font change?"). **Check:** every change to
-  something already on his screen names its reason and whose it is.
+  is nicer as is, why the font change?"). Where this and a change he'd feel
+  pull apart, this wins: the change is made in what he hasn't liked.
+  **Check:** every change to something already on his screen names its
+  reason and whose it is.
 
-### Colour
+### Colour's Use
 
-- **Every colour is a role, and every pair is measured.** **Check:** each
-  pair of ink and ground on the surface, by role, with its contrast in every
-  theme at its size, against the thresholds of [Themes][themes]: text Lc 75
-  and muted Lc 60 by APCA, 4.5:1 for text and 3:1 for large text and glyphs
-  by WCAG, on the highlighted row as well as at rest.
+- **Every pair measured.** **Check:** each pair of ink and ground on the
+  surface, by role, with its contrast in every theme, against the thresholds
+  [Themes][themes] holds: on the background, sunken and deepest, text and
+  strong Lc 75 and muted Lc 60 by APCA; everywhere, 4.5:1 for text, and 3:1
+  for text at large and above and for glyphs, by WCAG. On the raised and
+  selection surfaces muted isn't drawn, as [Colour][colour] says, so what
+  would be muted is measured as text there.
 - **Colour says something.** The accent marks only where the keys go, once
   per screen state; a glyph's hue says its kind; text keeps to the text
   roles. **Check:** a list of every coloured thing on the surface and the
-  kind or state it says. Anything coloured that says nothing is a fault.
-- **Excellent, not just correct.** Colour gives the focal point and the
-  warmth, never the structure. **Check:** in a greyscale render the
-  hierarchy still reads in the same order; in colour the eye lands first on
-  the accent, then on the marks, then on the text.
+  kind or state it says. Anything coloured that says nothing is a fault, and
+  so is a second accent.
+- **Structure in type, warmth in colour.** Colour gives the focal point and
+  the warmth, never the structure. **Check:** a greyscale render of the
+  surface, in which its hierarchy reads in the same order as in colour.
 
 ### Whitespace
 
 - **Every gap has a name.** Every space between two inks, inside a frame
-  and outside it, is a step of [Space][space] or a line pitch, measured to
-  the ink (a capital's top, a baseline, a mark's edge), never to a text box.
-  **Check:** the screenshot with each gap measured in device pixels and
+  and outside it, is a step of [Space][space], a line pitch, or what a row
+  leaves above and below its text once the text is centred in it, measured
+  to the ink (a capital's top, a baseline, a mark's edge), never to a text
+  box. **Check:** the screenshot with each gap measured in device pixels and
   named. A gap off its step by more than a device pixel, or one nobody can
   name, is a fault.
 - **Equal where it says it is.** The room round a thing is the same on every
   side, measured to the ink: a frame's padding, a notice's, the margin round
   a highlight. **Check:** its four measurements, within a device pixel.
-- **Space groups, and only as far as it should.** What belongs together sits
-  closer than anything else does to it: a group's inner gap is at least one
-  step smaller than the gap round it. **Check:** each group's two gaps.
+- **Space groups.** What belongs together sits closer than anything else
+  does to it: a group's inner gap is at least one step of Space smaller than
+  the gap round it. **Check:** each group's two gaps. A pair less than one
+  step apart is a fault, and the surface reads as cluttered.
 - **Never cluttered.** A surface has only what Joel would act on or wonder
   about (2026-11-02, of the notices: "whitespace issues ... feeling quite
   cluttered"). **Check:** every element listed with what he'd do with it or
-  wonder about it; an element that answers neither goes, and a surface where
-  groups sit within one step of each other is cluttered.
+  wonder about it. An element that answers neither goes.
 
 ### Alignment
 
 - **Few edges, every one named.** Every left and right edge lies on a named
   column: the frame's inset, the mark column, the text edge, the flush-right
   edge. **Check:** the columns listed, and every ink edge on one within a
-  device pixel. An edge within four logical pixels of a column but not on it
-  is a near miss, and a fault.
+  device pixel. Where a shape's optical edge differs from its ink (a round
+  letter's overshoot, a mark drawn small in its cell), the column takes the
+  optical edge, and the check says so.
 - **Baselines on the pitch, marks one height.** **Check:** every baseline
   measured against the surface's line pitch, and every mark's ink the same
-  height on the text's middle line.
+  height, centred on one line, as the skill's "Marks one height" asks.
 - **Shared across neighbours.** A surface beside another (the launcher and
   its drawer, a notice and the margin) lines up with it. **Check:** the
   shared edges named and measured.
@@ -196,9 +212,9 @@ by eye.
 ### Space Available
 
 - **Room used on purpose.** Every region is content or a named space. An
-  empty region larger than huge needs its reason written beside it, and
-  text cut short while room is free beside it is a fault. **Check:** the
-  screenshot with its empty regions marked and their reasons.
+  empty region taller or wider than huge needs its reason written beside
+  it, and text cut short while room is free beside it is a fault.
+  **Check:** the screenshot with its empty regions marked and their reasons.
 - **At every size.** **Check:** every state at every scale his screens use,
   the longest name, the empty list and the full one among them.
 
@@ -209,27 +225,38 @@ by eye.
   answer, how long it takes against [Latency Budgets][budgets], and which of
   the theme's motions carries it. A state Escape can't leave, a key with no
   visible answer, or an answer that waits is a fault.
-- **Felt, not just correct.** **Check:** each transition recorded at the
-  panel's full refresh rate, with no dropped frame, no jump and no jitter.
+- **Felt, not just correct.** **Check:** each transition timed frame by
+  frame at the panel's full refresh rate, from the program's own frame
+  times or a screen recording stepped through a frame at a time, with no
+  dropped frame, no jump and no jitter.
 
 ### The Keyboard, on Both Keyboards
 
 - **Every key named where it sits.** **Check:** each key a design uses,
-  with its place on the laptop's keyboard and on the ErgoDox (layer, hand,
-  finger), read from `modules/ergodox/keymap/keymap.c`.
-- **Neovim's way: modes and a leader, not chords.** What's done often is a
-  single key in a mode, or Space and then a letter, as in his Neovim
+  with its place on the laptop's keyboard (`modules/keyd/colemak-dh.conf`)
+  and on the ErgoDox (layer, hand and finger, from
+  `modules/ergodox/keymap/keymap.c`).
+- **The ErgoDox's facts.** On its base layer each hand's home row is
+  tap-hold: held, the little finger is Ctrl (A and O), the ring finger Alt
+  (R and I), the middle finger the symbols (S and E), the index finger Super
+  (T and N) and the key inside it the number pad (G and M). Super is bare on
+  both thumbs as well, beside Space and Backspace, and Escape is bare in
+  both top corners. F1 to F10 are bare across its top row; the laptop
+  reaches them as its own keyboard does.
+- **Neovim's way: modes and a leader, not new chords.** What's done often
+  is a single key in a mode, or Space and then a letter, as in his Neovim
   (2026-11-02: "all of those ctrl keys do not feel very vim to me"). On the
-  ErgoDox, Ctrl and Alt are held on the little and ring fingers' home keys
-  (A and O, R and I), so a Ctrl chord pins the weakest finger on a letter;
-  Super is held on the index finger's (T and N), which is why the desktop's
-  Super chords are comfortable. **Check:** every Ctrl and Alt chord in the
-  design listed with its reason. One for something done often is a fault,
-  unless a program already owns it and he uses it there (kitty's size, a
-  text box's own editing).
+  ErgoDox a Ctrl chord pins the weakest finger on a letter, where Super's
+  index finger is the strongest, which is why the desktop's Super chords are
+  comfortable. A key held to repeat, such as a motion, is never a home-row
+  letter there, since those are modifiers when held. **Check:** every Ctrl
+  and Alt chord in the design, each with its reason. Neovim's own (Ctrl+D,
+  Ctrl+O and the rest [Vi's Keys][vi] keeps) and those of a layer he already
+  uses (the terminal's Ctrl+Shift) stand; a new one for something done often
+  is a fault.
 - **Bare keys first.** What's done often ends on a key both keyboards have
-  bare: a letter, an arrow, Escape (both top corners on the ErgoDox),
-  Return, Tab, Space (both thumbs), and F1 to F10 on the ErgoDox's top row.
+  bare, as [The Keyboard][keyboard] lists them. **Check:** each key for
+  something done often, and that both keyboards have it bare.
 
 ### Where Each Choice Came From
 
@@ -246,10 +273,13 @@ by eye.
 
 ### Who Judges
 
-A reviewer checks facts, measurements and these rules, and nobody stands in
-for Joel's eye: a panel judging in his voice passed the second look, and he
-failed it. A design goes to him once every check here is answered and its
-designer would hang it in a museum, never because a panel passed it.
+A design is still judged without him, by this document and [the aesthetic
+skill][taste], and never handed to him to find its faults. A reviewer checks
+facts, measurements and these rules, and nobody stands in for his eye: a
+panel judging in his voice passed the second look, and he failed it. Once
+every check here is answered and its designer would hang it in a museum, a
+design that changes what he sees is shown to him, and his verdict stands
+over any reviewer's.
 
 ## Type
 
@@ -1281,8 +1311,8 @@ comes along, and what to do.
   presses its key with the other, and never asks one little finger for two
   keys, which is why the terminal opens a window on N rather than Return.
   On the ErgoDox, Ctrl and Alt are held on the little and ring fingers'
-  home keys and Super on the index finger's, so what's done often is never
-  a Ctrl chord ([The Keyboard, on Both Keyboards][pixel]).
+  home keys and Super on the index finger's, so nothing new for what's done
+  often is a Ctrl chord ([The Keyboard, on Both Keyboards][pixel]).
 - **One "what's here" key per layer,** the same shape on each, showing that
   layer's actions and keys drawn from the real configuration, never a
   hand-kept copy.
@@ -2173,3 +2203,6 @@ What each studio round settled, newest first, with the reason.
 [themes]: #themes
 [space]: #space
 [budgets]: #latency-budgets
+[colour]: #colour
+[vi]: #vis-keys
+[keyboard]: #the-keyboard

@@ -76,8 +76,8 @@ the desktop's keys and type failed:
 
 The design document's Every Pixel Accounted For turns it into checks: type,
 colour, whitespace, alignment, the space available, every interaction and
-the keyboard on the ErgoDox. A design is shown to him with every check
-answered, never before.
+the keyboard on the ErgoDox. A design is still judged without him, and
+shown to him only once every check is answered.
 
 ## The Character
 
@@ -212,10 +212,11 @@ constrain".
 
 ## Judging Without Him
 
-Nobody stands in for him. A panel judging in his voice passed the second
-look at the desktop's keys and type, and he failed it (2026-11-02). A
-reviewer checks facts, measurements and the design document's rules; the
-bar is whether it could hang in a museum and work as hard as he does.
+Judge it yourself, but don't mistake anyone for him. A panel judging in
+his voice passed the second look at the desktop's keys and type, and he
+failed it (2026-11-02). A reviewer checks facts, measurements and the
+design document's rules; the bar is whether it could hang in a museum and
+work as hard as he does, and once it's shown to him his verdict stands.
 
 Before anything is shown or shipped, answer every check in the design
 document's Every Pixel Accounted For, look at it full size, in every state,
@@ -236,8 +237,8 @@ and answer these for it:
   the ErgoDox, and found by typing what it does?
 - Is there warmth at its threshold, and none in the way of the work?
 - Is it smooth: no jump, no jerk, no wait it could avoid?
-- Is every pixel of whitespace a step he could name, and every edge on a
-  column?
+- Is every gap a named step, a line pitch or what a row leaves round its
+  text, measured to the ink, and every edge on a named column?
 - Does each choice say where it came from, his words, his configuration or
   his keyboards, and is a choice of the designer's own marked as one?
 - Would he feel the change at a glance, beside what it replaces?
