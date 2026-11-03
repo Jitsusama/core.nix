@@ -59,6 +59,11 @@ let
       rule
       accent
       on_accent
+      action
+      program
+      machine
+      person
+      voice
       ;
     faces = {
       text = font.serif.family;

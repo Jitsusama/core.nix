@@ -112,16 +112,54 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
 // The paragraph after the title, in the text face's italic.
 #let lede(body) = par(text(style: "italic", weight: 360, top-edge: cap, body))
-// A link's words in the strong text with a hairline under them, as his
-// Neovim sets a link, since a hue is a glyph's and never text's.
-#show link: it => underline(stroke: 0.75pt + ink.rule, offset: 2.5pt, text(fill: ink.strong, it))
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
 #let rule() = line(length: 100%, stroke: 0.5pt + ink.rule)
-#let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt, y: 1pt), radius: 2pt, body)
-#let task(done) = if done [☑ ] else [☐ ]
-#let alert(kind, body) = block(stroke: (left: 2pt + ink.accent), inset: (left: 12pt, y: 4pt), [#text(weight: 700, upper(kind)) #parbreak() #body])
+// A key, in the mono, framed: the frame stands outside the line's room,
+// over the capitals and under the descenders, so a line with one still
+// steps one line.
+#let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt), outset: (top: 2pt, bottom: 0.3em), radius: 2pt, text(font: face.code, size: 0.93 * body-size, body))
+// Lists hang their marks in the margin, so the words keep the measure's
+// edge: an accent bullet, a muted number, a task's box. An item steps one
+// line and a list stands one and a half from what's around it. A list in a
+// list starts at its item's words.
+#let hang = 1em
+#set list(marker: box(width: 0.6em, align(right, text(fill: ink.accent)[•])), indent: -hang, body-indent: hang - 0.6em, spacing: pitch - cap)
+#set enum(numbering: n => box(width: 1.6em, align(right, text(fill: ink.muted, number-width: "tabular")[#n.])), indent: -2 * hang, body-indent: 2 * hang - 1.6em, spacing: pitch - cap)
+#let listed(it) = {
+  let inner = { set list(indent: 0pt); set enum(indent: 0pt); it }
+  if it.indent < 0pt { block(above: 1.5 * pitch - cap, below: 1.5 * pitch - cap, inner) } else { inner }
+}
+#show list: listed
+#show enum: listed
+// A task list's items hang their boxes where the bullets would: a hairline
+// square in rule, or done, an accent tick and its words muted, never struck.
+#let no-mark = box(width: 0.6em)
+#let task(done, body) = {
+  let side = 0.62em
+  let mark = if done {
+    box(width: side, height: side, curve(stroke: 1.2pt + ink.accent, curve.move((0.08em, 0.33em)), curve.line((0.25em, 0.55em)), curve.line((0.6em, 0.05em))))
+  } else {
+    box(width: side, height: side, stroke: 0.75pt + ink.rule)
+  }
+  h(-hang)
+  box(width: hang, mark)
+  if done { text(fill: ink.muted, body) } else { body }
+}
+// A quote in the text face's italic, its words at the measure's edge and an
+// accent rule hung 12 pt left of them, two lines from what's around it.
+#let hung-rule(colour, first: cap, body) = block(above: lines(2, first), below: 2 * pitch - cap, stroke: (left: 1.5pt + colour), outset: (left: 12pt + 0.75pt), body)
+#show quote.where(block: true): it => hung-rule(ink.accent, text(style: "italic", weight: 360, it.body))
+// An alert is a quote's shape with its rule in its kind's hue and the kind
+// as an eyebrow, one line over its words.
+#let alert-hues = (note: ink.voice, tip: ink.accent, important: ink.program, warning: ink.action, caution: ink.machine)
+#let alert(kind, body) = hung-rule(alert-hues.at(kind, default: ink.accent), first: code-caps * 8.4pt, {
+  block(below: pitch - cap, eyebrow(kind))
+  body
+})
+// A link's words stay text, an accent hairline under them.
+#show link: it => underline(stroke: 0.75pt + ink.accent, offset: 0.22em, it)
 #let details(body) = block(body)
 #let rule-ink = ink.rule
 #let sheet-gap = 18pt
@@ -654,6 +692,20 @@ mod tests {
         assert!(
             steps.iter().all(|s| *s == 100 || *s == 150),
             "a line steps one pitch, a paragraph one and a half: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_holding_a_key_steps_one_line_as_any_other() {
+        let markdown = format!(
+            "{OPENING}Press <kbd>Ctrl</kbd>+<kbd>O</kbd> to go back to where you were, and <kbd>Ctrl</kbd>+<kbd>I</kbd> to come forward again, in a paragraph long enough to wrap onto a second line and a third, whichever face it's set in, before it ends at Omega.\n"
+        );
+        let (pitch, lines) = baselines("keys", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        assert!(steps.len() >= 4, "too few lines: {steps:?}");
+        assert!(
+            steps.iter().all(|s| *s == 100 || *s == 150),
+            "a key's frame grew its line: {steps:?}"
         );
     }
 
