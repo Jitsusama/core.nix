@@ -1083,7 +1083,7 @@ the kernel's tree adds.
 | Power    | the charger and battery kept from asking the Aggregator while it sleeps   |
 | Touch    | the touchscreen and pen, through a driver out of the kernel's tree        |
 | Wi-Fi    | the country the access points give, taken while connected                 |
-| Mics     | their gain held at their own level, so a call doesn't clip                |
+| Mics     | their gain capped 12 dB over their own level, so a voice carries          |
 | Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
 | Firmware | Surface UEFI's updates through fwupd, from Microsoft's own package        |
 
@@ -1271,10 +1271,13 @@ so full volume was 60 dB of gain. In a two-second listen at that gain,
 an RMS of 489 and 86 of 32,768 on the two mics, and at the lowest gain
 about 6, so the level follows the gain and the mics aren't broken. The
 module's path ([`sound/paths/analog-input-internal-mic.conf`][22]) holds
-the boost at 0 dB and stops the capture gain at its 0 dB step, 23 of 63,
-so the desktop's full volume is the mics' own level. It's given through a
-profile set for the analog card alone; the headset jack and the outputs
-keep PipeWire's paths.
+the boost at 0 dB and stops the capture gain 12 dB over its 0 dB step, at
+39 of 63 (each step is 0.75 dB). At the mics' own level, a voice read
+aloud from the usual seat, about a foot behind the laptop, sounded clear
+but low, and its peak was -26 dBFS. The 12 dB bring that peak to about
+-14, still well short of full scale. It's given through a profile set for
+the analog card alone; the headset jack and the outputs keep PipeWire's
+paths.
 
 ### Temperatures and Fan
 
@@ -1398,7 +1401,7 @@ sealed to.
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
 | Speakers   | the speakers aren't checked yet                                                |
-| Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
+| Mics       | a voice at the 12 dB cap isn't heard back yet                                  |
 | Camera     | both cameras list their formats; neither's picture is checked yet              |
 | Firmware   | the TPM's capsule waits on whether its upgrade keeps the TPM's owner state     |
 | Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
