@@ -54,42 +54,75 @@ Singleton {
     // Whether the launcher's collection of them is open.
     property bool gathered: false
 
-    // A sender's glyph where Nerd Fonts has one, and the hue of what it
-    // brings: a person's message wears the person's. One that only answers
-    // what Joel just did, as the recorder's saying where a file went, is
-    // never missed.
+    // A sender's glyph where Nerd Fonts has one, the hue of what it
+    // brings, a person's message wearing the person's, and the name Joel
+    // knows it by, which a card signs it with, never its program's. One
+    // that only answers what Joel just did, as the recorder's saying where
+    // a file went, is never missed.
     readonly property var senders: ({
-        "slack": { glyph: 0xf198, hue: "person" },
-        "tuple": { glyph: Theme.glyph.call.codePointAt(0), hue: "person" },
-        "google chrome": { glyph: 0xf268, hue: "program" },
-        "chromium": { glyph: 0xf268, hue: "program" },
-        "niri": { glyph: 0xf0e51, hue: "machine" },
+        "slack": { glyph: 0xf198, hue: "person", name: "Slack" },
+        "tuple": { glyph: Theme.glyph.call.codePointAt(0), hue: "person", name: "Tuple" },
+        "google chrome": { glyph: 0xf268, hue: "program", name: "Google Chrome" },
+        "chromium": { glyph: 0xf268, hue: "program", name: "Chromium" },
+        // The compositor, saying a screenshot was taken or its settings
+        // didn't load.
+        "niri": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
         // never missed, since the margin's mark says it while it holds.
-        "pi": { glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true },
+        "pi": {
+            glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true,
+            name: Words.name("agents")
+        },
         // Something an agent has ready for Joel to do (WaitingOnYou.qml).
-        "waiting": { glyph: Theme.glyph.waitsOnJoel.codePointAt(0), hue: "program" },
-        "recorder": { glyph: Theme.glyph.recording.codePointAt(0), hue: "machine", answers: true },
+        "waiting": {
+            glyph: Theme.glyph.waitsOnJoel.codePointAt(0), hue: "program",
+            name: Words.name("on:waiting")
+        },
+        "recorder": {
+            glyph: Theme.glyph.recording.codePointAt(0), hue: "machine", answers: true,
+            name: "Capture"
+        },
         // What arrives by itself (Arrivals.qml), in its margin mark, which
         // says it while it holds, so it's never missed either.
-        "camera": { glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true },
+        "camera": {
+            glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true,
+            name: "Camera"
+        },
         // A meeting about to start (Starting.qml), with others in it.
-        "calendar": { glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true },
-        "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true },
+        "calendar": {
+            glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true,
+            name: "Calendar"
+        },
+        "battery": {
+            glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true,
+            name: Words.name("power")
+        },
         // The AI tokens running out (pieces/Tokens.qml), the agents' own.
-        "tokens": { glyph: Theme.glyph.tokens.codePointAt(0), hue: "program", answers: true },
+        "tokens": {
+            glyph: Theme.glyph.tokens.codePointAt(0), hue: "program", answers: true,
+            name: Words.name("spend")
+        },
         // A firmware update fwupd offers (modules/firmware-notice), said
         // once a release, and missed until seen, since nothing else says it.
-        "firmware": { glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine" },
+        "firmware": {
+            glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine",
+            name: Words.name("firmware")
+        },
         // What became of a save into Google Drive (modules/google's
         // Saves.qml): one that failed is missed until seen, since the file
         // waits on Joel, and one that went up answers what he did.
-        "google drive": { glyph: 0xf02b6, hue: "program" }
+        "google drive": { glyph: 0xf02b6, hue: "program", name: "Google Drive" }
     })
 
+    // One unknown is signed by its program's own name for itself, where it
+    // has one, as its launcher row is, or else as it named itself.
     function sender(name) {
         const known = senders[name.toLowerCase()];
-        return known ?? { glyph: 0xf0f3, hue: "program" };
+        return known ?? {
+            glyph: 0xf0f3,
+            hue: "program",
+            name: DesktopEntries.heuristicLookup(name)?.name ?? name
+        };
     }
 
     // Those still young enough to keep, at most `keep` of them.

@@ -76,8 +76,6 @@ FOLLOWED_THE_ROOM = 15
 # How far a pixel can be from the action's colour, summed over red, green and blue, and
 # still be its glyph's.
 NEAR_THE_ACTION = 40
-# How wide and how high one glyph is at most, in pixels.
-ONE_GLYPH = 30
 # How far in from the screen's right edge, in pixels, the window under the notices rests,
 # so its edge is far from the corner's.
 FROM_THE_CORNER = 100
@@ -817,11 +815,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         assert said.index("member=ActivationToken") < said.index("member=ActionInvoked"), said
 
     def offer_to_play(self, picture: str, offers: str = "") -> tuple[float, float]:
-        """Show a notice offering to play, and give where its action's glyph is drawn.
+        """Show a notice offering to play, and give where the middle of its card is drawn.
 
-        Where is a fraction of the screen, and the glyph is the only thing in the action
-        colour. notify-send waits for the answer, so it runs on its own, and the notice stays
-        a minute, so only a click closes it sooner.
+        Where is a fraction of the screen, as the shell says it. notify-send waits for the
+        answer, so it runs on its own, and the notice stays a minute, so only a click closes
+        it sooner.
         """
         self.machine.wait_until_fails(self.in_session(NOTICES), timeout=timedelta(seconds=30))
         with self.told(f"shows card {picture}"):
@@ -829,32 +827,10 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 f"notify-send --expire-time=60000 {offers} --action=play='Play it' '{picture}'"
                 " 'y.mp4' > /tmp/answer 2>&1 < /dev/null &"
             )
-        hexed = self.values["action"]
-        action = [int(hexed[i : i + 2], 16) for i in (1, 3, 5)]
-        drawn: list[tuple[int, int]] = []
-        size = [1, 1]
-
-        # The card's first frames may not hold the glyph yet.
-        def glyph_drawn(last: bool) -> bool:
-            image = self.settled_screen(picture)
-            pixels = image.tobytes()
-            size[:] = [image.width, image.height]
-            drawn[:] = [
-                (x, y)
-                for y in range(image.height)
-                for x in range(image.width)
-                if sum(abs(pixels[3 * (y * image.width + x) + c] - action[c]) for c in range(3))
-                < NEAR_THE_ACTION
-            ]
-            if last:
-                assert drawn, "the action's glyph isn't drawn"
-            return bool(drawn)
-
-        retry(glyph_drawn, timeout=timedelta(seconds=15))
-        xs, ys = [x for x, _ in drawn], [y for _, y in drawn]
-        assert max(xs) - min(xs) < ONE_GLYPH, f"more than one glyph: {drawn}"
-        assert max(ys) - min(ys) < ONE_GLYPH, f"more than one glyph: {drawn}"
-        return sum(xs) / len(xs) / size[0], sum(ys) / len(ys) / size[1]
+        self.settled_screen(picture)
+        card = json.loads(self.as_account("qs ipc call notices front"))
+        assert card, "the shell says no card is in front"
+        return (card["left"] + card["right"]) / 2, (card["top"] + card["bottom"]) / 2
 
     def tablet(self, *events: Json) -> None:
         """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767.

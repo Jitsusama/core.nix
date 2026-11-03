@@ -29,6 +29,9 @@ const table = [
     // front card is the first and the stack runs on to the oldest. Shift
     // with Delete or Backspace does the same, and neither asks.
     { act: "forgetAll", keys: [["d", "G"], "Shift+Delete", "Shift+Backspace"] },
+    // Copying what the front card said, as vi's yy yanks a line, leaving
+    // the stack where it was.
+    { act: "copy", keys: [["y", "y"]] },
     // The newest and the oldest, as vi's first and last lines.
     { act: "newest", keys: [["g", "g"]] },
     { act: "oldest", keys: ["G"] },
