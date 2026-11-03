@@ -1,0 +1,70 @@
+Read a shut lid before connecting outputs
+
+niri connects every output as it starts, in the TTY backend's init,
+and hears the lid only afterwards: logind's watcher sends it once the
+event loop runs, and libinput's switch events come with the first
+input. So a laptop started docked with its lid shut lit its own
+panel, laid the monitor out beside it, and took the panel away again
+about 70 ms later.
+
+With D-Bus, niri now asks logind whether the lid is shut before the
+backend connects anything, so a shut panel is never connected. The
+watchers carry on as before; when they report the same, nothing
+changes. If logind can't be asked, niri goes on as it did.
+
+diff --git a/src/dbus/freedesktop_login1.rs b/src/dbus/freedesktop_login1.rs
+index 5964d45..055562f 100644
+--- a/src/dbus/freedesktop_login1.rs
++++ b/src/dbus/freedesktop_login1.rs
+@@ -6,6 +6,24 @@ pub enum Login1ToNiri {
+     LidClosedChanged(bool),
+ }
+ 
++/// Whether logind says the lid is shut now, asked and answered before niri goes on.
++///
++/// niri connects its outputs as it starts, before the watcher below first reports the lid, so
++/// without this a shut laptop's panel was connected and taken away again a moment later.
++pub fn lid_closed() -> anyhow::Result<bool> {
++    let conn = zbus::blocking::Connection::system()?;
++    let proxy = fdo::PropertiesProxyBlocking::new(
++        &conn,
++        "org.freedesktop.login1",
++        "/org/freedesktop/login1",
++    )?;
++    let value = proxy.get(
++        InterfaceName::try_from("org.freedesktop.login1.Manager").unwrap(),
++        "LidClosed",
++    )?;
++    Ok(bool::try_from(value)?)
++}
++
+ pub fn start(
+     to_niri: calloop::channel::Sender<Login1ToNiri>,
+ ) -> anyhow::Result<zbus::blocking::Connection> {
+diff --git a/src/niri.rs b/src/niri.rs
+index 937f1c6..8cfc3be 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -770,6 +770,22 @@ impl State {
+             create_wayland_socket,
+             is_session_instance,
+         );
++
++        // On a screen of its own, niri connects every output as it starts, so a shut lid must be
++        // known first. The watchers report it only once the event loop runs, after the outputs
++        // are connected, so a laptop started shut on a dock lit its panel and laid the monitor
++        // out beside it, to take it away again a moment later.
++        #[cfg(feature = "dbus")]
++        if matches!(backend, Backend::Tty(_)) {
++            match crate::dbus::freedesktop_login1::lid_closed() {
++                Ok(is_closed) => {
++                    debug!("laptop lid {} at start", if is_closed { "closed" } else { "open" });
++                    niri.is_lid_closed = is_closed;
++                }
++                Err(err) => warn!("error reading the lid from login1: {err:?}"),
++            }
++        }
++
+         backend.init(&mut niri);
+ 
+         let mut state = Self { backend, niri };

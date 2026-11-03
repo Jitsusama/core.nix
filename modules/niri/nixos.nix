@@ -114,6 +114,13 @@
     # (virtual-keys-are-activity.patch) counts each such key as activity
     # while the monitors are on, as a real key counts; it doesn't turn
     # them back on.
+    #
+    # niri connects every screen as it starts and hears the lid only after,
+    # so a laptop started on a dock with its lid shut lit its own panel and
+    # laid the monitor out beside it, then took the panel away 67 ms later.
+    # The patch (lid-read-before-outputs.patch) asks logind whether the
+    # lid is shut before any screen connects, so a shut panel never is;
+    # the screens test starts with its stand-in lid shut to show it.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -139,6 +146,7 @@
         ./warp-after-a-close.patch
         ./spawn-behind-the-lock.patch
         ./virtual-keys-are-activity.patch
+        ./lid-read-before-outputs.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

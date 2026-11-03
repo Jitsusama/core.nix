@@ -2160,7 +2160,8 @@
     stage, and Plymouth hears which
   '';
   vm-screens-come-and-go = ''
-    the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
+    niri started with the laptop's lid shut on a dock connects the monitor alone, never the
+    laptop's screen, until the lid opens; the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
     and returns, after a console switch and after a sleep and wake, after which the shell still
     hears a notice, dictation's keys and Keep Awake let go; when one of two screens goes, the
     margin and dictation's bar stay on the other and the margin comes back on both; the launcher
