@@ -194,6 +194,7 @@
         prompt = ./modules/prompt/home.nix;
         qt = ./modules/qt/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
+        reader = ./modules/reader/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
         screen-text = ./modules/screen-text/home.nix;
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
@@ -315,6 +316,7 @@
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         processor-telemetry = ./modules/processor-telemetry/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
+        reader = ./modules/reader/nixos.nix;
         shaper = ./modules/shaper/nixos.nix;
         shure-mv7 = ./modules/shure-mv7/nixos.nix;
         slices = ./modules/slices/nixos.nix;

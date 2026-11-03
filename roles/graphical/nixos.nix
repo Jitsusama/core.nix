@@ -11,7 +11,7 @@
 # light, and GTK programs and the monospace default in the theme. It also
 # gets the programs Joel views, draws, reads, watches, listens and pairs
 # with: swayimg, which opens pictures and drawings, zathura, which opens
-# documents, inlyne, which opens markdown files as pages, GIMP, Inkscape, mpv, which opens video, the camera, Spotify
+# documents, the reader, which opens markdown files as pages, GIMP, Inkscape, mpv, which opens video, the camera, Spotify
 # and Tuple. When a program asks what to open something with, the launcher
 # asks rather than GNOME's dialog, and the programs nobody starts from it
 # stay out of it. A chord, tapped or held, types what Joel
@@ -37,7 +37,6 @@
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd
-    nixosModules.inlyne
     nixosModules.kmscon
     nixosModules.litra
     nixosModules.memory-modules
@@ -49,6 +48,7 @@
     nixosModules.pipewire
     nixosModules.plymouth
     nixosModules.quickshell
+    nixosModules.reader
     nixosModules.shaper
     nixosModules.shure-mv7
     nixosModules.slices
@@ -69,7 +69,6 @@
     homeModules.google
     homeModules.gtk
     homeModules.inkscape
-    homeModules.inlyne
     homeModules.niri
     homeModules.kitty
     homeModules.lag-watch
@@ -80,6 +79,7 @@
     homeModules.mpv
     homeModules.qt
     homeModules.quickshell
+    homeModules.reader
     homeModules.screen-text
     homeModules.spotify
     homeModules.swayidle

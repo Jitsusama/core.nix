@@ -712,6 +712,50 @@ def test_a_document_opens_in_zathura_beside_the_rest_and_q_closes_it(desktop: De
     )
 
 
+def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Desktop) -> None:
+    """A markdown file opens in the reader, which takes Neovim's keys and reopens where it was.
+
+    Where the reader was when it closed is kept beside its state, so what each key did is
+    read back from there: G and q keep it at the end, opening again comes back to the end,
+    and gg then Ctrl+D then q keep it half a screen down.
+    """
+    machine = desktop.machine
+    page = f"/home/{desktop.account}/page.md"
+    desktop.as_account(
+        f"{{ echo '# A Page'; for n in $(seq 120); do echo; "
+        f'echo "Paragraph $n, a line or two of words for the keys to go past."; done; }} > {page}'
+    )
+
+    def closed_at() -> dict[str, object]:
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -f '[r]eader {page}'", timeout=timedelta(seconds=10)
+        )
+        kept: dict[str, object] = json.loads(
+            desktop.as_account("cat ~/.local/state/reader/places/*.json")
+        )
+        return kept
+
+    desktop.opens_in(page, "text/markdown", "reader")
+    desktop.photograph("reader")
+    machine.send_key("shift-g")
+    machine.send_key("q")
+    assert closed_at()["at_end"], "G didn't go to the end, or q didn't close"
+
+    desktop.opens_in(page, "text/markdown", "reader")
+    machine.send_key("q")
+    assert closed_at()["at_end"], "the reader didn't open where it closed"
+
+    desktop.opens_in(page, "text/markdown", "reader")
+    machine.send_key("g")
+    machine.send_key("g")
+    machine.send_key("ctrl-d")
+    machine.send_key("q")
+    kept = closed_at()
+    assert not kept["at_end"], kept
+    assert kept["block"] != 0 or kept["into_pt"] != 0, "Ctrl+D didn't move from the top"
+    machine.succeed(f"rm {page}")
+
+
 def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Desktop) -> None:
     """The launcher's Sound moves sound to another output, and back."""
     machine = desktop.machine

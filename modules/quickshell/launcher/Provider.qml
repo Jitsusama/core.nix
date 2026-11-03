@@ -506,7 +506,7 @@ Scope {
         "swayimg": "f02e9",
         "org.pwmt.zathura": "f0219",
         "mpv": "f36e",
-        "inlyne": "f0354",
+        "reader": "f0354",
         "btop": "mark:processor",
         "pi": "mark:agent",
         "tuple": "f1218",

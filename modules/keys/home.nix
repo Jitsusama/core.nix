@@ -26,7 +26,8 @@ let
     pi = "pi, the coding agent in the terminal";
     btop = "btop, which watches the processes, in the terminal";
     swayimg = "swayimg, the picture viewer, in a window of its own";
-    inlyne = "inlyne, the markdown reader, in a window of its own";
+    reader = "the reader, which reads markdown, in a window of its own";
+    inlyne = "inlyne, the markdown reader on the Mac, in a window of its own";
     zathura = "zathura, the document viewer, in a window of its own";
     mpv = "mpv, the player, in a window of its own";
     chrome = "Chrome, the browser, in a window of its own, and each window it opens for one site";
@@ -43,6 +44,7 @@ let
     "pi"
     "btop"
     "swayimg"
+    "reader"
     "inlyne"
     "zathura"
     "mpv"
