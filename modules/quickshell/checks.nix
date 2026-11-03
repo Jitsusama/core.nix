@@ -934,7 +934,8 @@ onLinux {
   # against the real people daemon with two sources stood in for, one
   # asked (tests/daemon-source.sh) and one saying everyone unasked
   # (tests/daemon-roster.sh), started, stopped and started again by
-  # tests/daemon.qml.
+  # tests/daemon.qml; and over one connection, records of two kinds from a
+  # daemon holding both (tests/daemon-kinds.py).
   the-shell-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../people/package.nix { };
@@ -951,6 +952,7 @@ onLinux {
       cp ${../../tests/daemon.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
+      export PYTHON=${lib.getExe pkgs.python3} KINDS=${../../tests/daemon-kinds.py}
       ${shellFolderLint}
       timeout 90 ${qs} -p shell.qml
       touch $out

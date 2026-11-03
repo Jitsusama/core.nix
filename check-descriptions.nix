@@ -1693,7 +1693,8 @@
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
-    key, and what was held stays through a gap, unless the client lets it go there
+    key, what was held stays through a gap unless the client lets it go there, and a client of two
+    kinds names both in every watch
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step

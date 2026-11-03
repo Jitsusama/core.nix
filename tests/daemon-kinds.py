@@ -1,0 +1,69 @@
+"""Stand in for a daemon holding more than one kind of record, as Google's does.
+
+It answers the shell's daemon interface (RSCH-20261029-0E8050) on the socket named as its one
+argument: hello, and a watch, answered with one record for each key asked, or else one for each
+kind asked, `<kind>:one`. Each record says the kinds its watch asked for, so tests/daemon.qml can
+tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone.
+"""
+
+import json
+import socket
+import sys
+import threading
+from pathlib import Path
+
+
+def kinds_of(asked: dict[str, object]) -> list[str]:
+    """Read the kinds a watch names, one or a list, as Google's daemon reads them."""
+    kind = asked.get("kind")
+    if isinstance(kind, str):
+        return [kind]
+    if isinstance(kind, list):
+        return [each for each in kind if isinstance(each, str)]
+    return []
+
+
+def answer(asked: dict[str, object]) -> dict[str, object]:
+    """Answer one ask."""
+    if asked.get("ask") == "hello":
+        return {"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}
+    kinds = kinds_of(asked)
+    keys = asked.get("keys")
+    named = (
+        [key for key in keys if isinstance(key, str)]
+        if isinstance(keys, list)
+        else [f"{kind}:one" for kind in kinds]
+    )
+    records = [
+        {"key": key, "kind": key.split(":", 1)[0], "heard": 1, "asked": kinds} for key in named
+    ]
+    return {"id": asked.get("id"), "records": records}
+
+
+def serve(client: socket.socket) -> None:
+    """Answer one client, a line for each line, until it goes."""
+    with client, client.makefile("rw") as lines:
+        for line in lines:
+            try:
+                asked = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(asked, dict):
+                lines.write(json.dumps(answer(asked)) + "\n")
+                lines.flush()
+
+
+def main() -> None:
+    """Listen on the socket given for as long as it runs."""
+    path = Path(sys.argv[1])
+    path.unlink(missing_ok=True)
+    listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listening.bind(str(path))
+    listening.listen()
+    while True:
+        client, _ = listening.accept()
+        threading.Thread(target=serve, args=(client,), daemon=True).start()
+
+
+if __name__ == "__main__":
+    main()
