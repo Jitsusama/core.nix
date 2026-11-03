@@ -39,6 +39,9 @@ in
         nix = "${nixBin}/nix";
         nix_env = "${nixBin}/nix-env";
         pmset = "/usr/bin/pmset";
+        # A Mac's keychain answers only in its account's login session, so
+        # a private input is fetched there (src/session.rs).
+        launchctl = "/bin/launchctl";
       };
     };
 

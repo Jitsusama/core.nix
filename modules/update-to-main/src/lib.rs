@@ -19,6 +19,7 @@
 //! - `power`: whether the machine is on a battery too low to start.
 //! - `line`: what an asker hears.
 //! - `run`: the programs it runs, in a clean environment.
+//! - `session`: an account's command run in its login session, on a Mac.
 //! - `ask`: the asking end, for the node and for a person.
 
 pub mod ask;
@@ -30,5 +31,6 @@ pub mod line;
 pub mod power;
 pub mod run;
 pub mod serve;
+pub mod session;
 pub mod system;
 pub mod update;

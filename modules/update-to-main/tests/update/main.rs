@@ -122,7 +122,9 @@ impl World {
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' eval '*) echo \"$UPDATE_TO_MAIN_LOCKED\" >> {fetched}; echo /nix/store/x-source; exit 0;;\n\
+                 *' eval '*) if [ -e {fetch_fails} ]; then \
+                 echo 'could not read Username' >&2; exit 1; fi; \
+                 echo \"$UPDATE_TO_MAIN_LOCKED\" >> {fetched}; echo /nix/store/x-source; exit 0;;\n\
                  *' --no-link '*) echo \"$last\" >> {fetched}; exit 0;;\n\
                  esac\n\
                  flake=$last\n\
@@ -138,6 +140,7 @@ impl World {
                  echo {systems}/$rev\n",
                 log = root.join("builds").display(),
                 fetched = root.join("fetched").display(),
+                fetch_fails = root.join("fetch-fails").display(),
                 overridden = root.join("overridden").display(),
                 no_builder = root.join("no-builder").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
@@ -192,6 +195,7 @@ impl World {
                 nix_env: stand_ins.join("nix-env"),
                 tar: program("tar"),
                 pmset: None,
+                launchctl: None,
             },
             program: None,
             booted: root.join("booted"),
@@ -956,29 +960,121 @@ fn a_hosted_main_with_no_token_builds_nothing() {
     assert_eq!(world.builds(), 0);
 }
 
-#[test]
-fn a_hosted_mains_private_inputs_are_fetched_by_their_locks() {
+/// A lock with a private input, one in the store already and a public one.
+const PRIVATE_LOCK: &str = r#"{
+  "root": "root",
+  "nodes": {
+    "root": { "inputs": { "private": "private_2", "pinned": "pinned", "public": "public" } },
+    "private_2": { "locked": { "type": "git", "url": "https://example.com/private", "rev": "abc" } },
+    "pinned": { "locked": { "type": "path", "path": "/nix/store/abc-pinned" } },
+    "public": { "locked": { "type": "github", "owner": "o", "repo": "r" } }
+  },
+  "version": 7
+}"#;
+
+/// A hosted world that fetches the lock's private and pinned inputs.
+fn with_private_inputs() -> World {
     let mut world = World::hosted_from(World::new(), counted_token);
     world.config.hosted.as_mut().unwrap().inputs = vec!["private".to_owned(), "pinned".to_owned()];
-    let lock = r#"{
-      "root": "root",
-      "nodes": {
-        "root": { "inputs": { "private": "private_2", "pinned": "pinned", "public": "public" } },
-        "private_2": { "locked": { "type": "git", "url": "https://example.com/private", "rev": "abc" } },
-        "pinned": { "locked": { "type": "path", "path": "/nix/store/abc-pinned" } },
-        "public": { "locked": { "type": "github", "owner": "o", "repo": "r" } }
-      },
-      "version": 7
-    }"#;
-    let head = world.hosted_commit("one", Some(lock));
+    world
+}
+
+impl World {
+    /// Says the inputs fetched were the lock's private one, by its lock, and
+    /// its pinned one, by its path.
+    fn fetched_the_private_inputs(&self) {
+        let fetched = self.read("fetched");
+        let fetched: Vec<&str> = fetched.lines().collect();
+        assert_eq!(fetched.len(), 2, "{fetched:?}");
+        let private: serde_json::Value = serde_json::from_str(fetched[0]).unwrap();
+        assert_eq!(private["url"], "https://example.com/private");
+        assert_eq!(fetched[1], "/nix/store/abc-pinned");
+    }
+
+    /// A Mac's launchctl, stood in for: it writes down what it's asked, knows
+    /// the account's login session while `session` is there, and runs a job
+    /// it's given as launchd would, apart, by the plist's last two strings,
+    /// with the update-to-main these tests build.
+    fn on_a_mac(&mut self) {
+        let launchctl = self.root.join("launchctl");
+        write_program(
+            &launchctl,
+            &format!(
+                "{head}\necho \"$1 $2\" >> {asked}\n\
+                 case $1 in\n\
+                 print) [ -e {session} ] || exit 113;;\n\
+                 bootstrap) strings=$(sed -n 's|.*<string>\\(.*\\)</string>.*|\\1|p' \"$3\")\n\
+                 [ \"$(echo \"$strings\" | tail -n 2 | head -n 1)\" = job ] || exit 2\n\
+                 {job} job \"$(echo \"$strings\" | tail -n 1)\" > /dev/null 2>&1 &;;\n\
+                 esac\n",
+                head = stand_in_head(),
+                asked = self.root.join("launchctl-asked").display(),
+                session = self.root.join("session").display(),
+                job = env!("CARGO_BIN_EXE_update-to-main"),
+            ),
+        );
+        self.config.tools.launchctl = Some(launchctl);
+    }
+}
+
+#[test]
+fn a_hosted_mains_private_inputs_are_fetched_by_their_locks() {
+    let world = with_private_inputs();
+    let head = world.hosted_commit("one", Some(PRIVATE_LOCK));
     world.system(&head);
     assert_eq!(world.update().1, done(&head));
-    let fetched = world.read("fetched");
-    let fetched: Vec<&str> = fetched.lines().collect();
-    assert_eq!(fetched.len(), 2, "{fetched:?}");
-    let private: serde_json::Value = serde_json::from_str(fetched[0]).unwrap();
-    assert_eq!(private["url"], "https://example.com/private");
-    assert_eq!(fetched[1], "/nix/store/abc-pinned");
+    world.fetched_the_private_inputs();
+}
+
+#[test]
+fn on_a_mac_private_inputs_are_fetched_in_the_login_session() {
+    let mut world = with_private_inputs();
+    world.on_a_mac();
+    fs::write(world.root.join("session"), "").unwrap();
+    let head = world.hosted_commit("one", Some(PRIVATE_LOCK));
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    world.fetched_the_private_inputs();
+    // SAFETY: getuid only reads.
+    let domain = format!("gui/{}", unsafe { libc::getuid() });
+    let asked = world.read("launchctl-asked");
+    let started = asked
+        .lines()
+        .filter(|l| *l == format!("bootstrap {domain}"))
+        .count();
+    let stopped = asked
+        .lines()
+        .filter(|l| l.starts_with(&format!("bootout {domain}/")))
+        .count();
+    assert_eq!((started, stopped), (2, 2), "{asked}");
+}
+
+#[test]
+fn on_a_mac_nobody_logged_in_private_inputs_are_fetched_as_they_are() {
+    let mut world = with_private_inputs();
+    world.on_a_mac();
+    let head = world.hosted_commit("one", Some(PRIVATE_LOCK));
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    world.fetched_the_private_inputs();
+    let asked = world.read("launchctl-asked");
+    assert!(asked.lines().all(|l| l.starts_with("print ")), "{asked}");
+}
+
+#[test]
+fn on_a_mac_a_fetch_that_fails_in_the_login_session_says_why() {
+    let mut world = with_private_inputs();
+    world.on_a_mac();
+    fs::write(world.root.join("session"), "").unwrap();
+    fs::write(world.root.join("fetch-fails"), "").unwrap();
+    let head = world.hosted_commit("one", Some(PRIVATE_LOCK));
+    world.system(&head);
+    let Line::Failed { why, lines, .. } = world.update().1 else {
+        panic!("the update didn't fail")
+    };
+    assert_eq!(why, "fetching the input private failed (exit status: 1)");
+    assert_eq!(lines, ["could not read Username"]);
+    assert_eq!(world.builds(), 0);
 }
 
 #[test]
