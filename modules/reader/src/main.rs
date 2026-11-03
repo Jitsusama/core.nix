@@ -33,6 +33,7 @@ mod tiles;
 mod walk;
 mod watch;
 mod web;
+mod worker;
 mod world;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -2947,17 +2948,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !measuring && let Err(error) = showing::keep(std::path::Path::new(&file)) {
         eprintln!("reader: can't say {file} is shown: {error}");
     }
-    while !app.exit {
-        event_loop.dispatch(None, &mut app)?;
+    let mut ended = Ok(());
+    while !app.exit && ended.is_ok() {
+        ended = event_loop.dispatch(None, &mut app);
     }
+    // Kept before anything is let go, so however the reader ends from
+    // here, where it was is never lost.
     if !measuring {
-        showing::forget();
         app.keep_place();
+        showing::forget();
     }
+    ended?;
     // Let the last frames' feedback in before reading it.
     let _ = event_loop.dispatch(std::time::Duration::from_millis(100), &mut app);
     app.report();
     Ok(())
+}
+
+impl Drop for App {
+    /// Lets go of the loader, waiting for it to leave the driver, before
+    /// the GL it shares; the window and the Wayland connection go after.
+    /// Left to exit, the driver's own teardown freed what a loader still
+    /// making a texture used, and it died in Mesa.
+    fn drop(&mut self) {
+        self.loader = None;
+        self.gl = None;
+    }
 }
 
 /// Prints every chord the reader takes, with its group and what it does,

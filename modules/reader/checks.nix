@@ -47,8 +47,9 @@ onLinux {
   # baseline within a pixel, the file shown said for the launcher
   # and taken away on closing, the theme's roles read with Osaka Jade for
   # the rest, search found across a hyphen's break, an equation shown as
-  # written when MiTeX is missing, counts and keys as Neovim takes them, and
-  # the motion's curve.
+  # written when MiTeX is missing, counts and keys as Neovim takes them, the
+  # motion's curve, and a worker let go only once its job in hand and its
+  # thread have ended, the rest skipped.
   reader-sets-its-pages = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the reader, its tests included.
   reader-passes-clippy = passesClippy "reader-passes-clippy" (pkgs.callPackage ./package.nix { });
