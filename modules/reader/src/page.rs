@@ -60,8 +60,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show heading: set par(leading: 0.62em)
 #show heading.where(level: 1): set text(size: 40pt)
 #show heading.where(level: 2): set text(size: 16.4pt)
-// Code in his mono at 0.93 of the words, so its x-height meets theirs
-// (1035 and 964 of 2000), in the text's colour and with no box. Typst's
+// Code in his mono at 0.93 of the words, as the spec has it: its x-height
+// (1035 of 2000) stands a little over theirs (938 at optical size 14), in
+// the text's colour and with no box. Typst's
 // raw takes 0.8 em of its own, so the size is said whole.
 #show raw: set text(font: face.code, size: 0.93 * body-size)
 // A link's words in the strong text with a hairline under them, as his
