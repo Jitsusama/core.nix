@@ -289,7 +289,10 @@ mod tests {
         assert!(title < keys, "{title:?} {keys:?}");
         assert_eq!(heading_at(&lines, "words-vis"), None);
         // A title is never hyphenated, however it wraps.
-        assert!(lines.iter().all(|line| !line.text.contains('\u{ad}')), "{texts:?}");
+        assert!(
+            lines.iter().all(|line| !line.text.contains('\u{ad}')),
+            "{texts:?}"
+        );
     }
 
     #[test]
