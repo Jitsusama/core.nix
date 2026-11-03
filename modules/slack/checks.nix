@@ -35,8 +35,8 @@ onLinux {
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
   # slack-unreads starts once pi has signed in to Slack, comes back as the
   # new one after a switch, is restarted once its watchdog hears nothing,
-  # and takes its file and its ask in Needs You with it however it stops,
-  # so neither Now nor Needs You shows what nothing is keeping current.
+  # and takes its ask in Needs You with it however it stops, so Needs You
+  # never shows what nothing is keeping current.
   # Its socket is systemd's, held only once pi has signed in, so it stays
   # when the daemon stops and a machine with no sign-in starts nothing.
   slack-unreads-go-with-the-service =
@@ -48,7 +48,7 @@ onLinux {
       waiting = "${home.xdg.stateHome}/mission/waiting/slack.json";
     in
     holds "slack-unreads-go-with-the-service"
-      "slack-unreads lacks its start with the sign-in, switch restart, watchdog, file cleanup or socket."
+      "slack-unreads lacks its sign-in start, switch restart, watchdog, ask cleanup or socket."
       (
         # Each start is listed, as home-manager takes ExecStart.
         lib.any (lib.hasInfix waiting) (lib.toList unit.Service.ExecStart)
@@ -57,7 +57,6 @@ onLinux {
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.WatchdogSec > 0
         && unit.Service.NotifyAccess == "main"
-        && lib.hasInfix "%t/slack-unreads.json" unit.Service.ExecStopPost
         && !(lib.hasInfix "%t/daemons/slack.sock" unit.Service.ExecStopPost)
         && socket.Socket.ListenStream == "%t/daemons/slack.sock"
         && socket.Unit.ConditionPathExists == credentials

@@ -1169,22 +1169,22 @@
     are each time, only ever reading; finds their conversation with Joel in plain words, only
     what's in a direct message with them, newest last; asks ahead only after a step-in, finding
     their conversation once and never how they are; and asks nobody once Slack refuses the
-    sign-in or with none at all, saying so; and slack-unreads keeps in a file, whole, the direct
-    messages with unreads, the channels mentioning Joel and his mentions in threads, never a
-    channel merely unread, each named once a run and opening in Slack, a refused sign-in kept as
-    signed out with nothing counted, and with no sign-in no file and nothing asked; and over its
-    socket lists and watches what's unread, what Joel read last and how Slack stands as records,
-    each said to a watch only as it changes and as gone once read, only the account held while
-    Slack refuses the sign-in; and says each message a search finds by where it is, who said it
-    and its first words, the messages around one oldest first, and Slack too busy apart from
-    signed out or out of reach
+    sign-in or with none at all, saying so; and slack-unreads holds over its socket the direct
+    messages with unreads, the channels mentioning Joel, his mentions in threads and channels
+    merely unread, each named once a run and opening in Slack, and what Joel read last and how
+    Slack stands, as records listed and watched, each said to a watch only as it changes and as
+    gone once read, only the account held, as signed out, while Slack refuses the sign-in, and
+    with no sign-in nothing held and nothing asked; and says each message a search finds by
+    where it is, who said it and its first words, the messages around one oldest first, and
+    Slack too busy apart from signed out or out of reach
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
   '';
   slack-unreads-go-with-the-service = ''
     slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
-    is restarted when its watchdog hears nothing, and takes its file with it however it stops,
+    is restarted when its watchdog hears nothing, and takes its ask in Needs You with it however
+    it stops,
     while its socket, systemd's and held only once pi has signed in, stays
   '';
   slack-waits-in-its-place = ''

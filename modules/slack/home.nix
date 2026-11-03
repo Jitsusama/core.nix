@@ -81,13 +81,13 @@ in
     source = ./SlackSearch.qml;
   };
 
-  # What in Slack is unread, kept in the runtime folder's
-  # slack-unreads.json for Now's Slack piece and Slack's Unread: direct
-  # messages with unreads, mentions of him, his mentions in threads and
-  # channels merely unread; and the conversations he read last, for
-  # Slack's Recent. Read only, and started once pi has signed in to Slack. While Slack refuses that
-  # sign-in, signing in again waits in Needs You, in the file of what
-  # waits on Joel that's Slack's own beside each quest's.
+  # What in Slack is unread, held by Slack's daemon for Now's Slack piece
+  # and Slack's Unread: direct messages with unreads, mentions of him, his
+  # mentions in threads and channels merely unread; and the conversations
+  # he read last, for Slack's Recent. Read only, and started once pi has
+  # signed in to Slack. While Slack refuses that sign-in, signing in again
+  # waits in Needs You, in the file of what waits on Joel that's Slack's
+  # own beside each quest's.
   systemd.user.paths.slack-unreads = {
     Unit.Description = "Starts keeping Slack's unreads once pi has signed in";
     Path.PathExists = credentials;
@@ -127,7 +127,6 @@ in
       ExecStart = lib.concatStringsSep " " [
         "${lookUp}/bin/slack-unreads"
         (lib.escapeShellArg credentials)
-        "%t/slack-unreads.json"
         # Slack's daemon, where the shell watches what's unread and
         # searches Slack (src/daemon.rs).
         "%t/daemons/slack.sock"
@@ -139,12 +138,11 @@ in
       # that hangs is killed and started again.
       WatchdogSec = 180;
       NotifyAccess = "main";
-      # What it counted and asked goes with it, however it stops, so the
-      # shell never shows a count or an ask nothing is keeping current.
+      # What it asked of Joel goes with it, however it stops, so Needs You
+      # never shows an ask nothing is keeping current; what it counted
+      # goes from the shell as its socket stops answering.
       ExecStopPost = lib.concatStringsSep " " [
         "${pkgs.coreutils}/bin/rm -f"
-        "%t/slack-unreads.json"
-        "%t/.writing/slack-unreads.json"
         (lib.escapeShellArg waiting)
         (lib.escapeShellArg "${dirOf waiting}/.writing/${baseNameOf waiting}")
       ];

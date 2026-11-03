@@ -19,14 +19,11 @@ use serde_json::{Value, json};
 
 use crate::{Account, Refused, Slack};
 
-/// What the shell is told, as one JSON document: when it was last asked,
-/// how asking went, what's unread and what he read last, only while
-/// asking went well, so an old count is never shown as a current one.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+/// What one round of asking Slack found: how asking went, what's unread
+/// and what he read last, only while asking went well, so an old count is
+/// never held as a current one.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Said {
-    /// When Slack last answered, or was last asked when it didn't, in
-    /// milliseconds since the epoch.
-    pub checked: u64,
     pub state: State,
     /// What's unread, those wanting Joel first.
     pub conversations: Vec<Conversation>,
@@ -50,7 +47,7 @@ pub enum State {
 }
 
 /// One conversation, as the shell lists it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Conversation {
     pub id: String,
     pub name: String,
@@ -59,7 +56,6 @@ pub struct Conversation {
     /// The `slack://` link that opens it in Slack.
     pub link: String,
     /// Slack's timestamp it's ordered by, as `Counted`'s.
-    #[serde(skip)]
     pub at: String,
 }
 
@@ -326,17 +322,6 @@ impl Slack {
     }
 }
 
-/// Whether what's said is worth writing again: it changed, or the last
-/// write is old enough that the shell would take it for stale.
-pub fn due(written: Option<&Said>, now: &Said, every: u64) -> bool {
-    written.is_none_or(|written| {
-        written.state != now.state
-            || written.conversations != now.conversations
-            || written.recent != now.recent
-            || now.checked.saturating_sub(written.checked) >= every
-    })
-}
-
 /// What Slack refusing the sign-in asks of Joel, as Needs You reads it
 /// (VKCF3Z, 347abdb7), in the shape `mesh_wait` writes each quest's file of
 /// what waits on him: one item he can do now, known done by the signal
@@ -566,62 +551,5 @@ mod tests {
         };
         assert_eq!(link("T1", &dm), "slack://channel?team=T1&id=D1");
         assert_eq!(link("T1", &threads), "slack://open?team=T1");
-    }
-
-    #[test]
-    fn said_as_the_shell_reads_it() {
-        let said = Said {
-            checked: 5,
-            state: State::SignedOut,
-            conversations: vec![Conversation {
-                id: "D1".to_owned(),
-                name: "Ada".to_owned(),
-                kind: Kind::Dm,
-                count: 2,
-                link: "slack://channel?team=T1&id=D1".to_owned(),
-                at: "1730300000.000100".to_owned(),
-            }],
-            recent: vec![Conversation {
-                id: "C1".to_owned(),
-                name: "#launcher".to_owned(),
-                kind: Kind::Channel,
-                count: 0,
-                link: "slack://channel?team=T1&id=C1".to_owned(),
-                at: "1730700000.000100".to_owned(),
-            }],
-        };
-        assert_eq!(
-            serde_json::to_value(&said).unwrap(),
-            json!({"checked": 5, "state": "signedOut", "conversations": [{
-                "id": "D1", "name": "Ada", "kind": "dm", "count": 2,
-                "link": "slack://channel?team=T1&id=D1"
-            }], "recent": [{
-                "id": "C1", "name": "#launcher", "kind": "channel", "count": 0,
-                "link": "slack://channel?team=T1&id=C1"
-            }]})
-        );
-    }
-
-    #[test]
-    fn written_again_only_once_it_changes_or_goes_old() {
-        let one = |id: &str, count: u64| Conversation {
-            id: id.to_owned(),
-            name: "Ada".to_owned(),
-            kind: Kind::Dm,
-            count,
-            link: String::new(),
-            at: String::new(),
-        };
-        let at = |checked: u64, count: u64, read: &str| Said {
-            checked,
-            state: State::Ok,
-            conversations: vec![one("D1", count)],
-            recent: vec![one(read, 0)],
-        };
-        assert!(due(None, &at(0, 1, "D1"), 300_000));
-        assert!(!due(Some(&at(0, 1, "D1")), &at(30_000, 1, "D1"), 300_000));
-        assert!(due(Some(&at(0, 1, "D1")), &at(30_000, 2, "D1"), 300_000));
-        assert!(due(Some(&at(0, 1, "D1")), &at(30_000, 1, "D2"), 300_000));
-        assert!(due(Some(&at(0, 1, "D1")), &at(300_000, 1, "D1"), 300_000));
     }
 }

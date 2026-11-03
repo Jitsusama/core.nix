@@ -573,7 +573,6 @@ mod tests {
 
     fn ok(conversations: Vec<Conversation>, recent: Vec<Conversation>) -> Said {
         Said {
-            checked: 0,
             state: State::Ok,
             conversations,
             recent,
