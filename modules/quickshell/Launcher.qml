@@ -3890,6 +3890,7 @@ Scope {
                     Prompt {
                         id: prompt
                         steady: true
+                        voiced: true
                         x: Theme.inset
                         y: Theme.inset
                         width: parent.width - 2 * Theme.inset
@@ -4326,6 +4327,7 @@ Scope {
                                 : Theme.glyph.nothingFound
                             hue: Theme.voice
                             quiet: true
+                            voiced: true
                             name: root.typed !== ""
                                 ? `Nothing answers to \u201c${root.typed}\u201d.`
                                 : holder?.empty ? holder.empty

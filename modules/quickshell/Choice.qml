@@ -49,6 +49,9 @@ Rectangle {
         row.count, row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
+    // Its name is the shell speaking to Joel, in the voice's face, as an
+    // empty place's words are (look 3's piece 1).
+    property bool voiced: false
     // What sort of row it is: "act", "holds" or "figure".
     property string sort: "act"
     // Its glyph wears what it says, as a colour's swatch does, so it's
@@ -113,7 +116,11 @@ Rectangle {
         width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.xxl
             - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
                 + Theme.space.m)))
-        anchors.verticalCenter: parent.verticalCenter
+        // On the detail's baseline, which is laid out even when it says
+        // nothing, so the voice sits on the line the mono's name would,
+        // the two faces' line boxes differing.
+        anchors.baseline: countText.baseline
+        voiced: row.voiced
         text: row.name
         format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
         color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
