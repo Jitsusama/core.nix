@@ -28,7 +28,9 @@ onLinux {
       builds = place: variables: ''
         (
           ${exported variables}
-          export SCCACHE_DIR=$PWD/${place}-cache
+          # An empty cache for each, so a hit here can only be the first tree's.
+          SCCACHE_DIR=$(mktemp -d -p "$PWD")
+          export SCCACHE_DIR
           sccache=''${RUSTC_WRAPPER:?the account in ${place} has no RUSTC_WRAPPER}
           $sccache --start-server >/dev/null
           for tree in one two; do
