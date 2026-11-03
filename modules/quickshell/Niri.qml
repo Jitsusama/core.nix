@@ -100,13 +100,18 @@ Singleton {
         return null;
     }
 
-    // A window as the shell knows it. A session another opened is classed
-    // apart, as pi-spawned, only so niri's rule opens it without taking the
-    // focus from Joel (modules/niri/config.kdl); it's kitty's all the same,
-    // to every list, mark and key the shell has.
+    // A window as the shell knows it. A kitty window opened for a session is
+    // classed apart: pi-spawned for one another session started, so niri's
+    // rule opens it without taking the focus from Joel
+    // (modules/niri/config.kdl), and pi-session for one Reopen Them All
+    // opens, so a terminal Joel opens meanwhile isn't taken for it. Either
+    // is kitty's all the same to every list, mark and key the shell has,
+    // and says it holds a session (`session`).
     function heard(window: var): var {
-        if (window.app_id === "pi-spawned")
+        if (window.app_id === "pi-spawned" || window.app_id === "pi-session") {
             window.app_id = "kitty";
+            window.session = true;
+        }
         return window;
     }
 

@@ -1253,6 +1253,85 @@ def test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile(
         desktop.as_account("rm -rf ~/west ~/east ~/under ~/north ~/south")
 
 
+def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
+    desktop: Desktop,
+) -> None:
+    """A terminal Joel opens while sessions reopen isn't taken for one, and each goes back."""
+    machine = desktop.machine
+    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
+    where = {
+        "01c9-first": {"output": output, "workspace": 1, "column": 1, "tile": 1},
+        "01c9-second": {"output": output, "workspace": 1, "column": 2, "tile": 1},
+        "01c9-third": {"output": output, "workspace": 2, "column": 1, "tile": 1},
+    }
+    sessions = [{"id": one, "cwd": f"/home/jitsusama/{one[5:]}"} for one in where]
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/first ~/second ~/third")
+    kept(
+        desktop,
+        "~/.local/state/pi/restore.json",
+        {"v": 1, "boot": "a-boot-before", "sessions": sessions},
+    )
+    kept(desktop, f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
+    # The kitty that holds the sessions, started and then held still, so the
+    # first session's window waits on it and Joel's own terminal shows
+    # first, as it can when that kitty is slow, as it is starting cold.
+    sessions_kitty = "pkill -{} -f 'instance-group pi-session[s]'"
+    # The first zsh in a fresh machine makes its completion dump, which
+    # takes minutes on a loaded builder; made here, it doesn't hold each
+    # session's title back past the wait below.
+    desktop.as_account("zsh -lic true")
+    # Neither titled nor classed: a window kitty's instance opens for another
+    # without its own takes the instance's (kitty's boss.py add_os_window).
+    kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
+    before = int(desktop.as_account(kitties))
+    desktop.as_account("niri msg action spawn -- kitty -1 --instance-group pi-sessions sleep 600")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"[ $({kitties}) -gt {before} ]"), timeout=dt.timedelta(seconds=120)
+    )
+    try:
+        desktop.as_account(sessions_kitty.format("STOP"))
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("to reopen", selecting="Sessions to Reopen")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell | grep -q 'resumed session 01c9-first'"
+            ),
+            timeout=dt.timedelta(seconds=60),
+        )
+        # As Joel's own terminal key starts one: kitty of its own.
+        desktop.as_account("niri msg action spawn -- kitty --title Mine sleep 600")
+        machine.wait_until_succeeds(
+            desktop.in_session('niri msg --json windows | grep -q \'"title":"Mine"\''),
+            timeout=dt.timedelta(seconds=60),
+        )
+        desktop.as_account(sessions_kitty.format("CONT"))
+        deadline = time.monotonic() + 300
+        while not three_as_kept(back := sat(desktop, "01c9-")) and time.monotonic() < deadline:
+            time.sleep(1)
+        assert three_as_kept(back), back
+    finally:
+        desktop.as_account(
+            f"{sessions_kitty.format('CONT')}; rm -f $XDG_RUNTIME_DIR/pi-stays;"
+            " pkill -f 'sleep 60[0]'; true"
+        )
+        kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        desktop.as_account("rm -rf ~/first ~/second ~/third")
+
+
+def three_as_kept(back: dict[str, tuple[int, int]]) -> bool:
+    """Whether first and second sit side by side on one workspace, and third on the next."""
+    if len(back) != 3:  # noqa: PLR2004
+        return False
+    first, second, third = back["01c9-first"], back["01c9-second"], back["01c9-third"]
+    return first[0] == second[0] and second[1] == first[1] + 1 and third[0] == first[0] + 1
+
+
 def sat_as_kept(back: dict[str, tuple[int, int]]) -> bool:
     """Whether the five sessions sit as kept: west, then east over under, then north and south."""
     if len(back) != 5:  # noqa: PLR2004
