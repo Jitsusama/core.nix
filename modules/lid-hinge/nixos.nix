@@ -21,7 +21,15 @@ let
   '';
 in
 {
-  boot.kernelModules = [ "uinput" ];
+  # industrialio from the start, before the sensor hub's drivers bring it:
+  # systemd resolves DeviceAllow's char-iio from /proc/devices once, as
+  # the unit starts, so one started before iio's devices are registered
+  # can never open the hinge. systemd-modules-load loads these before any
+  # service starts.
+  boot.kernelModules = [
+    "industrialio"
+    "uinput"
+  ];
 
   # After 60-input-id.rules, which says a switch is one, and before
   # 70-power-switch.rules, which tags it for logind.
