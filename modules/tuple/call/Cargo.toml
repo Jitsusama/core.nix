@@ -1,0 +1,14 @@
+# Tuple's call, for the desktop: one resident program that follows Tuple's
+# stream of state and its log, and hands the call Joel's in, a ring and a
+# missed call to the shell over a socket, doing what the shell asks of the
+# call through Tuple's own command (src/main.rs says how).
+[package]
+name = "tuple-call"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+inotify = { version = "0.11", default-features = false }
+serde_json = "1"

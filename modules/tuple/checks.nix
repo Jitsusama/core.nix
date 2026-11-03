@@ -6,10 +6,40 @@
   holds,
   lib,
   onLinux,
+  passesClippy,
   pkgs,
   ...
 }:
 onLinux {
+  # tuple-call's tests run as it builds: against a stand-in tuple and log,
+  # its stream followed only while Tuple answers, a call, a ring and a
+  # missed call told to a watch, each act run as Tuple's command, and
+  # the socket systemd hands it answered on (call/tests/daemon.rs).
+  tuple-call-holds-the-call = pkgs.callPackage ./call/package.nix { };
+  # clippy finds nothing in tuple-call, its tests included.
+  tuple-call-passes-clippy = passesClippy "tuple-call-passes-clippy" (
+    pkgs.callPackage ./call/package.nix { }
+  );
+  # The daemon runs on the socket the shell's daemons share, systemd's,
+  # with the tuple command the module installs.
+  tuple-call-runs-on-the-daemons-socket =
+    let
+      home = account graphical;
+      service = home.systemd.user.services.tuple-call;
+      # Compared as plain text: a pattern may name no store path.
+      plain = builtins.unsafeDiscardStringContext;
+      started = plain (lib.concatStringsSep " " (lib.toList (service.Service.ExecStart or "")));
+      tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+    in
+    holds "tuple-call-runs-on-the-daemons-socket"
+      "tuple-call doesn't run on systemd's socket at %t/daemons/tuple.sock with the installed tuple."
+      (
+        lib.hasInfix (plain "%t/daemons/tuple.sock ${lib.getExe tuple}") started
+        && service.Unit.X-SwitchMethod == "restart"
+        && lib.elem "tuple-call.socket" service.Unit.Requires
+        && home.systemd.user.sockets.tuple-call.Socket.ListenStream == "%t/daemons/tuple.sock"
+      );
+
   # The people daemon's Tuple source reads Tuple's contacts, says only who
   # changed, and waits longer each time Tuple's follow ends at once, as it
   # does while nobody is signed in, up to a minute.

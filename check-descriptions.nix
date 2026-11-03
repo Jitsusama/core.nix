@@ -1766,6 +1766,20 @@
     clippy finds nothing in timekeeping, which works out the clock's offset and delay as
     timedatectl does, or its tests
   '';
+  tuple-call-holds-the-call = ''
+    tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
+    it started, and tells a watch of a call, a sign-in gone and a stream ended as they happen, of a
+    ring and a missed call from the log, a new log read from its start, runs each of the call's
+    acts as Tuple's command, keeps the room's link, answers on systemd's socket, and refuses an
+    ask or a kind it doesn't know
+  '';
+  tuple-call-passes-clippy = ''
+    clippy finds nothing in tuple-call or its tests
+  '';
+  tuple-call-runs-on-the-daemons-socket = ''
+    tuple-call runs on the daemons' socket, which systemd holds for it, with the tuple command the
+    module installs, restarting as the new one after a switch
+  '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple
