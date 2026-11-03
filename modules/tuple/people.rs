@@ -1,38 +1,27 @@
-//! Tuple's people for the shell (People.qml): who they are and
-//! how they stand, said only as it changes. Tuple's `contacts follow`
-//! prints every contact on each change, one JSON array a line, thousands of
-//! them and over a megabyte each time, though Tuple knows how only the
-//! favourites stand and says "unknown" for everyone else. The shell would
-//! read all of it on each change of anyone's presence, so this reads it
-//! instead and passes on two short lines, each only when it differs from
-//! the last one written:
+//! Tuple's people for the people daemon (modules/people), who they are
+//! and how they stand, each said only as it changes. Tuple's `contacts
+//! follow` prints every contact on each change, one JSON array a line,
+//! thousands of them and over a megabyte each time, though Tuple knows how
+//! only the favourites stand and says "unknown" for everyone else, so this
+//! reads it in the daemon's stead.
 //!
-//! - `{"people":[[id,"name","email"],...]}`, everyone, in Tuple's order;
-//! - `{"standing":[[id,"status",favourite,recent],...]}`, only those who
-//!   are a favourite, are recent, or stand somewhere Tuple knows.
-//!
-//! When both change, people come first, so a standing never names someone
-//! the shell hasn't heard of. The arguments are the tuple command and the
-//! socket Tuple's daemon listens on. Any tuple command starts a daemon
-//! when none is running, so Tuple is run only while one answers there,
-//! and otherwise this ends with 69 at once, leaving a stopped Tuple
-//! stopped. Tuple runs as `tuple --format json contacts follow`, and when
-//! it ends this ends with its exit code. A line that isn't a list of contacts, an error
-//! or half a line, says nothing. When the shell stops reading, Tuple's
-//! follow is stopped and this ends quietly, and when the shell stops this
-//! with a signal, Tuple's follow ends with it.
-//!
-//! The call Joel's in is tuple-call's (call/), not this.
-//!
-//! `tuple-people people` is Tuple's source for the people daemon, on
+//! `tuple-people people <the tuple command> <its daemon's socket>` speaks
 //! People's line protocol: `{"roster":true}` first, since it says
 //! everyone unasked, then a line for each contact as it changes,
 //! `{"email","id","name","status","favourite","recent"}`, and
-//! `{"email","id","gone":true}` for one Tuple no longer lists. It runs
-//! as long as the daemon does, ending when its input does, and follows
-//! Tuple while Tuple's daemon answers, looking again every few seconds
-//! while it doesn't. Once Tuple stops, how anyone stands is no longer
-//! known, so each status goes back to unknown.
+//! `{"email","id","gone":true}` for one Tuple no longer lists. A line
+//! of Tuple's that isn't a list of contacts, an error or half a line,
+//! says nothing.
+//!
+//! Any tuple command starts a daemon when none is running, so Tuple runs
+//! as `tuple --format json contacts follow` only while one answers on its
+//! socket, looking again every few seconds while none does, which leaves
+//! a stopped Tuple stopped. Once Tuple stops, how anyone stands is no
+//! longer known, so each status goes back to unknown. This runs as long
+//! as the people daemon does, ending when its input or its output does,
+//! and Tuple's follow ends with it.
+//!
+//! The call Joel's in is tuple-call's (call/), not this.
 
 use std::env;
 use std::fmt::Write as _;
@@ -294,16 +283,6 @@ struct Person {
     email: String,
 }
 
-/// How someone stands: their id as JSON writes it, their status as Tuple
-/// says it, and whether they're a favourite and recent.
-#[derive(Debug, PartialEq)]
-struct Standing {
-    id: String,
-    status: String,
-    favourite: bool,
-    recent: bool,
-}
-
 /// Text that says something; "" and null say nothing.
 fn said(value: Value) -> Option<String> {
     match value {
@@ -314,7 +293,7 @@ fn said(value: Value) -> Option<String> {
 
 /// One contact, taken from Tuple's object, its words moved rather than
 /// copied, since there are thousands each line.
-fn contact(fields: Vec<(String, Value)>) -> (Person, Option<Standing>) {
+fn contact(fields: Vec<(String, Value)>) -> Entry {
     let (mut id, mut full, mut short, mut email, mut status) = (None, None, None, None, None);
     let (mut favourite, mut recent) = (false, false);
     for (key, value) in fields {
@@ -338,66 +317,13 @@ fn contact(fields: Vec<(String, Value)>) -> (Person, Option<Standing>) {
         }
         _ => ("null".to_string(), String::new()),
     };
-    let status = status.unwrap_or_else(|| "unknown".to_string());
-    let standing = (favourite || recent || status != "unknown").then(|| Standing {
-        id: id.clone(),
-        status,
-        favourite,
-        recent,
-    });
     let name = full.or(short).or_else(|| email.clone()).unwrap_or(id_text);
     let email = email.unwrap_or_default();
-    (Person { id, name, email }, standing)
-}
-
-fn people_line(people: &[Person]) -> String {
-    let size: usize = people
-        .iter()
-        .map(|p| p.id.len() + p.name.len() + p.email.len() + 10)
-        .sum();
-    let mut out = String::with_capacity(size + 16);
-    out.push_str("{\"people\":[");
-    for (n, person) in people.iter().enumerate() {
-        if n > 0 {
-            out.push(',');
-        }
-        out.push('[');
-        out.push_str(&person.id);
-        out.push(',');
-        quote(&mut out, &person.name);
-        out.push(',');
-        quote(&mut out, &person.email);
-        out.push(']');
-    }
-    out.push_str("]}");
-    out
-}
-
-fn standing_line(standing: &[Standing]) -> String {
-    let mut out = String::from("{\"standing\":[");
-    for (n, one) in standing.iter().enumerate() {
-        if n > 0 {
-            out.push(',');
-        }
-        out.push('[');
-        out.push_str(&one.id);
-        out.push(',');
-        quote(&mut out, &one.status);
-        out.push_str(if one.favourite { ",true" } else { ",false" });
-        out.push_str(if one.recent { ",true]" } else { ",false]" });
-    }
-    out.push_str("]}");
-    out
-}
-
-/// What turns each of a follow's lines into those the shell is told.
-trait Hears {
-    fn heard(&mut self, line: &str) -> Vec<String>;
-}
-
-impl<T: Hears> Hears for &mut T {
-    fn heard(&mut self, line: &str) -> Vec<String> {
-        (**self).heard(line)
+    Entry {
+        person: Person { id, name, email },
+        status: status.unwrap_or_else(|| "unknown".to_string()),
+        favourite,
+        recent,
     }
 }
 
@@ -458,9 +384,8 @@ impl Roster {
         }
         lines
     }
-}
 
-impl Hears for Roster {
+    /// The lines for one of Tuple's: who's gone, then who's new or changed.
     fn heard(&mut self, line: &str) -> Vec<String> {
         let Some(Value::List(items)) = Reader::parse(line) else {
             return Vec::new();
@@ -470,17 +395,7 @@ impl Hears for Roster {
             let Value::Object(fields) = item else {
                 return Vec::new();
             };
-            let (person, stands) = contact(fields);
-            let (status, favourite, recent) = stands.map_or_else(
-                || ("unknown".to_owned(), false, false),
-                |stands| (stands.status, stands.favourite, stands.recent),
-            );
-            now.push(Entry {
-                person,
-                status,
-                favourite,
-                recent,
-            });
+            now.push(contact(fields));
         }
         let before: std::collections::HashMap<&str, &Entry> = self
             .said
@@ -513,47 +428,11 @@ impl Hears for Roster {
     }
 }
 
-/// What was last said of Tuple's people, so only a change is said again.
-#[derive(Default)]
-struct Follower {
-    people: Option<Vec<Person>>,
-    standing: Option<Vec<Standing>>,
-}
-
-impl Hears for Follower {
-    /// The lines to write for one of Tuple's, people before standing.
-    fn heard(&mut self, line: &str) -> Vec<String> {
-        let Some(Value::List(items)) = Reader::parse(line) else {
-            return Vec::new();
-        };
-        let mut people = Vec::with_capacity(items.len());
-        let mut standing = Vec::new();
-        for item in items {
-            let Value::Object(fields) = item else {
-                return Vec::new();
-            };
-            let (person, stands) = contact(fields);
-            people.push(person);
-            standing.extend(stands);
-        }
-        let mut lines = Vec::new();
-        if self.people.as_ref() != Some(&people) {
-            lines.push(people_line(&people));
-            self.people = Some(people);
-        }
-        if self.standing.as_ref() != Some(&standing) {
-            lines.push(standing_line(&standing));
-            self.standing = Some(standing);
-        }
-        lines
-    }
-}
-
 /// Runs Tuple's follow and writes what changes to `out`, flushed a line
 /// at a time. Says the follow's exit code once it ends, 1 when a signal
 /// ended it or it couldn't start, and 0 when `out` closed first, since
-/// then the shell has gone and there's no one to tell.
-fn follow(command: &mut Command, mut hears: impl Hears, mut out: impl Write) -> i32 {
+/// then the daemon has gone and there's no one to tell.
+fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> i32 {
     let mut child = match dies_with_us(command).stdout(Stdio::piped()).spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -582,7 +461,7 @@ fn follow(command: &mut Command, mut hears: impl Hears, mut out: impl Write) -> 
         let Ok(text) = std::str::from_utf8(&line) else {
             continue;
         };
-        for said in hears.heard(text) {
+        for said in roster.heard(text) {
             let written = out
                 .write_all(said.as_bytes())
                 .and_then(|()| out.write_all(b"\n"))
@@ -600,9 +479,6 @@ fn follow(command: &mut Command, mut hears: impl Hears, mut out: impl Write) -> 
         Err(_) => 1,
     }
 }
-
-/// How this ends when no daemon answers: sysexits' "unavailable".
-const NOT_RUNNING: u8 = 69;
 
 /// Whether Tuple's daemon answers on its socket. A stopped daemon leaves
 /// the socket's file behind, so only a connection tells.
@@ -692,19 +568,8 @@ fn main() -> ExitCode {
             .join(socket);
         return roster(tuple, &socket);
     }
-    let [tuple, socket] = args.as_slice() else {
-        eprintln!("usage: tuple-people [people] <the tuple command> <its daemon's socket>");
-        return ExitCode::from(2);
-    };
-    if !running(Path::new(socket)) {
-        return ExitCode::from(NOT_RUNNING);
-    }
-    let code = follow(
-        Command::new(tuple).args(ARGS),
-        Follower::default(),
-        io::stdout().lock(),
-    );
-    ExitCode::from(u8::try_from(code).unwrap_or(1))
+    eprintln!("usage: tuple-people people <the tuple command> <its daemon's socket>");
+    ExitCode::from(2)
 }
 
 #[cfg(test)]
@@ -734,9 +599,29 @@ mod tests {
         ]
     }
 
-    const PEOPLE: &str = "{\"people\":[[1,\"Ada Brook\",\"p1@example.com\"],\
-        [2,\"Ben Carrow\",\"p2@example.com\"],[3,\"Cal Dunmore\",\"p3@example.com\"]]}";
-    const STANDING: &str = "{\"standing\":[[1,\"online\",true,false],[3,\"offline\",true,false]]}";
+    /// Ada's line for the people daemon, standing as she does.
+    fn ada(status: &str) -> String {
+        format!(
+            "{{\"email\":\"p1@example.com\",\"id\":1,\"name\":\"Ada Brook\",\
+             \"status\":\"{status}\",\"favourite\":true,\"recent\":false}}"
+        )
+    }
+
+    const BEN: &str = "{\"email\":\"p2@example.com\",\"id\":2,\"name\":\"Ben Carrow\",\
+        \"status\":\"unknown\",\"favourite\":false,\"recent\":false}";
+    const CAL: &str = "{\"email\":\"p3@example.com\",\"id\":3,\"name\":\"Cal Dunmore\",\
+        \"status\":\"offline\",\"favourite\":true,\"recent\":false}";
+
+    /// What a line for the people daemon says of one field.
+    fn field(line: &str, key: &str) -> Value {
+        let Some(Value::Object(fields)) = Reader::parse(line) else {
+            panic!("{line}");
+        };
+        fields
+            .into_iter()
+            .find(|(name, _)| name == key)
+            .map_or(Value::Null, |(_, value)| value)
+    }
 
     #[test]
     fn a_follow_that_ends_at_once_waits_longer_each_time_up_to_a_minute() {
@@ -802,46 +687,11 @@ mod tests {
     }
 
     #[test]
-    fn the_first_snapshot_says_both() {
-        let mut follower = Follower::default();
-        assert_eq!(follower.heard(&snapshot(&usual())), [PEOPLE, STANDING]);
-    }
-
-    #[test]
-    fn the_same_snapshot_again_says_nothing() {
-        let mut follower = Follower::default();
-        follower.heard(&snapshot(&usual()));
-        assert!(follower.heard(&snapshot(&usual())).is_empty());
-    }
-
-    #[test]
-    fn a_change_of_status_says_only_standing() {
-        let mut follower = Follower::default();
-        follower.heard(&snapshot(&usual()));
-        let mut changed = usual();
-        changed[0] = contact(1, "Ada Brook", "busy", true);
-        assert_eq!(
-            follower.heard(&snapshot(&changed)),
-            ["{\"standing\":[[1,\"busy\",true,false],[3,\"offline\",true,false]]}"]
-        );
-    }
-
-    #[test]
     fn the_daemon_hears_each_contact_once_then_only_who_changed() {
         let mut roster = Roster::default();
-        let ada = |status: &str| {
-            format!(
-                "{{\"email\":\"p1@example.com\",\"id\":1,\"name\":\"Ada Brook\",\
-                 \"status\":\"{status}\",\"favourite\":true,\"recent\":false}}"
-            )
-        };
-        let first = roster.heard(&snapshot(&usual()));
-        assert_eq!(first.len(), 3);
-        assert_eq!(first[0], ada("online"));
         assert_eq!(
-            first[1],
-            "{\"email\":\"p2@example.com\",\"id\":2,\"name\":\"Ben Carrow\",\
-             \"status\":\"unknown\",\"favourite\":false,\"recent\":false}"
+            roster.heard(&snapshot(&usual())),
+            [ada("online"), BEN.to_owned(), CAL.to_owned()]
         );
         assert!(roster.heard(&snapshot(&usual())).is_empty());
         // Ada busy is one line; Ben deleted is gone; Cal at a new address
@@ -869,89 +719,93 @@ mod tests {
     }
 
     #[test]
-    fn a_change_of_name_says_only_people() {
-        let mut follower = Follower::default();
-        follower.heard(&snapshot(&usual()));
+    fn a_change_of_name_says_only_whose() {
+        let mut roster = Roster::default();
+        roster.heard(&snapshot(&usual()));
         let mut changed = usual();
         changed[1] = contact(2, "Ben Carrow-Hale", "unknown", false);
-        let said = follower.heard(&snapshot(&changed));
-        assert_eq!(said.len(), 1);
-        assert!(said[0].starts_with("{\"people\":"));
-        assert!(said[0].contains("[2,\"Ben Carrow-Hale\",\"p2@example.com\"]"));
-    }
-
-    #[test]
-    fn a_favourite_made_says_standing() {
-        let mut follower = Follower::default();
-        follower.heard(&snapshot(&usual()));
-        let mut changed = usual();
-        changed[1] = contact(2, "Ben Carrow", "unknown", true);
         assert_eq!(
-            follower.heard(&snapshot(&changed)),
-            [
-                "{\"standing\":[[1,\"online\",true,false],[2,\"unknown\",true,false],\
-              [3,\"offline\",true,false]]}"
-            ]
+            roster.heard(&snapshot(&changed)),
+            [BEN.replace("Ben Carrow", "Ben Carrow-Hale")]
         );
     }
 
     #[test]
-    fn strangers_of_unknown_standing_are_left_out() {
-        let mut follower = Follower::default();
+    fn a_favourite_made_is_said() {
+        let mut roster = Roster::default();
+        roster.heard(&snapshot(&usual()));
+        let mut changed = usual();
+        changed[1] = contact(2, "Ben Carrow", "unknown", true);
+        assert_eq!(
+            roster.heard(&snapshot(&changed)),
+            [BEN.replace("\"favourite\":false", "\"favourite\":true")]
+        );
+    }
+
+    #[test]
+    fn a_status_tuple_doesnt_say_is_unknown() {
+        let mut roster = Roster::default();
         let line = r#"[{"id":1,"status":"unknown","favorited":false,"recent":false},
             {"id":2,"status":"","favorited":false},
             {"id":3},
             {"id":4,"status":null,"recent":true},
             {"id":5,"status":"away","favorited":false,"recent":false}]"#;
-        let said = follower.heard(line);
+        let said = roster.heard(line);
         assert_eq!(
-            said[1],
-            "{\"standing\":[[4,\"unknown\",false,true],[5,\"away\",false,false]]}"
+            said.iter()
+                .map(|line| field(line, "status"))
+                .collect::<Vec<_>>(),
+            ["unknown", "unknown", "unknown", "unknown", "away"]
+                .map(|said| Value::Text(said.into()))
         );
+        assert_eq!(field(&said[3], "recent"), Value::Bool(true));
     }
 
     #[test]
     fn names_fall_back_to_the_short_name_the_email_then_the_id() {
-        let mut follower = Follower::default();
+        let mut roster = Roster::default();
         let line = r#"[{"id":1,"full_name":"Ada Brook","short_name":"Ada","email":"a@example.com"},
             {"id":2,"full_name":"","short_name":"Ben","email":"b@example.com"},
             {"id":3,"full_name":null,"email":"c@example.com"},
             {"id":4,"email":null},
             {"id":4.5},
             {"id":"six"}]"#;
+        let said = roster.heard(line);
         assert_eq!(
-            follower.heard(line)[0],
-            "{\"people\":[[1,\"Ada Brook\",\"a@example.com\"],[2,\"Ben\",\"b@example.com\"],\
-             [3,\"c@example.com\",\"c@example.com\"],[4,\"4\",\"\"],[4.5,\"4.5\",\"\"],\
-             [\"six\",\"six\",\"\"]]}"
+            said.iter()
+                .map(|line| field(line, "name"))
+                .collect::<Vec<_>>(),
+            ["Ada Brook", "Ben", "c@example.com", "4", "4.5", "six"]
+                .map(|name| Value::Text(name.into()))
         );
+        assert_eq!(
+            said.iter()
+                .map(|line| field(line, "id"))
+                .collect::<Vec<_>>(),
+            [
+                Value::Number("1".into()),
+                Value::Number("2".into()),
+                Value::Number("3".into()),
+                Value::Number("4".into()),
+                Value::Number("4.5".into()),
+                Value::Text("six".into())
+            ]
+        );
+        assert_eq!(field(&said[3], "email"), Value::Text(String::new()));
     }
 
     #[test]
     fn awkward_words_come_back_as_they_went() {
         let name = "Zoë \"Z\" O'Neil \\ the\nsecond\t\u{1}\u{1f600}";
-        let mut follower = Follower::default();
-        let said = follower.heard(&snapshot(&[contact(7, name, "online", true)]));
-        let Some(Value::Object(fields)) = Reader::parse(&said[0]) else {
-            panic!("{}", said[0]);
-        };
-        let Value::List(people) = &fields[0].1 else {
-            panic!("{}", said[0]);
-        };
-        assert_eq!(
-            people[0],
-            Value::List(vec![
-                Value::Number("7".into()),
-                Value::Text(name.into()),
-                Value::Text("p7@example.com".into())
-            ])
-        );
+        let mut roster = Roster::default();
+        let said = roster.heard(&snapshot(&[contact(7, name, "online", true)]));
+        assert_eq!(field(&said[0], "name"), Value::Text(name.into()));
     }
 
     #[test]
     fn a_malformed_line_says_nothing_and_disturbs_nothing() {
-        let mut follower = Follower::default();
-        follower.heard(&snapshot(&usual()));
+        let mut roster = Roster::default();
+        roster.heard(&snapshot(&usual()));
         let whole = snapshot(&usual());
         for line in [
             "Error: the daemon isn't running\n",
@@ -960,12 +814,12 @@ mod tests {
             "[1,2,3]\n",
             "",
         ] {
-            assert!(follower.heard(line).is_empty(), "{line}");
+            assert!(roster.heard(line).is_empty(), "{line}");
         }
-        assert!(follower.heard(&whole).is_empty());
+        assert!(roster.heard(&whole).is_empty());
         let mut changed = usual();
         changed[2] = contact(3, "Cal Dunmore", "online", true);
-        assert_eq!(follower.heard(&snapshot(&changed)).len(), 1);
+        assert_eq!(roster.heard(&snapshot(&changed)).len(), 1);
     }
 
     /// A stand-in for the tuple command, in a file of its own.
@@ -991,17 +845,14 @@ mod tests {
         let mut written = Vec::new();
         let code = follow(
             Command::new("sh").arg(&script).args(ARGS),
-            Follower::default(),
+            &mut Roster::default(),
             &mut written,
         );
         fs::remove_file(&script).unwrap();
         assert_eq!(code, 3);
         assert_eq!(
             String::from_utf8(written).unwrap(),
-            format!(
-                "{PEOPLE}\n{STANDING}\n\
-                 {{\"standing\":[[1,\"busy\",true,false],[3,\"offline\",true,false]]}}\n"
-            )
+            format!("{}\n{BEN}\n{CAL}\n{}\n", ada("online"), ada("busy"))
         );
     }
 
@@ -1020,8 +871,17 @@ mod tests {
 
     #[test]
     fn a_closed_output_ends_it_quietly() {
-        let script = stand_in("forever", "while :; do echo '[]'; done\n");
-        let code = follow(Command::new("sh").arg(&script), Follower::default(), Closed);
+        // The roster says nothing of no contacts, so the stand-in lists
+        // one, which is said and finds the output closed.
+        let script = stand_in(
+            "forever",
+            &format!("while :; do printf '%s' '{}'; done\n", snapshot(&usual())),
+        );
+        let code = follow(
+            Command::new("sh").arg(&script),
+            &mut Roster::default(),
+            Closed,
+        );
         fs::remove_file(&script).unwrap();
         assert_eq!(code, 0);
     }
@@ -1058,7 +918,11 @@ mod tests {
     fn a_tuple_that_wont_start_ends_it_with_1() {
         let missing = env::temp_dir().join("tuple-people-test-nothing-here");
         assert_eq!(
-            follow(&mut Command::new(missing), Follower::default(), Vec::new()),
+            follow(
+                &mut Command::new(missing),
+                &mut Roster::default(),
+                Vec::new()
+            ),
             1
         );
     }
