@@ -891,8 +891,9 @@
     clippy finds nothing in the people daemon or its tests
   '';
   people-runs-where-a-source-names-a-program = ''
-    the people daemon runs for Slack's and Tuple's sources on the daemons' socket, restarting as
-    the new one after a switch, and doesn't run where no source names a program for it
+    the people daemon runs for Slack's and Tuple's sources on the daemons' socket, which systemd
+    holds for it, restarting as the new one after a switch, and neither it nor its socket is
+    there where no source names a program for it
   '';
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
@@ -1128,8 +1129,8 @@
   '';
   slack-unreads-go-with-the-service = ''
     slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
-    is restarted when its watchdog hears nothing, and takes its file and its socket with it
-    however it stops
+    is restarted when its watchdog hears nothing, and takes its file with it however it stops,
+    while its socket, systemd's and held only once pi has signed in, stays
   '';
   slack-waits-in-its-place = ''
     Slack's source in People asks about each address once a minute as Joel steps in, never one

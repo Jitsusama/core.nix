@@ -518,7 +518,22 @@ fn wanting(line: &str) -> String {
 /// every 50 ms, keeping what it reads in `file` and what it asks of Joel
 /// beside it (`waiting`).
 fn unreads(stand_in: &StandIn, credentials: &std::path::Path, file: &std::path::Path) -> Child {
-    Command::new(env!("CARGO_BIN_EXE_slack-unreads"))
+    unreads_from(
+        Command::new(env!("CARGO_BIN_EXE_slack-unreads")),
+        stand_in,
+        credentials,
+        file,
+    )
+}
+
+/// slack-unreads as `unreads` starts it, through `command`.
+fn unreads_from(
+    mut command: Command,
+    stand_in: &StandIn,
+    credentials: &std::path::Path,
+    file: &std::path::Path,
+) -> Child {
+    command
         .arg(credentials)
         .arg(file)
         .arg(socket(file))
@@ -666,6 +681,31 @@ fn searching(line: &str) -> String {
     } else {
         wanting(line)
     }
+}
+
+#[test]
+fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
+    // As systemd does for slack-unreads.socket: the socket is listened on
+    // before the daemon runs, and handed to it as it starts, so the ask
+    // that started it is answered. A daemon that made a socket of its own
+    // would leave that ask on one nobody accepts from.
+    let stand_in = StandIn::new(wanting);
+    let path = credentials("unreads-handed");
+    let file = path.with_extension("handed.json");
+    std::fs::create_dir_all(socket(&file).parent().unwrap()).unwrap();
+    let mut launcher = Command::new("systemd-socket-activate");
+    launcher
+        .arg(format!("--listen={}", socket(&file).display()))
+        .arg(env!("CARGO_BIN_EXE_slack-unreads"));
+    let mut program = unreads_from(launcher, &stand_in, &path, &file);
+    until("the socket never came", || socket(&file).exists());
+    let hello = asked(
+        &file,
+        &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
+    );
+    assert_eq!(hello["domain"], "slack");
+    program.kill().unwrap();
+    program.wait().unwrap();
 }
 
 #[test]
