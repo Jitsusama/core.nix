@@ -622,6 +622,22 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The google program would ask Google, as an account nobody signed
         # in to in the VM; the test starts the stand-in when it wants it.
         systemd.user.services.google.Service.ExecStart = lib.mkForce "${standInGoogle} %t/google.sock";
+        # tuple-call follows a stand-in for Tuple's command, whose stream
+        # says what the test writes (desktop/tuple-stand-in.sh), since no
+        # call can be made in the VM.
+        systemd.user.services.tuple-call.Service.ExecStart = lib.mkForce (
+          lib.escapeShellArgs [
+            (lib.getExe (pkgs.callPackage ../modules/tuple/call/package.nix { }))
+            "%t/daemons/tuple.sock"
+            (pkgs.writeShellScript "tuple" ''
+              PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./desktop/tuple-stand-in.sh} "$@"
+            '')
+          ]
+        );
+        # Tuple's daemon answering on its socket, which is all tuple-call
+        # asks of it, started by the test with Tuple's own stopped.
+        systemd.user.services.tuple-answers.Service.ExecStart =
+          "${lib.getExe pkgs.socat} UNIX-LISTEN:%t/tuple-0,fork,unlink-early /dev/null";
         # The collector where the launcher's traces are tested, started by
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {

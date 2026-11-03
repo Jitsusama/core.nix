@@ -25,7 +25,14 @@
 //! holds up nothing else: join a link, leave, mute or unmute, share a
 //! screen, answer a ring, and open Joel's room, whose link `tuple new`
 //! prints and this keeps, in `tuple-call/room` in the state folder, for
-//! the record to say from then on.
+//! the record to say from then on; until then, the record says the newest
+//! of Joel's own rooms, as Tuple's state lists them.
+//!
+//! Who a call is with is kept in `tuple-call.json` in the runtime folder
+//! too, for what records a call without asking (a transcript names its
+//! folder by them; `Held::with` says what it holds): written whole while
+//! a call is on, as it changes, and removed once there's none. One left
+//! by a run that was stopped is removed as this starts.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -98,6 +105,9 @@ struct Daemon {
     /// When it last changed, in milliseconds since the epoch.
     heard: i64,
     since: i64,
+    /// Where who the call is with is kept, and what was last kept there.
+    with: PathBuf,
+    kept: Option<Value>,
 }
 
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
@@ -133,7 +143,10 @@ fn main() {
             std::process::exit(71);
         }
     };
-    let tuples = folder("XDG_RUNTIME_DIR", "").join("tuple-0");
+    let runtime = folder("XDG_RUNTIME_DIR", "");
+    let tuples = runtime.join("tuple-0");
+    let with = runtime.join("tuple-call.json");
+    let _ = std::fs::remove_file(&with);
     let log = folder("XDG_DATA_HOME", ".local/share").join("tuple/0");
     let room = folder("XDG_STATE_HOME", ".local/state").join("tuple-call/room");
     let kept = std::fs::read_to_string(&room)
@@ -151,6 +164,8 @@ fn main() {
             said,
             heard: began,
             since: began,
+            with,
+            kept: None,
         }),
         Condvar::new(),
     ));
@@ -226,6 +241,7 @@ fn record(daemon: &Daemon) -> Value {
 /// Tells every watch of the record, once it's no longer as last said, and
 /// wakes whatever waits on a change.
 fn changed(shared: &Shared, daemon: &mut Daemon) {
+    keep_with(daemon);
     let record_now = daemon.held.record();
     if record_now != daemon.said {
         daemon.said = record_now;
@@ -239,6 +255,29 @@ fn changed(shared: &Shared, daemon: &mut Daemon) {
         });
     }
     shared.1.notify_all();
+}
+
+/// Keeps who the call is with in its file, written beside it and moved
+/// into place so it's never read half written, or removes it once there's
+/// no call. A file that can't be written is left be: the record matters
+/// more.
+fn keep_with(daemon: &mut Daemon) {
+    let with = daemon.held.with();
+    if with == daemon.kept {
+        return;
+    }
+    match &with {
+        Some(kept) => {
+            let new = daemon.with.with_extension("new");
+            if std::fs::write(&new, format!("{kept}\n")).is_ok() {
+                let _ = std::fs::rename(&new, &daemon.with);
+            }
+        }
+        None => {
+            let _ = std::fs::remove_file(&daemon.with);
+        }
+    }
+    daemon.kept = with;
 }
 
 /// Says how Tuple stands, telling every watch once that changes, so a
@@ -335,10 +374,12 @@ fn follow(shared: &Shared, tuple: &str) -> String {
             Line::State {
                 contacts,
                 signed_in,
+                room,
                 call,
             } => {
                 let mut daemon = lock(shared);
                 daemon.held.contacts = contacts;
+                daemon.held.personal = room;
                 if let Some(call) = call {
                     daemon.held.live = call;
                 }
@@ -347,8 +388,10 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 } else {
                     Standing::SignedOut
                 };
-                stand(&mut daemon, standing);
+                // The record goes first, so whoever hears that Tuple
+                // answers already holds what its state said.
                 changed(shared, &mut daemon);
+                stand(&mut daemon, standing);
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
@@ -548,10 +591,7 @@ fn serve(shared: &Shared, doing: &Arc<Doing>, stream: UnixStream, connection: u6
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
         let (id, asked) = ask::read(&line);
-        if let Some(answer) = answer(shared, &id, &asked, connection, &told) {
-            if told.send(answer.to_string()).is_err() {
-                break;
-            }
+        if answer(shared, &id, &asked, connection, &told) {
             continue;
         }
         // An act runs Tuple's command, on a thread of its own.
@@ -567,15 +607,16 @@ fn serve(shared: &Shared, doing: &Arc<Doing>, stream: UnixStream, connection: u6
         .retain(|watch| watch.connection != connection);
 }
 
-/// What one of the interface's own asks is answered with, or none for an
-/// act.
+/// Answers one of the interface's own asks, saying whether it was one
+/// rather than an act. The answer is sent while the daemon is held, so
+/// it's never said after a change it doesn't hold.
 fn answer(
     shared: &Shared,
     id: &Value,
     asked: &Ask,
     connection: u64,
     told: &Sender<String>,
-) -> Option<Value> {
+) -> bool {
     let mut daemon = lock(shared);
     let answer = match asked {
         Ask::Hello => json!({
@@ -612,7 +653,10 @@ fn answer(
                 id: id.clone(),
                 told: told.clone(),
             });
-            json!({"id": id, "records": [record(&daemon)]})
+            let _ = told.send(json!({"id": id, "records": [record(&daemon)]}).to_string());
+            // How Tuple stands may have changed since hello said it, with
+            // no watch yet to tell, so the watch hears it as it begins.
+            json!({"id": id, "sources": {"tuple": daemon.standing.word()}})
         }
         Ask::Unwatch => {
             daemon
@@ -626,9 +670,10 @@ fn answer(
             &format!("this daemon keeps only {}, not {kind}", ask::KIND),
         ),
         Ask::Unknown { ask } => error(id, "unknown-ask", &format!("no ask {ask:?}")),
-        _ => return None,
+        _ => return false,
     };
-    Some(answer)
+    let _ = told.send(answer.to_string());
+    true
 }
 
 /// Does one of the call's acts through Tuple's command, answering once

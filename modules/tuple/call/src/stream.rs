@@ -47,10 +47,12 @@ pub struct Live {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Line {
     /// Everything Tuple knows: everyone it knows by their ids, whether
-    /// anyone's signed in, and the call, when the line holds one.
+    /// anyone's signed in, Joel's room's link, and the call, when the
+    /// line holds one.
     State {
         contacts: HashMap<String, Contact>,
         signed_in: bool,
+        room: Option<String>,
         call: Option<Option<Live>>,
     },
     /// The call as it is now, or that there's none.
@@ -79,6 +81,7 @@ pub fn read(line: &str) -> Line {
         Some("state") => Line::State {
             contacts: contacts(data),
             signed_in: data.get("sign_in").and_then(Value::as_str) == Some("signed_in"),
+            room: room(data),
             call: data.get("current_call").map(live),
         },
         _ => Line::Other,
@@ -106,6 +109,18 @@ fn name(value: &Value) -> String {
         .find(|name| !name.is_empty())
         .unwrap_or("")
         .to_owned()
+}
+
+/// Joel's room's link: the newest of his own rooms, as `tuple new` opens.
+fn room(data: &Value) -> Option<String> {
+    data.pointer("/rooms/personal")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|room| !words(room, "http_value").is_empty())
+        // Tuple's times are RFC 3339 in UTC, which sort as text.
+        .max_by_key(|room| words(room, "created_at"))
+        .map(|room| words(room, "http_value").to_owned())
 }
 
 fn contacts(data: &Value) -> HashMap<String, Contact> {
@@ -248,6 +263,7 @@ pub mod tests {
         let Line::State {
             contacts,
             signed_in,
+            room,
             call,
         } = read(line)
         else {
@@ -255,9 +271,23 @@ pub mod tests {
         };
         assert!(signed_in);
         assert_eq!(call, None);
+        assert_eq!(room, None);
         assert_eq!(contacts["7"].name, "Ada Brightwater");
         assert_eq!(contacts["8"].name, "Eli");
         assert_eq!(contacts["8"].email, "eli@example.com");
+    }
+
+    #[test]
+    fn joels_room_is_the_newest_of_his_own() {
+        let line = "{\"type\":\"state\",\"data\":{\"rooms\":{\"personal\":[\
+            {\"http_value\":\"https://tuple.app/c/old\",\"created_at\":\"2025-04-11T17:51:39Z\"},\
+            {\"http_value\":\"https://tuple.app/c/new\",\"created_at\":\"2026-07-31T18:59:33Z\"}],\
+            \"team\":[{\"http_value\":\"https://tuple.app/c/team\",\
+            \"created_at\":\"2026-10-01T00:00:00Z\"}]}}}";
+        let Line::State { room, .. } = read(line) else {
+            panic!("no state read");
+        };
+        assert_eq!(room.as_deref(), Some("https://tuple.app/c/new"));
     }
 
     #[test]
@@ -281,6 +311,7 @@ pub mod tests {
             Line::State {
                 contacts: HashMap::new(),
                 signed_in: false,
+                room: None,
                 call: None,
             }
         );

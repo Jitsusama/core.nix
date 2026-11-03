@@ -25,6 +25,7 @@ from desktop_session import (
     NEARLY_ALL,
     NOTICES,
     STARTING,
+    TUPLE_ASKED,
     changed_at_the_top,
     drawn_at,
     margin_points,
@@ -1202,17 +1203,40 @@ def test_tuples_daemon_comes_before_the_other_apps(desktop: Desktop) -> None:
     assert sorted(comes.split()) == ["CPUWeight=1000", "Nice=-10"]
 
 
+def in_a_tuple_call(desktop: Desktop, ago: int) -> Json:
+    """Give the call Joel's in as Tuple's stream says it, connected so many seconds since.
+
+    Nobody else is in it yet; Tuple lists whoever comes as its participants.
+    """
+    now = int(desktop.as_account("date +%s%3N"))
+    joel = {"is_current_user": True, "connection_state": "connected", "audio_enabled": True}
+    return {
+        "id": "a-call",
+        "local": joel,
+        "participants": [],
+        "started_at": now - ago * 1000,
+    }
+
+
+# Someone Tuple gives no name, and who isn't one of its contacts.
+A_GUEST = {
+    "id": 5,
+    "connection_state": "connected",
+    "audio_enabled": True,
+    "share_state": "audio",
+    "webcam_enabled": False,
+}
+
+
 def test_a_tuple_call_shows_in_the_margin_while_it_lasts(desktop: Desktop) -> None:
     """A Tuple call shows in the margin while it lasts."""
     machine = desktop.machine
-    # Only a call writes these lines, so they're written here, with
-    # the daemon stopped, since it rewrites its log as it starts.
-    desktop.as_account("systemctl --user stop tuple")
+    desktop.tuple_follows()
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     with desktop.told("drawn margin"):
-        desktop.tuple_said("call connected")
+        desktop.tuple_streams(in_a_tuple_call(desktop, 0))
     desktop.photograph("margin-call")
-    desktop.tuple_said("Caller.cpp:985|invalidating call")
+    desktop.tuple_streams(None)
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
 
@@ -1221,16 +1245,15 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
 ) -> None:
     """People coming and going in a Tuple call are said, and Joel can leave."""
     machine = desktop.machine
-    # Whoever comes is "a guest", not a number, which Tuple's contacts
-    # would be asked about, and with the daemon stopped it starts one.
-    # The call before stops it too, so this one stops it itself and runs
-    # alone the same.
-    desktop.as_account("systemctl --user stop tuple")
+    # The call before has tuple-call follow the stand-in too, so this one
+    # does it itself and runs alone the same.
+    desktop.tuple_follows()
     offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action={0}'"
     # Those there as Joel joins aren't news, so the call connected a
     # while before the guest comes.
+    call = in_a_tuple_call(desktop, 10)
     with desktop.told("drawn margin"):
-        desktop.tuple_said("call connected", ago=10)
+        desktop.tuple_streams(call)
     # The call is Tuple's, a program with no window of its own, whose
     # Return steps in to what can be done in it.
     desktop.as_account("qs ipc call launcher toggle")
@@ -1242,18 +1265,18 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     with desktop.told("shows card Someone joined the call"):
-        desktop.tuple_said("peer joined call: a guest")
+        desktop.tuple_streams(call | {"participants": [A_GUEST]})
     desktop.photograph("notice-joined")
     with desktop.told("shows card Someone left the call"):
-        desktop.tuple_said("peer left call: a guest")
+        desktop.tuple_streams(call)
     # Its card goes by itself after ten seconds, which a busy host spends
     # on what follows, so Super+N takes the stack at once: held, it waits.
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     machine.succeed(offered.format("leave"))
     desktop.photograph("notice-alone")
-    # Leaving runs tuple call leave, which starts the stopped daemon,
-    # whose new log ends the call. Super+N again opens the history on its
+    # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
+    # stream says the call's over. Super+N again opens the history on its
     # first row, the newest notice, and the right arrow steps into its
     # offers, Return's own Open first.
     machine.send_key("meta_l-n")
@@ -1268,7 +1291,7 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))
     machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))
-    desktop.as_account("tuple stop")
+    desktop.as_account(f"grep -qx 'call leave' {TUPLE_ASKED}")
 
 
 def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(

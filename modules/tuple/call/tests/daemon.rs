@@ -1,6 +1,7 @@
 //! The daemon over its socket, with a stand-in for Tuple: its stream is
 //! followed only while Tuple's daemon answers, and a call, a sign-in gone
-//! and a stream that ends are each said to a watch as they happen; a ring
+//! and a stream that ends are each said to a watch as they happen, and
+//! who a call is with kept in its file while it lasts; a ring
 //! and a missed call are read from the log as it's written, a new log
 //! from its start; each act runs Tuple's command, and opening the room
 //! keeps its link; and an ask or kind it doesn't know is refused.
@@ -104,6 +105,12 @@ impl Running {
         std::fs::set_permissions(&tuple, std::fs::Permissions::from_mode(0o755)).unwrap();
         let socket = folder.join("run/daemons/tuple.sock");
         let tuples = answering.then(|| answering_at(&folder));
+        // A call's file, as a run that was stopped mid-call leaves it.
+        std::fs::write(
+            folder.join("run/tuple-call.json"),
+            "{\"since\":1,\"with\":[]}\n",
+        )
+        .unwrap();
         let program = env!("CARGO_BIN_EXE_tuple-call");
         let mut command = match launcher.split_first() {
             Some((first, arguments)) => {
@@ -273,9 +280,16 @@ fn a_stopped_tuple_is_never_started_and_its_call_is_none() {
         (&record["key"], &record["kind"], &record["state"]),
         (&json!("call:current"), &json!("call"), &json!("none"))
     );
+    // A watch hears how Tuple stands as it begins, whatever changed
+    // since hello said it.
+    client.stands("starting");
     std::thread::sleep(Duration::from_millis(300));
     assert!(running.read("bin/followed").is_empty());
     assert!(running.read("bin/asked").is_empty());
+    assert!(
+        !running.path("run/tuple-call.json").exists(),
+        "a call's file left behind was kept"
+    );
 }
 
 #[test]
@@ -296,10 +310,20 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
     assert!(record["heard"].as_i64().is_some());
     let said = client.ask(&json!({"id": 2, "ask": "get", "keys": ["call:current"]}));
     assert_eq!(said["records"][0]["state"], "connected");
+    let kept: Value = serde_json::from_str(&running.read("run/tuple-call.json").concat()).unwrap();
+    assert_eq!(
+        kept,
+        json!({"since": 1000, "with": [
+            {"id": 7, "name": "Ada Brightwater", "email": "ada@example.com"}]})
+    );
     running.streams("{\"type\":\"current_call\",\"data\":null}");
     client.until("the call's end wasn't said", |record| {
         record["state"] == "none"
     });
+    assert!(
+        !running.path("run/tuple-call.json").exists(),
+        "the call's file outlived it"
+    );
 }
 
 #[test]
@@ -329,10 +353,26 @@ fn tuple_starting_is_followed_at_once() {
     // Past the first look, which found nothing answering.
     std::thread::sleep(Duration::from_millis(300));
     running.answer();
-    running.streams(STATE);
+    running.streams(
+        "{\"type\":\"state\",\"data\":{\"contacts\":[],\"sign_in\":\"signed_in\",\
+         \"rooms\":{\"personal\":[{\"http_value\":\"https://tuple.app/c/listed\",\
+         \"created_at\":\"2026-07-31T12:00:00Z\"}]}}}",
+    );
     let began = Instant::now();
     running.logs(&logged(now(), "daemon loop started, waiting for events..."));
-    client.stands("answering");
+    // What Tuple's state said is heard before that Tuple answers, so a
+    // client acting on its answering holds the room already.
+    let mut room = Value::Null;
+    loop {
+        let said = client.next();
+        if let Some(record) = said["changed"].get(0) {
+            room = record["room"].clone();
+        }
+        if said["sources"]["tuple"] == "answering" {
+            break;
+        }
+    }
+    assert_eq!(room, "https://tuple.app/c/listed");
     assert!(
         began.elapsed() < Duration::from_secs(3),
         "followed only at the next look, {:?} on",

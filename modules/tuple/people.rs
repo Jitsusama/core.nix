@@ -1,4 +1,4 @@
-//! Tuple's people for the shell (Tuple.qml, People.qml): who they are and
+//! Tuple's people for the shell (People.qml): who they are and
 //! how they stand, said only as it changes. Tuple's `contacts follow`
 //! prints every contact on each change, one JSON array a line, thousands of
 //! them and over a megabyte each time, though Tuple knows how only the
@@ -22,23 +22,7 @@
 //! follow is stopped and this ends quietly, and when the shell stops this
 //! with a signal, Tuple's follow ends with it.
 //!
-//! `tuple-people call` does the same for the call Joel's in, from
-//! `tuple --format json state follow --raw`, whose first line holds every
-//! contact too and is never read; Tuple's log says too little of a call to
-//! know it's started. Each change to the call is one line:
-//!
-//! - `{"call":{"since":ms,"connection":"connected","muted":false,
-//!   "sharing":false,"camera":false,"people":[[id,"name","connection",
-//!   muted,sharing,camera],...]}}`, Joel's own state first and then each
-//!   of the others', `since` null until it connects;
-//! - `{"call":null}`, no call.
-//!
-//! Given a file after the socket, it also keeps there who the call is
-//! with, for what records a call without the shell (a transcript names
-//! its folder by them): `{"since":ms,"with":[{"id":id,"name":"name",
-//! "email":"address"},...]}`, written whole while a call is on, as it
-//! changes, and removed once there's none, or this ends. One left by an
-//! earlier run that was killed is removed as this starts.
+//! The call Joel's in is tuple-call's (call/), not this.
 //!
 //! `tuple-people people` is Tuple's source for the people daemon, on
 //! People's line protocol: `{"roster":true}` first, since it says
@@ -52,7 +36,6 @@
 
 use std::env;
 use std::fmt::Write as _;
-use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -61,8 +44,6 @@ use std::process::{Command, ExitCode, Stdio};
 
 /// What follows the tuple command.
 const ARGS: [&str; 4] = ["--format", "json", "contacts", "follow"];
-/// What follows it for the call.
-const CALL_ARGS: [&str; 5] = ["--format", "json", "state", "follow", "--raw"];
 
 unsafe extern "C" {
     fn prctl(option: i32, arg2: u64, ...) -> i32;
@@ -539,218 +520,6 @@ struct Follower {
     standing: Option<Vec<Standing>>,
 }
 
-/// A field of an object, if it has one.
-fn field<'a>(fields: &'a [(String, Value)], key: &str) -> Option<&'a Value> {
-    fields
-        .iter()
-        .find_map(|(name, value)| (name == key).then_some(value))
-}
-
-fn yes(fields: &[(String, Value)], key: &str) -> bool {
-    field(fields, key) == Some(&Value::Bool(true))
-}
-
-fn words<'a>(fields: &'a [(String, Value)], key: &str) -> &'a str {
-    match field(fields, key) {
-        Some(Value::Text(text)) => text,
-        _ => "",
-    }
-}
-
-/// Someone's state in the call: muted when their voice isn't sent,
-/// sharing when it's their screen rather than only their voice, and
-/// whether their camera is on.
-fn in_call(fields: &[(String, Value)]) -> [(&'static str, bool); 3] {
-    [
-        ("muted", !yes(fields, "audio_enabled")),
-        ("sharing", words(fields, "share_state") == "screen"),
-        ("camera", yes(fields, "webcam_enabled")),
-    ]
-}
-
-/// The line for one of Tuple's `current_call` data.
-fn call_line(data: &Value) -> String {
-    let Value::Object(call) = data else {
-        return "{\"call\":null}".to_string();
-    };
-    let mut out = String::from("{\"call\":{\"since\":");
-    match field(call, "started_at") {
-        Some(Value::Number(at)) => out.push_str(at),
-        _ => out.push_str("null"),
-    }
-    let local = match field(call, "local") {
-        Some(Value::Object(local)) => local.as_slice(),
-        _ => &[],
-    };
-    out.push_str(",\"connection\":");
-    quote(&mut out, words(local, "connection_state"));
-    for (name, holds) in in_call(local) {
-        _ = write!(out, ",\"{name}\":{holds}");
-    }
-    out.push_str(",\"people\":[");
-    let others = match field(call, "participants") {
-        Some(Value::List(others)) => others.as_slice(),
-        _ => &[],
-    };
-    let mut first = true;
-    for other in others {
-        let Value::Object(fields) = other else {
-            continue;
-        };
-        if !first {
-            out.push(',');
-        }
-        first = false;
-        out.push('[');
-        match field(fields, "id") {
-            Some(Value::Number(id)) => out.push_str(id),
-            Some(Value::Text(id)) => quote(&mut out, id),
-            _ => out.push_str("null"),
-        }
-        out.push(',');
-        let name = ["full_name", "short_name", "email"]
-            .into_iter()
-            .map(|key| words(fields, key))
-            .find(|name| !name.is_empty())
-            .unwrap_or("");
-        quote(&mut out, name);
-        out.push(',');
-        quote(&mut out, words(fields, "connection_state"));
-        for (_, holds) in in_call(fields) {
-            out.push_str(if holds { ",true" } else { ",false" });
-        }
-        out.push(']');
-    }
-    out.push_str("]}}");
-    out
-}
-
-/// Who a call is with, for the call's file: none when there's no call.
-fn with_line(data: &Value) -> Option<String> {
-    let Value::Object(call) = data else {
-        return None;
-    };
-    let mut out = String::from("{\"since\":");
-    match field(call, "started_at") {
-        Some(Value::Number(at)) => out.push_str(at),
-        _ => out.push_str("null"),
-    }
-    out.push_str(",\"with\":[");
-    let others = match field(call, "participants") {
-        Some(Value::List(others)) => others.as_slice(),
-        _ => &[],
-    };
-    let mut first = true;
-    for other in others {
-        let Value::Object(fields) = other else {
-            continue;
-        };
-        if !first {
-            out.push(',');
-        }
-        first = false;
-        out.push_str("{\"id\":");
-        match field(fields, "id") {
-            Some(Value::Number(id)) => out.push_str(id),
-            Some(Value::Text(id)) => quote(&mut out, id),
-            _ => out.push_str("null"),
-        }
-        out.push_str(",\"name\":");
-        let name = ["full_name", "short_name"]
-            .into_iter()
-            .map(|key| words(fields, key))
-            .find(|name| !name.is_empty())
-            .unwrap_or("");
-        quote(&mut out, name);
-        out.push_str(",\"email\":");
-        quote(&mut out, words(fields, "email"));
-        out.push('}');
-    }
-    out.push_str("]}");
-    Some(out)
-}
-
-/// What was last said of the call, so only a change is said again, and
-/// the file who it's with is kept in, if any.
-#[derive(Default)]
-struct Call {
-    last: Option<String>,
-    file: Option<PathBuf>,
-    kept: Option<String>,
-}
-
-impl Call {
-    fn keeping(file: PathBuf) -> Self {
-        forget(&file);
-        Self {
-            last: None,
-            file: Some(file),
-            kept: None,
-        }
-    }
-
-    /// Keeps who the call is with in the file, written whole beside it
-    /// and moved into place so it's never read half written, or removes
-    /// it once there's no call. A file that can't be written is left be:
-    /// the shell's line matters more.
-    fn keep(&mut self, with: Option<String>) {
-        let Some(file) = &self.file else {
-            return;
-        };
-        if self.kept == with {
-            return;
-        }
-        match &with {
-            Some(line) => {
-                let new = file.with_extension("new");
-                if fs::write(&new, format!("{line}\n")).is_ok() {
-                    let _ = fs::rename(&new, file);
-                }
-            }
-            None => forget(file),
-        }
-        self.kept = with;
-    }
-}
-
-impl Drop for Call {
-    fn drop(&mut self) {
-        if let Some(file) = &self.file {
-            forget(file);
-        }
-    }
-}
-
-/// Removes the call's file, there or not.
-fn forget(file: &Path) {
-    let _ = fs::remove_file(file);
-}
-
-impl Hears for Call {
-    fn heard(&mut self, line: &str) -> Vec<String> {
-        // Only a call's line is read whole: the first, of every contact,
-        // runs past two megabytes, and Tuple names the type first.
-        let head = &line.as_bytes()[..line.len().min(48)];
-        if !head.windows(14).any(|w| w == b"\"current_call\"") {
-            return Vec::new();
-        }
-        let Some(Value::Object(fields)) = Reader::parse(line) else {
-            return Vec::new();
-        };
-        if words(&fields, "type") != "current_call" {
-            return Vec::new();
-        }
-        let data = field(&fields, "data").unwrap_or(&Value::Null);
-        self.keep(with_line(data));
-        let said = call_line(data);
-        if self.last.as_ref() == Some(&said) {
-            return Vec::new();
-        }
-        self.last = Some(said.clone());
-        vec![said]
-    }
-}
-
 impl Hears for Follower {
     /// The lines to write for one of Tuple's, people before standing.
     fn heard(&mut self, line: &str) -> Vec<String> {
@@ -923,34 +692,18 @@ fn main() -> ExitCode {
             .join(socket);
         return roster(tuple, &socket);
     }
-    let (calls, tuple, socket, file) = match args.as_slice() {
-        [tuple, socket] => (false, tuple, socket, None),
-        [mode, tuple, socket] if mode == "call" => (true, tuple, socket, None),
-        [mode, tuple, socket, file] if mode == "call" => {
-            (true, tuple, socket, Some(PathBuf::from(file)))
-        }
-        _ => {
-            eprintln!(
-                "usage: tuple-people [call|people] <the tuple command> <its daemon's socket> \
-                 [call: the file it's kept in]"
-            );
-            return ExitCode::from(2);
-        }
+    let [tuple, socket] = args.as_slice() else {
+        eprintln!("usage: tuple-people [people] <the tuple command> <its daemon's socket>");
+        return ExitCode::from(2);
     };
     if !running(Path::new(socket)) {
-        // No Tuple, no call.
-        if let Some(file) = &file {
-            forget(file);
-        }
         return ExitCode::from(NOT_RUNNING);
     }
-    let out = io::stdout().lock();
-    let code = if calls {
-        let heard = file.map_or_else(Call::default, Call::keeping);
-        follow(Command::new(tuple).args(CALL_ARGS), heard, out)
-    } else {
-        follow(Command::new(tuple).args(ARGS), Follower::default(), out)
-    };
+    let code = follow(
+        Command::new(tuple).args(ARGS),
+        Follower::default(),
+        io::stdout().lock(),
+    );
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
 
@@ -1193,126 +946,6 @@ mod tests {
                 Value::Text("p7@example.com".into())
             ])
         );
-    }
-
-    /// A call's line as Tuple's raw state follow writes one, with Joel's
-    /// own state and one other's, each as (muted, sharing, camera).
-    fn call(connection: &str, started: bool, own: [bool; 3], other: [bool; 3]) -> String {
-        let state = |[muted, sharing, camera]: [bool; 3]| {
-            format!(
-                "\"audio_enabled\":{},\"share_state\":\"{}\",\"webcam_enabled\":{camera}",
-                !muted,
-                if sharing { "screen" } else { "audio" }
-            )
-        };
-        format!(
-            "{{\"type\":\"current_call\",\"data\":{{\"can_create_url\":true,\"id\":\"c-1\",\
-             \"local\":{{{},\"connection_state\":\"{connection}\",\"display\":{{\"id\":0}},\
-             \"is_current_user\":true,\"tracks\":{{\"audio\":\"connected\"}}}},\
-             \"participants\":[{{{},\"connection_state\":\"{connection}\",\"email\":\"ada@example.com\",\
-             \"full_name\":\"Ada Brightwater\",\"id\":7,\"session_id\":\"s-1\"}}],\
-             \"sfu_backed\":false{}}}}}\n",
-            state(own),
-            state(other),
-            if started {
-                ",\"started_at\":1792759701457"
-            } else {
-                ""
-            }
-        )
-    }
-
-    #[test]
-    fn a_call_says_how_everyone_stands() {
-        let mut heard = Call::default();
-        assert_eq!(
-            heard.heard(&call(
-                "signaling",
-                false,
-                [true, false, false],
-                [true, false, false]
-            )),
-            [
-                "{\"call\":{\"since\":null,\"connection\":\"signaling\",\"muted\":true,\
-              \"sharing\":false,\"camera\":false,\"people\":[[7,\"Ada Brightwater\",\
-              \"signaling\",true,false,false]]}}"
-            ]
-        );
-        assert_eq!(
-            heard.heard(&call(
-                "connected",
-                true,
-                [false, true, false],
-                [false, false, true]
-            )),
-            [
-                "{\"call\":{\"since\":1792759701457,\"connection\":\"connected\",\"muted\":false,\
-              \"sharing\":true,\"camera\":false,\"people\":[[7,\"Ada Brightwater\",\
-              \"connected\",false,false,true]]}}"
-            ]
-        );
-    }
-
-    #[test]
-    fn a_call_unchanged_says_nothing_and_its_end_says_so() {
-        let mut heard = Call::default();
-        let going = call("connected", true, [false; 3], [false; 3]);
-        assert_eq!(heard.heard(&going).len(), 1);
-        assert!(heard.heard(&going).is_empty());
-        assert_eq!(
-            heard.heard("{\"type\":\"current_call\",\"data\":null}\n"),
-            ["{\"call\":null}"]
-        );
-        assert!(
-            heard
-                .heard("{\"type\":\"current_call\",\"data\":null}\n")
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn a_calls_file_says_who_its_with_while_it_lasts() {
-        let folder = std::env::temp_dir().join(format!("tuple-call-{}", std::process::id()));
-        fs::create_dir_all(&folder).unwrap();
-        let file = folder.join("tuple-call.json");
-        // One an earlier run left is taken as no call.
-        fs::write(&file, "{}").unwrap();
-        let mut heard = Call::keeping(file.clone());
-        assert!(!file.exists());
-        heard.heard(&call("connected", true, [false; 3], [false; 3]));
-        assert_eq!(
-            fs::read_to_string(&file).unwrap(),
-            "{\"since\":1792759701457,\"with\":[{\"id\":7,\"name\":\"Ada Brightwater\",\
-             \"email\":\"ada@example.com\"}]}\n"
-        );
-        heard.heard("{\"type\":\"current_call\",\"data\":null}\n");
-        assert!(!file.exists());
-        // And it goes when this does, mid-call.
-        heard.heard(&call("connected", true, [false; 3], [false; 3]));
-        assert!(file.exists());
-        drop(heard);
-        assert!(!file.exists());
-        fs::remove_dir_all(&folder).unwrap();
-    }
-
-    #[test]
-    fn only_a_calls_lines_are_read() {
-        let mut heard = Call::default();
-        // Every contact, with a call's word deep inside it, is skipped
-        // unread; so is any other kind, and half a line.
-        let contacts = format!(
-            "{{\"type\":\"state\",\"data\":{{\"contacts\":[{}],\"note\":\"current_call\"}}}}\n",
-            vec!["{\"id\":1}"; 20].join(",")
-        );
-        let going = call("connected", true, [false; 3], [false; 3]);
-        for line in [
-            contacts.as_str(),
-            "{\"type\":\"rooms\",\"data\":{\"current_call\":1}}\n",
-            "{\"type\":\"session_updated\",\"data\":{\"id\":\"s-1\"}}\n",
-            &going[..going.len() / 2],
-        ] {
-            assert!(heard.heard(line).is_empty(), "{line}");
-        }
     }
 
     #[test]

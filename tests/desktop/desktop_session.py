@@ -124,9 +124,13 @@ MARGIN = "niri msg layers | grep -q margin"
 CELL = 12
 NOTICES = "niri msg layers | grep -q notifications"
 
-# Tuple's log, which only a call writes, and which the daemon rewrites as
-# it starts.
+# Tuple's log, where tuple-call hears a call ring, which only a call
+# writes, and which the daemon rewrites as it starts.
 TUPLE_LOG = "~/.local/share/tuple/0/log.txt"
+# Tuple's stream as tuple-call follows it in the VM, through the stand-in
+# for Tuple's command (desktop/tuple-stand-in.sh), and what it was asked.
+TUPLE_STREAM = "$XDG_RUNTIME_DIR/tuple-stream"
+TUPLE_ASKED = "$XDG_RUNTIME_DIR/tuple-asked"
 
 # Where keyboard-lights says whether caps lock is on.
 CAPITALS = "/run/keyboard-lights/capslock"
@@ -871,6 +875,24 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Write a line to Tuple's log as the daemon writes it, as if so many seconds since."""
         line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
         self.as_account(f'mkdir -p $(dirname {TUPLE_LOG}) && echo "{line}" >> {TUPLE_LOG}')
+
+    def tuple_follows(self) -> None:
+        """Stop Tuple's daemon, answer on its socket in its stead, and wait for tuple-call.
+
+        Tuple's daemon rewrites its log as it starts, so it's stopped while a test writes the
+        log, and tuple-call follows Tuple's stream only while something answers on its socket.
+        Once it does, it follows the stand-in's.
+        """
+        self.as_account("systemctl --user stop tuple && systemctl --user start tuple-answers")
+        self.machine.wait_until_succeeds(
+            self.in_session("pgrep -f '[t]ail -n [+]1 -F .*tuple-stream'"),
+            timeout=timedelta(seconds=30),
+        )
+
+    def tuple_streams(self, call: Json | None) -> None:
+        """Say the call Joel's in on Tuple's stream, as Tuple says it, or that there's none."""
+        line = json.dumps({"type": "current_call", "data": call}, separators=(",", ":"))
+        self.as_account(f"echo {shlex.quote(line)} >> {TUPLE_STREAM}")
 
     def capture(self) -> None:
         """Press Print, which opens Capture, and wait until its rows are ready for the keys."""
