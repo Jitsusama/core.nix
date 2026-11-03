@@ -844,6 +844,26 @@ fn running(socket: &Path) -> bool {
 /// How long the people daemon's source waits to look for Tuple again.
 const LOOKS_AGAIN: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// The longest it waits once Tuple's follow keeps ending at once, as it
+/// does while Tuple answers but nobody is signed in to it.
+const WAITS_AT_MOST: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A follow that lasted this long was following, so the wait starts over.
+const FOLLOWED_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How long to wait before following again: twice the last wait, up to a
+/// minute, when the follow just ended within a minute, and the usual wait
+/// after one that ran longer. A signed-out Tuple answers every follow at
+/// once, and looking every five seconds all day is a program started for
+/// nothing each time.
+fn wait_after(waited: std::time::Duration, ran: std::time::Duration) -> std::time::Duration {
+    if ran >= FOLLOWED_FOR {
+        LOOKS_AGAIN
+    } else {
+        (waited * 2).min(WAITS_AT_MOST)
+    }
+}
+
 /// Tuple's source for the people daemon: says it's a roster, then follows
 /// Tuple's contacts whenever Tuple runs, until its input or output closes.
 fn roster(tuple: &str, socket: &Path) -> ExitCode {
@@ -865,15 +885,20 @@ fn roster(tuple: &str, socket: &Path) -> ExitCode {
     if say(&mut out, &["{\"roster\":true}".to_owned()]).is_err() {
         return ExitCode::SUCCESS;
     }
+    let mut wait = LOOKS_AGAIN;
     loop {
         if running(socket) {
+            let began = std::time::Instant::now();
             follow(Command::new(tuple).args(ARGS), &mut said, &mut out);
+            wait = wait_after(wait, began.elapsed());
             let stopped = said.stopped();
             if say(&mut out, &stopped).is_err() {
                 return ExitCode::SUCCESS;
             }
+        } else {
+            wait = LOOKS_AGAIN;
         }
-        std::thread::sleep(LOOKS_AGAIN);
+        std::thread::sleep(wait);
     }
 }
 
@@ -959,6 +984,29 @@ mod tests {
     const PEOPLE: &str = "{\"people\":[[1,\"Ada Brook\",\"p1@example.com\"],\
         [2,\"Ben Carrow\",\"p2@example.com\"],[3,\"Cal Dunmore\",\"p3@example.com\"]]}";
     const STANDING: &str = "{\"standing\":[[1,\"online\",true,false],[3,\"offline\",true,false]]}";
+
+    #[test]
+    fn a_follow_that_ends_at_once_waits_longer_each_time_up_to_a_minute() {
+        use std::time::Duration;
+        let at_once = Duration::from_millis(30);
+        let mut wait = LOOKS_AGAIN;
+        let mut waits = Vec::new();
+        for _ in 0..6 {
+            wait = wait_after(wait, at_once);
+            waits.push(wait.as_secs());
+        }
+        assert_eq!(waits, [10, 20, 40, 60, 60, 60]);
+    }
+
+    #[test]
+    fn a_follow_that_ran_a_while_waits_the_usual_time_again() {
+        use std::time::Duration;
+        assert_eq!(
+            wait_after(WAITS_AT_MOST, Duration::from_secs(600)),
+            LOOKS_AGAIN
+        );
+        assert_eq!(wait_after(WAITS_AT_MOST, FOLLOWED_FOR), LOOKS_AGAIN);
+    }
 
     #[test]
     fn json_is_read_whole() {

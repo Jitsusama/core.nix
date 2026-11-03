@@ -1719,6 +1719,11 @@
     xdg-open and gio send tuple:// links to Tuple's entry, which joins a call's link, starts Tuple
     bare, and refuses any other link with a notice
   '';
+  tuple-people-follows-the-contacts = ''
+    tuple-people's own tests pass: it reads Tuple's contacts as JSON, says only who changed, and waits
+    twice as long each time Tuple's follow ends at once, up to a minute, and five seconds again after
+    one that ran a minute
+  '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it
   '';
