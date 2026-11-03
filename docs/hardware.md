@@ -1184,6 +1184,26 @@ setup again for the new console, and `loadkeys` ran as the driver took it,
 failing with an I/O error, so `systemd-vconsole-setup` was left failed. The
 module loads it in the initrd, as the XPS 14's does with its GPU.
 
+The GPU's video engine (VCN 2.0) decodes H.264, HEVC Main and Main 10, VP9
+profiles 0 and 2, MPEG-2, VC-1 and JPEG through VA-API, and encodes H.264
+and HEVC. It has no AV1. mpv, with core's settings, and Chrome, with no
+flags, both decode on it.
+
+Idle on battery, with the panel lit at 21% backlight and the balanced
+profile, the laptop drew 6.6 W by the battery's own reading, 50 samples a
+phase. The lit panel cost about 0.5 W of that. The graphics block slept
+(GFXOFF) 98.7% to 99.9% of the time. Variable refresh on the panel saved
+about 0.18 W, within the readings' spread, and the panel showed no
+flicker. The backlight saving (ABM) at level 3 saved nothing measurable at
+that brightness. The SMU's own figures in `gpu_metrics` and
+`amdgpu_pm_info` read about 11 W and 9 W at the same time, so they're its
+estimates rather than a measure of the draw.
+
+The panel can't self-refresh under Linux. Below DCN 3.1, amdgpu enables
+panel self refresh only with `dcfeaturemask`'s 0x8, and even then only when
+the display firmware's capabilities name it, which only DCN 3.0 and later's
+setup reads. Renoir is DCN 2.1.
+
 ### Sleep
 
 The laptop sleeps only in s2idle, and it sleeps soundly: one night on the
@@ -1201,6 +1221,10 @@ capabilities 0x1F4, which set only its S4 and S5 wake bits, so the kernel
 offers no alarm on it, and reading its clock fails with an I/O error. A
 sleep test on this laptop needs someone to open the lid or press the
 power button.
+
+One night asleep on battery, lid shut, from 03:08 to 11:40, the gauge went
+from 13.39 Wh to 11.38 Wh: 2.01 Wh in 8 h 32 min, about 0.24 W, or 0.6% of
+the battery an hour.
 
 At a desk with the lid shut, only lifting the lid woke it. The keyboard
 there is a paired Bluetooth one, which BlueZ allows to wake the laptop, but
@@ -1324,6 +1348,19 @@ gave 1,174 interrupts of touch reports in 12 s. The module
 the driver's installer, and loads it from a unit after `multi-user.target`,
 as the installer does, so a hang there leaves a login to recover from.
 
+### The Ports and Bluetooth
+
+The firmware describes no USB-C connector to the OS: its ACPI has no
+`USBC000` (`PNP0CA0`) device, so UCSI has nothing to bind,
+`/sys/class/typec` stays empty, and Linux can't read the port's power role
+or its charging contract. The port still switches to DisplayPort by itself.
+A monitor on it came back at 3840x2160, both after a wake and after being
+plugged in while the laptop ran, within 2 s of its hub appearing.
+
+The AX200's Bluetooth controller reports Bluetooth 5.2 but no isochronous
+channels, so LE Audio can't run, although BlueZ offers its services. A
+keyboard works over classic HID.
+
 ### Firmware Updates
 
 Microsoft ships this model's firmware through Windows Update and in a
@@ -1358,10 +1395,9 @@ sealed to.
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
-| Sleep      | the drain on battery overnight isn't measured                                  |
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
-| Camera     | the front camera is listed; its picture isn't checked yet                      |
+| Camera     | both cameras list their formats; neither's picture is checked yet              |
 | Firmware   | the TPM's capsule waits on whether its upgrade keeps the TPM's owner state     |
 | Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
 
