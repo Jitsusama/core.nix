@@ -2282,6 +2282,11 @@ Scope {
         if (!row || row.gone)
             return false;
         traces.began("step", { into: row.key ?? "", depth: held.length });
+        // Throwaway: a step slower in kind, 800 ms of work.
+        const until = Date.now() + 800;
+        while (Date.now() < until) {
+            Math.sqrt(Math.random());
+        }
         // A step is timed to its frame as a key is, named by the arrow and
         // the row, so a slow place shows in the journal and the trials
         // (Joel, 2026-10-28: "programs from the main launcher screen takes
