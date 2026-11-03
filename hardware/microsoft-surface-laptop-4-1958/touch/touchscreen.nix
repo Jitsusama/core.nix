@@ -22,6 +22,19 @@ in
     options sl4a_spi_hid raw_mode=N raw_input_beta=Y wire_double_opcode=1 gate3_observe_only=1 skip_std_getfeat=1 std_raw_transition=1 get_noread=0 getfeat_delay_ms=0 std_liveness_ms=0 std_liveness_recover=0 wait_reset_kick_ms=0
   '';
 
+  # The touchscreen's axes run 0 to 32767, but its report descriptor gives
+  # them 112 and 198 units a millimetre, a 292 by 165 mm screen. The pen,
+  # over the same glass, reads 282 by 189 mm, which fits a 13.5-inch 3:2
+  # panel. These resolutions give the touchscreen the pen's size, so what
+  # reads a touch in millimetres measures it right.
+  services.udev.extraHwdb = ''
+    evdev:name:MSHW0231 Touchscreen:*
+     EVDEV_ABS_00=::116
+     EVDEV_ABS_01=::173
+     EVDEV_ABS_35=::116
+     EVDEV_ABS_36=::173
+  '';
+
   # The controller's module first, which finds the panel and names it, then
   # the panel's.
   systemd.services.surface-touchscreen = {
