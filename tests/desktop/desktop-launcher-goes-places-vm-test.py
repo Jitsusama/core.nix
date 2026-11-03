@@ -1320,8 +1320,40 @@ def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
             f"{sessions_kitty.format('CONT')}; rm -f $XDG_RUNTIME_DIR/pi-stays;"
             " pkill -f 'sleep 60[0]'; true"
         )
+        # The kitty started here, outside the shell's slice, is ended, so
+        # no later session opens in it.
+        desktop.as_account(f"{sessions_kitty.format('TERM')}; true")
         kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
         desktop.as_account("rm -rf ~/first ~/second ~/third")
+
+
+def test_a_session_opens_in_the_agents_slice(desktop: Desktop) -> None:
+    """A session's kitty, and the session in it, run in agents.slice beside Joel's programs."""
+    machine = desktop.machine
+    holder = "instance-group pi-session[s]"
+    # Started afresh here, so the sessions' kitty is one the shell started.
+    desktop.as_account(f"pkill -f '{holder}'; true")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"! pgrep -f '{holder}'"), timeout=dt.timedelta(seconds=30)
+    )
+    handed = {"sessions": [{"id": "01cb-sliced", "cwd": "/home/jitsusama/sliced"}]}
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/sliced")
+    try:
+        desktop.as_account(f"qs ipc call sessions reopen {shlex.quote(json.dumps(handed))}")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json windows | grep -q 'pi --session 01cb-sliced'"),
+            timeout=dt.timedelta(seconds=300),
+        )
+        cgroups = "pgrep -f '{}' | sed 's|.*|/proc/&/cgroup|' | xargs cat"
+        kitty = desktop.as_account(cgroups.format(holder)).split()
+        session = desktop.as_account(cgroups.format("session 01cb-slice[d]")).split()
+        assert kitty, kitty
+        assert all("/agents.slice/" in line for line in kitty), kitty
+        assert session, session
+        assert all("/agents.slice/" in line for line in session), session
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+        desktop.as_account("rm -rf ~/sliced")
 
 
 def three_as_kept(back: dict[str, tuple[int, int]]) -> bool:
