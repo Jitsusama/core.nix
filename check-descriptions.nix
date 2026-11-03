@@ -1028,7 +1028,8 @@
     Reopen Them All puts each session back on its own screen, found by its maker, model and serial
     rather than its connector, and on the one it was kept on of two alike, a gone screen's
     workspaces after the one in use's and then to it, each to its rank, once it's back, and each
-    window that reopens itself by its program and title, beside the windows kept with it
+    window that reopens itself by its program and title, beside the windows kept with it, under
+    the one kept above it in its column, and a window already where it goes left there
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship

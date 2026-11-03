@@ -161,6 +161,35 @@ QtObject {
         expect("first on its screen when nothing sat below it",
             Places.whereBack({ screen: panel, output: "eDP-1", workspace: 2, column: 1, tile: 1 },
                 beside), { make: true, output: null, index: 1 });
+        expect("one kept under another goes under it",
+            Places.whereBack({ screen: monitor, output: "DP-4", workspace: 5, column: 2, tile: 2 },
+                beside), { join: 24, after: 4, under: true });
+
+        // Whether each window back is where it goes already, so the pass
+        // after Reopen Them All moves only what Joel's focus or a screen
+        // coming and going sent somewhere else.
+        const now = (id, idx, column) => ({ workspace: { id: 20 + idx, idx, output: "DP-4" },
+            column });
+        const after4 = { join: 24, after: 4 };
+        expect("a window just right of the one it goes after holds",
+            Places.holds(after4, now(3, 4, 4), beside), true);
+        expect("one left of it doesn't", Places.holds(after4, now(3, 4, 1), beside), false);
+        expect("nor one on another workspace",
+            Places.holds(after4, now(3, 3, 4), beside), false);
+        expect("one under another holds in its column",
+            Places.holds({ join: 24, after: 4, under: true }, now(3, 4, 3), beside), true);
+        expect("one just left of the one it goes before holds",
+            Places.holds({ join: 24, before: 4 }, now(3, 4, 2), beside), true);
+        const made = { make: true, output: "DP-4", index: 5 };
+        expect("one on a workspace of its own holds at its index or after",
+            Places.holds(made, now(6, 6, 1), beside), true);
+        expect("but not before it", Places.holds(made, now(6, 2, 1), beside), false);
+        expect("nor among the others", Places.holds(made, now(6, 5, 1), beside), false);
+        expect("a window on the workspace it joins goes just right of the one it follows",
+            [Places.columnTo(after4, 1, beside), Places.columnTo(after4, 5, beside)], [3, 4]);
+        expect("or just left of the one it goes before",
+            [Places.columnTo({ join: 24, before: 4 }, 1, beside),
+                Places.columnTo({ join: 24, before: 4 }, 5, beside)], [2, 3]);
 
         if (failures.length > 0) {
             for (const failure of failures)

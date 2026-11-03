@@ -1049,6 +1049,98 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     desktop.as_account("rm -rf ~/east ~/north ~/west")
 
 
+def test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile(
+    desktop: Desktop,
+) -> None:
+    """Each session goes back where it sat while Joel moves the focus and the workspace."""
+    machine = desktop.machine
+    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    arranged = f"{folder}/session-arrangement.json"
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    outputs = json.loads(desktop.as_account("niri msg --json outputs"))
+    output, described = next(iter(outputs.items()))
+    screen = " ".join(
+        part for part in (described["make"], described["model"], described["serial"]) if part
+    )
+
+    # Two workspaces' sessions: west, then east with one under it, then
+    # north and south. niri opens a window beside the column focused, so
+    # while they open, Joel goes back to the first column of one workspace
+    # and then the other, as a click or a key would.
+    def place(workspace: int, column: int, tile: int = 1) -> dict[str, Any]:
+        return {
+            "screen": screen,
+            "output": output,
+            "workspace": workspace,
+            "column": column,
+            "tile": tile,
+        }
+
+    where = {
+        "01c5-west": place(1, 1),
+        "01c5-east": place(1, 2),
+        "01c5-under": place(1, 2, 2),
+        "01c5-north": place(2, 1),
+        "01c5-south": place(2, 2),
+    }
+    lost = {
+        "v": 1,
+        "boot": "a-boot-before",
+        "sessions": [
+            {"id": one, "title": one[5:].title(), "cwd": f"/home/jitsusama/{one[5:]}"}
+            for one in where
+        ],
+    }
+    desktop.as_account(
+        "touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/west ~/east ~/under ~/north ~/south"
+    )
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    kept(desktop, arranged, {"v": 1, "boots": {"a-boot-before": where}})
+    opening = "niri msg --json windows | grep -o 'pi --session 01c5-' | wc -l"
+    meddling = (
+        f"for i in $(seq 600); do [ $({opening}) = 5 ] && break;"
+        " niri msg action focus-workspace $((i % 2 + 1)); niri msg action focus-column-first;"
+        " sleep 0.05; done"
+    )
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("to reopen", selecting="Sessions to Reopen")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        desktop.as_account(f"setsid sh -c {shlex.quote(meddling)} > /dev/null 2>&1 &")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"[ $({opening}) = 5 ]"), timeout=dt.timedelta(seconds=90)
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+        deadline = time.monotonic() + 30
+        while not sat_as_kept(back := sat(desktop, "01c5-")) and time.monotonic() < deadline:
+            time.sleep(1)
+        assert sat_as_kept(back), back
+    finally:
+        desktop.as_account(
+            "pkill -f 'focus-column-firs[t]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
+            " pkill -f 'sleep 60[0]'"
+        )
+        kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        desktop.as_account("rm -rf ~/west ~/east ~/under ~/north ~/south")
+
+
+def sat_as_kept(back: dict[str, tuple[int, int]]) -> bool:
+    """Whether the five sessions sit as kept: west, then east over under, then north and south."""
+    if len(back) != 5:  # noqa: PLR2004
+        return False
+    west, east, under = back["01c5-west"], back["01c5-east"], back["01c5-under"]
+    north, south = back["01c5-north"], back["01c5-south"]
+    return (
+        west[0] == east[0] == under[0]
+        and east[1] == under[1] == west[1] + 1
+        and north[0] == south[0] == west[0] + 1
+        and south[1] == north[1] + 1
+    )
+
+
 def stand_in(desktop: Desktop, app: str, title: str) -> None:
     """Open a window of another program's, as niri starts one, and wait for it."""
     desktop.as_account(

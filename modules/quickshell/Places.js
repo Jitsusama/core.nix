@@ -143,7 +143,8 @@ function matchOther(kept, used, app, title) {
 // holding one kept on its screen at its number (`join`): just after the
 // nearest kept left of it (`after`), else just before the nearest kept
 // right of it (`before`), by window rather than by column number, since a
-// window Joel opened since can sit among them. Else it's given a workspace
+// window Joel opened since can sit among them. One kept below another in its
+// column goes under it (`under`). Else it's given a workspace
 // of its own (`make`), just after the one holding those kept at the next
 // number below on its screen (`output`, `index`), or first, on a screen
 // unknown, when none is.
@@ -155,10 +156,14 @@ function whereBack(at, beside) {
         const into = joined.workspace;
         const kin = there
             .filter(one => one.workspace.id === into.id && one.at.workspace === at.workspace)
-            .sort((a, b) => a.at.column - b.at.column || a.column - b.column);
-        const left = kin.filter(one => one.at.column < at.column);
+            .sort((a, b) => a.at.column - b.at.column || tileOf(a.at) - tileOf(b.at)
+                || a.column - b.column);
+        const left = kin.filter(one => one.at.column < at.column
+            || one.at.column === at.column && tileOf(one.at) < tileOf(at));
         if (left.length > 0) {
-            return { join: into.id, after: left[left.length - 1].id };
+            const after = left[left.length - 1];
+            return after.at.column === at.column ? { join: into.id, after: after.id, under: true }
+                : { join: into.id, after: after.id };
         }
         return { join: into.id, before: kin[0].id };
     }
@@ -169,4 +174,45 @@ function whereBack(at, beside) {
         return { make: true, output: null, index: 1 };
     }
     return { make: true, output: below.workspace.output, index: below.workspace.idx + 1 };
+}
+
+// A kept place's tile in its column, the first when none was kept, as for
+// the windows of other programs kept before tiles were.
+function tileOf(at) {
+    return at.tile ?? 1;
+}
+
+// Whether a window is where whereBack says already, so nothing need move:
+// `now` is the workspace it's on and its column there, and `beside` the
+// windows back before it, as whereBack had them. One given a workspace of
+// its own holds while it's alone there among them, on the screen named
+// (`output`, when one is), and no nearer the start than its index, since a
+// workspace of Joel's can sit before it. Checked for each window back, the
+// lowest kept first, after Reopen Them All, since a window can open
+// anywhere while Joel moves the focus or a screen comes and goes.
+function holds(where, now, beside) {
+    if (where.make) {
+        return !beside.some(one => one.workspace.id === now.workspace.id)
+            && (where.output === null || now.workspace.output === where.output)
+            && now.workspace.idx >= where.index;
+    }
+    if (now.workspace.id !== where.join) {
+        return false;
+    }
+    const next = beside.find(one => one.id === (where.after ?? where.before));
+    if (where.after !== undefined) {
+        return now.column === next.column + (where.under ? 0 : 1);
+    }
+    return now.column === next.column - 1;
+}
+
+// The column, from 1, a window on the workspace whereBack joins goes to:
+// just right of the one it goes after, or just left of the one it goes
+// before, counted as niri counts once the window has left its own column.
+function columnTo(where, column, beside) {
+    const next = beside.find(one => one.id === (where.after ?? where.before));
+    if (where.after !== undefined) {
+        return column > next.column ? next.column + 1 : next.column;
+    }
+    return column < next.column ? next.column - 1 : next.column;
 }

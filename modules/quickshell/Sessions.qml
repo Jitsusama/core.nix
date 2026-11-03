@@ -526,33 +526,29 @@ Singleton {
         target: Niri
         function onLayoutsChanged() {
             arranging.restart();
+            root.placeOpened();
+            root.settleReopenedSoon();
         }
         // A screen coming or going changes the workspaces alone, and one
-        // that comes may be where workspaces wait to go (comeHome).
+        // that comes may be where workspaces wait to go (comeHome), or
+        // where a session reopened meanwhile goes.
         function onWorkspacesChanged() {
             if (Object.keys(root.awayFrom).length > 0)
                 arranging.restart();
+            root.placeOpened();
+            root.settleReopenedSoon();
         }
-        // The window a session being reopened opens in. niri lists it
-        // before it focuses it, and focusing it focuses its workspace, so
-        // the next is only begun once it has.
+        // The window a session being reopened opens in, placed once niri
+        // has laid it out, and the next begun.
         function onWindowOpenedOrChanged(window) {
             if (root.reopening && window.app_id === "kitty")
                 root.reopenedWindow(window.id);
-            root.reopenedYet();
+            root.placeOpened();
+            root.settleReopenedSoon();
             if (root.puttingBack !== null && !root.placingNow())
                 root.putBack(window);
         }
-        function onFocusedChanged() {
-            root.reopenedYet();
-        }
     }
-    // Whether the session being reopened is open and focused, when one
-    // that sat below another in its column goes back into the column to
-    // its left, as it was, and the next is begun. kitty can ask niri to
-    // focus the window before last after this one's workspace was
-    // focused, with the activation token niri gave it, so a window that
-    // opened on another workspace is moved onto its own.
     // Whose a new window is. kitty opens them in the order they were
     // asked for, so one that comes after its session was given up on is
     // that session's, the oldest given up on first, and goes to its own
@@ -568,13 +564,19 @@ Singleton {
         if (late && !late.known.includes(key)) {
             going.taken.push(key);
             going.late = going.late.slice(1);
-            if (late.into !== null)
-                Niri.act({ MoveWindowToWorkspace: { window_id: id,
-                    reference: { Id: late.into }, focus: false } });
-            root.noteAway(late.away, late.into);
             root.besideKept(id, late.kept);
-            if (going.late.length === 0 && going.queue.length === 0 && !going.waiting)
-                reopening = null;
+            const entry = { id, at: late.at, away: late.away };
+            const running = going.queue.length > 0 || going.waiting !== null || going.looking;
+            // Placed now while the rest are still being reopened, and by
+            // the check after them; once that's done, by its own check.
+            if (running && entry.at !== null)
+                root.placeSession(entry, root.besideOf(going.placed));
+            if (entry.at !== null)
+                going.placed.push(entry);
+            if (going.settling)
+                root.settleReopenedSoon();
+            else if (!running)
+                root.settleReopened();
             return;
         }
         const waiting = going.waiting;
@@ -583,21 +585,163 @@ Singleton {
             waiting.opened = id;
         }
     }
-    function reopenedYet() {
+    // The session being reopened, once its window is laid out: put where
+    // it was kept, beside the sessions back before it, and the next begun.
+    // It's placed by those, as niri has them now, never by what's focused
+    // or by a workspace's id found before it opened: niri opens a window
+    // beside whatever column is focused, which Joel moves as he clicks,
+    // types or switches workspaces meanwhile, and a screen that drops and
+    // comes back makes its workspaces again. At the 21:55 boot on
+    // 2026-11-02 the monitor did so mid-reopen, and the first session of
+    // its second workspace stayed at the end of its first. One with no
+    // place kept stays beside Joel, where it opened.
+    function placeOpened() {
         const waiting = reopening?.waiting;
-        if (!waiting || waiting.opened === null || Niri.focused !== waiting.opened)
+        if (!waiting || waiting.opened === null || !Niri.windows[waiting.opened])
             return;
-        const opened = Niri.windows[waiting.opened];
-        if (waiting.into !== null && opened && opened.workspace_id !== waiting.into)
-            Niri.act({ MoveWindowToWorkspace: { window_id: waiting.opened,
-                reference: { Id: waiting.into }, focus: true } });
-        if (waiting.tile > 1)
-            Niri.act({ ConsumeOrExpelWindowLeft: { id: waiting.opened } });
-        root.noteAway(waiting.away, waiting.into ?? opened?.workspace_id);
-        root.besideKept(waiting.opened, waiting.kept);
+        const entry = { id: waiting.opened, at: waiting.at, away: waiting.away };
+        if (entry.at !== null) {
+            if (root.placeSession(entry, root.besideOf(reopening.placed)) === "waiting")
+                return;
+            reopening.placed.push(entry);
+        }
+        root.besideKept(entry.id, waiting.kept);
         reopening.waiting = null;
         reopenPatience.stop();
         reopenSoon();
+    }
+    // Puts a session reopened where whereBack says, beside the sessions
+    // back before it (Places.js), when it isn't there already: "held" when
+    // it was, "moved", or "waiting" while niri hasn't laid it out or its
+    // screen has no workspace yet, as while a screen comes back.
+    function placeSession(entry, beside) {
+        const window = Niri.windows[entry.id];
+        const workspace = window ? Niri.workspace(window.workspace_id) : null;
+        const column = window?.layout?.pos_in_scrolling_layout?.[0];
+        if (!workspace || column === undefined)
+            return "waiting";
+        const found = Places.whereBack(entry.at, beside);
+        const where = found.make ? Object.assign({}, found,
+            { output: found.output ?? entry.at.output }) : found;
+        if (Places.holds(where, { workspace, column }, beside)) {
+            root.noteAway(entry.away, workspace.id);
+            return "held";
+        }
+        const into = root.moveTo(window, where, workspace, column, beside);
+        if (into === null)
+            return "waiting";
+        root.noteAway(entry.away, into);
+        return "moved";
+    }
+    // Moves a window where whereBack says, by its id and its neighbours'
+    // rather than by what's focused, and answers the workspace it goes to,
+    // or null when its screen has none to take it. niri puts a window moved
+    // to a workspace just right of the column active there, so the one it
+    // goes beside is focused first; and one on that workspace already is
+    // moved to its column by number, since a move to the workspace it's on
+    // does nothing. These focus, so Joel's window is focused again once
+    // every window is placed.
+    function moveTo(window, where, workspace, column, beside) {
+        const id = window.id;
+        if (where.make) {
+            const alone = Object.values(Niri.windows).every(other => other.id === id
+                || other.workspace_id !== workspace.id);
+            const into = alone && workspace.output === where.output ? workspace.id
+                : root.lastOn(where.output);
+            if (into === null)
+                return null;
+            if (into !== workspace.id)
+                Niri.act({ MoveWindowToWorkspace: { window_id: id, reference: { Id: into },
+                    focus: true } });
+            Niri.act({ MoveWorkspaceToIndex: { index: where.index, reference: { Id: into } } });
+            return into;
+        }
+        if (workspace.id === where.join) {
+            Niri.act({ FocusWindow: { id } });
+            Niri.act({ MoveColumnToIndex: { index: Places.columnTo(where, column, beside) } });
+        } else {
+            Niri.act({ FocusWindow: { id: where.after ?? where.before } });
+            Niri.act({ MoveWindowToWorkspace: { window_id: id, reference: { Id: where.join },
+                focus: true } });
+            if (where.before !== undefined) {
+                Niri.act({ FocusWindow: { id } });
+                Niri.act({ MoveColumnLeft: {} });
+            }
+        }
+        if (where.under)
+            Niri.act({ ConsumeOrExpelWindowLeft: { id } });
+        return where.join;
+    }
+
+    // Once the last is placed, each session reopened is checked again, the
+    // lowest kept first, beside those kept before it, and the first not
+    // where it goes is moved; then the next round, once niri has said
+    // what moved. A window that opened while Joel moved the focus, or that
+    // a screen coming back moved, so goes back. It ends when every one
+    // holds, or after a round for each and a few more, so two that can't
+    // both be had never move back and forth.
+    function settleReopened() {
+        if (!reopening)
+            return;
+        reopening.settling = true;
+        reopening.rounds = 0;
+        if (reopening.back === null)
+            reopening.back = Niri.current;
+        reopenSettling.interval = 150;
+        reopenSettling.restart();
+    }
+    function settleReopenedSoon() {
+        if (!reopening?.settling)
+            return;
+        reopenSettling.interval = 150;
+        reopenSettling.restart();
+    }
+    Timer {
+        id: reopenSettling
+        onTriggered: root.settleNextReopened()
+    }
+    function settleNextReopened() {
+        const going = reopening;
+        if (!going?.settling)
+            return;
+        const ordered = going.placed.filter(one => Niri.windows[one.id])
+            .sort((a, b) => root.keptOrder(a.at, b.at));
+        if (going.rounds < ordered.length + 3) {
+            for (let at = 0; at < ordered.length; at += 1) {
+                const beside = root.besideOf(ordered.slice(0, at));
+                if (root.placeSession(ordered[at], beside) === "moved") {
+                    going.rounds += 1;
+                    // Sooner once niri says what moved (settleReopenedSoon).
+                    reopenSettling.interval = 1000;
+                    reopenSettling.restart();
+                    return;
+                }
+            }
+        }
+        root.reopenDone();
+    }
+    // What waited on the last being placed: windows that reopen themselves
+    // put back, a gone screen's workspaces taken to it if it came
+    // meanwhile, and Joel's window focused again. Kept while a window given
+    // up on may still come, to place it.
+    function reopenDone() {
+        const going = reopening;
+        going.settling = false;
+        reopenSettling.stop();
+        root.putBackOpen();
+        arranging.restart();
+        if (going.back !== null)
+            Niri.act({ FocusWindow: { id: going.back } });
+        going.back = null;
+        if (going.late.length === 0)
+            reopening = null;
+    }
+    // The order places are kept in: a screen and its workspaces in the
+    // order niri numbers them, each column left to right, each tile top
+    // down.
+    function keptOrder(a, b) {
+        return a.output.localeCompare(b.output) || a.workspace - b.workspace
+            || a.column - b.column || a.tile - b.tile;
     }
 
     // The next is begun no sooner than this after the last was, since
@@ -627,7 +771,7 @@ Singleton {
     // folder, back where it sat: those held on another machine joined
     // again at once, then this machine's one at a time, a screen and its
     // workspaces in the order niri numbers them and each column after the
-    // last, since niri opens a window right of the focused column. Each
+    // last, each placed beside those back before it (placeOpened). Each
     // waits for niri to open the one before, or half a minute if it never
     // does, and for two seconds after it began (reopenPace). One with
     // nowhere kept opens beside where Joel was, after the rest, and Joel
@@ -657,8 +801,7 @@ Singleton {
     // gone screen's after the one in use's (Places.js), then in order.
     function reopenHere(here, gone, kept, told) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
-            : a.at.output.localeCompare(b.at.output) || a.at.workspace - b.at.workspace
-                || a.at.column - b.at.column || a.at.tile - b.at.tile;
+            : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
         const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null);
         const queue = here.map((one, at) => ({ one, at: places[at], kept: keptPlaces[at], gone,
@@ -675,7 +818,10 @@ Singleton {
             waiting: null,
             looking: false,
             late: [],
-            taken: []
+            taken: [],
+            placed: [],
+            settling: false,
+            rounds: 0
         };
         reopenNext();
     }
@@ -717,18 +863,14 @@ Singleton {
             : `taken ${given.length} of ${listed.length}`;
     }
     function reopenNext() {
-        const next = reopening?.queue[0];
-        if (!next) {
-            // The last is placed, so what waited on that is done now:
-            // windows that reopen themselves put back, and a gone screen's
-            // workspaces taken to it if it came meanwhile.
+        if (!reopening) {
             root.putBackOpen();
             arranging.restart();
-            if (reopening && reopening.back !== null)
-                Niri.act({ FocusWindow: { id: reopening.back } });
-            // Kept while a window given up on may still come, to place it.
-            if (reopening && reopening.late.length === 0)
-                reopening = null;
+            return;
+        }
+        const next = reopening.queue[0];
+        if (!next) {
+            root.settleReopened();
             return;
         }
         reopening.queue = reopening.queue.slice(1);
@@ -740,6 +882,8 @@ Singleton {
                 reopenNext();
                 return;
             }
+            // Where it goes is focused first, so it most often opens there
+            // and is seldom seen to move.
             if (next.at) {
                 // A screen gone was given the screen in use (Places.js);
                 // with none known, it stays on the one in use.
@@ -750,8 +894,11 @@ Singleton {
             } else if (reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
-            reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
-                into: next.at ? root.into(next.at) : null, opened: null,
+            // Placed by its connector and the number it's given now, so it
+            // goes beside those given the same screen, a gone one's too.
+            const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
+                column: next.at.column, tile: next.at.tile ?? 1 } : null;
+            reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null,
                 away: next.at?.away ?? null, kept: next.kept ?? null };
             reopenStartedAt = Date.now();
             reopened(next.one, next.one.cwd, next.told);
@@ -764,7 +911,8 @@ Singleton {
     // answer to where it's called unqualified.
     function placingNow() {
         return screensWaiting.length > 0 || reopening !== null
-            && (reopening.queue.length > 0 || reopening.waiting !== null || reopening.looking);
+            && (reopening.queue.length > 0 || reopening.waiting !== null || reopening.looking
+                || reopening.settling);
     }
 
     // Workspaces given the screen in use in place of a kept screen that was
@@ -854,23 +1002,18 @@ Singleton {
             return false;
         going.used.push(index);
         const at = going.kept[index];
-        const where = Places.whereBack(at, root.besideBack(going));
-        const output = where.output ?? Places.connectorOf(at, screens) ?? Niri.workspace()?.output;
-        const into = where.make ? root.lastOn(output) : where.join;
-        if (into !== null && into !== undefined) {
-            // niri puts a window moved to a workspace just right of the
-            // column active there, so its neighbour is focused first.
-            if (!where.make)
-                Niri.act({ FocusWindow: { id: where.after ?? where.before } });
-            Niri.act({ MoveWindowToWorkspace: { window_id: window.id, reference: { Id: into },
-                focus: true } });
-            if (where.make)
-                Niri.act({ MoveWorkspaceToIndex: { index: where.index, reference: { Id: into } } });
-            else if (where.before !== undefined)
-                Niri.act({ MoveColumnLeft: {} });
-            if (Places.connectorOf(at, screens) === undefined)
-                root.noteAway({ screen: at.screen || at.output, workspace: at.workspace }, into);
-        }
+        const beside = root.besideOf(going.back);
+        const found = Places.whereBack(at, beside);
+        const output = found.output ?? Places.connectorOf(at, screens)
+            ?? Niri.workspace()?.output ?? null;
+        const where = found.make ? Object.assign({}, found, { output }) : found;
+        const workspace = Niri.workspace(window.workspace_id);
+        const column = window.layout.pos_in_scrolling_layout[0];
+        let into = workspace?.id ?? null;
+        if (workspace && !Places.holds(where, { workspace, column }, beside))
+            into = root.moveTo(window, where, workspace, column, beside);
+        if (into !== null && Places.connectorOf(at, screens) === undefined)
+            root.noteAway({ screen: at.screen || at.output, workspace: at.workspace }, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
@@ -883,11 +1026,12 @@ Singleton {
         if (puttingBack !== null && kept)
             puttingBack.back.push({ id, at: kept });
     }
-    // Each window back from the boot being put back, its sessions and the
-    // windows put back so far, by their kept places, as niri has them now.
-    function besideBack(going) {
+    // Each window given, by its kept place, as niri has it now: those back
+    // from the boot being put back, its sessions and the windows put back so
+    // far, or the sessions Reopen Them All placed.
+    function besideOf(windows) {
         const beside = [];
-        for (const one of going.back) {
+        for (const one of windows) {
             const window = Niri.windows[one.id];
             const workspace = window ? Niri.workspace(window.workspace_id) : null;
             if (workspace)
@@ -904,18 +1048,10 @@ Singleton {
         return last && last.active_window_id === null ? last.id : null;
     }
 
-    // The workspace a kept place names, as niri finds it by its number:
-    // on its screen, or the one in use when that's gone, and the empty one
-    // after the last when the number is past them. Its id, since a window
-    // opening on the empty one makes another after it.
-    function into(at) {
-        const every = Object.values(Niri.workspaces);
-        const screen = every.some(one => one.output === at.output) ? at.output
-            : Niri.workspace()?.output;
-        const its = every.filter(one => one.output === screen).sort((a, b) => a.idx - b.idx);
-        const found = its.find(one => one.idx === at.workspace) ?? its[its.length - 1];
-        return found ? found.id : null;
-    }
+    // A session whose window never opens in half a minute is given up on,
+    // and placed if it comes later (reopenedWindow). One whose window opened
+    // but couldn't be placed yet, as while its screen is away, is left to
+    // the check once the last is placed.
     Timer {
         id: reopenPatience
         interval: 30000
@@ -923,6 +1059,9 @@ Singleton {
             const waiting = root.reopening?.waiting;
             if (waiting && waiting.opened === null)
                 root.reopening.late.push(waiting);
+            else if (waiting && waiting.at !== null)
+                root.reopening.placed.push({ id: waiting.opened, at: waiting.at,
+                    away: waiting.away });
             if (root.reopening)
                 root.reopening.waiting = null;
             root.reopenNext();
