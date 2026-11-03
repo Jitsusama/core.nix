@@ -798,8 +798,7 @@ impl Walker<'_> {
 
     /// A picture: a file beside the page is put in the world and set at its
     /// own size, as GitHub shows it, no wider than the measure. One that
-    /// can't be read, or is on the web, stands as a box its size saying
-    /// what it shows.
+    /// can't be read, or is on the web, says what it shows in its place.
     fn picture(&mut self, node: &Handle) {
         let alt = attr(node, "alt").unwrap_or_default();
         let src = attr(node, "src").unwrap_or_default();
@@ -823,18 +822,8 @@ impl Walker<'_> {
             );
             return;
         }
-        let w = given_w.unwrap_or(320.0);
-        let h = given_h.unwrap_or(w * 0.5);
         self.caption = None;
-        self.set_picture(
-            node,
-            &format!(
-                "#picture({}, {:.1}pt, {:.1}pt)",
-                literal(&alt),
-                w * 0.75,
-                h * 0.75
-            ),
-        );
+        self.set_picture(node, &format!("#picture({})", literal(&alt)));
     }
 
     /// A picture in a paragraph stays in its line; one standing among the
@@ -1057,12 +1046,8 @@ mod tests {
         };
         let alone = walk("![What it shows](missing.png)\n");
         assert!(
-            alone.contains("#alone[#picture(\"What it shows\""),
-            "{alone}"
-        );
-        assert!(
-            alone.contains("pt)][]"),
-            "a box says its words, so it has no caption: {alone}"
+            alone.contains("#alone[#picture(\"What it shows\")][]"),
+            "one that can't be shown says its words once, with no caption: {alone}"
         );
         let among = walk("Words ![What it shows](missing.png) and more.\n");
         assert!(!among.contains("#alone"), "{among}");

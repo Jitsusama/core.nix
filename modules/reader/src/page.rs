@@ -261,7 +261,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // closure takes the styles `layout` was called with.
 #let codeblock(lang: "", first: 0, longest: 0, body) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, {
  set text(font: face.code, size: code-size, top-edge: "cap-height", bottom-edge: "baseline", hyphenate: false)
- set par(leading: code-line - 0.73 * code-size, justify: false, spacing: code-line - 0.73 * code-size)
+ set par(leading: code-line - code-caps * code-size, justify: false, spacing: code-line - code-caps * code-size)
  layout(size => {
   let advance = measure([0]).width
   let width = calc.min(calc.max(size.width, longest * advance + 2 * code-inset.x), size.width + 2 * spread)
@@ -269,35 +269,39 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   let label = if lang == "" { none } else { eyebrow(lang) }
   let alone = label != none and first * advance + measure(label).width + code-inset.x > inner
   let lines = {
-    if alone { block(width: 100%, below: code-line - 0.73 * code-size, align(right, label)) }
+    if alone { block(width: 100%, below: code-line - code-caps * code-size, align(right, label)) }
     body
   }
   let h = measure(block(width: inner, lines)).height
   let tall = calc.ceil((h + 2 * code-inset.y) / half) * half
   let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset.x, y: (tall - h) / 2), {
-    if label != none and not alone { place(top + right, dy: 0.73 * (code-size - 8.4pt), label) }
+    if label != none and not alone { place(top + right, dy: code-caps * (code-size - 8.4pt), label) }
     lines
   })
   let out = (width - size.width) / 2
   if out > 0pt { pad(left: -out, right: -out, shown) } else { shown }
  })
 })
-#let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, inset: 12pt, align(center + horizon, text(fill: ink.muted, hyphenate: false, alt)))
+// A picture that can't be shown says what it shows, in the italic, muted
+// and never broken, as a caption would.
+#let picture(alt) = text(style: "italic", fill: ink.muted, hyphenate: false, alt)
 // A picture standing alone is centred, as wide as it is up to the measure
 // and past it as far as a table spreads. Its height rounds up to the half
 // line so the words after it stay on the grid, and its alt text is its
-// caption, in the italic, muted and centred, a line under it.
+// caption, in the italic, muted and centred, a line under it. It sits at
+// the foot of its rounded height, so a line of words in its place, as a
+// picture that can't be shown is, stands on a line too.
 #let alone(body, caption) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, pad(left: -spread, right: -spread, layout(size => {
   let shown = align(center, body)
   let h = measure(block(width: size.width, shown)).height
-  block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, shown)
+  block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, align(bottom, shown))
   if caption != [] {
     block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(style: "italic", fill: ink.muted, hyphenate: false, caption))))
   }
 })))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true
-#let pic(path, alt, w) = if not pictures { picture(alt, 320pt, 160pt) } else {
+#let pic(path, alt, w) = if not pictures { picture(alt) } else {
   box(layout(size => {
     let natural = if w == none { measure(image(path, alt: alt)).width } else { w }
     image(path, alt: alt, width: calc.min(natural, size.width))
