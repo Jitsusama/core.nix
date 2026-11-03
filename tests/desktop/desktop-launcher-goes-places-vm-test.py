@@ -4445,6 +4445,13 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
         "Battery", "Power Profile", "Keep Awake", "Sleep", "Lock", "Log Out", "Reboot",
         "Power Off",
     ]  # fmt: skip
+    # Machine lists Lag only once lag-watch has written its first ten
+    # seconds, and reads it as it's stepped into, never after. In a session
+    # that has long gone by; run first, this subtest can beat it there.
+    machine.wait_until_succeeds(
+        desktop.in_session('test -s "$XDG_RUNTIME_DIR/lag-watch/status.json"'),
+        timeout=STARTING,
+    )
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
