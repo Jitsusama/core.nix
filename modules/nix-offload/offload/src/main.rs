@@ -137,6 +137,9 @@ const DIR: &str = "/run/nix-offload";
 /// The folder of the lender whose builder takes only VM tests, when one
 /// runs, as `serve --dir` it with `--only-there`.
 const VM_DIR: &str = "/run/nix-offload-vm";
+/// The folder of the lender whose builder takes what the first can't,
+/// when one runs, as `serve --dir` it with `--only-there`.
+const MORE_DIR: &str = "/run/nix-offload-more";
 /// Where the machine queue reads the builder being made, to hold the
 /// builds it could take until Nix can see it.
 const LENDING: &str = "/run/nix-offload/lending";
@@ -380,14 +383,25 @@ fn there(arguments: &[String]) -> ExitCode {
         }
         left => (None, left),
     };
-    for (dir, part) in [(&vm_dir, vm), (&dir, left)] {
+    // The rest goes to a second builder while the first is full, when a
+    // lender runs to make one.
+    let more_dir =
+        env::var_os("NIX_OFFLOAD_MORE_DIR").map_or_else(|| PathBuf::from(MORE_DIR), PathBuf::from);
+    let first_dir = dir;
+    let left_dir = match &left {
+        Some(_) if there::lends(&more_dir) => more_than(&first_dir, &more_dir, &scratch),
+        _ => first_dir.clone(),
+    };
+    for (dir, part) in [(&vm_dir, vm), (&left_dir, left)] {
         let Some(part) = &part else { continue };
         // Asked for and waited on, rather than built here, while a lender
-        // runs: a builder stands about 70 s after it's asked for.
-        let store = fs::read_to_string(dir.join("store"))
-            .ok()
-            .filter(|store| !store.trim().is_empty())
-            .or_else(|| there::waited(dir, there::WAITING));
+        // runs: a builder stands about 70 s after it's asked for. One
+        // asked for beside the first that doesn't come leaves the build
+        // to the first.
+        let (dir, store) = match standing(dir).or_else(|| there::waited(dir, there::WAITING)) {
+            None if *dir == more_dir => (&first_dir, standing(&first_dir)),
+            store => (dir, store),
+        };
         // Waited for from when the builder was first lost.
         let lost = std::cell::Cell::new(None);
         let again = || {
@@ -400,6 +414,40 @@ fn there(arguments: &[String]) -> ExitCode {
         });
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
+}
+
+/// The lender's folder a build goes to: `more`, the second's, while the
+/// first's builder is full, as `there::to_second` decides, else `first`. A build waits for the first
+/// while none stands, as it always has.
+fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
+    let Some(stands) = standing(first) else {
+        return first.to_owned();
+    };
+    let busy = |store: String| there::pressure(&store, scratch, "ssh");
+    let waits = busy(stands);
+    let second = || {
+        standing(more).map_or(there::Second::Unlent, |store| {
+            there::Second::Stands(busy(store))
+        })
+    };
+    match waits {
+        // The second is read only once the first is full.
+        Some(waits) if waits >= there::FULL && there::to_second(Some(waits), &second()) => {
+            eprintln!(
+                "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its CPUs, \
+                 so this goes to a second"
+            );
+            more.to_owned()
+        }
+        _ => first.to_owned(),
+    }
+}
+
+/// The store a lender's folder names while its builder stands.
+fn standing(dir: &Path) -> Option<String> {
+    fs::read_to_string(dir.join("store"))
+        .ok()
+        .filter(|store| !store.trim().is_empty())
 }
 
 /// `there --changed`: changed-checks run for the tree here on the lent

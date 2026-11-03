@@ -152,6 +152,34 @@ in
         the one lent.
       '';
     };
+    more = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.submodule {
+          options = {
+            prefix = lib.mkOption {
+              type = lib.types.str;
+              description = "What every such builder's name starts with, apart from the others'.";
+            };
+            environment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              description = ''
+                What the helper is told for this builder, such as the port its
+                way to it takes, so it holds one beside the others'.
+              '';
+            };
+          };
+        }
+      );
+      default = null;
+      description = ''
+        Another builder beside the one lent, lent by the same helper only while
+        a `nix-offload there` build waits on it, which such a build is sent to
+        while the first's CPUs are full, so it takes only what overflows and
+        is given back idle once the first has room. Without it, every such
+        build goes to the one lent.
+      '';
+    };
     standing = lib.mkOption {
       type = lib.types.listOf builder;
       default = [ ];
@@ -319,6 +347,22 @@ in
           ]
         );
         Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.vmTests.environment;
+      }
+      // stopping;
+      Install.WantedBy = [ "default.target" ];
+    };
+
+    systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
+      Unit.Description = "Lends another builder while the first is full and a build sent there waits on one";
+      Service = {
+        ExecStart = lib.concatStringsSep " " (
+          serving
+          ++ [
+            "--prefix ${cfg.more.prefix}"
+            "--dir /run/nix-offload-more --only-there"
+          ]
+        );
+        Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.more.environment;
       }
       // stopping;
       Install.WantedBy = [ "default.target" ];

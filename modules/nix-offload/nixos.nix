@@ -78,6 +78,8 @@
       # The folder of a second lender, for VM tests alone, whose files only
       # the account's `there` reads: Nix is never given its builder.
       "d /run/nix-offload-vm 0755 ${config.jitsusama.nix-offload.account} - -"
+      # And of a third, for what `there` sends while the first is full.
+      "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"
     ];
 
     # After /etc, which /etc/nix belongs to.
