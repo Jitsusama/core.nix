@@ -78,11 +78,12 @@ let
   data = "${config.xdg.dataHome}/tuple/0";
   settings = "${data}/settings";
 
+  # The call Joel's in, held for the shell (call/).
+  calls = pkgs.callPackage ./call/package.nix { };
+
   # Tuple's people for the shell (people.rs): who's in Tuple's contacts and
   # how they stand, said only as it changes, since Tuple prints all of
   # them, over a megabyte, on every change of anyone's presence.
-  calls = pkgs.callPackage ./call/package.nix { };
-
   following = pkgs.callPackage ../quickshell/pi-helper.nix {
     name = "tuple-people";
     source = ./people.rs;
