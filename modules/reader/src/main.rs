@@ -6,6 +6,7 @@
 //! The page is set again as the file is saved, and opens where it was last
 //! closed.
 //!
+//! reader                   shows a page of markdown files to read
 //! reader FILE              shows the file
 //! reader --measure FILE    runs the frame-time script and prints what
 //!                          each phase took, then closes
@@ -25,6 +26,7 @@ mod place;
 mod prompt;
 mod search;
 mod showing;
+mod start;
 mod text;
 mod theme;
 mod tiles;
@@ -1024,6 +1026,8 @@ impl App {
             eprintln!("link: {}", link.href);
         }
         match links::target(&link.href, &self.file) {
+            // A link to the page itself, with no heading, goes to its top.
+            links::Target::Here(anchor) if anchor.is_empty() => self.leap(0.0),
             links::Target::Here(anchor) => {
                 let heading = self
                     .words
@@ -2118,6 +2122,9 @@ impl App {
         {
             eprintln!("reader: can't say {} is shown: {error}", file.display());
         }
+        if !self.measuring && !start::is(&file) {
+            showing::opened(&file);
+        }
         if keys_logged() {
             eprintln!(
                 "opened: {}, heading {:.1} pt",
@@ -2858,6 +2865,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         [flag, file] if flag == "--measure" => (true, file.clone()),
         [file] => (false, file.clone()),
+        // Started with nothing to show, as from the launcher's Programs, it
+        // shows what there is to read.
+        [] => (false, start::page()?.to_string_lossy().into_owned()),
         _ => return Err("usage: reader [--measure] FILE, or reader --keys".into()),
     };
     let born = Instant::now();

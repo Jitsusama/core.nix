@@ -756,6 +756,48 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
     machine.succeed(f"rm {page}")
 
 
+def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -> None:
+    """The reader started from the launcher's Programs, with no file, shows what to read.
+
+    It used to exit at once, saying only how it's started, so choosing it did nothing. Now it
+    sets a page of markdown files, each a link, says it shows none of his files while that
+    page is up, and g x then the first link's letter opens that file in the same window.
+    """
+    machine = desktop.machine
+    notes = f"/home/{desktop.account}/notes"
+    desktop.as_account(
+        f"mkdir -p {notes} && printf '# To Read\\n\\nWords.\\n' > {notes}/to-read.md"
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("reader", selecting="Reader")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session('niri msg --json focused-window | grep -q \'"app_id":"reader"\''),
+        timeout=STARTING,
+    )
+    pid = desktop.as_account("pgrep -u $(id -u) -n -x .reader-wrapped").strip()
+    start = desktop.as_account("cat /run/user/$(id -u)/reader/start.md")
+    assert start.startswith("# What to Read"), start
+    assert f"(<{notes}/to-read.md>)" in start, start
+    desktop.photograph("reader-start")
+    showing = f"~/.local/state/reader/showing/{pid}"
+    machine.fail(desktop.in_session(f"test -s {showing}"))
+    first = re.search(r"\]\(<(.+?)>\)", start)
+    assert first, start
+    machine.send_key("g")
+    machine.send_key("x")
+    machine.send_key("a")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -qF {first.group(1)} {showing}"), timeout=timedelta(seconds=20)
+    )
+    machine.send_key("q")
+    machine.wait_until_fails(
+        f"pgrep -u {desktop.account} -f '[.]reader-wrapped'", timeout=timedelta(seconds=10)
+    )
+    machine.succeed(f"rm -r {notes}")
+
+
 def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Desktop) -> None:
     """The launcher's Sound moves sound to another output, and back."""
     machine = desktop.machine
