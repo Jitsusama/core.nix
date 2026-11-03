@@ -1164,6 +1164,7 @@
       ],
       "said": {
         "calm": "nothing's slowing the desktop",
+        "first": "measuring its first ten seconds",
         "several": "{count} things are slowing it",
         "answers": "in {typical}, at worst {worst}",
         "answersNote": "how long the desktop takes to answer a program, as a rule and at its slowest",

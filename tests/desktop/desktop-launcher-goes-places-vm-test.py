@@ -4585,6 +4585,46 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_lag_stands_in_its_place_until_its_first_ten_seconds_then_says_them(
+    desktop: Desktop,
+) -> None:
+    """Lag stands in its place in Machine until its first ten seconds, then says them."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # As just after a start, before lag-watch has written its first window
+    # (UTMDGL, 2026-11-03): Lag was missing from Machine then, and stayed
+    # missing while Machine was open, however long after the window came.
+    desktop.as_account(
+        "systemctl --user stop lag-watch.service && rm -f $XDG_RUNTIME_DIR/lag-watch/status.json"
+    )
+
+    def lag(shown: Json) -> Json | None:
+        """Lag's row as it's shown in its place after Disk, or None."""
+        rows = shown["rows"]
+        if "Disk" not in rows or rows[rows.index("Disk") + 1 :][:1] != ["Lag"]:
+            return None
+        return next(
+            (thing for thing in shown["things"] if str(thing["reads"]).startswith("Lag")), None
+        )
+
+    try:
+        desktop.answer("machine")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: (lag(shown) or {}).get("gone") is True)
+        # Its first ten seconds say themselves where it stands, with
+        # Machine still open.
+        desktop.as_account("systemctl --user start lag-watch.service")
+        desktop.launcher_until(
+            lambda shown: shown["path"] == ["Machine"] and (lag(shown) or {}).get("gone") is False,
+            timeout=dt.timedelta(seconds=40),
+        )
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account("systemctl --user start lag-watch.service")
+
+
 def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_something(
     desktop: Desktop,
 ) -> None:
