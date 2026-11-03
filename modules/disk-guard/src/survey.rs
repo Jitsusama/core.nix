@@ -125,6 +125,8 @@ pub struct World<'a> {
     /// share, as trees cloned with their builds inside do, count once:
     /// deleting them all frees those once.
     pub counted: RefCell<Counted>,
+    /// How many times the survey walked a root for targets and installs.
+    pub walked: usize,
 }
 
 /// How deep and how widely a workspace's writes are read.
@@ -154,16 +156,23 @@ pub fn within(config: &Config, folders: &[PathBuf]) -> Config {
 /// Every candidate the sources offer now.
 pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
     let mut offers = Vec::new();
+    // One walk finds targets and installs both, so a root the two sources
+    // share is walked once a survey, not once a source.
+    let mut walks = Walks::new();
     for (name, source) in &config.sources {
         match source {
             Source::Cargo { roots, depth } => {
                 for root in roots {
-                    trees_under(root, *depth, Kind::Target, world, &mut offers);
+                    if let Some((root, device, found)) = walks.under(root, *depth, world) {
+                        trees_under(&root, device, &found, Kind::Target, world, &mut offers);
+                    }
                 }
             }
             Source::Installs { roots, depth } => {
                 for root in roots {
-                    trees_under(root, *depth, Kind::Install, world, &mut offers);
+                    if let Some((root, device, found)) = walks.under(root, *depth, world) {
+                        trees_under(&root, device, &found, Kind::Install, world, &mut offers);
+                    }
                 }
             }
             Source::Cache {
@@ -505,19 +514,47 @@ fn offer_podman(name: &str, command: &Path, path: &Path, world: &World, offers: 
 /// The targets or installs beneath a root, and a target's variants. A
 /// tree a build is running in, or whose use can't be judged, offers
 /// nothing.
+/// The roots a survey has walked for targets and installs, by root and
+/// depth, with the device each lives on and what the walk found.
+type Walked = BTreeMap<(PathBuf, Option<u32>), Option<(u64, Vec<discover::Found>)>>;
+
+struct Walks(Walked);
+
+impl Walks {
+    fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    /// What a walk of `root` found, walking it only the first time asked.
+    /// None when the root is on no device or won't read.
+    fn under(
+        &mut self,
+        root: &Path,
+        depth: Option<u32>,
+        world: &mut World,
+    ) -> Option<(PathBuf, u64, Vec<discover::Found>)> {
+        let root = resolved(root);
+        let walked = self.0.entry((root.clone(), depth)).or_insert_with(|| {
+            let device = device(&root)?;
+            world.walked += 1;
+            let found = discover::walk(&root, depth.map(|depth| depth as usize)).ok()?;
+            Some((device, found))
+        });
+        walked
+            .as_ref()
+            .map(|(device, found)| (root, *device, found.clone()))
+    }
+}
+
 fn trees_under(
     root: &Path,
-    depth: Option<u32>,
+    device: u64,
+    found: &[discover::Found],
     kind: Kind,
     world: &mut World,
     offers: &mut Vec<Offer>,
 ) {
-    let root = &resolved(root);
-    let Some(device) = device(root) else { return };
-    let Ok(found) = discover::walk(root, depth.map(|depth| depth as usize)) else {
-        return;
-    };
-    for tree in found.into_iter().filter(|tree| tree.kind == kind) {
+    for tree in found.iter().filter(|tree| tree.kind == kind) {
         let checkout = match &tree.checkout {
             Checkout::At(dir) => Some(dir.as_path()),
             _ => None,
@@ -547,9 +584,9 @@ fn trees_under(
             used,
             finished,
             size: frees,
-            last_used: trees::last_used(&tree),
+            last_used: trees::last_used(tree),
         };
-        let Some(candidate) = trees::candidate(&tree, &seen, world.awake, world.now) else {
+        let Some(candidate) = trees::candidate(tree, &seen, world.awake, world.now) else {
             continue;
         };
         let action = match kind {

@@ -1915,6 +1915,7 @@ impl Guard {
             uses: &uses,
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
+            walked: 0,
         };
         let mut offers = survey(part.unwrap_or(&self.config), &mut world);
         let kept = std::mem::take(&mut world.kept);
