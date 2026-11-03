@@ -160,12 +160,12 @@ pub fn program(
         caption: None,
     };
     walker.children(&dom.document);
-    if walker.blocks > 0 {
+    let (titled, blocks) = (walker.titled, walker.blocks);
+    if blocks > 0 {
         end_with_its_mark(&mut out);
     }
     // The eyebrow goes before any block, so the first set carries it
     // wherever it starts, and sits closer over a title than over words.
-    let titled = walker.titled;
     out.insert_str(
         crate::page::template(world).len(),
         &format!("#about(titled: {titled})[#{}]\n", literal(about)),
