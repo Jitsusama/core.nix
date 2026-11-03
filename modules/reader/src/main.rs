@@ -1136,9 +1136,12 @@ impl App {
         if width == self.width {
             return;
         }
-        self.width = width;
-        if let Some(to) = self.reload_to.as_ref() {
-            let _ = to.send(Reload::Fit(width));
+        // Taken as asked only once the reloader has it, so a page is never
+        // held to a width nothing will set.
+        if let Some(to) = self.reload_to.as_ref()
+            && to.send(Reload::Fit(width)).is_ok()
+        {
+            self.width = width;
         }
     }
 
@@ -2912,6 +2915,17 @@ impl Dispatch2<WpPresentationFeedback, App> for Feedback {
     }
 }
 
+/// The width the first screen is set at: the window's when the reader last
+/// closed, which niri most likely opens it at again, so the first screen
+/// seldom sets twice. Measuring sets the whole page each time.
+fn first_width(measuring: bool) -> page::Width {
+    if measuring {
+        page::Width::WHOLE
+    } else {
+        place::window_pt().map_or(page::Width::WHOLE, page::Width::for_window)
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (measuring, file) = match args.as_slice() {
@@ -2938,14 +2952,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         place::read(std::path::Path::new(&file))
     };
-    // Set for the window it last closed in, which niri most likely opens
-    // it in again, so the first screen seldom sets twice; measuring sets
-    // the whole page each time.
-    let width = if measuring {
-        page::Width::WHOLE
-    } else {
-        place::window_pt().map_or(page::Width::WHOLE, page::Width::for_window)
-    };
+    let width = first_width(measuring);
     let first = page::set_first(&file, kept.as_ref().map(|place| place.block), width)?;
     let starts = place::starts(&first.page.frame);
     let start_pt = kept
