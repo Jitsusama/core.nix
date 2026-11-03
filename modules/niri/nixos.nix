@@ -93,6 +93,12 @@
     # range to a screen whose EDID says its range is selectable, when niri
     # starts with NIRI_FULL_RANGE_WHEN_SELECTABLE set, which home.nix sets;
     # any other screen is left to the driver.
+    #
+    # niri warps the pointer to the next window when the focused one goes,
+    # which, when its program quit or died, it did from inside that client's
+    # destruction: the pointer's leave went to a wl_pointer already gone,
+    # and niri aborted, taking the session with it. The patch
+    # (warp-after-a-close.patch) warps once the client is gone.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -115,6 +121,7 @@
         ./srgb-gamut.patch
         ./hold-first-frame.patch
         ./full-range-when-selectable.patch
+        ./warp-after-a-close.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
