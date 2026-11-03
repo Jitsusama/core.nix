@@ -566,6 +566,12 @@ Singleton {
             root.placeOpened();
             root.settleReopenedSoon();
         }
+        // niri gives the keys back to a window only once it has let the
+        // lock go itself (lockGone).
+        function onFocusedChanged() {
+            if (!root.behindTheLock && !root.lockLetGo && Niri.focused !== null)
+                root.lockGone();
+        }
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
@@ -593,6 +599,11 @@ Singleton {
             going.taken.push(key);
             going.late = going.late.slice(1);
             root.besideKept(id, late.kept);
+            if (!root.placeable()) {
+                going.behind.push({ entry: { id, at: late.at, away: late.away,
+                    quiet: late.quiet === true }, waiting: late });
+                return;
+            }
             if (late.quiet && late.at === null) {
                 root.placeQuietly(id, late);
                 if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
@@ -636,6 +647,16 @@ Singleton {
             return;
         const entry = { id: waiting.opened, at: waiting.at, away: waiting.away,
             quiet: waiting.quiet === true };
+        // Behind the lock it's placed once the lock is let go, and the next
+        // is begun now, so every session handed over meanwhile runs.
+        if (!root.placeable()) {
+            reopening.behind.push({ entry, waiting });
+            root.besideKept(entry.id, waiting.kept);
+            reopening.waiting = null;
+            reopenPatience.stop();
+            reopenSoon();
+            return;
+        }
         if (entry.at !== null) {
             if (root.placeSession(entry, root.besideOf(reopening.placed)) === "waiting")
                 return;
@@ -778,7 +799,7 @@ Singleton {
     // holds, or after a round for each and a few more, so two that can't
     // both be had never move back and forth.
     function settleReopened() {
-        if (!reopening)
+        if (!reopening || !root.placeable())
             return;
         reopening.settling = true;
         reopening.rounds = 0;
@@ -799,7 +820,9 @@ Singleton {
     }
     function settleNextReopened() {
         const going = reopening;
-        if (!going?.settling)
+        // Behind the lock every move would be refused; placeBehind settles
+        // them once it's let go.
+        if (!going?.settling || !root.placeable())
             return;
         const ordered = going.placed.filter(one => Niri.windows[one.id])
             .sort((a, b) => root.keptOrder(a.at, b.at));
@@ -920,6 +943,7 @@ Singleton {
             late: [],
             taken: [],
             placed: [],
+            behind: [],
             settling: false,
             rounds: 0,
             focused: false
@@ -1180,6 +1204,60 @@ Singleton {
             .sort((a, b) => a.idx - b.idx);
         const last = its[its.length - 1];
         return last && last.active_window_id === null ? last.id : null;
+    }
+
+    // Whether the lock is held (shell.qml binds it from Lock.qml). niri
+    // refuses every move while locked and says nothing of the lock over
+    // its socket, and the lock's own word that it's let go comes before
+    // niri has had it, so the windows of sessions opened behind it are
+    // placed only once niri gives the keys back to a window, or a second
+    // after the lock is let go when none takes them, as on a workspace
+    // with no window.
+    property bool behindTheLock: false
+    property bool lockLetGo: true
+    onBehindTheLockChanged: {
+        if (behindTheLock) {
+            lockLetGo = false;
+            lockLettingGo.stop();
+        } else {
+            lockLettingGo.restart();
+        }
+    }
+    Timer {
+        id: lockLettingGo
+        interval: 1000
+        onTriggered: root.lockGone()
+    }
+    function lockGone() {
+        if (root.behindTheLock || root.lockLetGo)
+            return;
+        lockLettingGo.stop();
+        root.lockLetGo = true;
+        root.placeBehind();
+    }
+    function placeable() {
+        return !root.behindTheLock && root.lockLetGo;
+    }
+    // Each session opened behind the lock, placed as it would have been:
+    // one with a place kept by the check once the last is placed, one
+    // another session started with its quest's sessions.
+    function placeBehind() {
+        const going = root.reopening;
+        if (!going)
+            return;
+        const behind = going.behind;
+        going.behind = [];
+        for (const held of behind) {
+            if (!Niri.windows[held.entry.id])
+                continue;
+            if (held.entry.at !== null)
+                going.placed.push(held.entry);
+            else if (held.entry.quiet)
+                root.placeQuietly(held.entry.id, held.waiting);
+        }
+        if (going.queue.length === 0 && going.waiting === null && !going.looking
+            && !reopenPacing.running)
+            root.settleReopened();
     }
 
     // A session whose window never opens in half a minute is given up on,

@@ -99,6 +99,13 @@
     # destruction: the pointer's leave went to a wl_pointer already gone,
     # and niri aborted, taking the session with it. The patch
     # (warp-after-a-close.patch) warps once the client is gone.
+    #
+    # niri drops every action asked for over its socket while the session
+    # is locked, and answers that it handled it, so a session another
+    # session handed the shell then was lost outright. The patch
+    # (spawn-behind-the-lock.patch) starts a spawn asked for then behind
+    # the lock, with no activation token; every other action, and every
+    # key binding, is still refused while locked.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -122,6 +129,7 @@
         ./hold-first-frame.patch
         ./full-range-when-selectable.patch
         ./warp-after-a-close.patch
+        ./spawn-behind-the-lock.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

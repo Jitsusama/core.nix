@@ -49,8 +49,16 @@ Scope {
     // What PAM said that wasn't a question.
     property string said
 
+    // Whether the lock is asked for or up: from the moment it's asked for,
+    // since niri refuses moves while it's locking too, until it's let go.
+    // It's read back from the lock each time rather than bound to it, since
+    // Quickshell's lock says its locked changed only when it's let go, and
+    // never when it's taken.
+    property bool held: false
+
     function lock() {
         sessionLock.locked = true;
+        held = sessionLock.locked;
     }
 
     // A password half typed, or a question PAM is waiting on, goes with it,
@@ -112,7 +120,12 @@ Scope {
     Connections {
         target: sessionLock
 
+        function onLockedChanged() {
+            root.held = sessionLock.locked;
+        }
+
         function onSecureChanged() {
+            root.held = sessionLock.locked;
             if (sessionLock.secure) {
                 holder.setText(`${root.niri}\n`);
                 marker.setText("locked\n");
