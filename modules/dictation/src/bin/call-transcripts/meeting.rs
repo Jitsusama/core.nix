@@ -1,9 +1,9 @@
 //! What a call is, from what this machine already knows, with no network:
 //! a Tuple call from tuple-call, the daemon following Tuple's, asked on
-//! its socket who it's with; or a meeting from google.json, which the
-//! google program keeps, the one on now. Each call's folder is named by
-//! when it started and what it was, so the file picker and search find it
-//! by its title.
+//! its socket who it's with; or a meeting from the google program's
+//! daemon, asked on its socket for the meetings it holds, the one on now.
+//! Each call's folder is named by when it started and what it was, so the
+//! file picker and search find it by its title.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -14,10 +14,10 @@ use serde_json::{Value, json};
 
 /// How early a meeting can be joined and still be the one on.
 const EARLY_MS: u64 = 10 * 60 * 1000;
-/// How long tuple-call is given to answer. It answers from what it holds,
+/// How long a daemon is given to answer. Each answers from what it holds,
 /// so a second is long; a call starting is written down either way, under
 /// a meeting's name or a bare time.
-const TUPLE_ANSWERS_WITHIN: Duration = Duration::from_secs(1);
+const ANSWERS_WITHIN: Duration = Duration::from_secs(1);
 
 /// What a call was.
 #[derive(Debug, PartialEq, Default)]
@@ -32,29 +32,47 @@ pub struct Meeting {
 /// The call on at `now`, from what's in `runtime`; a Tuple call first,
 /// since it has people only while one is on, and a meeting otherwise.
 pub fn on(runtime: &Path, now: u64) -> Meeting {
-    let google = std::fs::read_to_string(runtime.join("google.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
     tuple_call(&runtime.join("daemons/tuple.sock"))
         .as_ref()
         .and_then(tuple)
-        .or_else(|| meeting(&google, now))
+        .or_else(|| meeting(&meetings(&runtime.join("daemons/google.sock")), now))
         .unwrap_or_default()
 }
 
-/// tuple-call's record of the call, by the daemons' interface; or none
-/// when it isn't there or doesn't answer in time.
+/// tuple-call's record of the call; or none when it isn't there or
+/// doesn't answer in time.
 fn tuple_call(socket: &Path) -> Option<Value> {
+    let said = asked(
+        socket,
+        &json!({"id": 1, "ask": "get", "keys": ["call:current"]}),
+    )?;
+    said["records"].get(0).cloned()
+}
+
+/// The meetings the google program's daemon holds; or none when it isn't
+/// there or doesn't answer in time.
+fn meetings(socket: &Path) -> Vec<Value> {
+    let Some(said) = asked(socket, &json!({"id": 1, "ask": "list", "kind": "meeting"})) else {
+        return Vec::new();
+    };
+    said["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| record["meeting"].clone())
+        .collect()
+}
+
+/// A daemon's answer to one ask, by the daemons' interface: one line out
+/// and one back; or none when it isn't there or doesn't answer in time.
+fn asked(socket: &Path, ask: &Value) -> Option<Value> {
     let stream = UnixStream::connect(socket).ok()?;
-    stream.set_read_timeout(Some(TUPLE_ANSWERS_WITHIN)).ok()?;
-    stream.set_write_timeout(Some(TUPLE_ANSWERS_WITHIN)).ok()?;
-    let asked = json!({"id": 1, "ask": "get", "keys": ["call:current"]});
-    writeln!(&stream, "{asked}").ok()?;
+    stream.set_read_timeout(Some(ANSWERS_WITHIN)).ok()?;
+    stream.set_write_timeout(Some(ANSWERS_WITHIN)).ok()?;
+    writeln!(&stream, "{ask}").ok()?;
     let mut line = String::new();
     BufReader::new(&stream).read_line(&mut line).ok()?;
-    let said: Value = serde_json::from_str(&line).ok()?;
-    said["records"].get(0).cloned()
+    serde_json::from_str(&line).ok()
 }
 
 /// A Tuple call, named by who it's with.
@@ -76,9 +94,8 @@ fn tuple(call: &Value) -> Option<Meeting> {
 /// The meeting on at `now`: of those started (or about to) and not ended,
 /// the one started latest, since Joel can be in only one and has moved on
 /// to the newer.
-fn meeting(google: &Value, now: u64) -> Option<Meeting> {
-    google["meetings"]
-        .as_array()?
+fn meeting(meetings: &[Value], now: u64) -> Option<Meeting> {
+    meetings
         .iter()
         .filter(|meeting| {
             let start = meeting["start"].as_u64().unwrap_or(u64::MAX);
@@ -163,12 +180,15 @@ mod tests {
 
     #[test]
     fn the_meeting_on_is_the_latest_started_of_those_not_ended() {
-        let google = json!({"meetings": [
-            {"id": "old", "title": "Done", "start": NOW - 90 * MINUTE, "end": NOW - 30 * MINUTE},
-            {"id": "long", "title": "All day", "start": NOW - 60 * MINUTE, "end": NOW + 9 * MINUTE},
-            {"id": "e1", "title": "Planning", "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE},
-            {"id": "later", "title": "Lunch", "start": NOW + 60 * MINUTE, "end": NOW + 90 * MINUTE},
-        ]});
+        fn held(id: &str, title: &str, start: u64, end: u64) -> Value {
+            json!({"id": id, "title": title, "start": start, "end": end})
+        }
+        let google = [
+            held("old", "Done", NOW - 90 * MINUTE, NOW - 30 * MINUTE),
+            held("long", "All day", NOW - 60 * MINUTE, NOW + 9 * MINUTE),
+            held("e1", "Planning", NOW - 5 * MINUTE, NOW + 25 * MINUTE),
+            held("later", "Lunch", NOW + 60 * MINUTE, NOW + 90 * MINUTE),
+        ];
         let on = meeting(&google, NOW).unwrap();
         assert_eq!(on.title, "Planning");
         assert_eq!(on.event.as_deref(), Some("e1"));
@@ -178,7 +198,7 @@ mod tests {
             Some("e1"),
             "joined a few minutes early"
         );
-        assert_eq!(meeting(&json!({}), NOW), None);
+        assert_eq!(meeting(&[], NOW), None);
     }
 
     #[test]
@@ -194,33 +214,56 @@ mod tests {
         assert_eq!(tuple(&none), None);
     }
 
-    /// A stand-in tuple-call on a socket in a fresh runtime folder,
-    /// answering its one ask with `record`, and google.json beside it.
+    /// A fresh runtime folder with two stand-in daemons: tuple-call,
+    /// answering its one ask with `record`, and the google program's,
+    /// holding Planning, on now.
     fn runtime(name: &str, record: &Value) -> std::path::PathBuf {
         let runtime = std::env::temp_dir().join(format!("meeting-{name}-{}", std::process::id()));
         std::fs::create_dir_all(runtime.join("daemons")).unwrap();
-        let google = json!({"meetings": [
-            {"id": "e1", "title": "Planning", "start": NOW - MINUTE, "end": NOW + MINUTE},
+        let call = json!({"records": [record]});
+        answering(
+            &runtime.join("daemons/tuple.sock"),
+            "get",
+            "keys",
+            json!(["call:current"]),
+            call,
+        );
+        let planning =
+            json!({"id": "e1", "title": "Planning", "start": NOW - MINUTE, "end": NOW + MINUTE});
+        let meetings = json!({"records": [
+            {"key": "meeting:e1", "kind": "meeting", "heard": NOW, "meeting": planning},
         ]});
-        std::fs::write(runtime.join("google.json"), google.to_string()).unwrap();
-        let socket = runtime.join("daemons/tuple.sock");
-        let _ = std::fs::remove_file(&socket);
-        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-        let record = record.clone();
+        answering(
+            &runtime.join("daemons/google.sock"),
+            "list",
+            "kind",
+            json!("meeting"),
+            meetings,
+        );
+        runtime
+    }
+
+    /// A stand-in daemon at `socket` answering one `ask`, whose `field` must
+    /// be `meant`, with `answer` under the ask's id.
+    fn answering(
+        socket: &Path,
+        ask: &'static str,
+        field: &'static str,
+        meant: Value,
+        answer: Value,
+    ) {
+        let _ = std::fs::remove_file(socket);
+        let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
         std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(&stream).read_line(&mut line).unwrap();
             let asked: Value = serde_json::from_str(&line).unwrap();
-            assert_eq!(asked["keys"], json!(["call:current"]));
-            writeln!(
-                &stream,
-                "{}",
-                json!({"id": asked["id"], "records": [record]})
-            )
-            .unwrap();
+            assert_eq!((asked["ask"].as_str(), &asked[field]), (Some(ask), &meant));
+            let mut answer = answer;
+            answer["id"] = asked["id"].clone();
+            writeln!(&stream, "{answer}").unwrap();
         });
-        runtime
     }
 
     #[test]
@@ -238,6 +281,15 @@ mod tests {
         let gone = runtime("gone", &none);
         std::fs::remove_file(gone.join("daemons/tuple.sock")).unwrap();
         assert_eq!(on(&gone, NOW).title, "Planning");
+    }
+
+    #[test]
+    fn with_neither_daemon_there_the_call_is_nothing_known() {
+        let none = json!({"state": "none", "since": null, "people": []});
+        let bare = runtime("bare", &none);
+        std::fs::remove_file(bare.join("daemons/tuple.sock")).unwrap();
+        std::fs::remove_file(bare.join("daemons/google.sock")).unwrap();
+        assert_eq!(on(&bare, NOW), Meeting::default());
     }
 
     #[test]
