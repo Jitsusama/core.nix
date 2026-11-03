@@ -11,8 +11,8 @@
 // keys are vi's, beside the arrows (NoticeKeys.js holds them, `pressed`
 // does them): Return does the front one, and l or the right arrow steps
 // into its verbs, the same ones its past self has in the history. While
-// the stack holds them, the front card's footer shows them where it said
-// when the notice came.
+// the stack holds them, the front card lists its verbs under a rule below
+// its signature, each with the key that does it.
 //
 // The notices sit a step inside the window under the top right corner, so
 // a notice lies on one window rather than across a border, or a step inside
@@ -22,21 +22,22 @@
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later, where the ones still here can be answered
-// or forgotten, and while it's open the corner leaves them to it. A notice
-// offering something to do (Reply, Play it) lists it above its footer with
-// the chord that takes the stack beside it, and its verbs lead with it.
+// or forgotten, and while it's open the corner leaves them to it. What a
+// notice offers to do (Reply, Play it) leads its verbs, reached by keys.
 //
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
 // the accent's while the stack holds the keys, or the alert's when
-// critical; who or what
-// first, in words, then the message; and a footer in muted monospace saying
-// where it came from, its glyph a step apart from its name, and when.
+// critical; and three groups at the launcher's size, the same room from
+// the frame to the ink on every side: who or what first, strong in
+// monospace, then the message in the reading face, and a signature in
+// muted monospace saying what sent it, its mark in a column of its own,
+// and when.
 //
 // What's playing (Music.qml) is a notice too, for a moment when a track
 // changes or a media key is pressed, at the top of the same column so the
-// two never cover each other: the cover beside the title and the artist,
-// and the player and where in the track in the footer. It's no message, so
-// it isn't kept; a click lets it go.
+// two never cover each other, in the same three groups: the cover beside
+// the title and the artist, and the player and where in the track. It's no
+// message, so it isn't kept; a click lets it go.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
@@ -52,10 +53,26 @@ import "launcher/Notice.js" as Notice
 Scope {
     id: root
 
-    // Wide enough for a short message on one or two lines.
-    readonly property int width: 380
-    // The body step's line, on the space grid: five units.
-    readonly property int line: Theme.space.xl - Theme.space.xs
+    // Wide enough that what a notice says holds about 44 letters of the
+    // reading face at the launcher's size on a line, inside its room on
+    // each side: a short message in one or two lines.
+    readonly property int width: 440
+    // The launcher's line, which every line of a card keeps at its size:
+    // six units.
+    readonly property int pitch: Theme.space.xl
+    // How far the ink of every card stands from its frame on every side,
+    // inside the hairline: an inset and a step, as the launcher's card.
+    readonly property int room: Theme.inset + Theme.space.l
+
+    // A capital in the face that says who a notice is from, so the room
+    // above is measured to its top rather than to its line's.
+    TextMetrics {
+        id: capital
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.large
+        font.weight: Font.Medium
+        text: "H"
+    }
 
     // Whether what's playing is called for. The card's own visibility can't
     // say, since an item in a hidden window counts as hidden.
@@ -334,13 +351,9 @@ Scope {
         return body === "" ? notification.summary : `${notification.summary}\n${body}`;
     }
 
-    // What a notice's sender does when it's chosen, or null, and what else
-    // it offers, which its card lists.
+    // What a notice's sender does when it's chosen, or null.
     function opens(notification) {
         return notification.actions.find(action => action.identifier === "default") ?? null;
-    }
-    function offers(notification) {
-        return notification.actions.filter(action => action.identifier !== "default");
     }
 
     // The front one done with: the verb chosen, or what it's about, or let
@@ -537,7 +550,6 @@ Scope {
     // draws chords.
     readonly property var reaching: Shortcuts.actions
         .find(action => action.opens === "notices")?.chord ?? []
-    readonly property string reach: reaching.map(key => key.text).join(" + ")
 
     function since(then, now) {
         const minutes = Math.floor((now - then) / 60000);
@@ -577,19 +589,25 @@ Scope {
             Notices.seen();
         }
 
-        // The ids of the cards whose offers run past their line, which
-        // none does: the tests read it, as no photograph says it.
-        function spilled(): string {
-            return JSON.stringify(root.spilling);
+        // Where the front card is drawn, as a fraction of the screen across
+        // and down, for a test to click on it, since no photograph says
+        // where a card without a coloured mark is; and what it's signed.
+        function front(): string {
+            const card = cards.itemAt(server.trackedNotifications.values
+                .findIndex(one => one.id === root.shown[0])) as Floating;
+            const screen = window.screen;
+            if (!card || !screen || !root.front)
+                return "{}";
+            const at = card.mapToItem(null, 0, 0);
+            const left = screen.width - window.width + at.x;
+            return JSON.stringify({
+                signed: Notices.sender(root.front.appName).name,
+                left: left / screen.width,
+                top: at.y / screen.height,
+                right: (left + card.width) / screen.width,
+                bottom: (at.y + card.height) / screen.height
+            });
         }
-    }
-
-    // The cards whose offers run past their line, by id.
-    property var spilling: []
-
-    function spilt(id, spills) {
-        const rest = spilling.filter(one => one !== id);
-        spilling = spills ? rest.concat([id]) : rest;
     }
 
     // A keyboard's Do Not Disturb key holds notices until it's pressed
@@ -761,24 +779,27 @@ Scope {
                 onVisibleChanged: Qt.callLater(window.gather)
                 onHeightChanged: Qt.callLater(window.gather)
 
-                // The letters an inset and a step from the frame on every
-                // side, as a launcher row's are.
+                // A notice's three groups and room, as its neighbours'
+                // are: the track, who plays it, and the player and where
+                // in the track.
                 Column {
                     id: said
-                    x: Theme.inset + Theme.space.l
+                    x: root.room
                     width: parent.width - 2 * x
-                    topPadding: x
-                    bottomPadding: x
+                    topPadding: root.room - title.baselineOffset - capital.tightBoundingRect.y
+                    bottomPadding: root.room - playedBy.height + playedBy.inkBottom
 
                     Item {
                         width: parent.width
-                        height: Math.max(cover.height, lines.implicitHeight)
+                        height: Math.max(cover.y + cover.height, lines.implicitHeight)
 
-                        // Two lines tall, its corners the theme's inner
-                        // radius, and the raised colour until it arrives.
+                        // Two lines tall from the title's capital, its
+                        // corners the theme's inner radius, and the raised
+                        // colour until it arrives.
                         Rectangle {
                             id: cover
-                            width: 2 * root.line
+                            y: title.baselineOffset + capital.tightBoundingRect.y
+                            width: 2 * root.pitch
                             height: width
                             radius: Theme.inner
                             color: Theme.raised
@@ -814,16 +835,17 @@ Scope {
                             anchors.right: parent.right
 
                             Text {
+                                id: title
                                 width: parent.width
                                 text: root.song.title
                                 color: Theme.strong
                                 wrapMode: Text.Wrap
                                 maximumLineCount: 2
                                 elide: Text.ElideRight
-                                lineHeight: root.line
+                                lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
-                                font.family: Theme.sans.family
-                                font.pointSize: Theme.sans.body
+                                font.family: Theme.mono.family
+                                font.pointSize: Theme.mono.large
                                 font.weight: Font.Medium
                             }
 
@@ -834,55 +856,57 @@ Scope {
                                 topPadding: Theme.space.xs
                                 color: Theme.text
                                 elide: Text.ElideRight
-                                lineHeight: root.line
+                                lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
                                 font.family: Theme.sans.family
-                                font.pointSize: Theme.sans.body
+                                font.pointSize: Theme.sans.large
+                                font.features: { "ss05": 1 }
                             }
                         }
                     }
 
-                    // The player and where in the track, a step below.
+                    // The player in a column of its own and where in the
+                    // track, a step below, as a notice's signature.
                     Item {
+                        id: playedBy
+                        readonly property real inkBottom: player.y + player.baselineOffset
                         width: parent.width
-                        height: root.line + Theme.space.xs
+                        height: Theme.space.m + root.pitch
 
                         Text {
-                            id: player
-                            anchors.bottom: parent.bottom
-                            height: root.line
-                            verticalAlignment: Text.AlignVCenter
+                            y: Theme.space.m
+                            lineHeight: root.pitch
+                            lineHeightMode: Text.FixedHeight
                             text: root.song.mark
                             color: Theme.program
                             font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.body
+                            font.pointSize: Theme.mono.large
                         }
 
                         Text {
-                            anchors.left: player.right
-                            anchors.leftMargin: Theme.space.s
-                            anchors.right: place.left
-                            anchors.rightMargin: Theme.space.l
-                            anchors.bottom: parent.bottom
-                            height: root.line
-                            verticalAlignment: Text.AlignVCenter
+                            id: player
+                            x: Theme.space.xxl
+                            y: Theme.space.m
+                            width: place.x - x - Theme.space.l
+                            lineHeight: root.pitch
+                            lineHeightMode: Text.FixedHeight
                             text: root.song.from
                             elide: Text.ElideRight
                             color: Theme.muted
                             font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.body
+                            font.pointSize: Theme.mono.large
                         }
 
                         Text {
                             id: place
                             anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: root.line
-                            verticalAlignment: Text.AlignVCenter
+                            y: Theme.space.m
+                            lineHeight: root.pitch
+                            lineHeightMode: Text.FixedHeight
                             text: root.song.where
                             color: Theme.muted
                             font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.body
+                            font.pointSize: Theme.mono.large
                             font.features: { "tnum": 1 }
                         }
                     }
@@ -960,8 +984,9 @@ Scope {
                     // A click anywhere on the front card opens what it's
                     // about, or puts it away when it's about nothing to
                     // open, and one on an edge behind brings it to the
-                    // front. It lies beneath the words, so an action's own
-                    // area, drawn later, takes the click on the action.
+                    // front. What else it offers the keys reach (Joel
+                    // wants keys first), and an act's own area, drawn
+                    // later, takes a click on it.
                     MouseArea {
                         width: parent.width
                         height: card.front ? words.height : parent.height
@@ -977,17 +1002,28 @@ Scope {
                         }
                     }
 
+                    // Three groups, as Joel reads a notice: who or what
+                    // it's about, what it says, and the signature of what
+                    // sent it with when, all at the launcher's size (Joel,
+                    // 2026-10-24: "the differing font sizes, and too much
+                    // information on lines really felt gross and
+                    // unrefined"). The frame stands as far from the ink on
+                    // every side, to the capital's top and the
+                    // signature's baseline (Joel, 2026-11-03: "feeling
+                    // quite cluttered").
                     Column {
                         id: words
                         visible: card.front
-                        // The letters an inset and a step from the frame on
-                        // every side, as a launcher row's are.
-                        x: Theme.inset + Theme.space.l
+                        x: root.room
                         width: parent.width - 2 * x
-                        topPadding: x
-                        bottomPadding: x
+                        topPadding: root.room - who.baselineOffset - capital.tightBoundingRect.y
+                        // Below its acts, their last band an inset from
+                        // the frame, as the launcher's selected row is.
+                        bottomPadding: card.keys ? Theme.inset
+                            : root.room - signature.height + signature.inkBottom
 
                         Text {
+                            id: who
                             width: parent.width
                             text: card.modelData.summary
                             // Plain, as the spec has a summary: only the
@@ -995,10 +1031,10 @@ Scope {
                             textFormat: Text.PlainText
                             color: Theme.strong
                             wrapMode: Text.Wrap
-                            lineHeight: root.line
+                            lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
-                            font.family: Theme.sans.family
-                            font.pointSize: Theme.sans.body
+                            font.family: Theme.mono.family
+                            font.pointSize: Theme.mono.large
                             font.weight: Font.Medium
                         }
 
@@ -1006,254 +1042,64 @@ Scope {
                             width: parent.width
                             text: card.modelData.body
                             visible: text !== ""
-                            // A line that belongs with the summary above.
+                            // A line that belongs with the one above.
                             topPadding: Theme.space.xs
                             color: Theme.text
                             wrapMode: Text.Wrap
                             maximumLineCount: 6
                             elide: Text.ElideRight
                             textFormat: Text.StyledText
-                            lineHeight: root.line
+                            lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
                             font.family: Theme.sans.family
-                            font.pointSize: Theme.sans.body
+                            font.pointSize: Theme.sans.large
+                            font.features: { "ss05": 1 }
                         }
 
-                        // What the sender offers, each run by a click, or
-                        // by the keys among the verbs: the chord on the
-                        // right gives the stack the keys.
+                        // What sent it, a step below: its mark in a column
+                        // of its own and the name Joel knows it by, never
+                        // its program's; on the right when it came, or
+                        // that its words were just copied.
                         Item {
-                            id: offering
+                            id: signature
+                            // Where its line's baseline falls, which ends
+                            // the card while it shows no acts.
+                            readonly property real inkBottom: sent.y + sent.baselineOffset
                             width: parent.width
-                            height: root.line + Theme.space.s
-                            // The default is the card's own click, not one
-                            // of these.
-                            readonly property var offers: root.offers(card.modelData)
-                            visible: offers.length > 0 && !card.keys
-                            // What the offers may take: the line, short of
-                            // the chord on its right. An offer's name can be
-                            // a session's whole title, which ran past the
-                            // card to the screen's edge (Joel, 2026-11-01).
-                            readonly property real room: width - reaching.implicitWidth
-                                - Theme.space.xxl
-
-                            // Whether they reach past their room anyway,
-                            // said for the tests (notices.spilled).
-                            readonly property bool spills: visible
-                                && offered.width > room + 0.5
-                            onSpillsChanged: root.spilt(card.modelData.id, spills)
-
-                            Row {
-                                id: offered
-                                anchors.bottom: parent.bottom
-                                spacing: Theme.space.m
-
-                                Repeater {
-                                    model: offering.offers
-
-                                    // The pointer's area beside the words,
-                                    // not among them, so the Row never
-                                    // lays out what takes its own size.
-                                    Item {
-                                        id: offer
-                                        required property var modelData
-                                        required property int index
-                                        // What the offers before it left,
-                                        // which its name is cut to; one
-                                        // left too little to say a word in
-                                        // isn't shown, as the keys still
-                                        // offer it among the verbs.
-                                        readonly property real spare: offering.room - x
-                                            - offerMark.implicitWidth - face.spacing
-                                        width: face.width
-                                        height: face.height
-                                        visible: spare >= 2 * root.line
-
-                                        Row {
-                                            id: face
-                                            spacing: Theme.space.s
-
-                                            Text {
-                                                id: offerMark
-                                                height: root.line
-                                                verticalAlignment: Text.AlignVCenter
-                                                text: Theme.glyph.offer
-                                                color: Theme.action
-                                                font.family: Theme.mono.family
-                                                font.pointSize: Theme.mono.body
-                                            }
-
-                                            Text {
-                                                width: Math.min(implicitWidth,
-                                                    Math.max(offer.spare, 0))
-                                                height: root.line
-                                                verticalAlignment: Text.AlignVCenter
-                                                text: offer.modelData.text
-                                                elide: Text.ElideRight
-                                                color: Theme.text
-                                                font.family: Theme.sans.family
-                                                font.pointSize: Theme.sans.body
-                                            }
-                                        }
-
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            onClicked: {
-                                                Notices.mark(card.modelData.id, true);
-                                                offer.modelData.invoke();
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Text {
-                                id: reaching
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: root.line
-                                verticalAlignment: Text.AlignVCenter
-                                text: root.reach
-                                visible: !card.keys
-                                color: Theme.muted
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
-                            }
-                        }
-
-                        // Its verbs, in the offers' place while the stack
-                        // holds the keys, so the right arrow only chooses
-                        // among what's already there and stepping in,
-                        // through and out moves nothing (Joel, 2026-10-26:
-                        // no size jump). A launcher row's shape at the
-                        // card's size: the glyph in a column of its own,
-                        // the name, the key that does it straight away on
-                        // the right, muted, and once stepped in, the chosen
-                        // one filled out to an inset inside the frame.
-                        Column {
-                            width: parent.width
-                            topPadding: Theme.space.s
-                            visible: card.keys
-
-                            Repeater {
-                                model: card.keys ? root.verbs : []
-
-                                Item {
-                                    id: verb
-
-                                    required property var modelData
-                                    required property int index
-                                    readonly property bool chosen: root.stepped
-                                        && root.chosen === index
-
-                                    width: parent.width
-                                    height: root.line + Theme.space.xs
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: -Theme.space.l
-                                        anchors.rightMargin: -Theme.space.l
-                                        radius: Theme.inner
-                                        color: Qt.alpha(Theme.selection, Theme.floating.selection)
-                                        visible: verb.chosen
-                                    }
-
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: verb.modelData.glyph
-                                        color: Theme.action
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.body
-                                    }
-
-                                    Text {
-                                        x: Theme.space.xxl
-                                        width: chord.x - x - Theme.space.xxl
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: verb.modelData.name
-                                        textFormat: Text.PlainText
-                                        elide: Text.ElideRight
-                                        color: verb.chosen ? Theme.strong : Theme.text
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.body
-                                        font.weight: verb.chosen ? Font.Medium : Font.Normal
-                                    }
-
-                                    // What a switch is, at its right, as a
-                                    // launcher row says it.
-                                    Text {
-                                        anchors.right: chord.left
-                                        anchors.rightMargin: chord.width > 0 ? Theme.space.l : 0
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: text !== ""
-                                        text: verb.modelData.side ?? ""
-                                        textFormat: Text.PlainText
-                                        color: Theme.muted
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.body
-                                    }
-
-                                    Chord {
-                                        id: chord
-                                        anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        keys: verb.modelData.chord
-                                        size: Theme.mono.body
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: {
-                                            root.stepped = true;
-                                            root.chosen = verb.index;
-                                            root.run();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-
-                        // Where it came from, a step below the message,
-                        // and on the right when it came; or while the stack
-                        // holds the keys, what they do here, as a prompt's
-                        // footer says it, in this footer's size.
-                        Item {
-                            width: parent.width
-                            height: root.line + Theme.space.xs
+                            height: Theme.space.m + root.pitch
 
                             Text {
                                 id: mark
-                                anchors.bottom: parent.bottom
-                                height: root.line
-                                verticalAlignment: Text.AlignVCenter
+                                y: Theme.space.m
+                                lineHeight: root.pitch
+                                lineHeightMode: Text.FixedHeight
                                 text: String.fromCodePoint(card.from.glyph)
                                 color: Theme[card.from.hue]
                                 font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
+                                font.pointSize: Theme.mono.large
                             }
 
                             Text {
-                                anchors.left: mark.right
-                                anchors.leftMargin: Theme.space.s
-                                anchors.right: card.keys ? hints.left : time.left
-                                anchors.rightMargin: Theme.space.l
-                                anchors.bottom: parent.bottom
-                                height: root.line
-                                verticalAlignment: Text.AlignVCenter
-                                text: card.modelData.appName
+                                id: sent
+                                x: Theme.space.xxl
+                                y: Theme.space.m
+                                width: time.x - x - Theme.space.l
+                                lineHeight: root.pitch
+                                lineHeightMode: Text.FixedHeight
+                                text: card.from.name
+                                textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 color: Theme.muted
                                 font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
+                                font.pointSize: Theme.mono.large
                             }
 
                             Text {
                                 id: time
                                 anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: root.line
-                                verticalAlignment: Text.AlignVCenter
+                                y: Theme.space.m
+                                lineHeight: root.pitch
+                                lineHeightMode: Text.FixedHeight
                                 readonly property real now: clock.date.getTime()
                                 // How many wait behind it, before when it came.
                                 readonly property int more: root.shown.length - 1
@@ -1271,25 +1117,109 @@ Scope {
                                 // say so.
                                 onCopiedChanged: if (copied)
                                     Report.say(`copied card ${card.modelData.summary}`)
-                                visible: !card.keys
                                 color: Theme.muted
                                 font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
+                                font.pointSize: Theme.mono.large
                                 font.features: { "tnum": 1 }
                             }
+                        }
 
-                            KeyHints {
-                                id: hints
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: root.line
-                                visible: card.keys
-                                size: Theme.mono.body
-                                // The arrows by their marks alone, as the
-                                // launcher's foot says them (KeyHints.qml).
-                                keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", ""]]
-                                    : [["\u21b5", Words.verb(card.opens ? "verb:notice:open"
-                                        : "verb:notice:forget")], ["\u2192", ""]]
+                        // Its acts, under a rule a step below, as soon as
+                        // the stack holds the keys, so a card shows there's
+                        // somewhere for the right arrow to go without a
+                        // line of hints; stepping in, through and out then
+                        // only moves the band (Joel, 2026-10-26: no size
+                        // jump). A launcher row's shape at its size: the
+                        // name, the key that does it straight away on the
+                        // right, muted, and once stepped in, the chosen one
+                        // filled out to an inset inside the frame, with
+                        // Return's mark where its key was.
+                        Column {
+                            x: -Theme.space.l
+                            width: parent.width + 2 * Theme.space.l
+                            topPadding: Theme.space.m
+                            visible: card.keys
+
+                            Rectangle {
+                                width: parent.width
+                                height: Theme.border
+                                color: Theme.rule
+                            }
+
+                            Item {
+                                width: parent.width
+                                height: Theme.inset
+                            }
+
+                            Repeater {
+                                model: card.keys ? root.verbs : []
+
+                                Item {
+                                    id: verb
+
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool chosen: root.stepped
+                                        && root.chosen === index
+
+                                    width: parent.width
+                                    height: Theme.space.xxl
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: Theme.inner
+                                        color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                                        visible: verb.chosen
+                                    }
+
+                                    Text {
+                                        x: Theme.space.l
+                                        width: (side.visible ? side.x : chord.x) - x
+                                            - Theme.space.l
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: verb.modelData.name
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        color: verb.chosen ? Theme.strong : Theme.text
+                                        font.family: Theme.mono.family
+                                        font.pointSize: Theme.mono.large
+                                        font.weight: verb.chosen ? Font.Medium : Font.Normal
+                                    }
+
+                                    // What a switch is, at its right, as a
+                                    // launcher row says it.
+                                    Text {
+                                        id: side
+                                        anchors.right: chord.left
+                                        anchors.rightMargin: chord.width > 0 ? Theme.space.l : 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: text !== ""
+                                        text: verb.modelData.side ?? ""
+                                        textFormat: Text.PlainText
+                                        color: Theme.muted
+                                        font.family: Theme.mono.family
+                                        font.pointSize: Theme.mono.large
+                                    }
+
+                                    Chord {
+                                        id: chord
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: Theme.space.l
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        keys: verb.chosen ? [{ text: "\u21b5" }]
+                                            : verb.modelData.chord
+                                        size: Theme.mono.large
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            root.stepped = true;
+                                            root.chosen = verb.index;
+                                            root.run();
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

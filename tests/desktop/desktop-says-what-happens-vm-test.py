@@ -48,6 +48,9 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 # a cell to the left, where the row was before it slid.
 BESIDE_THE_MIDDLE = 2
 
+# The scales Joel's screens are drawn at, as niri spells them.
+JOELS_SCALES = ("1.5", "2")
+
 # How long the same wait lasts before the VM's margin marks it, in seconds,
 # as tests/desktop.nix sets the Lag piece's `lasts`.
 LAG_LASTS = 3600
@@ -324,20 +327,18 @@ def test_the_held_notices_take_vis_keys(desktop: Desktop) -> None:
     )
 
 
-def test_a_click_on_a_notices_action_does_it_and_anywhere_else_puts_it_away(
-    desktop: Desktop,
-) -> None:
-    """A click on a notice's action does it, and anywhere else puts it away."""
+def test_a_click_on_a_notice_about_nothing_to_open_puts_it_away(desktop: Desktop) -> None:
+    """A click on a notice about nothing to open puts it away, and never does what it offers.
+
+    What it offers the keys reach, since Joel wants keys first and the line that offered it
+    was clutter (look 3, 2026-11-03).
+    """
     since = desktop.mark()
-    x, y = desktop.offer_to_play("notice-to-click")
-    desktop.click(x, y)
-    assert desktop.answered() == "play", "a click on the action put the notice away instead"
-    # A little above the action is the notice's message.
     x, y = desktop.offer_to_play("notice-to-put-away")
-    desktop.click(x, y - 0.04)
-    assert desktop.answered() == "", "a click on the message did the action"
-    # Neither was missed, so the margin never once said one waits: a
-    # notice arriving or leaving mustn't flash it.
+    desktop.click(x, y)
+    assert desktop.answered() == "", "a click on the notice did what it offers"
+    # It wasn't missed, so the margin never once said one waits: a notice
+    # arriving or leaving mustn't flash it.
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)}"
@@ -350,11 +351,47 @@ def test_a_click_on_a_notice_opens_what_its_about_with_a_token_to_come_forward(
 ) -> None:
     """A click on a notice opens what it's about, with a token to come forward."""
     desktop.listen()
-    # Its default is the card's click, so the one glyph is Play it's.
     x, y = desktop.offer_to_play("notice-to-open", offers="--action=default=Open")
-    desktop.click(x, y - 0.04)
+    desktop.click(x, y)
     assert desktop.answered() == "default", "a click on the message didn't open what it's about"
     desktop.tokened()
+
+
+def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desktop) -> None:
+    """A notice is signed by the name Joel knows what sent it by, never its program's.
+
+    Its pictures at both of Joel's scales, alone, held and stepped into, are look 3's notice
+    (2026-11-03), for a person to measure its room by.
+    """
+    machine = desktop.machine
+    for scale in JOELS_SCALES:
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+        with desktop.told("shows card Tokens Run Out in About an Hour"):
+            desktop.as_account(
+                "notify-send --app-name=tokens --expire-time=60000"
+                " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
+                " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
+                " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
+                " < /dev/null &"
+            )
+        signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
+        assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
+        desktop.photograph(f"notice-at-{scale}")
+        with desktop.told("keys notices"):
+            machine.send_key("meta_l-n")
+        desktop.photograph(f"notice-held-at-{scale}")
+        with desktop.told("notice verb Open"):
+            machine.send_key("right")
+        desktop.photograph(f"notice-stepped-at-{scale}")
+        with desktop.told("notice back"):
+            machine.send_key("esc")
+        with desktop.told("lets notices go"):
+            machine.send_key("esc")
+        desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
+    desktop.as_account("qs ipc call notices seen")
+    desktop.as_account("niri msg output winit scale 1")
 
 
 def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
@@ -382,27 +419,6 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
     desktop.tokened()
-
-
-def test_a_notices_offers_keep_to_its_card_however_long_their_names(desktop: Desktop) -> None:
-    """A notice's offers keep to its card, however long their names.
-
-    The tokens warning offers to pause the session spending most by its whole title, which ran
-    past the card to the screen's edge (Joel, 2026-11-01).
-    """
-    machine = desktop.machine
-    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-    with desktop.told("shows card Tokens Run Out in About 3 Hours"):
-        desktop.as_account(
-            "notify-send --expire-time=60000 --action=0='See What Spends'"
-            " --action=1='Pause One Log Writes: Every PR and CI Write Costs Only Its Change'"
-            " 'Tokens Run Out in About 3 Hours' 'resets 22:03' > /tmp/answer 2>&1 < /dev/null &"
-        )
-    spilled = json.loads(desktop.as_account("qs ipc call notices spilled"))
-    assert spilled == [], f"the offers of {spilled} ran past their card"
-    desktop.as_account("qs ipc call notices putAway")
-    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
-    desktop.as_account("qs ipc call notices seen")
 
 
 def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_launcher(
@@ -577,7 +593,7 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     wanted_at = [
         int(screen - (left + width) + step + 0.5),
         int(max(top, 0) + step + 0.5),
-        min(380, int(width - 2 * step)),
+        min(440, int(width - 2 * step)),
     ]
     notices_at = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"

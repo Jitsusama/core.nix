@@ -333,8 +333,8 @@ faces for one job each: Hubot Sans, the family's wide cut, and a serif.
   | Step    | Power | Size (pt) | For                                       |
   | ------- | ----- | --------- | ----------------------------------------- |
   | small   | -1    | 8.4       | units beside a number, a footnote         |
-  | body    | 0     | 10.5      | almost everything: notices, meters, menus |
-  | large   | 1     | 13.1      | the launcher and every prompt             |
+  | body    | 0     | 10.5      | almost everything: meters, menus          |
+  | large   | 1     | 13.1      | the launcher, every prompt, every notice  |
   | title   | 2     | 16.4      | a heading in a menu or dialog             |
   | display | 6     | 40.1      | a clock shown large                       |
   | hero    | 8     | 62.6      | the clock on the lock screen              |
@@ -473,7 +473,7 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | body, Mona Sans | who first, then the message, then a footer of where from and when; Super+N gives it the launcher's keys, the footer saying them where it said when |
+| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N gives it the launcher's keys, its acts showing under a rule |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 
@@ -498,10 +498,10 @@ its words keep the column's edge; a colour's swatch stays, since it is the
 figure. In a
 block of text a glyph never starts a line, since it would leave a hole under
 itself or push the text off its edge. It sits inline before the word it
-marks, or in a footer, as a notice signs where it came from: its glyph, a
-step apart, then its name at the bottom left, and the time at the bottom
-right. Edges line up to the ink, not the box, so a glyph's left edge and the
-letters above it share a column.
+marks, or in a signature, as a notice signs what sent it: its mark in a
+column of its own, then its name, and the time at the right. Edges line
+up to the ink, not the box, so a glyph's left edge and the letters above
+it share a column.
 
 **Chords are drawn key by key:** a key's own glyph where a proper one exists
 (the NixOS mark for Super, ⇧, ↵ and the arrows), its name where none does
@@ -1727,6 +1727,26 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **A notice reads in three groups, at the launcher's size** (2026-11-03,
+  look 3, from Joel's "the differing font sizes, and too much information
+  on lines really felt gross and unrefined" of 24 October and "i'm also
+  seeing some whitespace issues with the notifications, feeling quite
+  cluttered" of 3 November). Who or what it's about, strong in monospace;
+  a unit below, what it says, in Mona Sans; a step below, the signature,
+  muted in monospace: the mark of what sent it in a column of its own, the
+  name Joel knows it by (AI Spend, never a process's name) and, on the
+  right, when. All three are at the large step, as the launcher is. The
+  frame stands an inset and a step from the ink on every side, to the
+  capital's top, the first letter, the last and the signature's baseline,
+  as the launcher's card does. The card is 440 wide, so what it says holds
+  about 44 Mona Sans letters on a line at that size inside its room. The
+  line of offers and the held card's key hints went, as the clutter he
+  named: a click does what the card is about, and the keys reach every
+  act. Held, the card shows its acts under a rule at once, so it shows the
+  right arrow leads somewhere without a hint; the right arrow then puts
+  the band on the first, Return's mark where its key was. The track
+  playing, beside it in the same column, reads the same way.
+
 - **Actions read apart from figures, and a figure draws its range in
   braille** (2026-10-24, at Joel's word: "it is hard to tell actions from
   stats"). Every row wore a glyph in its kind's hue, so the battery's
@@ -1821,7 +1841,8 @@ What each studio round settled, newest first, with the reason.
   notice chose its offers with the side arrows, which in the launcher step
   in and out, and said its keys in a second footer; now the right arrow
   steps into its verbs as rows, the history's own, and the one footer
-  says the keys where it said when.
+  says the keys where it said when. Since 3 November it says none: held,
+  its acts show at once, each with its key.
 
 - **The splash says what it waits on** (2026-10-21, judged against the
   taste without a round). A boot or shutdown that stalled said starting or
