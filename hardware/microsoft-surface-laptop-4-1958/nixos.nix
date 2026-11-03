@@ -203,6 +203,12 @@
       name = "surface-power-asks-only-awake";
       patch = ./kernel/surface-power-asks-only-awake.patch;
     }
+    # The PSP refuses the secure display TA at every boot, and only a
+    # debugfs test of the display uses it.
+    {
+      name = "amdgpu-no-secure-display";
+      patch = ./kernel/amdgpu-no-secure-display.patch;
+    }
     # The AX200 joined Wi-Fi at boot before it had heard a country, and the
     # driver ignored the one it heard while connected, so it stayed on the
     # world domain.

@@ -1,0 +1,31 @@
+drm/amdgpu: don't load the secure display TA on the Surface Laptop 4 (AMD)
+
+psp_v12_0 keeps the secure display TA on for every Renoir, and at each
+boot this laptop's PSP refuses it:
+
+  amdgpu 0000:03:00.0: RAP: optional rap ta ucode is not available
+  amdgpu 0000:03:00.0: psp gfx command LOAD_TA(0x1) failed and response
+  status is (0x7)
+
+The refused TA is SECUREDISPLAY 0x27000008, the newest linux-firmware
+carries; HDCP and DTM load. amdgpu already gives up on it after the
+refusal, and its only user is the display's region CRC, a debugfs test
+feature. Skip it on this model, by its GPU's subsystem ID 1414:0051, so
+the boot says the TA isn't available rather than reporting a failure.
+psp_v10_0 does the same for Raven with this TA version.
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/psp_v12_0.c b/drivers/gpu/drm/amd/amdgpu/psp_v12_0.c
+--- a/drivers/gpu/drm/amd/amdgpu/psp_v12_0.c
++++ b/drivers/gpu/drm/amd/amdgpu/psp_v12_0.c
+@@ -63,6 +63,11 @@ static int psp_v12_0_init_microcode(struct psp_context *psp)
+ 	if (!(adev->apu_flags & AMD_APU_IS_RENOIR))
+ 		adev->psp.securedisplay_context.context.bin_desc.size_bytes = 0;
+ 
++	/* The Surface Laptop 4 (AMD)'s PSP refuses the TA with status 0x7. */
++	if (adev->pdev->subsystem_vendor == PCI_VENDOR_ID_MICROSOFT &&
++	    adev->pdev->subsystem_device == 0x0051)
++		adev->psp.securedisplay_context.context.bin_desc.size_bytes = 0;
++
+ 	return 0;
+ }
+ 
