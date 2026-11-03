@@ -47,6 +47,14 @@ ShellRoot {
         value: launcher.open
     }
 
+    // Sessions opened behind the lock are placed once it's let go, since
+    // niri refuses every move while locked (Sessions.qml).
+    Binding {
+        target: Sessions
+        property: "behindTheLock"
+        value: lock.held
+    }
+
     Arrivals {
         launcher: launcher
     }

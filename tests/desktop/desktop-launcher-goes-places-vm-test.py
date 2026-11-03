@@ -996,21 +996,7 @@ def test_a_session_another_restores_goes_to_its_workspace_and_leaves_joel_his_fo
     desktop: Desktop,
 ) -> None:
     """Sessions handed back with places kept go each to its kept workspace, never focused."""
-    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
-    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
-    output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
-    where = {
-        "01c8-near": {"output": output, "workspace": 1, "column": 1, "tile": 1},
-        "01c8-far": {"output": output, "workspace": 2, "column": 1, "tile": 1},
-    }
-    sessions = [{"id": one, "cwd": f"/home/jitsusama/{one[5:]}"} for one in where]
-    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/near ~/far")
-    lost = {"v": 1, "boot": "a-boot-before", "sessions": sessions}
-    kept(desktop, "~/.local/state/pi/restore.json", lost)
-    kept(desktop, f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
-    stand_in(desktop, "notes", "Notes")
-    notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
-    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    boot, sessions, notes = two_kept_beside_notes(desktop, "01c8-near", "01c8-far")
     try:
         watch_the_focus(desktop)
         # As `quest restore` hands them over: no focus asked for.
@@ -1126,6 +1112,89 @@ def test_a_session_another_starts_goes_to_its_senders_workspace_from_the_session
             f"; pkill -f 'sleep 60[0]'; kill $(cut -d' ' -f1 {owner}); rm -f {owner}; true"
         )
         desktop.as_account("rm -rf ~/first ~/spawned ~/.sendqa-pi ~/focus-events")
+
+
+def test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after(
+    desktop: Desktop,
+) -> None:
+    """Sessions handed over while the screen is locked open behind it, and are placed after.
+
+    niri dropped a program asked for over its socket while locked, so a session a quest started
+    overnight was lost outright (2026-11-03). Behind the lock only the lock is drawn and the
+    keys go to it; once it's let go, each goes to its kept workspace, and nothing is focused.
+    """
+    machine = desktop.machine
+    boot, sessions, notes = two_kept_beside_notes(desktop, "01cd-dusk", "01cd-dawn")
+
+    def apart(back: dict[str, tuple[int, int]]) -> bool:
+        """Whether both are back, dawn on the workspace next after dusk's, as kept."""
+        return len(back) == 2 and back["01cd-dawn"][0] == back["01cd-dusk"][0] + 1  # noqa: PLR2004
+
+    try:
+        with desktop.told("keys lock"):
+            machine.send_key("meta_l-l")
+        desktop.as_account("qs ipc call lock isLocked | grep -q true")
+        locked = desktop.settled_screen("locked-before-the-hand-over")
+        watch_the_focus(desktop)
+        # As a quest's spawn hands them over: no focus asked for.
+        handed = shlex.quote(json.dumps({"sessions": sessions}))
+        answer = desktop.as_account(f"qs ipc call sessions reopen {handed}").strip()
+        assert answer == "taken", answer
+        deadline = time.monotonic() + 300
+        while len(back := sat(desktop, "01cd-")) < 2 and time.monotonic() < deadline:  # noqa: PLR2004
+            time.sleep(1)
+        assert len(back) == 2, f"not both opened behind the lock: {back}"  # noqa: PLR2004
+        # The sky over the lock's time and field, which nothing else draws on.
+        behind = desktop.settled_screen("locked-after-the-hand-over")
+        sky = (0, 0, behind.width, behind.height * 2 // 5)
+        assert behind.crop(sky).tobytes() == locked.crop(sky).tobytes(), "a window showed"
+        with desktop.told("refused lock"):
+            machine.send_chars("not the secret\n")
+        with desktop.told("released lock"):
+            machine.send_chars(f"{desktop.values['secret']}\n")
+        deadline = time.monotonic() + 120
+        while not apart(back := sat(desktop, "01cd-")) and time.monotonic() < deadline:
+            time.sleep(1)
+        assert apart(back), f"not on their kept workspaces once unlocked: {back}"
+        windows, workspaces = focus_given(desktop)
+        assert set(windows) <= {notes["id"], None}, windows
+        assert set(workspaces) <= {notes["workspace_id"]}, workspaces
+    finally:
+        still, _ = machine.execute(desktop.in_session("qs ipc call lock isLocked | grep -q true"))
+        if still == 0:
+            with desktop.told("released lock"):
+                machine.send_chars(f"{desktop.values['secret']}\n")
+        desktop.as_account(
+            "pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'"
+        )
+        kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        desktop.as_account("rm -rf ~/dusk ~/dawn ~/focus-events")
+
+
+def two_kept_beside_notes(
+    desktop: Desktop, first: str, second: str
+) -> tuple[str, list[dict[str, str]], Json]:
+    """Keep two sessions from a boot before, on the first and second workspace, Notes focused.
+
+    Each session's folder is its id past the prefix, in the home folder, and each stays open
+    (pi-stays). Gives this boot's id, the sessions to hand over, and Notes' window.
+    """
+    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
+    where = {
+        first: {"output": output, "workspace": 1, "column": 1, "tile": 1},
+        second: {"output": output, "workspace": 2, "column": 1, "tile": 1},
+    }
+    sessions = [{"id": one, "cwd": f"/home/jitsusama/{one[5:]}"} for one in where]
+    desktop.as_account(f"touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/{first[5:]} ~/{second[5:]}")
+    lost = {"v": 1, "boot": "a-boot-before", "sessions": sessions}
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    kept(desktop, f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
+    stand_in(desktop, "notes", "Notes")
+    notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
+    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    return boot, sessions, notes
 
 
 def apart_as_kept(back: dict[str, tuple[int, int]]) -> bool:

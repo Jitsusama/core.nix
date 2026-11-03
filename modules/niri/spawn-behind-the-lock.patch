@@ -1,0 +1,40 @@
+Starts a program asked for over niri's socket while the session is locked.
+
+niri drops every action that comes over its socket while the session is
+locked, Spawn included, and still answers that it handled it. A program
+started then, as a session another session hands the shell is, is lost
+outright: nothing starts behind the lock, nor after it. A spawn asked for
+over the socket now starts behind the lock. The socket is Joel's own: only
+his processes can reach it, and any of them could end the locker as
+easily, so a spawn from it is no weaker a lock than the one he has. What
+it starts can't show or take input: a locked session's keys go to the
+lock surface, and the lock surface is all that's drawn. It's started with
+no activation token, so its window can't ask for the focus it would have
+once unlocked. Every other action over the socket, and every key binding,
+is still refused while locked, as before.
+
+--- a/src/ipc/server.rs
++++ b/src/ipc/server.rs
+@@ -388,7 +388,21 @@
+                 // Make sure some logic like workspace clean-up has a chance to run before doing
+                 // actions.
+                 state.niri.advance_animations();
+-                state.do_action(action, false);
++                // A program started over the socket while the session is
++                // locked opens behind the lock, which keeps the keyboard
++                // and is all that's drawn, so it starts rather than being
++                // dropped. It's given no activation token, so its window
++                // can't ask for the focus it would have once unlocked.
++                // Every other action is still refused while locked.
++                match action {
++                    niri_config::Action::Spawn(command) if state.niri.is_locked() => {
++                        crate::utils::spawning::spawn(command, None);
++                    }
++                    niri_config::Action::SpawnSh(command) if state.niri.is_locked() => {
++                        crate::utils::spawning::spawn_sh(command, None);
++                    }
++                    action => state.do_action(action, false),
++                }
+                 let _ = tx.send_blocking(());
+             });
+ 

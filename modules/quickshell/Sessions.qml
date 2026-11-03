@@ -544,10 +544,13 @@ Singleton {
     }
     // A session's window found, as when a kitty has said which of its
     // windows is whose, can be what a session handed over waits for to
-    // go beside its kin (placeQuietly).
+    // go beside its kin (placeQuietly), one opened behind the lock among
+    // them (placeBehind).
     onRunningChanged: {
         arranging.restart();
         root.placeOpened();
+        if (root.placeable() && (root.reopening?.behind.length ?? 0) > 0)
+            root.placeBehind();
     }
     Connections {
         target: Niri
@@ -565,6 +568,12 @@ Singleton {
                 arranging.restart();
             root.placeOpened();
             root.settleReopenedSoon();
+        }
+        // niri gives the keys back to a window only once it has let the
+        // lock go itself (lockGone).
+        function onFocusedChanged() {
+            if (!root.behindTheLock && !root.lockLetGo && Niri.focused !== null)
+                root.lockGone();
         }
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
@@ -593,6 +602,11 @@ Singleton {
             going.taken.push(key);
             going.late = going.late.slice(1);
             root.besideKept(id, late.kept);
+            if (!root.placeable()) {
+                going.behind.push({ entry: { id, at: late.at, away: late.away,
+                    quiet: late.quiet === true }, waiting: late });
+                return;
+            }
             if (late.quiet && late.at === null) {
                 root.placeQuietly(id, late);
                 if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
@@ -636,6 +650,16 @@ Singleton {
             return;
         const entry = { id: waiting.opened, at: waiting.at, away: waiting.away,
             quiet: waiting.quiet === true };
+        // Behind the lock it's placed once the lock is let go, and the next
+        // is begun now, so every session handed over meanwhile runs.
+        if (!root.placeable()) {
+            reopening.behind.push({ entry, waiting });
+            root.besideKept(entry.id, waiting.kept);
+            reopening.waiting = null;
+            reopenPatience.stop();
+            reopenSoon();
+            return;
+        }
         if (entry.at !== null) {
             if (root.placeSession(entry, root.besideOf(reopening.placed)) === "waiting")
                 return;
@@ -778,7 +802,7 @@ Singleton {
     // holds, or after a round for each and a few more, so two that can't
     // both be had never move back and forth.
     function settleReopened() {
-        if (!reopening)
+        if (!reopening || !root.placeable())
             return;
         reopening.settling = true;
         reopening.rounds = 0;
@@ -799,7 +823,9 @@ Singleton {
     }
     function settleNextReopened() {
         const going = reopening;
-        if (!going?.settling)
+        // Behind the lock every move would be refused; placeBehind settles
+        // them once it's let go.
+        if (!going?.settling || !root.placeable())
             return;
         const ordered = going.placed.filter(one => Niri.windows[one.id])
             .sort((a, b) => root.keptOrder(a.at, b.at));
@@ -820,7 +846,8 @@ Singleton {
     // What waited on the last being placed: windows that reopen themselves
     // put back, a gone screen's workspaces taken to it if it came
     // meanwhile, and Joel's window focused again. Kept while a window given
-    // up on may still come, to place it.
+    // up on may still come, or one opened behind the lock waits for its
+    // kin's window, to place it.
     function reopenDone() {
         const going = reopening;
         going.settling = false;
@@ -833,7 +860,7 @@ Singleton {
             Niri.act({ FocusWindow: { id: going.back } });
         going.back = null;
         going.focused = false;
-        if (going.late.length === 0)
+        if (going.late.length === 0 && going.behind.length === 0)
             reopening = null;
     }
     // The order places are kept in: a screen and its workspaces in the
@@ -920,6 +947,7 @@ Singleton {
             late: [],
             taken: [],
             placed: [],
+            behind: [],
             settling: false,
             rounds: 0,
             focused: false
@@ -1180,6 +1208,64 @@ Singleton {
             .sort((a, b) => a.idx - b.idx);
         const last = its[its.length - 1];
         return last && last.active_window_id === null ? last.id : null;
+    }
+
+    // Whether the lock is held (shell.qml binds it from Lock.qml). niri
+    // refuses every move while locked and says nothing of the lock over
+    // its socket, and the lock's own word that it's let go comes before
+    // niri has had it, so the windows of sessions opened behind it are
+    // placed only once niri gives the keys back to a window, or a second
+    // after the lock is let go when none takes them, as on a workspace
+    // with no window.
+    property bool behindTheLock: false
+    property bool lockLetGo: true
+    onBehindTheLockChanged: {
+        if (behindTheLock) {
+            lockLetGo = false;
+            lockLettingGo.stop();
+        } else {
+            lockLettingGo.restart();
+        }
+    }
+    Timer {
+        id: lockLettingGo
+        interval: 1000
+        onTriggered: root.lockGone()
+    }
+    function lockGone() {
+        if (root.behindTheLock || root.lockLetGo)
+            return;
+        lockLettingGo.stop();
+        root.lockLetGo = true;
+        root.placeBehind();
+    }
+    function placeable() {
+        return !root.behindTheLock && root.lockLetGo;
+    }
+    // Each session opened behind the lock, placed as it would have been:
+    // one with a place kept by the check once the last is placed, one
+    // another session started with its quest's sessions. One whose kin is
+    // in a kitty that hasn't yet said which window is whose, as one started
+    // from the sessions' kitty beside its sender, stays held until it has
+    // (onRunningChanged), rather than left wherever Joel's focus was.
+    function placeBehind() {
+        const going = root.reopening;
+        if (!going)
+            return;
+        const behind = going.behind;
+        going.behind = [];
+        for (const held of behind) {
+            if (!Niri.windows[held.entry.id])
+                continue;
+            if (held.entry.at !== null)
+                going.placed.push(held.entry);
+            else if (held.entry.quiet
+                && root.placeQuietly(held.entry.id, held.waiting) === "waiting")
+                going.behind.push(held);
+        }
+        if (going.queue.length === 0 && going.waiting === null && !going.looking
+            && !reopenPacing.running)
+            root.settleReopened();
     }
 
     // A session whose window never opens in half a minute is given up on,
@@ -1695,7 +1781,7 @@ Singleton {
                 return;
             for (const file of Object.keys(records).sort()) {
                 const presence = records[file];
-                if ((presence.addresses ?? []).length > 0 && alive(presence.owner))
+                if (presence && (presence.addresses ?? []).length > 0 && alive(presence.owner))
                     next.push({
                         file: file,
                         presence: presence,
@@ -2010,11 +2096,20 @@ Singleton {
     }
     // Whether every record in the folder is read, so a node lost leaves
     // what it said shown until the folder says it all, never a moment with
-    // no sessions while the folder is listed.
+    // no sessions while the folder is listed. Each file's view is counted
+    // before it has told what it read, and the records were forgotten
+    // while the node answered, so a count alone let the folder say none.
     function folderRead() {
         const listing = presenceFolder.item;
-        return listing !== null && listing.status === FolderListModel.Ready
-            && presenceViews.count === listing.count;
+        if (listing === null || listing.status !== FolderListModel.Ready
+            || presenceViews.count !== listing.count)
+            return false;
+        for (let at = 0; at < presenceViews.count; at += 1) {
+            const view = presenceViews.objectAt(at);
+            if (view === null || view.path.startsWith(state) && !(view.path in records))
+                return false;
+        }
+        return true;
     }
     Instantiator {
         id: presenceViews
@@ -2052,14 +2147,15 @@ Singleton {
         // A folder Qt fell back to when the presence folder isn't there.
         if (!file.startsWith(state))
             return;
+        // One that isn't a record is kept as nothing, so it's known read.
         let record;
         try {
             record = JSON.parse(text);
         } catch (e) {
-            return;
+            record = null;
         }
         if (!record || typeof record !== "object")
-            return;
+            record = null;
         const next = Object.assign({}, records);
         next[file] = record;
         records = next;
