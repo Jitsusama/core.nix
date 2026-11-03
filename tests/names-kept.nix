@@ -16,6 +16,7 @@
     "jitsusama.theme.icons" = "the icon theme is GTK's, named as it names it";
     "jitsusama.theme.palette" = "a theme's palette is its colours, not the launcher";
     "jitsusama.theme.syntax.operator" = "an operator is a code token, such as =, not a person";
+    linux-builder-lets-only-those-named-restart-it = "a VM and a service restart; the Mac isn't rebooted";
     platform-profiles-reach-the-legacy-file = "the kernel's platform_profile file, by its name";
     quickshell-restarts-with-its-files = "a program restarts; the machine isn't rebooted";
     the-panel-slows-on-a-low-battery = "the panel's refresh rate slows, not lag";
