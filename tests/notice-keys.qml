@@ -52,6 +52,7 @@ QtObject {
             ["dG forgets all, as Shift+Delete", ["d", "G", "Shift+Delete"],
                 ["forgetAll", "forgetAll"]],
             ["DD is no key of vi's", ["D", "D"], []],
+            ["yy copies", ["y", "y"], ["copy"]],
             ["gg goes to the newest and G the oldest", ["g", "g", "G"], ["newest", "oldest"]],
             ["q closes", ["q"], ["close"]],
             ["a count goes before a motion", ["5", "j", "1", "2", "k"], ["5next", "12previous"]],

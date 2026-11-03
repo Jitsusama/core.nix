@@ -312,15 +312,15 @@ Scope {
             });
         case "forget":
             return Object.assign(named("verb:notice:forget"), {
-                // Keys drawn as the desktop draws them (home.nix, keyFaces),
-                // Backspace by its name, since it has no glyph of its own.
-                chord: [{ text: "Backspace" }],
+                // vi's keys for it, as the held stack's (NoticeKeys.js),
+                // typed one after the other.
+                chord: [{ text: "d" }, { text: "d", after: true }],
                 stays: true,
                 run: () => notification.dismiss()
             });
         case "forgetAll":
             return Object.assign(named("verb:notices:forget"), {
-                chord: [{ text: "\u21e7" }, { text: "Backspace" }],
+                chord: [{ text: "d" }, { text: "G", after: true }],
                 stays: true,
                 run: () => root.putAway()
             });
@@ -334,13 +334,19 @@ Scope {
         default:
             // Copying what it said, always last.
             return Object.assign(named("verb:notice:copy"), {
-                run: done(() => {
-                    Quickshell.clipboardText = root.said(notification);
-                    root.copied = notification.id;
-                    copiedFor.restart();
-                })
+                chord: [{ text: "y" }, { text: "y", after: true }],
+                run: done(() => root.copy(notification))
             });
         }
+    }
+
+    // What a notice said onto the clipboard, which its signature says a
+    // moment in its time's place, again when it's copied again.
+    function copy(notification) {
+        Quickshell.clipboardText = root.said(notification);
+        root.copied = -1;
+        root.copied = notification.id;
+        copiedFor.restart();
     }
 
     // What a notice said, as plain text: its summary, and its body without
@@ -417,7 +423,8 @@ Scope {
     // steps into the front one's verbs, where j and k choose one and h
     // steps back, and Return does it, or the front one; gg and G turn to
     // the newest and the oldest, or choose the first and last verb; dd or
-    // Delete lets the front one go, and dG or Shift+Delete all of them; a
+    // Delete lets the front one go, and dG or Shift+Delete all of them; yy
+    // copies what the front one said, leaving the stack held; a
     // count goes before any of them; q gives the keys back, and Escape
     // cancels what's begun, then steps back, then gives the keys back. The
     // chord that opened the stack hands on to the history (niri's, to
@@ -469,6 +476,10 @@ Scope {
             break;
         case "forgetAll":
             putAway();
+            break;
+        case "copy":
+            if (front)
+                copy(front);
             break;
         case "close":
             holding = false;

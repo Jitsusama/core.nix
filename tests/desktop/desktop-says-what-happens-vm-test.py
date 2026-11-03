@@ -264,6 +264,18 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         machine.send_key("ret")
     desktop.photograph("notice-copied")
     assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
+    # yy copies it too, as vi yanks a line, and the stack stays held.
+    desktop.as_account("wl-copy nothing")
+    with desktop.told("shows card Deploy log"):
+        desktop.as_account("notify-send --expire-time=60000 'Deploy log' 'all out'")
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    with desktop.told("copied card Build log"):
+        machine.send_key("y")
+        machine.send_key("y")
+    assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
+    with desktop.told("lets notices go"):
+        machine.send_key("q")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
@@ -377,13 +389,16 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
             )
         signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
         assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
-        desktop.photograph(f"notice-at-{scale}")
+        # Named without the point, which the driver would take for where
+        # the name ends and its kind begins.
+        named = scale.replace(".", "-")
+        desktop.photograph(f"notice-at-{named}")
         with desktop.told("keys notices"):
             machine.send_key("meta_l-n")
-        desktop.photograph(f"notice-held-at-{scale}")
+        desktop.photograph(f"notice-held-at-{named}")
         with desktop.told("notice verb Open"):
             machine.send_key("right")
-        desktop.photograph(f"notice-stepped-at-{scale}")
+        desktop.photograph(f"notice-stepped-at-{named}")
         with desktop.told("notice back"):
             machine.send_key("esc")
         with desktop.told("lets notices go"):

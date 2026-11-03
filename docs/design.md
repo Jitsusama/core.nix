@@ -1493,7 +1493,9 @@ On the notices on screen, held: j and k (and ↓ and ↑) turn through the
 cards, l steps into the front card's acts and h back out, and there j and
 k choose an act. Return runs it, and Ctrl+Return runs it and closes. dd,
 Delete or Backspace forgets the front card; dG, as vi deletes to the last
-line, or Shift with Delete or Backspace forgets them all. gg and G go to
+line, or Shift with Delete or Backspace forgets them all. yy copies what
+the front card said, as vi yanks a line, and the stack stays held; its
+acts show dd, dG and yy as their keys. gg and G go to
 the newest and the oldest, and Escape steps out, then lets the stack go.
 The stack shows one card at a time, so it has no screen keys. In
 the viewfinder, q closes as Escape does, and nothing else changes, since
