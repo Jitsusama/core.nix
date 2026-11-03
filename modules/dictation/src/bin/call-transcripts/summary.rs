@@ -379,20 +379,20 @@ mod tests {
     }
 
     impl Model {
-        fn ask(&mut self, prompt: &str, _tokens: usize) -> Result<String, String> {
+        fn ask(&mut self, prompt: &str) -> String {
             self.asked.push(prompt.to_owned());
             if prompt.starts_with("These are numbered lines") {
-                Ok(self.picks.to_owned())
+                self.picks.to_owned()
             } else if prompt.contains("Copy, word for word") {
-                Ok(self.quotes.remove(0).to_owned())
+                self.quotes.remove(0).to_owned()
             } else {
-                Ok(self.verdict.to_owned())
+                self.verdict.to_owned()
             }
         }
     }
 
     fn summed(model: &mut Model) -> String {
-        summarize(&mut |p, t| model.ask(p, t), "Review", CALL).unwrap()
+        summarize(&mut |p, _| Ok(model.ask(p)), "Review", CALL).unwrap()
     }
 
     #[test]

@@ -55,7 +55,7 @@ pub struct Summarizer {
     pub program: Option<PathBuf>,
     /// Whether a call is on, as follow.rs says.
     pub calling: Arc<AtomicBool>,
-    /// Where power supplies are, /sys/class/power_supply.
+    /// Where power supplies are, `/sys/class/power_supply`.
     pub power: PathBuf,
 }
 
