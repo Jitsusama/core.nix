@@ -1,5 +1,5 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] FLAKE ATTR...`, or `DRV...` in place of the flake and
+//! [--print-out-paths] [--here] [--outlive] FLAKE ATTR...`, or `DRV...` in place of the flake and
 //! its attributes: builds a flake's attributes on the lent builder by
 //! sending it a command, or here with `--here` when none takes it.
 //!
@@ -26,6 +26,11 @@
 //! `--print-out-paths` brings what was built into this machine's store,
 //! from wherever it was built, and prints its paths as `nix build` does,
 //! so a system built elsewhere can be sent on or switched to.
+//! `--outlive` lets what's sent to the lent builder run to its end there
+//! once its caller is gone, for up to a builder's life, as a prebuild
+//! asks, and the lender holds that builder meanwhile, though no ssh here
+//! reaches it. The same build sent again while it runs attaches to what it
+//! builds through Nix's lock on each derivation, as any run sent again does.
 //! `there --takes` says which of these it takes, a word a line.
 //!
 //! Derivations, given by their paths in place of a flake and its
@@ -72,8 +77,38 @@ pub struct Asked {
     /// Whether it may build here when no builder takes it, as `--here`
     /// says.
     here: bool,
+    /// What the build does there once this caller is gone.
+    pub alone: Alone,
     /// Whether the attributes are derivations' paths, with no flake.
     derivations: bool,
+}
+
+/// What a build sent far does once its caller is gone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Alone {
+    /// It ends once no caller has claimed it for `GRACE` seconds.
+    Ends,
+    /// It goes on to its end, for up to `OUTLIVE` seconds, as `--outlive`
+    /// asks.
+    GoesOn,
+}
+
+impl Alone {
+    /// How its command is sent far.
+    fn wrap(self) -> fn(&str) -> String {
+        match self {
+            Alone::Ends => far,
+            Alone::GoesOn => outliving,
+        }
+    }
+
+    /// How long, in seconds, what it builds goes on there with no caller.
+    fn lasts(self) -> u32 {
+        match self {
+            Alone::Ends => GRACE,
+            Alone::GoesOn => OUTLIVE,
+        }
+    }
 }
 
 /// Reads `there`'s arguments: its flags, in any place, then the flake and
@@ -85,6 +120,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
     let (mut apply, mut out, mut print, mut here) = (None, None, false, false);
+    let mut alone = Alone::Ends;
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -97,6 +133,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             "--out" => out = Some(PathBuf::from(arguments.next()?)),
             "--print-out-paths" => print = true,
             "--here" => here = true,
+            "--outlive" => alone = Alone::GoesOn,
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
         }
@@ -111,13 +148,14 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             out,
             print,
             here,
+            alone,
             derivations: true,
         });
     }
     let (flake, attributes) = words.split_first()?;
     let one = attributes.len() == 1;
-    let alone = one || (apply.is_none() && out.is_none());
-    (!attributes.is_empty() && alone && !(print && out.is_some())).then(|| Asked {
+    let applied_to_one = one || (apply.is_none() && out.is_none());
+    (!attributes.is_empty() && applied_to_one && !(print && out.is_some())).then(|| Asked {
         flake: flake.clone(),
         attributes: attributes.to_vec(),
         flags,
@@ -125,6 +163,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         out,
         print,
         here,
+        alone,
         derivations: false,
     })
 }
@@ -152,6 +191,7 @@ impl Asked {
             out: self.out.clone(),
             print: self.print,
             here: self.here,
+            alone: self.alone,
             derivations: self.derivations,
         }
     }
@@ -349,7 +389,7 @@ pub fn run(
                 (None, true) => Bring::Store(nix),
                 (None, false) => Bring::Nothing,
             };
-            let ran = on(&lent, &sending, bring, scratch, ssh);
+            let ran = on_with(&lent, &sending, bring, scratch, ssh, asked.alone.wrap());
             if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
                 break ran;
             }
@@ -365,7 +405,7 @@ pub fn run(
                 "nix-offload: if it stands again within {} minutes, what it was building \
                  goes on there, and this shows only how it ends; `nix log` on the builder \
                  has the rest",
-                GRACE / 60
+                asked.alone.lasts() / 60
             );
             match again().and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
@@ -709,9 +749,10 @@ impl Source {
 /// What `there --takes` says it takes: a flake that's a git tree here,
 /// `--apply`, `--out`, waiting for a builder it asks for, a flake that's a
 /// folder no commit names, `--changed`, changed-checks run elsewhere,
-/// `--here`, a build no builder took made here, and `--print-out-paths`,
-/// what was built brought into this store.
-pub const TAKES: [&str; 9] = [
+/// `--here`, a build no builder took made here, `--print-out-paths`,
+/// what was built brought into this store, derivations' paths, and
+/// `--outlive`, a build that goes on once its caller is gone.
+pub const TAKES: [&str; 10] = [
     "tree",
     "apply",
     "out",
@@ -721,6 +762,7 @@ pub const TAKES: [&str; 9] = [
     "here",
     "print",
     "derivation",
+    "outlive",
 ];
 
 /// The ref a bundle carries its commit under, here only while it's made.
@@ -871,18 +913,76 @@ const GRACE: u32 = 300;
 /// it names this machine's pid. The watcher ends the group only once no
 /// claimer has lived for the grace period. The run sent again waits on
 /// what the first is building through Nix's lock on each derivation.
+/// Once the command itself has ended, the watcher ends too, as there's
+/// nothing left to wait for.
 pub fn far(command: &str) -> String {
+    far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"), false)
+}
+
+/// How long, at most, a run asked to outlive its callers goes on alone: as
+/// long as a builder lives.
+pub const OUTLIVE: u32 = 12 * 3600;
+
+/// A command sent far that runs to its end even once every caller is gone,
+/// as a prebuild asks: one whose caller hit its own time limit at 05:14 on
+/// 3 November lost the kernel it was compiling. While it runs, a file named
+/// for its shell says so, which `OUTLIVING_ASKED` reads, and the lender
+/// holds the builder meanwhile, whoever asked.
+pub fn outliving(command: &str) -> String {
+    far_within(
+        command,
+        &format!("${{NIX_OFFLOAD_OUTLIVE:-{OUTLIVE}}}"),
+        true,
+    )
+}
+
+/// What a builder is sent to ask whether a run outliving its callers still
+/// runs there: it prints `outliving` for each whose shell lives. A file
+/// left by one killed outright names a shell that's gone, so it counts for
+/// nothing.
+pub const OUTLIVING_ASKED: &str = "for run in \"${TMPDIR:-/tmp}\"/nix-offload-outliving-*; do \
+     [ -e \"$run\" ] && kill -0 \"${run##*-}\" 2>/dev/null && echo outliving; done; true";
+
+/// Whether a run outliving its callers still runs on the builder `store`
+/// names, as the lender asks before giving back one nothing here reaches.
+/// A builder that can't be asked holds none.
+pub fn outlives_on(store: &str, scratch: &Path, ssh: &str) -> bool {
+    let Some(lent) = store.lines().next().and_then(|line| builder(line.trim())) else {
+        return false;
+    };
+    let asking = Sending {
+        command: OUTLIVING_ASKED.to_owned(),
+        bundle: None,
+    };
+    printed_on(&lent, &asking, scratch, ssh).is_ok_and(|(ran, printed)| {
+        ran.status == 0 && printed.lines().any(|line| line == "outliving")
+    })
+}
+
+/// `far`'s wrapper, ending what's left once no caller has lived for `grace`
+/// seconds, as the far shell reads them. One `outlives` names itself for
+/// `OUTLIVING_ASKED` while it runs.
+fn far_within(command: &str, grace: &str, outlives: bool) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::hash::DefaultHasher::new();
     command.hash(&mut hasher);
     let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{:016x}", hasher.finish());
+    let (named, unnamed) = if outlives {
+        (
+            "outliving=\"${TMPDIR:-/tmp}/nix-offload-outliving-$$\"; : > \"$outliving\"; ",
+            "rm -f \"$outliving\"; ",
+        )
+    } else {
+        ("", "")
+    };
     format!(
-        "claims=\"{claims}\"; mkdir -p \"$claims\" && : > \"$claims/$PPID\"; \
-         (gone=0; while [ \"$gone\" -lt \"${{NIX_OFFLOAD_GRACE:-{GRACE}}}\" ]; do sleep 1; \
+        "{named}claims=\"{claims}\"; mkdir -p \"$claims\" && : > \"$claims/$PPID\"; \
+         (gone=0; while [ \"$gone\" -lt \"{grace}\" ]; do sleep 1; \
+         kill -0 $$ 2>/dev/null || break; \
          held=; for caller in $(ls \"$claims\" 2>/dev/null); do \
          if kill -0 \"$caller\" 2>/dev/null; then held=1; else rm -f \"$claims/$caller\"; fi; \
          done; if [ -n \"$held\" ]; then gone=0; else gone=$((gone + 1)); fi; done; \
-         rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
+         {unnamed}rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
          </dev/null >/dev/null 2>&1 & \
          trap 'exit 143' HUP TERM; {command}; exit $?"
     )
@@ -948,9 +1048,22 @@ pub fn on(
     scratch: &Path,
     ssh: &str,
 ) -> Result<Ran, String> {
+    on_with(lent, sending, bring, scratch, ssh, far)
+}
+
+/// Builds as `on` does, with the command sent as `wrap` makes it: `far`,
+/// or `outliving` for a run asked to outlive its caller.
+pub fn on_with(
+    lent: &Builder,
+    sending: &Sending,
+    bring: Bring,
+    scratch: &Path,
+    ssh: &str,
+    wrap: fn(&str) -> String,
+) -> Result<Ran, String> {
     let (mut command, known, said) = reach(lent, scratch, ssh)?;
     eprintln!("nix-offload: building on the lent builder");
-    command.arg(&lent.host).arg(far(&sending.command));
+    command.arg(&lent.host).arg(wrap(&sending.command));
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
@@ -1826,6 +1939,7 @@ mod tests {
             .args(["-c", "sh -c \"$1\" & read -r line", "caller", run])
             .env("TMPDIR", scratch)
             .env("NIX_OFFLOAD_GRACE", "1")
+            .env("NIX_OFFLOAD_OUTLIVE", "60")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .process_group(0)
@@ -1871,6 +1985,68 @@ mod tests {
     }
 
     #[test]
+    fn a_run_asked_to_outlive_its_caller_finishes_its_work_alone() {
+        // A prebuild's caller can hit its own time limit, as one did at
+        // 05:14 on 3 November, and the kernel it asked for was dropped
+        // mid-compile. Its work lasts past the grace a run cut off has,
+        // and ends well before the outliving one's.
+        let folder = tempfile::tempdir().unwrap();
+        let done = folder.path().join("done");
+        let run = outliving(&format!("echo started; sleep 4; touch {}", done.display()));
+        let mut caller = calling(&run, folder.path());
+        let mut said = BufReader::new(caller.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        assert_eq!(line, "started\n");
+        drop(caller.stdin.take());
+        caller.wait().unwrap();
+        let (ended, closed) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut rest = String::new();
+            let _ = std::io::Read::read_to_string(&mut said, &mut rest);
+            let _ = ended.send(());
+        });
+        // Once its work ends, nothing of it stays to wait out the 60 s.
+        let gone = closed.recv_timeout(Duration::from_secs(20)).is_ok();
+        assert!(done.exists(), "its work ended with its caller");
+        assert!(gone, "it stayed on after its work ended");
+    }
+
+    #[test]
+    fn a_run_outliving_its_caller_says_so_there_until_it_ends() {
+        // With its caller gone no ssh here reaches the builder, so the
+        // lender asks there before giving it back idle, mid-build.
+        let folder = tempfile::tempdir().unwrap();
+        let asked = || {
+            let printed = Command::new("sh")
+                .args(["-c", OUTLIVING_ASKED])
+                .env("TMPDIR", folder.path())
+                .output()
+                .unwrap()
+                .stdout;
+            String::from_utf8(printed).unwrap()
+        };
+        // One killed outright leaves its file, naming a shell long gone.
+        fs::write(folder.path().join("nix-offload-outliving-999999999"), "").unwrap();
+        assert_eq!(asked(), "");
+        let mut caller = calling(&outliving("echo started; sleep 3"), folder.path());
+        let mut said = BufReader::new(caller.stdout.take().unwrap());
+        let mut line = String::new();
+        said.read_line(&mut line).unwrap();
+        drop(caller.stdin.take());
+        caller.wait().unwrap();
+        assert_eq!(asked(), "outliving\n");
+        let mut rest = String::new();
+        let _ = std::io::Read::read_to_string(&mut said, &mut rest);
+        // Its watcher sees it gone within a second, and takes its file.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !asked().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(asked(), "", "it still says it runs once it's ended");
+    }
+
+    #[test]
     fn a_run_whose_caller_stays_ends_with_its_own_status() {
         // In a group of its own, as sshd starts it, so its watcher's end
         // reaches nothing else once this test's process ends.
@@ -1911,9 +2087,12 @@ mod tests {
                 out: None,
                 print: false,
                 here: false,
+                alone: Alone::Ends,
                 derivations: false,
             })
         );
+        let outliving = super::asked(&words("--outlive github:o/r/abc checks.x.a"));
+        assert!(outliving.is_some_and(|asked| asked.alone == Alone::GoesOn));
     }
 
     #[test]

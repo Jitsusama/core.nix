@@ -7,7 +7,7 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] (FLAKE ATTR... | DRV...)` to build a flake, or
+//! [--print-out-paths] [--here] [--outlive] (FLAKE ATTR... | DRV...)` to build a flake, or
 //! derivations, on the builder, or on a machine nearby for systems this
 //! one can't build, as src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
@@ -158,7 +158,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
-                    [--print-out-paths] [--here] (FLAKE ATTR... | DRV...) \
+                    [--print-out-paths] [--here] [--outlive] (FLAKE ATTR... | DRV...) \
                     | nix-offload there --changed [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
@@ -883,7 +883,9 @@ fn serve(settings: &Settings) {
                 None => None,
             },
             Some(mut builder) => {
-                if in_use(Path::new("/proc"), &builder.host) {
+                if in_use(Path::new("/proc"), &builder.host)
+                    || outlives_on(settings, tick, &builder)
+                {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
@@ -1180,6 +1182,30 @@ fn host_of(line: &str) -> Option<String> {
     let rest = rest.split(['?', '/']).next().unwrap_or(rest);
     let host = rest.rsplit_once('@').map_or(rest, |(_, host)| host);
     (!host.is_empty()).then(|| host.to_owned())
+}
+
+/// Whether a run asked to outlive its caller still builds on `builder`,
+/// which holds it lent though no ssh here reaches it, saying so. It's
+/// asked only when `decide::asks_outliving` says so.
+fn outlives_on(settings: &Settings, tick: Tick, builder: &Lent) -> bool {
+    if !decide::asks_outliving(settings.hours, tick, builder.used, builder.ends) {
+        return false;
+    }
+    // Where ssh keeps what it writes asking.
+    let scratch = env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-serve");
+    let outlives = builder
+        .store
+        .as_deref()
+        .is_some_and(|store| there::outlives_on(store, &scratch, "ssh"));
+    if outlives {
+        eprintln!(
+            "nix-offload: {} builds a run that outlives its caller, so it stays lent",
+            builder.name
+        );
+    }
+    outlives
 }
 
 /// Whether an ssh reaching `host` runs: Nix's build hook holds one for
