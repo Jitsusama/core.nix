@@ -1,4 +1,4 @@
-//! Caches that refill on demand, taken from urgent on, cheapest to refill
+//! Caches that refill on demand, taken once a disk is nearly full, cheapest to refill
 //! first.
 //!
 //! A cache without a protocol goes whole, as one candidate: its top-level

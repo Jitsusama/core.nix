@@ -2,7 +2,7 @@
 # as nixos.nix's does on Linux. It collects Nix's garbage by its own policy
 # beside whatever collects it already, expires generations, links the
 # store's identical files in a spare moment, takes root's caches and what's
-# left in the temporary directories, and from urgent on has Time Machine
+# left in the temporary directories, and once nearly full has Time Machine
 # thin its local snapshots. Each account's guard asks it to collect when
 # they share a filesystem, and to vouch for processes the account can't
 # read. AGENTS.md beside this says how it decides.

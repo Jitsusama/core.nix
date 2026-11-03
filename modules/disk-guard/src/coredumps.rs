@@ -65,8 +65,8 @@ pub fn find(dir: &Path) -> Vec<Dump> {
     found
 }
 
-/// A dump as the planner takes it: one under a day old is kept for
-/// critical, an older one goes at urgent.
+/// A dump as the planner takes it: one under a day old is kept until the
+/// disk is critically full, an older one goes once it's nearly full.
 pub fn candidate(dump: &Dump, awake: &Awake, now: f64) -> Candidate {
     Candidate {
         path: dump.path.clone(),

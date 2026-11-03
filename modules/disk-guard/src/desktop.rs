@@ -10,7 +10,7 @@ use zbus::zvariant::{OwnedValue, Value};
 
 /// How long any call waits for its answer. D-Bus calls otherwise wait for
 /// ever, and a wedged desktop service would stop the daemon's loop, the
-/// urgent passes with it.
+/// passes of a nearly full disk with it.
 const PATIENCE: Duration = Duration::from_secs(2);
 
 /// Connects as `builder` says, every call giving up after `PATIENCE`.

@@ -132,7 +132,7 @@ fn a_pacer_with_no_probe_rests_as_its_pacing_says() {
 #[test]
 fn a_disk_fallen_to_urgent_ends_the_rest_and_every_one_after_it() {
     let (mut pacer, clock, _) = paced(2, Some(|_| SLOW), |at| at >= 10.0);
-    // Strained, but urgent can't wait.
+    // Strained, but a nearly full disk can't wait.
     pacer.rest();
     crate::assert_exactly(clock.at(), 10.0);
     // And it never rests again.

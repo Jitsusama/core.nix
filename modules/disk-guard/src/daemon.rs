@@ -96,7 +96,7 @@ const MARK_EVERY: f64 = 3600.0;
 const WRITING_WINDOW: f64 = 60.0;
 
 /// The least a writer must write, in bytes a second, to be what fills a
-/// disk at critical: anything slower isn't worth stopping.
+/// disk once critically full: anything slower isn't worth stopping.
 const RUNAWAY: f64 = 1024.0 * 1024.0;
 
 /// Whether process `pid` has a file open on the filesystem `device`.
@@ -178,9 +178,9 @@ type DedupeOut = (f64, Arc<AtomicBool>, Receiver<Result<Option<u64>, String>>);
 const GENERATIONS: &str = "generations";
 const YOUNG_GENERATIONS: &str = "generations:young";
 /// How old Nix's garbage listing may grow on a healthy disk before a spare
-/// moment lists it again, as often as upkeep comes, and how old under
-/// pressure. Then how long a listing that failed waits for the next, on a
-/// healthy disk and under pressure, where a listing is all garbage can be
+/// moment lists it again, as often as upkeep comes, and how old on a
+/// filling one. Then how long a listing that failed waits for the next, on a
+/// healthy disk and a filling one, where a listing is all garbage can be
 /// collected by.
 const LISTING_FRESH: f64 = 6.0 * 3600.0;
 const LISTING_PRESSED: f64 = 3600.0;
@@ -197,7 +197,7 @@ const HELD_ENDED_GAP: f64 = 120.0;
 /// something let go brings another on a healthy disk, so listing takes at
 /// most a tenth of the guard's time. A store of 400 GiB took 108 s and 75 s
 /// of CPU to list on 31 October, and roots left so often that one began as
-/// each ended, a core spent to free kilobytes. Under pressure, none.
+/// each ended, a core spent to free kilobytes. On a filling disk, none.
 const LISTING_REST: f64 = 9.0;
 
 /// How often the guard looks for an owner that has ended: a tree's last
@@ -446,7 +446,7 @@ pub struct Status {
     /// healthy and one process did.
     pub writer: Option<Writing>,
     /// What stands to be told now, from any band below healthy, for
-    /// whoever reads this file: the desktop is told only from urgent on.
+    /// whoever reads this file: the desktop is told only once a disk is nearly full.
     pub notice: Option<crate::notices::Notice>,
     /// What holds the disks, biggest first, measured while one is below
     /// healthy, and when it was measured, in wall seconds.
@@ -779,7 +779,7 @@ impl Guard {
         self.freeze = Some(freeze);
     }
 
-    /// Freezes what's filling a disk that's critical with nothing left to
+    /// Freezes what's filling a critically full disk with nothing left to
     /// take, and thaws what was frozen once its disk has room again, or
     /// lets it go when somebody thawed it by hand. Only the account's own
     /// processes, outside its sessions, and never the guard.
@@ -844,7 +844,7 @@ impl Guard {
         if !freezable {
             return Ok(());
         }
-        // A disk at critical whose last pass found nothing left, and that
+        // A critically full disk whose last pass found nothing left, and that
         // the writer has a file open on.
         let Some((path, band)) = self
             .watched
@@ -1109,7 +1109,7 @@ impl Guard {
 
     /// What a user daemon offers of the system daemon's garbage: on each
     /// filesystem it collects on, a collect asked of it, in garbage's turn
-    /// from pressure on and measured like any command. Routine upkeep of
+    /// once a disk is filling and measured like any command. Routine upkeep of
     /// garbage is the system daemon's own.
     fn asked_offers(&self) -> Vec<Offer> {
         let Some(socket) = &self.system else {
@@ -1412,7 +1412,7 @@ impl Guard {
         let Some(watched) = self.watched.get(&device) else {
             return;
         };
-        // Under pressure a user daemon speaking for the disk orders what
+        // On a filling disk a user daemon speaking for the disk orders what
         // goes, its own caches against the store's garbage; healthy, the
         // garbage is the store's alone.
         if watched.band > Band::Healthy && spoken_for(self.hearing.as_ref(), device) {
@@ -1433,9 +1433,9 @@ impl Guard {
     /// Begins listing Nix's garbage on its own thread when it's due: soon
     /// after a root leaves or a process holding paths ends, once the last
     /// listing has rested its own length nine times over on a healthy disk
-    /// and at once under pressure, six hours on
+    /// and at once on a filling one, six hours on
     /// at a spare moment, or a day on whenever there's power, at idle
-    /// priority; and at once when the store's filesystem is under pressure
+    /// priority; and at once when the store's filesystem is filling
     /// and the listing is an hour old.
     fn list_garbage(&mut self, now: f64, spare: bool) {
         if self.listing_out.is_some() {
@@ -1606,7 +1606,7 @@ impl Guard {
     }
 
     /// What Nix's garbage offers: the listing's batches in the policy's
-    /// order; or with no listing yet, from urgent on, hourly steps of
+    /// order; or with no listing yet, once nearly full, hourly steps of
     /// `nix store gc`, which collects in no order of its own.
     fn garbage_offers(&self, tick: &Tick) -> Vec<Offer> {
         let Some((_, device)) = self.store() else {
@@ -1659,7 +1659,7 @@ impl Guard {
             .collect()
     }
 
-    /// Hourly steps of `nix store gc` from urgent on, which collects in
+    /// Hourly steps of `nix store gc` once nearly full, which collects in
     /// no order of its own: for want of a listing, or of a system daemon.
     fn gc_offer(&self, tick: &Tick, device: u64) -> Offer {
         let store = &self.config.nix.store;
@@ -1696,7 +1696,7 @@ impl Guard {
     }
 
     /// A profile's generations that may go, each profile offering those
-    /// routine takes and, apart, those only pressure takes, in garbage's
+    /// routine takes and, apart, those only a filling disk takes, in garbage's
     /// group ahead of it and measured as commands, though what they free
     /// shows only as garbage. The system profile's are judged against
     /// the boot partition's entries; no other profile boots.
@@ -2099,7 +2099,7 @@ impl Guard {
             };
             let thresholds = Thresholds::new(&self.config.bands, space.total);
             // A band asked for alone is pretended by free space just short
-            // of it, so a plan for urgent shows what urgent would take.
+            // of it, so a plan for nearly full shows what that band would take.
             let short_of = match band {
                 Some(Band::Pressure) => Some(thresholds.pressure),
                 Some(Band::Urgent) => Some(thresholds.urgent),
@@ -2258,10 +2258,10 @@ impl Guard {
         self.memory_path.parent().unwrap_or(Path::new("/"))
     }
 
-    /// The pacer for a pass in `band` on the filesystem at `path`. Below
-    /// urgent it rests between batches, feeling the disk through a probe
+    /// The pacer for a pass in `band` on the filesystem at `path`. Until
+    /// the disk is nearly full it rests between batches, feeling the disk through a probe
     /// beside the guard's state when that lies on the same filesystem, and
-    /// hurries once the disk falls to urgent; from urgent on it never
+    /// hurries once the disk becomes nearly full; from then on it never
     /// rests. Either keeps the status file's heartbeat.
     fn pacer(&self, path: &Path, band: Band, thresholds: Thresholds) -> Pacer {
         let clock = Box::new(Monotonic::new());

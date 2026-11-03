@@ -184,7 +184,7 @@ fn a_band_forecast_sooner_than_a_pass_takes_is_answered_ahead_of_it() {
         decide(&situation(Band::Healthy, free, &slow)),
         Decision::Rest
     );
-    // Already in pressure and heading for urgent.
+    // Already filling and heading for nearly full.
     let (fill, free) = filling(170 * GIB, 1e9, 60);
     let mut now = situation(Band::Pressure, free, &fill);
     now.free = 90 * GIB;

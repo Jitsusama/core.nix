@@ -12,7 +12,7 @@
 //! probe: a small write beside its state, synced once a second while it
 //! rests, the kind of sync an editor or git makes. It never gives up, so a
 //! machine that's always busy still gets cleaned, but it stops resting
-//! once the disk falls to urgent, where room matters more than pace, or
+//! once the disk is nearly full, where room matters more than pace, or
 //! once the guard is asked to stop, which a pass can't keep waiting.
 
 use crate::config::Pacing;
@@ -106,7 +106,7 @@ pub struct Pacer {
     probe: Option<Box<dyn Probe>>,
     /// Says the guard is alive while a pass holds it.
     beat: Box<dyn FnMut()>,
-    /// Whether the disk has fallen to urgent.
+    /// Whether the disk is nearly full.
     pressed: Box<dyn FnMut() -> bool>,
     beaten: f64,
     rested: f64,
@@ -154,7 +154,7 @@ impl Pacer {
     }
 
     /// Rests after a batch: for the pacing's rest, then for as long as
-    /// the disk is strained, unless the disk falls to urgent or a stop
+    /// the disk is strained, unless the disk becomes nearly full or a stop
     /// comes meanwhile, after which the pacer never rests again. A stop
     /// waits, blocked, for the guard to take it once the pass ends, and
     /// systemd kills a guard that keeps it waiting past its stop timeout:

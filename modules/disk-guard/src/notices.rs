@@ -1,11 +1,11 @@
 //! What the user daemon tells its person, from how its status moved over a
 //! step: one notice, replaced in place as things change, and withdrawn
 //! once no disk is nearly full. A notice says what happened, why it
-//! matters, and what to do or that nothing is needed. A disk under
-//! pressure is the launcher's to show and never a notice: the guard passes
+//! matters, and what to do or that nothing is needed. A filling
+//! disk is the launcher's to show and never a notice: the guard passes
 //! over it every half hour or so, mostly taking nothing, and a notice each
 //! time taught Joel to ignore them. Routine upkeep and a disk easing say
-//! nothing either. What stands to be told, from pressure on, is kept in
+//! nothing either. What stands to be told, once a disk is filling, is kept in
 //! the status file as well, for whoever looks after the machine to read
 //! without its person being shown it.
 
@@ -39,8 +39,8 @@ pub enum Change {
 }
 
 /// What to tell, given the status before a step and after it: a writer
-/// frozen, else a pass from urgent on that finished, else the worse band
-/// a disk entered from urgent on, else the notice withdrawn once no disk
+/// frozen, else a finished pass on a nearly full disk, else the worse band
+/// a nearly full disk entered, else the notice withdrawn once no disk
 /// is nearly full.
 pub fn change(before: &Status, after: &Status) -> Option<Change> {
     // A writer frozen stops somebody's work, so it's told before anything.
@@ -83,8 +83,8 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
 
 /// What stands to be told now, whoever is told it: a writer frozen, else
 /// a pass that ended short on a disk still below healthy, in that band or
-/// a milder one since, else the worst disk from urgent on. Unlike
-/// `change`, it speaks from pressure on, since a pass under pressure that
+/// a milder one since, else the worst nearly full disk. Unlike
+/// `change`, it speaks once a disk is filling, since a pass on a filling disk that
 /// found nothing left is worth knowing to whoever can clear what the
 /// guard may not.
 pub fn standing(status: &Status) -> Option<Notice> {
