@@ -142,6 +142,36 @@ in
     };
   };
 
+  # The shaper's next signal, recorded while the shaper stays off
+  # (src/record.rs): each direction's own delay from ICMP timestamps, the
+  # gateway's round trip and what the link carried, a file a day for eight
+  # days, so a new controller is replayed over a real week before it shapes
+  # anything. It needs a raw socket and nothing else.
+  config.systemd.services.shaper-record = {
+    description = "Record each direction's delay, for the shaper's rebuild";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network.target" ];
+    path = [ pkgs.iproute2 ];
+    serviceConfig = {
+      ExecStart = "${shaper}/bin/shaper record --state /var/lib/shaper-record";
+      Restart = "always";
+      RestartSec = 5;
+      DynamicUser = true;
+      StateDirectory = "shaper-record";
+      AmbientCapabilities = [ "CAP_NET_RAW" ];
+      CapabilityBoundingSet = [ "CAP_NET_RAW" ];
+      RestrictAddressFamilies = [
+        "AF_INET"
+        "AF_NETLINK"
+        "AF_UNIX"
+      ];
+      NoNewPrivileges = true;
+      ProtectSystem = "strict";
+      ProtectHome = true;
+      PrivateTmp = true;
+    };
+  };
+
   # `shaper status` reads what it holds each link to, and what each tin
   # carried.
   config.environment.systemPackages = [ shaper ];
