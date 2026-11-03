@@ -48,13 +48,18 @@ Item {
     readonly property var slide: Reading.slide(over, 12 * figure)
     readonly property int restFirst: Math.round(500 * Theme.motion.slowdown)
     readonly property int restLast: Math.round(1000 * Theme.motion.slowdown)
+    // Whether the words are off their start: from the moment they slide out
+    // until they're back. At their start, as in the rest before they read
+    // on, they end in an ellipsis as they do unselected, rather than cut
+    // through a letter at their room's edge (VKCF3Z, 2026-11-03).
+    property bool moving: false
 
     Text {
         id: words
-        width: room.scrolls ? implicitWidth : room.width
+        width: room.moving ? implicitWidth : room.width
         text: room.text
         textFormat: room.format
-        elide: room.scrolls ? Text.ElideNone : Text.ElideRight
+        elide: room.moving ? Text.ElideNone : Text.ElideRight
         color: room.color
         font.family: room.voiced ? Theme.serif.family : Theme.mono.family
         font.italic: room.voiced && Theme.serif.italic
@@ -88,11 +93,16 @@ Item {
         slideOut.stop();
         slideBack.stop();
         words.x = 0;
+        room.moving = false;
     }
 
     Timer {
         id: resting
-        onTriggered: (room.outward ? slideOut : slideBack).start()
+        onTriggered: {
+            if (room.outward)
+                room.moving = true;
+            (room.outward ? slideOut : slideBack).start();
+        }
     }
     XAnimator {
         id: slideOut
@@ -120,6 +130,7 @@ Item {
         onFinished: {
             if (!room.scrolls)
                 return;
+            room.moving = false;
             room.through();
             // Still its turn, as when it's the row's only cut words.
             if (room.scrolls)
