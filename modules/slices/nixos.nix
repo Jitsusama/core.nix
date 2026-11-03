@@ -412,6 +412,11 @@ in
           "%t/pi/background"
           "--weigh"
           "mycelium-pi-"
+          # When the kernel's reclaim thread gives up, agents' work gives a
+          # gibibyte back, which brings it back; otherwise every program
+          # reclaims for itself until the OOM killer ends one.
+          "--revive"
+          "jobs.slice"
         ];
         Restart = "on-failure";
         RestartSec = 5;

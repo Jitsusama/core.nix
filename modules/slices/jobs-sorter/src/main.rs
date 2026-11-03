@@ -48,17 +48,22 @@
 //! every pi is marked there as one nobody is at runs at `--low-weight`
 //! until a mark goes, as `src/low.rs` says why and how.
 //!
+//! With `--revive`, a cgroup gives memory back when the kernel's reclaim
+//! thread gives up, as `src/revive.rs` says why and how.
+//!
 //! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
+//!        [--revive jobs.slice]
 
 mod low;
 mod oom;
 mod quests;
 mod real_time;
+mod revive;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -87,6 +92,7 @@ struct Settings {
     background: Option<PathBuf>,
     low_weight: u64,
     weigh: Vec<String>,
+    revive: Option<String>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -734,6 +740,7 @@ fn settings() -> Result<Settings, String> {
         background: None,
         low_weight: 10,
         weigh: Vec::new(),
+        revive: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -749,6 +756,7 @@ fn settings() -> Result<Settings, String> {
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
             "--background" => settings.background = Some(PathBuf::from(value()?)),
             "--weigh" => settings.weigh.push(value()?),
+            "--revive" => settings.revive = Some(value()?),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
             }
@@ -787,6 +795,9 @@ fn run() -> Result<(), String> {
         settings.homes.join("*, "),
         jobs.display()
     );
+    if let Some(cgroup) = &settings.revive {
+        revive::watch(&root.join(cgroup));
+    }
     let mut sorter = Sorter {
         last: uptime_ticks().unwrap_or(0),
         ..Sorter::default()
@@ -895,6 +906,7 @@ mod tests {
             background: None,
             low_weight: 10,
             weigh: Vec::new(),
+            revive: None,
         }
     }
 
