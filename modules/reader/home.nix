@@ -19,8 +19,8 @@
 #
 # Every colour and face is the theme's, written here as reader/theme.json
 # in the configuration home, which the reader reads as it starts: its
-# text in the sans face, headings in the wide one and code in the mono; the
-# page on the background, headings in the strong text, code on the sunken
+# words and headings in the serif face, the words at its large step, and
+# code in the mono; the page on the background, headings in the strong text, code on the sunken
 # ground in the colours bat wears (../theme/tmtheme.nix), and search's marks
 # as Neovim's.
 #
@@ -35,7 +35,12 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colours font terminal;
+  inherit (config.jitsusama.theme)
+    colours
+    font
+    terminal
+    type
+    ;
 
   says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
   reader = says { package = pkgs.callPackage ./package.nix { }; };
@@ -56,10 +61,12 @@ let
       on_accent
       ;
     faces = {
-      text = font.sans.family;
-      wide = font.wide.family;
+      text = font.serif.family;
       code = font.mono.family;
     };
+    # The serif's large step, which sets its capitals level with the
+    # mono's at that step.
+    sizes.text = builtins.fromJSON type.serif.large;
     code = "${
       import ../theme/tmtheme.nix {
         inherit

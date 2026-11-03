@@ -8,8 +8,9 @@ use std::sync::Mutex;
 
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Duration};
+use typst::layout::Abs;
 use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
-use typst::text::{Font, FontBook, FontInfo};
+use typst::text::{Font, FontBook, FontInfo, FontVariant, FontVariations};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 use typst_kit::fonts::{FontPath, FontStore};
@@ -193,6 +194,21 @@ impl PageWorld {
     /// Whether the specs of `MiTeX` were there to set equations with.
     pub fn sets_equations(&self) -> bool {
         self.mitex
+    }
+
+    /// How tall the capitals of `family`'s upright regular face stand at
+    /// `size_pt`, in points, as its file says: Typst's own face's where
+    /// the world has none of that family, since Typst sets in that then.
+    pub fn capitals_pt(&self, family: &str, size_pt: f64) -> f64 {
+        let book = self.book();
+        let font = [family, crate::theme::TYPSTS_OWN]
+            .iter()
+            .find_map(|family| book.select(&family.to_lowercase(), FontVariant::default()))
+            .and_then(|index| self.font(index))
+            .expect("Typst carries its own faces");
+        let size = Abs::pt(size_pt);
+        let face = font.instantiate(FontVariant::default(), size, &FontVariations::default());
+        face.metrics().cap_height.at(size).to_pt()
     }
 
     /// Replaces the page's program, keeping what Typst memoised.

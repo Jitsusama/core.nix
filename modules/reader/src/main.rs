@@ -399,9 +399,8 @@ struct App {
     label_canvases: Vec<(gl::Texture, f64)>,
 }
 
-/// One line of the page's body text: 13.1 pt with its 0.62 em leading,
-/// what j and k move by.
-const LINE_PT: f64 = 13.1 * 1.62;
+/// One line of the page's body text, what j and k move by.
+const LINE_PT: f64 = page::PITCH_PT;
 
 struct Measure {
     start: Option<Instant>,
