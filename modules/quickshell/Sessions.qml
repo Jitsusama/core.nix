@@ -544,10 +544,13 @@ Singleton {
     }
     // A session's window found, as when a kitty has said which of its
     // windows is whose, can be what a session handed over waits for to
-    // go beside its kin (placeQuietly).
+    // go beside its kin (placeQuietly), one opened behind the lock among
+    // them (placeBehind).
     onRunningChanged: {
         arranging.restart();
         root.placeOpened();
+        if (root.placeable() && (root.reopening?.behind.length ?? 0) > 0)
+            root.placeBehind();
     }
     Connections {
         target: Niri
@@ -843,7 +846,8 @@ Singleton {
     // What waited on the last being placed: windows that reopen themselves
     // put back, a gone screen's workspaces taken to it if it came
     // meanwhile, and Joel's window focused again. Kept while a window given
-    // up on may still come, to place it.
+    // up on may still come, or one opened behind the lock waits for its
+    // kin's window, to place it.
     function reopenDone() {
         const going = reopening;
         going.settling = false;
@@ -856,7 +860,7 @@ Singleton {
             Niri.act({ FocusWindow: { id: going.back } });
         going.back = null;
         going.focused = false;
-        if (going.late.length === 0)
+        if (going.late.length === 0 && going.behind.length === 0)
             reopening = null;
     }
     // The order places are kept in: a screen and its workspaces in the
@@ -1240,7 +1244,10 @@ Singleton {
     }
     // Each session opened behind the lock, placed as it would have been:
     // one with a place kept by the check once the last is placed, one
-    // another session started with its quest's sessions.
+    // another session started with its quest's sessions. One whose kin is
+    // in a kitty that hasn't yet said which window is whose, as one started
+    // from the sessions' kitty beside its sender, stays held until it has
+    // (onRunningChanged), rather than left wherever Joel's focus was.
     function placeBehind() {
         const going = root.reopening;
         if (!going)
@@ -1252,8 +1259,9 @@ Singleton {
                 continue;
             if (held.entry.at !== null)
                 going.placed.push(held.entry);
-            else if (held.entry.quiet)
-                root.placeQuietly(held.entry.id, held.waiting);
+            else if (held.entry.quiet
+                && root.placeQuietly(held.entry.id, held.waiting) === "waiting")
+                going.behind.push(held);
         }
         if (going.queue.length === 0 && going.waiting === null && !going.looking
             && !reopenPacing.running)
