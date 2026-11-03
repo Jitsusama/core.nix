@@ -184,8 +184,18 @@ ShellRoot {
     }
 
     readonly property string kitty: "kitty -1 --instance-group pi-sessions --directory"
+    // The sessions' kitty as the shell asks for it, past the scope that
+    // starts it in agents.slice and without its class, or "" for anything
+    // not started there.
+    readonly property string scope: "systemd-run --user --scope --collect --quiet "
+        + "--slice=agents.slice -- "
+    function inSessions(command) {
+        const at = command.indexOf(scope);
+        return at < 0 ? "" : command.slice(at + scope.length).replace(/ --class \S+/, "");
+    }
     function reopening() {
-        const kitties = Niri.spawns.filter(command => command.startsWith("kitty "));
+        const kitties = Niri.spawns.map(command => inSessions(command))
+            .filter(command => command.startsWith("kitty "));
         if (kitties.length < 6 || unopened.length < 3)
             return;
         // Held as every start is, by the realm's node where there is one.
@@ -254,7 +264,7 @@ ShellRoot {
         expect("one out of reach says so", !out.reachable && out.attach === null,
             JSON.stringify(out));
         Sessions.goTo(far);
-        expect("Go To joins it by its node's words", Niri.spawned.join(" ")
+        expect("Go To joins it by its node's words", inSessions(Niri.spawned.join(" "))
             === "kitty -1 --instance-group pi-sessions zsh -lic mycelium attach r-far",
             Niri.spawned.join(" "));
         Sessions.goTo(out);
