@@ -178,7 +178,7 @@ def the_newest_picture(desktop: Desktop, name: str) -> Image.Image:
 
 def kept(desktop: Desktop, taken: str) -> Image.Image:
     """Copy what was taken out of the machine, for the gallery, and give it."""
-    desktop.machine.copy_from_vm(taken)
+    desktop.machine.copy_from_machine(taken)
     return Image.open(desktop.machine.out_dir / taken.rsplit("/", 1)[1]).convert("RGB")
 
 
