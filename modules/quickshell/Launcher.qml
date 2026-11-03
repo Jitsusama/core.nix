@@ -889,11 +889,17 @@ Scope {
                             row: [row.name, row.side, row.note]
                                 .map(words => String(words ?? "").trim()),
                             title: String(drawn.title ?? "").trim(),
-                            body: String(drawn.body ?? "").trim(),
-                            facts: (drawn.facts ?? []).filter(fact => fact).length,
+                            // The moment's plate says its words and its
+                            // facts, in groups, as a thing's says its own.
+                            body: String(drawn.body ?? drawn.say ?? "").trim(),
+                            facts: (drawn.facts ?? []).concat(...(drawn.groups ?? []))
+                                .filter(fact => fact).length,
                             picture: (drawn.picture ?? "") !== ""
                         });
-                    if (!detailed(row) && (!!row.drawer || (row.reads ?? "") !== ""
+                    // A plated row, Now at home, has a drawer as a thing
+                    // does (drawerOf).
+                    if (!detailed(row) && row.plated !== true
+                        && (!!row.drawer || (row.reads ?? "") !== ""
                         || (row.picture ?? "") !== ""))
                         undrawn.push(`${names.concat([row.name]).join(" \u203a ")}`
                             + ` (${row.key ?? row.is})`);
@@ -2004,6 +2010,19 @@ Scope {
         // Now stands apart from the rest by a gap, as what's this moment.
         if (rows.length > 1)
             rows[1] = Object.assign({}, rows[1], { gap: true });
+        // Now's plate sets its lines on home's rows (look 3): what needs
+        // Joel on Agents', the day's facts from Programs' and the clock's
+        // from Desktop's, each by where that row is today, or -1 where
+        // it's missing, when the plate sets it below the line before.
+        const plated = rows.findIndex(row => row.plated === true);
+        if (plated >= 0) {
+            const at = id => rows.findIndex(row => row.key === `collection:${id}`
+                || row.category?.id === id);
+            const lines = { say: at("agents"), groups: [at("applications"), at("desktop")] };
+            const made = rows[plated].drawer;
+            rows[plated] = Object.assign({}, rows[plated],
+                { drawer: () => Object.assign(made(), { lines: lines }) });
+        }
         return rows;
     }
 
@@ -2038,10 +2057,14 @@ Scope {
         // and never that it holds none (Joel, 2026-10-28: "agents shows no
         // sessions when i super space right now").
         const rest = names.length > 0 && fitted === "" ? source.counted() : fitted;
-        return Object.assign({}, row, {
+        const placed = Object.assign({}, row, {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
         });
+        // A collection with a plate of its own, as Now's moment is
+        // (WhatsOn.qml), shows it beside its home row.
+        return typeof source.plate !== "function" ? placed
+            : Object.assign(placed, { plated: true, drawer: () => source.plate() });
     }
 
     // A place that's one answer, as Disk is: named as the vocabulary names
@@ -3388,7 +3411,7 @@ Scope {
     // only once the selection has rested, so holding an arrow never
     // flickers it.
     function drawerOf(row) {
-        if (!detailed(row))
+        if (!detailed(row) && row?.plated !== true)
             return null;
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
@@ -3401,6 +3424,9 @@ Scope {
     // (Joel, 2026-10-29: "we should never show the side panel when it is
     // just repeating the currently selected text").
     function drawerAdds(drawer, row) {
+        // A plate of the moment says what no row does, the time large.
+        if (drawer.now === true)
+            return true;
         if ((drawer.facts ?? []).some(fact => fact) || (drawer.picture ?? "") !== "")
             return true;
         const own = [row.name, row.side, row.note].map(words => String(words ?? "").trim());
@@ -3438,10 +3464,19 @@ Scope {
             drawerOut = false;
         } else if (drawerOut && drawerWanted !== null) {
             drawerResting.stop();
-            drawerShows = drawerWanted;
+            if (!root.sameMoment(drawerShows, drawerWanted))
+                drawerShows = drawerWanted;
         } else {
             drawerResting.restart();
         }
+    }
+    // Whether two drawers are the same moment's plate, saying the same:
+    // home is made again on every refresh, and the plate kept rather than
+    // set again keeps its groups rather than remaking them. Its time
+    // counts on by itself.
+    function sameMoment(shows, wanted) {
+        return shows?.now === true && wanted?.now === true
+            && JSON.stringify(shows) === JSON.stringify(wanted);
     }
     function drawerSettled() {
         drawerOut = drawerWanted !== null;
@@ -3475,6 +3510,23 @@ Scope {
     readonly property real fieldLine: Theme.border + Theme.inset + prompt.height / 2
     readonly property real rowLine: Theme.border + prompt.height + 2 * Theme.inset
         + Theme.border + Theme.inset + Theme.space.xxxl / 2
+    // The gap that sets the collections apart at home, above a row that
+    // has one; the card's height, the list and the rows' lines all read
+    // it, so the plate's lines can't drift from the list's.
+    readonly property real apart: matches.some(row => row.gap) ? Theme.space.m : 0
+    // The middle of each row the card shows, down from its top: the first
+    // row's, then a row further for each, and home's gap above a row that
+    // has one, so Now's plate can set a line on any of them. Worked out
+    // from the rows shown rather than read from the list, so it holds
+    // while the list is still drawing them.
+    readonly property var rowLines: {
+        let line = rowLine;
+        return matches.slice(0, rows).map((row, at) => {
+            if (at > 0)
+                line += Theme.space.xxxl + (row.gap ? apart : 0);
+            return line;
+        });
+    }
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
@@ -3496,6 +3548,7 @@ Scope {
     // presses a key, rather than guessing how long the launcher takes.
     function showing() {
         const row = root.selected;
+        const lines = drawerCard.baselines();
         return JSON.stringify({
             open: root.open,
             keys: root.open && prompt.Window.active,
@@ -3556,23 +3609,43 @@ Scope {
                 // Where its lines' baselines are and the card's they're
                 // set on, down from the top the two share, to a hundredth.
                 lines: {
-                    eyebrow: root.hundredths(drawerCard.baselines.eyebrow),
-                    eyebrowMiddle: root.hundredths(drawerCard.baselines.eyebrowMiddle),
-                    title: root.hundredths(drawerCard.baselines.title),
-                    words: root.hundredths(drawerCard.baselines.words),
-                    facts: drawerCard.baselines.facts.map(line => root.hundredths(line))
+                    eyebrow: root.hundredths(lines.eyebrow),
+                    eyebrowMiddle: root.hundredths(lines.eyebrowMiddle),
+                    title: root.hundredths(lines.title),
+                    words: root.hundredths(lines.words),
+                    facts: lines.facts.map(line => root.hundredths(line)),
+                    time: root.hundredths(lines.time),
+                    timeMiddle: root.hundredths(lines.timeMiddle),
+                    seconds: root.hundredths(lines.seconds),
+                    say: root.hundredths(lines.say),
+                    groups: lines.groups.map(group => group.map(line => root.hundredths(line)))
                 },
+                // What the moment's plate says, line by line.
+                moment: drawerCard.moment ? {
+                    time: drawerCard.momentTime,
+                    seconds: drawerCard.momentSeconds,
+                    say: drawerCard.shown?.say ?? "",
+                    // The rows its words and each group are set on, -1
+                    // for one missing.
+                    sayOn: drawerCard.momentLines.say ?? -1,
+                    groupsOn: drawerCard.groups.map(group => group.line),
+                    groups: drawerCard.groups.map(group => group.facts.map(fact =>
+                        [fact.label, fact.value, fact.qualifier ?? ""]))
+                } : null,
                 cardLines: {
                     field: root.hundredths(root.fieldLine),
                     // Each of the first twenty rows' names' baselines,
                     // null for one not drawn.
                     rows: root.matches.slice(0, 20)
-                        .map((_, at) => root.hundredths(list.baselineOf(at)))
+                        .map((_, at) => root.hundredths(list.baselineOf(at))),
+                    // The middle of each row shown, which the moment's time
+                    // centres its capitals on.
+                    middles: root.rowLines.map(line => root.hundredths(line))
                 },
                 // The facts it draws, by name, whether each name is on one
                 // line whole, and where its last line's box may end.
                 drawnFacts: drawerCard.facts.map(fact => fact.label ?? ""),
-                labelsWhole: drawerCard.labelsWhole,
+                labelsWhole: drawerCard.labelsWhole(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
@@ -3690,7 +3763,7 @@ Scope {
             // it closes, so the card is the same shape however much home
             // holds.
             tall = rows * Theme.space.xxxl + (matches.slice(0, rows).some(row => row.gap)
-                ? Theme.space.m : 0);
+                ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
             Report.say(`stands ${standing.said}`);
@@ -4126,9 +4199,6 @@ Scope {
                             id: list
 
                             anchors.fill: parent
-                            // A gap sets the collections apart at home.
-                            readonly property int apart: root.matches.some(row => row.gap)
-                                ? Theme.space.m : 0
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
                             // says it, so their graphs stand in one column that
@@ -4263,12 +4333,12 @@ Scope {
                             function rowTop(at) {
                                 let top = 0;
                                 for (let each = 0; each < at && each < root.matches.length; each += 1)
-                                    top += Theme.space.xxxl + (root.matches[each].gap ? list.apart : 0);
+                                    top += Theme.space.xxxl + (root.matches[each].gap ? root.apart : 0);
                                 return top;
                             }
 
                             function rowHeight(at) {
-                                return Theme.space.xxxl + (root.matches[at]?.gap ? list.apart : 0);
+                                return Theme.space.xxxl + (root.matches[at]?.gap ? root.apart : 0);
                             }
 
                             // Where a row's name has its baseline, down
@@ -4374,7 +4444,7 @@ Scope {
                                     : "act"
 
                                 width: list.width
-                                height: Theme.space.xxxl + (modelData.gap ? list.apart : 0)
+                                height: Theme.space.xxxl + (modelData.gap ? root.apart : 0)
 
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y
@@ -4690,6 +4760,7 @@ Scope {
             tall: card.height
             fieldLine: root.fieldLine
             rowLine: root.rowLine
+            rowLines: root.rowLines
             out: root.drawerOut
             given: root.drawerShows
         }

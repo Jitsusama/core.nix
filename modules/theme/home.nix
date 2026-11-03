@@ -620,6 +620,56 @@ in
             the variable font takes them.
           '';
         };
+        upright = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.attrsOf lib.types.number);
+          # Look 3's plate: a thing's name at title, a touch heavier than the
+          # voice and drawn for its size, and the time at display, regular,
+          # drawn for a poster's size with its wonky letters off, so its
+          # figures stand plain.
+          default = {
+            title = {
+              wght = 500;
+              opsz = 72;
+            };
+            display = {
+              wght = 400;
+              WONK = 0;
+              opsz = 144;
+            };
+          };
+          description = ''
+            The serif face set upright, by the type scale's step it's set at:
+            the axes, weight among them, laid over `font.serif.axes`.
+          '';
+        };
+        slanted = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.attrsOf lib.types.number);
+          # The seconds after Now's time, in the voice's italic at title,
+          # regular and drawn for their size beside the time's.
+          default = {
+            title = {
+              wght = 400;
+              opsz = 72;
+            };
+          };
+          description = ''
+            The serif face's italic at a step larger than the voice's own, by
+            the step: the axes, weight among them, laid over
+            `font.serif.axes`.
+          '';
+        };
+        tracking = lib.mkOption {
+          type = lib.types.attrsOf lib.types.number;
+          # Large figures drawn at their own spacing stand apart; a hundredth
+          # of an em closer holds the time as one word.
+          default = {
+            display = -1.0e-2;
+          };
+          description = ''
+            The serif face's letter spacing in ems, by the type scale's step,
+            for a step it's spaced other than as drawn.
+          '';
+        };
         capitals = lib.mkOption {
           type = number;
           # The mono face's capitals stand 0.730 of its em and the serif's
@@ -685,6 +735,20 @@ in
         default = sizes "sans";
         defaultText = lib.literalMD "`font.sans.size` times the ratio to each step's power";
         description = "Each step's size in points, in the proportional face.";
+      };
+      eyebrow = {
+        tracking = lib.mkOption {
+          type = lib.types.number;
+          # Small capitals set apart, so a line above a name reads as a
+          # label rather than a word. One tracking serves every eyebrow,
+          # the launcher's plate's and the reader's, so the same kind of
+          # line reads the same wherever it heads something.
+          default = 0.16;
+          description = ''
+            How far apart an eyebrow's capitals are set, in ems: the line
+            above a name saying when, where or who.
+          '';
+        };
       };
       serif = lib.mkOption {
         type = lib.types.attrsOf number;

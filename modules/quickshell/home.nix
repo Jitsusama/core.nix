@@ -1674,14 +1674,25 @@ in
               readonly property var serif: ${
                 object (
                   {
-                    inherit (font.serif) family italic weight;
+                    inherit (font.serif)
+                      family
+                      italic
+                      weight
+                      tracking
+                      ;
                     axes = font.serif.axes // {
                       wght = font.serif.weight;
                     };
+                    # Its axes set upright, or italic but larger, at a step,
+                    # whole: the voice's laid under each.
+                    upright = lib.mapAttrs (_: axes: font.serif.axes // axes) font.serif.upright;
+                    slanted = lib.mapAttrs (_: axes: font.serif.axes // axes) font.serif.slanted;
                   }
                   // lib.mapAttrs (_: builtins.fromJSON) type.serif
                 )
               }
+              // The line above a name, saying when, where or who.
+              readonly property var eyebrow: ${object type.eyebrow}
               readonly property var space: ${object (removeAttrs space [ "unit" ])}
               readonly property int border: ${toString shape.border}
               readonly property int radius: ${toString shape.radius}

@@ -1247,12 +1247,23 @@ works the same way everywhere.
   centre, the name on the first row's baseline (the serif's own line box
   would set it 1.72 lower), and the rest on a pitch of 24 (xl), half a
   row, so each line falls on a row's baseline or halfway between two,
-  one empty line between the name, the facts and the words. The card's
-  room and the drawer's are
-  worked out for the screen as the launcher opens, the card centred
-  unless the screen is too narrow for the drawer beside it, so the card
-  never moves and never changes size for what's selected. It's out
-  only while the selected row is a thing (a program, a session, a
+  one empty line between the name, the facts and the words. Home's Now
+  has a plate of the moment instead (look 3): the date as its eyebrow;
+  the time in the serif upright at display, 400, drawn for 144 points,
+  its figures lining and tabular, its capitals centred on Now's row,
+  and its seconds counting after it in the italic at title, muted; what
+  needs Joel, or that nothing does, in the voice on Agents' line; and
+  the facts behind the moment in two groups that follow the card's,
+  the weather, the next meeting and where Joel is from Programs' line,
+  the clock's keeping and the week from Desktop's, each figure's
+  qualifier muted after a dot, and each fact in its place's words, as
+  Time says synchronised. A group with nothing to show gives up its
+  place to the next, so no empty lines wait in the middle for it; a
+  row that's missing sets its part one empty line below the one before.
+  The card's room and the drawer's are worked out for the screen as
+  the launcher opens, the card centred unless the screen is too narrow
+  for the drawer beside it, so the card never moves and never changes
+  size for what's selected. It's out only while the selected row is a thing (a program, a session, a
   quest, a mail, a meeting, a person, a file, a folder, a notice, a
   window, a device, a network, a copy, a value with a history) and the
   drawer holds something the row doesn't already say: facts, a picture,

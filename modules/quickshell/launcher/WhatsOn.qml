@@ -251,6 +251,71 @@ Provider {
         return rows.filter(row => row !== null);
     }
 
+    // Home's Now as a plate beside the card (Launcher.qml's homeRow): the
+    // date as its eyebrow, the time large with its seconds (Drawer.qml
+    // keeps them, counting), what needs Joel or that nothing does, and the
+    // facts behind the moment in two groups, as the card's rows fall in
+    // groups: the day's weather, the next meeting and where here is, then
+    // how the clock is kept and the week. Each fact's figure leads, and
+    // what qualifies it follows, quieter (VKCF3Z's look 3, for Joel's
+    // "for time i want to be able to dig into ntp server details", 29
+    // October). A fact nothing can say yet is left out rather than guessed.
+    function plate() {
+        const said = key => String((Words.of("on:plate").said ?? {})[key] ?? key);
+        // Each fact named as its thing is: the weather and the week by
+        // their own, the rest by the plate's.
+        const fact = (thing, value, qualifier) => value === "" ? null
+            : { label: Words.name(thing), value: value, qualifier: qualifier ?? "" };
+        const now = new Date();
+        // The weather as its answer heads it, "4\u00b0 \u00b7 rain to 23:00".
+        const [degrees, ...weatherRest] = String(weather?.side ?? "").split(" \u00b7 ");
+        // The next meeting by its name, then when it starts.
+        const starts = String(meeting?.side ?? "").match(/\d{1,2}:\d\d/);
+        const here = Location.here;
+        const how = !here ? "" : here.hand === true ? said("byHand")
+            : said("within").replace("{km}", String(Math.ceil(here.accuracy / 1000)));
+        // How the clock is kept, in Time's word for it (Clocks.qml), and
+        // how far off it was at the last poll, signed, as Time says it.
+        const time = source("time");
+        const kept = time?.kept ?? null;
+        const offset = kept?.exchange ? time.millis(kept.exchange.offset, true) : "";
+        const step = !kept ? said("unkept") : kept.synchronised ? said("synchronised")
+            : said("unsynchronised");
+        return {
+            now: true,
+            eyebrow: Qt.formatDate(now, "dddd d MMMM"),
+            title: Words.name("on"),
+            // How the seconds are said after the time, "and 12 s".
+            seconds: said("seconds"),
+            say: provider.waitsNow > 0 ? provider.first : Words.of("on:waiting").empty ?? "",
+            groups: [
+                [fact("weather", degrees ?? "", weatherRest.join(" \u00b7 ")),
+                    fact("on:plate:next", meeting?.name ?? "", starts ? starts[0] : ""),
+                    fact("on:plate:here", here ? here.place ?? "" : "", how)],
+                [fact("on:plate:clock", step, offset),
+                    fact("today:week", String(isoWeek(now)),
+                        said("day").replace("{day}", String(dayOfYear(now))))]
+            ].map(group => group.filter(one => one !== null))
+        };
+    }
+
+    // The week of the year as ISO 8601 counts it, the week holding its
+    // first Thursday the first, as a calendar here does.
+    function isoWeek(at) {
+        const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+        // To the Thursday of its week, whose year is the week's.
+        day.setDate(day.getDate() + 3 - (day.getDay() + 6) % 7);
+        const first = new Date(day.getFullYear(), 0, 4);
+        return 1 + Math.round(((day - first) / 86400000 - 3 + (first.getDay() + 6) % 7) / 7);
+    }
+
+    // The day of the year, 1 on the first of January.
+    function dayOfYear(at) {
+        const first = new Date(at.getFullYear(), 0, 1);
+        return Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()) - first)
+            / 86400000) + 1;
+    }
+
     function waitingSaid(id, fill) {
         let words = (Words.of("on:waiting").said ?? {})[id] ?? id;
         for (const key of Object.keys(fill))
