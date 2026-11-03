@@ -1,6 +1,7 @@
-//! The page: the markdown set once in Typst as one tall page, on a grid of
-//! three columns (an index, a measure of about 66 characters and notes),
-//! its text on one pitch and one type scale.
+//! The page: the markdown set once in Typst as one tall page, its text one
+//! measure of about 66 characters with room either side for a wide table to
+//! spread into, on one pitch and one type scale. The window draws it
+//! centred, so its margins are what the window leaves.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -10,10 +11,25 @@ use typst_layout::{Page, PagedDocument};
 use crate::walk::{self, Costs, Pieces};
 use crate::world::PageWorld;
 
-/// The page's look.
-/// What every page is set with, after the theme's ink (template).
+/// The measure: 580 px, about 66 characters of the text face, the most a
+/// line should hold.
+pub const MEASURE_PT: f64 = 435.0;
+
+/// How far a wide table may spread past the measure on each side, which
+/// the page keeps as its side margins: in a window half the laptop's panel
+/// wide (720 px, 540 pt), what's left once Space's xxl stays inside each
+/// edge, so a spread table never reaches the window's edge.
+pub const SPREAD_PT: f64 = 28.5;
+
+/// The page's width: its measure and the room on each side.
+pub const WIDTH_PT: f64 = MEASURE_PT + 2.0 * SPREAD_PT;
+
+/// Above the first line's capitals: Space's xxl, 24 pt. Lines start at
+/// their capitals' height (Typst's top edge), so the margin is the gap.
+pub const TOP_PT: f64 = 24.0;
+
+/// The page's look, after its measure and margins (template).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
-#set page(width: 720pt, height: auto, margin: (left: 210pt, right: 80pt, y: 36pt), fill: ink.background)
 #set text(font: face.text, size: 13.1pt, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), weight: 380)
 #set par(justify: false, linebreaks: "optimized", leading: 0.62em, spacing: 1.2em)
 #show heading: set text(font: face.wide, weight: 700, fill: ink.strong, hyphenate: false)
@@ -33,7 +49,6 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let details(body) = block(body)
 #let rule-ink = ink.rule
 #let sheet-gap = 18pt
-#let spread = 56pt
 #let sheet(numeric: (), words: (), head: none, rows: ()) = layout(size => {
   let n = words.len()
   let all = if head == none { rows } else { (head,) + rows }
@@ -113,7 +128,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   }
 })
 #let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, text(font: face.code, size: 11.5pt, body))
-#let picture(alt, w, h) = box(width: calc.min(w, 474pt), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
+#let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true
 #let pic(path, alt, w) = if not pictures { picture(alt, 320pt, 160pt) } else {
@@ -127,7 +142,12 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 /// What every page is set with: the theme's ink, then the page's look.
 pub fn template() -> &'static str {
     static TEMPLATE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    TEMPLATE.get_or_init(|| crate::theme::get().typst() + PAGE)
+    TEMPLATE.get_or_init(|| {
+        format!(
+            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n{PAGE}",
+            ink = crate::theme::get().typst(),
+        )
+    })
 }
 
 fn compile(world: &PageWorld) -> Result<PagedDocument, String> {
@@ -157,9 +177,11 @@ pub fn new_world() -> PageWorld {
 /// while the rest is set, in 50 to 170 ms.
 const FIRST_CHARS: usize = 6000;
 
-/// The bottom margin the page ends on: a page set from the file's first
-/// blocks lays out as the whole file's does down to here.
-pub const BOTTOM_PT: f64 = 36.0;
+/// The bottom margin the page ends on: Space's xxl below the last line's
+/// descenders, which hang 0.32 em of the body face below its baseline,
+/// where Typst ends a line. A page set from the file's first blocks lays
+/// out as the whole file's does down to here.
+pub const BOTTOM_PT: f64 = 28.2;
 
 /// The file set as far as its first screen, and what sets the rest.
 pub struct First {

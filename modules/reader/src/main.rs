@@ -469,6 +469,21 @@ impl App {
         self.gl.as_ref().map_or(0.0, |gl| f64::from(gl.height))
     }
 
+    /// Where the page's left edge sits in the window, in device pixels: the
+    /// page centred, so a wide window leaves even room either side of its
+    /// measure, on a whole pixel so its type is sharp, and at the window's
+    /// edge once the page is as wide as the window.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a window's pixels as f32, as GL takes them"
+    )]
+    fn page_x(&self) -> f32 {
+        let window = self.gl.as_ref().map_or(0.0, |gl| f64::from(gl.width));
+        ((window - page::WIDTH_PT * self.px_per_pt()) / 2.0)
+            .max(0.0)
+            .round() as f32
+    }
+
     fn clamp(&mut self) {
         self.offset = self.offset.clamp(0.0, self.most());
     }
@@ -867,6 +882,7 @@ impl App {
         }
         let px = self.px_per_pt() as f32;
         let offset = self.offset as f32;
+        let left = self.page_x();
         let Some(gl) = self.gl.as_ref() else { return };
         if let Some(set) = self.labels_set.take() {
             for old in self.label_canvases.drain(..) {
@@ -882,7 +898,7 @@ impl App {
         if let Some((_, shown)) = self.labelling.as_ref() {
             for (link, canvas) in shown.iter().zip(&self.label_canvases) {
                 let (width, height) = (canvas.width as f32, canvas.height as f32);
-                let x = (link.left_pt as f32 * px).round();
+                let x = (link.left_pt as f32 * px).round() + left;
                 let y = (link.top_pt as f32 * px - offset).round();
                 gl.draw(canvas, x, y, width, height);
             }
@@ -1639,6 +1655,7 @@ impl App {
         };
         let px = (self.painter.scale(1000) * self.level()) as f32;
         let offset = self.offset as f32;
+        let left = self.page_x();
         for (i, found) in self.found.iter().enumerate() {
             let (swatch, blend) = if Some(i) == self.current {
                 current
@@ -1652,7 +1669,14 @@ impl App {
                     continue;
                 }
                 let width = (piece.to_pt - piece.from_pt) as f32 * px;
-                gl.mark(swatch, blend, piece.from_pt as f32 * px, top, width, height);
+                gl.mark(
+                    swatch,
+                    blend,
+                    left + piece.from_pt as f32 * px,
+                    top,
+                    width,
+                    height,
+                );
             }
         }
     }
@@ -1692,6 +1716,7 @@ impl App {
         let Some(gl) = self.gl.as_ref() else { return };
         let key = self.zoom_key();
         let screen = self.screen_px() as f32;
+        let left = self.page_x();
         let drawing = Instant::now();
         // The first GL call after a swap, where Mesa takes the next back
         // buffer and waits if the compositor holds them all.
@@ -1715,7 +1740,7 @@ impl App {
                 continue;
             }
             let ratio = (self.level() * 1000.0 / f64::from(k.zoom)) as f32;
-            gl.draw(texture, 0.0, top, texture.width as f32 * ratio, height);
+            gl.draw(texture, left, top, texture.width as f32 * ratio, height);
             drawn_now.push(*k);
             // A band of the first screen's page holds the page only down to
             // where it settled; below that it shows ground, so it counts so.
