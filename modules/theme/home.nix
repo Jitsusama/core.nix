@@ -682,6 +682,25 @@ in
           '';
         };
       };
+      script = {
+        families = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          # Noto, script by script, since without it Hebrew and Arabic fell
+          # back to DejaVu Sans, drawn for neither (VKCF3Z, 30 October). CJK's
+          # Japanese cut, since its kana and kanji serve the Japanese calendar
+          # and its Han serve the Chinese one.
+          default = [
+            "Noto Sans Hebrew"
+            "Noto Naskh Arabic"
+            "Noto Sans CJK JP"
+          ];
+          description = ''
+            The script face, one family a script, for the scripts the theme's
+            own faces lack: a letter none of them has is drawn from these, in
+            turn, before any other font the machine has.
+          '';
+        };
+      };
     };
 
     space = {

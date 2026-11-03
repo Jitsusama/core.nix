@@ -17,7 +17,12 @@ let
     self.nixosModules.graphical
     { jitsusama.login.account = "someone"; }
   ];
-  inherit ((account graphical).jitsusama.theme.font) sans mono serif;
+  inherit ((account graphical).jitsusama.theme.font)
+    sans
+    mono
+    serif
+    script
+    ;
   # A check run with that machine's fontconfig: its /etc/fonts copied here,
   # its files naming each other here rather than under /etc, and fontconfig
   # pointed at the copy for the files it names without a folder.
@@ -67,6 +72,53 @@ onLinux {
     cat matched
     grep -q -- '-Italic\[' matched
   '';
+
+  # Asked for a letter of Hebrew, Arabic or CJK in any of the theme's faces,
+  # none of which has them, the machine's fontconfig, with the account's own
+  # beside it, gives the script face's family for that script, in its order,
+  # and not DejaVu Sans, which they fell back to before. English, the
+  # locale's, is asked for too, as a program's fallback asks for it, since a
+  # face that covers it would otherwise outrank the script face.
+  the-scripts-are-the-script-faces =
+    let
+      inherit ((account graphical).fonts.fontconfig) configFile;
+      copies = file: ''
+        cp ${file.source} config/fontconfig/conf.d/${file.target}
+      '';
+      falls = face: letter: family: ''
+        fc-match -f '%{family[0]}\n' ${lib.escapeShellArg "${face.family}:charset=${letter}:lang=en"} > matched
+        echo ${lib.escapeShellArg "${face.family} ${letter}"}: "$(cat matched)"
+        test "$(cat matched)" = ${lib.escapeShellArg family}
+      '';
+      each =
+        face:
+        lib.concatStrings (
+          lib.zipListsWith (falls face) [
+            "05d0"
+            "0627"
+            "4e2d"
+          ] script.families
+        );
+    in
+    withFontconfig "the-scripts-are-the-script-faces" (
+      ''
+        mkdir -p config/fontconfig/conf.d
+        ${copies configFile.default-fonts}
+        ${copies configFile.script}
+        export XDG_CONFIG_HOME=$PWD/config
+        # What a failure is read by: which of the account's files were read,
+        # and which faces have the letters at all.
+        fc-conflist | grep -F "$PWD/config/" || echo "none of the account's files were read"
+        for letter in 05d0 0627 4e2d; do
+          echo "$letter in: $(fc-list -f '%{family[0]}, ' ":charset=$letter")"
+        done
+      ''
+      + lib.concatMapStrings each [
+        sans
+        mono
+        serif
+      ]
+    );
 
   # Asked for a Mac's system font or its monospaced one by any name a page
   # gives them, the machine's fontconfig gives the theme's face, carrying the
