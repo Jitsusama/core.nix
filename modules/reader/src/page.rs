@@ -63,8 +63,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // Headings, set by lines: more room above a heading than below it, so it
 // belongs to what follows. A gap is baseline to baseline, rounded to the
 // half line so every baseline stays on the grid. A block's top edge is its
-// capitals (0.7 em at both sets of axes, 0.73 in the mono), so a gap takes
-// the cap height of what follows off.
+// capitals (`caps` of an em in the words' face, the same at both sets of
+// axes, and `code-caps` in the mono), so a gap takes the cap height of what
+// follows off.
 #let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
 #let title-size = 42pt
 #let section-size = 17.1pt
@@ -74,22 +75,22 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
 // A title's lines two and a half lines apart, a section's one.
 #show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em)
-#show heading.where(level: 1): set par(leading: 2.5 * pitch - 0.7 * title-size)
-#show heading.where(level: 1): set block(above: lines(3, 0.7 * title-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 1): set par(leading: 2.5 * pitch - caps * title-size)
+#show heading.where(level: 1): set block(above: lines(3, caps * title-size), below: 1.5 * pitch - cap)
 #show heading.where(level: 2): set text(size: section-size, weight: 520)
-#show heading.where(level: 2): set par(leading: pitch - 0.7 * section-size)
-#show heading.where(level: 2): set block(above: lines(3, 0.7 * section-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 2): set par(leading: pitch - caps * section-size)
+#show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: 1.5 * pitch - cap)
 #show heading.where(level: 3): set text(variations: text-axes, style: "italic", size: body-size, weight: 460)
 #show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
-#show heading.where(level: 4): it => block(above: lines(2, 0.73 * 8.4pt), below: pitch - cap, eyebrow(it.body))
-#show heading.where(level: 5): it => block(above: lines(2, 0.73 * 8.4pt), below: pitch - cap, eyebrow(it.body))
-#show heading.where(level: 6): it => block(above: lines(2, 0.73 * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 4): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 5): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 6): it => block(above: lines(2, code-caps * 8.4pt), below: pitch - cap, eyebrow(it.body))
 // A title of more than one line has its lines balanced: set at the
 // narrowest width that keeps the lines it needs at the full measure, found
 // in a few halvings, so no word is left alone on its last line.
 #show heading.where(level: 1): it => layout(size => {
   let tall(width) = measure(block(width: width, {
-    set par(leading: 2.5 * pitch - 0.7 * title-size)
+    set par(leading: 2.5 * pitch - caps * title-size)
     text(font: face.text, variations: display-axes, size: title-size, weight: 540, tracking: -0.02em, hyphenate: false, it.body)
   })).height
   let full = tall(size.width)
@@ -105,7 +106,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // What the file is and when it changed, over the title and one line above
 // it, or over the words when there's no title.
 #show <title>: set block(above: 0pt)
-#let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, 0.7 * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
+#let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
 // The paragraph after the title, in the text face's italic.
 #let lede(body) = par(text(style: "italic", weight: 360, body))
 // A link's words in the strong text with a hairline under them, as his
@@ -223,8 +224,12 @@ pub fn template(world: &PageWorld) -> &'static str {
         let theme = crate::theme::get();
         let size = theme.sizes.text;
         let cap = world.capitals_pt(&theme.faces.text, size);
+        // Each face's capitals in ems, for the gaps over a heading and an
+        // eyebrow, so the page holds its line in whatever faces it finds.
+        let caps = cap / size;
+        let code_caps = world.capitals_pt(&theme.faces.code, 1.0);
         format!(
-            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n{PAGE}",
+            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}",
             ink = theme.typst(),
         )
     })
