@@ -105,8 +105,8 @@ fn family_names(data: &[u8], index: u32) -> Option<Vec<String>> {
 
 /// A face as Typst knows it, and again under each other family name its
 /// file gives it. Typst takes one name of several, where fontconfig, and
-/// so the theme, may know the face by another: a Nerd Font's files name
-/// both its long family and its short one.
+/// so the theme, may know the face by another: a patched face's files can
+/// name both a long family and a short one.
 fn also_named(info: FontInfo, names: &[String]) -> Vec<FontInfo> {
     let mut others: Vec<String> = names
         .iter()
