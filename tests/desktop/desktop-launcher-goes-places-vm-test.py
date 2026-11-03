@@ -3663,6 +3663,68 @@ def test_a_crowd_the_people_daemon_holds_is_found_by_a_search_and_never_held_by_
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+def test_slack_is_asked_about_a_person_through_the_people_daemon_alone(
+    desktop: Desktop,
+) -> None:
+    """Slack is asked about a person through the people daemon, with no reader of the shell's.
+
+    The shell ran a slack-people of its own beside the daemon's, so Slack was asked twice
+    about everyone People lists (2026-11-02). The daemon runs the stand-in in its place
+    (desktop/people-slack.sh), which knows Crowd Person 1234 once it's signed in.
+    """
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    signed_in = "/run/user/1000/slack-signed-in"
+    asked = "/run/user/1000/slack-asked"
+
+    def step_into(number: int) -> None:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in(f"crowd person {number}")
+        key = f"person:crowd{number}@crowd.test"
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == key)
+        desktop.step_in("ret")
+
+    def close() -> None:
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    def ways(number: int, held: Callable[[list[str]], bool]) -> None:
+        # A step-in is what tells Slack's reader of a sign-in come or gone,
+        # which the daemon says to the shell as Slack's reader says it.
+        step_into(number)
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == [f"Crowd Person {number}"]
+                and held([thing["reads"] for thing in shown["things"]])
+            )
+        )
+        close()
+
+    try:
+        desktop.as_account(f"touch {signed_in}")
+        # Someone Slack doesn't know, once it's signed in.
+        ways(4321, lambda reads: "Write in Slack · not in Slack" in reads)
+        step_into(1234)
+        # Write in Slack leads the ways to reach them from the first rows,
+        # dimmed until Slack answers and lit there.
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Write in Slack"])
+        desktop.launcher_until(
+            lambda shown: shown["rows"][:1] == ["Write in Slack"] and not shown["things"][0]["gone"]
+        )
+        # Asked of Slack's reader as a step-in, which only a client of the
+        # daemon asking for them makes.
+        lines = desktop.as_account(f"cat {asked}").split()
+        assert "crowd1234@crowd.test" in lines, lines
+        close()
+    finally:
+        # Signed out again, as before this test, for the tests after: a
+        # step-in hears so, and the next has no Write in Slack at all.
+        desktop.as_account(f"rm -f {signed_in}")
+        ways(4322, lambda _: True)
+        ways(4323, lambda reads: not any(read.startswith("Write in Slack") for read in reads))
+
+
 @pytest.mark.usefixtures("google")
 def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
     desktop: Desktop,

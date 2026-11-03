@@ -1,10 +1,20 @@
 // What Slack's source in People (SlackSource.qml) decides from what
-// slack-people said, kept apart from the reader it asks so Qt's own
+// slack-people said, kept apart from the daemon it asks so Qt's own
 // engine can test it (tests/slack.qml): who to ask and when, what stands
 // in Write in Slack's place, and the drawer's facts. `known` is what Slack
 // said of each address, by address: { email, id, team, name, zone,
 // presence, status, emoji }, with no id for one it knows nobody by.
 .pragma library
+
+// What slack-people told the people daemon of someone, as it said it, from
+// the daemon's record of them, or null when it's said nothing of them or
+// the record is of someone with no address. The daemon keeps the address
+// in the record's key, `person:<address>`, rather than in what was said.
+function fromRecord(record, name) {
+    const entry = record?.sources?.[name];
+    const address = String(record?.key ?? "").slice("person:".length);
+    return entry && address.includes("@") ? Object.assign({ email: address }, entry) : null;
+}
 
 // What Slack found of any of their addresses, or null.
 function found(emails, known) {

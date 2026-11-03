@@ -29,8 +29,6 @@ in
     quickshell
   ];
 
-  home.packages = [ lookUp ];
-
   xdg.configFile = {
     # What the source decides, beside it, where its import finds it.
     "quickshell/launcher/people/Slack.js".source = ./Slack.js;
@@ -68,9 +66,8 @@ in
   jitsusama.people.sources.slack = {
     order = 5;
     source = ./SlackSource.qml;
-    inherit credentials;
-    # The same program, run by the people daemon, which asks it only what
-    # a client of the daemon asks.
+    # Slack's reader, run by the people daemon alone, which asks it only
+    # what a client of the daemon asks, the shell's source among them.
     daemon = [
       (lib.getExe lookUp)
       credentials

@@ -4,21 +4,23 @@
 // there: active, away or in a huddle, with their status's emoji, in their
 // note, and their status and presence in the drawer (VKCF3Z, 42b57b7d,
 // 67f6cbac and 3bbad443). It knows nobody by itself, since a workspace
-// has thousands; it asks slack-people, a reader that never sends
-// anything, about each person People lists as the launcher opens, ahead
-// and paced, so who they are is known before Joel steps into them, and
-// how they are as he steps in, again once what it heard is a minute old.
-// The reader keeps who was found between runs, so a restart forgets
-// nobody. Whoever Slack found it knows, with their time zone as a fact,
-// which People follows with the time there.
+// has thousands; it asks the people daemon, which runs slack-people, a
+// reader that never sends anything, about each person People lists as
+// the launcher opens, ahead and paced, so who they are is known before
+// Joel steps into them, and how they are as he steps in, again once what
+// it heard is a minute old. The shell runs no reader of its own, so Slack
+// is asked once for everyone who asks (the daemon's own lines were a
+// second slack-people asking the same, 2026-11-02). The reader keeps who
+// was found between runs, so a restart forgets nobody. Whoever Slack
+// found it knows, with their time zone as a fact, which People follows
+// with the time there.
 //
 // Write in Slack never arrives late or moves under the keys: for someone
 // not yet looked up, it stands in its place dimmed, "looking in Slack",
 // lighting there when Slack answers, or saying "not in Slack" until the
 // launcher opens again. Someone already known not to be in Slack has no
-// such row (VKCF3Z, 8a0f14ea). Slack refusing the sign-in stops the
-// asking until the shell starts again; with no sign-in, nothing stands
-// in waiting.
+// such row (VKCF3Z, 8a0f14ea). With Slack's sign-in refused or missing,
+// or the daemon not answering, nothing stands in waiting.
 //
 // Their direct messages with Joel are one conversation in their Recent,
 // named by its newest message's first words, beside "Slack" and noted
@@ -28,7 +30,6 @@
 // Recent is there as Joel steps in rather than coming late.
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Slack.js" as Slack
 import "../Ago.js" as Ago
@@ -52,9 +53,23 @@ PersonSource {
     // nobody by, said so in place of Write in Slack until the launcher
     // opens again.
     property var missed: ({})
-    // Whether there's a sign-in Slack takes: with none, or one refused,
-    // nobody stands waiting on an answer that won't come.
-    property bool asks: true
+    // Whether Slack can be asked: heard answering, with a sign-in Slack
+    // takes, since it was last heard unable to. Only Slack saying what it
+    // knows of someone says so, since the daemon calls a reader answering
+    // from the moment it starts, before it has said anything, and a
+    // placeholder stood on that word would stay, dimmed, once Slack said
+    // it was signed out (Steady.js). With none, nobody stands waiting on
+    // an answer that won't come.
+    property bool asks: false
+    // When Slack was last heard unable to answer, by this machine's clock,
+    // which the daemon's records are timed by too.
+    property real quiet: 0
+    // Everyone the daemon is watched for, by key, those asked ahead and
+    // those stepped into, so how each is in Slack is heard as it changes.
+    property var watched: []
+    // How long a step-in waits on Slack's answer through the daemon,
+    // which a look-up by search can take a few seconds for.
+    readonly property int patience: 5000
     // When each address was last answered, kept in place rather than set
     // anew, since nothing is drawn from it and setting it would remake
     // everyone.
@@ -144,7 +159,10 @@ PersonSource {
         }, fields => provider.thing(fields));
     }
 
-    // Asks Slack about each of their addresses that's due (Slack.due).
+    // Asks Slack about each of their addresses that's due (Slack.due), as
+    // a step-in of the daemon's, which answers with what it holds once
+    // Slack has said or its patience is spent; what Slack says after
+    // comes by the watch.
     function ask(person) {
         const due = Slack.due(person.emails, known, {
             answered: answered,
@@ -154,16 +172,46 @@ PersonSource {
         });
         if (due.length === 0)
             return;
-        if (!reader.running)
-            reader.running = true;
         // Qt's JavaScript has no Object.fromEntries.
         const now = Date.now();
         const asked = Object.assign({}, asking);
         for (const email of due)
             asked[email] = now;
         asking = asked;
-        for (const email of due)
-            reader.write(`${email}\n`);
+        const keys = due.map(email => `person:${email}`);
+        watch(keys);
+        // Asked even while Slack can't be, since a step-in is what tells
+        // Slack's reader a sign-in came; the daemon's watch says how it
+        // stands as soon as that changes.
+        book.get(keys, patience, null);
+    }
+
+    // Watches these keys too, as well as those watched already.
+    function watch(keys) {
+        const fresh = keys.filter(key => !watched.includes(key));
+        if (fresh.length > 0)
+            watched = watched.concat(fresh);
+    }
+
+    // How Slack's reader stands, in the daemon's word: not to be asked
+    // while it's signed out, refused, or not run at all (""). Starting or
+    // answering says nothing of its sign-in, so only what Slack says of
+    // someone after makes it askable again (took).
+    function standsAs(word) {
+        if (word === "starting" || word === "answering")
+            return;
+        const now = Date.now();
+        quiet = now;
+        // What was asked is answered, so the person made again for it
+        // doesn't ask once more at once.
+        for (const email of Object.keys(asking))
+            answered[email] = now;
+        if (Object.keys(asking).length > 0)
+            asking = {};
+        if (!asks)
+            return;
+        asks = false;
+        place?.changed();
     }
 
     // As the launcher opens: whoever People lists and Slack hasn't yet
@@ -172,45 +220,37 @@ PersonSource {
     function woken() {
         if (Object.keys(missed).length > 0)
             missed = {};
-        if (!asks || !place)
+        // Asked ahead even while Slack can't be, since its answers are
+        // what say it can; each is asked once while the shell runs.
+        if (!place)
             return;
         const due = Slack.ahead(place.all.map(row => row.person), known, ahead);
         if (due.length === 0)
             return;
         for (const email of due)
             ahead[email] = true;
-        if (!reader.running)
-            reader.running = true;
-        reader.write(due.map(email => `?${email}\n`).join(""));
+        // Watching them asks the daemon to ask Slack ahead about each.
+        watch(due.map(email => `person:${email}`));
     }
 
-    function heard(line) {
-        let said;
-        try {
-            said = JSON.parse(line);
-        } catch (error) {
-            return;
-        }
-        if (said?.signedOut || said?.signedIn === false) {
-            // Signed out stops the reader; with no sign-in it keeps
-            // reading the file, so signing in from pi is taken at once.
-            if (said.signedOut)
-                reader.running = false;
-            // What was asked is answered, so the person made again for
-            // it doesn't ask once more at once.
-            const now = Date.now();
-            for (const email of Object.keys(asking))
-                answered[email] = now;
-            asking = {};
-            const stood = asks;
-            asks = false;
-            if (stood)
+    // What the daemon said of these keys, Slack's part of each taken as
+    // Slack's answer.
+    function took(keys) {
+        for (const key of keys) {
+            const record = book.held[key];
+            const said = Slack.fromRecord(record, settings.name);
+            if (!said)
+                continue;
+            // Slack said this since it was last unable to: it's signed in.
+            if (!asks && Number(record.heard ?? 0) > quiet) {
+                asks = true;
                 place?.changed();
-            return;
+            }
+            heard(said);
         }
-        if (typeof said?.email !== "string")
-            return;
-        asks = true;
+    }
+
+    function heard(said) {
         // Only a step-in's answer says how they are, so only it holds the
         // next step-in back a minute.
         const steppedIn = asking[said.email] !== undefined;
@@ -246,12 +286,21 @@ PersonSource {
         onTriggered: source.settle()
     }
 
-    Process {
-        id: reader
-        command: ["slack-people", source.settings.credentials ?? ""]
-        stdinEnabled: true
-        stdout: SplitParser {
-            onRead: line => source.heard(line)
+    Daemon {
+        id: book
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/people.sock`
+        kind: "person"
+        // Only those Slack's asked about, never everyone the daemon holds.
+        watching: ({ keys: [] })
+        ahead: source.watched
+        onHeard: keys => source.took(keys)
+        // How Slack stands, as the daemon says when it answers, and that
+        // it's not to be asked while the daemon isn't there.
+        onSourcesChanged: source.standsAs(book.sources?.[source.settings.name] ?? "")
+        onStateChanged: {
+            if (book.state !== "answering")
+                source.standsAs("");
         }
     }
 }
