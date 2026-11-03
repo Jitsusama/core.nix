@@ -51,6 +51,18 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: Desktop) -> None:
+    """The screen never locks by itself here, however long the test goes without a key.
+
+    A loaded builder let five minutes pass with no key from the test, typing by wtype counting
+    for none, and the idle lock fell mid-run, failing every subtest after it behind the lock
+    (2026-11-03). The lock is still asked for by its key and by logind.
+    """
+    line = desktop.as_account("systemctl --user show swayidle -p ExecStart --value")
+    assert " timeout " not in line, f"swayidle locks the screen by itself: {line}"
+    assert " lock " in line, f"swayidle no longer locks when logind asks: {line}"
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
@@ -952,10 +964,15 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
     try:
         # Every focus niri gives from here on, and Joel typing numbered words
-        # until told to stop, so a key that went elsewhere leaves a gap.
+        # until told to stop, so a key that went elsewhere leaves a gap. Ten
+        # words a wtype, since each brings its own keymap, which Xwayland
+        # compiles: a word each, a loaded builder's slow window let it type
+        # 331, and Xwayland was still compiling them a minute into the next
+        # subtest, starving it (2026-11-03).
         watch_the_focus(desktop)
         typing = (
-            'i=0; while [ ! -e ~/typing-done ]; do i=$((i+1)); wtype "w$i ";'
+            "i=0; while [ ! -e ~/typing-done ]; do"
+            ' wtype "$(seq -f "w%.0f " $((i+1)) $((i+10)) | tr -d "\\n")"; i=$((i+10));'
             " echo $i > ~/typing-count; done; wtype -k Return"
         )
         desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
@@ -5235,25 +5252,39 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.down_to("Programs")
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    tick = int(desktop.as_account("getconf CLK_TCK").strip())
+
+    def worked() -> float:
+        """How long the shell has run on a processor, every thread of it, in milliseconds."""
+        fields = desktop.as_account(f"cat /proc/{pid}/stat").rsplit(")", 1)[1].split()
+        # utime and stime, the stat's 14th and 15th, counted past its name.
+        return (int(fields[11]) + int(fields[12])) * 1000 / tick
+
     since = desktop.mark()
+    before = worked()
     machine.send_key("ret")
     # Its programs drawn, not only the step taken: a step that threw once
     # left Programs blank until something else redrew it (2026-10-28).
     desktop.launcher_until(lambda shown: shown["held"] == ["programs"] and len(shown["rows"]) > 0)
+    cost = worked() - before
     # The launcher times a step to its frame as it does a key, and says it
     # once it's felt (Trials.js).
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)} | grep -a -F '\u2192 Programs'; true"
     )
-    print(f"stepping into Programs: {said.strip() or 'within a frame'}")
-    took = [int(ms) for ms in re.findall(r"took (\d+) ms to its frame", said)]
+    print(f"stepping into Programs: {said.strip() or 'within a frame'}, {cost:.0f} ms worked")
     # The VM draws in software, several times slower than a laptop, and
     # takes about 130 ms to step in and draw; this holds it to a few times
     # that, so a step that throws or grows slower in kind fails, and the
-    # laptop's own time is read from its journal.
+    # laptop's own time is read from its journal. What's held is the
+    # shell's own work across the step, not the time to its frame, which a
+    # builder short of processors stretched past it with the step no slower
+    # (566 ms to its frame on 2026-11-03): time the VM waits for a
+    # processor is counted to no program in it.
     most = 400
-    assert all(ms <= most for ms in took), said
+    assert cost <= most, f"stepping into Programs worked {cost:.0f} ms: {said}"
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
 
