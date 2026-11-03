@@ -51,6 +51,18 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: Desktop) -> None:
+    """The screen never locks by itself here, however long the test goes without a key.
+
+    A loaded builder let five minutes pass with no key from the test, typing by wtype counting
+    for none, and the idle lock fell mid-run, failing every subtest after it behind the lock
+    (2026-11-03). The lock is still asked for by its key and by logind.
+    """
+    line = desktop.as_account("systemctl --user show swayidle -p ExecStart --value")
+    assert " timeout " not in line, f"swayidle locks the screen by itself: {line}"
+    assert " lock " in line, f"swayidle no longer locks when logind asks: {line}"
+
+
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
     """The launcher shows the volume's chords, and Escape closes it."""
     machine = desktop.machine
