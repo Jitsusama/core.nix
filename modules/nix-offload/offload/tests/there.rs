@@ -66,6 +66,11 @@ fi
 exit "$(cat "$here/nix-status" 2>/dev/null || echo 0)"
 "#;
 
+/// A second lender's folder that holds nothing, so a run never finds a
+/// second builder unless a test lends it one: the default,
+/// /run/nix-offload-more, is this machine's own.
+const NO_SECOND: &str = "/nonexistent/nix-offload-more";
+
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
                      base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n";
 
@@ -97,6 +102,7 @@ fn there_with(folder: &Path, offload: &Path, extra: &[&str]) -> Output {
             format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder)
         .env("XDG_STATE_HOME", folder)
         .env("XDG_CONFIG_HOME", folder)
@@ -205,6 +211,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
             ),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -242,6 +249,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
             ),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -412,6 +420,7 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -492,6 +501,7 @@ fn a_folders_ignored_files_stay_here_and_its_size_is_said() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -559,6 +569,7 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -677,6 +688,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
@@ -778,6 +790,7 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
@@ -850,6 +863,7 @@ fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
@@ -954,6 +968,7 @@ impl Unpushed {
                 format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
             )
             .env("NIX_OFFLOAD_DIR", &self.offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("XDG_RUNTIME_DIR", self.folder.path())
             .env("XDG_STATE_HOME", self.folder.path())
             .env("XDG_CONFIG_HOME", self.folder.path())
@@ -1108,6 +1123,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
                 format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
             )
             .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
@@ -1240,6 +1256,7 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
