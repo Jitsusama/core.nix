@@ -96,7 +96,7 @@ pub enum Target {
 
 /// Whether a file's name says it's markdown, as the desktop's type for
 /// markdown names its files.
-fn markdown(file: &Path) -> bool {
+pub fn markdown(file: &Path) -> bool {
     file.extension()
         .and_then(|it| it.to_str())
         .is_some_and(|it| {
@@ -117,6 +117,8 @@ pub fn target(href: &str, page: &Path) -> Target {
         return Target::Elsewhere(href.to_string());
     }
     let (path, fragment) = href.split_once('#').unwrap_or((href, ""));
+    let path = unescaped(path);
+    let path = path.as_str();
     let folder = page.parent().unwrap_or(Path::new("/"));
     let file: PathBuf = if path.starts_with('/') {
         PathBuf::from(path)
@@ -131,6 +133,30 @@ pub fn target(href: &str, page: &Path) -> Target {
         return Target::Page(file, heading);
     }
     Target::Elsewhere(file.to_string_lossy().into_owned())
+}
+
+/// A path as its link wrote it, its percent escapes read back, as the
+/// page's HTML gives a space, `%20`.
+fn unescaped(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let hex = |b: u8| char::from(b).to_digit(16);
+        if bytes[at] == b'%'
+            && let (Some(Some(high)), Some(Some(low))) = (
+                bytes.get(at + 1).map(|b| hex(*b)),
+                bytes.get(at + 2).map(|b| hex(*b)),
+            )
+        {
+            out.push(u8::try_from(high * 16 + low).unwrap_or(b'%'));
+            at += 3;
+        } else {
+            out.push(bytes[at]);
+            at += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Whether two paths are one file, however each is written.
@@ -236,6 +262,17 @@ impl Labelling {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paths_escapes_are_read_back() {
+        let page = Path::new("/notes/page.md");
+        assert_eq!(
+            target("/notes/a%20b/%5Bold%5D.md", page),
+            Target::Page(PathBuf::from("/notes/a b/[old].md"), None)
+        );
+        assert_eq!(unescaped("100%"), "100%");
+        assert_eq!(unescaped("caf%C3%A9"), "caf\u{e9}");
+    }
 
     #[test]
     fn a_link_goes_here_by_its_fragment_and_elsewhere_otherwise() {

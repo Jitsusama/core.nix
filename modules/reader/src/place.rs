@@ -124,8 +124,12 @@ fn read_in(state: &Path, file: &Path) -> Option<Place> {
     })
 }
 
-/// Keeps a file's place, whole or not at all.
+/// Keeps a file's place, whole or not at all; never the page of what to
+/// read's, which is written fresh each time.
 pub fn write(file: &Path, place: &Place) -> std::io::Result<()> {
+    if crate::start::is(file) {
+        return Ok(());
+    }
     match state() {
         Some(state) => write_in(&state, file, place),
         None => Ok(()),

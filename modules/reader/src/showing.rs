@@ -15,11 +15,35 @@ fn folder() -> Option<PathBuf> {
     Some(state.join("reader").join("showing"))
 }
 
-/// Says this reader shows `file`, clearing what readers gone left.
+/// Says this reader shows `file`, clearing what readers gone left. The
+/// page of what to read is no file of his, so while it shows, the reader
+/// says it shows nothing.
 pub fn keep(file: &Path) -> std::io::Result<()> {
+    if crate::start::is(file) {
+        forget();
+        return Ok(());
+    }
     match folder() {
         Some(folder) => keep_in(&folder, file),
         None => Ok(()),
+    }
+}
+
+/// Says a file reached by a link to the desktop's list of files opened
+/// lately, as the reader's command says each file it starts on, where the
+/// desktop keeps that list; elsewhere it says nothing.
+pub fn opened(file: &Path) {
+    let said = std::process::Command::new("recent-files")
+        .arg("add")
+        .arg("reader")
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    // Waited for on a thread of its own, so it never lingers once it ends.
+    if let Ok(mut child) = said {
+        std::thread::spawn(move || child.wait());
     }
 }
 
