@@ -4,8 +4,9 @@
 //!
 //! A direction is cut once its own delay has stood over `LATE_MS` for a
 //! second while it carries a flow: to a tenth under what it carried, and
-//! more the deeper the queue. It climbs while it's full with no delay, and
-//! drifts back toward the network's base while it's idle or low. The base
+//! more the deeper the queue. It climbs while it's full with no delay, fast
+//! until it nears where its queue last stood and gently after, and drifts
+//! back toward the network's base while it's idle or low. The base
 //! is learned from the line: what a direction carried each time its queue
 //! stood with the rate well over it, the median of the last ten, less a
 //! tenth. A new network starts with no limit at all, so nothing is held
@@ -50,6 +51,12 @@ const BETWEEN_CUTS_S: f64 = 1.0;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
 const CLIMB: f64 = 1.05;
+/// How fast a rate climbs, per second, far from any queue it has met:
+/// under this share of what got through when one last stood, or with none
+/// met yet. A remembered rate far under the line is back in under ten
+/// seconds.
+const FAST_CLIMB: f64 = 1.25;
+const FAR: f64 = 0.5;
 const DRIFT: f64 = 0.01;
 /// What share of its rate counts as full, and what as low.
 const FULL: f64 = 0.75;
@@ -99,6 +106,9 @@ pub struct Way {
     base: Option<f64>,
     learned: VecDeque<f64>,
     late_since: Option<f64>,
+    /// What got through when this direction's queue last stood, in this
+    /// stay; None until it first does.
+    ceiling: Option<f64>,
     last_cut: f64,
     last_at: Option<f64>,
     under_half_since: Option<f64>,
@@ -115,6 +125,7 @@ impl Way {
             base,
             learned: base.map(|b| b / 0.9).into_iter().collect(),
             late_since: None,
+            ceiling: None,
             last_cut: f64::NEG_INFINITY,
             last_at: None,
             under_half_since: None,
@@ -161,7 +172,11 @@ impl Way {
         if standing && flowing && at - self.last_cut >= BETWEEN_CUTS_S {
             self.cut(at, delay_ms, carried);
         } else if delay_ms < CLEAR_MS && carried >= self.rate * FULL {
-            self.rate *= CLIMB.powf(dt);
+            // As TCP's slow start does: far from any queue it has met, a
+            // rate climbs fast, since nothing says the line is near, and
+            // near the last one gently.
+            let far = self.ceiling.is_none_or(|ceiling| self.rate < ceiling * FAR);
+            self.rate *= if far { FAST_CLIMB } else { CLIMB }.powf(dt);
         } else if let Some(base) = self.base
             && carried < self.rate * FULL
             && !standing
@@ -190,6 +205,7 @@ impl Way {
         let drain = 1.0 - (delay_ms / 1_000.0).min(0.5);
         self.rate = (carried.min(self.rate) * 0.9 * drain).max(LEAST_KBIT);
         self.last_cut = at;
+        self.ceiling = Some(carried);
     }
 
     /// Whether the guard should send this direction back to its base: a
@@ -328,6 +344,26 @@ mod tests {
         limits
     }
 
+    /// A wide line from `from` to `to` carrying the whole of whatever the
+    /// download is held to, with nothing waiting.
+    fn wide(c: &mut Controller, from: f64, to: f64) -> Limits {
+        let mut limits = Limits {
+            up: c.up.limit(),
+            down: c.down.limit(),
+        };
+        let mut at = from;
+        while at < to {
+            let down_kbit = limits.down.map_or(1_000_000.0, crate::rate::float);
+            limits = c.step(&Seen {
+                at_s: at,
+                down_kbit,
+                ..quiet(300.0, 0.0)(at)
+            });
+            at += 0.1;
+        }
+        limits
+    }
+
     fn quiet(up_kbit: f64, down_kbit: f64) -> impl Fn(f64) -> Seen {
         move |_| Seen {
             up_delay_ms: Some(1.0),
@@ -386,22 +422,6 @@ mod tests {
         let mut c = Controller::new(None, None);
         let limits = run(&mut c, 0.0, 5.0, queued(40.0, 100.0));
         assert_eq!(limits.down, None);
-    }
-
-    #[test]
-    fn a_full_direction_with_no_delay_climbs() {
-        let mut way = Way::new(Some(100_000.0));
-        let mut at = 0.0;
-        while at < 10.0 {
-            let carried = way.rate;
-            way.step(at, 1.0, carried);
-            at += 0.1;
-        }
-        let rate = way.limit().expect("held");
-        assert!(
-            (160_000..=165_000).contains(&rate),
-            "5% a second for 10 s: {rate}"
-        );
     }
 
     #[test]
@@ -499,6 +519,25 @@ mod tests {
                 down: None
             }
         );
+    }
+
+    #[test]
+    fn a_rate_that_has_never_met_its_queue_climbs_a_quarter_a_second() {
+        let mut c = Controller::new(None, Some(16_000.0));
+        let limits = wide(&mut c, 0.0, 10.0);
+        // 16 Mbit/s carried whole for ten seconds at 1.25 a second is 149.
+        assert_eq!(limits.down.map(|kbit| kbit / 1_000), Some(149));
+    }
+
+    #[test]
+    fn near_where_its_queue_last_stood_a_rate_climbs_gently() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.2, queued(40.0, 100_000.0));
+        let cut = c.down.limit().map(crate::rate::float).expect("cut");
+        let limits = wide(&mut c, 1.2, 11.2);
+        let climbed = limits.down.map(crate::rate::float).expect("held") / cut;
+        // Ten seconds at 1.05 a second is 1.63.
+        assert!((1.6..1.66).contains(&climbed), "climbed {climbed}");
     }
 
     #[test]
