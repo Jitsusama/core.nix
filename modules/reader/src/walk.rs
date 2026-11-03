@@ -392,7 +392,7 @@ impl Walker<'_> {
             self.titled = true;
         }
         if top && BLOCKS.contains(&name.as_str()) {
-            self.after_title = name == "h1";
+            self.after_title = opening;
         }
         match name.as_str() {
             "html" | "body" | "span" | "section" | "picture" | "thead" | "tbody" => {
@@ -837,6 +837,7 @@ mod tests {
         let mut costs = Costs::default();
         let typst = program(
             "Before $x^2$ after.\n",
+            "page",
             None,
             &Pieces::new(),
             &world,
@@ -844,6 +845,39 @@ mod tests {
         );
         assert!(typst.contains("#broken(\"x^2\")"), "{typst}");
         assert!(!typst.contains("#mx("), "{typst}");
+    }
+
+    #[test]
+    fn a_title_opening_the_page_has_the_eyebrow_over_it_and_its_lede_after() {
+        let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+        let walk = |markdown: &str| {
+            program(
+                markdown,
+                "notes",
+                None,
+                &Pieces::new(),
+                &world,
+                &mut Costs::default(),
+            )
+        };
+        let titled = walk("# Title\n\nThe lede.\n\nThe words.\n");
+        assert!(
+            titled.contains("#about(titled: true)[#\"notes\"]"),
+            "{titled}"
+        );
+        assert!(titled.contains("] <title>"), "{titled}");
+        assert!(titled.contains("#lede[#\"The lede.\"]"), "{titled}");
+        assert!(titled.contains("#par[#\"The words.\"]"), "{titled}");
+        let untitled = walk("The words.\n\n# Later\n\nMore.\n");
+        assert!(untitled.contains("#about(titled: false)"), "{untitled}");
+        assert!(
+            !untitled.contains("<title>"),
+            "a later title isn't the page's: {untitled}"
+        );
+        assert!(
+            untitled.contains("#par[#\"More.\"]"),
+            "only the page's title has a lede: {untitled}"
+        );
     }
 
     #[test]
