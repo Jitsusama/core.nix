@@ -157,6 +157,7 @@ pub fn program(
         after_title: false,
         titled: false,
         after_box: false,
+        caption: None,
     };
     walker.children(&dom.document);
     // The eyebrow goes before any block, so the first set carries it
@@ -234,6 +235,9 @@ struct Walker<'a> {
     /// Whether a task's box was just passed over, so the space after it
     /// goes.
     after_box: bool,
+    /// The alt text of the last picture set, for its caption; none when
+    /// it stood as a box saying it.
+    caption: Option<String>,
 }
 
 fn attr(node: &Handle, name: &str) -> Option<String> {
@@ -327,6 +331,38 @@ fn is_figure(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || " .,%$\u{20ac}\u{a3}+-\u{2212}\u{d7}:/~".contains(c))
 }
 
+/// A figure's caption as Typst content: empty when there are no words.
+fn caption_of(alt: &str) -> String {
+    let alt = alt.trim();
+    if alt.is_empty() {
+        "[]".into()
+    } else {
+        format!("[#{}]", literal(alt))
+    }
+}
+
+/// Whether a paragraph holds one picture and nothing else but space, or a
+/// link around one.
+fn lone_picture(p: &Handle) -> bool {
+    let children = p.children.borrow();
+    let mut shown = children.iter().filter(|it| match &it.data {
+        NodeData::Text { contents } => !contents.borrow().trim().is_empty(),
+        NodeData::Element { .. } => true,
+        _ => false,
+    });
+    let (Some(only), None) = (shown.next(), shown.next()) else {
+        return false;
+    };
+    match tag(only).as_deref() {
+        Some("img") => true,
+        Some("a") => {
+            let inner = only.children.borrow();
+            inner.len() == 1 && tag(&inner[0]).as_deref() == Some("img")
+        }
+        _ => false,
+    }
+}
+
 /// Whether a list item is a task its words follow (a tight item), and if
 /// so whether it's done.
 fn task_of(item: &Handle) -> Option<bool> {
@@ -375,6 +411,15 @@ impl Walker<'_> {
         for child in node.children.borrow().iter() {
             self.node(child);
         }
+    }
+
+    /// A paragraph holding a picture alone: a figure, its alt text its
+    /// caption when the picture itself shows.
+    fn alone(&mut self, node: &Handle) {
+        self.caption = None;
+        self.wrap("#alone[", node, "]");
+        let caption = self.caption.take().unwrap_or_default();
+        let _ = writeln!(self.out, "{}", caption_of(&caption));
     }
 
     fn wrap(&mut self, open: &str, node: &Handle, close: &str) {
@@ -444,6 +489,7 @@ impl Walker<'_> {
             // eyebrow.
             "p" if attr(node, "class")
                 .is_some_and(|class| class.starts_with("markdown-alert-title")) => {}
+            "p" if lone_picture(node) => self.alone(node),
             "p" if lede => self.wrap("#lede[", node, "]\n"),
             "p" => self.wrap("#par[", node, "]\n"),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
@@ -686,7 +732,21 @@ impl Walker<'_> {
             .find_syntax_by_token(lang)
             .unwrap_or_else(|| self.pieces.syntaxes.find_syntax_plain_text());
         let mut h = HighlightLines::new(syntax, &self.pieces.theme);
-        self.out.push_str("#codeblock[");
+        // The template places the language and widens the block by the
+        // mono's width, so it's told its lines' lengths in characters.
+        let columns = |line: &str| -> usize {
+            line.trim_end()
+                .chars()
+                .map(|c| if c == '\t' { 4 } else { 1 })
+                .sum()
+        };
+        let first = code.lines().next().map_or(0, columns);
+        let longest = code.lines().map(columns).max().unwrap_or(0);
+        let _ = write!(
+            self.out,
+            "#codeblock(lang: {}, first: {first}, longest: {longest})[",
+            literal(lang)
+        );
         for line in syntect::util::LinesWithEndings::from(code) {
             match h.highlight_line(line, &self.pieces.syntaxes) {
                 Ok(runs) => {
@@ -738,8 +798,7 @@ impl Walker<'_> {
 
     /// A picture: a file beside the page is put in the world and set at its
     /// own size, as GitHub shows it, no wider than the measure. One that
-    /// can't be read, or is on the web, stands as a box its size saying
-    /// what it shows.
+    /// can't be read, or is on the web, says what it shows in its place.
     fn picture(&mut self, node: &Handle) {
         let alt = attr(node, "alt").unwrap_or_default();
         let src = attr(node, "src").unwrap_or_default();
@@ -756,23 +815,15 @@ impl Walker<'_> {
                 (None, _, w, _) => w,
             };
             let width = width.map_or("none".to_string(), |w| format!("{:.1}pt", w * 0.75));
+            self.caption = Some(alt.clone());
             self.set_picture(
                 node,
                 &format!("#pic({}, {}, {})", literal(&path), literal(&alt), width),
             );
             return;
         }
-        let w = given_w.unwrap_or(320.0);
-        let h = given_h.unwrap_or(w * 0.5);
-        self.set_picture(
-            node,
-            &format!(
-                "#picture({}, {:.1}pt, {:.1}pt)",
-                literal(&alt),
-                w * 0.75,
-                h * 0.75
-            ),
-        );
+        self.caption = None;
+        self.set_picture(node, &format!("#picture({})", literal(&alt)));
     }
 
     /// A picture in a paragraph stays in its line; one standing among the
@@ -789,7 +840,8 @@ impl Walker<'_> {
             });
         node.parent.set(parent);
         if among_blocks {
-            let _ = write!(self.out, "\n#par[{picture}]\n");
+            let caption = self.caption.take().unwrap_or_default();
+            let _ = write!(self.out, "\n#alone[{picture}]{}\n", caption_of(&caption));
         } else {
             self.out.push_str(picture);
         }
@@ -977,6 +1029,29 @@ mod tests {
             !typst.contains("#\" \""),
             "a blank line between blocks: {typst}"
         );
+    }
+
+    #[test]
+    fn a_picture_alone_is_a_figure_and_one_among_words_stays_in_its_line() {
+        let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+        let walk = |markdown: &str| {
+            program(
+                markdown,
+                "notes",
+                None,
+                &Pieces::new(),
+                &world,
+                &mut Costs::default(),
+            )
+        };
+        let alone = walk("![What it shows](missing.png)\n");
+        assert!(
+            alone.contains("#alone[#picture(\"What it shows\")][]"),
+            "one that can't be shown says its words once, with no caption: {alone}"
+        );
+        let among = walk("Words ![What it shows](missing.png) and more.\n");
+        assert!(!among.contains("#alone"), "{among}");
+        assert!(among.contains("#par["), "{among}");
     }
 
     #[test]

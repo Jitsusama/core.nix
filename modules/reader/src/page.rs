@@ -163,13 +163,17 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let details(body) = block(body)
 #let rule-ink = ink.rule
 #let sheet-gap = 18pt
-#let sheet(numeric: (), words: (), head: none, rows: ()) = layout(size => {
+// A table's first baseline stands two lines under the one before it and
+// the next two lines under its last, past each row's half-line inset, so
+// the page's grid runs through it.
+#let sheet-air = 2 * pitch - (1.5 * pitch + cap) / 2
+#let sheet(numeric: (), words: (), head: none, rows: ()) = block(above: sheet-air, below: sheet-air, layout(size => {
   let n = words.len()
   let all = if head == none { rows } else { (head,) + rows }
   let cell(row, i) = row.at(i, default: [])
   let wide(it) = measure(text(hyphenate: false, it)).width
   let mins = words.map(column => calc.max(0pt, ..column.map(word => measure(word).width)))
-  let naturals = range(n).map(i => calc.max(0pt, ..all.enumerate().map(((k, row)) => wide(if head != none and k == 0 { strong(cell(row, i)) } else { cell(row, i) }))))
+  let naturals = range(n).map(i => calc.max(0pt, ..all.enumerate().map(((k, row)) => wide(if head != none and k == 0 { eyebrow(cell(row, i)) } else { cell(row, i) }))))
   let wants = range(n).map(i => naturals.at(i) - mins.at(i))
   // Every line of a table lands on the page's pitch: a body line's cap
   // height and its leading. A line in a cell steps one pitch, a field to
@@ -215,14 +219,15 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       ..all.enumerate().map(((k, row)) => range(n).map(i => {
         let it = cell(row, i)
         let it = if numeric.at(i, default: false) { text(number-width: "tabular", it) } else { it }
-        if head != none and k == 0 { strong(it) } else { it }
+        // A table's heads are eyebrows, on the body's baseline.
+        if head != none and k == 0 { eyebrow(it) } else { it }
       })).flatten()
     )
   }
   let records = {
     let names = if head == none { () } else { head }
     // One edge for every record's values, past the widest header.
-    let label = calc.max(0pt, ..names.map(name => measure(name).width))
+    let label = calc.max(0pt, ..names.map(name => measure(eyebrow(name)).width))
     let lead = pitch - cap
     set text(hyphenate: false, top-edge: cap, bottom-edge: "baseline")
     stack(..rows.enumerate().map(((k, row)) => block(
@@ -232,7 +237,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       stack(spacing: lead,
         text(fill: ink.strong, weight: 500, cell(row, 0)),
         grid(columns: (label, 1fr), column-gutter: 12pt, row-gutter: lead,
-          ..range(1, n).filter(i => cell(row, i) != []).map(i => (text(fill: ink.muted, cell(names, i)), cell(row, i))).flatten()))
+          ..range(1, n).filter(i => cell(row, i) != []).map(i => (eyebrow(cell(names, i)), cell(row, i))).flatten()))
     )))
   }
   let inside = fit(size.width)
@@ -240,16 +245,63 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     let spread-out = fit(size.width + 2 * spread)
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
+}))
+// A code block: the mono at 10.5 pt on a 15 pt line, on the sunken ground
+// inset m by l. Its height rounds up to the half line, shared above and
+// below its lines, so the words after it stay on the page's grid. Its top
+// stands one and a half lines under the baseline before it, and the next
+// baseline two lines under its foot, so the room either side looks even. Code wider than the measure
+// widens the block evenly, as far as a table may spread. The language is
+// an eyebrow at the top right, on the first line's baseline, or on a line
+// of its own when the first line would reach it.
+#let code-size = 10.5pt
+#let code-line = 15pt
+#let code-inset = (x: 12pt, y: 9pt)
+// The mono's set rules sit outside `layout`, since `measure` in its
+// closure takes the styles `layout` was called with.
+#let codeblock(lang: "", first: 0, longest: 0, body) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, {
+ set text(font: face.code, size: code-size, top-edge: "cap-height", bottom-edge: "baseline", hyphenate: false)
+ set par(leading: code-line - code-caps * code-size, justify: false, spacing: code-line - code-caps * code-size)
+ layout(size => {
+  let advance = measure([0]).width
+  let width = calc.min(calc.max(size.width, longest * advance + 2 * code-inset.x), size.width + 2 * spread)
+  let inner = width - 2 * code-inset.x
+  let label = if lang == "" { none } else { eyebrow(lang) }
+  let alone = label != none and first * advance + measure(label).width + code-inset.x > inner
+  let lines = {
+    if alone { block(width: 100%, below: code-line - code-caps * code-size, align(right, label)) }
+    body
+  }
+  let h = measure(block(width: inner, lines)).height
+  let tall = calc.ceil((h + 2 * code-inset.y) / half) * half
+  let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset.x, y: (tall - h) / 2), {
+    if label != none and not alone { place(top + right, dy: code-caps * (code-size - 8.4pt), label) }
+    lines
+  })
+  let out = (width - size.width) / 2
+  if out > 0pt { pad(left: -out, right: -out, shown) } else { shown }
+ })
 })
-#let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, {
-  // Code keeps its own line, by its size, not the words'.
-  set par(leading: 0.62em)
-  text(font: face.code, size: 11.5pt, body)
-})
-#let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
+// A picture that can't be shown says what it shows, in the italic, muted
+// and never broken, as a caption would.
+#let picture(alt) = text(style: "italic", fill: ink.muted, hyphenate: false, alt)
+// A picture standing alone is centred, as wide as it is up to the measure
+// and past it as far as a table spreads. Its height rounds up to the half
+// line so the words after it stay on the grid, and its alt text is its
+// caption, in the italic, muted and centred, a line under it. It sits at
+// the foot of its rounded height, so a line of words in its place, as a
+// picture that can't be shown is, stands on a line too.
+#let alone(body, caption) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, pad(left: -spread, right: -spread, layout(size => {
+  let shown = align(center, body)
+  let h = measure(block(width: size.width, shown)).height
+  block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, align(bottom, shown))
+  if caption != [] {
+    block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(style: "italic", fill: ink.muted, hyphenate: false, caption))))
+  }
+})))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
 #let pictures = true
-#let pic(path, alt, w) = if not pictures { picture(alt, 320pt, 160pt) } else {
+#let pic(path, alt, w) = if not pictures { picture(alt) } else {
   box(layout(size => {
     let natural = if w == none { measure(image(path, alt: alt)).width } else { w }
     image(path, alt: alt, width: calc.min(natural, size.width))
@@ -310,10 +362,12 @@ const FIRST_CHARS: usize = 6000;
 /// down to here.
 pub const BOTTOM_PT: f64 = 27.4;
 
-/// The eyebrow's words over the title: where the file lives, and when it
-/// last changed. The title says the file's own name.
-fn about(file: &std::path::Path) -> String {
-    let name = lives(file);
+/// The eyebrow's words over the title: what the file says it is in its
+/// front matter, its kind and id, or else where it lives; and when it last
+/// changed. The title says the file's own name, and the front matter
+/// itself never shows.
+fn about(file: &std::path::Path, markdown: &str) -> String {
+    let name = said(markdown).unwrap_or_else(|| lives(file));
     let changed = std::fs::metadata(file)
         .and_then(|it| it.modified())
         .ok()
@@ -348,6 +402,22 @@ fn lives(file: &std::path::Path) -> String {
         .chain(below.iter().map(|part| part.to_string_lossy().into_owned()))
         .collect::<Vec<_>>()
         .join(" \u{b7} ")
+}
+
+/// What a file's front matter says it is: its kind and its id, whichever
+/// it gives, joined as the eyebrow joins its parts.
+fn said(markdown: &str) -> Option<String> {
+    let rest = markdown.strip_prefix("---\n")?;
+    let end = rest.find("\n---")?;
+    let field = |key: &str| {
+        rest[..end].lines().find_map(|line| {
+            let value = line.strip_prefix(key)?.strip_prefix(':')?.trim();
+            let value = value.trim_matches(|c| c == '"' || c == '\'');
+            (!value.is_empty()).then(|| value.to_string())
+        })
+    };
+    let parts: Vec<String> = [field("kind"), field("id")].into_iter().flatten().collect();
+    (!parts.is_empty()).then(|| parts.join(" \u{b7} "))
 }
 
 /// When a file changed, as briefly as says it: a clock's time today, a day
@@ -429,7 +499,7 @@ pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
             dir
         }
     });
-    let about = about(std::path::Path::new(file));
+    let about = about(std::path::Path::new(file), &markdown);
     let program = timed(&mut parts, "walk", || {
         walk::program(&markdown, &about, base, &pieces, &world, &mut costs)
     });
@@ -515,7 +585,7 @@ impl Setter {
         let mut costs = Costs::default();
         let program = walk::program(
             &markdown,
-            &about(path),
+            &about(path, &markdown),
             base,
             &self.pieces,
             &self.world,
@@ -597,6 +667,20 @@ mod tests {
         );
         assert_eq!(lives(&dir.join("loose/page.md")), "loose");
         std::fs::remove_dir_all(&dir).expect("cleaned");
+    }
+
+    #[test]
+    fn a_file_says_what_it_is_in_its_front_matter() {
+        assert_eq!(
+            super::said("---\nid: QEST-1\nkind: subquest\nstatus: active\n---\n# Title\n"),
+            Some("subquest \u{b7} QEST-1".into())
+        );
+        assert_eq!(
+            super::said("---\ntitle: \"Tables\"\nid: 'tables'\n---\n"),
+            Some("tables".into())
+        );
+        assert_eq!(super::said("---\ntitle: Tables\n---\n"), None);
+        assert_eq!(super::said("# No front matter\n\nkind: words\n"), None);
     }
 
     #[test]
@@ -712,10 +796,10 @@ mod tests {
     #[test]
     fn a_pages_headings_land_on_the_half_line() {
         let markdown = format!(
-            "# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
+            "---\nkind: page\n---\n# Title\n\nThe lede.\n\n{OPENING}## Section\n\nWords.\n\n### Part\n\nMore words.\n\n#### Fourth\n\nOmega.\n"
         );
-        // The eyebrow says the folder the test's file is in.
-        let (pitch, lines) = baselines("headings", &markdown, "PITCH", "Omega");
+        // The eyebrow says the kind the front matter gives.
+        let (pitch, lines) = baselines("headings", &markdown, "PAGE", "Omega");
         let steps = steps(pitch, &lines);
         assert!(
             steps.iter().all(|s| s % 50 == 0),
@@ -733,7 +817,8 @@ mod tests {
         let markdown = format!(
             "{OPENING}| Alpha | Wraps | Count |\n|---|---|---:|\n| one | a cell long enough that it wraps onto a second line in its column, however narrow the face its words are set in | 12 |\n| two | `code` in a cell | 3 |\n| three | short | Omega |\n"
         );
-        let (pitch, lines) = baselines("table", &markdown, "Alpha", "Omega");
+        // The heads are eyebrows, in capitals.
+        let (pitch, lines) = baselines("table", &markdown, "ALPHA", "Omega");
         let steps = steps(pitch, &lines);
         assert!(steps.len() >= 4, "too few lines: {steps:?}");
         assert!(
