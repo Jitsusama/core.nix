@@ -35,15 +35,18 @@ onLinux {
   # new one after a switch, is restarted once its watchdog hears nothing,
   # and takes its file and its ask in Needs You with it however it stops,
   # so neither Now nor Needs You shows what nothing is keeping current.
+  # Its socket is systemd's, held only once pi has signed in, so it stays
+  # when the daemon stops and a machine with no sign-in starts nothing.
   slack-unreads-go-with-the-service =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.slack ]; } ]);
       unit = home.systemd.user.services.slack-unreads;
+      socket = home.systemd.user.sockets.slack-unreads;
       credentials = "${home.xdg.configHome}/agentic-harness/slack/credentials.json";
       waiting = "${home.xdg.stateHome}/mission/waiting/slack.json";
     in
     holds "slack-unreads-go-with-the-service"
-      "slack-unreads lacks its start with the sign-in, switch restart, watchdog or file cleanup."
+      "slack-unreads lacks its start with the sign-in, switch restart, watchdog, file cleanup or socket."
       (
         # Each start is listed, as home-manager takes ExecStart.
         lib.any (lib.hasInfix waiting) (lib.toList unit.Service.ExecStart)
@@ -53,7 +56,10 @@ onLinux {
         && unit.Service.WatchdogSec > 0
         && unit.Service.NotifyAccess == "main"
         && lib.hasInfix "%t/slack-unreads.json" unit.Service.ExecStopPost
-        && lib.hasInfix "%t/daemons/slack.sock" unit.Service.ExecStopPost
+        && !(lib.hasInfix "%t/daemons/slack.sock" unit.Service.ExecStopPost)
+        && socket.Socket.ListenStream == "%t/daemons/slack.sock"
+        && socket.Unit.ConditionPathExists == credentials
+        && lib.elem "slack-unreads.socket" unit.Unit.Requires
       );
   # Who the source asks about and when, what stands in Write in Slack's
   # place before Slack answers, how answers that come together are taken,

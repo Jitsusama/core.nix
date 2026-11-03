@@ -94,12 +94,33 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
+  # Slack's daemon's socket, held by systemd whether or not it runs, so the
+  # shell asking while it starts, or starts again, waits on it rather than
+  # finding no socket and trying again blind (Quickshell warns of each,
+  # every 2 s). Only once pi has signed in, as the daemon itself: with no
+  # sign-in nothing listens, so asking starts nothing.
+  systemd.user.sockets.slack-unreads = {
+    Unit = {
+      Description = "Where the shell asks Slack's daemon";
+      ConditionPathExists = credentials;
+    };
+    Socket = {
+      ListenStream = "%t/daemons/slack.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+    Install.WantedBy = [ "sockets.target" ];
+  };
+
   systemd.user.services.slack-unreads = {
     Unit = {
       Description = "Keeps what in Slack wants Joel for the shell";
       # As google's does: restarted after a switch reloads the units, it
       # comes back as the new one.
       X-SwitchMethod = "restart";
+      # Its socket is systemd's, handed to it as it starts.
+      Requires = [ "slack-unreads.socket" ];
+      After = [ "slack-unreads.socket" ];
     };
     Service = {
       Slice = "background.slice";
@@ -123,7 +144,6 @@ in
         "${pkgs.coreutils}/bin/rm -f"
         "%t/slack-unreads.json"
         "%t/.writing/slack-unreads.json"
-        "%t/daemons/slack.sock"
         (lib.escapeShellArg waiting)
         (lib.escapeShellArg "${dirOf waiting}/.writing/${baseNameOf waiting}")
       ];

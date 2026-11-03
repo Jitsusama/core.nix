@@ -27,7 +27,8 @@ onLinux {
   people-passes-clippy = passesClippy "people-passes-clippy" (pkgs.callPackage ./package.nix { });
   # The daemon runs wherever a source names a program for it, as Slack's
   # and Tuple's do, on the socket the shell's daemons share, and not where
-  # none does, as where Google's is the only source, being QML alone.
+  # none does, as where Google's is the only source, being QML alone. Its
+  # socket is systemd's, held there whether or not the daemon runs.
   people-runs-where-a-source-names-a-program =
     let
       with' = module: account (bareNixos [ { home-manager.sharedModules = [ module ]; } ]);
@@ -38,7 +39,9 @@ onLinux {
       runs =
         home:
         lib.hasInfix "%t/daemons/people.sock" (started home)
-        && home.systemd.user.services.people.Unit.X-SwitchMethod == "restart";
+        && home.systemd.user.services.people.Unit.X-SwitchMethod == "restart"
+        && home.systemd.user.sockets.people.Socket.ListenStream == "%t/daemons/people.sock"
+        && lib.elem "people.socket" home.systemd.user.services.people.Unit.Requires;
     in
     holds "people-runs-where-a-source-names-a-program"
       "The people daemon doesn't run for Slack's or Tuple's source, or runs where no source names one."
@@ -46,6 +49,7 @@ onLinux {
         runs (with' self.homeModules.slack)
         && runs (with' self.homeModules.tuple)
         && !((with' self.homeModules.google).systemd.user.services ? people)
+        && !((with' self.homeModules.google).systemd.user.sockets ? people)
       );
   # One person per email address across every source, how each stands, who's
   # listed and in what order, the drawer's details and the order of their

@@ -75,6 +75,12 @@ struct Running {
 
 impl Running {
     fn with(test: &str, sources: &[(&str, &str)]) -> Running {
+        Running::through(test, sources, &[])
+    }
+
+    /// Started by `launcher` and its arguments, each given the socket's
+    /// path where it says `{socket}`, rather than on its own.
+    fn through(test: &str, sources: &[(&str, &str)], launcher: &[&str]) -> Running {
         let folder = std::env::temp_dir().join(format!("people-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
@@ -89,7 +95,21 @@ impl Running {
         let config = folder.join("sources.json");
         std::fs::write(&config, json!({"sources": listed}).to_string()).unwrap();
         let socket = folder.join("daemons").join("people.sock");
-        let daemon = Command::new(env!("CARGO_BIN_EXE_people"))
+        // Made here, since a launcher listens there before the daemon runs.
+        std::fs::create_dir_all(folder.join("daemons")).unwrap();
+        let people = env!("CARGO_BIN_EXE_people");
+        let mut command = match launcher.split_first() {
+            Some((program, arguments)) => {
+                let mut command = Command::new(program);
+                for argument in arguments {
+                    command.arg(argument.replace("{socket}", &socket.to_string_lossy()));
+                }
+                command.arg(people);
+                command
+            }
+            None => Command::new(people),
+        };
+        let daemon = command
             .arg(&socket)
             .arg(&config)
             .stderr(Stdio::null())
@@ -273,6 +293,22 @@ fn a_watch_hears_a_source_sign_out_as_it_says_so() {
     // without asking, as a client learns a sign-in went.
     let said = client.next();
     assert_eq!(said, json!({"id": 2, "sources": {"slack": "signed-out"}}));
+}
+
+#[test]
+fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
+    // As systemd does for people.socket: the socket is listened on before
+    // the daemon runs, and handed to it as it starts, so the asking that
+    // started it is answered. A daemon that made a socket of its own
+    // would leave that ask waiting on one nobody accepts from.
+    let running = Running::through(
+        "handed",
+        &[("slack", KNOWING)],
+        &["systemd-socket-activate", "--listen={socket}"],
+    );
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "hello"}));
+    assert_eq!(said["domain"], "people");
 }
 
 #[test]

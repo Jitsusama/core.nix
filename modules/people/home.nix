@@ -124,14 +124,30 @@ in
         # Restarted after a switch reloads the units, it comes back with the
         # sources the switch named, as the new one.
         X-SwitchMethod = "restart";
+        # Its socket is systemd's, handed to it as it starts.
+        Requires = [ "people.socket" ];
+        After = [ "people.socket" ];
       };
       Service = {
         ExecStart = "${lib.getExe people} %t/daemons/people.sock ${sourcesFile}";
         Restart = "on-failure";
         RestartSec = 5;
-        ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/people.sock";
       };
       Install.WantedBy = [ "default.target" ];
+    };
+
+    # Its socket, held by systemd whether or not the daemon runs, so the
+    # shell asking while it starts, or starts again, waits on it rather
+    # than finding no socket and trying again blind (Quickshell warns of
+    # each, every 2 s); asking starts it, should it have stopped.
+    systemd.user.sockets.people = lib.mkIf (daemonSources != [ ]) {
+      Unit.Description = "Where the shell asks the people daemon";
+      Socket = {
+        ListenStream = "%t/daemons/people.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
     };
   };
 }
