@@ -403,8 +403,8 @@ fn a_pass_with_nothing_left_to_take_says_so() {
 
 #[test]
 fn the_worst_band_a_pass_sees_holds_until_the_target() {
-    // Idle 3 hours goes only from urgent on; freeing lifts the disk into
-    // pressure after the first batch, and the pass goes on with urgent's
+    // Idle 3 hours goes only once nearly full; freeing lifts the disk to
+    // filling after the first batch, and the pass goes on with nearly full's
     // windows to the target.
     let candidates = targets(40, 3.0 * HOUR);
     let halves = candidates

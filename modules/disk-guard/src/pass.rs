@@ -117,7 +117,7 @@ pub struct Report {
 /// settled and measured before the next is planned, so a writer filling
 /// the disk as it goes is planned for, and what each kind frees is learned
 /// from the measurement, never the sum of sizes. The pass plans by the
-/// worst band it has seen, so a disk freed out of urgent into pressure
+/// worst band it has seen, so a disk freed from nearly full to filling
 /// still reaches the target. A batch that stalls teaches nothing, since a
 /// ratio learned from it would plan everything, and a group that keeps
 /// stalling is left for the next: a pass ends stalled only when it then

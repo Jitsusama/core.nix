@@ -120,10 +120,10 @@ fn guard(root: &Path) -> Guard {
     guard_at(root, "0%")
 }
 
-/// A guard whose disk is under pressure below `pressure` free.
+/// A guard whose disk is filling below `pressure` free.
 /// A guard whose every band starts at `pressure`. Its disk is the real
 /// one, which other work fills as the test runs, so at 100% the disk is
-/// critical and has no band past it for a forecast to start a pass for.
+/// critically full and has no band past it for a forecast to start a pass for.
 fn guard_at(root: &Path, pressure: &str) -> Guard {
     guard_from(root, pressure, "")
 }

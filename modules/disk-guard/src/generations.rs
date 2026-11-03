@@ -139,7 +139,7 @@ pub fn entries(boot: &Path) -> io::Result<BTreeSet<u32>> {
 }
 
 /// The profile's generations that may go: those routine may take, and
-/// those under `young` seconds old that only pressure takes. The current
+/// those under `young` seconds old that only a filling disk takes. The current
 /// generation stays, as do any linking to a system `in_use`, the newest
 /// `keep` and any with a boot entry; with the boot partition unreadable,
 /// all of them.

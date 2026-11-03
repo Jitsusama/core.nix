@@ -240,7 +240,7 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             ],
         ),
         // Their own policies decide how much each takes.
-        // What's young and within budget waits for pressure.
+        // What's young and within budget waits for a filling disk.
         Class::Garbage { kept: true, .. } | Class::Generations { kept: true } => {
             (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE])
         }

@@ -3,7 +3,7 @@
 # build or a person is using. It owns everything in the home: build targets
 # and dependency installs, caches, temporary leftovers, the trash, finished
 # quests' workspaces, the older builds a newer one replaced, and the account's
-# own Nix generations. At critical with nothing left to take it freezes the
+# own Nix generations. Once critically full with nothing left to take it freezes the
 # writer filling the disk until there's room. Below healthy it says what it
 # did in one notice, replaced in place, and it writes a status file for the
 # shell. AGENTS.md beside this says how it decides.
@@ -50,7 +50,7 @@ let
     harness.workspaces
   ];
 
-  # A source that refills on demand, emptied from urgent on, cheapest to
+  # A source that refills on demand, emptied once nearly full, cheapest to
   # refill first: a download before a rebuild.
   cache = rank: path: {
     kind = "cache";
@@ -239,7 +239,7 @@ in
           lib.mkDefault (cache 50 "${home}/Library/Developer/Xcode/DerivedData")
         );
         # Homebrew's downloads and the versions it upgraded past, which it
-        # prunes itself, weekly and from pressure on.
+        # prunes itself, weekly and once filling.
         homebrew = lib.mkIf (osConfig.homebrew.enable or false) (
           lib.mkDefault {
             kind = "producer";

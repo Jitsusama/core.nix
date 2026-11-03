@@ -10,8 +10,8 @@ or launchd, and [`home.nix`][2] the account's.
 
 ## How It Decides
 
-- **Bands.** Each filesystem a source or the store lies on is healthy, under
-  pressure, urgent or critical by its free space (25%, 10% and 4% by
+- **Bands.** Each filesystem a source or the store lies on is healthy,
+  filling, nearly full or critically full by its free space (25%, 10% and 4% by
   default), and a pass reclaims towards the target (35%). A forecast starts a pass
   before the next band arrives. Btrfs pools are one filesystem however many
   subvolumes they hold. A writable subvolume reached through the same mount, as
@@ -59,7 +59,7 @@ or launchd, and [`home.nix`][2] the account's.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables
-  naming it. Busy stays; a target only sat in waits for critical; a process
+  naming it. Busy stays; a target only sat in waits for critically full; a process
   it can't read keeps everything it might use, unless the system daemon
   vouches for it or it has exited since the scan, as most of a build's do
   within a second.
@@ -68,7 +68,7 @@ or launchd, and [`home.nix`][2] the account's.
   running, is left for the next group; a batch predicting under a gigabyte
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
-  under pressure, five at urgent and one at critical. A survey counts the
+  while filling, five when nearly full and one when critically full. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
   cloned with their builds inside share them: what it predicts is what
   deleting them all frees, unless something it didn't measure shares them
@@ -77,13 +77,13 @@ or launchd, and [`home.nix`][2] the account's.
 - **Pacing.** A busy machine never stops a pass; deleting slowly is how it
   spares the machine. Btrfs frees what's unlinked only when it commits, and
   saves wait behind a commit carrying a big delete, which no I/O priority
-  reaches. So upkeep and a pass under pressure rest after every 2,000
+  reaches. So upkeep and a pass on a filling disk rest after every 2,000
   unlinks for 30 seconds, past Btrfs's own commit, and longer while the
   guard's probe, a page beside its state synced once a second, comes back
   slow more than three times in two minutes, until two minutes pass
   without. Before measuring, they wait for Btrfs's own commit rather than
   ask for one, since a commit asked for holds up every save on the disk. A
-  disk falling to urgent ends the resting. Urgent and critical passes never
+  disk becoming nearly full ends the resting. Passes on a nearly or critically full disk never
   rest, and ask for their commits. Either keeps the status file's
   heartbeat, resting or not: a step that blocks, such as a commit waited
   for, a command, a Nix deletion or the system daemon's answer, runs on a
@@ -97,21 +97,21 @@ or launchd, and [`home.nix`][2] the account's.
   a guard starting after a crash empties what was begun.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
-  under noatime nothing on disk says. From pressure, a build of a crate with a
+  under noatime nothing on disk says. Once a disk is filling, a build of a crate with a
   newer one beside it goes once nothing has opened it for a day and an hour,
   with cargo's locks held; a `deps` never watched dates nothing.
-- **Freezing.** At critical with nothing left to take, the account's guard
+- **Freezing.** Once critically full with nothing left to take, the account's guard
   freezes the process that wrote more than half of the last minute's writes,
   at a mebibyte a second or more, with a file open on that disk: it and its
   descendants move into a scope of their own, which is frozen. Never the guard,
   nothing in a session, nothing of another account's. It thaws once the disk
-  is above urgent, or by `disk-guard thaw`, after which it's never frozen
+  is no longer nearly full, or by `disk-guard thaw`, after which it's never frozen
   again.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
   moment, half a minute after a root leaves, and two minutes after a process
   holding paths ends, though on a healthy disk not until the last listing
   has rested nine times its own length, so listing takes at most a tenth of
-  its time; under pressure it doesn't wait. It deletes them oldest first,
+  its time; on a filling disk it doesn't wait. It deletes them oldest first,
   in a pass of their own once something has let some go. While the disk is healthy it keeps what
   was built in the last hour, up to 5% of the disk, unless a machine gives
   its own `garbage.keep` and `garbage.budget`. A path a running process
@@ -133,7 +133,7 @@ or launchd, and [`home.nix`][2] the account's.
   stalls on the disk or memory, since it can wait without cost, stopping
   when the moment ends. An account's guard on the same filesystem asks it to
   collect rather than collecting itself; with no system daemon answering, it
-  collects with `nix store gc --max` from urgent.
+  collects with `nix store gc --max` once nearly full.
 - **Footprint.** A file's size and blocks are what it holds once read; on a
   compressed disk it can take a third of that or less, as Go's build cache
   does. Only root can read what each run of a file takes, from the extent
@@ -202,17 +202,17 @@ or launchd, and [`home.nix`][2] the account's.
   the same set, so what a clear offers to free is what it takes, and a
   pass drops what it reclaimed from it at once. The command refuses a
   kept folder. `src/clears.rs` holds the asks.
-- **Notices.** The account's guard shows one desktop notice, and only from
-  urgent on: a disk under pressure is the launcher's to show. A notice the
+- **Notices.** The account's guard shows one desktop notice, and only once
+  a disk is nearly full: a filling disk is the launcher's to show. A notice the
   desktop didn't take, as when the notification server is still starting,
-  is told again each step until it is. What stands to be told now, from
-  pressure on, is the status file's `notice` too, for whoever looks after
+  is told again each step until it is. What stands to be told now, once
+  a disk is filling, is the status file's `notice` too, for whoever looks after
   the machine. `src/notices.rs` holds both.
 - **A Mac.** The same daemons run under launchd, asking macOS through
   `crate::sys`, which is `linux.rs` or `macos.rs`. Nothing hears who opens a
   file there without Apple's entitlement, so no older build is dated or
   offered; nothing freezes a writer yet; there's no scope for a linking run;
-  and Time Machine's local snapshots are thinned from urgent on.
+  and Time Machine's local snapshots are thinned once nearly full.
 
 ## Where Things Live
 

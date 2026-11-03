@@ -1,6 +1,6 @@
 //! Who writes how much: each process's `write_bytes`, sampled each step a
-//! disk is below healthy, so the guard can name what's filling it and, at
-//! critical with nothing left to take, freeze it.
+//! disk is below healthy, so the guard can name what's filling it and, once
+//! critically full with nothing left to take, freeze it.
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;

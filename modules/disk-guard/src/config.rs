@@ -36,7 +36,7 @@ pub struct Bands {
 impl Bands {
     // Routine reclaiming starts at a quarter free and reaches for over a
     // third, so a workstation keeps room for its next builds, and the
-    // urgent bands begin well before the disk is full.
+    // nearly and critically full bands begin well before the disk is full.
     fn pressure() -> Size {
         Size::Percent(25.0)
     }
@@ -47,7 +47,7 @@ impl Bands {
         Size::Percent(4.0)
     }
     /// Refuses bands out of order where their units let it show: each
-    /// band under the one before, and the target over pressure. Bytes
+    /// band under the one before, and the target over filling's. Bytes
     /// against a share are ordered on each filesystem, where the band
     /// thresholds fold them.
     fn check(&self) -> Result<(), String> {
@@ -591,7 +591,7 @@ pub struct Config {
     pub pacing: Pacing,
     pub notify: bool,
     pub status_file: bool,
-    /// Whether a runaway writer may be frozen at critical.
+    /// Whether a runaway writer may be frozen once critically full.
     pub freeze: bool,
     pub sources: BTreeMap<String, Source>,
     pub nix: Nix,

@@ -105,7 +105,7 @@ impl Home {
     /// A user config whose bands are shares of the filesystem, so `100%`
     /// puts any disk in pressure and `0%` keeps it healthy. Its Nix store
     /// doesn't exist: with no system daemon answering, a user daemon
-    /// collects garbage itself from urgent on, and the machine's own store
+    /// collects garbage itself once nearly full, and the machine's own store
     /// is no test's to collect.
     fn config(&self, pressure: &str, target: &str) -> Config {
         Config::parse(&format!(
@@ -1398,7 +1398,7 @@ impl disk_guard::freezer::Freeze for Manager {
 }
 
 impl Home {
-    /// A config whose disk is critical, or healthy, with an empty scratch
+    /// A config whose disk is critically full, or healthy, with an empty scratch
     /// source on it, so a pass finds nothing to take.
     fn critical(&self, critical: bool) -> Config {
         let share = if critical { "100%" } else { "0%" };

@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::time::{Duration, Instant};
 
 /// How long a command may take, so a wedged one never stops the daemon's
-/// loop, the urgent passes with it.
+/// loop, the passes of a nearly full disk with it.
 const PATIENCE: Duration = Duration::from_secs(5);
 
 /// How long Low Power Mode as read is trusted, since it changes only when
