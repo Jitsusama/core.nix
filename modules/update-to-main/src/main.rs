@@ -6,12 +6,15 @@
 //!   each line as it comes, as JSON. It exits 0 when the machine runs main
 //!   or already did, 1 when the update failed, 2 when it was refused and 3
 //!   when the daemon couldn't be asked or stopped answering.
+//! - `update-to-main job FOLDER`: a job the daemon starts in an account's
+//!   login session on a Mac, running the command written in FOLDER
+//!   (src/session.rs).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use update_to_main::config::Config;
 use update_to_main::line::Line;
-use update_to_main::{ask, serve};
+use update_to_main::{ask, serve, session};
 
 /// Where the daemon listens unless the config says otherwise, so an asker
 /// needn't be told.
@@ -21,8 +24,7 @@ const SOCKET: &str = if cfg!(target_os = "macos") {
     "/run/update-to-main/ask.sock"
 };
 
-const USAGE: &str =
-    "usage: update-to-main serve --config FILE\n       update-to-main ask [--socket FILE]";
+const USAGE: &str = "usage: update-to-main serve --config FILE\n       update-to-main ask [--socket FILE]\n       update-to-main job FOLDER";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -39,6 +41,9 @@ fn main() -> ExitCode {
         }
         ["ask"] => asked(Path::new(SOCKET)),
         ["ask", "--socket", file] => asked(Path::new(file)),
+        ["job", folder] => {
+            ExitCode::from(u8::try_from(session::job(Path::new(folder))).unwrap_or(1))
+        }
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(64)

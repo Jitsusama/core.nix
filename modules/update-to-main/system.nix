@@ -248,7 +248,10 @@ in
                 description = ''
                   The flake's inputs only the account can fetch, which it
                   fetches by their locks before each build, so root finds
-                  them in the store at the hashes the locks name.
+                  them in the store at the hashes the locks name. On a Mac
+                  they're fetched in the account's login session while one
+                  is open, since the keychain its logins are kept in answers
+                  nothing else.
                 '';
               };
             };

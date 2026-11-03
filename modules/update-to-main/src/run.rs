@@ -67,6 +67,16 @@ pub struct Account {
     home: PathBuf,
 }
 
+impl Account {
+    pub fn uid(&self) -> libc::uid_t {
+        self.uid
+    }
+
+    pub fn gid(&self) -> libc::gid_t {
+        self.gid
+    }
+}
+
 /// Looks an account up by its name.
 pub fn account(name: &str) -> Result<Account, Failure> {
     let unknown = || Failure::new(format!("there's no account named {name}"));

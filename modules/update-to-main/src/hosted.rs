@@ -10,6 +10,7 @@
 use crate::config::{Config, Hosted};
 use crate::git::{self, Repo};
 use crate::run::{self, Account, Failure};
+use crate::session;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -223,13 +224,19 @@ fn fetch_input(
     let nix = config.tools.nix.as_os_str();
     let mut command = run::command_as(nix, account, &hosted.path, &hosted.checkout);
     let what = format!("fetching the input {name}");
+    // An input's logins may be kept where only the account's login session
+    // reaches, as a Mac's keychain is; the token and main's own fetch need
+    // none of those, so they run as they are.
+    let launchctl = config.tools.launchctl.as_deref();
     let in_store = locked["type"] == "path"
         && locked["path"]
             .as_str()
             .is_some_and(|p| p.starts_with("/nix/store/"));
     if in_store {
         let path = locked["path"].as_str().unwrap_or_default();
-        run::output(
+        session::output(
+            launchctl,
+            account,
             command,
             &what,
             [
@@ -243,7 +250,9 @@ fn fetch_input(
         return Ok(());
     }
     command.env(LOCKED, locked.to_string());
-    run::output(
+    session::output(
+        launchctl,
+        account,
         command,
         &what,
         [

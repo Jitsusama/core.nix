@@ -179,6 +179,9 @@ pub struct Tools {
     pub tar: PathBuf,
     /// macOS's pmset, which says how a Mac is powered; none on Linux.
     pub pmset: Option<PathBuf>,
+    /// macOS's launchctl, which runs a command in an account's login
+    /// session, where its keychain answers; none on Linux.
+    pub launchctl: Option<PathBuf>,
 }
 
 impl Config {
