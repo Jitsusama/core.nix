@@ -80,8 +80,8 @@ onLinux {
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml slack.qml
       touch $out
     '';
-  # Now's Slack piece shows a count only while Slack answered and its file
-  # is fresh, says why there's none when not, and names who and where,
+  # Now's Slack piece shows a count only while Slack's daemon answers and
+  # Slack answered it, says why there's none when not, and names who and where,
   # SlackUnreads.js's, run in Qt's own engine (tests/slack-unreads.qml).
   slack-says-only-whats-current =
     let

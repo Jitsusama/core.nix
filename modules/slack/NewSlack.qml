@@ -5,10 +5,10 @@
 // conversation, direct messages, then channels, then Threads, each newest
 // first, as the one row every surface shows (SlackConversation.qml), and
 // after them Show Slack, which goes to Programs › Slack. It's here only
-// while something waits to be read: when Slack can't be asked, or its
-// count has gone stale, that's no want of Joel's, so Slack's program row
-// says it (SlackProgram.qml), and a refused sign-in waits in Needs You
-// (VKCF3Z, b8c8920e and 347abdb7).
+// while something waits to be read: when Slack can't be asked, that's no
+// want of Joel's, so Slack's program row says it (SlackProgram.qml), and
+// a refused sign-in waits in Needs You (VKCF3Z, b8c8920e and 347abdb7);
+// with Slack's daemon not answering, there's no count to show at all.
 import qs
 import QtQuick
 

@@ -1193,11 +1193,11 @@
     their addresses, its drawer saying who said each message, newest last
   '';
   slack-says-only-whats-current = ''
-    Now's Slack piece counts what wants Joel only while Slack answered and slack-unreads' file
-    is under ten minutes old, saying it can't check when Slack can't be reached or the count is
-    stale, since when, and signed out once Slack refuses the sign-in; it's listed with something
-    to read or Slack not saying, never with nothing or no file, naming the first two
-    conversations and how many more
+    Now's Slack piece gathers what Slack's daemon holds in Slack's order whatever order it was
+    heard in, and counts what wants Joel only while the daemon answers and Slack answered it,
+    saying Slack can't be reached when it can't, and signed out once Slack refuses the sign-in;
+    it's listed only with something to read, never with nothing or the daemon not answering,
+    naming the first two conversations and how many more
   '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
@@ -1658,7 +1658,7 @@
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
-    key, and what was held stays through a gap
+    key, and what was held stays through a gap, unless the client lets it go there
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step

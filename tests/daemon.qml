@@ -6,13 +6,13 @@
 // at once; once the daemon starts the client connects by itself and says
 // hello, which names the source; a watch narrowed to those listed holds
 // them alone; a search's answer is given to it and never held; one no
-// source knows any more is let go; the keys
-// it watches ahead come to be
+// source knows any more is let go; the keys it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
-// daemon stopping is said, keeping what was held and giving a get none;
-// and once it starts again, the client connects again by itself and asks
-// ahead again. Each step waits on what the client says, at most ten
-// seconds. It exits 0 once every case holds, and otherwise 1, saying
+// daemon stopping is said, keeping what was held and giving a get none,
+// unless the client is one that lets what it held go in a gap; and once
+// it starts again, the client connects again by itself, asks ahead
+// again, and the one that let go holds again. Each step waits on what
+// the client says, at most ten seconds. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import Quickshell
 import Quickshell.Io
@@ -39,6 +39,15 @@ ShellRoot {
         socket: `${root.runtime}/daemons/people.sock`
         kind: "person"
         watching: ({ listed: true })
+    }
+
+    // Letting what it held go while the daemon isn't answering.
+    Daemon {
+        id: forgetting
+
+        socket: `${root.runtime}/daemons/people.sock`
+        kind: "person"
+        keptThroughGap: false
     }
 
     readonly property string eli: "person:eli@example.com"
@@ -92,6 +101,7 @@ ShellRoot {
             what: "a watch narrowed to those listed holds them alone",
             holds: () => root.eli in listed.held && !(root.hal in listed.held)
                 && root.hal in people.held && root.ivy in people.held
+                && root.hal in forgetting.held
         },
         {
             what: "a search's answer is given to it and never held",
@@ -132,12 +142,14 @@ ShellRoot {
                 && root.heldWay(root.grace) === "step"
         },
         {
-            what: "the daemon stopping is said, and what was held stays",
+            what: "the daemon stopping is said, and what was held stays unless let go",
             run: () => {
                 root.heardBefore = people.held[root.ada].heard;
                 running.running = false;
             },
             holds: () => people.state === "not answering" && root.heldWay(root.ada) === "ahead"
+                && forgetting.state === "not answering"
+                && Object.keys(forgetting.held).length === 0
         },
         {
             what: "the daemon starting again is connected to, and asked ahead again",
@@ -146,6 +158,7 @@ ShellRoot {
             },
             holds: () => people.state === "answering"
                 && people.held[root.ada].heard > root.heardBefore
+                && root.hal in forgetting.held
         }
     ]
 

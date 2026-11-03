@@ -3298,23 +3298,27 @@ def slack_says(
     state: str,
     conversations: list[Json],
     *,
-    ago: int = 0,
     recent: list[Json] | None = None,
 ) -> None:
-    """Write slack-unreads' file as it does, whole, checked `ago` milliseconds since."""
-    # The guest's clock, which the shell judges the file by.
-    checked = int(desktop.as_account("date +%s%3N").strip()) - ago
-    told = json.dumps(
-        {
-            "checked": checked,
-            "state": state,
-            "conversations": conversations,
-            "recent": recent or [],
-        }
-    )
+    """Have the stand-in Slack daemon say this, as a round of asking Slack would.
+
+    The stand-in reads it from slack-says.json, as it starts or once told by SIGHUP that it
+    changed; a stand-in only just started is never sent one, as it may not hear it yet.
+    """
+    told = json.dumps({"state": state, "conversations": conversations, "recent": recent or []})
     desktop.as_account(
-        f"printf '%s' {shlex.quote(told)} > $XDG_RUNTIME_DIR/slack-unreads.new"
-        " && mv $XDG_RUNTIME_DIR/slack-unreads.new $XDG_RUNTIME_DIR/slack-unreads.json"
+        f"printf '%s' {shlex.quote(told)} > $XDG_RUNTIME_DIR/slack-says.new"
+        " && mv $XDG_RUNTIME_DIR/slack-says.new $XDG_RUNTIME_DIR/slack-says.json"
+        " && if systemctl --user is-active --quiet slack-stand-in.service;"
+        " then systemctl --user kill -s HUP slack-stand-in.service;"
+        " else systemctl --user start slack-stand-in.service; fi"
+    )
+
+
+def slack_goes(desktop: Desktop) -> None:
+    """Stop the stand-in Slack daemon, as slack-unreads stopping does, and forget what it said."""
+    desktop.as_account(
+        "systemctl --user stop slack-stand-in.service; rm -f $XDG_RUNTIME_DIR/slack-says.json"
     )
 
 
@@ -3348,9 +3352,9 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     """What in Slack wants Joel is counted in Now, and never an old count.
 
     Return lists each conversation as Slack's one conversation row, then Show Slack. When
-    Slack can't be reached, the count has gone stale or Slack refused the sign-in, Now has
-    no Slack row, since none of those wants Joel, and Slack's program row says why, its
-    first act signing in again when signed out; with no file, it's gone.
+    Slack can't be reached or refused the sign-in, Now has no Slack row, since neither wants
+    Joel, and Slack's program row says why, its first act signing in again when signed out;
+    with Slack's daemon gone, Now has no Slack row and never a count of nothing.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
@@ -3414,10 +3418,6 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         slack_says(desktop, "unreachable", [])
         slack_is_not_in_now(desktop)
         slack_program_says(desktop, lambda note: note == "Slack can't be reached")
-        # A count eleven minutes old is no count either, and says since when.
-        slack_says(desktop, "ok", conversations, ago=11 * 60 * 1000)
-        slack_is_not_in_now(desktop)
-        slack_program_says(desktop, lambda note: note.startswith("can't be checked since "))
         # Signed out, the program row says so, and its first act after
         # Return's own is signing in again.
         slack_says(desktop, "signedOut", [])
@@ -3430,9 +3430,15 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # Slack answering again, the program row says nothing of it.
         slack_says(desktop, "ok", [])
         slack_program_says(desktop, lambda note: note == "")
+        # What wants Joel again, and then the daemon gone, as when
+        # slack-unreads stops: what it held goes with it.
+        slack_says(desktop, "ok", conversations)
+        now_rows(desktop)
+        desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
-        desktop.as_account("rm -f $XDG_RUNTIME_DIR/slack-unreads.json")
-    # With no file, as when slack-unreads stops, Slack is gone from Now.
+        slack_goes(desktop)
     now_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
@@ -3551,7 +3557,7 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
-        desktop.as_account("rm -f $XDG_RUNTIME_DIR/slack-unreads.json")
+        slack_goes(desktop)
 
 
 @pytest.mark.usefixtures("google")
@@ -4508,6 +4514,13 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
         "Battery", "Power Profile", "Keep Awake", "Sleep", "Lock", "Log Out", "Reboot",
         "Power Off",
     ]  # fmt: skip
+    # Machine lists Lag only once lag-watch has written its first ten
+    # seconds, and reads it as it's stepped into, never after. In a session
+    # that has long gone by; run first, this subtest can beat it there.
+    machine.wait_until_succeeds(
+        desktop.in_session('test -s "$XDG_RUNTIME_DIR/lag-watch/status.json"'),
+        timeout=STARTING,
+    )
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
@@ -6222,15 +6235,18 @@ def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop:
     since = desktop.as_account("date +%s").strip()
     desktop.as_account(f"systemctl --user stop slack-stand-in.service; rm -f {made} {hellos}")
     try:
-        # A span to show the shell isn't trying: one every 2 s would be 6.
-        # The socket going may cost a try or two, as a dropped connection
-        # is tried again once and the file going is heard.
+        # A span to show the shell isn't trying: one every 2 s would be 6
+        # for each of its two clients of Slack's daemon, Search Slack and
+        # what's unread. The socket going may cost each a try or two, as a
+        # dropped connection is tried again once and the file going is
+        # heard.
         time.sleep(12)
         tries = desktop.as_account(
             f"journalctl --user -u quickshell --since @{since} --no-pager -o cat"
             f" | grep -c {missing}; true"
         ).strip()
-        assert int(tries) <= 2, f"the shell tried a missing socket {tries} times in 12 s"  # noqa: PLR2004
+        allowed = 4
+        assert int(tries) <= allowed, f"the shell tried a missing socket {tries} times in 12 s"
         # Once it's made, the shell says hello, with no clock to wait on.
         desktop.as_account("systemctl --user start slack-stand-in.service")
         machine.wait_until_succeeds(f"test -s {hellos}", timeout=30)

@@ -16,8 +16,9 @@ pragma ComponentBehavior: Bound
 // two seconds; one that isn't there at all, as Slack's isn't before Joel
 // signs in, is tried again only once it appears, so a machine without it
 // isn't asked, and warned of, every two seconds for as long as it runs.
-// What was held stays held through a gap, and is replaced whole by what
-// the daemon says once it answers again.
+// What was held stays held through a gap, and is replaced by what the
+// daemon says once it answers again, unless `keptThroughGap` says to let
+// it go.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -37,6 +38,12 @@ Scope {
     // The keys to watch ahead, as the shell is about to need them; each
     // change sends the watch again, which replaces the one before.
     property var ahead: []
+    // Whether what was held stays held while the daemon isn't answering,
+    // as someone found stays found. A kind true only while the daemon
+    // answers, as Slack's unread counts are, lets it go, so no old count
+    // is shown as current, and none gone in the gap stays held once the
+    // daemon answers again.
+    property bool keptThroughGap: true
 
     // Every record held, by key: plain fields, read beside `revision`.
     readonly property var held: ({})
@@ -241,6 +248,8 @@ Scope {
         wire = null;
         state = "not answering";
         apart = {};
+        if (!keptThroughGap)
+            took([], Object.keys(held));
         const waiting = awaited;
         awaited = {};
         for (const id in waiting)

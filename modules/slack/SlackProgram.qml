@@ -1,11 +1,11 @@
 // What Slack's program row in Programs says while Slack can't be checked,
 // which Now doesn't, since it doesn't want Joel (VKCF3Z, b8c8920e): its
-// note says signed out, or since when it can't be checked, or that Slack
-// can't be reached (`programNote`, which Applications.qml asks every
-// provider that has it); and signed out, its first act after Return's own
-// is Sign In, as every signed-out source's is (VKCF3Z, 347abdb7), which
-// signs in again in pi, whose Slack sign-in (/slack-auth) writes the file
-// slack-unreads reads within half a minute.
+// note says signed out, or that Slack can't be reached (`programNote`,
+// which Applications.qml asks every provider that has it); and signed
+// out, its first act after Return's own is Sign In, as every signed-out
+// source's is (VKCF3Z, 347abdb7), which signs in again in pi, whose
+// Slack sign-in (/slack-auth) writes the file slack-unreads reads within
+// half a minute.
 //
 // While Slack answers, its program holds Unread after Slack's own acts,
 // and Recent after that (VKCF3Z, d7c0f933): Unread says how many to read
