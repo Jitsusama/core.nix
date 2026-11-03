@@ -1,7 +1,7 @@
 # The guide, built from this directory, its tests run as it builds. Every
 # program it runs is fixed by its store path (tools.nix), so nothing on a
 # PATH can take one's place, and `guide tools` proves each is there once
-# it's built.
+# it's built. A Mac's build only writes sticks, so it carries nix alone.
 {
   dosfstools,
   lib,
@@ -10,6 +10,7 @@
   pkgs,
   rustPlatform,
   sbsigntool,
+  stdenv,
   # A machine gives its own, so bootctl matches the systemd-boot it installs.
   systemd,
   # A machine showing a splash gives its Plymouth (tools.nix).
@@ -31,15 +32,18 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   # The stick's tests are judged by what a person would check it with, and
-  # its signatures by sbsign's for the programs systemd builds for EFI.
-  nativeCheckInputs = [
+  # its signatures by sbsign's for the programs systemd builds for EFI,
+  # which only Linux has. A Mac runs the library's tests, its own raw
+  # disks and waking among them, and leaves the rest to Linux's build.
+  cargoTestFlags = lib.optionals stdenv.hostPlatform.isDarwin [ "--lib" ];
+  nativeCheckInputs = lib.optionals stdenv.hostPlatform.isLinux [
     dosfstools
     mtools
     openssl
     sbsigntool
     util-linux
   ];
-  preCheck = ''
+  preCheck = lib.optionalString stdenv.hostPlatform.isLinux ''
     export GUIDE_TEST_EFI=${systemd}/lib/systemd/boot/efi
   '';
   env = import ./tools.nix { inherit bootSplash pkgs systemd; };
@@ -53,6 +57,6 @@ rustPlatform.buildRustPackage {
     description = "Walks a person through installing, repairing and sealing a machine";
     license = lib.licenses.mit;
     mainProgram = "guide";
-    platforms = lib.platforms.linux;
+    platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }

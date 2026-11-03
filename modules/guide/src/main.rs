@@ -1032,7 +1032,7 @@ fn first_start(machine: &str, yubikeys: &[String]) -> String {
 
 fn tools() -> ExitCode {
     let mut missing = 0;
-    for tool in Tool::ALL {
+    for tool in Tool::built() {
         match tool.program() {
             Some(program) if Path::new(program).is_file() => println!("{tool}: {program}"),
             Some(program) => {
@@ -1050,7 +1050,7 @@ fn tools() -> ExitCode {
         missing += 1;
         println!("the theme: {absent} isn't in this build");
     }
-    for path in guide::tool::Path::ALL {
+    for path in guide::tool::Path::built() {
         let name = path.name();
         if let Some(value) = path.value() {
             let absent: Vec<&str> = value

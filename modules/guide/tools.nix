@@ -33,6 +33,11 @@ let
   ];
 in
 {
+  # Writing a stick runs nix alone, so a Mac, which only ever writes one,
+  # is given nothing more (src/tool.rs).
+  GUIDE_NIX = lib.getExe pkgs.nix;
+}
+// lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   GUIDE_BASH = lib.getExe pkgs.bash;
   GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
   GUIDE_BTRFS = lib.getExe' pkgs.btrfs-progs "btrfs";
@@ -52,7 +57,6 @@ in
   GUIDE_MKDIR = lib.getExe' pkgs.coreutils "mkdir";
   GUIDE_MV = lib.getExe' pkgs.coreutils "mv";
   GUIDE_MOUNT = lib.getExe' pkgs.util-linux "mount";
-  GUIDE_NIX = lib.getExe pkgs.nix;
   GUIDE_NIXOS_ENTER = lib.getExe pkgs.nixos-enter;
   GUIDE_NIXOS_INSTALL = lib.getExe pkgs.nixos-install;
   # systemd keeps systemd-pcrlock with its private programs, not in bin.

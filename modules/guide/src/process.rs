@@ -71,15 +71,41 @@ pub fn running_now(known: Option<u32>) -> Vec<u32> {
     programs
 }
 
-/// Whether a program is still running. On Linux one that has ended and
-/// not yet been waited on has stopped running; elsewhere it counts as
+/// Whether a program is still running. On Linux and on a Mac one that has
+/// ended and not yet been waited on has stopped running, read without
+/// waiting on it, so whoever started it still can; elsewhere it counts as
 /// running until it's waited on.
 fn running(program: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         stat(program).is_some_and(|child| child.state != 'Z')
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(pid) = libc::c_int::try_from(program) else {
+            return false;
+        };
+        // SAFETY: proc_bsdshortinfo is plain data, so all zeroes is one.
+        let mut info: libc::proc_bsdshortinfo = unsafe { std::mem::zeroed() };
+        let Ok(size) = libc::c_int::try_from(std::mem::size_of_val(&info)) else {
+            return false;
+        };
+        // SAFETY: proc_pidinfo writes at most `size` bytes into `info` and
+        // says how many it wrote.
+        let wrote = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDT_SHORTBSDINFO,
+                0,
+                (&raw mut info).cast(),
+                size,
+            )
+        };
+        // A process the kernel can't find writes nothing, and one that has
+        // ended is a zombie until it's waited on.
+        wrote == size && info.pbsi_status != libc::SZOMB
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let Ok(pid) = libc::pid_t::try_from(program) else {
             return false;

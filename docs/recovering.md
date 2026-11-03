@@ -29,7 +29,9 @@ nothing.
 | 1Password's code    | printed, with its Emergency Kit | opens 1Password when nothing else can |
 
 The machine's stick is the one its repository writes with `nix run .#guide`
-(core's `lib.guide`), on any x86-64 Linux machine. It carries the machine's
+(core's `lib.guide`), on any x86-64 Linux machine, or on a Mac where the
+repository offers the guide for one (`lib.guide` with `host =
+"aarch64-darwin"`), which builds the stick on its Linux builder. It carries the machine's
 system, so an install needs no network, and its rescue bundle: the machine's
 Secure Boot keys, sealed to its YubiKeys and its recovery key, so a
 reinstall keeps them and never needs the firmware cleared. Any stick the
