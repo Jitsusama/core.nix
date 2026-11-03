@@ -228,6 +228,18 @@ in
   # harness keeps them: the home realm's in the harness's usual folders, a
   # further realm's in its own, and the machine's waiting and verdicts on
   # the home realm's node alone, so nothing is heard twice.
+  # The node wakes with every session it carries, so it runs in their
+  # slice, every realm's alike, rather than among Joel's programs.
+  mycelium-runs-among-the-sessions =
+    holds "mycelium-runs-among-the-sessions"
+      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs."
+      (
+        lib.all (node: (node.Service.Slice or null) == "agents.slice") [
+          bothLinux.mycelium
+          bothLinux.mycelium-other
+        ]
+      );
+
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
       "A realm's node doesn't serve its realm's quests and restore list from that realm's folders, or the machine's waiting, verdicts and queue aren't served by the home realm's node alone."
