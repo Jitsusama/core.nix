@@ -24,6 +24,9 @@ Singleton {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/google.sock`
         kind: ["meeting", "mail", "file", "account"]
+        // What Google held may not be Joel's to see once it answers again,
+        // and a meeting cancelled in the gap would otherwise stay.
+        keptThroughGap: false
     }
 
     // The account as the program keeps it, gathered once a change; none
