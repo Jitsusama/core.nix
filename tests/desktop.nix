@@ -640,6 +640,15 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             "${./desktop/people-roster.sh}"
           ];
         };
+        # Slack's reader, where Slack's module is imported, a stand-in the
+        # people daemon runs in its place, with no sign-in until a test
+        # gives it one.
+        jitsusama.people.sources.slack = lib.mkIf (area == "launcher-goes-places") {
+          daemon = lib.mkForce [
+            (lib.getExe pkgs.bash)
+            "${./desktop/people-slack.sh}"
+          ];
+        };
         # A source ending each search, as Search Slack does, silent until a
         # test says what it ends with.
         jitsusama.quickshell.launcher.providers.search-ends = {

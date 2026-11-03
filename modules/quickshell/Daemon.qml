@@ -160,6 +160,11 @@ Scope {
             sources = answer.sources ?? {};
             return;
         }
+        // How its sources stand, as a watch is told once that changes,
+        // so a sign-in that goes is heard as it goes.
+        if (answer.sources !== null && typeof answer.sources === "object"
+            && answer.records === undefined && answer.changed === undefined)
+            sources = answer.sources;
         if (answer.id in apart)
             delete apart[answer.id];
         else

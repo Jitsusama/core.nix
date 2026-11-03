@@ -32,6 +32,20 @@ QtObject {
         const known = { "ada@example.com": ada, "eve@elsewhere.example": nobody };
         const both = ["eve@elsewhere.example", "ada@example.com"];
 
+        // What Slack told the people daemon, read back from its record.
+        const told = Object.assign({}, ada);
+        delete told.email;
+        check("what Slack told the daemon, with the address its key holds",
+            Slack.fromRecord({ key: "person:ada@example.com", sources: { slack: told } },
+                "slack"),
+            ada);
+        check("nothing from a record Slack said nothing of",
+            Slack.fromRecord({ key: "person:ada@example.com", sources: { tuple: { id: 7 } } },
+                "slack"), null);
+        check("nothing from a record kept by another source's id",
+            Slack.fromRecord({ key: "person:tuple:7", sources: { slack: told } }, "slack"),
+            null);
+
         check("found by any of their addresses", Slack.found(both, known), ada);
         check("not found by one Slack knows nobody by",
             Slack.found(["eve@elsewhere.example"], known), null);

@@ -14,7 +14,9 @@
 //! answer waits, at most its patience, for every source that can answer.
 //! A `watch` asks ahead about its addresses, says each record held at
 //! once, then each change, gathered and said at most four times a second,
-//! so a burst of answers is one change to the client.
+//! so a burst of answers is one change to the client, and how every
+//! source stands, `{"id", "sources"}` as hello says it, whenever that
+//! changes.
 //!
 //! A source whose first line is `{"roster": true}`, as Tuple's is, says
 //! everyone it knows without being asked, thousands of them, and is never
@@ -181,7 +183,9 @@ fn run(shared: &Shared, source: &Source) {
                 let stdout = child.stdout.take();
                 {
                     let mut daemon = lock(shared);
+                    let stood = standings(&daemon);
                     daemon.book.restarted(&source.name);
+                    tell_standings(&daemon, &stood);
                     if let Some(input) = child.stdin.take() {
                         daemon.inputs.insert(source.name.clone(), input);
                     }
@@ -211,9 +215,11 @@ fn run(shared: &Shared, source: &Source) {
                 let _ = child.wait();
                 let mut daemon = lock(shared);
                 daemon.inputs.remove(&source.name);
+                let stood = standings(&daemon);
                 daemon
                     .book
                     .stand(&source.name, Standing::Refused("it stopped".to_owned()));
+                tell_standings(&daemon, &stood);
                 shared.1.notify_all();
             }
             Err(why) => {
@@ -238,6 +244,7 @@ fn run(shared: &Shared, source: &Source) {
 /// Takes one line a source said, telling each watch of what it changed.
 fn took_in(shared: &Shared, source: &str, line: &str) {
     let mut daemon = lock(shared);
+    let stood = standings(&daemon);
     let heard = heard(line);
     // Whether they were listed before, so a watch of the listed hears of
     // one who stops being.
@@ -260,7 +267,24 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
             }
         }
     }
+    tell_standings(&daemon, &stood);
     shared.1.notify_all();
+}
+
+/// Tells every watch how each source stands, once that's no longer as
+/// `stood`, so a client hears a sign-in go or come as the source says so
+/// rather than at its next ask: a step-in waits on every source, and one
+/// that never answers would keep it from hearing for its whole patience.
+fn tell_standings(daemon: &Daemon, stood: &Value) {
+    let standing = standings(daemon);
+    if standing == *stood {
+        return;
+    }
+    for watch in &daemon.watches {
+        let _ = watch
+            .told
+            .send(json!({"id": watch.id, "sources": standing}).to_string());
+    }
 }
 
 /// Writes a line to each source running, dropping one that's gone.
