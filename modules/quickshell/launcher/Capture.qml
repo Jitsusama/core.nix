@@ -114,6 +114,17 @@ Provider {
         Niri.act({ ScreenshotScreen: { write_to_disk: true, show_pointer: false } });
     }
 
+    // The shortest chord that opens Capture, Print rather than Super+P.
+    // Pressed here it takes the whole screen (`pressedOver`), so that row
+    // shows it: a row's chord is the key that does it from where Joel
+    // stands, and Shift+Print is longer here (VKCF3Z, 2026-11-03).
+    readonly property var opening: (Shortcuts.layers.find(layer => layer.name === "desktop")
+        ?.binds ?? [])
+        .filter(found => found.run.join(" ") === `launcher-say collection ${settings.name}`)
+        .map(found => found.chord)
+        .reduce((shortest, one) => shortest === null || one.length < shortest.length ? one
+            : shortest, null)
+
     readonly property var wholeScreen: member({
         key: "capture:screen",
         verb: "take",
@@ -121,7 +132,7 @@ Provider {
         keywords: "screenshot picture",
         glyph: picture,
         hue: "action",
-        chord: chord("niri msg action screenshot-screen"),
+        chord: opening ?? chord("niri msg action screenshot-screen"),
         later: true,
         run: () => provider.shootScreen()
     })
