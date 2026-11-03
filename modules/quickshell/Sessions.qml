@@ -122,13 +122,17 @@ Singleton {
     // session started, which niri opens without the focus
     // (modules/niri/config.kdl), and pi-session for one Reopen Them All
     // opens (Niri.qml's heard). Every window of that kitty opens here, so
-    // how it's started is said once. One opened aside goes without the
+    // how it's started is said once. It starts in agents.slice
+    // (modules/slices), weighed beside Joel's programs rather than among
+    // them; kitty puts each window's scope in the slice it runs in, so
+    // every session goes with it. One opened aside goes without the
     // activation token niri hands what it spawns, which kitty would spend
     // on taking the focus once its window shows.
     function inSessions(classed, rest) {
         const untold = classed === "pi-spawned"
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
-        Niri.spawn(untold.concat(["kitty", "-1", "--instance-group", "pi-sessions",
+        Niri.spawn(untold.concat(["systemd-run", "--user", "--scope", "--collect", "--quiet",
+            "--slice=agents.slice", "--", "kitty", "-1", "--instance-group", "pi-sessions",
             "--class", classed], rest));
     }
 
