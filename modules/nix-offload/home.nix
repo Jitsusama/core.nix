@@ -204,6 +204,9 @@ in
         home for its own. `nix-offload there` sends each attribute for one of
         their systems to the first that answers, with the flake itself when
         it's a folder here, so the build needs nothing this machine builds.
+        One that answers but can't fetch a flake that isn't a folder, as
+        when its resolver is down, builds none of it: its share goes the
+        lent way with the rest.
       '';
     };
     evaluators = lib.mkOption {

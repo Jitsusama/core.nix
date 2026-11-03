@@ -632,6 +632,81 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert!(lines[1]["on"].is_null());
 }
 
+/// ssh as a nearby machine that can't resolve names answers: it adds
+/// what it was asked to a record and fails any fetch, as one whose
+/// resolver is down does.
+const BLIND_SSH: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+while [ "$#" -gt 2 ]; do shift; done
+printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
+case "$2" in
+  *"flake metadata"*)
+    echo "error: Could not resolve host: github.com" >&2
+    exit 1 ;;
+esac
+exit 0
+"#;
+
+#[test]
+fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", BLIND_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args([
+            "there",
+            "--here",
+            "github:owner/repo/abc",
+            "checks.aarch64-darwin.a",
+            "checks.x86_64-linux.b",
+        ])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert_eq!(
+        given.lines().count(),
+        2,
+        "asked to fetch, never to build: {given}"
+    );
+    assert!(
+        !given.contains("nix build"),
+        "nothing built where the flake can't be fetched: {given}"
+    );
+    assert_eq!(
+        fs::read_to_string(bin.join("nix-was-given")).unwrap(),
+        "build --no-link github:owner/repo/abc#checks.x86_64-linux.b \
+         github:owner/repo/abc#checks.aarch64-darwin.a\n",
+        "what it took goes the other way, with the rest"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("couldn't fetch github:owner/repo/abc"),
+        "{said}"
+    );
+}
+
 #[test]
 fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     // A working tree's zone held 509 MB, almost all one ignored target.

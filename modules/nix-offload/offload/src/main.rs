@@ -339,7 +339,7 @@ fn there(arguments: &[String]) -> ExitCode {
     let nearby = fs::read_to_string(config().join("nix-offload/nearby"))
         .map(|text| there::nearby(&text))
         .unwrap_or_default();
-    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (near, mut left) = there::shared(&asked, &nearby, machines::answers);
     let journal = state().join("nix-offload/there.jsonl");
     let mut status = 0;
     let mut timed = |part: &there::Asked, build: &dyn Fn() -> there::Ran| {
@@ -353,6 +353,12 @@ fn there(arguments: &[String]) -> ExitCode {
         }
     };
     for (machine, part) in &near {
+        // What a machine that can't fetch the flake takes goes with the
+        // rest, to the lent builder or here, rather than failing there.
+        if !there::fetches(machine, part, &scratch, "ssh") {
+            left = Some(there::rejoined(left.take(), part));
+            continue;
+        }
         timed(part, &|| {
             there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"])
         });
