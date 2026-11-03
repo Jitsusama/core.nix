@@ -17,6 +17,7 @@
 
 mod gl;
 mod keys;
+mod links;
 mod motion;
 mod page;
 mod painter;
@@ -340,6 +341,13 @@ struct App {
     keys_px: f64,
     keys_set: Option<prompt::Set>,
     keys_canvas: Option<gl::Texture>,
+    /// The file shown, which a link's path is taken from.
+    file: std::path::PathBuf,
+    /// g x's labels while they show: what's typed of one, and the links in
+    /// view they stand for, in the labels' order.
+    labelling: Option<(links::Labelling, Vec<links::Link>)>,
+    labels_set: Option<Vec<prompt::Label>>,
+    label_canvases: Vec<gl::Texture>,
 }
 
 /// One line of the page's body text: 13.1 pt with its 0.62 em leading,
@@ -808,6 +816,7 @@ impl App {
         prompt.ask(prompt::Ask {
             serial: self.prompt_serial,
             keys: false,
+            labels: Vec::new(),
             forward,
             typed,
             cursor,
@@ -834,6 +843,7 @@ impl App {
             prompt.ask(prompt::Ask {
                 serial: 0,
                 keys: true,
+                labels: Vec::new(),
                 forward: true,
                 typed: String::new(),
                 cursor: false,
@@ -844,7 +854,147 @@ impl App {
         }
     }
 
+    /// g x's labels, each over its link's first letters, on whole pixels so
+    /// its letters are sharp; a newly set batch is painted first.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
+    )]
+    fn draw_labels(&mut self) {
+        if self.labelling.is_none() {
+            return;
+        }
+        let px = self.px_per_pt() as f32;
+        let offset = self.offset as f32;
+        let Some(gl) = self.gl.as_ref() else { return };
+        if let Some(set) = self.labels_set.take() {
+            for old in self.label_canvases.drain(..) {
+                gl.forget(old);
+            }
+            for label in set {
+                if let Ok(canvas) = gl.canvas(label.width, label.height) {
+                    gl.paint(&canvas, &label.pixels);
+                    self.label_canvases.push(canvas);
+                }
+            }
+        }
+        if let Some((_, shown)) = self.labelling.as_ref() {
+            for (link, canvas) in shown.iter().zip(&self.label_canvases) {
+                let (width, height) = (canvas.width as f32, canvas.height as f32);
+                let x = (link.left_pt as f32 * px).round();
+                let y = (link.top_pt as f32 * px - offset).round();
+                gl.draw(canvas, x, y, width, height);
+            }
+        }
+    }
+
+    /// Labels every link in view, as flash labels a jump: a label's letters
+    /// typed follow it, and anything else puts them away.
+    fn show_links(&mut self) {
+        let px = self.px_per_pt();
+        let top = self.heading() / px;
+        let foot = top + self.screen_px() / px;
+        let shown: Vec<links::Link> = links::links(&self.painter.page().frame)
+            .into_iter()
+            .filter(|link| link.top_pt + link.height_pt > top && link.top_pt < foot)
+            .collect();
+        if keys_logged() {
+            eprintln!("links: {} in view", shown.len());
+        }
+        if shown.is_empty() {
+            return;
+        }
+        let labelling = links::Labelling::new(shown.len());
+        if let Some(prompt) = self.prompt.as_ref() {
+            prompt.ask(prompt::Ask {
+                serial: 0,
+                keys: false,
+                labels: labelling.labels.clone(),
+                forward: true,
+                typed: String::new(),
+                cursor: false,
+                count: None,
+                width_pt: 0.0,
+                px_per_pt: px,
+            });
+        }
+        self.labelling = Some((labelling, shown));
+    }
+
+    /// A key while the labels show: a letter of one, or else they go.
+    fn label_key(&mut self, key: keys::Key) {
+        let Some((labelling, shown)) = self.labelling.as_mut() else {
+            return;
+        };
+        let chosen = match key {
+            keys::Key::Char(letter) => match labelling.key(letter) {
+                links::Typed::Waiting => return,
+                links::Typed::Chosen(at) => shown.get(at).cloned(),
+                links::Typed::Gone => None,
+            },
+            _ => None,
+        };
+        self.labelling = None;
+        for old in self.label_canvases.drain(..) {
+            if let Some(gl) = self.gl.as_ref() {
+                gl.forget(old);
+            }
+        }
+        if let Some(link) = chosen {
+            self.follow(&link);
+        }
+        if !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Goes where a link points: to a heading here, as a jump Ctrl+O comes
+    /// back from, or anywhere else as the desktop opens it.
+    fn follow(&mut self, link: &links::Link) {
+        if keys_logged() {
+            eprintln!("link: {}", link.href);
+        }
+        match links::target(&link.href, &self.file) {
+            links::Target::Here(anchor) => {
+                let heading = self
+                    .words
+                    .as_ref()
+                    .and_then(|lines| links::heading_at(lines, &anchor));
+                match heading {
+                    Some(pt) => self.leap(pt.max(0.0) * self.px_per_pt()),
+                    None => eprintln!("reader: no heading here is #{anchor}"),
+                }
+            }
+            links::Target::Elsewhere(to) => {
+                let opened = std::process::Command::new("xdg-open")
+                    .arg(&to)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+                match opened {
+                    // Waited for on a thread of its own, so it never
+                    // lingers once it ends.
+                    Ok(mut child) => {
+                        std::thread::spawn(move || child.wait());
+                    }
+                    Err(error) => eprintln!("reader: can't open {to}: {error}"),
+                }
+            }
+        }
+    }
+
     fn prompt_arrived(&mut self, set: prompt::Set) {
+        if !set.labels.is_empty() {
+            if self.labelling.is_some() {
+                self.labels_set = Some(set.labels);
+                if !self.frame_pending {
+                    self.draw();
+                }
+            }
+            return;
+        }
         if set.keys {
             self.keys_set = Some(set);
             if self.keys_shown && !self.frame_pending {
@@ -929,6 +1079,7 @@ impl App {
                 }
             }
             Act::Close => self.exit = true,
+            Act::Links => self.show_links(),
             // A tenth larger or smaller a step, as a browser's, the view on
             // the same words, within half and three times its own size.
             Act::ZoomIn | Act::ZoomOut | Act::ZoomBack => {
@@ -1598,6 +1749,8 @@ impl App {
         let Some(gl) = self.gl.as_ref() else { return };
         // The matches over the page, then the prompt over its foot.
         self.draw_marks(gl, screen);
+        self.draw_labels();
+        let Some(gl) = self.gl.as_ref() else { return };
         if self.prompt_shown
             && let Some(canvas) = painted(gl, &mut self.prompt_canvas, self.prompt_set.take())
         {
@@ -2135,6 +2288,10 @@ fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
 impl App {
     fn key(&mut self, event: &KeyEvent) {
         if let Some(key) = key_of(event, self.ctrl) {
+            if self.labelling.is_some() {
+                self.label_key(key);
+                return;
+            }
             if let Some(typing) = self.typing.as_mut() {
                 let said = typing.key(key);
                 self.typed(said);
@@ -2536,6 +2693,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let surface = surface(&globals, &qh)?;
     let opening = Opening {
+        file: std::path::PathBuf::from(&file),
         page,
         born,
         scale,
@@ -2684,6 +2842,7 @@ struct Senders {
 /// How the reader opened: the first screen's page, when, at what scale,
 /// whether it measures, and where it was last closed.
 struct Opening {
+    file: std::path::PathBuf,
     page: typst_layout::Page,
     born: Instant,
     scale: f64,
@@ -2728,6 +2887,7 @@ impl App {
         opening: Opening,
     ) -> App {
         let Opening {
+            file,
             page,
             born,
             scale,
@@ -2802,6 +2962,10 @@ impl App {
             keys_px: 0.0,
             keys_set: None,
             keys_canvas: None,
+            file,
+            labelling: None,
+            labels_set: None,
+            label_canvases: Vec::new(),
         }
     }
 }

@@ -1052,7 +1052,8 @@
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
-    zoom, / and n, Space ? and Escape, then closes on q; markdown files open in it
+    zoom, / and n, Space ? and Escape, and follows a link by g x's label, then closes on q; markdown
+    files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests

@@ -77,7 +77,9 @@ onLinux {
   # The reader draws a long page in the account's theme and takes Neovim's
   # keys: G goes to the end, gg to the top, 5j five lines, Ctrl+F a screen,
   # Ctrl+O back, Ctrl+Equal and Ctrl+0 zoom in and back, / finds and n goes
-  # on, Space ? lists the keys, Escape puts the list away and q closes it
+  # on, Space ? lists the keys, Escape puts the list away, g x labels the
+  # link at the page's end and its label follows it to the heading, and q
+  # closes it
   # (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
@@ -106,6 +108,8 @@ onLinux {
             echo
             echo "Paragraph $n says enough to take a line or two of the page, so that every key here has somewhere to go."
           done
+          echo
+          echo '[Back to the top](#every-key-neovim-has)'
         } > page.md
         timeout 300 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
           '${srgb colours.strong}' > ran 2>&1 || true
