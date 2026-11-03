@@ -353,10 +353,26 @@ fn tuple_starting_is_followed_at_once() {
     // Past the first look, which found nothing answering.
     std::thread::sleep(Duration::from_millis(300));
     running.answer();
-    running.streams(STATE);
+    running.streams(
+        "{\"type\":\"state\",\"data\":{\"contacts\":[],\"sign_in\":\"signed_in\",\
+         \"rooms\":{\"personal\":[{\"http_value\":\"https://tuple.app/c/listed\",\
+         \"created_at\":\"2026-07-31T12:00:00Z\"}]}}}",
+    );
     let began = Instant::now();
     running.logs(&logged(now(), "daemon loop started, waiting for events..."));
-    client.stands("answering");
+    // What Tuple's state said is heard before that Tuple answers, so a
+    // client acting on its answering holds the room already.
+    let mut room = Value::Null;
+    loop {
+        let said = client.next();
+        if let Some(record) = said["changed"].get(0) {
+            room = record["room"].clone();
+        }
+        if said["sources"]["tuple"] == "answering" {
+            break;
+        }
+    }
+    assert_eq!(room, "https://tuple.app/c/listed");
     assert!(
         began.elapsed() < Duration::from_secs(3),
         "followed only at the next look, {:?} on",

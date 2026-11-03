@@ -388,8 +388,10 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 } else {
                     Standing::SignedOut
                 };
-                stand(&mut daemon, standing);
+                // The record goes first, so whoever hears that Tuple
+                // answers already holds what its state said.
                 changed(shared, &mut daemon);
+                stand(&mut daemon, standing);
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
