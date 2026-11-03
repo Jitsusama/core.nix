@@ -55,16 +55,57 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // own adds 300, which draws this face black.
 #set strong(delta: 100)
 #show strong: set text(fill: ink.strong)
-#show heading: set text(variations: display-axes, weight: 700, fill: ink.strong, hyphenate: false)
-// A heading's lines keep their own leading, by their size, not the words'.
-#show heading: set par(leading: 0.62em)
-#show heading.where(level: 1): set text(size: 40pt)
-#show heading.where(level: 2): set text(size: 16.4pt)
 // Code in his mono at 0.93 of the words, as the spec has it: its x-height
 // (1035 of 2000) stands a little over theirs (938 at optical size 14), in
 // the text's colour and with no box. Typst's
 // raw takes 0.8 em of its own, so the size is said whole.
 #show raw: set text(font: face.code, size: 0.93 * body-size)
+// Headings, set by lines: more room above a heading than below it, so it
+// belongs to what follows. A gap is baseline to baseline, rounded to the
+// half line so every baseline stays on the grid. A block's top edge is its
+// capitals (0.7 em at both sets of axes, 0.73 in the mono), so a gap takes
+// the cap height of what follows off.
+#let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
+#let title-size = 42pt
+#let section-size = 17.1pt
+#let eyebrow(body) = text(font: face.code, size: 8.4pt, weight: 500, tracking: 0.2em, fill: ink.muted, upper(body))
+#show heading: set text(font: face.text, variations: display-axes, fill: ink.strong, hyphenate: false)
+// A title's lines two and a half lines apart, a section's one.
+#show heading.where(level: 1): set text(size: title-size, weight: 540, tracking: -0.02em)
+#show heading.where(level: 1): set par(leading: 2.5 * pitch - 0.7 * title-size)
+#show heading.where(level: 1): set block(above: lines(3, 0.7 * title-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 2): set text(size: section-size, weight: 520)
+#show heading.where(level: 2): set par(leading: pitch - 0.7 * section-size)
+#show heading.where(level: 2): set block(above: lines(3, 0.7 * section-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 3): set text(variations: text-axes, style: "italic", size: body-size, weight: 460)
+#show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
+#show heading.where(level: 4): it => block(above: lines(2, 0.73 * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 5): it => block(above: lines(2, 0.73 * 8.4pt), below: pitch - cap, eyebrow(it.body))
+#show heading.where(level: 6): it => block(above: lines(2, 0.73 * 8.4pt), below: pitch - cap, eyebrow(it.body))
+// A title of more than one line has its lines balanced: set at the
+// narrowest width that keeps the lines it needs at the full measure, found
+// in a few halvings, so no word is left alone on its last line.
+#show heading.where(level: 1): it => layout(size => {
+  let tall(width) = measure(block(width: width, {
+    set par(leading: 2.5 * pitch - 0.7 * title-size)
+    text(font: face.text, variations: display-axes, size: title-size, weight: 540, tracking: -0.02em, hyphenate: false, it.body)
+  })).height
+  let full = tall(size.width)
+  if full < 2.5 * pitch { return it }
+  let (low, high) = (size.width / 2, size.width)
+  for _ in range(8) {
+    let middle = (low + high) / 2
+    if tall(middle) > full { low = middle } else { high = middle }
+  }
+  set block(width: high)
+  it
+})
+// What the file is and when it changed, over the title and one line above
+// it, or over the words when there's no title.
+#show <title>: set block(above: 0pt)
+#let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, 0.7 * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
+// The paragraph after the title, in the text face's italic.
+#let lede(body) = par(text(style: "italic", weight: 360, body))
 // A link's words in the strong text with a hairline under them, as his
 // Neovim sets a link, since a hue is a glyph's and never text's.
 #show link: it => underline(stroke: 0.75pt + ink.rule, offset: 2.5pt, text(fill: ink.strong, it))
