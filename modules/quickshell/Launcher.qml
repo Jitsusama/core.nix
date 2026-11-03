@@ -1023,13 +1023,13 @@ Scope {
         }
         if (target.now)
             target.run();
+        const shown = open;
         open = false;
         if (target.now)
             return { done: true, said: said };
-        if (target.later) {
-            pending = target;
-            later.restart();
-        } else
+        if (target.later)
+            runOnceGone(target, shown);
+        else
             target.run();
         return { done: true, said: said };
     }
@@ -3102,17 +3102,61 @@ Scope {
             return;
         if (below && choice.below)
             choice.below();
-        else if (choice.later) {
-            pending = choice;
-            later.restart();
-        } else
+        else if (choice.later)
+            runOnceGone(choice, true);
+        else
             choice.run();
+    }
+
+    // Runs a row that waits for the launcher to be gone, as a screenshot
+    // does, once its surface has drawn itself closed and niri has had a
+    // moment to show it so. A fixed wait alone let a loaded machine take
+    // the screenshot before the closed frame was drawn, the launcher in it
+    // (2026-11-03: drawn 1.9 s after it closed). One closed already draws
+    // nothing, so it waits that moment alone, and a frame that never comes
+    // is waited for a second at most.
+    function runOnceGone(choice, shown) {
+        pending = choice;
+        closedFrame = false;
+        if (shown)
+            undrawn.restart();
+        else
+            later.restart();
+    }
+
+    // Whether a frame has begun since the launcher closed. A frame begun
+    // before may still be swapped after, the launcher drawn in it, so only
+    // a swap once one has begun is the closed frame's.
+    property bool closedFrame: false
+
+    Connections {
+        target: card.Window.window
+        enabled: undrawn.running
+
+        function onAfterAnimating() {
+            root.closedFrame = true;
+        }
+
+        function onFrameSwapped() {
+            if (!root.closedFrame)
+                return;
+            undrawn.stop();
+            later.restart();
+        }
+    }
+
+    Timer {
+        id: undrawn
+        interval: 1000
+        onTriggered: later.restart()
     }
 
     Timer {
         id: later
         interval: Theme.motion.short
         onTriggered: {
+            if (root.pending === null)
+                return;
             root.pending.run();
             root.pending = null;
         }
