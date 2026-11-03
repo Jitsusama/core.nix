@@ -1935,6 +1935,70 @@ onLinux {
       touch $out
     '';
 
+  # A session handed over while the screen is locked, beside its sender in
+  # the sessions' kitty, waits once the lock is gone until kitty has said
+  # which window is the sender's, then goes to the sender's workspace
+  # (tests/sessions-behind-the-lock.qml), with niri and kitten stood in.
+  a-session-behind-the-lock-waits-for-its-kin =
+    let
+      # The sender's kitty's two windows, on the second workspace.
+      niri = singleton "Niri.qml" ''
+        property var windows: ({
+          "20": { id: 20, pid: 600, workspace_id: 2 },
+          "21": { id: 21, pid: 600, workspace_id: 2 }
+        })
+        property int revision: 0
+        property var current: null
+        property var focused: null
+        property var acts: []
+        property var spawns: []
+        signal windowOpenedOrChanged(var window)
+        function act(request) { acts = acts.concat([request]); }
+        function request(asked, answer) {}
+        function workspace(id) {
+          return ({ 1: { id: 1, idx: 1, output: "Virtual-1" },
+            2: { id: 2, idx: 2, output: "Virtual-1" } })[id] ?? null;
+        }
+        function spawn(command) { spawns = spawns.concat([command.join(" ")]); }
+      '';
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+      report = singleton "Report.qml" "function say(text) {}";
+    in
+    pkgs.runCommandLocal "a-session-behind-the-lock-waits-for-its-kin" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
+      export PATH=$XDG_STATE_HOME/bin:$PATH
+      cp ${./Sessions.qml} Sessions.qml
+      cp ${./Waiting.js} Waiting.js
+      cp ${./Places.js} Places.js
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../../tests/sessions-behind-the-lock.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      kill $(cat $XDG_STATE_HOME/sender.pid)
+      touch $out
+    '';
+
   # The launcher's People, with Tuple as its source, reads Tuple's contacts
   # from the real people daemon, which runs the real tuple-people reading
   # a stand-in for Tuple's follow here, and calls, joins or favours one

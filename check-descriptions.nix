@@ -76,6 +76,11 @@
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
   '';
+  a-session-behind-the-lock-waits-for-its-kin = ''
+    a session handed over while the screen is locked, beside its sender in the sessions' kitty,
+    waits once the lock is gone until kitty says which window is the sender's, then goes to the
+    sender's workspace without the focus
+  '';
   a-session-is-known-by-its-own-record = ''
     pi's sessions are those whose records name a process running on this boot since when they
     say, never found by a window's title, each with its window found through the kitty it runs
