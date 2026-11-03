@@ -999,7 +999,8 @@ mod tests {
         );
         assert!(titled.contains("] <title>"), "{titled}");
         assert!(titled.contains("#lede[#\"The lede.\"]"), "{titled}");
-        assert!(titled.contains("#par[#\"The words.\"]"), "{titled}");
+        // The last words carry the page's end mark.
+        assert!(titled.contains("#par[#\"The words.\""), "{titled}");
         let untitled = walk("The words.\n\n# Later\n\nMore.\n");
         assert!(untitled.contains("#about(titled: false)"), "{untitled}");
         assert!(
@@ -1007,7 +1008,7 @@ mod tests {
             "a later title isn't the page's: {untitled}"
         );
         assert!(
-            untitled.contains("#par[#\"More.\"]"),
+            untitled.contains("#par[#\"More.\""),
             "only the page's title has a lede: {untitled}"
         );
     }
