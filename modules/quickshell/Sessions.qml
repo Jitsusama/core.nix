@@ -542,7 +542,13 @@ Singleton {
             root.keepArrangement();
         })
     }
-    onRunningChanged: arranging.restart()
+    // A session's window found, as when a kitty has said which of its
+    // windows is whose, can be what a session handed over waits for to
+    // go beside its kin (placeQuietly).
+    onRunningChanged: {
+        arranging.restart();
+        root.placeOpened();
+    }
     Connections {
         target: Niri
         function onLayoutsChanged() {
@@ -653,12 +659,22 @@ Singleton {
         const window = Niri.windows[id];
         if (!window || !Niri.workspace(window.workspace_id))
             return "waiting";
-        const others = root.running.filter(session => session.window
-            && session.window.id !== id);
+        // Its kin among the sessions here with a window, or in a kitty whose
+        // windows aren't told apart yet: a kitty holding several says which
+        // is whose only once asked again, and this one's window opening in
+        // it has just made what it said stale. That kin's window is waited
+        // for (running, below), rather than the session left where it
+        // opened, on whatever workspace Joel is on (P9R1KI, 2026-11-03:
+        // nine of ten builder sessions landed there).
+        const others = root.running.filter(session => session.here
+            && (session.window !== null || session.kitty !== null)
+            && session.window?.id !== id && session.presence.session !== waiting.id);
         const kin = others.find(session => waiting.quest !== ""
             && session.presence.quest === waiting.quest)
             ?? others.find(session => waiting.from !== ""
                 && session.presence.session === waiting.from);
+        if (kin && kin.window === null)
+            return "waiting";
         const into = kin?.window.workspace_id ?? window.workspace_id;
         if (into === window.workspace_id)
             return "held";
@@ -991,7 +1007,7 @@ Singleton {
                 column: next.at.column, tile: next.at.tile ?? 1 } : null;
             reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null,
                 away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
-                quest: next.one.quest ?? "", from: next.one.from ?? "" };
+                quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
             reopenStartedAt = Date.now();
             reopened(next.one, next.one.cwd, next.told);
             reopenPatience.restart();
