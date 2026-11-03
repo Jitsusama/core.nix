@@ -317,10 +317,12 @@ faces for one job each: Hubot Sans, the family's wide cut, and a serif.
 - **Serif** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
   points) is the desktop's voice: what the launcher says to Joel rather than
   what he typed, such as its hint while nothing's typed and its words when
-  nothing is shown. Joel, 2 November: "i love serif, i'm willing to give
-  fraunces a try". It's sized by capitals, not by its em: Monaspace's stand
-  0.730 of an em and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large
-  and sits on the line Monaspace would, aligned by baseline.
+  nothing is shown. Upright at title, 500 and drawn for 72 points, it names
+  the thing a launcher's drawer is about, a step larger than its row.
+  Joel, 2 November: "i love serif, i'm willing to give fraunces a try".
+  It's sized by capitals, not by its em: Monaspace's stand 0.730 of an em
+  and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large and sits on the
+  line Monaspace would, aligned by baseline.
 - **Numbers are typography too.** Tabular figures wherever a number changes
   in place, so it never jiggles; units set smaller than the number; the same
   precision for the same quantity everywhere.
@@ -1213,9 +1215,20 @@ works the same way everywhere.
   bound of the screen"). What a row has to show beyond its line (a
   picture, a notice's whole words, a mail, a meeting's details) shows
   beside the card's right side, a floating surface like the card, top
-  aligned and as tall as it: its title in strong type, its facts as a
-  name and a figure, a fact still being read a fixed placeholder, then
-  its words, then its picture. The card's room and the drawer's are
+  aligned and as tall as it, 12 (m) from it. It's set as a plate, a small
+  page about the selected thing (look 3): an eyebrow saying when or
+  where, in Monaspace's capitals at body, 500, muted, tracked 0.16 em;
+  the thing's name in the serif upright at title, 500, drawn for 72
+  points, strong; its facts as a name in muted and a figure in text, the
+  figures on one edge, a fact still being read a fixed placeholder; then
+  its words, then its picture. Its text is as far from its frame as the
+  card's (the inset, l and the hairline), and every line lies on one of
+  the card's, so the two read as one page: the eyebrow on the field's
+  centre, the name on the first row's baseline (the serif's own line box
+  would set it 1.72 lower), and the rest on a pitch of 24 (xl), half a
+  row, so each line falls on a row's baseline or halfway between two,
+  one empty line between the name, the facts and the words. The card's
+  room and the drawer's are
   worked out for the screen as the launcher opens, the card centred
   unless the screen is too narrow for the drawer beside it, so the card
   never moves and never changes size for what's selected. It's out
@@ -1231,10 +1244,13 @@ works the same way everywhere.
   2026-10-29: "the side drawer shows when it's not needed, and only
   shows in certain places"). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
-  selection rests, so holding an arrow never flickers it. Ctrl+Up and
-  Ctrl+Down scroll it, said in the foot while it holds more than fits,
-  since Page Up and Page Down page the list. Another program's words
-  are shown plain, never as markup.
+  selection rests, so holding an arrow never flickers it. Shift+Up and
+  Shift+Down scroll it three lines at a time, on the pitch, said in the
+  foot while it holds more than fits, since Page Up and Page Down page
+  the list: Shift is the outer column and the arrows the right hand, where
+  Ctrl was the little finger's home key (Joel, 2 November: "all of those
+  ctrl keys do not feel very vim to me"). Another program's words are
+  shown plain, never as markup.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

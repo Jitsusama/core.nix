@@ -73,8 +73,10 @@ Provider {
             // the drawer's title, then the body, rather than the row's
             // name, which already holds both, over both again (VKCF3Z,
             // 2026-11-02). With no body it would only repeat the name, so
-            // there's no drawer (Launcher.qml's drawerAdds).
-            drawer: { title: notice.summary, body: notice.body },
+            // there's no drawer (Launcher.qml's drawerAdds). Over them,
+            // who sent it and when.
+            drawer: { eyebrow: provider.whoAndWhen(notice), title: notice.summary,
+                body: notice.body },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml).
             glyph: String.fromCodePoint(notice.glyph),
@@ -105,6 +107,15 @@ Provider {
             }
         });
         return row;
+    }
+
+    // Who sent a notice and when, as its drawer's eyebrow says it: the
+    // time alone today, and its day before.
+    function whoAndWhen(notice) {
+        const when = new Date(notice.at);
+        const today = new Date().toDateString() === when.toDateString();
+        return [notice.app, Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm")]
+            .filter(part => part !== "").join(" \u00b7 ");
     }
 
     // What can be done to a notice, the acts its card lists too, in the
