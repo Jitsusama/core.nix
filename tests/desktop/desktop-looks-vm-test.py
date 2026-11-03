@@ -194,3 +194,59 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
             machine.send_key("esc")
     finally:
         desktop.as_account("systemctl --user start timekeeping")
+
+
+def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Now's plate centres the time on Now's row and sets the rest on home's rows' lines."""
+    machine = desktop.machine
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["moment"] is not None
+                and shown["drawer"]["lines"]["time"] is not None
+            )
+        )
+        shown = desktop.showing()
+        drawer = shown["drawer"]
+        room = room_beside_the_card(desktop)
+        assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide: {drawer}"
+        lines, card, moment = drawer["lines"], drawer["cardLines"], drawer["moment"]
+        # The rows' middles the plate sets on are worked out apart from the
+        # list, so each lies the same way above the list's own baseline.
+        middles = card["middles"]
+        drawn = zip(middles, card["rows"][: len(middles)], strict=True)
+        drop = [middle - row for middle, row in drawn if row]
+        assert all(abs(each - drop[0]) <= NEAR for each in drop), (
+            f"at {scale} the plate's row middles drift from the list's rows: {drawer}"
+        )
+        assert abs(lines["timeMiddle"] - card["middles"][0]) <= NEAR, (
+            f"at {scale} the time's capitals aren't centred on Now's row: {drawer}"
+        )
+        assert abs(lines["seconds"] - lines["time"]) <= NEAR, drawer
+        if moment["sayOn"] >= 0:
+            assert abs(lines["say"] - card["rows"][moment["sayOn"]]) <= NEAR, (
+                f"at {scale} what needs Joel is off its row's line: {drawer}"
+            )
+        # A group with nothing to show gives up its place, so the first
+        # shown starts on Programs' line, whichever it is: the VM has no
+        # weather, meeting or place, so there it's the clock's.
+        assert moment["groupsOn"][:1] == [shown["rows"].index("Programs")], (
+            f"at {scale} the first group of facts isn't on Programs' line: {drawer}"
+        )
+        for on, group in zip(moment["groupsOn"], lines["groups"], strict=True):
+            if on >= 0:
+                assert abs(group[0] - card["rows"][on]) <= NEAR, (
+                    f"at {scale} a group of facts is off its row's line: {drawer}"
+                )
+            assert all(
+                later > earlier and on_the_pitch(later, earlier)
+                for earlier, later in pairwise(group)
+            ), f"at {scale} a fact is off the pitch: {drawer}"
+        desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
+        machine.send_key("esc")

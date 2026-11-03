@@ -19,7 +19,16 @@
 // until it is. Shift+Up and Shift+Down scroll it a few lines at a time,
 // as the launcher's foot says while it holds more than fits
 // (docs/design.md, the drawer).
+//
+// Home's Now gives a plate of the moment instead (look 3's piece 4,
+// launcher/WhatsOn.qml): `{ now: true, eyebrow, seconds, say, groups:
+// [[{ label, value, qualifier }]], lines: { say, groups } }`. The time is
+// large on Now's row, its seconds counting after it, what needs Joel on
+// the row `lines.say` names, and each group of facts that holds any from
+// the next row `lines.groups` names, on the pitch; a row that's missing,
+// -1, sets its part one empty line below the one before.
 pragma ComponentBehavior: Bound
+import Quickshell
 import QtQuick
 import QtQuick.Effects
 
@@ -50,6 +59,8 @@ Floating {
     // row's.
     property real fieldLine: 0
     property real rowLine: 0
+    // The middle of each row the card shows, for the moment's lines.
+    property var rowLines: []
 
     readonly property string eyebrow: shown ? shown.eyebrow ?? "" : ""
     readonly property string title: shown ? shown.title ?? "" : ""
@@ -59,6 +70,20 @@ Floating {
         .filter(fact => fact && String(fact.value ?? "") !== title) : []
     readonly property string body: shown ? shown.body ?? "" : ""
     readonly property string picture: shown ? shown.picture ?? "" : ""
+    // Whether it's the moment's plate, home's Now's.
+    readonly property bool moment: shown?.now === true
+    readonly property var momentLines: moment ? shown.lines ?? {} : ({})
+    // Its groups of facts that hold any, each set on the row the next of
+    // `lines.groups` names: a group with nothing to show gives up its
+    // place, so a day with no weather or meeting leaves no empty lines
+    // in the middle of the plate (docs/design.md, Space Available).
+    readonly property var groups: moment ? (shown.groups ?? [])
+        .filter(facts => facts.length > 0)
+        .map((facts, at) => ({ facts: facts, line: (momentLines.groups ?? [])[at] ?? -1 }))
+        : []
+    // The time and its seconds as it says them, for the launcher to report.
+    readonly property string momentTime: moment ? timeText.text : ""
+    readonly property string momentSeconds: moment ? secondsText.text : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
     readonly property bool more: view.contentHeight > view.height + 1
     // How far it's scrolled, for the launcher to report.
@@ -90,8 +115,41 @@ Floating {
         facts: factsShown.visible ? Array.from({ length: factRows.count }, (_, at) => {
             const row = factRows.itemAt(at);
             return row ? contentTop + flow.y + factsShown.y + row.y + row.base : null;
+        }) : [],
+        // The moment's: the time's and its seconds', what needs Joel's, and
+        // each group's facts'.
+        time: drawer.moment ? contentTop + timeText.y + timeText.baselineOffset : null,
+        timeMiddle: drawer.moment ? contentTop + timeText.y + timeText.baselineOffset
+            - timeFace.tightBoundingRect("H").height / 2 : null,
+        seconds: drawer.moment ? contentTop + secondsText.y + secondsText.baselineOffset
+            : null,
+        say: drawer.moment && sayText.visible ? contentTop + sayText.y + sayText.baselineOffset
+            : null,
+        groups: drawer.moment ? Array.from({ length: groupsShown.count }, (_, at) => {
+            const group = groupsShown.itemAt(at);
+            return group ? group.bases.map(base => contentTop + group.y + base) : [];
         }) : []
     })
+
+    // A row's line of the card, by its place in the card's rows, its middle.
+    function lineOf(at) {
+        return at >= 0 && at < rowLines.length ? rowLines[at] : null;
+    }
+    // The baseline a line of the mono takes on a row's line, or one empty
+    // line below where the part before ended where that row is missing.
+    function rowBase(at, after) {
+        const line = lineOf(at);
+        return line !== null ? line + dropped : after + 2 * pitch;
+    }
+    // A figure, then what qualifies it, quieter after a dot, each number
+    // kept to its unit.
+    function qualified(fact) {
+        const plain = words => unbroken(words ?? "").replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;");
+        return (fact.qualifier ?? "") === "" ? plain(fact.value)
+            : `${plain(fact.value)} <font color="${Theme.muted}">\u00b7 `
+                + `${plain(fact.qualifier)}</font>`;
+    }
 
     // Moves what it shows three lines up or down, never past either end,
     // so its lines stay on the card's.
@@ -151,12 +209,14 @@ Floating {
         font.family: Theme.mono.family
         font.pointSize: Theme.mono.large
     }
+    // Every fact it shows, the moment's groups' among them.
+    readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
     readonly property real labelsWide: Math.min(
         column.width - labelsGap - factFace.advanceWidth("00000000"),
-        Math.ceil(Math.max(0, ...facts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
+        Math.ceil(Math.max(0, ...allFacts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
     // Whether every name fits its column on one line, for the launcher to
     // report.
-    readonly property bool labelsWhole: facts.every(fact =>
+    readonly property bool labelsWhole: allFacts.every(fact =>
         factFace.advanceWidth(fact.label ?? "") <= labelsWide)
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
@@ -170,6 +230,18 @@ Floating {
     }
     // Where the first line's box begins, down from the content's top.
     readonly property real firstLine: drawer.rowLine - Theme.border - drawer.pitch / 2
+
+    // The time, read as it turns each second while the moment shows.
+    SystemClock {
+        id: clock
+        enabled: drawer.moment && drawer.visible
+        precision: SystemClock.Seconds
+    }
+    // The time's capitals, which are centred on Now's row.
+    FontMetrics {
+        id: timeFace
+        font: timeText.font
+    }
 
     Flickable {
         id: view
@@ -185,7 +257,7 @@ Floating {
         contentWidth: width
         // Never ending between two lines, so scrolled to its end its lines
         // are still the card's.
-        readonly property real natural: flow.y + flow.height
+        readonly property real natural: drawer.moment ? momentShown.ends : flow.y + flow.height
         contentHeight: natural <= height ? natural
             : height + Math.ceil((natural - height) / drawer.pitch) * drawer.pitch
 
@@ -217,6 +289,155 @@ Floating {
                 font.features: { "case": 1 }
             }
 
+            // The moment: the time, its seconds, what needs Joel and the
+            // facts behind it, each on a line of one of the card's rows.
+            Item {
+                id: momentShown
+                width: parent.width
+                visible: drawer.moment
+                // Where its last line's box ends, for the view to hold.
+                readonly property real ends: groupsShown.count === 0 ? sayText.y + drawer.pitch
+                    : groupsShown.lastBottom
+
+                // The time, the one large thing, in the voice's face upright
+                // and drawn for its size, its figures lining and all one
+                // width so they never jiggle, its capitals centred on Now's
+                // row, the first.
+                Text {
+                    id: timeText
+                    readonly property real base: (drawer.lineOf(0) ?? drawer.rowLine)
+                        + timeFace.tightBoundingRect("H").height / 2
+                    y: base - Theme.border - baselineOffset
+                    text: Qt.formatTime(clock.date, "HH:mm")
+                    textFormat: Text.PlainText
+                    color: Theme.strong
+                    font.family: Theme.serif.family
+                    font.pointSize: Theme.serif.display
+                    font.letterSpacing: -0.01 * Theme.serif.display * 4 / 3
+                    font.features: { "lnum": 1, "tnum": 1 }
+                    font.variableAxes: Object.assign({}, Theme.serif.axes,
+                        { wght: 400, WONK: 0, opsz: 144 })
+                }
+
+                // Its seconds after it, quiet and counting, in the italic,
+                // on the time's baseline.
+                Text {
+                    id: secondsText
+                    x: timeText.x + timeText.contentWidth + Theme.space.s
+                    width: parent.width - x
+                    y: timeText.base - Theme.border - baselineOffset
+                    text: String(drawer.shown?.seconds ?? "")
+                        .replace("{seconds}", String(clock.date.getSeconds()))
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: Theme.muted
+                    font.family: Theme.serif.family
+                    font.italic: true
+                    font.pointSize: Theme.serif.title
+                    font.features: { "lnum": 1, "tnum": 1 }
+                    font.variableAxes: Object.assign({}, Theme.serif.axes,
+                        { wght: 400, WONK: 1, opsz: 72 })
+                }
+
+                // What needs Joel, or that nothing does, in the voice, on
+                // its row's baseline.
+                Text {
+                    id: sayText
+                    readonly property real base: drawer.rowBase(drawer.momentLines.say ?? -1,
+                        timeText.base)
+                    width: parent.width
+                    y: base - Theme.border - baselineOffset
+                    visible: text !== ""
+                    text: drawer.shown?.say ?? ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: Theme.text
+                    font.family: Theme.serif.family
+                    font.italic: Theme.serif.italic
+                    font.pointSize: Theme.serif.large
+                    font.variableAxes: Theme.serif.axes
+                }
+
+                // Each group of facts from its row's line, on the pitch.
+                Repeater {
+                    id: groupsShown
+                    model: drawer.groups
+                    // Where the last group's last line's box ends.
+                    readonly property real lastBottom: {
+                        const group = count > 0 ? itemAt(count - 1) : null;
+                        return group ? group.y + group.height : 0;
+                    }
+
+                    Column {
+                        id: group
+                        required property var modelData
+                        required property int index
+                        // Its first baseline: its row's, or one empty line
+                        // below the group or the words before it.
+                        readonly property real base: {
+                            const before = index === 0 ? sayText.base
+                                : groupsShown.itemAt(index - 1)?.lastBase ?? sayText.base;
+                            return drawer.rowBase(modelData.line, before);
+                        }
+                        // Each fact's first baseline, down from its top.
+                        readonly property var bases: Array.from({ length: facts.count },
+                            (_, at) => {
+                                const row = facts.itemAt(at);
+                                return row ? row.y + drawer.pitch / 2 + drawer.dropped : 0;
+                            })
+                        // Its last fact's first baseline.
+                        readonly property real lastBase: base + height - drawer.pitch
+
+                        // Named, not its parent, which a Repeater's
+                        // delegate has none of while it's made or let go.
+                        width: momentShown.width
+                        y: base - Theme.border - drawer.pitch / 2 - drawer.dropped
+
+                        Repeater {
+                            id: facts
+                            model: group.modelData.facts
+
+                            Item {
+                                id: momentFact
+                                required property var modelData
+                                width: group.width
+                                height: Math.max(1, factName.lineCount, figure.lineCount)
+                                    * drawer.pitch
+
+                                Text {
+                                    id: factName
+                                    width: drawer.labelsWide
+                                    y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                    text: momentFact.modelData.label ?? ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    lineHeightMode: Text.FixedHeight
+                                    lineHeight: drawer.pitch
+                                    color: Theme.muted
+                                    font.family: Theme.mono.family
+                                    font.pointSize: Theme.mono.large
+                                }
+
+                                Text {
+                                    id: figure
+                                    x: drawer.labelsWide + drawer.labelsGap
+                                    width: parent.width - x
+                                    y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                    text: drawer.qualified(momentFact.modelData)
+                                    textFormat: Text.StyledText
+                                    wrapMode: Text.Wrap
+                                    lineHeightMode: Text.FixedHeight
+                                    lineHeight: drawer.pitch
+                                    color: Theme.text
+                                    font.family: Theme.mono.family
+                                    font.pointSize: Theme.mono.large
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // The title, then its facts, words and picture, each a group
             // of whole lines one empty line apart, from the first row's
             // line on.
@@ -225,6 +446,7 @@ Floating {
                 y: drawer.firstLine
                 width: parent.width
                 spacing: drawer.pitch
+                visible: !drawer.moment
 
                 // The thing's name, in the voice's face upright and a step
                 // up, sized by capitals as every serif step is, on the

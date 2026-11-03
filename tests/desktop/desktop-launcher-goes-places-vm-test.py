@@ -1853,9 +1853,17 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
     closed = desktop.in_session(LAUNCHER_OPEN)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Home opens on a place, which has no details (docs/design.md, the
-    # drawer: it goes by kind, not by what a row happens to hold).
-    desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("out") is False)
+    # Home opens on Now, whose drawer is the moment's plate (look 3), and the
+    # place below it has no details, so the drawer goes in there (docs/design.md,
+    # the drawer: it goes by kind, not by what a row happens to hold).
+    desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("moment") is not None)
+    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") != "collection:on"
+            and (shown.get("drawer") or {}).get("out") is False
+        )
+    )
     # A program found by a search is a thing, but with nothing beyond its
     # name and side the drawer would only repeat it, so it stays in (Joel,
     # 2026-10-29: "never show the side panel when it is just repeating the

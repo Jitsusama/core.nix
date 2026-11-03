@@ -3113,6 +3113,34 @@
       "empty": "Nothing's on or waiting."
     },
     {
+      "id": "on:plate",
+      "in": "on",
+      "said": {
+        "seconds": "and {seconds} s",
+        "synchronised": "synchronised",
+        "unsynchronised": "not synchronised",
+        "unkept": "nothing keeps the time",
+        "day": "day {day}",
+        "byHand": "set by hand",
+        "within": "within {km} km"
+      }
+    },
+    {
+      "id": "on:plate:next",
+      "in": "on:plate",
+      "name": "Next"
+    },
+    {
+      "id": "on:plate:here",
+      "in": "on:plate",
+      "name": "Here"
+    },
+    {
+      "id": "on:plate:clock",
+      "in": "on:plate",
+      "name": "Clock"
+    },
+    {
       "id": "on:waiting",
       "in": "on",
       "name": "Needs You",
