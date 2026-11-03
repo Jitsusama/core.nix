@@ -272,6 +272,10 @@ let
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
+  # Going places holds over a hundred subtests, about two hours whole on a
+  # loaded builder, so the driver's hour would end it halfway. Its parts
+  # through run-subtests each fit the hour; this lets a whole run finish.
+  ${if area == "launcher-goes-places" then "globalTimeout" else null} = 150 * 60;
   # Reads the colours of the windows it photographs. The desktop it drives
   # is desktop/desktop_session.py, a module of the driver's Python, which
   # every area imports.
