@@ -390,8 +390,14 @@ impl Walker<'_> {
                 let mut text = collapse(&contents.borrow());
                 // The line breaks between blocks are no words: set, a space
                 // there would be a paragraph of its own, a blank line and a
-                // second gap between the blocks either side of it.
-                let between_blocks = text == " " && parent_tag(node).as_deref() == Some("body");
+                // second gap between the blocks either side of it. A quote,
+                // an alert or a section holds only blocks; a list's item may
+                // hold words, whose spaces stay.
+                let between_blocks = text == " "
+                    && parent_tag(node).is_some_and(|parent| {
+                        ["body", "blockquote", "div", "section", "details"]
+                            .contains(&parent.as_str())
+                    });
                 if std::mem::take(&mut self.after_box) {
                     text = text.trim_start().to_string();
                 }
@@ -434,6 +440,10 @@ impl Walker<'_> {
                 }
             }
             "head" | "source" | "p_alert_title" => {}
+            // An alert's title, its kind, which the alert says as its
+            // eyebrow.
+            "p" if attr(node, "class")
+                .is_some_and(|class| class.starts_with("markdown-alert-title")) => {}
             "p" if lede => self.wrap("#lede[", node, "]\n"),
             "p" => self.wrap("#par[", node, "]\n"),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
@@ -942,6 +952,31 @@ mod tests {
         assert!(typst.contains("#list(marker: no-mark, "), "{typst}");
         assert!(typst.contains("#task(true)[#\"Done it\"]"), "{typst}");
         assert!(typst.contains("#task(false)[#\"Still to do\"]"), "{typst}");
+    }
+
+    #[test]
+    fn a_quote_and_an_alert_hold_only_their_words() {
+        let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+        let typst = program(
+            "> Quoted words.\n\n> [!NOTE]\n> Noted words.\n",
+            "notes",
+            None,
+            &Pieces::new(),
+            &world,
+            &mut Costs::default(),
+        );
+        assert!(
+            typst.contains("#quote(block: true)[#par[#\"Quoted words.\"]"),
+            "{typst}"
+        );
+        assert!(
+            typst.contains("#alert(\"note\")[#par[#\"Noted words.\"]"),
+            "the alert's kind is its eyebrow, not a paragraph too: {typst}"
+        );
+        assert!(
+            !typst.contains("#\" \""),
+            "a blank line between blocks: {typst}"
+        );
     }
 
     #[test]
