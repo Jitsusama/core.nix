@@ -439,14 +439,9 @@ pub struct Report {
 /// each second is judged by the rates its predecessor answered, and a cut
 /// by the second the controller was handed when it made it.
 pub fn score(stay: &Stay, controller: &mut impl Controller, base: Option<Base>) -> Scored {
-    let base = base.unwrap_or_else(|| {
-        let most = |kbit: fn(&Second) -> f64| {
-            whole(stay.seconds.iter().map(kbit).fold(0.0, f64::max)).max(1)
-        };
-        Base {
-            up: most(|s| s.up_kbit),
-            down: most(|s| s.down_kbit),
-        }
+    let base = base.unwrap_or_else(|| Base {
+        up: whole(sustained(&stay.seconds, |s| s.up_kbit)).max(1),
+        down: whole(sustained(&stay.seconds, |s| s.down_kbit)).max(1),
     });
     let (mut up, mut down) = (Tally::new("up", base.up), Tally::new("down", base.down));
     let mut holding = Rates::default();
@@ -475,6 +470,24 @@ pub fn score(stay: &Stay, controller: &mut impl Controller, base: Option<Base>) 
         down: down.finish(),
         unfounded_cuts,
     }
+}
+
+/// How long a rate must be carried to stand for the line, in seconds.
+const SUSTAINED_S: usize = 5;
+
+/// The most a direction carried for `SUSTAINED_S` seconds running, or
+/// in any one second of a shorter stay. A burst out of a buffer upstream
+/// can carry a second over the line; it can't carry five. A percentile
+/// would be steadier still on a busy week, but on an idle one it lands on
+/// idle seconds.
+fn sustained(seconds: &[Second], kbit: fn(&Second) -> f64) -> f64 {
+    let joined = |w: &[Second]| w[w.len() - 1].t_s - w[0].t_s < float(SUSTAINED_S as u64);
+    seconds
+        .windows(SUSTAINED_S)
+        .filter(|w| joined(w))
+        .map(|w| w.iter().map(kbit).fold(f64::INFINITY, f64::min))
+        .reduce(f64::max)
+        .unwrap_or_else(|| seconds.iter().map(kbit).fold(0.0, f64::max))
 }
 
 /// One direction's score as its seconds go by.
@@ -1198,6 +1211,21 @@ mod tests {
             }
         );
         assert_eq!(score(&stays[0], &mut Unlimited, Some(BASE)).base, BASE);
+
+        // Two seconds of a burst from a buffer don't stand for the line.
+        let burst = |at: u64| {
+            let (received, sent) = constant(8_000, 40_000)(at);
+            let from = NOV3 + 30_000;
+            (
+                received,
+                sent + (at.clamp(from, from + 2_000) - from) * 12_000 / 8,
+            )
+        };
+        let stays = read_lines(&line(NOV3, 60, burst, quiet));
+        assert!(stays[0].seconds.iter().any(|s| s.up_kbit > 19_000.0));
+        assert_eq!(score(&stays[0], &mut Unlimited, None).base.up, 8_000);
+        let short = read_lines(&line(NOV3, 3, constant(8_000, 40_000), quiet));
+        assert_eq!(score(&short[0], &mut Unlimited, None).base.up, 8_000);
     }
 
     #[test]
