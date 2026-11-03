@@ -18,10 +18,12 @@
 //! path's, and the other direction's counts only past it.
 //!
 //! A live guard stands over it: a direction held under half its base for
-//! a minute with no delay standing, or cut more than six times in a
-//! minute, goes back to its base; after three such returns in a stay the
-//! controller gives up and leaves the line unlimited, as it does when no
-//! timestamps are answered.
+//! a minute with no delay standing, or whose delay has stood unbroken for
+//! half a minute however far it was cut, so that the queue is plainly
+//! another machine's, goes back to its base; after three such returns in a
+//! stay the controller gives up and leaves the line unlimited, as it does
+//! when no timestamps are answered. Cuts alone don't trip it: a line
+//! filling its buffer is rightly cut each second until it drains.
 
 #![cfg_attr(
     not(test),
@@ -65,7 +67,8 @@ const IDLE: f64 = 0.1;
 const UNANSWERED_S: f64 = 10.0;
 /// The live guard's limits.
 const GUARD_WINDOW_S: f64 = 60.0;
-const GUARD_CUTS: usize = 6;
+/// A delay standing this long, cuts and all, isn't this machine's queue.
+const FUTILE_S: f64 = 30.0;
 const GUARD_RETURNS: usize = 3;
 
 /// What each direction is held to, in kbit/s; None is no limit.
@@ -98,7 +101,6 @@ pub struct Way {
     late_since: Option<f64>,
     last_cut: f64,
     last_at: Option<f64>,
-    cuts: VecDeque<f64>,
     under_half_since: Option<f64>,
 }
 
@@ -115,7 +117,6 @@ impl Way {
             late_since: None,
             last_cut: f64::NEG_INFINITY,
             last_at: None,
-            cuts: VecDeque::new(),
             under_half_since: None,
         }
     }
@@ -189,16 +190,13 @@ impl Way {
         let drain = 1.0 - (delay_ms / 1_000.0).min(0.5);
         self.rate = (carried.min(self.rate) * 0.9 * drain).max(LEAST_KBIT);
         self.last_cut = at;
-        self.cuts.push_back(at);
     }
 
-    /// Whether the guard should send this direction back to its base:
-    /// cut too often, or held under half its base for a minute with no
-    /// queue standing.
+    /// Whether the guard should send this direction back to its base: a
+    /// delay standing unbroken past what cuts could drain, or held under
+    /// half its base for a minute with no queue standing.
     fn misbehaving(&mut self, at: f64) -> bool {
-        while self.cuts.front().is_some_and(|&t| at - t > GUARD_WINDOW_S) {
-            self.cuts.pop_front();
-        }
+        let futile = self.late_since.is_some_and(|since| at - since >= FUTILE_S);
         let held_down = match self.base {
             Some(base) if self.rate < base * 0.5 && self.late_since.is_none() => {
                 at - *self.under_half_since.get_or_insert(at) >= GUARD_WINDOW_S
@@ -208,12 +206,11 @@ impl Way {
                 false
             }
         };
-        self.cuts.len() > GUARD_CUTS || held_down
+        futile || held_down
     }
 
     fn reset(&mut self) {
         self.rate = self.base.unwrap_or(f64::INFINITY);
-        self.cuts.clear();
         self.under_half_since = None;
         self.late_since = None;
     }
@@ -505,17 +502,27 @@ mod tests {
     }
 
     #[test]
-    fn cut_more_than_six_times_in_a_minute_goes_back_to_its_base() {
+    fn a_line_filling_its_buffer_is_cut_each_second_without_the_guard() {
         let mut c = Controller::new(None, Some(200_000.0));
-        let mut limits = Limits {
-            up: None,
-            down: None,
-        };
-        for n in 0..7 {
-            let from = f64::from(n) * 5.0;
-            limits = run(&mut c, from, from + 1.2, queued(40.0, 150_000.0));
-            run(&mut c, from + 1.2, from + 5.0, quiet(300.0, 0.0));
+        for n in 0..20 {
+            let from = f64::from(n) * 3.0;
+            run(&mut c, from, from + 2.5, queued(40.0, 150_000.0));
+            run(&mut c, from + 2.5, from + 3.0, quiet(300.0, 150_000.0));
         }
+        assert!(!c.given_up());
+        assert!(
+            c.down.limit() < Some(150_000),
+            "still cut: {:?}",
+            c.down.limit()
+        );
+    }
+
+    #[test]
+    fn a_queue_standing_half_a_minute_whatever_the_cuts_goes_back_to_its_base() {
+        let mut c = Controller::new(None, Some(200_000.0));
+        let early = run(&mut c, 0.0, 29.0, queued(40.0, 150_000.0));
+        assert!(early.down < Some(10_000), "cut to the least: {early:?}");
+        let limits = run(&mut c, 29.0, 30.2, queued(40.0, 150_000.0));
         assert_eq!(limits.down, Some(200_000));
     }
 
@@ -545,13 +552,9 @@ mod tests {
     #[test]
     fn three_returns_and_the_line_is_left_unlimited() {
         let mut c = Controller::new(None, Some(200_000.0));
-        for n in 0..21 {
-            let from = f64::from(n) * 5.0;
-            run(&mut c, from, from + 1.2, queued(40.0, 150_000.0));
-            run(&mut c, from + 1.2, from + 5.0, quiet(300.0, 0.0));
-        }
+        run(&mut c, 0.0, 95.0, queued(40.0, 150_000.0));
         assert!(c.given_up());
-        let limits = run(&mut c, 105.0, 110.0, queued(40.0, 150_000.0));
+        let limits = run(&mut c, 95.0, 100.0, queued(40.0, 150_000.0));
         assert_eq!(
             limits,
             Limits {
