@@ -4,7 +4,9 @@
 # record, naming the second window of kitty 600, and the process it names.
 # A stand-in kitten says kitty 600's two windows when first asked, and its
 # three only once the test writes them to the fifo kitty-600-later, so the
-# test decides when kitty has said which window is whose.
+# test decides when kitty has said which window is whose. A third ask would
+# wait on the fifo with no writer, which the check's timeout ends; the test
+# changes kitty's windows only once, so it asks only twice.
 set -euo pipefail
 
 state=$1
