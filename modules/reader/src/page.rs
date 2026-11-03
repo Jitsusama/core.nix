@@ -163,13 +163,17 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let details(body) = block(body)
 #let rule-ink = ink.rule
 #let sheet-gap = 18pt
-#let sheet(numeric: (), words: (), head: none, rows: ()) = layout(size => {
+// A table's first baseline stands two lines under the one before it and
+// the next two lines under its last, past each row's half-line inset, so
+// the page's grid runs through it.
+#let sheet-air = 2 * pitch - (1.5 * pitch + cap) / 2
+#let sheet(numeric: (), words: (), head: none, rows: ()) = block(above: sheet-air, below: sheet-air, layout(size => {
   let n = words.len()
   let all = if head == none { rows } else { (head,) + rows }
   let cell(row, i) = row.at(i, default: [])
   let wide(it) = measure(text(hyphenate: false, it)).width
   let mins = words.map(column => calc.max(0pt, ..column.map(word => measure(word).width)))
-  let naturals = range(n).map(i => calc.max(0pt, ..all.enumerate().map(((k, row)) => wide(if head != none and k == 0 { strong(cell(row, i)) } else { cell(row, i) }))))
+  let naturals = range(n).map(i => calc.max(0pt, ..all.enumerate().map(((k, row)) => wide(if head != none and k == 0 { eyebrow(cell(row, i)) } else { cell(row, i) }))))
   let wants = range(n).map(i => naturals.at(i) - mins.at(i))
   // Every line of a table lands on the page's pitch: a body line's cap
   // height and its leading. A line in a cell steps one pitch, a field to
@@ -215,14 +219,15 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       ..all.enumerate().map(((k, row)) => range(n).map(i => {
         let it = cell(row, i)
         let it = if numeric.at(i, default: false) { text(number-width: "tabular", it) } else { it }
-        if head != none and k == 0 { strong(it) } else { it }
+        // A table's heads are eyebrows, on the body's baseline.
+        if head != none and k == 0 { eyebrow(it) } else { it }
       })).flatten()
     )
   }
   let records = {
     let names = if head == none { () } else { head }
     // One edge for every record's values, past the widest header.
-    let label = calc.max(0pt, ..names.map(name => measure(name).width))
+    let label = calc.max(0pt, ..names.map(name => measure(eyebrow(name)).width))
     let lead = pitch - cap
     set text(hyphenate: false, top-edge: cap, bottom-edge: "baseline")
     stack(..rows.enumerate().map(((k, row)) => block(
@@ -232,7 +237,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       stack(spacing: lead,
         text(fill: ink.strong, weight: 500, cell(row, 0)),
         grid(columns: (label, 1fr), column-gutter: 12pt, row-gutter: lead,
-          ..range(1, n).filter(i => cell(row, i) != []).map(i => (text(fill: ink.muted, cell(names, i)), cell(row, i))).flatten()))
+          ..range(1, n).filter(i => cell(row, i) != []).map(i => (eyebrow(cell(names, i)), cell(row, i))).flatten()))
     )))
   }
   let inside = fit(size.width)
@@ -240,7 +245,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     let spread-out = fit(size.width + 2 * spread)
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
-})
+}))
 // A code block: the mono at 10.5 pt on a 15 pt line, on the sunken ground
 // inset m by l. Its height rounds up to the half line, shared above and
 // below its lines, so the words after it stay on the page's grid. Its top
