@@ -110,6 +110,14 @@ unsafe extern "C" {
         properties: *const Property,
         compiled: *mut *mut OvCompiled,
     ) -> i32;
+    fn ov_core_compile_model_from_file_props(
+        core: *const OvCore,
+        path: *const c_char,
+        device: *const c_char,
+        count: usize,
+        properties: *const Property,
+        compiled: *mut *mut OvCompiled,
+    ) -> i32;
     fn ov_compiled_model_free(compiled: *mut OvCompiled);
     fn ov_compiled_model_create_infer_request(
         compiled: *const OvCompiled,
@@ -251,11 +259,7 @@ impl Core {
     /// When the device is missing or can't run the model.
     pub fn compile(&self, model: &Model, device: &str, priority: Priority) -> Result<Compiled> {
         let name = c_string(device)?;
-        let priority = [Property {
-            key: c"MODEL_PRIORITY".as_ptr(),
-            value: priority.name().as_ptr().cast(),
-        }];
-        let properties: &[Property] = if device == "NPU" { &priority } else { &[] };
+        let properties = priority_on(device, priority);
         let mut compiled = ptr::null_mut();
         // SAFETY: the model is alive, the properties' strings are static and
         // counted, and the out pointer is valid.
@@ -271,6 +275,38 @@ impl Core {
                 )
             },
             &format!("compiling for {device}"),
+        )?;
+        Ok(Compiled(compiled))
+    }
+
+    /// The model in `xml` compiled for `device` as `compile` compiles
+    /// one, read by OpenVINO itself. With a cache, what's cached is then
+    /// found by the file, where a model read first is found by hashing
+    /// all of it, which for one of a gigabyte takes half a minute.
+    ///
+    /// # Errors
+    ///
+    /// When the file can't be read, or the device is missing or can't run
+    /// the model.
+    pub fn compile_file(&self, xml: &Path, device: &str, priority: Priority) -> Result<Compiled> {
+        let path = c_path(xml)?;
+        let name = c_string(device)?;
+        let properties = priority_on(device, priority);
+        let mut compiled = ptr::null_mut();
+        // SAFETY: the names outlive the call, the properties' strings are
+        // static and counted, and the out pointer is valid.
+        check(
+            unsafe {
+                ov_core_compile_model_from_file_props(
+                    self.0,
+                    path.as_ptr(),
+                    name.as_ptr(),
+                    properties.len(),
+                    properties.as_ptr(),
+                    &raw mut compiled,
+                )
+            },
+            &format!("compiling {} for {device}", xml.display()),
         )?;
         Ok(Compiled(compiled))
     }
@@ -304,6 +340,19 @@ impl Core {
             "compiling for the CPU on one thread",
         )?;
         Ok(Compiled(compiled))
+    }
+}
+
+/// What a compile tells `device`: its `priority`, on the NPU alone, the
+/// one device that takes it.
+fn priority_on(device: &str, priority: Priority) -> Vec<Property> {
+    if device == "NPU" {
+        vec![Property {
+            key: c"MODEL_PRIORITY".as_ptr(),
+            value: priority.name().as_ptr().cast(),
+        }]
+    } else {
+        Vec::new()
     }
 }
 

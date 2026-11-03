@@ -125,14 +125,20 @@ impl Parakeet {
             .map_err(|e| format!("reading parakeet_v3_vocab.json: {e}"))
             .and_then(|json| Vocab::parse(&json))?;
         let core = Core::new(cache)?;
-        let part = |name: &str| core.read(&dir.join(format!("parakeet_{name}.xml")));
+        let file = |name: &str| dir.join(format!("parakeet_{name}.xml"));
+        let part = |name: &str| core.read(&file(name));
         let mel = core.compile(&part("melspectogram")?, "CPU", priority)?;
-        let encoder = part("encoder")?;
-        let (encoder, device) = match core.compile(&encoder, device, priority) {
+        // The encoder, a gigabyte, is compiled from its file, so what's
+        // cached is found without first hashing all of it.
+        let encoder = file("encoder");
+        let (encoder, device) = match core.compile_file(&encoder, device, priority) {
             Ok(compiled) => (compiled, device.to_owned()),
             Err(error) if device != "CPU" => {
                 eprintln!("parakeet: the encoder runs on the CPU: {error}");
-                (core.compile(&encoder, "CPU", priority)?, "CPU".to_owned())
+                (
+                    core.compile_file(&encoder, "CPU", priority)?,
+                    "CPU".to_owned(),
+                )
             }
             Err(error) => return Err(error),
         };
