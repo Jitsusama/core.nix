@@ -49,13 +49,27 @@ fn executable(path: &Path, script: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// nix as it builds here: it records its arguments and exits 0, or as
-/// the `nix-status` file beside it says.
+/// nix as it builds here: it records its arguments, each call's after the
+/// last in `nix-calls`, and exits 0, or as the `nix-status` file beside it
+/// says. While the `nix-fails` file counts above 0, a call fails with 1
+/// and counts it down.
 const NIX: &str = r#"#!/bin/sh
-echo "$@" > "$(dirname "$0")/nix-was-given"
-echo "${WORK_RUNS_ELSEWHERE:-}" > "$(dirname "$0")/nix-marked"
-exit "$(cat "$(dirname "$0")/nix-status" 2>/dev/null || echo 0)"
+here=$(dirname "$0")
+echo "$@" > "$here/nix-was-given"
+echo "$@" >> "$here/nix-calls"
+echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
+fails=$(cat "$here/nix-fails" 2>/dev/null || echo 0)
+if [ "$fails" -gt 0 ]; then
+  echo $((fails - 1)) > "$here/nix-fails"
+  exit 1
+fi
+exit "$(cat "$here/nix-status" 2>/dev/null || echo 0)"
 "#;
+
+/// A second lender's folder that holds nothing, so a run never finds a
+/// second builder unless a test lends it one: the default,
+/// /run/nix-offload-more, is this machine's own.
+const NO_SECOND: &str = "/nonexistent/nix-offload-more";
 
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
                      base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n";
@@ -88,6 +102,7 @@ fn there_with(folder: &Path, offload: &Path, extra: &[&str]) -> Output {
             format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder)
         .env("XDG_STATE_HOME", folder)
         .env("XDG_CONFIG_HOME", folder)
@@ -196,6 +211,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
             ),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -233,6 +249,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
             ),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -314,6 +331,63 @@ fn a_built_path_that_cant_be_brought_here_fails_and_prints_nothing() {
     assert_eq!(String::from_utf8_lossy(&ran.stdout), "");
 }
 
+// A tunnel's connection can stop part way through bringing a big output
+// back, and ssh gives up on it: twice running on 3 November, on a 9.5 GB
+// path. Trying again keeps the paths that came whole.
+#[test]
+fn a_copy_back_that_breaks_off_is_tried_again_and_says_what_it_keeps() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(folder.path().join("nix-fails"), "1").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
+    let copy = format!(
+        "copy --no-check-sigs --from {} /nix/store/aaaa-a\n",
+        STORE.trim()
+    );
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-calls")).unwrap(),
+        copy.repeat(2)
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "nix-offload: bringing back what was built broke off, so it's tried again \
+             (2 of 3): the paths that came whole stay, and one cut off part way comes \
+             again from its start"
+        ),
+        "{ran:?}"
+    );
+}
+
+#[test]
+fn a_copy_back_that_breaks_off_three_times_running_fails_and_says_so() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(folder.path().join("nix-fails"), "3").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "");
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    assert_eq!(calls.lines().count(), 3, "{calls}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(&format!(
+            "nix-offload: couldn't bring what was built from {} into this store, \
+             in 3 tries",
+            STORE.trim()
+        )),
+        "{ran:?}"
+    );
+}
+
 #[test]
 fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
     let folder = tempfile::tempdir().unwrap();
@@ -346,6 +420,7 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -426,6 +501,7 @@ fn a_folders_ignored_files_stay_here_and_its_size_is_said() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -493,6 +569,7 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -662,6 +739,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
@@ -763,6 +841,7 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
@@ -835,6 +914,7 @@ fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
@@ -939,6 +1019,7 @@ impl Unpushed {
                 format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
             )
             .env("NIX_OFFLOAD_DIR", &self.offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("XDG_RUNTIME_DIR", self.folder.path())
             .env("XDG_STATE_HOME", self.folder.path())
             .env("XDG_CONFIG_HOME", self.folder.path())
@@ -1093,6 +1174,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
                 format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
             )
             .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
@@ -1225,6 +1307,7 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
         )
         .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
