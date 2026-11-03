@@ -1073,8 +1073,8 @@
   session-memory-is-protected = ''
     every slice above session.slice carries a hard memory floor
   '';
-  sessions-sit-beside-the-apps = ''
-    agents' sessions have a slice beside the apps at their weight, and the sorter watches both
+  sessions-sit-beside-the-programs = ''
+    agents' sessions have a slice beside Joel's programs at their weight, and the sorter watches both
   '';
   shaper-finds-the-rate = ''
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what

@@ -805,6 +805,25 @@ mod settings_tests {
     }
 }
 
+/// Moves a scope that work in `slice` started, with no memory ceiling of
+/// its own, back to the cgroup of what started it.
+fn return_stray(scope: &Path, root: &Path, manager: &str, slice: &str, warned: &mut bool) {
+    let procs = samples(scope);
+    if procs.is_empty() || !unlimited(|file| fs::read_to_string(scope.join(file)).ok()) {
+        return;
+    }
+    let Some(back) = returns_to(&procs, |pid| cgroup_of(pid, manager), slice) else {
+        return;
+    };
+    let pids: Vec<u32> = procs.iter().map(|proc| proc.pid).collect();
+    send(&root.join(back.trim_start_matches('/')), &pids, warned);
+    let name = scope.file_name().unwrap_or_default().to_string_lossy();
+    eprintln!(
+        "Moved {name} ({} processes) back to {back}, which started it.",
+        pids.len()
+    );
+}
+
 fn run() -> Result<(), String> {
     let settings = settings(std::env::args().skip(1))?;
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
@@ -876,20 +895,7 @@ fn run() -> Result<(), String> {
             .iter()
             .flat_map(|slice| strays(slice, &settings.homes))
         {
-            let procs = samples(&scope);
-            if procs.is_empty() || !unlimited(|file| fs::read_to_string(scope.join(file)).ok()) {
-                continue;
-            }
-            let Some(back) = returns_to(&procs, |pid| cgroup_of(pid, &manager), &slice) else {
-                continue;
-            };
-            let pids: Vec<u32> = procs.iter().map(|proc| proc.pid).collect();
-            send(&root.join(back.trim_start_matches('/')), &pids, &mut warned);
-            let name = scope.file_name().unwrap_or_default().to_string_lossy();
-            eprintln!(
-                "Moved {name} ({} processes) back to {back}, which started it.",
-                pids.len()
-            );
+            return_stray(&scope, &root, &manager, &slice, &mut warned);
         }
         // After the terminals' work is moved, so what moved is split too.
         weights.refresh();
