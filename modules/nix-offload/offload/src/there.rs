@@ -415,12 +415,45 @@ pub fn run(
         if let Some(bundle) = &sending.bundle {
             let _ = fs::remove_file(bundle);
         }
-        ran
+        ran.map_err(Untaken::Waits)
     });
     match reached {
         Ok(ran) if ran.status != UNREACHED => ran,
         Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
-        Err(error) => unsent(asked, nix, &error),
+        Err(Untaken::Waits(why)) => unsent(asked, nix, &why),
+        Err(Untaken::Stays(why)) => stays(asked, nix, &why),
+    }
+}
+
+/// Why no builder took a build: one a builder standing again may take, or
+/// one no builder ever can, since it takes something from this machine
+/// alone.
+enum Untaken {
+    Waits(String),
+    Stays(String),
+}
+
+/// What `there` exits with when a build can't leave this machine and it
+/// wasn't asked to build here: sysexits.h's usage error, since asking
+/// again changes nothing, where 75 sends a caller round to wait for a
+/// builder. It sent a run of 93 checks round three times on 3 November.
+pub const STAYS: i32 = 64;
+
+/// A build no builder can take, `why`: built here only when asked to with
+/// `--here`, and otherwise refused with the ways it could go.
+fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
+    if asked.here {
+        eprintln!("nix-offload: {why}, so this builds here");
+        return here(asked, nix);
+    }
+    eprintln!(
+        "nix-offload: {why}, so no builder can build it; evaluate it here and give its \
+         derivations, or give --here to build on this machine"
+    );
+    Ran {
+        on: None,
+        status: STAYS,
+        sent: None,
     }
 }
 
@@ -608,17 +641,18 @@ const UNIGNORED: &[&str] = &[
 /// files stay here even where `path:` would read them: a Rust tree's
 /// target folder held 793 MB on 30 October, which no build reads and
 /// whose upload took longer than the build.
-fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, String> {
+fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, Untaken> {
     let lock = fs::read_to_string(folder.join("flake.lock")).unwrap_or_default();
     let kept = kept_here(&lock);
     if !kept.is_empty() {
-        return Err(format!(
+        return Err(Untaken::Stays(format!(
             "{} takes {} from this machine alone",
             folder.display(),
             kept.join(", ")
-        ));
+        )));
     }
-    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+    fs::create_dir_all(scratch)
+        .map_err(|error| Untaken::Waits(format!("{}: {error}", scratch.display())))?;
     let tarball = mine(scratch, "folder.tgz");
     let mut tar = Command::new("tar");
     tar.arg("-czf").arg(&tarball).arg("-C").arg(folder);
@@ -646,7 +680,10 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
     };
     if !packed.is_ok_and(|status| status.success()) {
         let _ = fs::remove_file(&tarball);
-        return Err(format!("{} couldn't be packed", folder.display()));
+        return Err(Untaken::Waits(format!(
+            "{} couldn't be packed",
+            folder.display()
+        )));
     }
     let size = fs::metadata(&tarball).map_or(0, |file| file.len());
     eprintln!(
