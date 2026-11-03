@@ -131,6 +131,11 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     # Home's Now says one was missed earlier, since it left by itself.
     desktop.photograph("launcher-home-missed")
     desktop.type_in("build fin", selecting="the laptop is ready")
+    # Its drawer says each part once: the summary as its title, then the
+    # body, not the row's name over both again (VKCF3Z, 2026-11-02).
+    desktop.launcher_until(lambda shown: shown["drawer"]["out"])
+    drawn = desktop.showing()["drawer"]
+    assert (drawn["title"], drawn["body"]) == ("Build finished", "the laptop is ready"), drawn
     desktop.photograph("launcher-notices")
     # Nothing sent it that can be gone to, so Return steps in, as the right
     # arrow does, where copying what it said comes last of its acts, never
@@ -490,10 +495,13 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     # With none on screen, Super+N opens the history, newest first.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
-    # Its row is one line; below the rows it reads whole, summary over
-    # body.
+    # Its row is one line; its drawer reads it whole, the summary as its
+    # title over the body.
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("reads") == "Quarry take\nz.mp4"
+        lambda shown: (
+            shown["drawer"]["out"]
+            and (shown["drawer"]["title"], shown["drawer"]["body"]) == ("Quarry take", "z.mp4")
+        )
     )
     # With nothing to open or go to, what it offers leads; copying what it
     # said is last.
