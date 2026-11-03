@@ -659,7 +659,10 @@ ShellRoot {
             // Typing on looks only through what the last key found
             // (Provider.qml's poolFor), and finds just what looking
             // through everything would; going back, or another word,
-            // looks through everything again.
+            // looks through everything again. Inside Programs only its
+            // programs are searched, not the acts found from the top.
+            same("a program's acts are found from the top, not inside Programs",
+                applications.things.length > applications.programs.length, true);
             const found = typed => names(applications.search(typed).rows);
             const whole = typed => {
                 applications.matchedIn(null, "", []);
@@ -668,9 +671,9 @@ ShellRoot {
             applications.matchedIn(null, "", []);
             for (const [typed, narrowed] of [["r", false], ["ra", true], ["rad", true],
                 ["ra", false], ["q", false], ["qu", true], ["qu r", true]]) {
-                const pool = applications.poolFor(applications.things, typed);
+                const pool = applications.poolFor(applications.programs, typed);
                 same(`"${typed}" looked ${narrowed ? "through the last key's" : "whole"}`,
-                    pool !== applications.things, narrowed);
+                    pool !== applications.programs, narrowed);
                 const got = found(typed);
                 same(`"${typed}" found as looking whole does`, got, whole(typed));
                 found(typed);

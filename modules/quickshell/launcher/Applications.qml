@@ -27,6 +27,19 @@
 // Programs is a collection too, home's row for them: every program, those
 // open first, each by name. It adds no row of its own to a search, where
 // each program is found by itself.
+//
+// A program's own acts are found from the top as well, each by its name
+// alone (Joel, 2026-10-31: "new meeting" finds Meet's New Meeting): its
+// desktop entry's actions, as its step lists them, and those another
+// provider opts in (`foundActs`, Provider.qml), as Meet's Join by Code
+// and Copy a New Meeting's Link are. Each wears its program's mark, its
+// note says where it lives ("Programs \u203a Meet"), and it ranks below
+// its program, a later word of its name being a lower tier (Rank.js).
+// Return does what it does inside the program, and the right arrow steps
+// into the program onto it, so the left arrow climbs back out (VKCF3Z,
+// 52da2a10).
+//
+// Inside Programs, only programs are listed and searched.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -46,7 +59,7 @@ Provider {
     // (collection-order.md).
     function everything() {
         const shut = row => (running[row.key.slice("program:".length)] ?? []).length === 0;
-        return things.slice().sort((a, b) => Number(shut(a)) - Number(shut(b))
+        return programs.slice().sort((a, b) => Number(shut(a)) - Number(shut(b))
             || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
     }
 
@@ -55,7 +68,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of poolFor(things, typed)) {
+        for (const row of poolFor(programs, typed)) {
             const byName = (row.prepared.mask & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
             const byWord = row.keywords && (row.keywords.mask & need) === need
@@ -64,7 +77,7 @@ Provider {
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
-        matchedIn(things, typed, found.map(f => f.row));
+        matchedIn(programs, typed, found.map(f => f.row));
         const grade = Math.min(3, ...found.map(f => f.grade));
         const kept = found.filter(f => f.grade === grade).sort((a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: grade };
@@ -104,7 +117,7 @@ Provider {
         return Shortcuts.actions.filter(action => action.run.join("\u0000") === run);
     }
 
-    draws: things.reduce((all, row) => all.concat(row.stands), [])
+    draws: programs.reduce((all, row) => all.concat(row.stands), [])
 
     // Each program's open windows by its desktop entry's id, the one used
     // last first, followed as niri's windows change. Read when a row is
@@ -909,8 +922,7 @@ Provider {
                 run: () => Niri.act({ FocusWindow: { id: latest.id } })
             })] : []).concat([said("verb:start", "", { run: start }),
             said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })]);
-        const taken = ["verb:program:switch", "verb:start", "verb:below", "verb:program:quit"]
-            .map(key => Words.name(key).toLowerCase());
+        const taken = provider.taken();
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
@@ -923,9 +935,73 @@ Provider {
             copies);
     }
 
+    // The names a program's own acts have here, which its desktop entry's
+    // actions of the same name leave to them.
+    function taken() {
+        return ["verb:program:switch", "verb:start", "verb:below", "verb:program:quit"]
+            .map(key => Words.name(key).toLowerCase());
+    }
+
+    // The acts other providers opt in to being found from the top, each
+    // { program, key, from }, read again only as one's list changes, never
+    // on a key.
+    readonly property var optedIn: (provider.launcher?.sources ?? [])
+        .filter(other => other !== provider && (other.foundActs ?? []).length > 0)
+        .reduce((all, other) => all.concat(other.foundActs
+            .map(one => Object.assign({ from: other }, one))), [])
+
+    // Every program's acts found from the top: its desktop entry's own,
+    // then those opted in, each made once as the lists change.
+    readonly property var acts: {
+        const taken = provider.taken();
+        const own = DesktopEntries.applications.values
+            .reduce((all, entry) => all.concat(provider.menu(entry, taken)
+                .map(act => provider.foundAct(entry, act))), []);
+        const given = provider.optedIn.map(one => {
+            const entry = DesktopEntries.byId(one.program);
+            const act = entry ? one.from.programActs(one.program)
+                .find(row => row.key === one.key) : null;
+            return act ? provider.foundAct(entry, act) : null;
+        }).filter(row => row !== null);
+        return own.concat(given);
+    }
+
+    // One of a program's acts as a row found from the top, by its own name
+    // only, so typing a program's name doesn't list every act it has. It
+    // weighs half what the rest do, so it comes after anything else found
+    // as well: a call's link just copied comes before Meet's Join by Code
+    // for "join". What Joel picks still lifts it, as it does any row.
+    function foundAct(entry, act) {
+        const trail = ["collection:applications", `program:${entry.id}`];
+        const row = thing({
+            key: `program-act:${entry.id}:${act.key}`,
+            name: act.name,
+            verb: act.verb,
+            glyph: programGlyph(entry.id),
+            hue: "program",
+            note: `${provider.collection.title} \u203a ${entry.name}`,
+            stays: act.stays === true,
+            state: act.state
+        });
+        row.weight = provider.weight / 2;
+        // One that asks, as Join by Code does, goes to its ask inside the
+        // program on Return and the right arrow alike, since what it asks
+        // for is typed there.
+        if (act.given)
+            return Object.assign(row, {
+                trail: trail.concat([act.key]),
+                spot: "",
+                stays: true,
+                run: () => provider.launcher?.goTo(row)
+            });
+        return Object.assign(row, { inside: { trail: trail, spot: act.key }, run: act.run });
+    }
+
+    things: programs.concat(acts)
+
     // Quickshell lists no entry that hides itself, so a hidden one another
     // provider declares is looked up by its id, as its list changes.
-    things: DesktopEntries.applications.values
+    readonly property var programs: DesktopEntries.applications.values
         .concat(provider.declared.map(id => DesktopEntries.byId(id))
             .filter(entry => entry?.noDisplay))
         .map(entry => {

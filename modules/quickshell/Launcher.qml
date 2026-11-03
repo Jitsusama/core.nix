@@ -1548,12 +1548,16 @@ Scope {
 
     // The right arrow: into the selected row, or, for a match that lands
     // inside what it found on Return, there as well, and for a row whose
-    // Return goes elsewhere in the launcher, there too.
+    // Return goes elsewhere in the launcher, there too. A program's act
+    // found from the top goes into its program, onto the act, so the path
+    // says where it lives (Applications.qml's foundAct).
     function inward(row) {
         if (row && row.lands)
             row.run();
         else if (row && row.landsIn)
             landInside(row, row.landsIn);
+        else if (row && row.inside && held.length === 0)
+            goTo(row.inside);
         else if (leadsElsewhere(row))
             run(row, false, false);
         else
@@ -1643,7 +1647,7 @@ Scope {
     function holdsMore(choice) {
         if (held.length > 0 && choice.given)
             return true;
-        if (held.length === 0 && choice.category)
+        if (held.length === 0 && (choice.category || choice.inside))
             return true;
         return asThing(choice, held.length === 0 || collecting) ? !!choice.verbs
             : !!choice.targets;

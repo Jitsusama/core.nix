@@ -469,6 +469,15 @@ Scope {
         }
     }
 
+    // The acts this provider gives programs (programActs) that are found
+    // from the top as well, each { program, key }: the program's desktop
+    // entry id and the act's key, as Meet's Join by Code is. Programs makes
+    // a row of each as this changes, never on a key, so it's changed only
+    // as an act comes or goes, as Copy a New Meeting's Link does with
+    // Meet's scope; acts that change all the time, as Slack's Unread
+    // does, aren't listed (Applications.qml).
+    property var foundActs: []
+
     // The programs this provider gives acts to (programActs) whose desktop
     // entries hide themselves, as Tuple's does, having no window to open:
     // Programs lists them all the same, each stepping in on Return rather

@@ -36,6 +36,11 @@ Provider {
     // Programs › Meet lists the copy only while it's granted.
     onGrantedChanged: changed()
 
+    // Found from the top too, by their names: Join by Code, and the copy
+    // only while it's granted, so it comes and goes as it does inside.
+    foundActs: [{ program: "google-meet", key: "verb:meet:code" }].concat(granted
+        ? [{ program: "google-meet", key: "verb:meet:link" }] : [])
+
     // Once made, it's copied after made's change is done: forgetting since,
     // or closing the launcher (which forgets it too), inside that change
     // would work made out again within its own change, a binding loop.
