@@ -321,6 +321,75 @@ class Screens:
         """Give the machine's time to the minute, as the launcher's foot says it."""
         return self.machine.succeed("date +%H:%M").strip()
 
+    def hand_over(self, where: dict[str, dict[str, Any]]) -> str:
+        """Keep places for stand-in sessions from a boot before, and give this boot's id.
+
+        Each stays open (pi-stays) until `handed_back`. A first zsh makes its completions
+        first, which on a busy machine can take longer than Reopen Them All waits for a window.
+        """
+        self.machine.wait_until_succeeds(
+            self.in_niri("ls -d ~/.local/state/quickshell/by-shell/*"),
+            timeout=dt.timedelta(seconds=60),
+        )
+        folder = self.machine.succeed(self.in_niri("echo ~/.local/state/quickshell/by-shell/*"))
+        self.machine.succeed(self.in_niri("zsh -lic true"), timeout=300)
+        self.machine.succeed(self.in_niri("touch $XDG_RUNTIME_DIR/pi-stays"))
+        sessions = [{"id": one, "cwd": f"/home/{self.account}"} for one in where]
+        self.keep(
+            "~/.local/state/pi/restore.json",
+            {"v": 1, "boot": "a-boot-before", "sessions": sessions},
+        )
+        self.keep(
+            f"{folder.strip()}/session-arrangement.json",
+            {"v": 1, "boots": {"a-boot-before": where}},
+        )
+        return self.machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
+
+    def reopen(self, where: dict[str, dict[str, Any]]) -> None:
+        """Hand the shell the sessions kept, as the harness does, and see it take them."""
+        sessions = [{"id": one, "cwd": f"/home/{self.account}"} for one in where]
+        handed = shlex.quote(json.dumps({"sessions": sessions}))
+        taken = self.machine.succeed(self.in_niri(f"qs ipc call sessions reopen {handed}"))
+        assert taken.strip() == "taken", taken
+
+    def handed_back(self, boot: str) -> None:
+        """Close the stand-in sessions, and leave nothing kept to reopen."""
+        # Its own pattern bracketed, so pkill doesn't match the shell it runs in.
+        self.machine.succeed(
+            self.in_niri("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+        )
+        self.keep("~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+
+    def keep(self, path: str, read: dict[str, Any]) -> None:
+        """Write a file the agents keep, whole, as they do."""
+        written = f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}"
+        self.machine.succeed(self.in_niri(written))
+
+    def sessions_sat(self, prefix: str) -> dict[str, tuple[str, int, int]]:
+        """Give each stand-in session's screen, workspace and column, by its session."""
+        listed = json.loads(self.machine.succeed(self.in_niri("niri msg --json workspaces")))
+        spaces = {one["id"]: one for one in listed}
+        windows = json.loads(self.machine.succeed(self.in_niri("niri msg --json windows")))
+        return {
+            # "pi --session <id>", then what it was told, if anything.
+            window["title"].split()[2]: (
+                spaces[window["workspace_id"]]["output"],
+                spaces[window["workspace_id"]]["idx"],
+                window["layout"]["pos_in_scrolling_layout"][0],
+            )
+            for window in windows
+            if window["title"].startswith(f"pi --session {prefix}")
+        }
+
+
+def kept_on(output: str, workspace: int, column: int) -> dict[str, Any]:
+    """Give a place kept on a screen by its connector.
+
+    The VM's two cards describe themselves alike, so each place names its connector, as one kept
+    before screens were named by what they are does.
+    """
+    return {"output": output, "workspace": workspace, "column": column, "tile": 1}
+
 
 @dataclass(frozen=True)
 class Apart:
@@ -544,36 +613,6 @@ def test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back(
     to it in their order, and the session kept on the other stays there.
     """
     machine = booted.machine
-    account = booted.account
-
-    def as_account(command: str) -> str:
-        """Run a command as the account inside its niri session, and give what it said."""
-        return machine.succeed(booted.in_niri(command))
-
-    def keep(path: str, read: dict[str, Any]) -> None:
-        """Write a file the agents keep, whole, as they do."""
-        as_account(f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}")
-
-    def on(output: str, workspace: int, column: int) -> dict[str, Any]:
-        """Give a place kept on a screen by its connector.
-
-        The VM's two cards describe themselves alike, so each place names its connector, as one
-        kept before screens were named by what they are does.
-        """
-        return {"output": output, "workspace": workspace, "column": column, "tile": 1}
-
-    def sat() -> dict[str, tuple[str, int, int]]:
-        """Give each stand-in session's screen, workspace and column, by its session."""
-        spaces = {one["id"]: one for one in json.loads(as_account("niri msg --json workspaces"))}
-        return {
-            window["title"].split()[2]: (
-                spaces[window["workspace_id"]]["output"],
-                spaces[window["workspace_id"]]["idx"],
-                window["layout"]["pos_in_scrolling_layout"][0],
-            )
-            for window in json.loads(as_account("niri msg --json windows"))
-            if window["title"].startswith("pi --session 01c5-")
-        }
 
     def home(now: dict[str, tuple[str, int, int]]) -> bool:
         """Whether each is on its own screen, in its order there."""
@@ -588,33 +627,16 @@ def test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back(
         )
 
     where = {
-        "01c5-there": on("Virtual-1", 1, 1),
-        "01c5-left": on("Virtual-2", 1, 1),
-        "01c5-right": on("Virtual-2", 1, 2),
-        "01c5-up": on("Virtual-2", 2, 1),
+        "01c5-there": kept_on("Virtual-1", 1, 1),
+        "01c5-left": kept_on("Virtual-2", 1, 1),
+        "01c5-right": kept_on("Virtual-2", 1, 2),
+        "01c5-up": kept_on("Virtual-2", 2, 1),
     }
-    sessions = [{"id": one, "cwd": f"/home/{account}"} for one in where]
-    boot = machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
-    machine.wait_until_succeeds(
-        booted.in_niri("ls -d ~/.local/state/quickshell/by-shell/*"),
-        timeout=dt.timedelta(seconds=60),
-    )
-    folder = as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
-    # A first zsh makes its completions first, which on a busy machine can
-    # take longer than Reopen Them All waits for a window.
-    machine.succeed(booted.in_niri("zsh -lic true"), timeout=300)
+    boot = booted.hand_over(where)
     try:
-        as_account("touch $XDG_RUNTIME_DIR/pi-stays")
-        keep(
-            "~/.local/state/pi/restore.json",
-            {"v": 1, "boot": "a-boot-before", "sessions": sessions},
-        )
-        keep(f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
         booted.plug("off", "Virtual-2")
         booted.outputs_say("Virtual-2", there=False)
-        handed = shlex.quote(json.dumps({"sessions": sessions}))
-        taken = as_account(f"qs ipc call sessions reopen {handed}")
-        assert taken.strip() == "taken", taken
+        booted.reopen(where)
         # The screen comes once the first has opened, with the rest to come.
         machine.wait_until_succeeds(
             booted.in_niri("niri msg --json windows | grep -q 'pi --session 01c5-'"),
@@ -623,15 +645,76 @@ def test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back(
         booted.plug("detect", "Virtual-2")
         booted.outputs_say("Virtual-2", there=True)
         deadline = time.monotonic() + 120
-        while not home(now := sat()):
+        while not home(now := booted.sessions_sat("01c5-")):
             assert time.monotonic() < deadline, f"not on their own screen in order: {now}"
             time.sleep(1)
     finally:
-        # Its own pattern bracketed, so pkill doesn't match the shell it runs in.
-        as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
-        keep("~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+        booted.handed_back(boot)
         booted.plug("detect", "Virtual-2")
         booted.outputs_say("Virtual-2", there=True)
+
+
+def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat(
+    booted: Screens,
+) -> None:
+    """Sessions reopened while every screen drops and comes back go where they sat, in order.
+
+    At the 21:55 boot on 2026-11-02 the monitor dropped for three seconds while sessions were
+    reopened, and the first session of its second workspace stayed at the end of its first.
+    """
+    machine = booted.machine
+    where = {
+        "01c6-there": kept_on("Virtual-1", 1, 1),
+        "01c6-left": kept_on("Virtual-2", 1, 1),
+        "01c6-right": kept_on("Virtual-2", 1, 2),
+        "01c6-up": kept_on("Virtual-2", 2, 1),
+        "01c6-down": kept_on("Virtual-2", 2, 2),
+    }
+
+    def home(now: dict[str, tuple[str, int, int]]) -> bool:
+        """Whether each is on its own screen, its workspace and its order there."""
+        if len(now) < len(where):
+            return False
+        left, right = now["01c6-left"], now["01c6-right"]
+        up, down = now["01c6-up"], now["01c6-down"]
+        return (
+            now["01c6-there"][0] == "Virtual-1"
+            and left[:2] == right[:2] == ("Virtual-2", 1)
+            and left[2] < right[2]
+            and up[:2] == down[:2] == ("Virtual-2", 2)
+            and up[2] < down[2]
+        )
+
+    boot = booted.hand_over(where)
+    try:
+        booted.reopen(where)
+        # Both screens go once the first has opened, as an undock does, and
+        # come back once the third has begun, with the rest to come.
+        machine.wait_until_succeeds(
+            booted.in_niri("niri msg --json windows | grep -q 'pi --session 01c6-'"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        booted.plug("off")
+        for screen in sorted(booted.both):
+            booted.outputs_say(screen, there=False)
+        # One that opens with no screen to go to holds the next back until a
+        # screen comes or its 30 seconds' patience runs out, so the third may
+        # wait that long.
+        machine.wait_until_succeeds(
+            "pgrep -f 'session 01c6-righ[t]'", timeout=dt.timedelta(seconds=180)
+        )
+        booted.plug("detect")
+        for screen in sorted(booted.both):
+            booted.outputs_say(screen, there=True)
+        deadline = time.monotonic() + 120
+        while not home(now := booted.sessions_sat("01c6-")):
+            assert time.monotonic() < deadline, f"not where they sat: {now}"
+            time.sleep(1)
+    finally:
+        booted.handed_back(boot)
+        booted.plug("detect")
+        for screen in sorted(booted.both):
+            booted.outputs_say(screen, there=True)
 
 
 def test_a_niri_from_before_the_hold_takes_the_settings_a_switch_brings(booted: Screens) -> None:
