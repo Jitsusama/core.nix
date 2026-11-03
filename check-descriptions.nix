@@ -1892,11 +1892,12 @@
   vm-a-call-is-written-down = ''
     a call program recording in Joel's PipeWire is heard by call-transcripts from its microphone
     and its own playback, and kept as one record under the meeting on, asked of Google's daemon,
-    which ends with the call; its transcript holds both sides' three turns in order and nothing another program played;
-    then the call is summed up into summary.md and its record, saying what was decided, and a
-    notice from Calls says the meeting's summary is ready; a notice raised as the call started
-    offers the line for its chat, and the next meeting, stopped from that notice's Stop
-    Transcribing, lets its recorders go with the call still on and isn't recorded once rejoined
+    which ends with the call; its transcript holds both sides' three turns in order and nothing
+    another program played; then the call is summed up into summary.md and its record, saying
+    what was decided, and a notice from Calls says the meeting's summary is ready; a notice raised
+    as the call started offers the line for its chat, and the next meeting, stopped from that
+    notice's Stop Transcribing, lets its recorders go with the call still on and isn't recorded
+    once rejoined
   '';
   vm-a-microphone-is-noise-cancelled = ''
     a microphone in Joel's PipeWire is offered a second time as "its name, Noise Cancelled",

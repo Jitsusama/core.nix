@@ -180,11 +180,14 @@ mod tests {
 
     #[test]
     fn the_meeting_on_is_the_latest_started_of_those_not_ended() {
+        fn held(id: &str, title: &str, start: u64, end: u64) -> Value {
+            json!({"id": id, "title": title, "start": start, "end": end})
+        }
         let google = [
-            json!({"id": "old", "title": "Done", "start": NOW - 90 * MINUTE, "end": NOW - 30 * MINUTE}),
-            json!({"id": "long", "title": "All day", "start": NOW - 60 * MINUTE, "end": NOW + 9 * MINUTE}),
-            json!({"id": "e1", "title": "Planning", "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE}),
-            json!({"id": "later", "title": "Lunch", "start": NOW + 60 * MINUTE, "end": NOW + 90 * MINUTE}),
+            held("old", "Done", NOW - 90 * MINUTE, NOW - 30 * MINUTE),
+            held("long", "All day", NOW - 60 * MINUTE, NOW + 9 * MINUTE),
+            held("e1", "Planning", NOW - 5 * MINUTE, NOW + 25 * MINUTE),
+            held("later", "Lunch", NOW + 60 * MINUTE, NOW + 90 * MINUTE),
         ];
         let on = meeting(&google, NOW).unwrap();
         assert_eq!(on.title, "Planning");
