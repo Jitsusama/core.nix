@@ -10,8 +10,10 @@
 # Its keys are Neovim's own, from one table in the reader (src/keys.rs): j
 # and k a line, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen,
 # gg and G, counts, / and ? to search with n and N, marks, '' and Ctrl+O and
-# Ctrl+I through the jumps, q, ZZ or Space w to close, and Space ? for every
-# key. Escape only cancels. The same table, as the launcher lists it over
+# Ctrl+I through the jumps, g x to follow a link by its label, q, ZZ or
+# Space w to close, and Space ? for every key. A link to another markdown
+# file sets it in the same window, as Neovim's gf, keeping the place on the
+# first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only cancels. The same table, as the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
 #

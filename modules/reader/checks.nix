@@ -42,7 +42,9 @@ onLinux {
   # in them, every line of a table and of records on the text's pitch, a
   # picture known by its first bytes, a place kept as a block and a way into
   # it and read back as it was, a save heard whether written in place or
-  # moved over and another file's not, the file shown said for the launcher
+  # moved over and another file's not, and the new file's once the watch
+  # moves, a link to markdown set in place, a label's letters on its link's
+  # baseline within a pixel, the file shown said for the launcher
   # and taken away on closing, the theme's roles read with Osaka Jade for
   # the rest, search found across a hyphen's break, an equation shown as
   # written when MiTeX is missing, counts and keys as Neovim takes them, and
@@ -78,8 +80,11 @@ onLinux {
   # keys: G goes to the end, gg to the top, 5j five lines, Ctrl+F a screen,
   # Ctrl+O back, Ctrl+Equal and Ctrl+0 zoom in and back, / finds and n goes
   # on, Space ? lists the keys, Escape puts the list away, g x labels the
-  # link at the page's end and its label follows it to the heading, and q
-  # closes it
+  # link at the page's end and its label follows it to the heading, a link
+  # to another markdown file sets that file in the same window, which the
+  # launcher's Recent is told and whose saves are heard, Ctrl+O comes back
+  # to the place left on the first and Ctrl+I goes on to the second again,
+  # and q closes it
   # (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
@@ -104,6 +109,8 @@ onLinux {
         ${screen}
         {
           echo '# Every Key Neovim Has'
+          echo
+          echo 'Some of it is on [the second page](second.md).'
           for n in $(seq 120); do
             echo
             echo "Paragraph $n says enough to take a line or two of the page, so that every key here has somewhere to go."
@@ -111,6 +118,7 @@ onLinux {
           echo
           echo '[Back to the top](#every-key-neovim-has)'
         } > page.md
+        printf '# The Second Page\n\nWhat the first page sends here.\n' > second.md
         timeout 300 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
           '${srgb colours.strong}' > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran said 2> /dev/null; exit 1; fi
