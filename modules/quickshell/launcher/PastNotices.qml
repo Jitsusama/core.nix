@@ -74,9 +74,11 @@ Provider {
             // name, which already holds both, over both again (VKCF3Z,
             // 2026-11-02). With no body it would only repeat the name, so
             // there's no drawer (Launcher.qml's drawerAdds). Over them,
-            // who sent it and when.
+            // who sent it and when. Its words read in the face its card
+            // reads them in, so they don't change face between the two
+            // (VKCF3Z, 2026-11-03).
             drawer: { eyebrow: provider.whoAndWhen(notice), title: notice.summary,
-                body: notice.body },
+                body: notice.body, sans: true },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml).
             glyph: String.fromCodePoint(notice.glyph),
@@ -110,11 +112,14 @@ Provider {
     }
 
     // Who sent a notice and when, as its drawer's eyebrow says it: the
-    // time alone today, and its day before.
+    // sender by the name its card signs it with (Notices.qml), so the two
+    // never differ (VKCF3Z, 2026-11-03), and the time alone today, and its
+    // day before.
     function whoAndWhen(notice) {
         const when = new Date(notice.at);
         const today = new Date().toDateString() === when.toDateString();
-        return [notice.app, Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm")]
+        const who = notice.app === "" ? "" : Notices.sender(notice.app).name;
+        return [who, Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm")]
             .filter(part => part !== "").join(" \u00b7 ");
     }
 

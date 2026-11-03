@@ -3525,6 +3525,11 @@ Scope {
                     rows: root.matches.slice(0, 20)
                         .map((_, at) => root.hundredths(list.baselineOf(at)))
                 },
+                // The facts it draws, by name, whether each name is on one
+                // line whole, and where its last line's box may end.
+                drawnFacts: drawerCard.facts.map(fact => fact.label ?? ""),
+                labelsWhole: drawerCard.labelsWhole,
+                foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),

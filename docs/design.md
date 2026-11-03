@@ -1217,12 +1217,17 @@ works the same way everywhere.
   beside the card's right side, a floating surface like the card, top
   aligned and as tall as it, 12 (m) from it. It's set as a plate, a small
   page about the selected thing (look 3): an eyebrow saying when or
-  where, in Monaspace's capitals at body, 500, muted, tracked 0.16 em;
-  the thing's name in the serif upright at title, 500, drawn for 72
-  points, strong; its facts as a name in muted and a figure in text, the
-  figures on one edge, a fact still being read a fixed placeholder; then
-  its words, then its picture. Its text is as far from its frame as the
-  card's (the inset, l and the hairline), and every line lies on one of
+  where, in Monaspace's capitals at body, 500, muted, tracked 0.16 em, a
+  notice's sender by the name its card signs it with; the thing's name
+  in the serif upright at title, 500, drawn for 72 points, strong; its
+  facts as a name in muted and a figure in text, the names whole and the
+  figures on one edge 24 (xl) beyond the longest, a figure wrapping with
+  each number kept to its unit, a fact still being read a fixed
+  placeholder, and none that only says the name again; then its words,
+  a notice's in the sans its card reads them in; then its picture. Its
+  text is as far from its frame as the card's (the inset, l and the
+  hairline) on every side, its foot included, so it ends at the last
+  whole line inside that, and every line lies on one of
   the card's, so the two read as one page: the eyebrow on the field's
   centre, the name on the first row's baseline (the serif's own line box
   would set it 1.72 lower), and the rest on a pitch of 24 (xl), half a

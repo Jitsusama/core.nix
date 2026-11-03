@@ -67,6 +67,10 @@ Singleton {
         // The compositor, saying a screenshot was taken or its settings
         // didn't load.
         "niri": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
+        // notify-send is the tool a notice came through, not who sent it, so
+        // a notice it names no sender for is the desktop's, on its card and
+        // its plate alike (VKCF3Z, 2026-11-03).
+        "notify-send": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
         // never missed, since the margin's mark says it while it holds.
         "pi": {

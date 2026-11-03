@@ -53,7 +53,10 @@ Floating {
 
     readonly property string eyebrow: shown ? shown.eyebrow ?? "" : ""
     readonly property string title: shown ? shown.title ?? "" : ""
-    readonly property var facts: shown ? (shown.facts ?? []).filter(fact => fact) : []
+    // Its facts, less any that only says the title again, as a server's
+    // name would right under it (VKCF3Z, 2026-11-03).
+    readonly property var facts: shown ? (shown.facts ?? [])
+        .filter(fact => fact && String(fact.value ?? "") !== title) : []
     readonly property string body: shown ? shown.body ?? "" : ""
     readonly property string picture: shown ? shown.picture ?? "" : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
@@ -140,25 +143,49 @@ Floating {
     }
 
     // The widest of its facts' names, which their values start beyond, so
-    // the values share one edge.
+    // the values share one edge: a name is never cut short, and a value
+    // wraps instead (VKCF3Z, 2026-11-03). Only one so long it would leave
+    // its figure less than eight figures' room breaks onto a second line.
     FontMetrics {
         id: factFace
         font.family: Theme.mono.family
         font.pointSize: Theme.mono.large
     }
-    readonly property real labelsWide: Math.min(column.width * 0.4,
+    readonly property real labelsWide: Math.min(
+        column.width - labelsGap - factFace.advanceWidth("00000000"),
         Math.ceil(Math.max(0, ...facts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
+    // Whether every name fits its column on one line, for the launcher to
+    // report.
+    readonly property bool labelsWhole: facts.every(fact =>
+        factFace.advanceWidth(fact.label ?? "") <= labelsWide)
+    // Where the last line it shows ends, down from its top.
+    readonly property real foot: Theme.border + view.height
+    // Between a name and its value, a run's width apart, so the two never
+    // read as one.
+    readonly property real labelsGap: Theme.space.xl
+    // A number and its unit kept on one line, so "8 s" never leaves its s
+    // alone on the next (VKCF3Z, 2026-11-03).
+    function unbroken(words) {
+        return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
+    }
+    // Where the first line's box begins, down from the content's top.
+    readonly property real firstLine: drawer.rowLine - Theme.border - drawer.pitch / 2
 
     Flickable {
         id: view
         width: parent.width
-        height: drawer.tall - 2 * Theme.border
+        // Ending at the last whole line that keeps its inset and a step
+        // from the frame below, as the text does on every other side, so
+        // nothing runs into the foot of the plate; Shift+Up and Down bring
+        // up the rest (VKCF3Z, 2026-11-03).
+        height: drawer.firstLine + Math.max(0, Math.floor((drawer.tall - 2 * Theme.border
+            - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch)) * drawer.pitch
         clip: true
         interactive: false
         contentWidth: width
         // Never ending between two lines, so scrolled to its end its lines
         // are still the card's.
-        readonly property real natural: column.height
+        readonly property real natural: flow.y + flow.height
         contentHeight: natural <= height ? natural
             : height + Math.ceil((natural - height) / drawer.pitch) * drawer.pitch
 
@@ -195,7 +222,7 @@ Floating {
             // line on.
             Column {
                 id: flow
-                y: drawer.rowLine - Theme.border - drawer.pitch / 2
+                y: drawer.firstLine
                 width: parent.width
                 spacing: drawer.pitch
 
@@ -243,7 +270,7 @@ Floating {
                             readonly property real base: drawer.pitch / 2 + drawer.dropped
 
                             width: parent.width
-                            height: Math.max(1, value.lineCount) * drawer.pitch
+                            height: Math.max(1, label.lineCount, value.lineCount) * drawer.pitch
 
                             Text {
                                 id: label
@@ -251,7 +278,9 @@ Floating {
                                 y: fact.base - baselineOffset
                                 text: fact.modelData.label ?? ""
                                 textFormat: Text.PlainText
-                                elide: Text.ElideRight
+                                wrapMode: Text.Wrap
+                                lineHeightMode: Text.FixedHeight
+                                lineHeight: drawer.pitch
                                 color: Theme.muted
                                 font.family: Theme.mono.family
                                 font.pointSize: Theme.mono.large
@@ -262,10 +291,10 @@ Floating {
                             // at, a long one breaking onto the pitch.
                             Text {
                                 id: value
-                                x: drawer.labelsWide + Theme.space.l
+                                x: drawer.labelsWide + drawer.labelsGap
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
-                                text: fact.known ? String(fact.modelData.value) : "\u2026"
+                                text: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 textFormat: Text.PlainText
                                 wrapMode: Text.Wrap
                                 lineHeightMode: Text.FixedHeight
@@ -298,8 +327,12 @@ Floating {
                         lineHeightMode: Text.FixedHeight
                         lineHeight: drawer.pitch
                         color: Theme.text
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.large
+                        // A notice's in the face its card reads it in.
+                        font.family: drawer.shown?.sans === true ? Theme.sans.family
+                            : Theme.mono.family
+                        font.pointSize: drawer.shown?.sans === true ? Theme.sans.large
+                            : Theme.mono.large
+                        font.features: drawer.shown?.sans === true ? { "ss05": 1 } : ({})
                     }
                 }
 

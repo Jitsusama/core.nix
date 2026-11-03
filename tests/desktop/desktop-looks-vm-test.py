@@ -41,6 +41,9 @@ MOST = 520
 # and the half a hundredth each of two lengths the launcher reports rounded may take.
 PITCH = 24
 NEAR = 0.02
+# How far the text keeps from the plate's frame on every side, its foot included: an inset and a
+# step, 4 and 16, inside the border.
+INSIDE = 20
 
 
 @pytest.fixture(scope="module")
@@ -123,6 +126,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         )
         # One empty line below the title.
         assert abs(lines["words"] - (lines["title"] + 2 * PITCH)) <= NEAR, drawer
+        assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
         machine.send_key("esc")
 
@@ -176,6 +180,16 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
                 later > earlier and on_the_pitch(later, earlier)
                 for earlier, later in pairwise(facts)
             ), f"at {scale} a fact is off the pitch: {drawer}"
+            # Its name is the title, so it isn't said again under it; every other name is
+            # whole; and what doesn't fit above the foot's inset waits for Shift and the arrows.
+            assert "Name" not in drawer["drawnFacts"], drawer
+            assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+            assert drawer["more"] or facts[-1] < drawer["foot"], (
+                f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
+            )
+            assert drawer["height"] - drawer["foot"] >= INSIDE - NEAR, (
+                f"at {scale} the last line runs into the plate's foot: {drawer}"
+            )
             desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
             machine.send_key("esc")
     finally:

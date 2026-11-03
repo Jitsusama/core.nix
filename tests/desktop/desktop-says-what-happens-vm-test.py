@@ -196,7 +196,8 @@ def test_a_notices_drawer_says_who_sent_it_and_shift_scrolls_it(desktop: Desktop
         lambda shown: shown["drawer"]["out"] and shown["drawer"]["title"] == "Long build log"
     )
     drawer = desktop.showing()["drawer"]
-    assert re.fullmatch(r"notify-send \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
+    # Signed as a card signs it: a program known by no other name by its own, in title case.
+    assert re.fullmatch(r"Desktop \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
     assert drawer["more"], f"forty lines fit the drawer: {drawer}"
     assert "\u21e7\u2191\u2193 scroll" in desktop.showing()["selected"]["told"], desktop.showing()
     desktop.photograph("launcher-plate")
