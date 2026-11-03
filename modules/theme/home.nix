@@ -349,6 +349,24 @@ let
       tenths (builtins.fromJSON cfg.font.${face}.size * power (builtins.fromJSON cfg.type.ratio) step)
     ) cfg.type.steps;
 
+  # The serif's sizes, the mono's grown by their capitals' ratio, to a
+  # hundredth of a point, since a tenth would set its capitals a fraction of
+  # a pixel off the mono's.
+  serifSizes = lib.mapAttrs (
+    _: step:
+    let
+      n = builtins.floor (
+        builtins.fromJSON cfg.font.mono.size
+        * builtins.fromJSON cfg.font.serif.capitals
+        * power (builtins.fromJSON cfg.type.ratio) step
+        * 100
+        + 0.5
+      );
+      cents = n - n / 100 * 100;
+    in
+    "${toString (n / 100)}.${lib.fixedWidthNumber 2 cents}"
+  ) cfg.type.steps;
+
   # The marks every surface draws from, looked up by meaning, each with a
   # stand-in a console font can draw (glyphs.nix).
   marks = import ./glyphs.nix { inherit lib; };
@@ -565,6 +583,55 @@ in
           '';
         };
       };
+      serif = {
+        family = lib.mkOption {
+          type = lib.types.str;
+          # Joel, 2 November: "i love serif, i'm willing to give fraunces a
+          # try".
+          default = "Fraunces";
+          description = ''
+            The serif face, for the desktop's voice: what the launcher says
+            to him rather than what he typed or picked.
+          '';
+        };
+        italic = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether the serif face is set in its italic.";
+        };
+        weight = lib.mkOption {
+          type = lib.types.ints.between 100 900;
+          # A touch under regular, as the page's text is, so a light italic
+          # on a dark ground doesn't swell.
+          default = 380;
+          description = "The serif face's weight, on its weight axis.";
+        };
+        axes = lib.mkOption {
+          type = lib.types.attrsOf lib.types.number;
+          # Softened all the way, its wonky letters on, and drawn for the
+          # size a heading reads at rather than a poster's.
+          default = {
+            SOFT = 100;
+            WONK = 1;
+            opsz = 24;
+          };
+          description = ''
+            The serif face's variable axes but its weight, by their tags, as
+            the variable font takes them.
+          '';
+        };
+        capitals = lib.mkOption {
+          type = number;
+          # The mono face's capitals stand 0.730 of its em and the serif's
+          # 0.700, so the serif is drawn 0.730 / 0.700 as large.
+          default = "1.042857";
+          description = ''
+            How much larger than the mono face the serif face is drawn at
+            each step, so their capitals stand as tall: it's sized by
+            capitals rather than by its em.
+          '';
+        };
+      };
     };
 
     space = {
@@ -618,6 +685,12 @@ in
         default = sizes "sans";
         defaultText = lib.literalMD "`font.sans.size` times the ratio to each step's power";
         description = "Each step's size in points, in the proportional face.";
+      };
+      serif = lib.mkOption {
+        type = lib.types.attrsOf number;
+        default = serifSizes;
+        defaultText = lib.literalMD "`type.mono`'s sizes times `font.serif.capitals`";
+        description = "Each step's size in points, in the serif face, its capitals as tall as the mono's.";
       };
     };
 

@@ -299,7 +299,8 @@ over any reviewer's.
 ## Type
 
 Two typefaces from one family. Monaspace and Mona Sans were drawn together by
-GitHub Next, so they share proportions, x-height and voice.
+GitHub Next, so they share proportions, x-height and voice. Beside them, two
+faces for one job each: Hubot Sans, the family's wide cut, and a serif.
 
 - **Monospace** lives where characters line up or the content is code: the
   terminal, Neovim, a launcher's input, numbers that change in place (a clock,
@@ -311,6 +312,15 @@ GitHub Next, so they share proportions, x-height and voice.
   ligatures wherever monospace is drawn. The other Monaspace voices only where
   they mean something, such as a second voice for italics so comments read as
   handwriting, chosen by looking.
+- **Wide** (Hubot Sans Expanded) sets a page's titles and headings, in the
+  reader.
+- **Serif** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
+  points) is the desktop's voice: what the launcher says to Joel rather than
+  what he typed, such as its hint while nothing's typed and its words when
+  nothing is shown. Joel, 2 November: "i love serif, i'm willing to give
+  fraunces a try". It's sized by capitals, not by its em: Monaspace's stand
+  0.730 of an em and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large
+  and sits on the line Monaspace would, aligned by baseline.
 - **Numbers are typography too.** Tabular figures wherever a number changes
   in place, so it never jiggles; units set smaller than the number; the same
   precision for the same quantity everywhere.

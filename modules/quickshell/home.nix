@@ -1669,6 +1669,19 @@ in
           )}
               readonly property var mono: ${face font.mono.family type.mono}
               readonly property var sans: ${face font.sans.family type.sans}
+              // The voice's face, set by its variable axes (font.variableAxes)
+              // with its weight among them, each step sized by capitals.
+              readonly property var serif: ${
+                object (
+                  {
+                    inherit (font.serif) family italic weight;
+                    axes = font.serif.axes // {
+                      wght = font.serif.weight;
+                    };
+                  }
+                  // lib.mapAttrs (_: builtins.fromJSON) type.serif
+                )
+              }
               readonly property var space: ${object (removeAttrs space [ "unit" ])}
               readonly property int border: ${toString shape.border}
               readonly property int radius: ${toString shape.radius}

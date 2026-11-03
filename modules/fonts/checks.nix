@@ -17,7 +17,7 @@ let
     self.nixosModules.graphical
     { jitsusama.login.account = "someone"; }
   ];
-  inherit ((account graphical).jitsusama.theme.font) sans mono;
+  inherit ((account graphical).jitsusama.theme.font) sans mono serif;
   # A check run with that machine's fontconfig: its /etc/fonts copied here,
   # its files naming each other here rather than under /etc, and fontconfig
   # pointed at the copy for the files it names without a folder.
@@ -52,6 +52,20 @@ onLinux {
     fc-match -f '%{file}\n' '${sans.family}' > theme
     cat theme
     test "$(cat theme)" = ${pkgs.mona-sans}/share/fonts/opentype/MonaSans-Regular.otf
+  '';
+
+  # Asked for the theme's serif face, the machine's fontconfig lists its two
+  # variable files and no static cut, and gives the italic one when the
+  # italic is asked for, so the theme's axes are set on the file that has
+  # them.
+  the-serif-is-its-variable-files = withFontconfig "the-serif-is-its-variable-files" ''
+    fc-list -f '%{file}\n' '${serif.family}' | sort -u > listed
+    cat listed
+    test "$(wc -l < listed)" = 2
+    ! grep -v -F '[SOFT,WONK,opsz,wght].ttf' listed
+    fc-match -f '%{file}\n' '${serif.family}:slant=100' > matched
+    cat matched
+    grep -q -- '-Italic\[' matched
   '';
 
   # Asked for a Mac's system font or its monospaced one by any name a page
