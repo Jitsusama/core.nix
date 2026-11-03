@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
+import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -58,6 +61,79 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
     desktop.photograph("capture")
     with desktop.told("shows card Screenshot captured"), desktop.captured():
         desktop.machine.send_key("ret")
+
+
+def test_the_capture_keys_take_the_launcher_in_and_leave_it_open(desktop: Desktop) -> None:
+    """Shift+Print and Ctrl+Print, pressed while the launcher shows, take it in and leave it open.
+
+    Joel captures what the launcher shows by the keys he captures anything with, so the
+    picture and the recording are of the screen as he sees it, the launcher in it. Each is
+    judged against the screen with the launcher and the screen without it, as QEMU has them.
+    """
+    machine = desktop.machine
+    recorder = "pgrep -u 1000 -f '[w]f-recorder -y --file'"
+    mark = "/run/user/1000/before-capturing"
+    desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
+    bare = desktop.settled_screen("capture-the-launcher-closed")
+    machine.send_key("meta_l-spc")
+    desktop.launcher_ready()
+    shown = desktop.showing()
+    seen = desktop.settled_screen("capture-the-launcher-open")
+    with desktop.captured():
+        machine.send_key("shift-sysrq")
+    still_shown(desktop, shown)
+    picture = desktop.as_account(f"ls -t {desktop.pictures}/*.png | head -1").strip()
+    machine.succeed(f"cp {shlex.quote(picture)} /run/user/1000/taken-picture.png")
+    the_screen_with_the_launcher(desktop, "/run/user/1000/taken-picture.png", seen, bare)
+    machine.send_key("ctrl-sysrq")
+    machine.wait_until_succeeds(desktop.in_session(recorder), timeout=WAKING)
+    still_shown(desktop, shown)
+    # A few seconds of the launcher still, so its last frame is as seen.
+    time.sleep(3)
+    machine.send_key("ctrl-sysrq")
+    machine.wait_until_fails(desktop.in_session(recorder), timeout=WAKING)
+    still_shown(desktop, shown)
+    videos = f"-newer {mark} -type f -name '*.mp4'"
+    # Named by the time it began, so with a space in it.
+    recorded = desktop.as_account(f"find ~/Videos/Recordings {videos}").splitlines()
+    assert len(recorded) == 1, recorded
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    frame = "/run/user/1000/taken-video.png"
+    machine.succeed(f"{ffmpeg} -sseof -1 -i {shlex.quote(recorded[0])} -update 1 -y {frame}")
+    the_screen_with_the_launcher(desktop, frame, seen, bare)
+
+
+def still_shown(desktop: Desktop, shown: Json) -> None:
+    """Wait until the launcher shows as it did, open and holding the keys on the same row."""
+    desktop.launcher_until(
+        lambda now: (
+            now["open"]
+            and now["keys"]
+            and now["held"] == shown["held"]
+            and (now["selected"] or {}).get("name") == (shown["selected"] or {}).get("name")
+        )
+    )
+
+
+def the_screen_with_the_launcher(
+    desktop: Desktop, taken: str, seen: Image.Image, bare: Image.Image
+) -> None:
+    """Fail unless what was taken is far nearer the screen with the launcher than without it.
+
+    A video's colours are near the screen's, not the same, so it's judged by which it's
+    nearer, kept for the gallery either way.
+    """
+    desktop.machine.copy_from_vm(taken)
+    name = taken.rsplit("/", 1)[1]
+    picture = Image.open(desktop.machine.out_dir / name).convert("RGB").resize(seen.size)
+    near, far = unlike(picture, seen), unlike(picture, bare)
+    assert near * 4 < far, f"{name} is {near:.1f} from the launcher open, {far:.1f} from closed"
+
+
+def unlike(one: Image.Image, other: Image.Image) -> float:
+    """Give how far apart two pictures of one size are, on average, from 0 to 255."""
+    apart = ImageChops.difference(one, other).convert("L")
+    return float(ImageStat.Stat(apart).mean[0])
 
 
 def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop: Desktop) -> None:
