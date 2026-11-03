@@ -33,6 +33,21 @@ let
   opened = guestOf { authorizedKeys = [ another ]; };
   marked = guestOf { features = [ "own-code" ]; };
   system = guest: builtins.unsafeDiscardStringContext guest.system.build.toplevel.drvPath;
+
+  # The lines of what sudo reads on a Mac with these settings that let
+  # anything run without a password, and the rule each account given should
+  # get: the two restarts, whole, and nothing else. nix-darwin writes the
+  # file whatever this module says, with lines of its own.
+  passwordless =
+    settings:
+    builtins.filter (lib.hasInfix "NOPASSWD") (
+      lib.splitString "\n" (macOf settings).environment.etc."sudoers.d/10-nix-darwin-extra-config".text
+    );
+  rule =
+    account:
+    "${account} ALL=(root) NOPASSWD: "
+    + "/bin/launchctl kickstart -k system/org.nixos.linux-builder-vz, "
+    + "/bin/launchctl kickstart -k system/systems.determinate.nix-daemon";
 in
 {
   # A key from another machine lets it in to the VM's builder, where the
@@ -48,6 +63,26 @@ in
         && plain.services.openssh.authorizedKeysFiles == cached.services.openssh.authorizedKeysFiles
         && system plain == system cached
         && system opened != system cached
+      );
+
+  # Only the accounts named may restart the VM and the Nix daemon without a
+  # password, each by the whole command, so the rule lets nothing else
+  # through; with none named, sudo gets no rule at all.
+  linux-builder-lets-only-those-named-restart-it =
+    holds "linux-builder-lets-only-those-named-restart-it"
+      "The Mac's sudo rule for restarting the Linux builder wasn't exactly the two restarts for each account named, or there was one with none named."
+      (
+        passwordless { } == [ ]
+        &&
+          passwordless {
+            restartableBy = [
+              "someone"
+              "other"
+            ];
+          } == [
+            (rule "someone")
+            (rule "other")
+          ]
       );
 
   # A feature of the machine's own is offered on the Mac's line and by the
