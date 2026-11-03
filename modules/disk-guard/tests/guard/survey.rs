@@ -53,6 +53,18 @@ fn offers_using(
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
 ) -> Vec<Offer> {
+    surveyed(config, processes, finished, ran, uses).0
+}
+
+/// What a survey offers, and how many times it walked a root for targets
+/// and installs.
+fn surveyed(
+    config: &Config,
+    processes: &[Process],
+    finished: &dyn Fn(&Path) -> bool,
+    ran: &BTreeMap<String, f64>,
+    uses: &Uses,
+) -> (Vec<Offer>, usize) {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
@@ -69,10 +81,11 @@ fn offers_using(
         uses,
         kept: Vec::new(),
         counted: std::cell::RefCell::default(),
+        walked: 0,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
-    found
+    (found, world.walked)
 }
 
 fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {
@@ -199,6 +212,26 @@ fn targets_and_installs_are_offered_under_their_roots() {
     );
     let unfinished = offers(&config, &[], &|_| false);
     assert!(!find(&unfinished, &target).candidate.spent);
+}
+
+#[test]
+fn a_root_targets_and_installs_share_is_walked_once() {
+    // One walk finds both, so walking a root once a source is twice the
+    // work: on 2 November the account's three roots of checkouts and
+    // trees were each walked for cargo's targets and again for installs.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let roots = dir(&home.join("src"));
+    let (_, target, modules) = src(&roots);
+    let config = config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{0}"] }},
+           "installs": {{ "kind": "installs", "roots": ["{0}"] }}"#,
+        roots.display()
+    ));
+    let (found, walked) = surveyed(&config, &[], &|_| true, &BTreeMap::new(), &Uses::default());
+    assert_eq!(walked, 1);
+    assert_eq!(find(&found, &target).candidate.class, Class::Target);
+    assert_eq!(find(&found, &modules).candidate.class, Class::Install);
 }
 
 #[test]
