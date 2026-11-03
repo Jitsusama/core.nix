@@ -1092,11 +1092,13 @@ in
         order = 92;
         source = "traffic";
       };
-      # Whether anything Joel uses waited, from lag-watch, which a machine
-      # without it simply doesn't answer.
+      # Whether anything Joel uses waited, from lag-watch, only where it
+      # runs, so a machine without it names no Lag in Machine and one with it
+      # always does, before its first ten seconds too.
       waits = {
         order = 93;
         source = "waits";
+        enable = config.systemd.user.services ? lag-watch;
       };
       # Each device's firmware and any update offered for it, from fwupd,
       # only where the system runs it, so a machine without it names no

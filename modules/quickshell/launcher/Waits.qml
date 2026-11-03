@@ -3,8 +3,8 @@
 // points at is the processor, the memory and the disk (Joel,
 // 2026-10-28). lag-watch (modules/lag-watch) writes its last ten
 // seconds to a file as each ends; it's read when asked, so nothing is
-// watched or spawned. A machine without lag-watch has no file, and so no
-// answer.
+// spawned, and watched only until its first ten seconds are written. A
+// machine without lag-watch has no Waits (home.nix).
 //
 // Joel, 2026-10-25: "computer lag is confusing as well, i don't really
 // understand what it is trying to say or what i can do about it." So it
@@ -82,10 +82,17 @@ Provider {
         }, fields));
     }
 
+    // Whether lag-watch hasn't written its first ten seconds yet, as just
+    // after a start: Lag stands dimmed where it's held until they're
+    // written, and says them there as they are, so Machine's rows neither
+    // lack it nor take it in later below Firmware (UTMDGL, 2026-11-03).
+    property bool first: false
+
     function told() {
         const window = parsed(read(status));
-        if (!window || !Array.isArray(window.trouble))
-            return null;
+        provider.first = !window || !Array.isArray(window.trouble);
+        if (provider.first)
+            return { headline: said("first"), copy: "", rows: [], whole: true, gone: true };
         const waited = Theme.glyph.lag;
         const fine = Theme.glyph.fine;
         const rows = window.trouble.map(line => copyRow({ name: line, side: "", glyph: waited }));
@@ -119,5 +126,7 @@ Provider {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/lag-watch/status.json`
         blockLoading: true
         printErrors: false
+        watchChanges: provider.first
+        onFileChanged: provider.answered()
     }
 }
