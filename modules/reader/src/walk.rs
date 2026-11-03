@@ -686,7 +686,21 @@ impl Walker<'_> {
             .find_syntax_by_token(lang)
             .unwrap_or_else(|| self.pieces.syntaxes.find_syntax_plain_text());
         let mut h = HighlightLines::new(syntax, &self.pieces.theme);
-        self.out.push_str("#codeblock[");
+        // The template places the language and widens the block by the
+        // mono's width, so it's told its lines' lengths in characters.
+        let columns = |line: &str| -> usize {
+            line.trim_end()
+                .chars()
+                .map(|c| if c == '\t' { 4 } else { 1 })
+                .sum()
+        };
+        let first = code.lines().next().map_or(0, columns);
+        let longest = code.lines().map(columns).max().unwrap_or(0);
+        let _ = write!(
+            self.out,
+            "#codeblock(lang: {}, first: {first}, longest: {longest})[",
+            literal(lang)
+        );
         for line in syntect::util::LinesWithEndings::from(code) {
             match h.highlight_line(line, &self.pieces.syntaxes) {
                 Ok(runs) => {

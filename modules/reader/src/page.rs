@@ -241,10 +241,41 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
 })
-#let codeblock(body) = block(fill: ink.sunken, inset: 10pt, radius: 3pt, width: 100%, {
-  // Code keeps its own line, by its size, not the words'.
-  set par(leading: 0.62em)
-  text(font: face.code, size: 11.5pt, body)
+// A code block: the mono at 10.5 pt on a 15 pt line, on the sunken ground
+// inset m by l. Its height rounds up to the half line, shared above and
+// below its lines, so the words after it stay on the page's grid. Its top
+// stands one and a half lines under the baseline before it, and the next
+// baseline two lines under its foot, so the room either side looks even. Code wider than the measure
+// widens the block evenly, as far as a table may spread. The language is
+// an eyebrow at the top right, on the first line's baseline, or on a line
+// of its own when the first line would reach it.
+#let code-size = 10.5pt
+#let code-line = 15pt
+#let code-inset = (x: 12pt, y: 9pt)
+// The mono's set rules sit outside `layout`, since `measure` in its
+// closure takes the styles `layout` was called with.
+#let codeblock(lang: "", first: 0, longest: 0, body) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, {
+ set text(font: face.code, size: code-size, top-edge: "cap-height", bottom-edge: "baseline", hyphenate: false)
+ set par(leading: code-line - 0.73 * code-size, justify: false, spacing: code-line - 0.73 * code-size)
+ layout(size => {
+  let advance = measure([0]).width
+  let width = calc.min(calc.max(size.width, longest * advance + 2 * code-inset.x), size.width + 2 * spread)
+  let inner = width - 2 * code-inset.x
+  let label = if lang == "" { none } else { eyebrow(lang) }
+  let alone = label != none and first * advance + measure(label).width + code-inset.x > inner
+  let lines = {
+    if alone { block(width: 100%, below: code-line - 0.73 * code-size, align(right, label)) }
+    body
+  }
+  let h = measure(block(width: inner, lines)).height
+  let tall = calc.ceil((h + 2 * code-inset.y) / half) * half
+  let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset.x, y: (tall - h) / 2), {
+    if label != none and not alone { place(top + right, dy: 0.73 * (code-size - 8.4pt), label) }
+    lines
+  })
+  let out = (width - size.width) / 2
+  if out > 0pt { pad(left: -out, right: -out, shown) } else { shown }
+ })
 })
 #let picture(alt, w, h) = box(width: calc.min(w, measure-width), height: h, fill: ink.raised, align(center + horizon, text(fill: ink.muted, alt)))
 #let diagram(path) = block(width: 100%, image(path, width: 100%))
