@@ -3654,6 +3654,8 @@ Scope {
                     eyebrow: root.hundredths(lines.eyebrow),
                     eyebrowMiddle: root.hundredths(lines.eyebrowMiddle),
                     title: root.hundredths(lines.title),
+                    preview: root.hundredths(lines.preview),
+                    previewLines: lines.previewLines.map(line => root.hundredths(line)),
                     words: root.hundredths(lines.words),
                     facts: lines.facts.map(line => root.hundredths(line)),
                     time: root.hundredths(lines.time),
@@ -3689,6 +3691,13 @@ Scope {
                 // The facts it draws, by name, whether each name is on one
                 // line whole, and where its last line's box may end.
                 drawnFacts: drawerCard.facts.map(fact => fact.label ?? ""),
+                // Each fact's value as it's drawn, null while it's asked.
+                values: drawerCard.facts.map(fact => fact.value ?? null),
+                // Its preview: the picture it's of, or how many lines.
+                preview: drawerCard.preview === null ? null : {
+                    picture: drawerCard.preview.picture ?? "",
+                    lines: (drawerCard.preview.lines ?? []).length
+                },
                 labelsWhole: drawerCard.labelsWhole(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,

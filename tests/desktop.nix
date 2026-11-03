@@ -793,6 +793,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           -metadata title="Bless The Child" -metadata artist=Nightwish $out
       '';
 
+      # A wide picture and a short video, for the file picker to preview in
+      # their own shapes.
+      wide = pkgs.runCommandLocal "wide.png" { nativeBuildInputs = [ pkgs.ffmpeg-headless ]; } ''
+        ffmpeg -loglevel error -f lavfi -i gradients=s=1600x1000:seed=7 -frames:v 1 wide.png
+        mv wide.png $out
+      '';
+      clip = pkgs.runCommandLocal "clip.mp4" { nativeBuildInputs = [ pkgs.ffmpeg-headless ]; } ''
+        ffmpeg -loglevel error -f lavfi -i testsrc2=s=960x540:r=24 -t 20 -c:v mpeg4 -q:v 4 \
+          -f mp4 $out
+      '';
+
       # Every Nix value the script needs, which it reads once, at its top;
       # its Values says what each is.
       values = pkgs.writeText "desktop-values.json" (
@@ -807,6 +818,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             page
             text
             track
+            wide
+            clip
             ;
           ask_portal = askPortal;
           choose_a_file = chooseAFile;

@@ -538,6 +538,23 @@ onLinux {
       touch $out
     '';
 
+  # A file in the launcher's chooser of files says its size and when it
+  # changed as VKCF3Z set them, and its plate its kind, preview and facts,
+  # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
+  a-file-says-its-size-and-when-it-changed =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-file-says-its-size-and-when-it-changed" { } ''
+      cp ${../../tests/file-facts.qml} file-facts.qml
+      cp ${./FileFacts.js} FileFacts.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml file-facts.qml
+      touch $out
+    '';
+
   # A list the launcher shows holds still as what's in it changes: its rows
   # keep their order, new ones come last and the selection keeps its row, as
   # tests/steady.qml holds launcher/Steady.js to it in Qt's own engine.
@@ -1714,6 +1731,7 @@ onLinux {
       cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
+      cp ${./FileFacts.js} FileFacts.js
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/file-chooser.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

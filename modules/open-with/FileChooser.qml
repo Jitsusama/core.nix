@@ -19,6 +19,16 @@
 // it instead; a name already there steps in to Replace It, the one ask.
 // Escape, or closing the launcher, picks nothing.
 //
+// Each file and folder says beside its name how big it is and when it last
+// changed, "2.4 MB \u00b7 28 Oct", a folder how many items it shows, read
+// with the folder it's in; one opened lately elsewhere says its folder
+// instead. The one selected shows its plate in the drawer (FileFacts.js):
+// its kind, name, a preview where one is cheap (a picture, a PDF's first
+// page, a video's frame, a file's first lines or a folder's first items)
+// and its facts, which draw at once, the preview coming once file-preview
+// has said, one file asked at a time, the latest wanted next (VKCF3Z,
+// 2026-11-03).
+//
 // Other providers give it places kept elsewhere, as Google's Drive is
 // (modules/google), by `chooserPlaces(chooser)`: asked once as an ask is
 // shown, so what's listed never changes while it's shown, and listed after
@@ -50,6 +60,7 @@ import Quickshell.Io
 import QtQuick
 import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
+import "../FileFacts.js" as FileFacts
 
 Provider {
     id: provider
@@ -72,8 +83,20 @@ Provider {
     readonly property string start: startOf(request)
     readonly property var filters: request.filters ?? []
 
-    // What each folder read holds, by its path: { name, path, folder }.
+    // What each folder read holds, by its path: { name, path, folder,
+    // size, modified }, and each of those by its own path.
     property var listed: ({})
+    property var known: ({})
+    // How many items each folder read holds shows, by its path, and what
+    // file-preview said of each file or folder selected (false where it
+    // couldn't), with the change time it was asked at.
+    property var counts: ({})
+    property var previews: ({})
+    property var askedAt: ({})
+    // The file whose preview is wanted next, while another is asked, and
+    // the folders still to count.
+    property string previewNext: ""
+    property var toCount: []
     // The folders stepped into, read beside those on the way to the start.
     property var stepped: []
     readonly property var reading: asking === null ? [] : Array.from(new Set(["/"]
@@ -204,9 +227,9 @@ Provider {
         const elsewhere = each => parentOf(each) !== path && each !== path;
         if (!folders && !saving)
             return lately.filter(each => elsewhere(each) && passes(each.slice(each.lastIndexOf("/") + 1)))
-                .slice(0, 9).map(each => fileRow(each));
+                .slice(0, 9).map(each => fileRow(each, true));
         return Array.from(new Set(lately.map(each => parentOf(each)))).filter(elsewhere)
-            .slice(0, 9).map(each => folderRow(each));
+            .slice(0, 9).map(each => folderRow(each, true));
     }
 
     // A folder's row, stepped into to what it holds, led by Open This
@@ -217,7 +240,7 @@ Provider {
     // and then one folder, "~/Downloads", which changes in place as the
     // left arrow goes up, rather than a crumb a folder (VKCF3Z,
     // 2026-10-29).
-    function folderRow(path) {
+    function folderRow(path, away) {
         const acts = !folders ? [] : [act(mode === "save-files" ? "verb:file-chooser:here"
             : "verb:file-chooser:folder", path, [path])];
         const row = Object.assign(Files.folder(path, thing, acts, () => rowsOf(readIn(path))), {
@@ -228,7 +251,131 @@ Provider {
             get: () => provider.titled(Files.shown(path)),
             enumerable: true
         });
-        return row;
+        return described(row, path, away === true);
+    }
+
+    // A file's or a folder's row says its size, or how many items it
+    // shows, and when it changed, as it's drawn, once the folder it's in
+    // is read; one listed away from its folder keeps saying where it is.
+    // Its drawer is its plate, asked for as it's shown. The row is made
+    // again with its side read as it's drawn, rather than its side
+    // redefined in place: Qt's engine loses the value of a property set
+    // just before one is turned from a value into a getter.
+    function described(row, path, away) {
+        const made = {};
+        for (const name of Object.getOwnPropertyNames(row)) {
+            if (away || name !== "side")
+                Object.defineProperty(made, name, Object.getOwnPropertyDescriptor(row, name));
+        }
+        if (!away)
+            Object.defineProperty(made, "side", {
+                get: () => {
+                    const entry = provider.known[path];
+                    return entry ? FileFacts.side(entry, provider.counts[path], Date.now())
+                        : Files.within(path);
+                },
+                enumerable: true,
+                configurable: true
+            });
+        made.drawer = () => provider.plateOf(path);
+        return made;
+    }
+
+    // The plate the drawer shows for a file or a folder: its facts from
+    // the folder it's in at once, and what file-preview says once it has.
+    // One that changed since it was asked is asked again.
+    function plateOf(path) {
+        const entry = known[path] ?? null;
+        const said = previews[path];
+        if (settings.preview && (said === undefined || entry && askedAt[path] !== entry.modified))
+            Qt.callLater(provider.preview, path);
+        const file = { path: path, name: Files.named(path), where: Files.within(path), entry: entry };
+        return FileFacts.plate(file, said || null, Date.now());
+    }
+
+    // Asks file-preview about a file, unless it's asking about another,
+    // when this one is asked next, in place of any wanted before it.
+    function preview(path) {
+        const entry = known[path] ?? null;
+        if (asking === null || path in previews && (!entry || askedAt[path] === entry.modified))
+            return;
+        if (previewing.running) {
+            previewNext = path;
+            return;
+        }
+        askedAt = Object.assign({}, askedAt, { [path]: entry?.modified });
+        previewing.asked = path;
+        previewing.command = (settings.preview ?? []).concat(["show", path]);
+        previewing.running = true;
+    }
+
+    function previewed(path, text, code) {
+        let said = false;
+        if (code === 0) {
+            try {
+                said = JSON.parse(text);
+            } catch (error) {
+                said = false;
+            }
+        }
+        if (asking !== null)
+            previews = Object.assign({}, previews, { [path]: said });
+        const next = previewNext;
+        previewNext = "";
+        if (next !== "")
+            Qt.callLater(provider.preview, next);
+    }
+
+    Process {
+        id: previewing
+
+        property string asked: ""
+
+        stdout: StdioCollector {
+            id: previewSaid
+        }
+        onExited: code => Qt.callLater(provider.previewed, previewing.asked, previewSaid.text, code)
+    }
+
+    // Counts what each folder inside one just read shows, one folder at a
+    // time, so a folder's row can say it.
+    function count(path) {
+        if (!settings.preview || asking === null)
+            return;
+        if (counting.running) {
+            if (!toCount.includes(path))
+                toCount = toCount.concat([path]);
+            return;
+        }
+        counting.asked = path;
+        counting.command = (settings.preview ?? []).concat(["items", path]);
+        counting.running = true;
+    }
+
+    function countsHeard(text, code) {
+        if (code === 0 && asking !== null) {
+            try {
+                counts = Object.assign({}, counts, JSON.parse(text));
+                changed();
+            } catch (error) {
+                // Nothing counted: each folder's row says only when it changed.
+            }
+        }
+        const next = toCount[0];
+        toCount = toCount.slice(1);
+        if (next !== undefined)
+            Qt.callLater(provider.count, next);
+    }
+
+    Process {
+        id: counting
+
+        property string asked: ""
+
+        stdout: StdioCollector {
+            id: countSaid
+        }
+        onExited: code => Qt.callLater(provider.countsHeard, countSaid.text, code)
     }
 
     // What every folder held says, the one held deepest: a folder here by
@@ -390,12 +537,12 @@ Provider {
 
     // A file's row: opened by Return, or, saving, stepped into to Replace It,
     // or, where several may be opened, marked by Return.
-    function fileRow(path) {
-        if (saving)
-            return Files.file(path, thing, [act("verb:file-chooser:replace", path, [path])], () => []);
-        if (several)
-            return markingRow(path, acts => Files.file(path, thing, acts));
-        return Files.file(path, thing, [act("verb:path:file:open", path, [path])]);
+    function fileRow(path, away) {
+        const made = saving
+            ? Files.file(path, thing, [act("verb:file-chooser:replace", path, [path])], () => [])
+            : several ? markingRow(path, acts => Files.file(path, thing, acts))
+            : Files.file(path, thing, [act("verb:path:file:open", path, [path])]);
+        return described(made, path, away === true);
     }
 
     // A file where several may be opened: Return flips its Marked, the
@@ -696,6 +843,12 @@ Provider {
 
     function heard(path, entries) {
         listed = Object.assign({}, listed, { [path]: entries });
+        const each = {};
+        for (const entry of entries)
+            each[entry.path] = entry;
+        known = Object.assign({}, known, each);
+        if (entries.some(entry => entry.folder))
+            count(path);
         changed();
     }
 
@@ -753,7 +906,7 @@ Provider {
         // What was read goes with the last ask, since the next may be
         // anywhere; while one waits, its folders are being read already.
         if (asking === null)
-            listed = {};
+            forget();
         if (settled.picked) {
             settled.picked(said === "" ? [] : JSON.parse(said).paths);
         } else {
@@ -805,6 +958,10 @@ Provider {
         lately = [];
         fetching = null;
         elsewhere = {};
+        // What each folder read said of its files, and what file-preview
+        // said, go with the folders read (forget), since those are read
+        // while an ask waits, before it's shown.
+        previewNext = "";
         places = placesFor();
         listing.running = (settings.recent ?? []).length > 0;
         launcher.into(settings.name);
@@ -858,7 +1015,9 @@ Provider {
                     entries.push({
                         name: reader.get(at, "fileName"),
                         path: reader.get(at, "filePath"),
-                        folder: reader.get(at, "fileIsDir")
+                        folder: reader.get(at, "fileIsDir"),
+                        size: reader.get(at, "fileSize"),
+                        modified: reader.get(at, "fileModified").getTime()
                     });
                 provider.heard(reader.modelData, entries);
             }
@@ -969,11 +1128,21 @@ Provider {
 
     // Stops asking, once the program gave up or the chooser stopped
     // waiting.
+    // Lets go of every folder read and what was said of each file.
+    function forget() {
+        listed = {};
+        known = {};
+        counts = {};
+        previews = {};
+        askedAt = {};
+        toCount = [];
+    }
+
     function withdrawn(reply) {
         const shownNow = shown === reply;
         asks = asks.filter(other => other.reply !== reply);
         if (asking === null)
-            listed = {};
+            forget();
         if (!shownNow)
             return;
         shown = "";

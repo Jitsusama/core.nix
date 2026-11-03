@@ -46,6 +46,9 @@ class Values(TypedDict):
     page: str
     text: str
     track: str
+    # A wide picture and a short video, for the file picker to preview.
+    wide: str
+    clip: str
     # The packages whose programs the test runs by their paths.
     coreutils: str
     dbus: str

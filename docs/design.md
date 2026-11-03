@@ -1292,6 +1292,22 @@ works the same way everywhere.
   Ctrl was the little finger's home key (Joel, 2 November: "all of those
   ctrl keys do not feel very vim to me"). Another program's words are
   shown plain, never as markup.
+- **A file picked shows what it is** (Joel, 2026-11-03: "i see no
+  previews for files ... no clue about sizes or when last updated"). In
+  the file picker, a row in the folder shown says its size in SI units,
+  one decimal under 10 ("940 kB", "2.4 MB"), or a folder its count, and
+  when it changed: minutes ago under an hour, its time today, its day
+  this year, and its day and year before that, muted in the side slot. A
+  row listed away from its folder says its folder instead. The drawer is
+  its preview (VKCF3Z, 2026-11-03): the eyebrow its kind with its numbers
+  ("PNG · 2400 × 1600", "PDF · 12 pages", "MP4 · 3:41"), its name, then
+  a picture as wide as the plate in its own shape (a picture itself, a
+  PDF's first page, a video's frame a tenth of the way in), a text's
+  first whole lines or a folder's first items, quiet, in the mono on the
+  pitch, then Size, Changed and Where. Anything else shows its facts
+  alone, with no stand-in. The facts draw at once from the folder read;
+  the preview fades in once it's made, kept by path and change, and no
+  key ever waits on it.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

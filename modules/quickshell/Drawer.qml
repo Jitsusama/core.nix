@@ -13,10 +13,12 @@
 // read as one page: the eyebrow on the field's centre, the name on the
 // first row's baseline, and the rest on a pitch of half a row from the
 // second row's, one empty line between each group. A row gives it as
-// `drawer: { eyebrow, title, facts: [{ label, value }], body, styled,
-// picture, across, down }`, the body plain unless it says it's styled, a
-// fact whose value isn't known yet null, shown as a fixed placeholder
-// until it is. Shift+Up and Shift+Down scroll it a few lines at a time,
+// `drawer: { eyebrow, title, preview, facts: [{ label, value }], body,
+// styled, picture, across, down }`, the body plain unless it says it's
+// styled, a fact whose value isn't known yet null, shown as a fixed
+// placeholder until it is. A preview, as a file's plate has (FileFacts.js),
+// comes right under the name: `{ picture, across, down }` or `{ lines,
+// quiet }`. Shift+Up and Shift+Down scroll it a few lines at a time,
 // as the launcher's foot says while it holds more than fits
 // (docs/design.md, the drawer).
 //
@@ -70,6 +72,7 @@ Floating {
         .filter(fact => fact && String(fact.value ?? "") !== title) : []
     readonly property string body: shown ? shown.body ?? "" : ""
     readonly property string picture: shown ? shown.picture ?? "" : ""
+    readonly property var preview: shown ? shown.preview ?? null : null
     // Whether it's the moment's plate, home's Now's.
     readonly property bool moment: shown?.now === true
     readonly property var momentLines: moment ? shown.lines ?? {} : ({})
@@ -101,7 +104,8 @@ Floating {
 
     // Where its lines' baselines are, down from its top, for the launcher
     // to report: the eyebrow's and the middle of its line, the title's,
-    // each fact's first line's and the words' first line's. Worked out
+    // each fact's first line's, the words' first line's, and the top of a
+    // preview and its lines' baselines. Worked out
     // only when asked, since nothing drawn depends on them.
     function baselines() {
         const contentTop = Theme.border - view.contentY;
@@ -115,6 +119,13 @@ Floating {
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
+            preview: previewBox.visible ? contentTop + flow.y + previewBox.y : null,
+            previewLines: previewLines.visible ? Array.from({ length: previewRows.count },
+                (_, at) => {
+                    const line = previewRows.itemAt(at);
+                    return line ? contentTop + flow.y + previewBox.y + line.y
+                        + line.baselineOffset : null;
+                }) : [],
             facts: factsShown.visible ? Array.from({ length: factRows.count }, (_, at) => {
                 const row = factRows.itemAt(at);
                 return row ? contentTop + flow.y + factsShown.y + row.y + row.base : null;
@@ -471,6 +482,112 @@ Floating {
                         font.family: Theme.serif.family
                         font.pointSize: Theme.serif.title
                         font.variableAxes: Theme.serif.upright.title
+                    }
+                }
+
+                // Its preview, right under its name (VKCF3Z, 2026-11-03): a
+                // picture in its own shape, as wide as the plate at most and
+                // never so tall it pushes the facts after it out of sight, or
+                // lines in the mono at body size, each whole or cut short,
+                // a folder's items quiet. It takes whole lines of the pitch,
+                // so everything after it stays on the card's.
+                Item {
+                    id: previewBox
+                    readonly property string picture: drawer.preview?.picture ?? ""
+                    // As many lines as the room holds, so the facts stay
+                    // in sight under them.
+                    readonly property var lines: (drawer.preview?.lines ?? [])
+                        .slice(0, Math.floor(room / drawer.pitch))
+                    // The room it may take: what's left of the view once
+                    // the name and the facts have theirs, a line apart.
+                    readonly property real room: Math.max(4 * drawer.pitch, view.height
+                        - drawer.firstLine - (titleText.visible ? titleText.lineCount * drawer.pitch
+                        + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
+                        + drawer.pitch : 0) - drawer.pitch)
+
+                    width: parent.width
+                    visible: picture !== "" || lines.length > 0
+                    height: Math.ceil((picture !== "" ? previewFrame.height
+                        : lines.length * drawer.pitch) / drawer.pitch) * drawer.pitch
+
+                    Rectangle {
+                        id: previewFrame
+                        readonly property real across: drawer.preview?.across > 0
+                            ? drawer.preview.across : parent.width
+                        readonly property real down: drawer.preview?.down > 0
+                            ? drawer.preview.down : across
+                        readonly property real shrunk: Math.min(1, parent.width / across,
+                            Math.floor(previewBox.room / drawer.pitch) * drawer.pitch / down)
+
+                        visible: previewBox.picture !== ""
+                        width: Math.round(across * shrunk)
+                        height: Math.round(down * shrunk)
+                        radius: Theme.inner
+                        color: "transparent"
+
+                        // It comes in once it's drawn, over the short
+                        // duration, rather than as a box waiting for it.
+                        Image {
+                            id: previewDrawn
+                            anchors.fill: parent
+                            source: previewBox.picture === "" ? "" : `file://${previewBox.picture}`
+                            asynchronous: true
+                            fillMode: Image.PreserveAspectFit
+                            sourceSize.width: 2 * width
+                            sourceSize.height: 2 * height
+                            opacity: status === Image.Ready ? 1 : 0
+                            layer.enabled: true
+                            layer.effect: MultiEffect {
+                                maskEnabled: true
+                                maskSource: previewCorners
+                            }
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: Theme.motion.short
+                                    easing.type: Easing.BezierSpline
+                                    easing.bezierCurve: Theme.motion.curve
+                                }
+                            }
+                            onStatusChanged: {
+                                if (status === Image.Ready)
+                                    Report.say(`previewed ${drawer.title}`);
+                            }
+                        }
+
+                        Rectangle {
+                            id: previewCorners
+                            anchors.fill: parent
+                            radius: Theme.inner
+                            visible: false
+                            layer.enabled: true
+                        }
+                    }
+
+                    Item {
+                        id: previewLines
+                        width: parent.width
+                        height: parent.height
+                        visible: previewBox.picture === "" && previewBox.lines.length > 0
+
+                        Repeater {
+                            id: previewRows
+                            model: previewBox.lines
+
+                            Text {
+                                required property string modelData
+                                required property int index
+
+                                width: previewLines.width
+                                y: index * drawer.pitch + drawer.pitch / 2 + drawer.dropped
+                                    - baselineOffset
+                                text: modelData
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: drawer.preview?.quiet === true ? Theme.muted : Theme.text
+                                font.family: Theme.mono.family
+                                font.pointSize: Theme.mono.body
+                            }
+                        }
                     }
                 }
 

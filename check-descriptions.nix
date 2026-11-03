@@ -18,6 +18,11 @@
     60 for muted, or a mark's hue under Lc 45, on the grounds they're read on and a selected row,
     doesn't build, and APCA gives its own reference values
   '';
+  a-file-says-its-size-and-when-it-changed = ''
+    a file in the launcher's chooser of files says its size in SI units, one decimal under 10, and
+    when it changed by how long ago, a folder its count; its plate says its kind with its numbers,
+    its preview and its facts, each number kept to its unit, and only its facts before it's said
+  '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
