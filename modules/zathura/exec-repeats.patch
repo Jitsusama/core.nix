@@ -1,0 +1,13 @@
+--- a/zathura/shortcuts.c
++++ b/zathura/shortcuts.c
+@@ -1493,7 +1493,9 @@
+   /* call exec */
+   cmd_exec(session, argument_list);
+ 
+-  return false;
++  /* A number before the key runs it that many times, which girara stops
++   * at the first that answers false. */
++  return true;
+ }
+ 
+ bool sc_exec(girara_session_t* session, girara_argument_t* argument, girara_event_t* UNUSED(event),

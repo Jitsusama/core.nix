@@ -63,9 +63,11 @@ let
   # zathura's jumplist goes back and forward, but only Ctrl+O and Ctrl+I
   # each go one way, so a patch lets one key toggle between the last two.
   # Space never joins what zathura waits on, so a patch lets it lead a
-  # buffered command, Space ?.
+  # buffered command, Space ?. A number before a key that runs a command
+  # ran it once, so a patch has it run that many times, as 3]b does.
   core = plugins.zathura_core.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
+      ./exec-repeats.patch
       ./jumplist-toggles.patch
       ./space-leads.patch
     ];
