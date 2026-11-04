@@ -3973,9 +3973,13 @@ Scope {
     // screen and never makes the surface again, and Super+Space finds
     // nothing. So once the screens have changed, the launcher closes and its
     // surface is made again on the screen the keys are on, as the margin's
-    // are made anew for each screen. With no screen at all, there's nowhere
-    // to make it: niri would refuse it and Quickshell warn, so it waits
-    // unmade for the next screen, which changes the screens again.
+    // are made anew for each screen. A screen coming or going beside the one
+    // the surface is drawn on moves nothing, so that surface is kept, open
+    // or not: remade, a Super+Space pressed just before the shell heard a
+    // screen plugged in opened the launcher and closed it at once. With no
+    // screen at all, there's nowhere to make it: niri would refuse it and
+    // Quickshell warn, so it waits unmade for the next screen, which changes
+    // the screens again.
     Connections {
         target: Quickshell
 
@@ -3985,9 +3989,14 @@ Scope {
     }
 
     function remake() {
+        const real = Quickshell.screens.filter(screen => screen.name !== "");
+        const kept = surface.visible && screenHere !== null && real.includes(screenHere);
         // Said for the screens test, which waits on the shell having heard
         // the screens change before it looks at what that did.
-        Report.say(`launcher heard ${Quickshell.screens.length} screens, remade`);
+        const done = kept ? "kept" : "remade";
+        Report.say(`launcher heard ${Quickshell.screens.length} screens, ${done}`);
+        if (kept)
+            return;
         open = false;
         screenHere = focusedScreen;
         surface.visible = false;
