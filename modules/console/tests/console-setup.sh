@@ -16,11 +16,16 @@ mkdir "$work/bin"
 # mode in $WORK/mode of the console it's asked about, which is recorded.
 {
   printf '#!%s\n' "$BASH"
-  echo 'exit "$(< "$WORK/status")"'
+  cat <<'EOF'
+exit "$(< "$WORK/status")"
+EOF
 } > "$work/setup"
 {
   printf '#!%s\n' "$BASH"
-  echo 'echo "$2" > "$WORK/asked"; cat "$WORK/mode"'
+  cat <<'EOF'
+echo "$2" > "$WORK/asked"
+cat "$WORK/mode"
+EOF
 } > "$work/bin/kbdinfo"
 chmod +x "$work/setup" "$work/bin/kbdinfo"
 
