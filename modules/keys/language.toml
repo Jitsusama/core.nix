@@ -8,7 +8,8 @@
 # every surface that names its kinds, and Neovim itself, to this file
 # (modules/keys/checks.nix), and docs/design.md's Vi's Keys says why.
 #
-# An act's keys are pressed in normal mode unless its modes say otherwise.
+# An act's keys are pressed in normal mode unless its modes say otherwise:
+# insert while typing, and visual while selecting.
 # One whose takes is "letter" takes the next letter typed as a name, as m
 # and ' take a mark's. In one mode a key belongs to one act, whatever kind
 # of surface it's pressed on, so a list's l steps into a row as a page's l
@@ -33,21 +34,26 @@ player = "something that plays, as a video"
 # Moving, on whatever there's more of than fits.
 
 [acts.down]
-keys = ["j", "<Down>"]
+keys = ["<Down>", "j"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.up]
-keys = ["k", "<Up>"]
+keys = ["<Up>", "k"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
-# In a list these step out of a row and into it.
+# In a list these step out of a row and into it, and on a page they move a
+# selection's cursor.
 [acts.left]
-keys = ["h", "<Left>"]
-kinds = ["list"]
+keys = ["<Left>", "h"]
+modes = ["normal", "visual"]
+kinds = ["list", "page"]
 
 [acts.right]
-keys = ["l", "<Right>"]
-kinds = ["list"]
+keys = ["<Right>", "l"]
+modes = ["normal", "visual"]
+kinds = ["list", "page"]
 
 # Out a level, as his oil's - goes up to the folder holding this.
 [acts.out]
@@ -56,34 +62,42 @@ kinds = ["list"]
 
 [acts.scroll-down]
 keys = ["<C-e>"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.scroll-up]
 keys = ["<C-y>"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.half-down]
 keys = ["<C-d>"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.half-up]
 keys = ["<C-u>"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.screen-down]
 keys = ["<C-f>", "<PageDown>"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.screen-up]
 keys = ["<C-b>", "<PageUp>"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.first]
 keys = ["gg"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.last]
 keys = ["G"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.view-top]
@@ -108,42 +122,51 @@ kinds = ["page"]
 [acts.go-to-mark]
 keys = ["'", "`"]
 takes = "letter"
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.last-jump]
 keys = ["''", "``"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.jump-back]
 keys = ["<C-o>"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.jump-forward]
 keys = ["<C-i>"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 # Neovim's gx opens the link under the cursor; a page has none, so each link
 # in view is labelled and the label typed stands for it.
 [acts.links]
 keys = ["gx"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 # Searching, with case ignored until a capital is typed, as his smartcase.
 
 [acts.search-forward]
 keys = ["/"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.search-backward]
 keys = ["?"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.next]
 keys = ["n"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.previous]
 keys = ["N"]
+modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 # Acting on rows.
@@ -160,14 +183,11 @@ kinds = ["field", "list"]
 keys = ["dd"]
 kinds = ["list"]
 
-# The row's Copy act, with the yank flash.
+# A line's worth copied, with the yank flash: a list's row, or the first
+# block in view on a page, which has no cursor.
 [acts.copy]
 keys = ["yy"]
-kinds = ["list"]
-
-[acts.select-rows]
-keys = ["V"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.again]
 keys = ["."]
@@ -185,6 +205,113 @@ kinds = ["list"]
 [acts.last-place]
 keys = ["<Tab>", "<Space><Tab>"]
 kinds = ["list"]
+
+# Selecting, as Vim's visual mode: v by characters, from the first word in
+# view on a page, which has no cursor, and V by whole lines, a list's rows or
+# a page's paragraphs, items and lines of code. The same key again ends it,
+# and the other changes its kind.
+
+[acts.select]
+keys = ["v"]
+modes = ["normal", "visual"]
+kinds = ["page"]
+
+[acts.select-lines]
+keys = ["V"]
+modes = ["normal", "visual"]
+kinds = ["list", "page"]
+
+# While selecting, the cursor on by words, to a line's ends, by paragraphs,
+# and to the selection's other end.
+
+[acts.word-on]
+keys = ["w"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.word-back]
+keys = ["b"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.word-end]
+keys = ["e"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.line-start]
+keys = ["0"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.line-end]
+keys = ["$"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.paragraph-back]
+keys = ["{"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.paragraph-on]
+keys = ["}"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.other-end]
+keys = ["o"]
+modes = ["visual"]
+kinds = ["page"]
+
+# Vim's text objects, round the cursor: inner, or with the space after.
+
+[acts.in-word]
+keys = ["iw"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.a-word]
+keys = ["aw"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.in-sentence]
+keys = ["is"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.a-sentence]
+keys = ["as"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.in-paragraph]
+keys = ["ip"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.a-paragraph]
+keys = ["ap"]
+modes = ["visual"]
+kinds = ["page"]
+
+# Code between backticks, as Vim's i` takes what's between two of them.
+[acts.in-code]
+keys = ["i`"]
+modes = ["visual"]
+kinds = ["page"]
+
+# What's selected copied, with the yank flash, and Ctrl+C as everywhere else.
+[acts.copy-selection]
+keys = ["y", "<C-c>"]
+modes = ["visual"]
+kinds = ["page"]
+
+# The paragraph in view copied, as yip copies the one under the cursor.
+[acts.copy-paragraph]
+keys = ["yip"]
+kinds = ["page"]
 
 # The field, from normal mode: into insert at the caret, after it, at the
 # line's start or its end, or clearing the line first.
@@ -257,11 +384,11 @@ keys = ["<C-y>"]
 modes = ["insert"]
 kinds = ["field"]
 
-# Escape takes one step back: from insert to normal, or it cancels what's
-# waiting, or at rest steps out a level.
+# Escape takes one step back: from insert or visual to normal, or it cancels
+# what's waiting, or at rest steps out a level.
 [acts.back]
 keys = ["<Esc>"]
-modes = ["insert", "normal"]
+modes = ["insert", "normal", "visual"]
 kinds = ["field", "list"]
 
 # Everywhere.
@@ -270,10 +397,12 @@ kinds = ["field", "list"]
 # as it closes a split.
 [acts.close]
 keys = ["q", "ZZ", "<Space>w"]
+modes = ["normal", "visual"]
 kinds = ["list", "page", "player"]
 
 [acts.show-keys]
 keys = ["<Space>?", "<F1>"]
+modes = ["normal", "visual"]
 kinds = ["list", "page", "player"]
 
 # To the window that way, as his splits go. No kind holds these: a surface

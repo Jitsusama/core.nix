@@ -185,7 +185,11 @@ def faults(language: dict[str, Any], layers: list[Layer], source: str) -> list[s
             # window and the other modes are its own.
             found += bind_faults(name, [b for b in binds if b["when"] == ""], acts, {"normal"})
         elif kinds:
-            modes = {"normal", "insert"} if "field" in kinds else {"normal"}
+            # A surface is in every mode an act its kinds hold is pressed in,
+            # so a page selects in visual mode and a field types in insert.
+            modes = {"normal"}.union(
+                *(act["modes"] for act in acts.values() if act["kinds"] & set(kinds))
+            )
             found += bind_faults(name, binds, acts, modes)
             found += missing_faults(name, kinds, binds, acts)
         else:

@@ -86,7 +86,8 @@ in
   # leaves out, or a chord bound to an act that isn't one of the act's keys
   # fails (speaks-the-language.py). So the check can't pass by seeing
   # nothing, each way of straying is shown to fail first, as is a language
-  # that gives one key to two acts.
+  # that gives one key to two acts and the reader leaving out a key it
+  # takes only while selecting.
   keys-speak-the-language =
     let
       # A workstation with a desktop has every layer, Neovim's among them.
@@ -117,6 +118,11 @@ in
       printf '\n[acts.twice]\nkeys = ["j"]\nkinds = []\n' >> twice.toml
       strays twice.toml ${keyMap "none" [ ]} \
         "the language gives j to both down and twice in normal mode"
+      ${lib.getExe pkgs.jq} \
+        'map(if .name == "reader" then .binds |= map(select(.act != "word-on")) else . end)' \
+        ${keys} > unselecting.json
+      strays ${./language.toml} unselecting.json \
+        "reader: a page has word-on, which it leaves out"
       ${check} ${./language.toml} ${keys} neovim
       touch $out
     '';
