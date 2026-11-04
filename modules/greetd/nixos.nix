@@ -137,8 +137,11 @@ let
   greeter = pkgs.writeShellScript "greeter" (
     lib.concatLines [
       (lib.concatStringsSep " " [
+        "busctl=${lib.getExe' config.systemd.package "busctl"}"
+        "kbdinfo=${lib.getExe' pkgs.kbd "kbdinfo"}"
         "mktemp=${lib.getExe' pkgs.coreutils "mktemp"}"
         "rm=${lib.getExe' pkgs.coreutils "rm"}"
+        "sleep=${lib.getExe' pkgs.coreutils "sleep"}"
         "systemd_cat=${lib.getExe' config.systemd.package "systemd-cat"}"
       ])
       "compositor=(${lib.escapeShellArgs cfg.compositor}) niri_config=${compositor}/config.kdl"
@@ -202,8 +205,8 @@ in
       # needs the console in text. tuigreet after a greeter that fell over
       # gets it back from logind, which sets text again as the greeter's
       # compositor lets go of the screen. logind does that only for a
-      # compositor that took the screen, so one that fell over before it
-      # would leave tuigreet unseen; Cage and niri take it first thing.
+      # compositor that took the screen, so for one that fell over before
+      # it, greeter.sh has logind set text before tuigreet asks.
       package = lib.mkIf (home != null) (
         pkgs.greetd.overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [ ./vt-left-in-graphics.patch ];

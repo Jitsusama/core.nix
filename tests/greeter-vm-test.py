@@ -156,8 +156,9 @@ def test_leaves_the_console_in_graphics_for_the_greeter(asking: QemuMachine) -> 
     panel, in the monitor's top left for seconds as niri started: greetd had set the console to
     text the moment the splash let go of the screen.
     """
+    # A line each time the greeter starts, so it holds however many have.
     modes = asking.succeed("cat /tmp/greeter-console-modes").split()
-    assert modes == ["graphics"], f"greetd left the greeter's console in {modes}"
+    assert set(modes) == {"graphics"}, f"greetd left the greeter's console in {modes}"
 
 
 def test_refuses_a_wrong_password(asking: QemuMachine) -> None:
@@ -196,8 +197,27 @@ def test_tuigreet_asks_when_the_greeter_falls_over(asking_again: QemuMachine) ->
     asking_again.wait_until_succeeds("pgrep -u greeter -x tuigreet", timeout=STEP)
     asking_again.succeed("! pgrep -u greeter -f '[b]in/niri -c'")
     # logind sets the console back to text as the greeter's compositor lets go of the screen,
-    # so tuigreet can be seen. logind hears the compositor go on its own time, so it's waited on.
-    asking_again.wait_until_succeeds('test "$(kbdinfo -C /dev/tty1 getmode)" = text', timeout=STEP)
+    # and the greeter waits for it before tuigreet starts, so tuigreet can be seen.
+    mode = asking_again.succeed("kbdinfo -C /dev/tty1 getmode").strip()
+    assert mode == "text", f"tuigreet asks on a console in {mode}"
+
+
+def test_tuigreet_shows_when_the_compositor_falls_over_at_once(asking_again: QemuMachine) -> None:
+    """Tuigreet shows when the greeter's compositor falls over before taking the screen.
+
+    greetd leaves the console in graphics, and logind sets it back to text only for a
+    compositor that took the screen, so tuigreet, after one that never did, would ask where
+    nothing shows unless the greeter had logind set text first.
+    """
+    asking_again.succeed("touch /run/greeter-falls-at-once")
+    # Ending whatever asks now has greetd start the greeter again, which falls over.
+    before = asking_again.succeed("pgrep -u greeter -x tuigreet || echo none").strip()
+    asking_again.succeed("pkill -u greeter")
+    asking_again.wait_until_succeeds(
+        f"pgrep -u greeter -x tuigreet | grep -vxF {shlex.quote(before)}", timeout=STEP
+    )
+    mode = asking_again.succeed("kbdinfo -C /dev/tty1 getmode").strip()
+    assert mode == "text", f"tuigreet asks on a console in {mode}"
 
 
 def test_a_burst_of_mounts_doesnt_wait_on_systemds_limit(machine: BaseMachine) -> None:

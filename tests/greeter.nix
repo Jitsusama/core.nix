@@ -29,9 +29,13 @@ let
   '';
 
   # Says the mode greetd left the greeter's console in, before the
-  # greeter's compositor takes the screen and sets its own, then starts it.
+  # greeter's compositor takes the screen and sets its own, then starts it,
+  # unless the test asks for a compositor that falls over before taking it.
   consoleMode = pkgs.writeShellScript "console-mode" ''
     ${pkgs.kbd}/bin/kbdinfo getmode >> /tmp/greeter-console-modes
+    if [ -e /run/greeter-falls-at-once ]; then
+      exit 1
+    fi
     exec "$@"
   '';
 in
