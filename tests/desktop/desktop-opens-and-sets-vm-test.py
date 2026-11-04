@@ -1807,6 +1807,78 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     machine.succeed("ip link delete tailscale0")
 
 
+def test_the_viewers_keys_for_their_shots(desktop: Desktop) -> None:  # noqa: PLR0915
+    """The viewers' key lists at 2 and at 1.5, for their shots."""
+    machine = desktop.machine
+    output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
+    looked = f"/home/{desktop.account}/snowflake.png"
+    desktop.as_account(f"cp {desktop.values['picture']} {looked}")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=60)
+    )
+    for scale in ["2", "1.5"]:
+        desktop.as_account(f"niri msg output {output} scale {scale}")
+        time.sleep(2)
+
+        desktop.opens_in(desktop.values["page"], "application/pdf", "org.pwmt.zathura")
+        time.sleep(2)
+        machine.send_key("spc")
+        machine.send_key("shift-slash")
+        desktop.launcher_ready()
+        time.sleep(2)
+        machine.screenshot(f"zathura-keys-at-{scale}")
+        machine.send_key("ret")
+        time.sleep(2)
+        machine.screenshot(f"zathura-turning-at-{scale}")
+        machine.send_key("esc")
+        machine.send_key("esc")
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+        machine.send_key("q")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -f '[z]athura'", timeout=timedelta(seconds=10)
+        )
+
+        desktop.opens_in(looked, "image/png", "swayimg")
+        time.sleep(3)
+        machine.send_key("shift-slash")
+        desktop.launcher_ready()
+        time.sleep(2)
+        machine.screenshot(f"swayimg-keys-at-{scale}")
+        machine.send_key("esc")
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+        time.sleep(1)
+        machine.send_key("spc")
+        machine.send_key("shift-slash")
+        desktop.launcher_ready()
+        time.sleep(2)
+        machine.screenshot(f"swayimg-space-keys-at-{scale}")
+        machine.send_key("esc")
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+        time.sleep(1)
+        machine.send_key("q")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
+        )
+
+        desktop.as_account(
+            "niri msg action spawn -- mpv --pause --vo=wlshm"
+            " 'av://lavfi:testsrc=duration=600:size=640x360'"
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session('niri msg --json focused-window | grep -q \'"app_id":"mpv"\''),
+            timeout=timedelta(seconds=60),
+        )
+        time.sleep(3)
+        machine.send_key("shift-slash")
+        time.sleep(2)
+        machine.screenshot(f"mpv-keys-at-{scale}")
+        machine.send_key("q")
+        machine.wait_until_fails(
+            f"pgrep -u {desktop.account} -x mpv", timeout=timedelta(seconds=10)
+        )
+    machine.succeed(f"rm {looked}")
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
