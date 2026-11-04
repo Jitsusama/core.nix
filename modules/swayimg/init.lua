@@ -61,7 +61,7 @@ end)
 swayimg.imagelist.adjacent = true
 swayimg.imagelist.fsmon = true
 
-swayimg.text.font = nix.sans
+swayimg.text.font = nix.mono
 swayimg.text.size = nix.size
 swayimg.text.padding = px(nix.space.l)
 swayimg.text.color = colour.strong

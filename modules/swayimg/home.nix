@@ -4,10 +4,11 @@
 #
 # Its settings are a Lua script, init.lua, which stays Lua. The theme reaches
 # it through nix.lua beside it, written here: the theme's colours as the
-# numbers swayimg takes, its proportional face and sizes, and the programs
+# numbers swayimg takes, its monospaced face and sizes, and the programs
 # the keys run. Behind a picture is the deepest colour, so the picture is
 # what's seen, with a quiet checkerboard under anything transparent. The name
-# and its place in the folder show over it in the theme's face for two
+# and its place in the folder show over it in the monospaced face, as a
+# name and its figures are everywhere, for two
 # seconds as it opens, so nothing sits on the picture for long, and the
 # gallery marks the one selected with the accent's hairline, lifted a
 # little so it's found on a busy picture.
@@ -285,8 +286,8 @@ let
   # types. A letter is drawn as it's typed, as Neovim's own lists draw
   # them, since G and g are two keys here, and keys pressed one after
   # another run together, as gg. swayimg draws its words in the one face,
-  # with no other to fall back on, and the sans face has no return arrow,
-  # so there Return is its name.
+  # with no other to fall back on, and the monospaced face has every
+  # arrow the desktop draws, Return's among them.
   faces = config.jitsusama.theme.keys;
   themed = {
     bracketleft = "BracketLeft";
@@ -297,7 +298,6 @@ let
   typed = {
     "Shift+slash" = "?";
     "Shift+plus" = "+";
-    Return = "Enter";
     space = "Space";
   };
   drawnOne =
@@ -334,8 +334,8 @@ let
       # Under the name, so it reads on any picture.
       shadow = argb "d0" colours.shadow;
     };
-    sans = font.sans.family;
-    size = pixels type.sans.large;
+    mono = font.mono.family;
+    size = pixels type.mono.large;
     space = {
       inherit (space) s l;
     };

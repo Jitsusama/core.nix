@@ -5,7 +5,8 @@
 #
 # Every colour it draws is from the theme: the desk behind the pages is the
 # deepest colour, and its bar, command line, contents and notices are drawn
-# as the rest of the desktop's are, in the proportional face. The pages
+# as the rest of the desktop's are, in the monospaced face, since it's a
+# command line and page numbers. The pages
 # themselves are recoloured into the theme, paper to the background and ink
 # to the text, keeping each colour's hue so a chart still reads, and leaving
 # photographs as they are; Ctrl+R shows a page as printed and back.
@@ -315,7 +316,7 @@ in
       command = "zathura";
     };
     options = {
-      font = "${font.sans.family} ${type.sans.body}";
+      font = "${font.mono.family} ${type.mono.body}";
       guioptions = "";
 
       default-bg = colours.deepest;

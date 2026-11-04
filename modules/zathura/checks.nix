@@ -17,13 +17,15 @@ onLinux {
 
   # zathura opens a page with the account's settings. It names a setting
   # or a colour it can't take and goes on without it, and stays open until
-  # it's closed, so it's given a few seconds to say so. Documents open in
-  # zathura.
+  # it's closed, so it's given a few seconds to say so. Its bar is in the
+  # monospaced face, since it's a command line and page numbers. Documents
+  # open in zathura.
   zathura-accepts-its-configuration =
     let
       home = account graphical;
       opens = graphical.config.xdg.mime.defaultApplications."application/pdf" or "";
       page = import ../../tests/page.nix { inherit lib pkgs; };
+      mono = home.jitsusama.theme.font.mono.family;
     in
     assert opens == "org.pwmt.zathura-pdf-mupdf.desktop";
     pkgs.runCommandLocal "zathura-accepts-its-configuration"
@@ -41,6 +43,8 @@ onLinux {
         mkdir -p config/zathura data run
         chmod 700 run
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
+        grep -q '^set font "${mono} ' config/zathura/zathurarc \
+          || { echo "zathura's bar isn't in ${mono}"; exit 1; }
         # cage ends when zathura does, so only a zathura still open at the
         # end of the wait opened.
         status=0
