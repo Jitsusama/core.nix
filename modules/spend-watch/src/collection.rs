@@ -115,6 +115,11 @@ pub struct Collection {
     /// What each pi session's councils, judges and fleets cost today, by
     /// its whole id, costliest first; part of what it spent.
     pub helpers: BTreeMap<String, Vec<report::Helper>>,
+    /// What each quest and the quests under it spent today, by the
+    /// quest's id, for the launcher's Agents to say beside an
+    /// orchestrator: its whole orchestration's, its own and its
+    /// sessions'. While the screen is shared the shell shows none of it.
+    pub families: BTreeMap<String, report::Family>,
     pub periods: Vec<Words>,
     pub cuts: Vec<Words>,
     pub examples: Vec<String>,
@@ -702,6 +707,7 @@ pub fn collection(
             .collect(),
         sessions: report::by_session(picture, Period::Today),
         helpers: report::helpers_by_session(picture, Period::Today),
+        families: report::by_family(picture, Period::Today),
         periods: Period::ALL
             .iter()
             .map(|period| Words {
@@ -758,6 +764,7 @@ pub fn held(shape: i64) -> Collection {
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
         helpers: BTreeMap::new(),
+        families: BTreeMap::new(),
         periods: Vec::new(),
         cuts: Vec::new(),
         examples: Vec::new(),
@@ -1075,6 +1082,82 @@ mod tests {
             BTreeMap::from([
                 ("01a1271f-aaaa".to_owned(), crate::money::dollars(12.5)),
                 ("01a1271f-bbbb".to_owned(), crate::money::dollars(3.25)),
+            ])
+        );
+    }
+
+    // A quest's family is what it spent today and what every quest under it
+    // did, at any depth, so the launcher can say what a whole orchestration
+    // cost without adding anything up: yesterday's, another machine's and
+    // spend on no quest aren't in any.
+    #[test]
+    fn each_quest_says_what_it_and_the_quests_under_it_spent_today() {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        let history = History::memory();
+        let quest = |id: &str, parent: Option<&str>| crate::quests::Quest {
+            id: id.into(),
+            title: id.into(),
+            kind: "quest".into(),
+            parent: parent.map(Into::into),
+            status: "active".into(),
+            started: None,
+            updated: None,
+            prs: 0,
+            sessions: Vec::new(),
+        };
+        crate::quests::store(
+            &history,
+            &[
+                quest("QEST-ROOT", None),
+                quest("QEST-OWNER", Some("QEST-ROOT")),
+                quest("QEST-BUILDER", Some("QEST-OWNER")),
+                quest("QEST-QUIET", Some("QEST-ROOT")),
+            ],
+        )
+        .unwrap();
+        let turns = [
+            ("s-root", NOW - 3600.0, 3.10, Some("QEST-ROOT")),
+            ("s-owner", NOW - 1800.0, 6.0, Some("QEST-OWNER")),
+            ("s-builder", NOW - 900.0, 5.10, Some("QEST-BUILDER")),
+            ("s-owner", NOW - crate::time::DAY, 40.0, Some("QEST-OWNER")),
+            ("elsewhere", NOW - 600.0, 7.0, Some("QEST-OWNER")),
+            ("s-none", NOW - 600.0, 1.0, None),
+        ];
+        for (session, at, total, quest) in turns {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: session.into(),
+                    at,
+                    model: "m".into(),
+                    provider: "p".into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total,
+                        ..Cost::default()
+                    },
+                    quest: quest.map(Into::into),
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost: 0.0,
+                    cause: None,
+                }))
+                .unwrap();
+        }
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let collected = collection(&picture, &[], &config);
+        let family = |all: f64, own: f64, under: f64| report::Family {
+            all: dollars(all),
+            own: dollars(own),
+            under: dollars(under),
+        };
+        assert_eq!(
+            collected.families,
+            BTreeMap::from([
+                ("QEST-BUILDER".to_owned(), family(5.10, 5.10, 0.0)),
+                ("QEST-OWNER".to_owned(), family(11.10, 6.0, 5.10)),
+                ("QEST-ROOT".to_owned(), family(14.20, 3.10, 11.10)),
             ])
         );
     }

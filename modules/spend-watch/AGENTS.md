@@ -19,7 +19,10 @@ feed speaks.
   `src/series.rs` holds the order.
 - **Tracing.** Every piece of spend carries its session, quest, repo, model,
   tool and agent kind, so every cut is a sum of the same pieces and every
-  report agrees with every other. A quest's spend rolls up to its root. A
+  report agrees with every other. A quest's spend rolls up to its root,
+  and for the launcher's Agents to every quest above it, today's each a
+  family in `collection.json` (its whole, its own and its subquests'), so
+  an orchestrator says its orchestration's without the shell adding. A
   bill that doesn't say which session spent it is shared by the pieces on
   its model, by their list prices, since models are priced apart; a
   metered hour keeps what other tools spent on each model as theirs on it.
