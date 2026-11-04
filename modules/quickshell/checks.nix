@@ -1049,6 +1049,37 @@ onLinux {
       touch $out
     '';
 
+  # What was taken lately finds screenshots by their words (Taken.qml),
+  # asking a stand-in for the screen-text daemon
+  # (tests/desktop/stand-in-screen-text.py) over one connection made on the
+  # first search and let go at rest, each text once, the last few kept, and
+  # finds a few thousand files by name within a frame, as tests/taken.qml
+  # holds it to.
+  the-shell-finds-screenshots-by-their-words =
+    let
+      standIn = pkgs.writers.writePython3 "stand-in-screen-text" {
+        doCheck = false;
+      } (builtins.readFile ../../tests/desktop/stand-in-screen-text.py);
+    in
+    pkgs.runCommandLocal "the-shell-finds-screenshots-by-their-words" { } ''
+      mkdir -p runtime/daemons shots && chmod 700 runtime
+      touch "shots/2026-10-31 09-00-00.png"
+      cat > texts.json <<EOF
+      {"$PWD/shots/2026-10-31 09-00-00.png":
+        ["Quarterly planning review", "Move the review to Thursday morning at ten"]}
+      EOF
+      cp ${./Daemon.qml} Daemon.qml
+      cp ${./Taken.qml} Taken.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${../../tests/taken.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} SHOTS=$PWD/shots
+      ${standIn} runtime/daemons/screen-text.sock texts.json &
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's quests find pi's quests in a store written here, as the
   # real pi-quests reads it (tests/quests-store.sh), and open pi on one or
   # go to its session (tests/quests.qml), with niri and pi's sessions stood

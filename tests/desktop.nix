@@ -165,6 +165,13 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-slack.py);
 
+  # Stands in for the screen-text daemon, which would read screenshots with
+  # its models, on its socket, saying what the runtime folder's
+  # screen-text-texts.json says each says (desktop/stand-in-screen-text.py).
+  standInScreenText = pkgs.writers.writePython3 "stand-in-screen-text" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-screen-text.py);
+
   # Google's own pages' window, as jitsusama.google.window opens one: what
   # it was asked to open, written down, since the VM has no browser.
   googleWindow = pkgs.writeShellScript "google-window" ''
@@ -647,6 +654,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # asks of it, started by the test with Tuple's own stopped.
         systemd.user.services.tuple-answers.Service.ExecStart =
           "${lib.getExe pkgs.socat} UNIX-LISTEN:%t/tuple-0,fork,unlink-early /dev/null";
+        # The screen-text daemon, where Capture's Recent is searched by
+        # what its screenshots say, a stand-in that reads no picture.
+        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (area == "launcher-goes-places") (
+          lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json"
+        );
         # The collector where the launcher's traces are tested, started by
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {

@@ -1537,11 +1537,15 @@ Scope {
         for (const source of among ?? collections) {
             // One opened only by its own chord adds no row to a search, but
             // does inside a category that holds it.
-            if (source.collection.searched === false && !among)
+            // One of its parts may still be gathered, as Capture's Recent
+            // is (`gathers`), stepped into on Return with what's typed kept.
+            const part = source.collection.searched === false && !among
+                ? source.gathers?.(letters) ?? null : null;
+            if (source.collection.searched === false && !among && part === null)
                 continue;
             const asked = Date.now();
             const madeBefore = Fuzzy.keptSoFar();
-            const said = source.gather(letters);
+            const said = part ?? source.gather(letters);
             took[source.settings.name] = Date.now() - asked;
             if (Fuzzy.keptSoFar() > madeBefore)
                 made[source.settings.name] = Fuzzy.keptSoFar() - madeBefore;
@@ -1571,7 +1575,13 @@ Scope {
             // collection's crumb before its own, as the approved proposal's
             // one feel has it, and the right arrow lands there too, so
             // Return never goes further in than it (Joel, 2026-10-26).
-            if (!best.run && (best.verbs || best.targets))
+            if (part !== null)
+                Object.assign(gathered, {
+                    stays: true,
+                    lands: true,
+                    run: () => root.searchIn(source, part.into, letters)
+                });
+            else if (!best.run && (best.verbs || best.targets))
                 Object.assign(gathered, {
                     stays: true,
                     lands: true,
@@ -1588,6 +1598,18 @@ Scope {
         if (Object.keys(made).length > 0)
             Report.say(`texts made ready on a key ${JSON.stringify(made)}`);
         return rows;
+    }
+
+    // Steps into a collection's part, through the collection, and searches
+    // it for what was typed, as Return on Recent's matches gathered at the
+    // top does: the left arrow climbs back out to the search.
+    function searchIn(source, part, letters) {
+        into(source.settings.name);
+        const at = matches.findIndex(one => steadyId(one) === steadyId(part));
+        if (at >= 0)
+            current = at;
+        if (enter(at >= 0 ? matches[at] : part))
+            restart(letters);
     }
 
     // Steps into a collection's matches, and then into the one of them that
@@ -2777,9 +2799,13 @@ Scope {
             // what's typed reaches them without a step in: "scale 150".
             // Found by name or by what it holds, in the top level's tiers.
             // A step that makes rows of what's typed (`typed`), as Move the
-            // Meeting makes a time, lists them first.
+            // Meeting makes a time, lists them first. One that finds what's
+            // typed past the rows it shows (`finds`), as Capture's Recent
+            // finds among everything taken, lists what it finds instead.
             else if (words.length === 0)
                 found = offered.slice();
+            else if (held[held.length - 1].row.finds)
+                found = held[held.length - 1].row.finds(letters);
             else
                 found = (held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
