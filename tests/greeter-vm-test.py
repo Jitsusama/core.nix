@@ -149,6 +149,17 @@ def test_asks_whos_there(asking: QemuMachine) -> None:
     asking.screenshot("greeter")
 
 
+def test_leaves_the_console_in_graphics_for_the_greeter(asking: QemuMachine) -> None:
+    """Greetd leaves the greeter's console in graphics, so the kernel's console never shows.
+
+    On 2026-11-03 a laptop docked with its lid shut showed the kernel's console, sized for the
+    panel, in the monitor's top left for seconds as niri started: greetd had set the console to
+    text the moment the splash let go of the screen.
+    """
+    modes = asking.succeed("cat /tmp/greeter-console-modes").split()
+    assert modes == ["graphics"], f"greetd left the greeter's console in {modes}"
+
+
 def test_refuses_a_wrong_password(asking: QemuMachine) -> None:
     """The greeter refuses a wrong password."""
     since = mark(asking)
@@ -184,6 +195,9 @@ def test_tuigreet_asks_when_the_greeter_falls_over(asking_again: QemuMachine) ->
     asking_again.succeed("pkill -u greeter -f '[q]uickshell[^ ]* -p '")
     asking_again.wait_until_succeeds("pgrep -u greeter -x tuigreet", timeout=STEP)
     asking_again.succeed("! pgrep -u greeter -f '[b]in/niri -c'")
+    # logind sets the console back to text as the greeter's compositor lets go of the screen,
+    # so tuigreet can be seen. logind hears the compositor go on its own time, so it's waited on.
+    asking_again.wait_until_succeeds('test "$(kbdinfo -C /dev/tty1 getmode)" = text', timeout=STEP)
 
 
 def test_a_burst_of_mounts_doesnt_wait_on_systemds_limit(machine: BaseMachine) -> None:

@@ -2048,7 +2048,8 @@
     and leaves the rest
   '';
   vm-greeter-signs-in = ''
-    the greeter signs in and out, not waiting on the account's setup
+    the greeter signs in and out, not waiting on the account's setup; greetd leaves its console
+    in graphics, and tuigreet, after the greeter falls over, finds it in text again
   '';
   vm-guide-installs = ''
     the guide, driven by its keys, holding the machine awake and drawing over what writes on its

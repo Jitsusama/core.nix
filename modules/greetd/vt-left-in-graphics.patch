@@ -1,0 +1,33 @@
+Leave a session's VT in graphics mode rather than text
+
+greetd set each session's VT to text before starting it. When the boot
+splash has just let go of the display, text mode makes the kernel put
+its console back on the screen, at the console's own size, until the
+session's compositor opens the GPU: on a laptop docked with its lid
+shut, a box sized for the panel in the monitor's top left for seconds.
+
+Graphics mode leaves the splash's last frame up instead, as other login
+managers do. logind sets the VT back to text when the session's
+controller lets go of it, so a text program started after a compositor
+has gone, as a fallback greeter is, still has a console to write on.
+
+diff --git a/greetd/src/session/worker.rs b/greetd/src/session/worker.rs
+index 71c9d10..bbecfef 100644
+--- a/greetd/src/session/worker.rs
++++ b/greetd/src/session/worker.rs
+@@ -176,10 +176,11 @@ fn worker(sock: &UnixDatagram) -> Result<(), Error> {
+             // Opening our target terminal.
+             let target_term = terminal::Terminal::open(&path)?;
+ 
+-            // Set the target VT mode to text for compatibility. Other login managers
+-            // set this to graphics, but that disallows start of textual applications,
+-            // which greetd aims to support.
+-            target_term.kd_setmode(terminal::KdMode::Text)?;
++            // Set the target VT mode to graphics, as other login managers do: in text
++            // mode the kernel puts its console back on the screen while nothing holds
++            // the display, until the session's compositor takes it. logind sets the VT
++            // back to text once that compositor lets go of it.
++            target_term.kd_setmode(terminal::KdMode::Graphics)?;
+ 
+             // Clear TTY so that it will be empty when we switch to it.
+             target_term.term_clear()?;
