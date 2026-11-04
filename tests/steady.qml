@@ -73,6 +73,27 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
+        // A row that arrives while the list is shown comes at the end, out
+        // of the place a tree would give it, so it reads as it would ranked
+        // flat, as a session a step in under its orchestrator does once
+        // typed: at no depth, saying whom it's under (Agents.qml). One kept
+        // in place, and every row of a list shown afresh, keep their own.
+        const nested = key => ({ key: key, side: "", depth: 1,
+            flat: () => ({ key: key, side: "under", depth: 0 }) });
+        const depths = list => list.map(row => `${row.key}${row.depth ?? 0}:${row.side}`)
+            .join(" ");
+        const flats = [
+            ["a row arriving late reads flat", [{ key: "a", side: "" }],
+                [{ key: "a", side: "" }, nested("b")], "a0: b0:under"],
+            ["a row kept in place keeps its depth", [nested("b")], [nested("b")], "b1:"],
+            ["a list shown afresh keeps every row's depth", [], [nested("b")], "b1:"]
+        ];
+        for (const [what, shown, now, want] of flats) {
+            const got = depths(Steady.kept(shown, now, id));
+            if (got !== want)
+                failures.push(`${what}: "${got}", not "${want}"`);
+        }
+
         const after = rows("a b c d");
         // [what, the row it was on, where it was, the lowest it goes, where it goes]
         const selections = [

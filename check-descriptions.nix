@@ -1543,6 +1543,11 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
+  the-launcher-lays-sessions-under-their-orchestrators = ''
+    every list of pi sessions keeps one order of how they stand, and Agents lays each under the
+    session orchestrating it, a step in and at most two, an orchestration standing where its most
+    urgent row would
+  '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
     miss only where letters were typed and nothing picked

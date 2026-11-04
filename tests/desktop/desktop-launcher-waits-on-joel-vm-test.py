@@ -347,7 +347,7 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     desktop.launcher_until(
         lambda shown: (
             "asks you" in (shown["selected"] or {}).get("side", "")
-            and any("waiting" in thing["reads"] for thing in shown["things"])
+            and any("listening" in thing["reads"] for thing in shown["things"])
         )
     )
     # Said in place: the same rows in the same order, the selection

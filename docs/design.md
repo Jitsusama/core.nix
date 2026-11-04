@@ -978,6 +978,18 @@ works the same way everywhere.
   is only ever what a program holds, as a camera Chrome has open. Rows
   that come and go, such as Media, sit at the end of their group. A check walks every row to hold
   the order.
+- **Under what it belongs to, a step in.** A session orchestrated by
+  another sits right under it, its glyph and its name a glyph's column
+  in, so its glyph stands where the name above it starts, and two steps
+  at most. No line, box or fold says so, and the selection keeps the
+  whole row. An orchestration stands where its most urgent row would,
+  and every list of sessions keeps one order of how they stand: needs
+  you, working, in line, listening, paused; one idle is listening, never
+  waiting. Only typing ranks, so a search's rows, and a row that arrives
+  while the list is open, stand at no depth, whom each is under leading
+  its note ("under QX7RTA · ..."). An orchestrator's figure is its
+  whole orchestration's ("$14 today in all"), its own and its sessions'
+  inside it.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,

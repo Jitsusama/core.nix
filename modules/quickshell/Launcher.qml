@@ -3452,6 +3452,7 @@ Scope {
             const row = root.matches[at];
             if (drawn && drawn.visible)
                 rows.push({ at, is: Rank.identity(row), selected: at === root.current,
+                    depth: row.depth ?? 0,
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card) });
         }
@@ -4584,6 +4585,10 @@ Scope {
                                         ?? Theme[(entry.own ? entry.modelData.hue
                                             : entry.thing?.hue) ?? ""] ?? Theme.text
                                     swatch: !!entry.modelData.swatch
+                                    // A step in under the row it belongs
+                                    // to, as a session under its
+                                    // orchestrator (Agents.qml).
+                                    depth: entry.modelData.depth ?? 0
                                     sort: entry.sort
                                     graph: entry.modelData.graph ?? null
                                     warns: !!entry.modelData.warns

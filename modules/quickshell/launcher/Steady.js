@@ -11,7 +11,11 @@
 
 // The rows as they read now, in the order of those shown: each row shown
 // as it is now, or as it was, `gone` and `went`, where it's no longer
-// there, then each new one in its own order. `went` tells a row that left
+// there, then each new one in its own order. A new one comes at the end,
+// out of any place a tree would give it, so one that says how it reads
+// ranked flat (`flat`, as a session under its orchestrator does) reads so;
+// a list shown afresh has nothing new, and keeps every row's own. `went`
+// tells a row that left
 // from one its source draws dimmed itself, gone but there, as Write in
 // Slack stands dimmed until Slack answers. A row is known by `id`; rows alike in it
 // pair off in their order, so two windows titled alike keep their places.
@@ -38,7 +42,7 @@ function kept(shown, now, id) {
     }
     now.forEach((row, at) => {
         if (!taken[at]) {
-            out.push(row);
+            out.push(shown.length > 0 && typeof row.flat === "function" ? row.flat() : row);
         }
     });
     return out;
