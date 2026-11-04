@@ -827,6 +827,9 @@ a full menu). Tier 3 goes first, then tier 2 shortens to its marks, then tier 1
 abbreviates in a designed way (a path to its last parts, never cut mid-word).
 The most important thing is the last one standing, and nothing wraps, overlaps
 or jumps on the way down. Each surface is shown at each of its breakpoints.
+The launcher's field gives way in its path's steps: a folder's path is cut
+first, in its middle, so the program's ask and the place he's in stay whole
+until the paths can give no more (VKCF3Z, 2026-11-04).
 
 ## Intuitive Without Memory
 
@@ -1337,7 +1340,8 @@ works the same way everywhere.
   and nothing more, and the foot gives it no Return; after, its side
   counts them, its note names them in the order marked, its plate lists
   each with its folder and their Size together, and the right arrow
-  steps into Marked: the files, each with its folder, where Return
+  steps into Marked, its crumb the place's name, Marked, rather than the
+  act's: the files, each with its folder, where Return
   unmarks one and it stays until he leaves, then Unmark All, then Copy
   the Paths (VKCF3Z, 2026-11-03). A folder's Copy the Path comes after
   its files and filters, held back until the folder's read so it never

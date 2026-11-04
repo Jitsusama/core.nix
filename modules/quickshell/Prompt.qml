@@ -277,8 +277,6 @@ Item {
         font.variableAxes: Theme.serif.axes
     }
 
-    // Each step's words' width: what it needs where it fits, and otherwise
-    // an even share of what the shorter ones leave.
     // The room kept for typing: the hint's, or a dozen characters.
     readonly property real typingRoom: Math.max(
         (voiced ? voiceFace : chipFace).advanceWidth(hint),
@@ -289,20 +287,24 @@ Item {
         : chips.reduce((sum, chip) => sum + Math.ceil(chipFace.advanceWidth(chip.text)) + 1, 0)
             + chipFace.advanceWidth(between) * (chips.length - 1) + 2 * Theme.space.m
 
+    // Each step's words' width, as Reading.sharedSteps shares the room: a
+    // folder's path gives way first, down to four characters, cut in its
+    // middle.
     readonly property var fitted: {
-        const typing = typingRoom;
-        let left = Math.max(0, end - Theme.space.l - glyphWidth - Theme.space.m - typing
+        const room = Math.max(0, end - Theme.space.l - glyphWidth - Theme.space.m - typingRoom
             - chipFace.advanceWidth(between) * Math.max(0, chips.length - 1)
             - 2 * Theme.space.m);
-        const wanted = chips.map(chip => Math.ceil(chipFace.advanceWidth(chip.text)) + 1);
-        const given = wanted.slice();
-        const order = wanted.map((_, index) => index).sort((a, b) => wanted[a] - wanted[b]);
-        order.forEach((index, done) => {
-            given[index] = Math.min(wanted[index], Math.floor(left / (order.length - done)));
-            left -= given[index];
-        });
-        return given;
+        return Reading.sharedSteps(chipsWanted, chips.map(chip => chip.yields === true), room,
+            4 * chipFace.averageCharacterWidth);
     }
+
+    // Each step's words' width, whole.
+    readonly property var chipsWanted: chips.map(chip =>
+        Math.ceil(chipFace.advanceWidth(chip.text)) + 1)
+    // Whether each step is said whole, for the launcher's report.
+    readonly property var chipsWhole: chipsWanted.map((width, index) =>
+        (fitted[index] ?? 0) >= width)
+
 
     // Where Joel is, one chip: a part of the frame, so its corners are the
     // part's radius, raised from the surface, each step named as its row
@@ -341,7 +343,9 @@ Item {
                     Text {
                         width: prompt.fitted[step.index] ?? implicitWidth
                         text: step.modelData.text
-                        elide: Text.ElideRight
+                        // A path keeps both ends, where it starts and the
+                        // folder it's at, cut in its middle.
+                        elide: step.modelData.yields === true ? Text.ElideMiddle : Text.ElideRight
                         color: Theme.strong
                         font.family: Theme.mono.family
                         font.pointSize: Theme.mono.large

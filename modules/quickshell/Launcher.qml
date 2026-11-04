@@ -3632,6 +3632,8 @@ Scope {
             completion: root.completion,
             held: root.held.map(step => step.row.chip ?? step.row.name),
             path: root.path,
+            // Whether each of the path's steps is said whole in the field.
+            pathWhole: prompt.chipsWhole,
             rows: root.matches.slice(0, 20).map(row => row.name),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
@@ -4164,7 +4166,8 @@ Scope {
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
-                        chips: root.path.map(step => ({ text: step }))
+                        // A folder's path gives way before any other step.
+                        chips: root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion

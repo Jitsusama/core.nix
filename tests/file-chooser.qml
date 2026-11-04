@@ -520,6 +520,8 @@ ShellRoot {
         // it's plated, and the lead is neither by its kind.
         expect("Open the Marked says it's plated, so the launcher draws its plate",
             rows[0].plated === true, `${rows[0].plated}`);
+        expect("stepped into, its crumb is the place, Marked", rows[0].title === "Marked",
+            rows[0].title);
         const plate = rows[0].drawer();
         expect("its plate counts them and lists each with its folder, their size waiting on old.md's",
             plate.eyebrow === "2\u00a0marked" && plate.title === "Open the Marked"

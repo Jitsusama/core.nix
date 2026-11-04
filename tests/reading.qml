@@ -1,4 +1,5 @@
-// How a long name slides, and how words too long for their room give way,
+// How a long name slides, how words too long for their room give way, and
+// how the field's path shares its room, a folder's path giving way first,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The `a-long-name-reads-at-one-pace` check copies
 // Reading.js beside this file and runs `qml -platform offscreen reading.qml`.
 import QtQuick
@@ -76,6 +77,17 @@ QtObject {
         const where = "Tokyo, Japan \u00b7 Open-Meteo";
         expect("no separator dangling", cut(where, 200) === "Tokyo, Japan\u2026", cut(where, 200));
         expect("no comma dangling", cut(where, 120) === "Tokyo\u2026", cut(where, 120));
+        // The path's steps: the program's ask, a folder's path, the place.
+        const steps = (room) => Reading.sharedSteps([100, 200, 60], [false, true, false], room, 40);
+        const same = (one, other) => JSON.stringify(one) === JSON.stringify(other);
+        expect("steps whole where they fit", same(steps(360), [100, 200, 60]), steps(360));
+        // The path gives way before either other step is cut.
+        expect("the path gives way first", same(steps(260), [100, 100, 60]), steps(260));
+        // Down to its least, the others share what's left as they did.
+        expect("then the others share", same(steps(140), [50, 40, 50]), steps(140));
+        // With no step yielding, it's an even share, the shortest first.
+        const even = Reading.sharedSteps([100, 200, 60], [false, false, false], 240, 40);
+        expect("none yielding, shared evenly", same(even, [90, 90, 60]), even);
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

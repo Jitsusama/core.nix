@@ -649,6 +649,9 @@ Provider {
         const row = {
             key: "file-chooser:marked",
             name: name,
+            // Stepped into, its crumb is the place, not the act that
+            // leads to it (VKCF3Z, 2026-11-04).
+            title: Words.name("file-chooser:marked"),
             verb: word("verb:file-chooser:marked"),
             glyph: Words.glyph("verb:file-chooser:marked"),
             hue: "action",

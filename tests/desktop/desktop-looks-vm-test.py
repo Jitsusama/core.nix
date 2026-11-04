@@ -411,6 +411,18 @@ def selected_is(shown: Json, name: str, side: str | None = None, told: str | Non
     )
 
 
+def marked_is_in_sight(shown: Json, scale: str) -> None:
+    """Hold Marked, b.md left in it, to its rows' order and its crumbs."""
+    rows = shown["rows"]
+    assert rows[-3:] == ["b.md", "Unmark All", "Copy the Paths"], rows
+    # Its crumb is the place, and the program's ask and the place are said
+    # whole, a folder's path giving way first where they don't fit.
+    assert shown["path"] == ["Open the Notes", "~/marking/more", "Marked"], shown["path"]
+    whole = shown["pathWhole"]
+    assert whole[0], f"at {scale} the program's ask is cut: {whole}"
+    assert whole[-1], f"at {scale} the place is cut: {whole}"
+
+
 def test_the_file_picker_says_whats_marked_and_what_return_does(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -465,8 +477,7 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             desktop.down_to("a.md")
             machine.send_key("ret")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
-            rows = desktop.showing()["rows"]
-            assert rows[-3:] == ["b.md", "Unmark All", "Copy the Paths"], rows
+            marked_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-marked-at-{said}")
             machine.send_key("left")
             desktop.launcher_until(partial(selected_is, name="Open the Marked", side="1"))
