@@ -512,12 +512,13 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             )
             desktop.photograph(f"file-picker-two-marked-at-{said}")
             desktop.down_to("more")
-            machine.send_key("right")
+            # The right arrow steps in from normal, where the walk stays from here.
+            desktop.step_in()
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/marking/more"])
             desktop.down_to("Open the Marked")
             desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
             desktop.photograph(f"file-picker-marked-elsewhere-at-{said}")
-            machine.send_key("right")
+            desktop.step_in()
             desktop.launcher_until(lambda shown: "Unmark All" in shown["rows"])
             desktop.down_to("a.md")
             machine.send_key("ret")
@@ -529,7 +530,8 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
-            machine.send_key("esc")
+            # Escape climbs back to the folder it opened in, then refuses the ask there.
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
