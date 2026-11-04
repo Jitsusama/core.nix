@@ -119,13 +119,13 @@ local function face(chord)
 end
 
 -- Every key each mode answers that's worth knowing, one row for each thing
--- it does, which ? lists.
+-- it does, which ? lists, a key's twins after it.
 local function listed(mode)
   local rows, row = {}, {}
   for _, key in ipairs(nix.keys) do
     if works(key, mode) then
       if row[key.does] then
-        row[key.does][1] = row[key.does][1] .. ' ' .. key.face
+        row[key.does][1] = row[key.does][1] .. '  ' .. key.face
       else
         row[key.does] = { key.face, key.does }
         table.insert(rows, row[key.does])
@@ -151,6 +151,10 @@ local hint = {
 -- Whether ? has the keys listed, which stays until it's pressed again.
 local listing = false
 
+-- A number, or the first of a pair of keys, waiting for what comes after
+-- it, shown at the foot's right as it's typed (Neovim's showcmd).
+local waiting = { count = '', first = nil, shown = false, turn = 0 }
+
 local function shown(mode)
   local bottom = {}
   if listing then
@@ -162,6 +166,56 @@ local function shown(mode)
   end
   mode.text =
     { topleft = { '{name}' }, topright = counted(), bottomleft = bottom, bottomright = {} }
+end
+
+-- What's waiting shows alone and muted when the words had gone, and beside
+-- them when they show, since they share one colour.
+local function show_waiting(mode)
+  local typed = waiting.count .. (waiting.first or '')
+  if not waiting.shown then
+    waiting.shown = true
+    waiting.visible = swayimg.text.visible
+  end
+  swayimg.text.timeout = 0
+  if waiting.visible then
+    shown(mode)
+    mode.text = { bottomright = { typed } }
+  else
+    swayimg.text.color = colour.muted
+    mode.text = { topleft = {}, topright = {}, bottomleft = {}, bottomright = { typed } }
+  end
+  swayimg.text.visible = true
+end
+
+-- Nothing waits any more: the words are as they were.
+local function stop_waiting(mode)
+  waiting.count, waiting.first = '', nil
+  waiting.turn = waiting.turn + 1
+  if not waiting.shown then
+    return
+  end
+  waiting.shown = false
+  swayimg.text.color = colour.strong
+  swayimg.text.timeout = listing and 0 or 2
+  shown(mode)
+  swayimg.text.visible = waiting.visible
+end
+
+-- What's waiting goes 300 ms on with nothing more, as Joel's Neovim's
+-- timeoutlen has it, doing what it does alone, if anything.
+local function wait(mode, timed_out)
+  show_waiting(mode)
+  waiting.turn = waiting.turn + 1
+  local turn = waiting.turn
+  swayimg.defer(0.3, function()
+    if waiting.turn == turn then
+      local count = tonumber(waiting.count)
+      stop_waiting(mode)
+      if timed_out then
+        timed_out(count)
+      end
+    end
+  end)
 end
 
 -- The list shows until ? is pressed again, and then goes with the rest of
@@ -284,6 +338,9 @@ local function copy(mode)
   swayimg.text.status = 'Copied'
 end
 
+-- The pictures moved to the trash, the last one last, for u to bring back.
+local trashed = {}
+
 -- To the trash, where it can be had back, and out of the list.
 local function trash(mode)
   local image = current(mode)
@@ -295,44 +352,258 @@ local function trash(mode)
     swayimg.text.status = "Couldn't move it to the trash"
     return
   end
+  table.insert(trashed, image.path)
   swayimg.imagelist.remove(image.path)
   swayimg.text.status = 'Moved to the trash'
 end
 
+-- The trash in the home, as the freedesktop.org trash has it: each
+-- picture in files, and beside it in info where it came from and when.
+local function home_trash()
+  local data = os.getenv('XDG_DATA_HOME')
+  if not data or data == '' then
+    data = os.getenv('HOME') .. '/.local/share'
+  end
+  return data .. '/Trash'
+end
+
+local function unescaped(text)
+  return (text:gsub('%%(%x%x)', function(hex)
+    return string.char(tonumber(hex, 16))
+  end))
+end
+
+-- The newest of what the trash keeps from that path, by its name there.
+local function kept_from(bin, path)
+  local found, newest = nil, ''
+  local names = io.popen('ls -A ' .. quoted(bin .. '/info') .. ' 2>/dev/null')
+  if not names then
+    return nil
+  end
+  for name in names:lines() do
+    local file = name:match('%.trashinfo$') and io.open(bin .. '/info/' .. name)
+    if file then
+      local info = file:read('*a')
+      file:close()
+      local from = info:match('\nPath=([^\n]*)')
+      local when = info:match('\nDeletionDate=([^\n]*)') or ''
+      if from and unescaped(from) == path and when >= newest then
+        found, newest = name:gsub('%.trashinfo$', ''), when
+      end
+    end
+  end
+  names:close()
+  return found
+end
+
+-- The last picture moved to the trash comes back to where it was, and into
+-- its place in the list, in view. gio can't take it back without GVfs's
+-- trash, which the desktop doesn't run, so it's moved back as the trash
+-- keeps it.
+local function restore(mode)
+  local path = trashed[#trashed]
+  if not path then
+    return
+  end
+  local bin = home_trash()
+  local name = kept_from(bin, path)
+  local there = io.open(path)
+  if there then
+    there:close()
+  end
+  if not name or there or not os.rename(bin .. '/files/' .. name, path) then
+    swayimg.text.status = "Couldn't bring it back"
+    return
+  end
+  table.remove(trashed)
+  os.remove(bin .. '/info/' .. name .. '.trashinfo')
+  swayimg.imagelist.add(path)
+  if mode == swayimg.viewer then
+    swayimg.viewer.open_path(path)
+  else
+    swayimg.gallery.select_path(path)
+  end
+  swayimg.text.status = 'Brought back'
+end
+
+-- The picture at that place in the list, counted as its name's count is.
+local function nth(mode, number)
+  local entry = swayimg.imagelist.get()[number]
+  if not entry then
+    return
+  end
+  if mode == swayimg.viewer then
+    swayimg.viewer.open_path(entry.path)
+  else
+    swayimg.gallery.select_path(entry.path)
+  end
+end
+
+-- A picture larger than the window moves a tenth of the window, as
+-- swayimg's own arrows moved it, and one that fits stays.
+local function pan(rows)
+  local at = swayimg.viewer.get_position()
+  local size = swayimg.get_window_size()
+  swayimg.viewer.set_abs_position(at.x, at.y + rows * math.floor(size.height / 10))
+end
+
+-- Each move, as many times as the number before it says.
+local function times(count, fn)
+  for _ = 1, count or 1 do
+    fn()
+  end
+end
+
+-- A move one way: on a picture, the previous or the next, or the picture
+-- moved up or down; in the gallery, the picture chosen that way.
+local function way(viewer, gallery)
+  return function(mode, count)
+    times(count, function()
+      if mode == swayimg.viewer then
+        viewer()
+      else
+        swayimg.gallery.select(gallery)
+      end
+    end)
+  end
+end
+
+-- To the first or the last, or with a number, that picture.
+local function end_or_nth(dir)
+  return function(mode, count)
+    if count then
+      nth(mode, count)
+    elseif mode == swayimg.viewer then
+      swayimg.viewer.open(dir)
+    else
+      swayimg.gallery.select(dir)
+    end
+  end
+end
+
+-- Escape leaves full screen first, and then closes.
+local function escape()
+  if swayimg.fullscreen then
+    swayimg.fullscreen = false
+  else
+    quit()
+  end
+end
+
 -- What each key with an act does. The arrows go that way, to the previous
--- and the next picture, as Page Up and Page Down do too, and Home and End
--- to the first and the last: the arrows' own default only moves a picture
--- larger than the window.
+-- and the next picture, and Home and End to the first and the last: the
+-- arrows' own default only moves a picture larger than the window, which
+-- Up and Down still do.
 local acts = {
-  prev = function()
+  left = way(function()
     swayimg.viewer.open('prev')
-  end,
-  next = function()
+  end, 'left'),
+  right = way(function()
     swayimg.viewer.open('next')
-  end,
-  first = function()
-    swayimg.viewer.open('first')
-  end,
-  last = function()
-    swayimg.viewer.open('last')
-  end,
+  end, 'right'),
+  up = way(function()
+    pan(1)
+  end, 'up'),
+  down = way(function()
+    pan(-1)
+  end, 'down'),
+  first = end_or_nth('first'),
+  last = end_or_nth('last'),
   edit = edit,
   copy = copy,
   trash = trash,
+  restore = restore,
+  escape = escape,
+  turn_left = function()
+    swayimg.viewer.rotate(270)
+  end,
+  turn_right = function()
+    swayimg.viewer.rotate(90)
+  end,
   close = quit,
   keys = list,
 }
 
--- Each key with an act, bound where it works. swayimg spells a held key
--- with a dash, Shift-slash, and hears ? as the key it's shifted from.
-for _, key in ipairs(nix.keys) do
-  if key.act then
-    for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
-      if works(key, mode) then
-        mode.on_key((key.chord:gsub('%+', '-')), function()
-          acts[key.act](mode)
-        end)
+-- Each key with an act, by the key that starts it, where it works: alone,
+-- or as the first of a pair and the key after it. swayimg spells a held
+-- key with a dash, Shift-slash, and hears ? as the key it's shifted from.
+local alone, paired = {}, {}
+for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
+  alone[mode], paired[mode] = {}, {}
+  for _, key in ipairs(nix.keys) do
+    if key.act and works(key, mode) then
+      local first, second = key.chord:match('^(%S+) (%S+)$')
+      if first then
+        first, second = first:gsub('%+', '-'), second:gsub('%+', '-')
+        paired[mode][first] = paired[mode][first] or {}
+        paired[mode][first][second] = key.act
+      else
+        alone[mode][(key.chord:gsub('%+', '-'))] = key.act
       end
     end
+  end
+end
+
+-- A key pressed: the second of a pair waiting finishes it; a digit adds to
+-- the number, a pair's first key waits for its second, and a key alone
+-- does its act, that many times.
+local function pressed(mode, key)
+  local count = tonumber(waiting.count)
+  if waiting.first then
+    local first = waiting.first
+    local act = paired[mode][first][key]
+    stop_waiting(mode)
+    if act then
+      acts[act](mode, count)
+    else
+      -- As in Vim: the first does what it does alone, and this key is
+      -- heard on its own.
+      if alone[mode][first] then
+        acts[alone[mode][first]](mode, count)
+      end
+      pressed(mode, key)
+    end
+    return
+  end
+  local act = alone[mode][key]
+  if key:match('^%d$') and not act and (count or key ~= '0') then
+    waiting.count = waiting.count .. key
+    wait(mode)
+  elseif paired[mode][key] then
+    -- A key that starts a pair waits for its second, and alone, as y and
+    -- [ are too, does what it does once none comes.
+    waiting.first = key
+    wait(mode, act and function(times_over)
+      acts[act](mode, times_over)
+    end)
+  elseif act == 'escape' and waiting.shown then
+    stop_waiting(mode)
+  else
+    stop_waiting(mode)
+    if act then
+      acts[act](mode, count)
+    end
+  end
+end
+
+-- Every key that acts, starts a pair or ends one, and the digits.
+for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
+  local bound = {}
+  for key in pairs(alone[mode]) do
+    bound[key] = true
+  end
+  for first, seconds in pairs(paired[mode]) do
+    bound[first] = true
+    for second in pairs(seconds) do
+      bound[second] = true
+    end
+  end
+  for digit = 0, 9 do
+    bound[tostring(digit)] = true
+  end
+  for key in pairs(bound) do
+    mode.on_key(key, function()
+      pressed(mode, key)
+    end)
   end
 end

@@ -17,11 +17,18 @@
 # language: the arrows go that way, to the previous and next picture, or
 # around the gallery; Home and End to the first and last; Enter goes
 # between the picture and the gallery of its folder; e edits in GIMP, or
-# Inkscape for a drawing, and closes the viewer; y copies the picture as
-# shown; Delete moves it to the trash rather than deleting it; q closes it,
-# as in mpv. As a picture opens, a quiet line under it names the keys that
-# move on, for as long as its name shows, and ? lists them all until it's
-# pressed again.
+# Inkscape for a drawing, and closes the viewer; Delete moves the picture
+# to the trash rather than deleting it, and u brings it back; q closes it,
+# as in mpv. Vim's keys twin them, as Joel's Vim has them: h j k l the
+# arrows, gg and G the first and last, a number before G that picture and
+# before a move that many, dd the trash, yy copies the picture as shown,
+# and Space ? lists the keys, as ? does. A number or a key waiting for its
+# second shows, muted, at the foot's right, as Neovim's showcmd does, for
+# 300 ms at most, his Neovim's timeoutlen; [ and ] start ]b and [b, the
+# next and previous picture, as Vim's go between buffers, and turn the
+# picture when no b follows. As a picture opens, a quiet line under it
+# names the keys that move on, for as long as its name shows, and ? lists
+# them all until it's pressed again.
 #
 # The keys are the picture viewer's layer of jitsusama.keys, so the
 # launcher lists them over its window, and init.lua binds and lists them
@@ -78,33 +85,60 @@ let
   # without is swayimg's own, listed as swayimg binds it. The launcher's
   # Shortcuts groups those that go between pictures and those that change
   # how the one in view is shown; the rest are few enough to stay loose.
+  #
+  # Neovim's keys are here too, as docs/design.md's Vi's Keys has them, each
+  # beside the arrow or key it twins, by the same words and the same act, so
+  # one row lists them both: h j k l as the arrows, gg and G as Home and
+  # End, dd as Delete. A key pressed after a number does it that many times,
+  # and G after one goes to that picture; init.lua gathers the number and
+  # waits for a pair's second key.
   grouped = group: map (key: key // { inherit group; });
+  # A key doing one thing where it works, by its act, with the key it twins.
+  twins =
+    when: does: act: chords:
+    map (chord: {
+      inherit
+        chord
+        when
+        does
+        act
+        ;
+    }) chords;
   keys =
     grouped "moving" (
-      [
+      # [b and ]b, as Vim's go between buffers.
+      twins places.viewer "Previous picture" "left" [
+        "Left"
+        "h"
+        "bracketleft b"
+      ]
+      ++ twins places.viewer "Next picture" "right" [
+        "Right"
+        "l"
+        "bracketright b"
+      ]
+      ++ twins places.viewer "Up a little, on a picture larger than the window" "up" [
+        "Up"
+        "k"
+      ]
+      ++ twins places.viewer "Down a little, on a picture larger than the window" "down" [
+        "Down"
+        "j"
+      ]
+      ++ twins places.viewer "First picture" "first" [
+        "Home"
+        "g g"
+      ]
+      ++ twins places.viewer "Last picture" "last" [
+        "End"
+        "Shift+g"
+      ]
+      ++ [
+        # Any number before G, five drawn for them all; G's own act counts.
         {
-          chord = "Left";
-          does = "Previous picture";
+          chord = "5 Shift+g";
+          does = "That picture, by its number";
           when = places.viewer;
-          act = "prev";
-        }
-        {
-          chord = "Right";
-          does = "Next picture";
-          when = places.viewer;
-          act = "next";
-        }
-        {
-          chord = "Home";
-          does = "First picture";
-          when = places.viewer;
-          act = "first";
-        }
-        {
-          chord = "End";
-          does = "Last picture";
-          when = places.viewer;
-          act = "last";
         }
         {
           chord = "Return";
@@ -112,28 +146,36 @@ let
           when = places.viewer;
         }
       ]
-      ++
-        map
-          (chord: {
-            inherit chord;
-            does = "Choose a picture that way";
-            when = places.gallery;
-          })
-          [
-            "Left"
-            "Right"
-            "Up"
-            "Down"
-          ]
+      ++ twins places.gallery "Choose a picture that way" "left" [
+        "Left"
+        "h"
+      ]
+      ++ twins places.gallery "Choose a picture that way" "right" [
+        "Right"
+        "l"
+      ]
+      ++ twins places.gallery "Choose a picture that way" "up" [
+        "Up"
+        "k"
+      ]
+      ++ twins places.gallery "Choose a picture that way" "down" [
+        "Down"
+        "j"
+      ]
+      ++ twins places.gallery "Previous picture" "left" [ "bracketleft b" ]
+      ++ twins places.gallery "Next picture" "right" [ "bracketright b" ]
+      ++ twins places.gallery "First picture" "first" [
+        "Home"
+        "g g"
+      ]
+      ++ twins places.gallery "Last picture" "last" [
+        "End"
+        "Shift+g"
+      ]
       ++ [
         {
-          chord = "Home";
-          does = "First picture";
-          when = places.gallery;
-        }
-        {
-          chord = "End";
-          does = "Last picture";
+          chord = "5 Shift+g";
+          does = "That picture, by its number";
           when = places.gallery;
         }
         {
@@ -150,19 +192,27 @@ let
         when = places.viewer;
       }
       {
+        chord = "equal";
+        does = "Closer";
+        when = places.viewer;
+      }
+      {
         chord = "minus";
         does = "Further";
         when = places.viewer;
       }
+      # A moment after them with no b, as Vim's timeout, they turn.
       {
         chord = "bracketleft";
         does = "Turn left";
         when = places.viewer;
+        act = "turn_left";
       }
       {
         chord = "bracketright";
         does = "Turn right";
         when = places.viewer;
+        act = "turn_right";
       }
       {
         chord = "f";
@@ -171,6 +221,11 @@ let
       }
       {
         chord = "Shift+plus";
+        does = "Larger";
+        when = places.gallery;
+      }
+      {
+        chord = "equal";
         does = "Larger";
         when = places.gallery;
       }
@@ -186,19 +241,26 @@ let
         does = "Edit in GIMP, or Inkscape for a drawing";
         act = "edit";
       }
+    ]
+    # y alone waits for what it's to copy, as in Vim, and does nothing.
+    ++ twins places.viewer "Copy the picture as shown" "copy" [ "y y" ]
+    ++ twins places.gallery "Copy the file" "copy" [ "y y" ]
+    ++ twins "" "Move to the trash" "trash" [
+      "Delete"
+      "d d"
+    ]
+    ++ [
       {
-        chord = "y";
-        does = "Copy the picture";
-        act = "copy";
+        chord = "u";
+        does = "Bring back the last one trashed";
+        act = "restore";
       }
-      {
-        chord = "Delete";
-        does = "Move to the trash";
-        act = "trash";
-      }
+      # Escape stops a number or a key waiting for its second, and leaves
+      # full screen, before it closes.
       {
         chord = "Escape";
         does = "Close";
+        act = "escape";
       }
       # As in mpv.
       {
@@ -206,32 +268,59 @@ let
         does = "Close";
         act = "close";
       }
+      # Space ?, as in Joel's Neovim, which shows them everywhere.
       {
         chord = "Shift+slash";
+        does = "These keys";
+        act = "keys";
+      }
+      {
+        chord = "space Shift+slash";
         does = "These keys";
         act = "keys";
       }
     ];
 
   # How a key is drawn, as the desktop draws it: a shifted key as what it
-  # types, a letter as a capital. swayimg draws its words in the one face,
+  # types. A letter is drawn as it's typed, as Neovim's own lists draw
+  # them, since G and g are two keys here, and keys pressed one after
+  # another run together, as gg. swayimg draws its words in the one face,
   # with no other to fall back on, and the sans face has no return arrow,
   # so there Return is its name.
   faces = config.jitsusama.theme.keys;
   themed = {
     bracketleft = "BracketLeft";
     bracketright = "BracketRight";
+    equal = "Equal";
     minus = "Minus";
   };
   typed = {
     "Shift+slash" = "?";
     "Shift+plus" = "+";
     Return = "Enter";
+    space = "Space";
   };
+  drawnOne =
+    chord:
+    let
+      shifted = lib.removePrefix "Shift+" chord;
+    in
+    typed.${chord} or faces.${themed.${chord} or chord}.text or (
+      if lib.stringLength chord == 1 then
+        chord
+      else if lib.stringLength shifted == 1 then
+        lib.toUpper shifted
+      else
+        chord
+    );
+  # Letters pressed one after another run together, gg, and a named key
+  # stands apart, Space ?.
   drawn =
     chord:
-    typed.${chord} or faces.${themed.${chord} or chord}.text
-      or (if lib.stringLength chord == 1 then lib.toUpper chord else chord);
+    let
+      parts = map drawnOne (lib.splitString " " chord);
+    in
+    lib.concatStringsSep (if lib.all (part: lib.stringLength part == 1) parts then "" else " ") parts;
 
   given = {
     colour = {

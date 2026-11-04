@@ -51,15 +51,21 @@ onLinux {
   # The arrows go to the previous and the next picture, and Home and End to
   # the first and the last, pressed as a keyboard presses them, with the
   # account's settings: swayimg's own arrows only move a picture larger
-  # than its window, which is how Joel was left unable to go on. The
-  # picture it opened with, and only that one, is said to the desktop's
-  # list of files opened lately, through recent-files, stood in here.
+  # than its window, which is how Joel was left unable to go on. Neovim's
+  # keys do as the arrows they twin, a number before one makes it that
+  # many, dd and Delete move a picture to the trash and u brings it back,
+  # yy copies it, through wl-copy, stood in here, and Space ? lists the
+  # keys, on a picture and in the gallery. The picture it opened with, and
+  # only that one, is said to the desktop's list of files opened lately,
+  # through recent-files, stood in too.
   swayimg-moves-by-its-keys =
     let
       home = account graphical;
       files = home.xdg.configFile;
       fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
       recent-files = pkgs.writeShellScriptBin "recent-files" ''echo "$*" >> "$SAID"'';
+      # The wl-copy nix.lua names, for the stand-in to take its place.
+      wl-copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
     in
     pkgs.runCommandLocal "swayimg-moves-by-its-keys"
       {
@@ -67,6 +73,7 @@ onLinux {
           home.programs.swayimg.package
           pkgs.bash
           pkgs.cage
+          pkgs.grim
           pkgs.inotify-tools
           pkgs.wtype
           recent-files
@@ -76,14 +83,20 @@ onLinux {
         export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run SAID=$PWD/said-files
         export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
         export WLR_LIBINPUT_NO_DEVICES=1
-        mkdir -p config/swayimg run
+        mkdir -p config/swayimg run pictures
         chmod 700 run
         cp ${files."swayimg/init.lua".source} config/swayimg/init.lua
-        cp ${files."swayimg/nix.lua".source} config/swayimg/nix.lua
-        for name in a b c; do
-          printf 'P3\n1 1\n255\n0 0 0\n' > $name.ppm
+        printf '#!%s\ncat > %s/copied\n' "$BASH" "$PWD" > wl-copy
+        chmod +x wl-copy
+        sed 's|${wl-copy}|'"$PWD"'/wl-copy|' ${files."swayimg/nix.lua".source} \
+          > config/swayimg/nix.lua
+        grep -q "$PWD/wl-copy" config/swayimg/nix.lua \
+          || { echo "nix.lua names no wl-copy to copy with"; exit 1; }
+        for name in a b c d e f g h i j k l m n; do
+          printf 'P3\n1 1\n255\n0 0 0\n' > pictures/$name.ppm
         done
-        timeout 60 cage -- bash ${./tests/swayimg-moves-by-its-keys.sh} || true
+        { printf 'P5\n4 2000\n255\n'; head -c 8000 /dev/zero; } > pictures/z-tall.pgm
+        timeout 180 cage -- bash ${./tests/swayimg-moves-by-its-keys.sh} || true
         test -e moved
         touch $out
       '';

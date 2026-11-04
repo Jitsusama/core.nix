@@ -1286,8 +1286,12 @@
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
-    End and Home to the last and first, and the picture it opened with, and none after, is said to
-    the desktop's list of files opened lately
+    End, Home, G and gg to the last and first, l and h as → and ←, ]b and [b as well,
+    a number before G to that picture and before a move that many, j and k move a large picture
+    as ↓ and ↑ do, dd and Delete trash it and u brings it back, yy copies it,
+    Space ? lists the keys, Escape stops a number waiting and then closes it, the gallery answers
+    the same keys, and the picture it opened with, and none after, is said to the desktop's list of
+    files opened lately
   '';
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
