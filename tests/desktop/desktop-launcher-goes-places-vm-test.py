@@ -951,8 +951,17 @@ def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_sa
     # Both older than the nine newest, so only a search past them finds them.
     newer = [f"{shots}/2026-10-2{day} 09-00-00.png" for day in range(10)]
     texts = {said: ["Standup", "The wombat review moved to Friday"], named: ["Wombat"]}
+    # Each is a picture, one pixel, since the drawer shows the one selected and an empty
+    # file would make it warn that it can't be read.
+    pixel = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhf"
+        "DwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    )
     desktop.as_account(
         f"mkdir -p {shlex.quote(shots)}"
+        f" && printf %s {pixel} | base64 -d > {shlex.quote(named)}"
+        f" && for each in {' '.join(shlex.quote(path) for path in [said, *newer])};"
+        f' do cp {shlex.quote(named)} "$each"; done'
         f" && touch -d '2026-09-01' {shlex.quote(named)} {shlex.quote(said)}"
         f" && touch {' '.join(shlex.quote(path) for path in newer)}"
         f" && printf %s {shlex.quote(json.dumps(texts))} > $XDG_RUNTIME_DIR/screen-text-texts.json"
