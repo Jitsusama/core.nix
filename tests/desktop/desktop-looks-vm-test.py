@@ -578,8 +578,14 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
                 "systemd-run --user --collect --unit=choose-in-order"
                 f" {desktop.values['choose_a_file']} open {folder}"
             )
+            # A fresh ask is shown before its folder's read, so wait for the
+            # Order row down_to goes to, not just a row selected.
             desktop.launcher_until(
-                lambda shown: shown["path"][-1:] == ["~/ordered"] and shown["selected"] is not None,
+                lambda shown: (
+                    shown["path"][-1:] == ["~/ordered"]
+                    and shown["selected"] is not None
+                    and "Order" in shown["rows"]
+                ),
                 timeout=timedelta(seconds=60),
             )
             for name in ["Size", "Changed", "Name"]:
