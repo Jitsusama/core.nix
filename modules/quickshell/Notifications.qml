@@ -294,7 +294,27 @@ Scope {
         standing = NoticeKeys.rest();
         stood = 0;
         Qt.callLater(stands);
-        Report.say(holding ? "holds notices" : "lets notices go");
+        if (holding) {
+            root.saidLetGo();
+            Report.say("holds notices");
+        } else if (taker.given) {
+            // Said once niri has taken the keys back, so a test that
+            // takes them again next waits for niri to give them anew
+            // rather than hearing they're held while niri still moves
+            // them, which lost its first key.
+            root.letting = true;
+        } else {
+            Report.say("lets notices go");
+        }
+    }
+    // Whether the stack has let the keys go and niri has yet to take them.
+    property bool letting: false
+
+    function saidLetGo() {
+        if (!root.letting)
+            return;
+        root.letting = false;
+        Report.say("lets notices go");
     }
     onSteppedChanged: if (!stepped) Report.say("notice back")
     // Which comes to the front as the keys turn the stack.
@@ -1182,11 +1202,18 @@ Scope {
                 visible: root.shown.length > 0
 
                 // Keys reach it while the stack holds them, which niri
-                // gives a frame after it's asked.
+                // gives a frame after it's asked and takes back a frame
+                // after they're let go, so each is said once niri has.
                 Item {
+                    id: taker
+
+                    readonly property bool given: Window.active
+                    readonly property bool taken: activeFocus && given
+
                     focus: root.holding
                     Keys.onPressed: event => root.pressed(event)
-                    onActiveFocusChanged: if (activeFocus) Report.say("keys notices")
+                    onTakenChanged: if (taken) Report.say("keys notices")
+                    onGivenChanged: if (!given) root.saidLetGo()
                 }
 
             Repeater {
