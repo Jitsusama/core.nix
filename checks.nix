@@ -344,6 +344,14 @@ let
       inherit self pkgs;
       area = "says-what-happens";
     };
+    vm-desktop-minds-the-margin = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "minds-the-margin";
+    };
+    vm-desktop-takes-calls = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "takes-calls";
+    };
     vm-desktop-captures-and-locks = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "captures-and-locks";
@@ -916,7 +924,6 @@ gather (
           over = [
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
-            "tests/desktop/desktop-says-what-happens-vm-test.py 38"
             "tests/screens-vm-test.py 36"
             "tests/vm/guide/guide-install-vm-test.py 26"
             "tests/wifi-vm-test.py 40"
