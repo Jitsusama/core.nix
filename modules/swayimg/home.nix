@@ -22,17 +22,17 @@
 # as in mpv. Vim's keys twin them, as Joel's Vim has them: h j k l the
 # arrows, gg and G the first and last, a number before G that picture and
 # before a move that many, dd the trash, yy copies the picture as shown,
-# and Space ? lists the keys, as ? does. A number or a key waiting for its
-# second shows, muted, at the foot's right, as Neovim's showcmd does, for
-# 300 ms at most, his Neovim's timeoutlen; [ and ] start ]b and [b, the
-# next and previous picture, as Vim's go between buffers, and turn the
-# picture when no b follows. As a picture opens, a quiet line under it
-# names the keys that move on, for as long as its name shows, and ? lists
-# them all until it's pressed again.
+# and ? and Space ? open the launcher's Shortcuts at its keys. A number or
+# a key waiting for its second waits 300 ms at most, his Neovim's
+# timeoutlen, and shows nothing, as his Neovim has showcmd off; [ and ]
+# start ]b and [b, the next and previous picture, as Vim's go between
+# buffers, and turn the picture when no b follows. As a picture opens, a
+# quiet line under it names the keys that move on, for as long as its name
+# shows.
 #
 # The keys are the picture viewer's layer of jitsusama.keys, so the
-# launcher lists them over its window, and init.lua binds and lists them
-# from the same list, handed over in nix.lua.
+# launcher lists them over its window, and init.lua binds them from the
+# same list, handed over in nix.lua.
 #
 # The launcher finds the screenshots folder's gallery by typing, and holds
 # it among the picture viewer's own acts (Screenshots.qml). Its Recent

@@ -167,24 +167,20 @@ if [ -e copied ]; then
   exit 1
 fi
 
-# ? lists the keys over the picture, and Space ? as well, and each again
-# puts them away. A keyboard sends ? as question with Shift held, not as
-# the slash it's printed beside. The list is only drawn, so it's seen on
-# the screen, once the words a picture opens with have gone, two seconds
-# on. A key swayimg doesn't know is drawn too, as a status line that goes
-# two seconds on, so the list is looked for once that would have gone.
-lists() {
-  sleep 3
-  until_still
-  grim -t ppm bare.ppm
+# ? asks the launcher for the keys, and Space ? as well. A keyboard sends ?
+# as question with Shift held, not as the slash it's printed beside.
+asks() {
+  rm -f "$ASKED"
   wtype "$@" -M shift -k question -m shift
-  sleep 3
-  grim -t ppm now.ppm
-  ! cmp -s bare.ppm now.ppm || { echo "${*:+Space }? listed no keys"; exit 1; }
-  wtype "$@" -M shift -k question -m shift
+  for _ in $(seq 100); do
+    if grep -qx 'collection shortcuts' "$ASKED" 2>/dev/null; then return; fi
+    sleep 0.1
+  done
+  echo "${*:+Space }? asked the launcher for no keys"
+  exit 1
 }
-lists
-lists -k space
+asks
+asks -k space
 
 # On a picture larger than the window, Down moves it and Up back, and j and
 # k as far.
@@ -229,6 +225,7 @@ for _ in $(seq 100); do
   sleep 0.1
 done
 cmp -s copied pictures/a.ppm || { echo "yy in the gallery didn't copy the file"; exit 1; }
+asks
 
 # Escape at rest closes it.
 wtype -k Escape
