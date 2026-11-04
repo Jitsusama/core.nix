@@ -2973,6 +2973,21 @@
       "name": "Searching"
     },
     {
+      "id": "shortcuts:reader:selecting",
+      "in": "shortcuts",
+      "name": "Selecting"
+    },
+    {
+      "id": "shortcuts:reader:objects",
+      "in": "shortcuts",
+      "name": "Text Objects"
+    },
+    {
+      "id": "shortcuts:reader:copying",
+      "in": "shortcuts",
+      "name": "Copying"
+    },
+    {
       "id": "shortcuts:reader:page",
       "in": "shortcuts",
       "name": "The Page"

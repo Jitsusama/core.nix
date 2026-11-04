@@ -1101,12 +1101,14 @@
     the reader's tests pass as it builds: tables from their words and on the text's pitch, pictures
     by their first bytes, places kept and read back, saves heard and the watch moved to another file,
     the file shown said, the theme read, search across a hyphen, an equation shown as written
-    without MiTeX, links to markdown set in place, labels on their links' baselines, and Neovim's
-    counts and keys
+    without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
+    counts and keys, and visual mode's motions, text objects and copies of the file's markdown
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
-    zoom, / and n, Space ? and Escape, and follows a link by g x's label, to a heading and to another
+    zoom, / and n, Space ? and Escape, copies the first block in view and its paragraph with y y and
+    y i p, selects with v and V and every visual-mode key, copies each selection's markdown onto
+    the clipboard with y and Ctrl+C, and follows a link by g x's label, to a heading and to another
     markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then closes on q;
     markdown files open in it
   '';

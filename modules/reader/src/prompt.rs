@@ -231,12 +231,16 @@ fn source(ask: &Ask) -> String {
 /// xl round it, xxl between a key and its words and between the columns,
 /// l between groups and s under a group's name; its rows stand on the
 /// page's 25 px rhythm. The groups in a column share one edge for their
-/// words, measured from the widest keys in it.
+/// words, measured from the widest keys in it. Each column is a stack of
+/// its own, the groups shared out so the two stand as near one height as
+/// they can, since the list has to fit the window.
 fn key_list() -> String {
-    let mut groups = Vec::new();
+    let listing = crate::keys::listing();
+    let heights: Vec<usize> = listing.iter().map(|(_, rows)| rows.len()).collect();
+    let columns = columns_of(&heights);
+    let mut groups: [Vec<String>; 2] = [Vec::new(), Vec::new()];
     let mut widest: [Vec<String>; 2] = [Vec::new(), Vec::new()];
-    for (index, (group, rows)) in crate::keys::listing().into_iter().enumerate() {
-        let column = index % 2;
+    for ((group, rows), &column) in listing.into_iter().zip(&columns) {
         let mut cells = Vec::new();
         for (ways, does) in rows {
             widest[column].push(quoted(&ways.join(" \u{b7} ")));
@@ -250,26 +254,53 @@ fn key_list() -> String {
             ));
             cells.push(format!("[#{}]", quoted(does)));
         }
-        groups.push(format!(
+        groups[column].push(format!(
             "stack(spacing: 6pt, text(fill: ink.strong, weight: 700, {}), grid(columns: (keys.at({column}), auto), rows: 18.75pt, align: horizon, column-gutter: 24pt, {}))",
             quoted(group),
             cells.join(", ")
         ));
     }
+    let stacks: Vec<String> = groups
+        .iter()
+        .map(|column| format!("stack(spacing: 12pt, {})", column.join(", ")))
+        .collect();
     format!(
         r#"{}#set page(width: auto, height: auto, margin: 18pt, fill: ink.sunken)
 #set text(font: face.code, size: 11.5pt, fill: ink.text)
 #context {{
   let keys = (({}), ({})).map(column => calc.max(0pt, ..column.map(it => measure(text(it)).width)))
-  stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, row-gutter: 12pt, {}),
+  stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, {}),
     text(fill: ink.muted, "A number first does it that many times: 5j goes five lines down."))
 }}
 "#,
         crate::theme::get().typst(),
         widest[0].join(", ") + ",",
         widest[1].join(", ") + ",",
-        groups.join(", ")
+        stacks.join(", ")
     )
+}
+
+/// Which column each group of the key list goes in, the first always the
+/// left: the share whose taller column is shortest, counting a group's
+/// name as one and a half rows, as it stands with its gap; groups keep
+/// their order down each column.
+fn columns_of(rows: &[usize]) -> Vec<usize> {
+    let height = |n: usize| n * 4 + 6;
+    let n = rows.len().min(16);
+    let tallest = |share: u32| {
+        let mut sides = [0, 0];
+        for (i, &count) in rows.iter().take(n).enumerate() {
+            sides[(share >> i & 1) as usize] += height(count);
+        }
+        sides[0].max(sides[1])
+    };
+    let best = (0..1u32 << n)
+        .filter(|share| share & 1 == 0)
+        .min_by_key(|&share| tallest(share))
+        .unwrap_or(0);
+    (0..rows.len())
+        .map(|i| if i < n { (best >> i & 1) as usize } else { 1 })
+        .collect()
 }
 
 /// The labels' Typst, as his flash draws a label: the letters in strong
@@ -308,6 +339,32 @@ fn quoted(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_key_lists_groups_share_two_columns_as_evenly_as_they_can() {
+        assert_eq!(columns_of(&[3, 3]), [0, 1]);
+        // A tall group stands alone beside the rest.
+        assert_eq!(columns_of(&[2, 10, 2, 2, 2]), [0, 1, 0, 0, 0]);
+        let heights: Vec<usize> = crate::keys::listing()
+            .iter()
+            .map(|(_, rows)| rows.len())
+            .collect();
+        let columns = columns_of(&heights);
+        let side = |column: usize| -> usize {
+            heights
+                .iter()
+                .zip(&columns)
+                .filter(|(_, c)| **c == column)
+                .map(|(rows, _)| rows + 2)
+                .sum()
+        };
+        assert!(
+            side(0).abs_diff(side(1)) <= 4,
+            "the reader's own list is {} rows beside {}",
+            side(0),
+            side(1)
+        );
+    }
 
     #[test]
     fn quoting_keeps_what_is_typed() {

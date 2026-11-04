@@ -25,11 +25,13 @@ mod painter;
 mod place;
 mod prompt;
 mod search;
+mod select;
 mod showing;
 mod start;
 mod text;
 mod theme;
 mod tiles;
+mod visual;
 mod walk;
 mod watch;
 mod web;
@@ -107,6 +109,25 @@ fn current_marks() -> ([f32; 3], [f32; 3]) {
     let ink = theme::get();
     (ink.accent.gl(), ink.on_accent.gl())
 }
+/// A selection, and a copy's flash: the selection's ground with its words
+/// in strong, since the text on that ground falls short of the contrast
+/// text needs, as the launcher's selected row does.
+fn selection_marks() -> ([f32; 3], [f32; 3]) {
+    let ink = theme::get();
+    (ink.selection.gl(), ink.strong.gl())
+}
+/// Visual mode's cursor, a block on its character in the terminal's cursor
+/// colours, as kitty and Neovim draw it.
+fn cursor_marks() -> ([f32; 3], [f32; 3]) {
+    let ink = theme::get();
+    (ink.cursor.gl(), ink.cursor_text.gl())
+}
+/// How long a copy flashes what it took, as his Neovim's yank does
+/// (`vim.highlight.on_yank({ timeout = 200 })`).
+const FLASH: Duration = Duration::from_millis(200);
+/// Lines kept between a selection's cursor and the view's edge, as his
+/// Neovim's scrolloff.
+const SCROLL_OFF_LINES: f64 = 4.0;
 /// Bands asked for and not yet back, at most.
 const ASKED_AT_ONCE: usize = 8;
 /// Bands with the loader at once, the most wanted first. Few, so a band
@@ -408,6 +429,16 @@ struct App {
     labels_set: Option<Vec<prompt::Label>>,
     /// Each label painted, and how far below its top its letters stand.
     label_canvases: Vec<(gl::Texture, f64)>,
+    /// The page's words for selecting, with the file they were set from,
+    /// read off the page on a thread; none until read.
+    layout: Option<std::sync::Arc<select::Layout>>,
+    layout_to: channel::Sender<(u32, select::Layout)>,
+    /// Visual mode's selection, while there is one.
+    selection: Option<select::Selection>,
+    /// What the last copy took, flashed until a moment after it.
+    flash: Option<(Vec<text::Piece>, Instant)>,
+    /// The selection's swatch and blend, then the cursor's.
+    chosen: Option<[(gl::Texture, gl::Blend); 2]>,
 }
 
 /// One line of the page's body text, what j and k move by.
@@ -863,6 +894,11 @@ impl App {
             }
             search::Typed::Nothing => {}
         }
+        // A search made while selecting takes the cursor to its match, as
+        // Neovim's does.
+        if matches!(said, search::Typed::Done | search::Typed::Cancelled) {
+            self.after_view_moved(said == search::Typed::Done);
+        }
         self.log_search(&format!("{said:?}"));
         if !self.frame_pending {
             self.draw();
@@ -1178,10 +1214,6 @@ impl App {
     /// Does what a key asks, `count` times where a count means anything.
     fn act(&mut self, act: keys::Act, count: Option<u32>) {
         use keys::Act;
-        let n = f64::from(count.unwrap_or(1));
-        let screen = self.screen_px();
-        let line = LINE_PT * self.px_per_pt();
-        let at = self.heading();
         // The prompt stays while n and N go on, as Neovim's search count.
         if !matches!(
             act,
@@ -1195,12 +1227,46 @@ impl App {
         if listed {
             self.show_keys(false);
         }
+        // Selecting, the keys move the selection's cursor and the view
+        // follows it; a key that moves the view takes the cursor with it.
+        let selecting = self.selection.is_some();
+        let handled = !(listed && act == Act::Rest) && self.select_act(act, count);
+        if !handled {
+            self.view_act(act, count, listed);
+            if selecting {
+                self.after_view_moved(matches!(act, Act::Next | Act::Previous));
+            }
+        }
+        if keys_logged() {
+            // What it selected goes first, so it's there once the key is.
+            self.log_selection();
+            eprintln!(
+                "key {act:?} {count:?}: heading {:.1} pt",
+                self.heading() / self.px_per_pt()
+            );
+            if matches!(
+                act,
+                Act::Next | Act::Previous | Act::SearchForward | Act::SearchBackward | Act::Rest
+            ) {
+                self.log_search(&format!("{act:?}"));
+            }
+        }
+        if !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Does what a key asks of the view, at rest or of one it moves while
+    /// selecting.
+    fn view_act(&mut self, act: keys::Act, count: Option<u32>, listed: bool) {
+        use keys::Act;
+        let n = f64::from(count.unwrap_or(1));
+        let screen = self.screen_px();
+        let line = LINE_PT * self.px_per_pt();
+        let at = self.heading();
         match act {
             Act::Down | Act::ScrollDown => self.step_to(at + n * line),
             Act::Up | Act::ScrollUp => self.step_to(at - n * line),
-            // The page is set to fit the window's width, so there's never
-            // anything beside it to move to.
-            Act::Left | Act::Right => {}
             Act::HalfDown => self.jump_to(at + n * screen / 2.0),
             Act::HalfUp => self.jump_to(at - n * screen / 2.0),
             Act::ScreenDown => self.jump_to(at + n * screen),
@@ -1266,21 +1332,26 @@ impl App {
             Act::ShowKeys => self.show_keys(!listed),
             Act::Rest if listed => {}
             Act::Rest => self.highlighting = false,
-        }
-        if keys_logged() {
-            eprintln!(
-                "key {act:?} {count:?}: heading {:.1} pt",
-                self.heading() / self.px_per_pt()
-            );
-            if matches!(
-                act,
-                Act::Next | Act::Previous | Act::SearchForward | Act::SearchBackward | Act::Rest
-            ) {
-                self.log_search(&format!("{act:?}"));
-            }
-        }
-        if !self.frame_pending {
-            self.draw();
+            // The page is set to fit the window's width, so there's never
+            // anything beside it to move to; h and l move only a
+            // selection's cursor, which takes them, with its own keys,
+            // before they get here.
+            Act::Left
+            | Act::Right
+            | Act::Select
+            | Act::SelectPieces
+            | Act::WordOn
+            | Act::WordBack
+            | Act::WordEnd
+            | Act::LineStart
+            | Act::LineEnd
+            | Act::ParagraphBack
+            | Act::ParagraphOn
+            | Act::OtherEnd
+            | Act::Object(_)
+            | Act::Copy
+            | Act::CopyPiece
+            | Act::CopyParagraph => {}
         }
     }
 
@@ -1725,6 +1796,7 @@ impl App {
             // take nothing from it.
             self.prompt = Some(prompt::Prompt::new(self.prompt_to.clone()));
             self.read_words();
+            self.read_layout();
             if let Some(measure) = self.measure.as_mut() {
                 measure.first_frame_ms = Some(self.opened.elapsed().as_secs_f64() * 1000.0);
             }
@@ -1926,8 +1998,10 @@ impl App {
         self.evict(covered);
         let evict_ms = evicting.elapsed().as_secs_f64() * 1000.0;
         let Some(gl) = self.gl.as_ref() else { return };
-        // The matches over the page, then the prompt over its foot.
+        // The matches over the page, a selection over them and its cursor
+        // over that, then the prompt over its foot.
         self.draw_marks(gl, screen);
+        self.draw_selection(gl, screen);
         self.draw_labels();
         let Some(gl) = self.gl.as_ref() else { return };
         if self.prompt_shown
@@ -2166,6 +2240,7 @@ impl App {
         if let Some(file) = incoming.opens {
             self.shown_now(file);
         }
+        self.read_layout();
         self.refind();
     }
 
@@ -2280,6 +2355,7 @@ impl App {
             measure.rest_ms = Some(ms);
         }
         self.read_words();
+        self.read_layout();
         if !self.frame_pending {
             self.draw();
         }
@@ -2590,7 +2666,7 @@ impl App {
                 self.typed(said);
                 return;
             }
-            if let Some((act, count)) = self.keys.press(key) {
+            if let Some((act, count)) = self.keys.press(key, self.selection.is_some()) {
                 self.act(act, count);
             }
         }
@@ -2790,6 +2866,9 @@ impl WindowHandler for App {
                     };
                     self.lit = make(search_marks())
                         .zip(make(current_marks()))
+                        .map(|(a, b)| [a, b]);
+                    self.chosen = make(selection_marks())
+                        .zip(make(cursor_marks()))
                         .map(|(a, b)| [a, b]);
                     self.gl = Some(gl);
                 }
@@ -3013,6 +3092,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         words_to: heard(&handle, |app: &mut App, (version, lines)| {
             app.words_read(version, lines);
         })?,
+        layout_to: heard(&handle, |app: &mut App, (version, layout)| {
+            app.layout_read(version, layout);
+        })?,
         prompt_to: heard(&handle, App::prompt_arrived)?,
     };
     let surface = surface(&globals, &qh)?;
@@ -3178,6 +3260,7 @@ struct Senders {
     done: channel::Sender<Band>,
     made_to: channel::Sender<gl::Made<Loading>>,
     words_to: channel::Sender<(u32, Vec<text::Line>)>,
+    layout_to: channel::Sender<(u32, select::Layout)>,
     prompt_to: channel::Sender<prompt::Set>,
 }
 
@@ -3315,6 +3398,11 @@ impl App {
             labelling: None,
             labels_set: None,
             label_canvases: Vec::new(),
+            layout: None,
+            layout_to: senders.layout_to,
+            selection: None,
+            flash: None,
+            chosen: None,
         }
     }
 }

@@ -47,8 +47,10 @@ onLinux {
   # baseline within a pixel, the file shown said for the launcher
   # and taken away on closing, the theme's roles read with Osaka Jade for
   # the rest, search found across a hyphen's break, an equation shown as
-  # written when MiTeX is missing, counts and keys as Neovim takes them, the
-  # motion's curve, and a worker let go only once its job in hand and its
+  # written when MiTeX is missing, counts and keys as Neovim takes them,
+  # visual mode's motions and text objects over a page's lines, each line
+  # the piece of the file it was written in, and what a selection copies,
+  # the file's own markdown, the motion's curve, and a worker let go only once its job in hand and its
   # thread have ended, the rest skipped.
   reader-sets-its-pages = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the reader, its tests included.
@@ -80,7 +82,11 @@ onLinux {
   # The reader draws a long page in the account's theme and takes Neovim's
   # keys: G goes to the end, gg to the top, 5j five lines, Ctrl+F a screen,
   # Ctrl+O back, Ctrl+Equal and Ctrl+0 zoom in and back, / finds and n goes
-  # on, Space ? lists the keys, Escape puts the list away, g x labels the
+  # on, y y and y i p copy the title and its paragraph as markdown and
+  # flash them, v and V select from the first word in view and every key
+  # of visual mode moves the selection or takes a text object, y and
+  # Ctrl+C copy the file's own markdown for it onto the clipboard,
+  # Escape ends it, Space ? lists the keys, Escape puts the list away, g x labels the
   # link at the page's end and its label follows it to the heading, a link
   # to another markdown file sets that file in the same window, which the
   # launcher's Recent is told and whose saves are heard, Ctrl+O comes back
@@ -103,6 +109,7 @@ onLinux {
           pkgs.grim
           pkgs.imagemagick
           pkgs.inotify-tools
+          pkgs.wl-clipboard
           pkgs.wtype
         ];
       }
@@ -110,8 +117,14 @@ onLinux {
         ${screen}
         {
           echo '# Every Key Neovim Has'
-          echo
           echo 'Some of it is on [the second page](second.md).'
+          echo
+          echo 'A **bold** start, then `code` in a line. A second sentence.'
+          echo
+          echo '```sh'
+          echo 'echo one'
+          echo 'echo two'
+          echo '```'
           for n in $(seq 120); do
             echo
             echo "Paragraph $n says enough to take a line or two of the page, so that every key here has somewhere to go."

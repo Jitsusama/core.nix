@@ -1519,7 +1519,13 @@ what they do, since they're what Joel presses.
 - **Then, in each surface's turn:** visual mode, operators (y copies as
   the surface's own format; d does a thing's ending act, asking once when
   it can't be undone) and text objects, wherever there's text to act on.
-  The reader has them from the start.
+  The reader has them from the start. A page at rest has no cursor, so
+  there v and V put the terminal's cursor, as kitty and Neovim draw it, on
+  the first word wholly in view, and Escape takes it away again. The
+  selection is the selection's ground with its words in strong. y and
+  Ctrl+C copy the file's markdown, flashing what they took for 200 ms as
+  his Neovim's yank does; at rest, y y and y i p take the first block
+  wholly in view, or its paragraph, the flash the only sign of what went.
 - **Proved by a VM test of its keys,** one for each surface, as it lands.
 
 Where vi meets the keys already here, each clash resolves one way:

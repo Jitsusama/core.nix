@@ -11,6 +11,10 @@
 # each one waits before typing for the reader to take the new keyboard.
 #
 # usage: reader-takes-its-keys.sh <file> <photo> <heading colour>
+#
+# The markdown a copy is held to holds backticks and dollars, meant as
+# themselves, so it's quoted whole in single quotes.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 file=$1
@@ -48,6 +52,43 @@ heading() { grep -a -E '^key ' said | tail -n 1 | sed -E 's/.*heading ([0-9.]+) 
 # space between separate words, so a sequence is one word: gg, not g g.
 press() { wtype -s 800 "$@"; }
 
+# How many lines of the log match `pattern`.
+how_many() { grep -c -a -E "$1" said || true; }
+
+# Presses keys that make `acts` acts, and waits until the reader has done
+# them all.
+keys=0
+act() {
+  local acts=$1
+  shift
+  press "$@"
+  keys=$((keys + acts))
+  logged '^key ' "$keys"
+}
+
+# Whether the selection shows `words` as the page sets them, said as Rust
+# quotes them, by the log's last word on it, which comes before its key's,
+# whichever kind of selection it is.
+shows() {
+  local said
+  said=$(grep -a -E '^selected: ' said | tail -n 1)
+  said=${said#selected: }
+  said=${said#Chars }
+  said=${said#Pieces }
+  [ "$said" = "$1" ] || fail "the selection is $said, not $1"
+}
+
+# Waits for the next copy, and whether it took `markdown`, said as Rust
+# quotes it.
+copies=0
+copied() {
+  copies=$((copies + 1))
+  logged '^copied: ' "$copies"
+  local said
+  said=$(grep -a -E '^copied: ' said | sed -n "${copies}p")
+  [ "$said" = "copied: $1" ] || fail "copied ${said#copied: }, not $1"
+}
+
 deadline=$((SECONDS + 60))
 until holds '^key Last None' 1; do
   ((SECONDS < deadline)) || fail "the reader never took G"
@@ -65,6 +106,120 @@ until grim "$photo" \
   ((SECONDS < deadline)) || fail "the page's heading never showed in the strong text"
   inotifywait -q -q -t 1 -e modify said || true
 done
+
+# Copying at rest, and selecting. The page has no cursor, so y y copies
+# the first block wholly in view, the title, and y i p its paragraph, the
+# title and the lede after it with no blank line between, each as the
+# file's markdown, onto the clipboard, and flashes it for 200 ms.
+keys=$(how_many '^key ')
+act 1 yy
+copied '"# Every Key Neovim Has\n"'
+logged '^flash: [1-9][0-9]* lines for 200 ms' 1
+logged '^flash: over' 1
+deadline=$((SECONDS + 20))
+until [ "$(wl-paste -n 2> /dev/null)" = '# Every Key Neovim Has' ]; do
+  ((SECONDS < deadline)) || fail "the clipboard holds $(wl-paste -n 2>&1), not the title"
+  inotifywait -q -q -t 1 -e modify said || true
+done
+act 1 yip
+copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
+
+# v starts on the first of the file's words in view, the title's, past
+# the eyebrow over it, and } goes on by paragraphs, to the line of words
+# after the title's. w goes on a word, iw takes it, and y copies it as the
+# file has it, its markup and all, ending the selection.
+act 1 v
+shows '"E"'
+act 1 -k Escape
+shows 'nothing'
+act 3 'v}w'
+act 1 iw
+shows '"bold"'
+act 1 y
+copied '"**bold**"'
+shows 'nothing'
+# e takes the selection to a word's end, and Ctrl+C copies as y does.
+act 5 'v}wiwe'
+shows '"bold start"'
+act 1 -M ctrl c -m ctrl
+copied '"**bold** start"'
+# $ goes to the line's end, b back by words, 0 to the line's start.
+act 4 'v}$iw'
+shows '"."'
+act 1 b
+shows '"sentence."'
+act 1 b
+shows '"second sentence."'
+act 1 0
+shows '"A bold start, then code in a line. A second sentence."'
+act 1 y
+copied '"A **bold** start, then `code` in a line. A second sentence."'
+# o swaps the ends, so 0 moves the other; { goes back to the
+# paragraph's start; Escape ends the selection.
+act 6 'v}wiwo0'
+shows '"A bold"'
+act 1 -k Escape
+shows 'nothing'
+act 5 'v}wiw{'
+shows '"A b"'
+act 1 -k Escape
+# A count goes with a motion; i` takes a code span's words.
+act 3 'v}5w'
+act 1 'i`'
+shows '"code"'
+act 1 y
+copied '"`code`"'
+# is and as take a sentence, as without and with the space after it; aw
+# a word with its space.
+act 4 'v}wis'
+shows '"A bold start, then code in a line."'
+act 1 as
+shows '"A bold start, then code in a line. "'
+act 1 y
+copied '"A **bold** start, then `code` in a line."'
+act 4 'v}waw'
+shows '"bold "'
+act 1 -k Escape
+# The arrows extend as h, j, k and l do, the arrow first.
+act 4 'v}wiw'
+act 1 -k Right
+shows '"bold "'
+act 1 l
+shows '"bold s"'
+act 1 -k Left
+shows '"bold "'
+act 1 h
+shows '"bold"'
+act 1 -k Down
+act 1 -k Up
+shows '"bold"'
+act 1 j
+act 1 k
+shows '"bold"'
+act 1 -k Escape
+# V takes whole blocks, here the title to the line of words, as the
+# file's lines; on the code, a line of it; ip the code's paragraph, its
+# fences with it, and ap the blank line after it too.
+act 2 'V}'
+act 1 y
+copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n\nA **bold** start, then `code` in a line. A second sentence.\n"'
+act 5 'v}}iwV'
+act 1 y
+copied '"echo one\n"'
+act 4 'V}}ip'
+act 1 y
+copied '"```sh\necho one\necho two\n```\n"'
+act 4 'v}}ap'
+act 1 y
+copied '"```sh\necho one\necho two\n```\n\n"'
+# v again ends it, and V makes it a selection of blocks.
+act 2 vv
+shows 'nothing'
+act 2 vV
+[[ "$(grep -a -E '^selected: ' said | tail -n 1)" == 'selected: Pieces '* ]] \
+  || fail "V didn't make the selection one of blocks"
+act 1 -k Escape
+shows 'nothing'
 
 press 5j
 logged '^key Down Some\(5\)' 1
@@ -91,8 +246,9 @@ logged '^key Next None' 1
 
 press ' ?'
 logged '^key ShowKeys None' 1
+rests=$(how_many '^key Rest None')
 press -k Escape
-logged '^key Rest None' 1
+logged '^key Rest None' $((rests + 1))
 
 # The link at the page's end, back to its heading, by its label.
 ends=$(grep -c -a '^key Last None' said || true)
@@ -102,8 +258,9 @@ press gx
 logged '^links: 1 in view' 1
 press a
 logged '^link: #every-key-neovim-has' 1
+downs=$(how_many '^key Down None')
 press j
-logged '^key Down None' 1
+logged '^key Down None' $((downs + 1))
 awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt, not the top"
 
 # The link near the top to another markdown file sets it in this window,
@@ -112,7 +269,7 @@ awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt
 # down leaves a place to come back to while the link, the page's first
 # line under its heading, stays in view on any line the page is set on.
 press j
-logged '^key Down None' 2
+logged '^key Down None' $((downs + 2))
 left=$(heading)
 press gx
 logged '^links: 1 in view' 2

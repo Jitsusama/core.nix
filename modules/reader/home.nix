@@ -11,7 +11,13 @@
 # and k a line, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen,
 # gg and G, counts, / and ? to search with n and N, marks, '' and Ctrl+O and
 # Ctrl+I through the jumps, g x to follow a link by its label, q, ZZ or
-# Space w to close, and Space ? for every key. A link to another markdown
+# Space w to close, and Space ? for every key. v and V select, from the
+# first word in view, with the terminal's cursor, moved by the arrows and
+# h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap and i` for text
+# objects and o for the other end; y or Ctrl+C copies the selection as the
+# file's markdown through wl-copy, and at rest y y and y i p copy the
+# first block in view, or its paragraph, each flashing what it took for
+# 200 ms, as his Neovim's yank does. A link to another markdown
 # file sets it in the same window, as Neovim's gf, keeping the place on the
 # first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only cancels. The same table, as the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
@@ -64,7 +70,10 @@ let
       machine
       person
       voice
+      selection
       ;
+    # Visual mode's cursor is the terminal's, as kitty and Neovim draw it.
+    inherit (terminal) cursor cursor_text;
     faces = {
       text = font.serif.family;
       code = font.mono.family;
@@ -89,18 +98,21 @@ let
   # Every key, as the reader's own list gives it (reader --keys), in the
   # launcher's groups: a mark's keys sit with the jumps, since two keys
   # make no group of their own, and moving is Scrolling there, since
-  # Moving is the picture viewer's.
+  # Moving is the picture viewer's. An arrow comes before its letter.
   key = group: chord: does: { inherit group chord does; };
   moving = key "scrolling";
   jumping = key "jumping";
   searching = key "searching";
+  selecting = key "selecting";
+  objects = key "objects";
+  copying = key "copying";
   page = key "page";
   keys = [
-    (moving "j" "Down a line")
     (moving "Down" "Down a line")
+    (moving "j" "Down a line")
     (moving "Ctrl+E" "Down a line")
-    (moving "k" "Up a line")
     (moving "Up" "Up a line")
+    (moving "k" "Up a line")
     (moving "Ctrl+Y" "Up a line")
     (moving "Ctrl+D" "Down half a screen")
     (moving "Ctrl+U" "Up half a screen")
@@ -121,6 +133,31 @@ let
     (searching "?" "Search up the page")
     (searching "n" "On to the next match")
     (searching "N" "Back to the match before")
+    (selecting "v" "Select from the first word in view")
+    (selecting "V" "Select whole paragraphs, items and lines")
+    (selecting "Left" "A character left")
+    (selecting "h" "A character left")
+    (selecting "Right" "A character right")
+    (selecting "l" "A character right")
+    (selecting "w" "On to the next word")
+    (selecting "b" "Back to a word's start")
+    (selecting "e" "On to a word's end")
+    (selecting "0" "To the line's start")
+    (selecting "$" "To the line's end")
+    (selecting "{" "Back a paragraph")
+    (selecting "}" "On a paragraph")
+    (selecting "o" "To the selection's other end")
+    (objects "i w" "A word")
+    (objects "a w" "A word and the space after it")
+    (objects "i s" "A sentence")
+    (objects "a s" "A sentence and the space after it")
+    (objects "i p" "A paragraph")
+    (objects "a p" "A paragraph and the blank line after it")
+    (objects "i `" "The code between backticks")
+    (copying "y" "Copy the selection as markdown")
+    (copying "Ctrl+C" "Copy the selection as markdown")
+    (copying "y y" "Copy the first block in view")
+    (copying "y i p" "Copy the paragraph in view")
     (page "Ctrl+Equal" "Larger")
     (page "Ctrl+Plus" "Larger")
     (page "Ctrl+Minus" "Smaller")
