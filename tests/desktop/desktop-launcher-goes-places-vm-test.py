@@ -957,13 +957,18 @@ def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_sa
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhf"
         "DwAChwGA60e6kgAAAABJRU5ErkJggg=="
     )
+    # Each is taken on the day it's named for, since files touched together share their time
+    # and Recent's nine of the ten would then be any of them.
+    dated = "".join(
+        f" && touch -d '2026-10-2{day} 09:00' {shlex.quote(path)}" for day, path in enumerate(newer)
+    )
     desktop.as_account(
         f"mkdir -p {shlex.quote(shots)}"
         f" && printf %s {pixel} | base64 -d > {shlex.quote(named)}"
         f" && for each in {' '.join(shlex.quote(path) for path in [said, *newer])};"
         f' do cp {shlex.quote(named)} "$each"; done'
         f" && touch -d '2026-09-01' {shlex.quote(named)} {shlex.quote(said)}"
-        f" && touch {' '.join(shlex.quote(path) for path in newer)}"
+        f"{dated}"
         f" && printf %s {shlex.quote(json.dumps(texts))} > $XDG_RUNTIME_DIR/screen-text-texts.json"
         " && rm -f $XDG_RUNTIME_DIR/screen-text-asked"
     )
