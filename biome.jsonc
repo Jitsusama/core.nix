@@ -3,11 +3,13 @@
 // the reason it doesn't fit. Qt's engine (QV4) parses neither an object
 // spread nor a catch with no binding, so the rules asking for those are off.
 // It lints Chrome's open-tabs extension too, as it is (treefmt.nix), which
-// runs in Chrome with its `chrome` object. Nothing here is formatted by
-// biome.
+// runs in Chrome with its `chrome` object. Qt's engine gives every library
+// its `Qt` object, whose locale names the days and months. Nothing here is
+// formatted by biome.
 {
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
+  "javascript": { "globals": ["Qt"] },
   "linter": {
     "rules": {
       "preset": "all",

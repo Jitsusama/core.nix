@@ -10,6 +10,13 @@
 // here says so, and Put It Back leads what's inside (Joel, 2026-10-28: "i
 // really want my timezone to automatically change if possible").
 //
+// The time here holds the clock and never the date, which is Date's
+// (VKCF3Z's ruling, 2026-10-30): its Zone, a thing saying its offset, its
+// abbreviation, its next change and tzdata's version; then UTC, Unix
+// time, TAI, GPS time and sidereal time, each to the second and counting
+// while it's shown or stepped into, reckoned as Moment.js says. "utc",
+// "epoch", "tai" and the rest of Time's words ask it whole.
+//
 // The time here goes on to how the clock is kept, as timekeeping last
 // heard systemd-timesyncd say (timekeeping/src/main.rs): whether it's
 // synchronised and since when, then the server it asks, a thing Return
@@ -28,6 +35,8 @@ import Quickshell.Io
 import QtQuick
 import "Zones.js" as Zones
 import "Ago.js" as Ago
+import "Moment.js" as Moment
+import "Numbers.js" as Numbers
 
 Provider {
     id: provider
@@ -58,18 +67,23 @@ Provider {
         return { headline: why, copy: "", rows: [], missed: true };
     }
 
+    // Time's own words beside "time", each asking the time here whole.
+    readonly property var partWords: Words.answers("time")
+
     function answer(typed) {
         // Cheap enough for every key, so the zones are read only for a
         // question of time.
-        if (!Zones.asked(typed))
+        const part = partWords.includes(plainly(typed));
+        if (!part && !Zones.asked(typed))
             return null;
+        const asked = part ? "time" : typed;
         const zones = loaded();
         const now = Date.now();
         const local = -new Date(now).getTimezoneOffset();
         // The clock's own zone, which follows the laptop, before the one
         // the machine was built with.
         const here = Location.clockZone || (settings.zone ?? null);
-        let told = Zones.answer(typed, zones, now, here, local);
+        let told = Zones.answer(asked, zones, now, here, local);
         if (!told)
             return null;
         // Where the answer came from, in Joel's words rather than the
@@ -97,7 +111,7 @@ Provider {
         // followed the laptop, with Put It Back first inside, which puts it
         // in the zone it kept before and holds it there, and only it says
         // how the clock here is kept.
-        const ours = told.unknown === undefined && Zones.asked(typed).place === "";
+        const ours = told.unknown === undefined && Zones.asked(asked).place === "";
         const moved = ours && Location.clockMoved;
         const back = moved ? [thing({
             key: "verb:time:put-back",
@@ -109,18 +123,115 @@ Provider {
             stays: true,
             run: () => Location.putBack()
         })] : [];
-        return {
-            headline: told.headline,
-            copy: told.copy,
-            rows: back.concat(told.rows.map(row => copyRow({
+        const parts = ours ? [zoneThing(told, zones.zones[here] ?? null, now)].concat(figures(now))
+            : told.rows.map(row => copyRow({
                 name: Words.name(`time:${row.part}`),
                 side: row.text,
                 note: row.note,
                 copy: row.copy,
                 glyph: Theme.glyph[row.glyph]
-            })).concat(ours ? keeping() : [])),
-            note: moved ? Location.movedSaid : note
+            }));
+        return {
+            headline: told.headline,
+            copy: told.copy,
+            rows: back.concat(parts, ours ? keeping() : []),
+            note: moved ? Location.movedSaid : note,
+            // The time here counts, so it's asked again each second while
+            // it's shown or stepped into.
+            live: ours ? provider : null
         };
+    }
+
+    // A part of the time here in the vocabulary's words.
+    function timeWord(id, key) {
+        return String((Words.of(id).said ?? {})[key] ?? "");
+    }
+
+    // The zone the clock keeps, a thing: its offset and abbreviation, when
+    // it next changes and to what, and which tzdata told it, each a figure
+    // a step in and a fact in its drawer.
+    function zoneThing(told, zone, now) {
+        const said = told.rows.find(row => row.part === "zone") ?? null;
+        const minutes = -new Date(now).getTimezoneOffset();
+        const standing = zone ? Zones.standing(zone, Math.floor(now / 1000)) : [minutes, ""];
+        const next = zone ? Zones.nextChange(zone, Math.floor(now / 1000)) : null;
+        // When it changes, as the launcher says a day, the year only when
+        // it's another, and the time the clock will read then.
+        const changes = when => {
+            const at = new Date(when);
+            const year = at.getFullYear() === new Date(now).getFullYear() ? "" : " yyyy";
+            return `${Qt.formatDate(at, `d MMM${year}`)} \u00b7 ${Moment.clock(at)}`;
+        };
+        const abbreviation = /^[A-Za-z]/.test(standing[1]) ? standing[1] : "";
+        const parts = [
+            { id: "offset", side: Zones.offset(standing[0]), note: "" },
+            { id: "abbreviation", side: abbreviation, note: "" },
+            { id: "next", side: next ? changes(next.when) : timeWord("time:zone", "never"),
+                note: next ? [/^[A-Za-z]/.test(next.abbreviation) ? next.abbreviation : "",
+                    Zones.offset(next.minutes)].filter(one => one !== "").join(", ") : "" },
+            { id: "database", side: settings.tzdata ?? "", note: timeWord("time:zone", "iana") }
+        ].filter(part => part.side !== "");
+        const name = said ? said.text : Zones.offset(standing[0]);
+        return thingRow({
+            key: "time:zone",
+            name: Words.name("time:zone"),
+            side: name,
+            note: said ? said.note : "",
+            glyph: Theme.glyph.zone,
+            thing: true,
+            drawer: () => ({
+                title: name,
+                facts: parts.map(part => ({ label: Words.name(`time:zone:${part.id}`),
+                    value: part.side }))
+            })
+        }, () => parts.map(part => copyRow({
+            name: Words.name(`time:zone:${part.id}`),
+            side: part.side,
+            copy: part.side,
+            note: part.note,
+            glyph: ""
+        })));
+    }
+
+    // The time as other clocks keep it, each to the second, a figure that
+    // copies what it shows.
+    function figures(now) {
+        const figure = (id, side, note) => copyRow({
+            name: Words.name(`time:${id}`),
+            side: side,
+            copy: side,
+            note: note ?? "",
+            glyph: ""
+        });
+        const gps = Moment.gps(now);
+        const longitude = Location.here?.longitude;
+        const known = typeof longitude === "number";
+        const degrees = known ? `${Numbers.format(Math.abs(longitude), 2, "", ".")}\u00b0 `
+            + (longitude < 0 ? "W" : "E") : "";
+        return [
+            figure("utc", Moment.utcClock(now)),
+            figure("unix", String(Moment.unix(now)), timeWord("time:unix", "since")),
+            figure("tai", Moment.tai(now), timeWord("time:tai", "ahead")),
+            figure("gps", timeWord("time:gps", "week").replace("{week}", String(gps.week))
+                .replace("{seconds}", Numbers.format(gps.seconds, 0, ",", ".")),
+                timeWord("time:gps", "ahead")),
+            figure("sidereal", Moment.sidereal(now, known ? longitude : 0),
+                known ? timeWord("time:sidereal", "local").replace("{longitude}", degrees)
+                    : timeWord("time:sidereal", "greenwich"))
+        ];
+    }
+
+    // While the time here is shown, as the answer or a step held in it,
+    // it's asked again each second, so its figures count; never for a key.
+    readonly property bool shown: launcher !== null && launcher.open
+        && (launcher.answer?.live === provider
+            || (launcher.held ?? []).some(step => step.row?.live === provider))
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: provider.shown
+        onTriggered: provider.answered()
     }
 
     // How timesyncd keeps the clock, as timekeeping last wrote it, or null

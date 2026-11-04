@@ -22,6 +22,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Marks.js" as Marks
 import "Now.js" as Now
+import "Moment.js" as Moment
 
 Provider {
     id: provider
@@ -283,7 +284,7 @@ Provider {
             : said("unsynchronised");
         return {
             now: true,
-            eyebrow: Qt.formatDate(now, "dddd d MMMM"),
+            eyebrow: Moment.eyebrow(now),
             title: Words.name("on"),
             // How the seconds are said after the time, "and 12 s".
             seconds: said("seconds"),
@@ -293,27 +294,10 @@ Provider {
                     fact("on:plate:next", meeting?.name ?? "", starts ? starts[0] : ""),
                     fact("on:plate:here", here ? here.place ?? "" : "", how)],
                 [fact("on:plate:clock", step, offset),
-                    fact("today:week", String(isoWeek(now)),
-                        said("day").replace("{day}", String(dayOfYear(now))))]
+                    fact("on:plate:week", String(Moment.isoWeek(now).week),
+                        said("day").replace("{day}", String(Moment.ordinal(now))))]
             ].map(group => group.filter(one => one !== null))
         };
-    }
-
-    // The week of the year as ISO 8601 counts it, the week holding its
-    // first Thursday the first, as a calendar here does.
-    function isoWeek(at) {
-        const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
-        // To the Thursday of its week, whose year is the week's.
-        day.setDate(day.getDate() + 3 - (day.getDay() + 6) % 7);
-        const first = new Date(day.getFullYear(), 0, 4);
-        return 1 + Math.round(((day - first) / 86400000 - 3 + (first.getDay() + 6) % 7) / 7);
-    }
-
-    // The day of the year, 1 on the first of January.
-    function dayOfYear(at) {
-        const first = new Date(at.getFullYear(), 0, 1);
-        return Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()) - first)
-            / 86400000) + 1;
     }
 
     function waitingSaid(id, fill) {

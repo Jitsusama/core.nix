@@ -1346,34 +1346,140 @@
         "today",
         "week",
         "day of the year",
-        "utc",
-        "epoch"
-      ]
+        "julian day",
+        "quarter",
+        "season",
+        "moon"
+      ],
+      "said": {
+        "from": "from the clock"
+      }
+    },
+    {
+      "id": "today:iso",
+      "in": "today",
+      "name": "ISO Date"
     },
     {
       "id": "today:week",
       "in": "today",
-      "name": "Week"
+      "name": "ISO Week Date",
+      "said": {
+        "week": "week {week}, Monday first"
+      }
     },
     {
-      "id": "today:day",
+      "id": "today:ordinal",
       "in": "today",
-      "name": "Day of the Year"
+      "name": "Ordinal Date",
+      "said": {
+        "left": "{left} left of {days}"
+      }
     },
     {
-      "id": "today:utc",
+      "id": "today:quarter",
       "in": "today",
-      "name": "UTC"
+      "name": "Quarter",
+      "said": {
+        "day": "day {day} of {days}"
+      }
     },
     {
-      "id": "today:zone",
+      "id": "today:unix-day",
       "in": "today",
-      "name": "Zone"
+      "name": "Unix Day",
+      "said": {
+        "since": "days since 1 January 1970"
+      }
     },
     {
-      "id": "today:epoch",
+      "id": "today:julian",
       "in": "today",
-      "name": "Epoch"
+      "name": "Julian Day",
+      "said": {
+        "noon": "from noon today"
+      }
+    },
+    {
+      "id": "today:mjd",
+      "in": "today",
+      "name": "Modified Julian Day",
+      "said": {
+        "since": "days since 17 November 1858"
+      }
+    },
+    {
+      "id": "today:season",
+      "in": "today",
+      "name": "Season",
+      "said": {
+        "spring": "spring",
+        "summer": "summer",
+        "autumn": "autumn",
+        "winter": "winter",
+        "left": "{days} days left, as the sun reckons it",
+        "of": "{day} of {days}",
+        "north": "northern",
+        "south": "southern",
+        "unknown": "northern, until the laptop is found"
+      }
+    },
+    {
+      "id": "today:season:began",
+      "in": "today:season",
+      "name": "Began"
+    },
+    {
+      "id": "today:season:ends",
+      "in": "today:season",
+      "name": "Ends"
+    },
+    {
+      "id": "today:season:day",
+      "in": "today:season",
+      "name": "Day"
+    },
+    {
+      "id": "today:season:hemisphere",
+      "in": "today:season",
+      "name": "Hemisphere"
+    },
+    {
+      "id": "today:moon",
+      "in": "today",
+      "name": "Moon",
+      "said": {
+        "new": "new moon",
+        "waxingCrescent": "waxing crescent",
+        "firstQuarter": "first quarter",
+        "waxingGibbous": "waxing gibbous",
+        "full": "full moon",
+        "waningGibbous": "waning gibbous",
+        "lastQuarter": "last quarter",
+        "waningCrescent": "waning crescent",
+        "lit": "{percent} lit",
+        "days": "{days} days"
+      }
+    },
+    {
+      "id": "today:moon:lit",
+      "in": "today:moon",
+      "name": "Lit"
+    },
+    {
+      "id": "today:moon:age",
+      "in": "today:moon",
+      "name": "Age"
+    },
+    {
+      "id": "today:moon:full",
+      "in": "today:moon",
+      "name": "Next Full Moon"
+    },
+    {
+      "id": "today:moon:new",
+      "in": "today:moon",
+      "name": "Next New Moon"
     },
     {
       "id": "keyboards",
@@ -1799,8 +1905,53 @@
       "name": "Time",
       "question": "time",
       "answers": [
-        "time"
+        "time",
+        "utc",
+        "epoch",
+        "unix time",
+        "tai",
+        "gps time",
+        "sidereal time"
       ]
+    },
+    {
+      "id": "time:utc",
+      "in": "time",
+      "name": "UTC"
+    },
+    {
+      "id": "time:unix",
+      "in": "time",
+      "name": "Unix Time",
+      "said": {
+        "since": "seconds since 1970"
+      }
+    },
+    {
+      "id": "time:tai",
+      "in": "time",
+      "name": "TAI",
+      "said": {
+        "ahead": "UTC + 37 s, every leap second since 1972"
+      }
+    },
+    {
+      "id": "time:gps",
+      "in": "time",
+      "name": "GPS Time",
+      "said": {
+        "week": "week {week}, {seconds} s",
+        "ahead": "UTC + 18 s"
+      }
+    },
+    {
+      "id": "time:sidereal",
+      "in": "time",
+      "name": "Sidereal Time",
+      "said": {
+        "local": "by the stars, at {longitude}",
+        "greenwich": "by the stars, at Greenwich"
+      }
     },
     {
       "id": "location",
@@ -1859,7 +2010,31 @@
     {
       "id": "time:zone",
       "in": "time",
-      "name": "Zone"
+      "name": "Zone",
+      "said": {
+        "never": "not before 2046",
+        "iana": "the IANA time zone database"
+      }
+    },
+    {
+      "id": "time:zone:offset",
+      "in": "time:zone",
+      "name": "Offset"
+    },
+    {
+      "id": "time:zone:abbreviation",
+      "in": "time:zone",
+      "name": "Abbreviation"
+    },
+    {
+      "id": "time:zone:next",
+      "in": "time:zone",
+      "name": "Next Change"
+    },
+    {
+      "id": "time:zone:database",
+      "in": "time:zone",
+      "name": "Zone Database"
     },
     {
       "id": "time:synchronised",
@@ -3201,6 +3376,11 @@
       "id": "on:plate:clock",
       "in": "on:plate",
       "name": "Clock"
+    },
+    {
+      "id": "on:plate:week",
+      "in": "on:plate",
+      "name": "Week"
     },
     {
       "id": "on:waiting",
@@ -5757,10 +5937,10 @@
     },
     {
       "id": "command:epoch",
-      "provider": "today",
+      "provider": "time",
       "start": "epoch",
       "form": "",
-      "says": "seconds since 1970, and the date's other facts"
+      "says": "seconds since 1970, and the clock's other figures"
     }
   ],
   "field": {

@@ -54,6 +54,15 @@ function standing(zone, seconds) {
     return [found[1], found[2]];
 }
 
+// A zone's next change after a moment, in seconds: { when, minutes,
+// abbreviation }, when in milliseconds, or null where it changes no more
+// within the years kept.
+function nextChange(zone, seconds) {
+    const change = zone.changes.find(each => each[0] > seconds);
+    return change ? { when: change[0] * SECOND, minutes: change[1], abbreviation: change[2] }
+        : null;
+}
+
 function said(place) {
     return place.trim().toLowerCase().replace(PLACE_GAPS, " ").replace(LEADING_THE, "");
 }

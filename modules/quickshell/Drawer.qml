@@ -33,6 +33,7 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 import QtQuick.Effects
+import "launcher/Moment.js" as Moment
 
 Floating {
     id: drawer
@@ -325,7 +326,7 @@ Floating {
                     readonly property real base: (drawer.lineOf(0) ?? drawer.rowLine)
                         + timeFace.tightBoundingRect("H").height / 2
                     y: base - Theme.border - baselineOffset
-                    text: Qt.formatTime(clock.date, "HH:mm")
+                    text: Moment.clock(clock.date)
                     textFormat: Text.PlainText
                     color: Theme.strong
                     font.family: Theme.serif.family

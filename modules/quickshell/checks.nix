@@ -771,6 +771,7 @@ onLinux {
       cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
       cp ${./launcher/Units.js} Units.js
       cp ${./launcher/Zones.js} Zones.js
+      cp ${./launcher/Moment.js} Moment.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1262,6 +1263,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/WhatsOn.qml} launcher/WhatsOn.qml
+      cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/Now.js} launcher/Now.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -1394,6 +1396,7 @@ onLinux {
         cp ${./launcher/Calculator.qml} launcher/Calculator.qml
         cp ${./launcher/Clocks.qml} launcher/Clocks.qml
         cp ${./launcher/Today.qml} launcher/Today.qml
+        cp ${./launcher/Moment.js} launcher/Moment.js
         cp ${./launcher/Waits.qml} launcher/Waits.qml
         cp ${./launcher/Vendors.qml} launcher/Vendors.qml
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
@@ -1407,6 +1410,7 @@ onLinux {
         cp ${./launcher/words.json} launcher/words.json
         cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
         cp ${singleton "Location.qml" ''
+          property var here: null
           property string clockZone: ""
           property bool clockMoved: false
           property var moved: null
