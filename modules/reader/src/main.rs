@@ -2753,9 +2753,6 @@ impl WindowHandler for App {
             width.map_or(960, std::num::NonZero::get),
             height.map_or(900, std::num::NonZero::get),
         );
-        if at_end {
-            self.offset = self.most();
-        }
         self.fit_window();
         let (w, h) = self.buffer_size();
         if let Some(measure) = self.measure.as_mut()
@@ -2802,6 +2799,11 @@ impl WindowHandler for App {
                     return;
                 }
             }
+        }
+        // The view's end moves with the buffer's height, so a view at the
+        // end keeps to it once the buffer is the window's new size.
+        if at_end {
+            self.offset = self.most();
         }
         self.cut();
         if !self.frame_pending {
