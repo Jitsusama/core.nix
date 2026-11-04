@@ -589,8 +589,9 @@
   '';
   keys-speak-the-language = ''
     every surface naming its kinds has each act they hold, by the key language's keys, binds no
-    key the language gives to another act and no act by a key not its own, and Neovim's keys agree
-    with the language, each way of straying shown to fail first
+    key the language gives to another act and no act by a key not its own, in each mode its acts
+    are pressed in, and Neovim's keys agree with the language, each way of straying shown to fail
+    first, the reader leaving out a key it takes only while selecting among them
   '';
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
