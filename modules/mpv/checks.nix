@@ -45,10 +45,13 @@ onLinux {
       touch $out
     '';
 
-  # mpv's keys, as the account's input.conf binds them, do what the launcher
-  # says they do (keys-test.sh): Neovim's land where the arrows they twin
-  # do, gg and G go to the start and the end, J and L do what j and l did,
-  # and y and yy copy the frame as a PNG, through wl-copy, stood in here.
+  # mpv's keys, as the account's input.conf and vi-keys.lua bind them, do
+  # what the launcher says they do (keys-test.sh): Vim's land where the
+  # arrows they twin do, with a number before them that many times, 0 and
+  # $ go to the start and the end, gg, G and ]b and [b go through the list,
+  # J and L do what j and l did, yy copies the frame as a PNG, through
+  # wl-copy, and Space ? lists the keys, through mpv's statistics, both
+  # stood in here.
   mpv-keys-go-where-they-say =
     let
       home = account graphical;
@@ -57,6 +60,12 @@ onLinux {
       # The wl-copy copy-frame's options name, for the stand-in to take its
       # place.
       wl-copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
+      # mpv's statistics, which list the keys, standing in to say they did.
+      stats = pkgs.writeText "stats.lua" ''
+        mp.add_key_binding(nil, 'display-page-4-toggle', function()
+          io.open('listed', 'w'):close()
+        end)
+      '';
     in
     pkgs.runCommandLocal "mpv-keys-go-where-they-say"
       {
@@ -74,6 +83,9 @@ onLinux {
         cp ${files."mpv/mpv.conf".source} mpv/mpv.conf
         cp ${files."mpv/input.conf".source} mpv/input.conf
         cp ${files."mpv/scripts/copy-frame.lua".source} mpv/scripts/copy-frame.lua
+        cp ${files."mpv/scripts/vi-keys.lua".source} mpv/scripts/vi-keys.lua
+        cp ${files."mpv/script-opts/vi-keys.conf".source} mpv/script-opts/vi-keys.conf
+        cp ${stats} mpv/scripts/stats.lua
         printf '#!%s\ncat > %s/copied\n' "$BASH" "$PWD" > wl-copy
         chmod +x wl-copy
         sed 's|${wl-copy}|'"$PWD"'/wl-copy|' ${files."mpv/script-opts/copy-frame.conf".source} \

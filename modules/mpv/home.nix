@@ -20,15 +20,19 @@
 # colour with the text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
 # mpv's own: Space pauses, the arrows seek, f fills the screen, q quits and
-# ? lists every key, on the statistics' page of them. Neovim's twin them,
-# as docs/design.md's Vi's Keys has them: h and l seek as Left and Right
-# do, j and k as Down and Up, so j goes back, gg goes to the start and G
-# to the end, where the last frame stays, and y or yy copies the frame as
-# a picture (copy-frame.lua). j and l were mpv's subtitles and A-B loop,
-# which go to J, where mpv cycles subtitles already, and L. 1 to 9 play that
-# one in the list, as numbers choose that one everywhere, rather than change
-# the picture's contrast, brightness, gamma and saturation as mpv has them;
-# the launcher lists the
+# ? lists every key, on the statistics' page of them. Vim's keys are
+# there too, as Joel's Vim has them (vi-keys.lua): h and l seek as Left
+# and Right do, j on a minute as Up does and k back as Down, as j goes on
+# through a file, 0 to the start and $ to the end, where the last frame
+# stays, gg and G play the first and the last in the list, ]b and [b the
+# next and the one before, a number before a key does it that many times
+# and before G plays that one, yy copies the frame as a picture
+# (copy-frame.lua), and Space ? lists the keys, as in his Neovim, so Space
+# pauses a moment after it's pressed, once no ? follows. j and l were
+# mpv's subtitles and A-B loop,
+# which go to J, where mpv cycles subtitles already, and L; the digits
+# no longer change the picture's contrast, brightness, gamma and
+# saturation, nor the loudness, as mpv has them. The launcher lists the
 # ones worth knowing over its window, in their own words. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it,
 # and says each file it plays to the desktop's list of files opened lately
@@ -66,9 +70,9 @@ let
   # Playback speed, those that change how loud as Loudness, those that
   # choose from what it was given as In the list, and the rest loose; a key
   # with a run is bound to it here, on its key as mpv spells one (`key`)
-  # where that isn't its chord, the rest are mpv's own. A key that twins
-  # another says the same words after it, so the launcher lists both in
-  # one row, and does the same, as mpv's own does it.
+  # where that isn't its chord, Vim's are vi-keys.lua's, and the rest are
+  # mpv's own. A key that twins another says the same words after it, so
+  # the launcher lists both in one row, and does the same.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "seeking" [
@@ -79,7 +83,6 @@ let
       {
         chord = "h";
         does = "Back 5 seconds";
-        run = "seek -5";
       }
       {
         chord = "Right";
@@ -88,42 +91,35 @@ let
       {
         chord = "l";
         does = "On 5 seconds";
-        run = "seek 5";
       }
       {
         chord = "Down";
         does = "Back a minute";
       }
       {
-        chord = "j";
+        chord = "k";
         does = "Back a minute";
-        run = "seek -60";
       }
       {
         chord = "Up";
         does = "On a minute";
       }
       {
-        chord = "k";
+        chord = "j";
         does = "On a minute";
-        run = "seek 60";
       }
       {
         chord = "Home";
         does = "The start";
       }
       {
-        chord = "g g";
-        key = "g-g";
+        chord = "0";
         does = "The start";
-        run = "seek 0 absolute";
       }
       # keep-open holds the last frame there.
       {
-        chord = "Shift+g";
-        key = "G";
+        chord = "$";
         does = "The end";
-        run = "seek 100 absolute-percent";
       }
       {
         chord = "Page_Down";
@@ -135,6 +131,7 @@ let
       }
     ]
     ++ grouped "speed" [
+      # A moment after them with no b, as Vim's timeout.
       {
         chord = "bracketleft";
         does = "Slower";
@@ -189,34 +186,44 @@ let
         run = "ab-loop";
       }
     ]
-    # The list mpv was given, by number and in turn.
-    ++ grouped "list" (
-      map (number: {
-        chord = toString number;
-        does = "Number ${toString number} in the list";
-        run = "set playlist-pos ${toString (number - 1)}";
-      }) (lib.range 1 9)
-      ++ [
-        {
-          chord = "Return";
-          does = "The next in the list";
-        }
-        {
-          chord = "Shift+comma";
-          does = "The one before in the list";
-        }
-      ]
-    )
+    # The list mpv was given, in turn and by number: ]b and [b as Vim's go
+    # between buffers.
+    ++ grouped "list" [
+      {
+        chord = "Return";
+        does = "The next in the list";
+      }
+      {
+        chord = "bracketright b";
+        does = "The next in the list";
+      }
+      {
+        chord = "Shift+comma";
+        does = "The one before in the list";
+      }
+      {
+        chord = "bracketleft b";
+        does = "The one before in the list";
+      }
+      {
+        chord = "g g";
+        does = "The first in the list";
+      }
+      {
+        chord = "Shift+g";
+        does = "The last in the list";
+      }
+      # Any number before G, three drawn for them all.
+      {
+        chord = "3 Shift+g";
+        does = "That one in the list, by its number";
+      }
+    ]
     ++ [
-      # y alone copies too, since nothing else follows a y here.
+      # y alone waits for what it's to copy, as in Vim, and does nothing.
       {
         chord = "y y";
         does = "Copy the frame as a picture";
-      }
-      {
-        chord = "y";
-        does = "Copy the frame as a picture";
-        run = "script-binding copy-frame/copy";
       }
       {
         chord = "s";
@@ -224,6 +231,11 @@ let
       }
       {
         chord = "Shift+slash";
+        does = "The player's keys";
+      }
+      # As in Joel's Neovim, which shows them everywhere.
+      {
+        chord = "space Shift+slash";
         does = "The player's keys";
       }
       {
@@ -251,6 +263,7 @@ in
   xdg.configFile."mpv/scripts/recent-files.lua".source = ./recent-files.lua;
   xdg.configFile."mpv/scripts/playing.lua".source = ./playing.lua;
   xdg.configFile."mpv/scripts/copy-frame.lua".source = ./copy-frame.lua;
+  xdg.configFile."mpv/scripts/vi-keys.lua".source = ./vi-keys.lua;
 
   # The file each mpv plays now, for its Recent in the launcher to lead
   # with, kept in a folder made at sign-in (playing.lua), each mpv's line
@@ -272,16 +285,11 @@ in
   programs.mpv = {
     enable = true;
     scripts = [ pkgs.mpvScripts.mpris ];
-    # The keys whose meaning is ours rather than mpv's, from the list above.
-    # mpv's 0, louder beside 9's quieter, does nothing now that 9 plays the
-    # ninth in the list; / and * stay mpv's quieter and louder.
-    bindings =
-      lib.listToAttrs (
-        map (key: lib.nameValuePair (key.key or key.chord) key.run) (lib.filter (key: key ? run) keys)
-      )
-      // {
-        "0" = "ignore";
-      };
+    # The keys whose meaning is ours rather than mpv's, from the list above;
+    # / and * stay mpv's quieter and louder.
+    bindings = lib.listToAttrs (
+      map (key: lib.nameValuePair (key.key or key.chord) key.run) (lib.filter (key: key ? run) keys)
+    );
     config = {
       profile = "high-quality";
       vo = "gpu-next";
@@ -314,6 +322,8 @@ in
       screenshot-template = "%F %wH-%wM-%wS";
     };
     scriptOpts.copy-frame.wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
+    # What waits shows in the muted colour, blue first, as ASS writes one.
+    scriptOpts.vi-keys.muted = bgr colours.muted;
     scriptOpts.osc = {
       background_color = colours.deepest;
       timecode_color = colours.text;
