@@ -17,6 +17,12 @@
 //! config folder, which only
 //! evaluates, and the checks it names are built by `there` as any build
 //! is. With neither, it exits [`NOT_TAKEN`] and changed-checks runs here.
+//!
+//! A run that passed at a commit is kept with what it named
+//! (`passed.rs`), since a builder lent since evaluated both sides again,
+//! 400 to 900 s, to build nothing new. The same run again there says what
+//! it named and goes nowhere; another is told, as `CHANGED_CHECKS_PASSED`,
+//! which checks passed at the commit, so the far side builds none again.
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -80,8 +86,11 @@ pub fn evaluators(text: &str) -> Vec<Evaluator> {
 
 /// The command the far side's shell is given to run changed-checks with
 /// `arguments` on the commit `source` names, and the bundle it reads from
-/// its standard input, when the commit isn't on GitHub.
-pub fn sending(source: Source, arguments: &[String]) -> Sending {
+/// its standard input, when the commit isn't on GitHub. It's told which
+/// checks, by name, `passed` at that commit already, as
+/// `CHANGED_CHECKS_PASSED`, the commit and then each name, so it builds
+/// none of them again; a changed-checks from before that builds them.
+pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sending {
     let (github, base, commit, dir, bundle) = match source {
         Source::Pushed {
             github,
@@ -114,6 +123,15 @@ pub fn sending(source: Source, arguments: &[String]) -> Sending {
         String::new()
     };
     let words: Vec<String> = arguments.iter().map(|word| there::quoted(word)).collect();
+    let told = if passed.is_empty() {
+        String::new()
+    } else {
+        let named = std::iter::once(commit.as_str())
+            .chain(passed.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("CHANGED_CHECKS_PASSED={} ", there::quoted(&named))
+    };
     let command = format!(
         "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
          command -v git >/dev/null || \
@@ -126,7 +144,7 @@ pub fn sending(source: Source, arguments: &[String]) -> Sending {
          {unbundled}\
          git -C {into}/tree checkout -q -B nix-offload-changed {commit}; \
          cd {into}/tree/{}; \
-         {HERE} nix run .#changed-checks -- {}",
+         {told}{HERE} nix run .#changed-checks -- {}",
         dir.as_deref().unwrap_or("."),
         words.join(" ")
     );
@@ -281,6 +299,7 @@ mod tests {
                 dir: None,
             },
             &words("--build --system x86_64-linux"),
+            &[],
         );
         assert!(sent.bundle.is_none());
         for part in [
@@ -294,6 +313,32 @@ mod tests {
             assert!(sent.command.contains(part), "{part} in {}", sent.command);
         }
         assert!(!sent.command.contains("bundle"), "{}", sent.command);
+        assert!(
+            !sent.command.contains("CHANGED_CHECKS_PASSED"),
+            "{}",
+            sent.command
+        );
+    }
+
+    #[test]
+    fn the_far_side_is_told_which_checks_passed_at_the_commit() {
+        let sent = sending(
+            Source::Pushed {
+                github: "someone/thing".to_owned(),
+                commit: "abc123".to_owned(),
+                dir: None,
+            },
+            &words("--build"),
+            &words("a vm-b"),
+        );
+        assert!(
+            sent.command.contains(
+                "CHANGED_CHECKS_PASSED='abc123 a vm-b' CHANGED_CHECKS_HERE=1 \
+                 WORK_RUNS_ELSEWHERE=1 nix run .#changed-checks -- --build"
+            ),
+            "{}",
+            sent.command
+        );
     }
 
     #[test]
@@ -307,6 +352,7 @@ mod tests {
                 bundle: PathBuf::from("/b"),
             },
             &words("--base 'odd ref'"),
+            &[],
         );
         assert_eq!(sent.bundle, Some(PathBuf::from("/b")));
         for part in [

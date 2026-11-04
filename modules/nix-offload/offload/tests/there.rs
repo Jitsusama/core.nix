@@ -123,6 +123,24 @@ fn there_with(folder: &Path, offload: &Path, extra: &[&str]) -> Output {
         .unwrap()
 }
 
+/// `there` given these arguments alone.
+fn there_asked(folder: &Path, offload: &Path, arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .arg("there")
+        .args(arguments)
+        .env(
+            "PATH",
+            format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder)
+        .env("XDG_STATE_HOME", folder)
+        .env("XDG_CONFIG_HOME", folder)
+        .output()
+        .unwrap()
+}
+
 /// What ssh was told, `host\ncommand\n`, with the command as it was
 /// before what makes it end with its caller, which every one is given.
 fn given_to(folder: &Path) -> String {
@@ -142,6 +160,84 @@ fn within_far(command: &str) -> &str {
 fn journalled(folder: &Path) -> serde_json::Value {
     let journal = fs::read_to_string(folder.join("nix-offload/there.jsonl")).unwrap();
     serde_json::from_str(journal.lines().last().unwrap()).unwrap()
+}
+
+#[test]
+fn a_check_passed_at_a_commit_isnt_built_again_wherever_it_would_go() {
+    // Each builder lent starts with an empty store and passes nothing
+    // back, so a check passed on one was built again on the next: 716 s,
+    // then 790 s, for one at one commit on 3 November.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    let commit = "0123456789abcdef0123456789abcdef01234567";
+    let flake = format!("github:o/r/{commit}");
+    let sent = || {
+        let given = folder.path().join("ssh-was-given");
+        let sent = fs::read_to_string(&given)
+            .ok()
+            .map(|_| given_to(folder.path()));
+        let _ = fs::remove_file(given);
+        sent
+    };
+
+    let ran = there_asked(
+        folder.path(),
+        &offload,
+        &[&flake, "checks.x.a", "checks.x.b"],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(sent().is_some(), "the first is built");
+
+    let ran = there_asked(
+        folder.path(),
+        &offload,
+        &[&flake, "checks.x.a", "checks.x.b"],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(sent(), None, "nothing is sent again");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("checks.x.a passed at 0123456789ab already, so it isn't built again"),
+        "{said}"
+    );
+    let line = journalled(folder.path());
+    assert_eq!(line["already"], true, "{line}");
+    assert_eq!(line["on"], serde_json::Value::Null, "{line}");
+
+    // Only what hasn't passed goes, and what fails is built again.
+    fs::write(folder.path().join("status"), "1").unwrap();
+    let ran = there_asked(
+        folder.path(),
+        &offload,
+        &[&flake, "checks.x.a", "checks.x.c"],
+    );
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert_eq!(
+        sent().as_deref(),
+        Some(format!("nix-offload\nnix build --no-link '{flake}#checks.x.c'\n").as_str())
+    );
+    let ran = there_asked(folder.path(), &offload, &[&flake, "checks.x.c"]);
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert!(sent().is_some(), "a failure is built again");
+
+    // Another commit, or what's built for its output rather than its
+    // passing, is built whatever passed.
+    fs::write(folder.path().join("status"), "0").unwrap();
+    let other = format!("github:o/r/{}", "f".repeat(40));
+    for asked in [
+        vec![other.as_str(), "checks.x.a"],
+        vec!["--print-out-paths", &flake, "checks.x.a"],
+        vec!["--apply", "check: check", &flake, "checks.x.a"],
+        vec![&flake, "packages.x.a"],
+        vec![&flake, "packages.x.a"],
+    ] {
+        let ran = there_asked(folder.path(), &offload, &asked);
+        assert_eq!(ran.status.code(), Some(0), "{asked:?}: {ran:?}");
+        assert!(sent().is_some(), "{asked:?} is built");
+    }
 }
 
 #[test]
@@ -1336,6 +1432,9 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     ] {
         assert!(sent.contains(&part), "{part} in {sent}");
     }
+    // That run passed, and is kept, so the same run is asked anew only
+    // once it's forgotten.
+    fs::remove_dir_all(folder.path().join("nix-offload/passed")).unwrap();
 
     // With none lent, an evaluator that answers only evaluates, and what it
     // names is built as any `there` build is: nowhere, with no builder, and
@@ -1390,6 +1489,231 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     drop(answering);
     let ran = run();
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+}
+
+/// A tree of one commit GitHub has, with a builder lent, for
+/// `there --changed`, its stand-ins in `bin`.
+struct Changed {
+    folder: tempfile::TempDir,
+    bin: PathBuf,
+    config: PathBuf,
+    tree: PathBuf,
+    offload: PathBuf,
+    head: String,
+}
+
+impl Changed {
+    fn new() -> Self {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        stand_ins(&bin, 0);
+        let config = folder.path().join("gitconfig");
+        fs::write(
+            &config,
+            "[user]\nname = Tester\nemail = tester@example.com\n",
+        )
+        .unwrap();
+        let tree = folder.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        let git = |arguments: &[&str]| git(&tree, &config, arguments);
+        git(&["init", "-q", "-b", "main"]);
+        git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+        fs::write(tree.join("flake.nix"), "{ }").unwrap();
+        git(&["add", "flake.nix"]);
+        git(&["commit", "-q", "-m", "pushed"]);
+        let head = git(&["rev-parse", "HEAD"]);
+        git(&["update-ref", "refs/remotes/origin/main", &head]);
+        let offload = folder.path().join("offload");
+        fs::create_dir(&offload).unwrap();
+        fs::write(offload.join("store"), STORE).unwrap();
+        Self {
+            folder,
+            bin,
+            config,
+            tree,
+            offload,
+            head,
+        }
+    }
+
+    /// `there --changed` with these arguments, and what ssh was told to
+    /// run, if anything.
+    fn run(&self, arguments: &[&str]) -> (Output, Option<String>) {
+        let given = self.bin.join("ssh-was-given");
+        let _ = fs::remove_file(&given);
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "--changed"])
+            .args(arguments)
+            .current_dir(&self.tree)
+            .env(
+                "PATH",
+                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &self.offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", self.folder.path())
+            .env("XDG_STATE_HOME", self.folder.path())
+            .env("XDG_CONFIG_HOME", self.folder.path())
+            .env("GIT_CONFIG_GLOBAL", &self.config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        let sent = fs::read_to_string(&given)
+            .ok()
+            .map(|given| given.lines().nth(1).unwrap().to_owned());
+        (ran, sent)
+    }
+}
+
+#[test]
+fn a_changed_checks_run_that_passed_at_a_commit_isnt_run_again() {
+    // A second run on a commit whose run passed, sent to a builder lent
+    // since, evaluated both sides again, 400 to 900 s, to build nothing new.
+    let changed = Changed::new();
+    let head = &changed.head;
+    let short = &head[..12];
+    fs::write(
+        changed.bin.join("says"),
+        "changed  a\nadded    vm-b\nremoved  c\n",
+    )
+    .unwrap();
+    let arguments = ["--build", "--no-vm", "--system", "x86_64-linux"];
+
+    let (ran, sent) = changed.run(&arguments);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = sent.expect("the first is sent");
+    assert!(
+        !sent.contains("CHANGED_CHECKS_PASSED"),
+        "nothing passed yet: {sent}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&ran.stdout),
+        "changed  a\nadded    vm-b\nremoved  c\n",
+        "what it names comes here as it's said"
+    );
+
+    let (ran, sent) = changed.run(&arguments);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(sent, None, "nothing is sent again");
+    assert_eq!(
+        String::from_utf8_lossy(&ran.stdout),
+        "changed  a\nadded    vm-b\nremoved  c\n",
+        "what it named is said again"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(&format!(
+            "passed at {short} already, so nothing is evaluated or built"
+        )),
+        "{said}"
+    );
+
+    // A run asking for more is sent, told what passed, so it builds only
+    // what hasn't; and one that fails is never kept.
+    fs::write(changed.bin.join("status"), "1").unwrap();
+    for _ in 0..2 {
+        let (ran, sent) = changed.run(&["--build", "--system", "x86_64-linux"]);
+        assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+        let sent = sent.expect("it's sent");
+        assert!(
+            sent.contains(&format!("CHANGED_CHECKS_PASSED='{head} a' ")),
+            "{sent}"
+        );
+    }
+}
+
+#[test]
+fn subtests_that_passed_at_a_commit_arent_run_again_and_their_pictures_come_from_the_last() {
+    // run-subtests sent 260 runs in three days, 139 of them passing, at a
+    // median of 477 s, and the same words at the same commit ran again.
+    let changed = Changed::new();
+    let short = &changed.head[..12];
+    let built = changed.folder.path().join("built");
+    fs::create_dir(&built).unwrap();
+    fs::write(built.join("shot.png"), "a picture").unwrap();
+    // nix as it builds here: each call noted, its output's path printed.
+    let nix = format!(
+        "#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/nix-calls\"\necho {}\n",
+        built.display()
+    );
+    executable(&changed.bin.join("nix"), &nix);
+    // No builder lent, so it builds here, as asked.
+    let nowhere = changed.folder.path().join("nowhere");
+    fs::create_dir(&nowhere).unwrap();
+    let subtests = |words: &str, out: &str| {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "--here", "--out"])
+            .arg(changed.folder.path().join(out))
+            .args([
+                "--apply",
+                &format!("subtests: subtests {{ words = [ {words} ]; }}"),
+            ])
+            .arg(&changed.tree)
+            .arg("legacyPackages.x.subtests")
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    changed.bin.display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", &nowhere)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", changed.folder.path())
+            .env("XDG_STATE_HOME", changed.folder.path())
+            .env("XDG_CONFIG_HOME", changed.folder.path())
+            .output()
+            .unwrap()
+    };
+    let builds = || {
+        fs::read_to_string(changed.bin.join("nix-calls"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|call| call.starts_with("build "))
+            .count()
+    };
+    let picture = |out: &str| fs::read_to_string(changed.folder.path().join(out).join("shot.png"));
+
+    let ran = subtests("\"a\"", "first");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(builds(), 1);
+    assert_eq!(picture("first").unwrap(), "a picture");
+
+    let ran = subtests("\"a\"", "second");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(builds(), 1, "the same subtests aren't run again");
+    assert_eq!(
+        picture("second").unwrap(),
+        "a picture",
+        "their pictures come"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(&format!("passed at {short} already")),
+        "{said}"
+    );
+    assert!(
+        said.contains("first"),
+        "it says where they came from: {said}"
+    );
+    assert_eq!(journalled(changed.folder.path())["already"], true);
+
+    let ran = subtests("\"b\"", "third");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(builds(), 2, "other words are run");
+
+    // With the pictures gone, nothing shows what they were, so they're
+    // run again; and so is a tree with a change no commit names.
+    fs::remove_dir_all(changed.folder.path().join("first")).unwrap();
+    let ran = subtests("\"a\"", "fourth");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(builds(), 3, "run again once their pictures are gone");
+    fs::write(changed.tree.join("flake.nix"), "{ outputs = _: { }; }").unwrap();
+    let ran = subtests("\"a\"", "fifth");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(builds(), 4, "a change is run");
 }
 
 #[test]
@@ -1714,7 +2038,9 @@ fn changed_checks_send_their_vm_tests_apart_while_the_vm_lender_restarts() {
     );
 
     // A commit's changed-checks from before --name-only builds all but its
-    // VM tests there, and says they weren't built.
+    // VM tests there, and says they weren't built. The run above passed at
+    // this commit, so what passed is forgotten for it to run again.
+    fs::remove_dir_all(folder.path().join("nix-offload/passed")).unwrap();
     fs::write(bin.join("refuses-name-only"), "").unwrap();
     let ran = run(&["--system", "x86_64-linux"]);
     assert_eq!(ran.status.code(), Some(69), "{ran:?}");
@@ -1867,6 +2193,62 @@ fn lending(folder: &Path, name: &str, host: &str) -> PathBuf {
     fs::write(dir.join("lender"), std::process::id().to_string()).unwrap();
     fs::write(dir.join("store"), STORE.replace("nix-offload", host)).unwrap();
     dir
+}
+
+// A VM test goes to a builder of its own beside the rest of its build, and
+// passes no more cheaply there: its pass is kept with the rest's.
+#[test]
+fn a_vm_test_sent_apart_that_passed_at_a_commit_isnt_built_again() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/vm-tests"),
+        "checks.*.vm-*\n",
+    )
+    .unwrap();
+    let flake = format!("github:o/r/{}", "a".repeat(40));
+    let sent = || {
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L", &flake, "checks.x.a", "checks.x.vm-a"])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_VM_DIR", &vm)
+            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let sent = fs::read_to_string(bin.join("ssh-sent")).unwrap_or_default();
+        let _ = fs::remove_file(bin.join("ssh-sent"));
+        let mut hosts: Vec<String> = sent
+            .lines()
+            .filter(|line| line.contains("nix build"))
+            .filter_map(|line| Some(line.split_once(' ')?.0.to_owned()))
+            .collect();
+        hosts.sort();
+        (hosts, String::from_utf8_lossy(&ran.stderr).into_owned())
+    };
+
+    let (hosts, _) = sent();
+    assert_eq!(hosts, ["nix-offload", "nix-offload-vm"], "split");
+
+    let (hosts, said) = sent();
+    assert!(hosts.is_empty(), "nothing is sent again: {hosts:?}");
+    assert!(
+        said.contains("checks.x.vm-a passed at aaaaaaaaaaaa already"),
+        "{said}"
+    );
 }
 
 // The VM builder runs six VM tests at once, and the rest wait their turn
