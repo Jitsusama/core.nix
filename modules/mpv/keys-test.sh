@@ -28,8 +28,8 @@ asked() {
 }
 # A property mpv has, a time in whole milliseconds.
 property() {
-  asked "[\"get_property\",\"$1\"]" | jq -r 'select(has("error")) | .data
-    | if type == "number" then . * 1000 | round else . end'
+  asked "[\"get_property\",\"$1\"]" | jq -r --arg name "$1" 'select(has("error")) | .data
+    | if type == "number" and ($name | test("time|loop")) then . * 1000 | round else . end'
 }
 key() { asked "[\"keypress\",\"$1\"]" > /dev/null; }
 at() { asked "[\"seek\",\"$1\",\"absolute\",\"exact\"]" > /dev/null; }
