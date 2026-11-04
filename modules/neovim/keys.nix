@@ -21,6 +21,10 @@
 #   plugin   the name a plugin gives one of its actions, for a key in its
 #            own window, with options the Lua for what it's given
 #
+# A key that does one of the key language's acts (../keys/language.toml)
+# names it as act, and keys-speak-the-language holds the two alike: this
+# file is what the language is checked against.
+#
 # modes are Neovim's (n, x for a selection, o after an operator, i while
 # typing, t in a terminal), normal mode unless said. A key with a scope is
 # bound in a buffer only when that scope arrives: code when a language
@@ -146,6 +150,13 @@ let
     Up = "top";
     Right = "far right";
   };
+  # The key language's act for going each way.
+  towards = {
+    Left = "window-left";
+    Down = "window-down";
+    Up = "window-up";
+    Right = "window-right";
+  };
   wincmd = {
     Left = "h";
     Down = "j";
@@ -268,16 +279,19 @@ in
   }
   {
     chord = "Space ?";
+    act = "show-keys";
     does = "Show every key here";
     lua = "require('which-key').show()";
   }
   {
     chord = "Space w";
+    act = "close";
     does = "Close the split, or the file when it's the last";
     action = "split.close";
   }
   {
     chord = "Space Tab";
+    act = "last-place";
     does = "Go back to the file used last";
     action = "file.last";
   }
@@ -289,6 +303,7 @@ in
 ]
 ++ map (way: {
   chord = "Space ${way}";
+  act = towards.${way};
   does = "Go to the split ${ways.${way}}";
   keys = "<C-w>${wincmd.${way}}";
 }) (builtins.attrNames ways)
@@ -654,6 +669,7 @@ in
   }
   {
     chord = "-";
+    act = "out";
     does = "Go up to the folder holding this";
     command = "Oil";
   }
@@ -1663,6 +1679,7 @@ in
   # ─── Plain keys ─────────────────────────────────────────────────────────
   {
     chord = "Down";
+    act = "down";
     does = "Go down a line as it's shown, wrapped or not";
     keys = "v:count == 0 ? 'gj' : 'j'";
     expr = true;
@@ -1670,6 +1687,7 @@ in
   }
   {
     chord = "Up";
+    act = "up";
     does = "Go up a line as it's shown, wrapped or not";
     keys = "v:count == 0 ? 'gk' : 'k'";
     expr = true;

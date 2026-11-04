@@ -87,7 +87,9 @@ vim.opt.undofile = true -- Persistent undo
 vim.opt.undolevels = 10000
 
 -- Performance
-vim.opt.timeoutlen = 300 -- Faster which-key popup
+-- How long a key that could begin a pair waits, as every surface of ours
+-- waits (the key language, ../keys/language.toml).
+vim.opt.timeoutlen = require('timing').wait
 vim.opt.ttimeoutlen = 10 -- Faster key sequence completion
 
 -- Clipboard
@@ -158,7 +160,7 @@ end
 vim.api.nvim_create_autocmd('TextYankPost', {
   group = augroup('highlight_yank'),
   callback = function()
-    vim.highlight.on_yank({ timeout = 200 })
+    vim.highlight.on_yank({ timeout = require('timing')['yank-flash'] })
   end,
 })
 

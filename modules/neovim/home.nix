@@ -171,8 +171,15 @@ in
   # Every key, for the launcher to find by what it does.
   jitsusama.keys.neovim = map (key: {
     inherit (key) chord does;
+    act = key.act or "";
     when = where key;
   }) keys;
+
+  # How long keys wait, from the key language every surface of ours speaks
+  # (../keys/language.toml), so Neovim and they say it once.
+  xdg.configFile."nvim/lua/timing.lua".text = "return ${
+    lib.generators.toLua { } config.jitsusama.keys.language.timing
+  }\n";
 
   # Every key bound, from keys.nix: the global ones as Neovim starts, and a
   # scope's in a buffer when its plugin calls attach. A key whose action a

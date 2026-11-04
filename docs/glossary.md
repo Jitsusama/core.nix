@@ -335,6 +335,9 @@ shortcuts are listed inside it.
 | release | letting go of a layer locked on, back to the one beneath | | |
 | light | the keyboard's own light | backlight | |
 | shortcut | keys pressed together that do one thing | binding, bind | niri's `binds` |
+| key language | the one set of keys every surface of ours speaks, Vim's as Joel's Neovim has it | | `modules/keys/language.toml` |
+| act | one thing the key language's keys do, named once, as down or close | | `acts.<name>` |
+| surface | a program of ours keys act on, of one or more kinds: field, list, page or player | | `jitsusama.keys.surfaces` |
 
 ## Security
 

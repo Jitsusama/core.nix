@@ -587,6 +587,11 @@
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
     once, and not its harmless taints
   '';
+  keys-speak-the-language = ''
+    every surface naming its kinds has each act they hold, by the key language's keys, binds no
+    key the language gives to another act and no act by a key not its own, and Neovim's keys agree
+    with the language, each way of straying shown to fail first
+  '';
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
   '';
@@ -1104,7 +1109,7 @@
   '';
   reader-says-the-keys-it-takes = ''
     the keys the launcher lists over the reader's window are the reader's own, chord for chord, with
-    what each does and its group
+    what each does, its group and its act in the key language
   '';
   reader-sets-its-pages = ''
     the reader's tests pass as it builds: tables from their words and on the text's pitch, pictures

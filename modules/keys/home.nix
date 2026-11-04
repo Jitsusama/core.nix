@@ -13,9 +13,15 @@
 # configuration rather than a copy (docs/design.md, The Keyboard). Beside
 # them are the touchscreen's swipes, which aren't chords but are shortcuts
 # to the same actions, so the launcher lists them with the desktop's.
+#
+# A surface of ours speaks one key language, Vim's (language.toml), and says
+# here which kinds of surface it is and which of the language's acts each of
+# its chords does, so keys-speak-the-language can hold it to the language.
 { config, lib, ... }:
 let
   cfg = config.jitsusama.keys;
+
+  language = builtins.fromTOML (builtins.readFile ./language.toml);
 
   # Top to bottom: each layer sees a key before every layer after it, but
   # for the programs, which sit side by side.
@@ -109,6 +115,16 @@ let
         does = lib.mkOption {
           type = lib.types.str;
           description = "What the chord does, in plain words, as the launcher finds it.";
+        };
+        act = lib.mkOption {
+          type = lib.types.enum ([ "" ] ++ lib.attrNames language.acts);
+          default = "";
+          example = "down";
+          description = ''
+            The key language's act the chord does (language.toml), by its
+            name there. Empty for a key of the program's own, for what Vim
+            has nothing for.
+          '';
         };
         also = lib.mkOption {
           type = lib.types.str;
@@ -270,14 +286,40 @@ let
   ) order;
 in
 {
-  options.jitsusama.keys = lib.mapAttrs (
-    _layer: description:
-    lib.mkOption {
-      type = lib.types.listOf bind;
-      default = [ ];
-      description = "The shortcuts of ${description}. Each module that takes keys adds its own.";
-    }
-  ) layers;
+  options.jitsusama.keys =
+    lib.mapAttrs (
+      _layer: description:
+      lib.mkOption {
+        type = lib.types.listOf bind;
+        default = [ ];
+        description = "The shortcuts of ${description}. Each module that takes keys adds its own.";
+      }
+    ) layers
+    // {
+      surfaces = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.listOf (lib.types.enum (lib.attrNames language.kinds)));
+        default = { };
+        example = {
+          reader = [ "page" ];
+        };
+        description = ''
+          The kinds of surface each layer of ours is, as the key language
+          names them (language.toml), by its layer's name: a surface has
+          every act its kinds hold, by the language's keys.
+        '';
+      };
+      language = lib.mkOption {
+        type = lib.types.attrs;
+        readOnly = true;
+        default = language;
+        defaultText = lib.literalMD "language.toml, read in";
+        description = ''
+          The key language every surface of ours speaks, with the time a
+          waiting key waits, the which-key list's delay and the yank
+          flash's, for a program to read rather than say again.
+        '';
+      };
+    };
 
   options.jitsusama.swipes = lib.mkOption {
     type = lib.types.listOf swipe;
@@ -290,6 +332,7 @@ in
       map (layer: {
         name = layer;
         description = layers.${layer};
+        kinds = cfg.surfaces.${layer} or [ ];
         binds = map (b: {
           inherit (b)
             chord
@@ -297,12 +340,19 @@ in
             does
             when
             run
+            act
             ;
         }) (spelled layer);
       }) order
     );
 
     assertions = [
+      {
+        assertion = lib.all (layer: layers ? ${layer}) (lib.attrNames cfg.surfaces);
+        message = "jitsusama.keys.surfaces names a layer the key map hasn't: ${
+          lib.concatStringsSep ", " (lib.filter (layer: !(layers ? ${layer})) (lib.attrNames cfg.surfaces))
+        }";
+      }
       {
         assertion = clashes == [ ];
         message = ''
