@@ -14,6 +14,9 @@ use crate::page;
 /// at 0.75 pt a logical pixel.
 pub const ROW_PT: f64 = 36.0;
 
+/// A row of the key list: the page's 25 px rhythm, as 18.75 pt.
+pub const KEY_ROW_PT: f64 = 18.75;
+
 /// What the prompt says: what is typed after its / or ?, and how many it
 /// finds.
 pub struct Ask {
@@ -133,7 +136,7 @@ impl Prompt {
                         let text = if !ask.labels.is_empty() {
                             labels(&ask.labels)
                         } else if ask.keys {
-                            key_list()
+                            key_list(ask.width_pt)
                         } else {
                             source(&ask)
                         };
@@ -233,12 +236,18 @@ fn source(ask: &Ask) -> String {
 /// page's 25 px rhythm. The groups in a column share one edge for their
 /// words, measured from the widest keys in it. Each column is a stack of
 /// its own, the groups shared out so the two stand as near one height as
-/// they can, since the list has to fit the window.
-fn key_list() -> String {
+/// they can.
+///
+/// It is set for a window `width_pt` wide, Space's xl clear of each side:
+/// two columns where they fit, else one, every group in order down it,
+/// whose words wrap only where even one column is wider than the room.
+/// Taller than the window, it scrolls there rather than here.
+fn key_list(width_pt: f64) -> String {
     let listing = crate::keys::listing();
     let heights: Vec<usize> = listing.iter().map(|(_, rows)| rows.len()).collect();
     let columns = columns_of(&heights);
     let mut groups: [Vec<String>; 2] = [Vec::new(), Vec::new()];
+    let mut alone: Vec<String> = Vec::new();
     let mut widest: [Vec<String>; 2] = [Vec::new(), Vec::new()];
     for ((group, rows), &column) in listing.into_iter().zip(&columns) {
         let mut cells = Vec::new();
@@ -259,26 +268,47 @@ fn key_list() -> String {
             quoted(group),
             cells.join(", ")
         ));
+        // Alone in a column that may be narrower than its words, a row
+        // grows for words that wrap, each line the rhythm's 18.75 pt with
+        // its letters where a fixed row centres them.
+        alone.push(format!(
+            "stack(spacing: 6pt, text(fill: ink.strong, weight: 700, {}), {{ set text(top-edge: 13.4pt, bottom-edge: -5.35pt); set par(leading: 0pt); grid(columns: (calc.max(..keys), auto), column-gutter: 24pt, {}) }})",
+            quoted(group),
+            cells.join(", ")
+        ));
     }
     let stacks: Vec<String> = groups
         .iter()
         .map(|column| format!("stack(spacing: 12pt, {})", column.join(", ")))
         .collect();
     format!(
-        r#"{}#set page(width: auto, height: auto, margin: 18pt, fill: ink.sunken)
+        r#"{}#set page(width: auto, height: auto, margin: {SIDE_PT}pt, fill: ink.sunken)
 #set text(font: face.code, size: 11.5pt, fill: ink.text)
 #context {{
   let keys = (({}), ({})).map(column => calc.max(0pt, ..column.map(it => measure(text(it)).width)))
-  stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, {}),
-    text(fill: ink.muted, "A number first does it that many times: 5j goes five lines down."))
+  let note = text(fill: ink.muted, "A number first does it that many times: 5j goes five lines down.")
+  let two = stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, {}), note)
+  let one = stack(spacing: 12pt, {}, note)
+  let room = {room}pt
+  if measure(two).width <= room {{ two }} else {{ block(width: calc.min(measure(one).width, room), one) }}
 }}
 "#,
         crate::theme::get().typst(),
         widest[0].join(", ") + ",",
         widest[1].join(", ") + ",",
-        stacks.join(", ")
+        stacks.join(", "),
+        alone.join(", "),
+        room = (width_pt - 4.0 * SIDE_PT).max(KEYS_LEAST_PT),
     )
 }
+
+/// Space's xl, round the key list's words and between it and the window's
+/// sides.
+const SIDE_PT: f64 = 18.0;
+
+/// The narrowest the key list's words are set, however narrow the window:
+/// its keys and a few words beside them.
+const KEYS_LEAST_PT: f64 = 240.0;
 
 /// Which column each group of the key list goes in, the first always the
 /// left: the share whose taller column is shortest, counting a group's
@@ -369,6 +399,53 @@ mod tests {
     #[test]
     fn quoting_keeps_what_is_typed() {
         assert_eq!(quoted(r#"a "b" \c"#), r#""a \"b\" \\c""#);
+    }
+
+    /// The key list set for a window this many points wide: its width and
+    /// height in points.
+    fn key_list_set(width_pt: f64) -> (f64, f64) {
+        let mut world = page::new_world();
+        world.set_main(&key_list(width_pt));
+        let document = typst::compile::<PagedDocument>(&world)
+            .output
+            .unwrap_or_else(|errors| {
+                panic!(
+                    "{:?}",
+                    errors
+                        .iter()
+                        .map(|e| e.message.to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        let size = document.pages()[0].frame.size();
+        (size.x.to_pt(), size.y.to_pt())
+    }
+
+    #[test]
+    fn the_key_list_fits_inside_its_window_at_any_width() {
+        // A whole screen at 1.5 is 1920 points; half and a third are what
+        // a window beside another takes, and 400 is narrower than either.
+        for window in [400.0, 640.0, 960.0, 1920.0] {
+            let (width, _) = key_list_set(window);
+            assert!(
+                width <= window - 2.0 * SIDE_PT,
+                "the key list is {width:.0} pt wide in a window {window} pt wide"
+            );
+        }
+    }
+
+    #[test]
+    fn the_key_list_takes_two_columns_where_they_fit_and_one_where_not() {
+        let (wide, wide_tall) = key_list_set(1920.0);
+        let (narrow, narrow_tall) = key_list_set(640.0);
+        assert!(
+            wide > narrow,
+            "{wide:.0} pt wide on a screen, {narrow:.0} pt in a third"
+        );
+        assert!(
+            narrow_tall > wide_tall * 1.5,
+            "one column stands taller than two"
+        );
     }
 
     #[test]

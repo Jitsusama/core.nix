@@ -410,6 +410,10 @@ struct App {
     /// set, waiting to be painted and painted.
     keys_shown: bool,
     keys_px: f64,
+    /// The window's width in points the key list was set for, and how far
+    /// down it's scrolled, in device pixels, while taller than the window.
+    keys_width_pt: f64,
+    keys_scroll: f64,
     keys_set: Option<prompt::Set>,
     keys_canvas: Option<gl::Texture>,
     /// The file shown, which a link's path is taken from.
@@ -950,16 +954,22 @@ impl App {
         self.prompt_shown = true;
     }
 
-    /// Shows or hides the key list, asking for it set at this scale if it
-    /// isn't yet.
+    /// Shows or hides the key list from its top, asking for it set at this
+    /// scale and for this window's width if it isn't yet.
     fn show_keys(&mut self, shown: bool) {
+        if shown && !self.keys_shown {
+            self.keys_scroll = 0.0;
+        }
         self.keys_shown = shown;
         let px_per_pt = self.prompt_px_per_pt();
+        let width_pt = self.gl.as_ref().map_or(0.0, |gl| f64::from(gl.width)) / px_per_pt;
         if shown
-            && (self.keys_px - px_per_pt).abs() > f64::EPSILON
+            && ((self.keys_px - px_per_pt).abs() > f64::EPSILON
+                || (self.keys_width_pt - width_pt).abs() > f64::EPSILON)
             && let Some(prompt) = self.prompt.as_ref()
         {
             self.keys_px = px_per_pt;
+            self.keys_width_pt = width_pt;
             prompt.ask(prompt::Ask {
                 serial: 0,
                 keys: true,
@@ -968,11 +978,45 @@ impl App {
                 typed: String::new(),
                 cursor: false,
                 count: None,
-                width_pt: 0.0,
+                width_pt,
                 px_per_pt,
                 page: self.width,
             });
         }
+    }
+
+    /// How far the key list can scroll, in device pixels: what of it stands
+    /// past the window's height, none while it fits.
+    fn keys_overflow(&self) -> f64 {
+        let tall = self.keys_canvas.as_ref().map_or(0, |it| it.height);
+        (f64::from(tall) - self.screen_px()).max(0.0)
+    }
+
+    /// Scrolls a key list taller than the window by a key that moves the
+    /// view, as which-key scrolls its own, so every key in it can be read;
+    /// any other key, or one while it fits, is the list's to close.
+    fn scroll_keys(&mut self, act: keys::Act, count: Option<u32>) -> bool {
+        use keys::Act;
+        let most = self.keys_overflow();
+        if most <= 0.0 {
+            return false;
+        }
+        let row = prompt::KEY_ROW_PT * self.prompt_px_per_pt();
+        let screen = self.screen_px();
+        let times = f64::from(count.unwrap_or(1));
+        let by = match act {
+            Act::Down | Act::ScrollDown => row * times,
+            Act::Up | Act::ScrollUp => -row * times,
+            Act::HalfDown => screen / 2.0 * times,
+            Act::HalfUp => -screen / 2.0 * times,
+            Act::ScreenDown => screen * times,
+            Act::ScreenUp => -screen * times,
+            Act::First => -most,
+            Act::Last => most,
+            _ => return false,
+        };
+        self.keys_scroll = (self.keys_scroll + by).clamp(0.0, most);
+        true
     }
 
     /// g x's labels, each over its link's first letters with its letters'
@@ -1222,8 +1266,15 @@ impl App {
             self.prompt_shown = false;
         }
         // Any key closes the key list, as which-key's, and does what it does;
-        // Escape only closes it, and Space ? again too.
+        // Escape only closes it, and Space ? again too. While it's taller
+        // than the window, the keys that move the view scroll it instead.
         let listed = self.keys_shown;
+        if listed && self.scroll_keys(act, count) {
+            if !self.frame_pending {
+                self.draw();
+            }
+            return;
+        }
         if listed {
             self.show_keys(false);
         }
@@ -2010,13 +2061,19 @@ impl App {
             let (width, height) = (canvas.width as f32, canvas.height as f32);
             gl.draw(canvas, 0.0, screen - height, width, height);
         }
-        // Centred, as his which-key, on whole pixels so its type is sharp.
+        // Centred, as his which-key, on whole pixels so its type is sharp;
+        // taller than the window, from its top down as far as it's scrolled.
         if self.keys_shown
             && let Some(canvas) = painted(gl, &mut self.keys_canvas, self.keys_set.take())
         {
             let (width, height) = (canvas.width as f32, canvas.height as f32);
-            let x = ((gl.width as f32 - width) / 2.0).round();
-            let y = ((screen - height) / 2.0).round();
+            let x = ((gl.width as f32 - width) / 2.0).round().max(0.0);
+            let y = if height > screen {
+                let most = height - screen;
+                -(self.keys_scroll as f32).clamp(0.0, most).round()
+            } else {
+                ((screen - height) / 2.0).round()
+            };
             gl.draw(canvas, x, y, width, height);
         }
         if self.ask_next_frame() {
@@ -2885,6 +2942,10 @@ impl WindowHandler for App {
         if at_end {
             self.offset = self.most();
         }
+        // A key list showing is set again for the window's new width.
+        if self.keys_shown {
+            self.show_keys(true);
+        }
         self.cut();
         if !self.frame_pending {
             self.draw();
@@ -3396,6 +3457,8 @@ impl App {
             prompt_canvas: None,
             keys_shown: false,
             keys_px: 0.0,
+            keys_width_pt: 0.0,
+            keys_scroll: 0.0,
             keys_set: None,
             keys_canvas: None,
             file,
