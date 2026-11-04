@@ -368,8 +368,14 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 "systemd-run --user --collect --unit=choose-to-preview"
                 f" {values['choose_a_file']} open {folder}"
             )
+            # Every file listed, not just a row selected: a fresh ask is shown
+            # before its folder's read, and down_to reads the rows once.
             desktop.launcher_until(
-                lambda shown: shown["path"][-1:] == ["~/picked"] and shown["selected"] is not None,
+                lambda shown: (
+                    shown["path"][-1:] == ["~/picked"]
+                    and shown["selected"] is not None
+                    and set(PICKED) <= set(shown["rows"])
+                ),
                 timeout=timedelta(seconds=60),
             )
             for name, (eyebrow, preview) in PICKED.items():
