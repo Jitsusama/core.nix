@@ -1961,6 +1961,48 @@ pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
     Some(Claim(path))
 }
 
+/// How many VM tests a VM builder runs at once where the machine doesn't
+/// say: as many as its helper is told when told none.
+pub const VM_ROOM: usize = 4;
+
+/// Says `count` VM tests go to the builder `dir`'s lender lends, once
+/// there's room for them beside those runs still going have sent it, as
+/// many as `room`: Nix's max-jobs bounds each client's build, not the
+/// builder, so on 4 November one told 4 at once ran 15, and timing-
+/// sensitive tests failed. A run may build `room` at once, however many
+/// it asks, and it goes when nothing else is sent, so one past the room
+/// waits for none. It waits, saying so once, checking and claiming under a
+/// lock so two runs can't both take the last room; with none to be had,
+/// as where the folder can't be written, it goes at once.
+pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
+    use std::os::fd::AsRawFd;
+    let wants = count.clamp(1, room.max(1));
+    let mut said = false;
+    loop {
+        let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
+            return claim(dir, wants);
+        };
+        // SAFETY: flock only locks the file it's given, open until dropped.
+        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            return claim(dir, wants);
+        }
+        let busy = claimed(dir);
+        if busy == 0 || busy + wants <= room {
+            // Claimed before the lock is let go, as dropping it does.
+            return claim(dir, wants);
+        }
+        drop(lock);
+        if !said {
+            eprintln!(
+                "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
+                 {room}, so this waits for room"
+            );
+            said = true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 /// How many VM tests runs still going have sent the builder `dir`'s
 /// lender lends. A claim whose run ended without taking it away, as one
 /// killed does, is taken away here.

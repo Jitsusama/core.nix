@@ -88,10 +88,12 @@
 //! builds all but the VM tests there, and sends those the same way.
 //! Another such lender, in /run/nix-offload-vm-more, lends a second VM
 //! builder, which takes the VM tests past the first's room: as many as
-//! `nix-offload/vm-builds` says it runs at once (as both VM lenders'
-//! helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs still
-//! going have sent it, each saying so in its folder's `sending`. A run's
-//! parts go at once, each to its own builder.
+//! `nix-offload/vm-builds` says it runs at once, else 4 (as both VM
+//! lenders' helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs
+//! still going have sent it, each saying so in its folder's `sending`.
+//! Past both builders' room, a run's VM tests wait for room, since Nix
+//! bounds each run's build alone. A run's parts go at once, each to its
+//! own builder.
 //!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
@@ -436,7 +438,13 @@ fn there(arguments: &[String]) -> ExitCode {
     };
     let parts = [(&vm_dir, vm), (&vm_more_dir, vm_more), (&left_dir, left)];
     let fallbacks = [(&more_dir, &first_dir), (&vm_more_dir, &vm_dir)];
-    let ran = at_once(&parts, [&vm_dir, &vm_more_dir], &fallbacks, &scratch);
+    let ran = at_once(
+        &parts,
+        [&vm_dir, &vm_more_dir],
+        vm_room(),
+        &fallbacks,
+        &scratch,
+    );
     for (part, began, ended, ran) in &ran {
         there::note(&journal, *ended, ended.saturating_sub(*began), part, ran);
         // The first that failed says how the whole did.
@@ -455,16 +463,14 @@ fn there(arguments: &[String]) -> ExitCode {
 /// The VM tests `vm` split between the VM builder and a second, those
 /// past the first's room going to the second while a lender runs in
 /// `vm_more_dir` to make one, counting what other runs still going have
-/// sent each. With no lender or no room said, all go to the first.
+/// sent each. With no lender, all go to the first.
 fn overflowed(
     vm: Option<there::Asked>,
     vm_dir: &Path,
     vm_more_dir: &Path,
 ) -> (Option<there::Asked>, Option<there::Asked>) {
-    let builds = fs::read_to_string(config().join("nix-offload/vm-builds"))
-        .ok()
-        .and_then(|text| text.trim().parse::<usize>().ok());
-    let (Some(part), Some(builds)) = (&vm, builds) else {
+    let builds = vm_room();
+    let Some(part) = &vm else {
         return (vm, None);
     };
     if !there::lends(vm_more_dir) {
@@ -486,11 +492,13 @@ fn overflowed(
 /// Sends each of `parts` to its builder at once, on a thread of its own
 /// with scratch of its own, since each goes to a builder of its own: one
 /// after another, the second VM builder's tests waited out the first's.
-/// Those sent to one of `vm_dirs` are claimed there while they go. Says
-/// how each ran, with when it began and ended, in the order given.
+/// Those sent to one of `vm_dirs` go once it has room for them, as many
+/// as `room`, and are claimed there while they go. Says how each ran,
+/// with when it began and ended, in the order given.
 fn at_once<'a>(
     parts: &'a [(&PathBuf, Option<there::Asked>)],
     vm_dirs: [&PathBuf; 2],
+    room: usize,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
 ) -> Vec<(&'a there::Asked, u64, u64, there::Ran)> {
@@ -504,7 +512,7 @@ fn at_once<'a>(
                 let vm = vm_dirs.contains(&dir);
                 scope.spawn(move || {
                     let began = now();
-                    let _claim = vm.then(|| there::claim(dir, there::count(part)));
+                    let _claim = vm.then(|| there::admitted(dir, there::count(part), room));
                     let ran = sent(part, dir, vm, fallbacks, &scratch);
                     (part, began, now(), ran)
                 })
@@ -660,6 +668,17 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
         }
         _ => first.to_owned(),
     }
+}
+
+/// How many VM tests each VM builder runs at once, as XDG's config folder
+/// says in `nix-offload/vm-builds`, else as many as its helper is told by
+/// default.
+fn vm_room() -> usize {
+    fs::read_to_string(config().join("nix-offload/vm-builds"))
+        .ok()
+        .and_then(|text| text.trim().parse::<usize>().ok())
+        .filter(|builds| *builds > 0)
+        .unwrap_or(there::VM_ROOM)
 }
 
 /// The patterns of VM tests' attributes, from XDG's config folder; none

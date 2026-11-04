@@ -184,7 +184,8 @@ in
                 How many VM tests each VM builder runs at once, told to both
                 VM lenders' helpers as OFFLOAD_MAX_JOBS, so `there` sends
                 what's past that to the second, `more`, rather than leave it
-                waiting its turn.
+                waiting its turn. Past both, or with no second, a run's VM
+                tests wait here for room. Unset, `there` counts 4.
               '';
             };
             more = lib.mkOption {
