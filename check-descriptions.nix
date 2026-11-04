@@ -2344,9 +2344,19 @@
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in
   '';
+  vm-wifi-holds-on = ''
+    nothing that should leave the card on its network takes it off: wifid or networkd or
+    wpa_supplicant starting again, another card, a garbled file, a VPN's DNS servers; others'
+    routing rules stand, and a network forgotten goes from everywhere
+  '';
   vm-wifi-joins = ''
-    wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
-    others' routing rules, keeps the card awake on the charger
+    wifid joins the networks it's given, finds sign-ins and sessions ending, tells the shell what
+    it hears in detail, chooses a network the launcher saved first, and trusts one when asked
+  '';
+  vm-wifi-joins-when-asked = ''
+    the shell has wifid sign in, join with a password or an account, leave, save and switch the
+    radios; a stuck look is nudged, a silent access point passed, and the card dozes only on
+    battery
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
