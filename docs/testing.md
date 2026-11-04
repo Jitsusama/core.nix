@@ -188,10 +188,18 @@ desktop's reports and `niri msg`, never pixels. `the-notices-land-on-niri` is
 the first. Since nothing types there, Joel is away as soon as the desktop's
 idle time passes, which `the-notices-wait-while-joel-is-away` uses.
 
+The launcher is typed into there: wtype's keys reach the surface holding the
+keyboard, the launcher's, so a case that only types and reads the launcher
+runs on the account's whole shell, through pytest, with
+`tests/launcher_on_niri.py` keeping the desktop test's helpers' names.
+`the-launcher-answers-whats-typed-on-niri` is the first, in seconds where the
+same cases took minutes in `vm-desktop-launcher-finds-by-name`.
+
 Two things it can't do, so they stay in a machine. Nested, niri has one
 output that never goes, so screens coming and going need a VM. And keys
 typed there with wtype never reached niri's binds, so a check runs what a
-bind runs rather than pressing it. Nor does anything there end Joel being
+bind runs rather than pressing it. A case needing the machine's battery,
+lights, services or other programs needs a VM too. Nor does anything there end Joel being
 away: sway's cursor moved and a virtual pointer through `wlrctl` both left
 niri idle, so coming back needs a VM.
 

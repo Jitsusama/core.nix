@@ -1068,3 +1068,9 @@ def drawn_held_still(desktop: Desktop) -> int:
             break
     time.sleep(3)
     return frames() - began
+
+
+# What the launcher's answers areas share: the stand-in battery's charge.
+def charged(desktop: Desktop) -> str:
+    """Give the stand-in battery's charge, as the kernel's stand-in has it."""
+    return desktop.machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
