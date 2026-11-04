@@ -78,7 +78,7 @@ Provider {
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03).
             drawer: { eyebrow: provider.whoAndWhen(notice), title: notice.summary,
-                body: notice.body, sans: true },
+                body: notice.body, prose: true },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml).
             glyph: String.fromCodePoint(notice.glyph),

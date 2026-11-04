@@ -1670,9 +1670,11 @@ in
             lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") colours
           )}
               readonly property var mono: ${face font.mono.family type.mono}
-              readonly property var sans: ${face font.sans.family type.sans}
               // The voice's face, set by its variable axes (font.variableAxes)
-              // with its weight among them, each step sized by capitals.
+              // with its weight among them, each step sized by capitals. There's
+              // no sans: what the shell sets for reading is in the serif upright
+              // at large, as the reader's page is (Joel, 4 November: "generally,
+              // not a fan of sans-serif").
               readonly property var serif: ${
                 object (
                   {
@@ -1688,6 +1690,13 @@ in
                     # Its axes set upright, or italic but larger, at a step,
                     # whole: the voice's laid under each.
                     upright = lib.mapAttrs (_: axes: font.serif.axes // axes) font.serif.upright;
+                    # The same but for the weight, for a line whose spans set
+                    # their own: Qt's rich text can't set an axis in a span,
+                    # and a weight axis on the line outweighs every span's, so
+                    # such a line takes its weight from the face's own.
+                    unweighted = lib.mapAttrs (
+                      _: axes: removeAttrs (font.serif.axes // axes) [ "wght" ]
+                    ) font.serif.upright;
                     slanted = lib.mapAttrs (_: axes: font.serif.axes // axes) font.serif.slanted;
                   }
                   // lib.mapAttrs (_: builtins.fromJSON) type.serif

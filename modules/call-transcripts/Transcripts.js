@@ -188,8 +188,8 @@ function marked(line) {
 
 // Its drawer: when it was over its title, how long it went on and who it
 // was with, then its summary when one's written, else how its transcript
-// opens, both set as the markdown they are, in the plate's sans as a
-// notice's words are. `names` holds its `title` and `who` it was with,
+// opens, both set as the markdown they are, as prose in the plate's
+// serif as a notice's words are. `names` holds its `title` and `who` it was with,
 // their name as People knows them, or else their address.
 function details(record, names, said, now) {
     const facts = [];
@@ -206,7 +206,7 @@ function details(record, names, said, now) {
         facts,
         body: styled(words),
         styled: true,
-        sans: true
+        prose: true
     };
 }
 

@@ -1107,9 +1107,9 @@ Scope {
                                 elide: Text.ElideRight
                                 lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
-                                font.family: Theme.sans.family
-                                font.pointSize: Theme.sans.large
-                                font.features: { "ss05": 1 }
+                                font.family: Theme.serif.family
+                                font.pointSize: Theme.serif.large
+                                font.variableAxes: Theme.serif.upright.large
                             }
                         }
                     }
@@ -1326,9 +1326,9 @@ Scope {
                             textFormat: card.washed ? Text.RichText : Text.StyledText
                             lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
-                            font.family: Theme.sans.family
-                            font.pointSize: Theme.sans.large
-                            font.features: { "ss05": 1 }
+                            font.family: Theme.serif.family
+                            font.pointSize: Theme.serif.large
+                            font.variableAxes: Theme.serif.upright.large
                         }
 
                         // What sent it, a step below: its mark in a column

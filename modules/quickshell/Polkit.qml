@@ -103,15 +103,19 @@ Scope {
                         textFormat: Text.RichText
                         readonly property string asker:
                             `<span style="font-family:'${Theme.mono.family}'">${root.asker}</span>`
+                        // Its owner strong, and heavier at the face's
+                        // semibold, the nearest of its own weights past
+                        // regular: a span can't set the weight axis.
                         readonly property string owner:
-                            `<span style="color:${Theme.strong};font-weight:500">${root.who}</span>`
+                            `<span style="color:${Theme.strong};font-weight:600">${root.who}</span>`
                         text: `${asker} needs ${owner}'s password`
                         color: Theme.text
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: Theme.sans.family
-                        font.pointSize: Theme.sans.large
+                        font.family: Theme.serif.family
+                        font.pointSize: Theme.serif.large
+                        font.variableAxes: Theme.serif.unweighted.large
                     }
 
                     Text {
@@ -123,8 +127,9 @@ Scope {
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: Theme.sans.family
-                        font.pointSize: Theme.sans.large
+                        font.family: Theme.serif.family
+                        font.pointSize: Theme.serif.large
+                        font.variableAxes: Theme.serif.upright.large
                     }
                 }
 
