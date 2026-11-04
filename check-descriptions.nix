@@ -1515,6 +1515,11 @@
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
   '';
+  the-launcher-remakes-only-the-windows-that-changed = ''
+    the launcher's windows list This Window, then the rest the one used last first, and when the
+    focus moves make again only the rows of the windows it moved between, a renamed one too, as
+    Capture's rows of the windows do
+  '';
   the-launcher-says-why-the-desktop-lags = ''
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from
     the top, says how fast the desktop answers in plain words, and says nothing's slowing the
