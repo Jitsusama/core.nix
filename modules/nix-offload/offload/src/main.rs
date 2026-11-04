@@ -106,8 +106,8 @@
 //! lenders' helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs
 //! still going have sent it, each saying so in its folder's `sending`.
 //! Past both builders' room, a run's VM tests wait for room, in the order
-//! runs came, since Nix bounds each run's build alone. A run's parts go at once, each to its
-//! own builder.
+//! runs came, since Nix bounds each run's build alone. A run's parts go
+//! at once, each to its own builder.
 //!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
@@ -693,8 +693,8 @@ impl Kept {
 }
 
 /// The lender's folder a build goes to: `more`, the second's, while the
-/// first's builder is full, as `there::to_second` decides, else `first`. A build waits for the first
-/// while none stands, as it always has.
+/// first's builder is full, as `there::to_second` decides, else `first`.
+/// A build waits for the first while none stands, as it always has.
 fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
     let Some(stands) = standing(first) else {
         return first.to_owned();

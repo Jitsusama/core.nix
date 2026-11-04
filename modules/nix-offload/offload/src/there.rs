@@ -1058,8 +1058,9 @@ fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
 /// How the flake in `folder` reaches the builder. Its commit is the
 /// tree's HEAD, or, with changes to the files its index holds, staged
 /// new ones included, a commit of them made without touching the branch
-/// or the index, as `nix build` of the tree here would read them. The newest commit GitHub has is where it meets
-/// its upstream branch, else origin's main. A tree that isn't git, or
+/// or the index, as `nix build` of the tree here would read them. The
+/// newest commit GitHub has is where it meets its upstream branch, else
+/// origin's main. A tree that isn't git, or
 /// whose origin isn't on GitHub, can't reach it.
 pub fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
     let folder =
