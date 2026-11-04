@@ -68,6 +68,12 @@
 //! Each ask, start, stop and leftover is a line in the journal under XDG's
 //! state folder, `nix-offload/journal.jsonl`, which `report` sums.
 //!
+//! A lender's end ends the way to its builder, and every build reaching
+//! it with that, so a switch that changes its unit reloads it (SIGHUP)
+//! rather than restarting it. It then ends only once no build reaches its
+//! builder and none waits for one, leaving the builder for the next start
+//! as a stop does, and exits 100, which its unit starts the new one on.
+//!
 //! A second lender may run beside it for VM tests alone: `--dir` gives it
 //! a folder of its own, such as /run/nix-offload-vm, whose files nothing
 //! but `there` reads, and its lock and journal are named for that folder;
@@ -169,6 +175,19 @@ static ENDING: AtomicBool = AtomicBool::new(false);
 extern "C" fn ending(_: libc::c_int) {
     ENDING.store(true, Ordering::SeqCst);
 }
+
+/// Set when a switch has changed the service's unit, which reloads it
+/// (SIGHUP) rather than restarting it, so it ends once nothing uses its
+/// builder and systemd starts the new one.
+static SUPERSEDED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn superseded(_: libc::c_int) {
+    SUPERSEDED.store(true, Ordering::SeqCst);
+}
+
+/// What a lender exits with once it has ended superseded, which its unit
+/// counts as a success and starts it again on.
+const RESTARTS: u8 = 100;
 
 /// How often a rest looks to see whether it's been told to end.
 const HEARD_WITHIN: Duration = Duration::from_millis(100);
@@ -300,7 +319,9 @@ fn main() -> ExitCode {
         let read = |path: Option<String>| {
             path.map_or_else(Vec::new, |path| read_standing(Path::new(&path)))
         };
-        stand(read(standing), read(beside));
+        if stand(read(standing), read(beside)) {
+            return ExitCode::from(RESTARTS);
+        }
         return ExitCode::SUCCESS;
     }
     serving(&arguments, given)
@@ -403,15 +424,16 @@ fn there(arguments: &[String]) -> ExitCode {
             None if *dir == more_dir => (&first_dir, standing(&first_dir)),
             store => (dir, store),
         };
-        // Waited for from when the builder was first lost.
-        let lost = std::cell::Cell::new(None);
-        let again = || {
-            let since = lost.get().unwrap_or_else(std::time::Instant::now);
-            lost.set(Some(since));
-            there::stood_again(dir, there::WAITING, since)
-        };
+        let again = |since| there::stood_again(dir, there::WAITING, since);
         timed(part, &|| {
-            there::run(part, store.as_deref(), &again, &scratch, ["ssh", "nix"])
+            there::run(
+                part,
+                store.as_deref(),
+                &again,
+                there::WAITING,
+                &scratch,
+                ["ssh", "nix"],
+            )
         });
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
@@ -749,7 +771,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 eprintln!("nix-offload: another serve is running");
                 return ExitCode::FAILURE;
             }
-            serve(&Settings {
+            let restarts = serve(&Settings {
                 helper: helper.into(),
                 prefix,
                 hours: Hours {
@@ -765,7 +787,11 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 dir,
                 only_there: arguments.iter().any(|argument| argument == "--only-there"),
             });
-            ExitCode::SUCCESS
+            if restarts {
+                ExitCode::from(RESTARTS)
+            } else {
+                ExitCode::SUCCESS
+            }
         }
         _ => {
             eprintln!("{USED}");
@@ -781,6 +807,8 @@ fn hear_stops() {
         let handler = ending as *const () as libc::sighandler_t;
         libc::signal(libc::SIGTERM, handler);
         libc::signal(libc::SIGINT, handler);
+        let handler = superseded as *const () as libc::sighandler_t;
+        libc::signal(libc::SIGHUP, handler);
     }
 }
 
@@ -792,8 +820,9 @@ fn read_standing(path: &Path) -> Vec<machines::Standing> {
 }
 
 /// Name the standing builders, and those beside, that answer, lending
-/// none, until told to end.
-fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) {
+/// none, until told to end, or at once once superseded, since it holds
+/// nothing. It says whether it ended superseded.
+fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) -> bool {
     hear_stops();
     let mut machines = Machines::new(
         MACHINES.into(),
@@ -805,22 +834,25 @@ fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) {
     .beside(BESIDE.into(), beside)
     .for_anything(ANYTHING.into());
     while !ENDING.load(Ordering::SeqCst) {
+        if SUPERSEDED.load(Ordering::SeqCst) {
+            return true;
+        }
         machines.show(None);
         rest(TICK);
     }
+    false
 }
 
-/// Lend a builder while the queue wants one, until told to end.
-fn serve(settings: &Settings) {
-    hear_stops();
+/// The files a lender names its builders in. Each is in the lender's own
+/// folder, so a second lender, for VM tests, writes none that Nix or the
+/// queue reads.
+fn machines_of(settings: &Settings) -> Machines {
     let standing = settings
         .standing
         .as_deref()
         .map_or_else(Vec::new, read_standing);
-    // Each file is in the lender's own folder, so a second lender, for VM
-    // tests, writes none that Nix or the queue reads.
     let dir = &settings.dir;
-    let mut machines = Machines::new(
+    Machines::new(
         dir.join("machines"),
         dir.join("machines-with-standing"),
         dir.join("store"),
@@ -834,7 +866,34 @@ fn serve(settings: &Settings) {
             .as_deref()
             .map_or_else(Vec::new, read_standing),
     )
-    .for_anything(dir.join("machines-for-anything"));
+    .for_anything(dir.join("machines-for-anything"))
+}
+
+/// Whether a lender whose unit changed ends now, as `decide::restarts`
+/// says, saying the first time it's put off why it waits.
+fn ends_superseded(wants: bool, reached: bool, said: &mut bool) -> bool {
+    let superseded = SUPERSEDED.load(Ordering::SeqCst);
+    if decide::restarts(superseded, wants, reached) {
+        eprintln!("nix-offload: its unit changed and nothing uses its builder, so it starts again");
+        return true;
+    }
+    if superseded && !*said {
+        eprintln!(
+            "nix-offload: its unit changed, so it starts again once no build uses or waits on \
+             its builder"
+        );
+        *said = true;
+    }
+    false
+}
+
+/// Lend a builder while the queue wants one, until told to end, or until
+/// superseded once nothing uses or wants its builder, saying whether it
+/// ended superseded.
+fn serve(settings: &Settings) -> bool {
+    hear_stops();
+    let dir = &settings.dir;
+    let mut machines = machines_of(settings);
     machines.show(None);
     machines.asking(None);
     // Said so a build with no builder waits for one only while a lender
@@ -850,6 +909,8 @@ fn serve(settings: &Settings) {
     let mut not_before = 0;
     let mut said_on = None;
     let mut sleep = sleep::Sleep::default();
+    let mut said_superseded = false;
+    let mut restarts = false;
     while !ENDING.load(Ordering::SeqCst) {
         let tick = Tick {
             now: now(),
@@ -865,6 +926,7 @@ fn serve(settings: &Settings) {
             woke: sleep.woke(now()),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref());
+        let mut reached = false;
         lent = match lent.take() {
             None => match decide::lend(settings.hours, tick, not_before, unreturned) {
                 Some(seconds) => {
@@ -884,9 +946,9 @@ fn serve(settings: &Settings) {
                 None => None,
             },
             Some(mut builder) => {
-                if in_use(Path::new("/proc"), &builder.host)
-                    || outlives_on(settings, tick, &builder)
-                {
+                reached = in_use(Path::new("/proc"), &builder.host)
+                    || outlives_on(settings, tick, &builder);
+                if reached {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
@@ -910,6 +972,10 @@ fn serve(settings: &Settings) {
             said_on = Some(day);
         }
         machines.show(lent.as_ref().map(Lent::lending));
+        if ends_superseded(tick.wants, reached, &mut said_superseded) {
+            restarts = true;
+            break;
+        }
         rest(TICK);
     }
     if let Some(mut builder) = lent {
@@ -917,6 +983,7 @@ fn serve(settings: &Settings) {
         end(&mut builder.helper);
         leave(settings, &builder.name, builder.since, builder.rate);
     }
+    restarts
 }
 
 /// Leave a builder for the next start to give back, since a stop that
@@ -929,7 +996,7 @@ fn leave(settings: &Settings, name: &str, asked: u64, rate: Option<u64>) {
         rate,
     };
     let _ = journal::note(&settings.journal, now, Event::Ended, name, Some(ran));
-    eprintln!("nix-offload: told to end, so {name} is left for the next start to give back");
+    eprintln!("nix-offload: ending, so {name} is left for the next start to take back");
 }
 
 /// Ask for a builder, naming it as being made until it stands or won't, so

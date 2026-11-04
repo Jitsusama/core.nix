@@ -798,30 +798,35 @@
     and it's named as being made until it stands or won't; it's given back once idle, at the
     deadline or once gone, with a wait after a failure or one given back idle while work waits,
     and none after one given back in use;
-    only builders it asked for are ever given back; a stop ends at once, leaving its builder
-    for the next start, which takes it back before the deadline, keeping its price and idle
-    time, or gives it back, priced to then or its own idle delete; standing builders are
-    named while they answer, their names asked of resolved itself so one gone can't hide
-    the rest, and only to builds that ask for them, never in the file every build reads,
-    while builders beside are named in that file while they answer, for their big work
-    alone, and never with the standing ones, and alone as themselves in a file of their
-    own that's empty while none answers; the one lent is also named alone with nothing
-    mandatory, still offering nothing a VM test needs, in a file for builds that may send
-    any piece away, never with a builder beside or standing, and emptied while none is lent; a
-    day's journal sums to its hours and cost, each at its price; and `there`
-    sends a flake's build to the lent builder as one command, returning its status and
-    journalling what ssh sent, or, when none stands or none answers, builds nothing and exits
-    75, saying so, unless --here asks it to build here; a tree's uncommitted changes go as a
-    commit of what its index holds, files staged or added with -N included and untracked ones
-    left, with the branch and index untouched; with --print-out-paths, what was built is
-    copied into this store from the builder and only then printed, and a copy that fails
-    fails the build;
+    only builders it asked for are ever given back; a stop ends at once, and a reload once
+    nothing uses or wants its builder, leaving its builder for the next start, which takes it
+    back before the deadline, keeping its price and idle time, or gives it back, priced to
+    then or its own idle delete; standing builders are named while they answer, their names
+    asked of resolved itself so one gone can't hide the rest, and only to builds that ask for
+    them, never in the file every build reads, while builders beside are named in that file
+    while they answer, for their big work alone, and never with the standing ones, and alone
+    as themselves in a file of their own that's empty while none answers; the one lent is also
+    named alone with nothing mandatory, still offering nothing a VM test needs, in a file for
+    builds that may send any piece away, never with a builder beside or standing, and emptied
+    while none is lent; a day's journal sums to its hours and cost, each at its price; and
+    `there` sends a flake's build to the lent builder as one command, returning its status and
+    journalling what ssh sent, waiting afresh for each loss after the build sent again ran a
+    while and for a lender restarting, saying how long, or, when none stands or none answers,
+    builds nothing and exits 75, saying so, unless --here asks it to build here; a tree's
+    uncommitted changes go as a commit of what its index holds, files staged or added with -N
+    included and untracked ones left, with the branch and index untouched; with
+    --print-out-paths, what was built is copied into this store from the builder and only then
+    printed, and a copy that fails fails the build;
     `there --changed` runs a tree's own changed-checks on the lent builder, else only
     evaluates on the first evaluator that answers and takes the repository's owner, and
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
     takes it, else tells changed-checks to run here; and `relay` dials a far side again
     while it closes before saying its first line, passes that line and everything after
     both ways, and hangs up once, without dialling again, on one that says nothing in time
+  '';
+  nix-offload-lenders-outlive-a-switch = ''
+    a switch that changes a lender's unit reloads it rather than restarting it, and a lender
+    that ends superseded is started again from the new unit
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests

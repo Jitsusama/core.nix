@@ -118,9 +118,26 @@ pub fn wants(only_there: bool, queued: impl FnOnce() -> bool, waiting: bool) -> 
     waiting || (!only_there && queued())
 }
 
+/// Whether a lender whose unit a switch has changed (`superseded`) ends
+/// now, for systemd to start the new one: only once no build reaches its
+/// builder (`in_use`) and none `wants` one, since its end takes the way to
+/// its builder with it. Three switches on 3 November cut 8.1 hours of
+/// builds that way, restarting every lender at once.
+pub fn restarts(superseded: bool, wants: bool, in_use: bool) -> bool {
+    superseded && !wants && !in_use
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_superseded_lender_ends_only_once_nothing_uses_or_wants_its_builder() {
+        assert!(restarts(true, false, false));
+        assert!(!restarts(true, true, false), "a build waits on one");
+        assert!(!restarts(true, false, true), "a build reaches it");
+        assert!(!restarts(false, false, false), "nothing changed it");
+    }
 
     #[test]
     fn a_lender_only_for_there_wants_nothing_the_queue_holds() {
