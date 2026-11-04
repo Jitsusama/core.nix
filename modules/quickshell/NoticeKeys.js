@@ -19,9 +19,10 @@ const table = [
     // right and left.
     { act: "into", keys: ["l", "Right"] },
     { act: "out", keys: ["h", "Left"] },
-    // Return acts rather than moving down a line, as everywhere of ours.
+    // Return acts rather than moving down a line, as everywhere of ours,
+    // and nothing with Ctrl closes after it: q does, as in Neovim (Joel,
+    // 2026-11-02: "all of those ctrl keys do not feel very vim to me").
     { act: "run", keys: ["Return", "Enter"] },
-    { act: "runAndClose", keys: ["Ctrl+Return", "Ctrl+Enter"] },
     // Forgetting is a card's ending act, as vi's dd deletes a line.
     // Backspace too, since the cards' footers have named it from the start.
     { act: "forget", keys: [["d", "d"], "Delete", "Backspace"] },
