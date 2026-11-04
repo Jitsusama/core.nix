@@ -377,11 +377,12 @@ def test_a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot(
     status, lines, said = booting_.ask()
     assert status == 0, said
     done = lines[-1]
+    # A new kernel brings an initrd of its modules, and both wait for a boot.
     assert (done["commit"], done["applied"], done["restart"]) == (
         head,
         "now",
-        "its kernel changed",
-    )
+        "its kernel and initrd changed",
+    ), said
     assert "userland.service" in done["restarted"], said
     # Its userland runs now, on the kernel the machine booted, whose
     # modules still load.
