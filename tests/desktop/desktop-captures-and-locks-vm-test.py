@@ -333,7 +333,8 @@ def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
     width, height = round(wide / 2), round(high / 2)
     x, y = round((wide - width) / 2), round((high - height) / 2)
     pictures = desktop.pictures
-    pictures_before = int(machine.succeed(f"ls {pictures}/*.png | wc -l"))
+    # Run alone, nothing has been taken yet, so there may be no pictures to count.
+    pictures_before = int(machine.succeed(f"(ls {pictures}/*.png 2>/dev/null || true) | wc -l"))
 
     def picker() -> None:
         """Open Capture's region picker, ready for the keys."""
