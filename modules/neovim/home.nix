@@ -229,6 +229,7 @@ in
         "init.lua"
         "lua/keys.lua"
         "lua/bindings.lua"
+        "lua/timing.lua"
         "lua/theme.lua"
         "lua/where.lua"
         "lua/status.lua"
