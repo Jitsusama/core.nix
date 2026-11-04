@@ -1130,8 +1130,10 @@
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
     zoom, / and n, Space ? and Escape, copies the first block in view and its paragraph with y y and
-    y i p, selects with v and V and every visual-mode key, copies each selection's markdown onto
-    the clipboard with y and Ctrl+C, and follows a link by g x's label, to a heading and to another
+    y i p, selects with v and V and every visual-mode key, v's cursor a block in the terminal's
+    cursor colours on a title's letter, copies each selection's markdown onto the clipboard with y
+    and Ctrl+C, a paragraph the page wraps as its one line, and follows a link by g x's label, to
+    a heading and to another
     markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
     [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, a mark kept between openings, and
     closes on :q; markdown files open in it

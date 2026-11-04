@@ -10,7 +10,7 @@
 # Each wtype adds a keyboard of its own and takes it away as it ends, so
 # each one waits before typing for the reader to take the new keyboard.
 #
-# usage: reader-takes-its-keys.sh <file> <photo> <heading colour>
+# usage: reader-takes-its-keys.sh <file> <photo> <heading colour> <cursor> <cursor text>
 #
 # The markdown a copy is held to holds backticks and dollars, meant as
 # themselves, so it's quoted whole in single quotes.
@@ -20,6 +20,8 @@ set -euo pipefail
 file=$1
 photo=$2
 strong=$3
+cursor=$4
+cursor_text=$5
 : > said
 
 READER_KEYS_LOG=1 reader "$file" > said 2>&1 &
@@ -106,6 +108,7 @@ until grim "$photo" \
   ((SECONDS < deadline)) || fail "the page's heading never showed in the strong text"
   inotifywait -q -q -t 1 -e modify said || true
 done
+cp "$photo" at-rest.png
 
 # Copying at rest, and selecting. The page has no cursor, so y y copies
 # the first block wholly in view, the title, and y i p its paragraph, the
@@ -130,6 +133,23 @@ copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\
 # file has it, its markup and all, ending the selection.
 act 1 v
 shows '"E"'
+# Its block is drawn as kitty draws one, in the cursor's colour with the
+# letter in the cursor's text, though the title's letters are in the
+# strong text rather than the page's: of what v changed on the page at
+# rest, that many pixels are each of the two exactly.
+changed_to() {
+  magick v.png -fill black +opaque "$1" -fill white -opaque "$1" \
+    \( at-rest.png v.png -compose difference -composite -colorspace gray -threshold 0 \) \
+    -compose multiply -composite -format '%[fx:round(mean*w*h)]' info:
+}
+deadline=$((SECONDS + 30))
+until grim v.png && [ "$(changed_to "$cursor")" -gt 100 ] \
+  && [ "$(changed_to "$cursor_text")" -gt 20 ]; do
+  ((SECONDS < deadline)) \
+    || fail "v's cursor took $(changed_to "$cursor") pixels of its colour and $(changed_to \
+      "$cursor_text") of its text's, not its block with the letter in it"
+  inotifywait -q -q -t 1 -e modify said || true
+done
 act 1 -k Escape
 shows 'nothing'
 act 3 'v}w'
@@ -173,12 +193,18 @@ shows 'nothing'
 act 5 'v}wiw{'
 shows '"A b"'
 act 1 -k Escape
-# A count goes with a motion; i` takes a code span's words.
+# A count goes with a motion; i` takes a code span's words, and a` its
+# backticks and the space after them too, which the page doesn't show.
 act 3 'v}5w'
 act 1 'i`'
 shows '"code"'
 act 1 y
-copied '"`code`"'
+copied '"code"'
+act 3 'v}5w'
+act 1 'a`'
+shows '"code "'
+act 1 y
+copied '"`code` "'
 # is and as take a sentence, as without and with the space after it; aw
 # a word with its space.
 act 4 'v}wis'
@@ -186,7 +212,7 @@ shows '"A bold start, then code in a line."'
 act 1 as
 shows '"A bold start, then code in a line. "'
 act 1 y
-copied '"A **bold** start, then `code` in a line."'
+copied '"A **bold** start, then `code` in a line. "'
 act 4 'v}waw'
 shows '"bold "'
 act 1 -k Escape
@@ -230,6 +256,26 @@ act 2 vV
   || fail "V didn't make the selection one of blocks"
 act 1 -k Escape
 shows 'nothing'
+# A paragraph the page wraps is one line of the file, and is copied as
+# one: $ stops where the page broke it, and 22e goes past the break to
+# its last word. Five } pass the title's paragraph, the one after it,
+# two code blocks and Part 1's heading.
+act 7 'v}}}}}iw'
+shows '"Paragraph"'
+act 1 '$'
+said=$(grep -a -E '^selected: ' said | tail -n 1)
+[[ $said != *somewhere* ]] || fail "the paragraph fits a line, so nothing wraps: $said"
+act 1 -k Escape
+act 8 'v}}}}}iw22e'
+whole='Paragraph 1 says enough to take a line or two of the page, so that every key here has somewhere to go'
+shows "\"$whole\""
+act 1 y
+copied "\"$whole\""
+deadline=$((SECONDS + 10))
+until [ "$(wl-paste -n 2> /dev/null)" = "$whole" ]; do
+  ((SECONDS < deadline)) || fail "the clipboard holds $(wl-paste -n 2>&1), not the paragraph"
+  sleep 0.1
+done
 
 press 5j
 logged '^key Down Some\(5\)' 1

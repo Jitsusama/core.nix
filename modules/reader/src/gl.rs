@@ -289,6 +289,121 @@ impl Blend {
     }
 }
 
+/// The least a colour's channel may part from the ground under a mark for
+/// the mark to read a glyph's cover from it: nearer, a step of the screen's
+/// 256 would be a tenth of the way.
+const LEAST_SPREAD: f32 = 0.05;
+/// How far towards the ink under a mark a pixel is covered whole: a
+/// title's strong lies a little short of the page's text in a channel, as
+/// the theme's blue does, and still takes the mark's ink exactly.
+const WHOLE_COVER: f32 = 0.9;
+/// A quarter of a screen's step, which the last pass lands each pixel
+/// above where it's asked to: a driver drawing in software cuts a colour
+/// down to its step where a GPU rounds it, and either then lands on it.
+const QUARTER_STEP: f32 = 0.25 / 255.0;
+
+/// How a selection or the cursor recolours what lies under it exactly,
+/// where one blend clamps short of the colours asked for: each pixel is
+/// read as how far it lies from the ground under the mark towards the ink
+/// there, a glyph's cover of it, and set as far from the mark's ground
+/// towards its ink. Ink beyond the one under it, a title's strong, is
+/// covered whole, so the cursor turns any glyph its own colour, as
+/// kitty's does. A pass takes away the ground under it, passes scale
+/// what's left to the cover, and a last draws the mark's colours from it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Recolour {
+    under: [f32; 3],
+    /// Whether the ink under the mark is lighter than its ground.
+    lifted: bool,
+    /// Each scaling pass's gain on what's under it, times one and that.
+    gains: Vec<[f32; 3]>,
+    ground: [f32; 3],
+    /// How far the mark's ink lies from its ground, as a size.
+    step: [f32; 3],
+    /// Whether the mark's ink is lighter than its ground.
+    rises: bool,
+}
+
+impl Recolour {
+    /// None where a channel goes the other way from the rest, or barely
+    /// at all, which no blend's passes can follow; one blend does there.
+    pub fn between(
+        under_ground: [f32; 3],
+        under_ink: [f32; 3],
+        ground: [f32; 3],
+        ink: [f32; 3],
+    ) -> Option<Recolour> {
+        let spread: [f32; 3] = std::array::from_fn(|c| under_ink[c] - under_ground[c]);
+        let lifted = spread.iter().all(|s| *s >= LEAST_SPREAD);
+        if !lifted && !spread.iter().all(|s| *s <= -LEAST_SPREAD) {
+            return None;
+        }
+        let step: [f32; 3] = std::array::from_fn(|c| ink[c] - ground[c]);
+        let rises = step.iter().all(|s| *s >= 0.0);
+        if !rises && !step.iter().all(|s| *s <= 0.0) {
+            return None;
+        }
+        // A blend's constant is at most one, so each pass at most doubles.
+        let mut left = spread.map(|s| 1.0 / (s.abs() * WHOLE_COVER));
+        let mut gains = Vec::new();
+        while left.iter().any(|f| *f > 1.0 + 1e-4) {
+            let gain = left.map(|f| (f - 1.0).clamp(0.0, 1.0));
+            left = std::array::from_fn(|c| left[c] / (1.0 + gain[c]));
+            gains.push(gain);
+        }
+        Some(Recolour {
+            under: under_ground,
+            lifted,
+            gains,
+            ground,
+            step: step.map(|s| {
+                if rises {
+                    s + QUARTER_STEP
+                } else {
+                    -s - QUARTER_STEP
+                }
+                .clamp(0.0, 1.0)
+            }),
+            rises,
+        })
+    }
+
+    /// What the passes make of a colour under them, each held to what a
+    /// screen's pixel can hold, as GL's are.
+    #[cfg(test)]
+    pub fn over(&self, under: [f32; 3]) -> [f32; 3] {
+        let mut cover: [f32; 3] = std::array::from_fn(|c| {
+            let off = under[c] - self.under[c];
+            (if self.lifted { off } else { -off }).clamp(0.0, 1.0)
+        });
+        for gain in &self.gains {
+            cover = std::array::from_fn(|c| (cover[c] * (1.0 + gain[c])).clamp(0.0, 1.0));
+        }
+        std::array::from_fn(|c| {
+            let by = self.step[c] * cover[c];
+            (if self.rises {
+                self.ground[c] + by
+            } else {
+                self.ground[c] - by
+            })
+            .clamp(0.0, 1.0)
+        })
+    }
+}
+
+/// A selection's or the cursor's mark, with the swatches it draws.
+pub enum Mark {
+    Exact {
+        white: Texture,
+        ground: Texture,
+        recolour: Recolour,
+    },
+    Blended {
+        swatch: Texture,
+        blend: Blend,
+    },
+}
+
 pub struct Texture {
     handle: glow::Texture,
     pub width: u32,
@@ -571,6 +686,86 @@ impl Gl {
         unsafe { self.gl.disable(glow::BLEND) };
     }
 
+    /// A mark for what is drawn over `under_ground` and `under_ink`, in
+    /// `ground` and `ink`: exact where its passes can be, else one blend.
+    pub fn chosen(
+        &self,
+        (under_ground, under_ink): ([f32; 3], [f32; 3]),
+        (ground, ink): ([f32; 3], [f32; 3]),
+    ) -> Result<Mark, String> {
+        if let Some(recolour) = Recolour::between(under_ground, under_ink, ground, ink) {
+            return Ok(Mark::Exact {
+                white: self.swatch([1.0; 3])?,
+                ground: self.swatch(ground)?,
+                recolour,
+            });
+        }
+        let blend = Blend::between(under_ground, under_ink, ground, ink);
+        Ok(Mark::Blended {
+            swatch: self.swatch(blend.source)?,
+            blend,
+        })
+    }
+
+    /// Draws a mark over what is drawn, recolouring it as the mark says.
+    /// The window's alpha is left as it is.
+    pub fn lay(&self, mark: &Mark, x: f32, y: f32, width: f32, height: f32) {
+        let Mark::Exact {
+            white,
+            ground,
+            recolour,
+        } = mark
+        else {
+            if let Mark::Blended { swatch, blend } = mark {
+                self.mark(swatch, blend, x, y, width, height);
+            }
+            return;
+        };
+        let pass = |texture: &Texture, equation, source, constant: [f32; 3]| {
+            let [red, green, blue] = constant;
+            unsafe {
+                self.gl.blend_color(red, green, blue, 1.0);
+                self.gl.blend_equation_separate(equation, glow::FUNC_ADD);
+                self.gl
+                    .blend_func_separate(source, glow::CONSTANT_COLOR, glow::ZERO, glow::ONE);
+            }
+            self.draw(texture, x, y, width, height);
+        };
+        unsafe { self.gl.enable(glow::BLEND) };
+        // What's under, less its ground: white times the constant, taken
+        // from the pixel or the pixel from it, as the ink lies lighter or
+        // darker.
+        unsafe {
+            let [red, green, blue] = recolour.under;
+            self.gl.blend_color(red, green, blue, 1.0);
+            self.gl.blend_equation_separate(
+                if recolour.lifted {
+                    glow::FUNC_REVERSE_SUBTRACT
+                } else {
+                    glow::FUNC_SUBTRACT
+                },
+                glow::FUNC_ADD,
+            );
+            self.gl
+                .blend_func_separate(glow::CONSTANT_COLOR, glow::ONE, glow::ZERO, glow::ONE);
+        }
+        self.draw(white, x, y, width, height);
+        // White times the pixel, and the pixel times the gain.
+        for gain in &recolour.gains {
+            pass(white, glow::FUNC_ADD, glow::DST_COLOR, *gain);
+        }
+        let equation = if recolour.rises {
+            glow::FUNC_ADD
+        } else {
+            glow::FUNC_SUBTRACT
+        };
+        pass(ground, equation, glow::ONE, recolour.step);
+        unsafe {
+            self.gl.blend_equation(glow::FUNC_ADD);
+            self.gl.disable(glow::BLEND);
+        }
+    }
+
     /// Starts a frame: the whole buffer in the page's ground.
     pub fn clear(&self, [r, g, b]: [f32; 3]) {
         // GL counts rows from the bottom, and the window shows the top.
@@ -628,7 +823,7 @@ impl Drop for Gl {
 
 #[cfg(test)]
 mod tests {
-    use super::Blend;
+    use super::{Blend, Recolour};
 
     const FOREST: [f32; 3] = [0.067, 0.110, 0.094];
     const INK: [f32; 3] = [0.902, 0.875, 0.784];
@@ -654,5 +849,52 @@ mod tests {
         assert!(near(blend.over(FOREST), jade, 0.03));
         // Its text goes as dark as one blend can take it: within a tenth.
         assert!(near(blend.over(INK), night, 0.1));
+    }
+
+    const TEXT: [f32; 3] = [0.839, 0.835, 0.737];
+    const MOSS: [f32; 3] = [0.196, 0.278, 0.231];
+    const CREAM: [f32; 3] = [0.969, 0.910, 0.698];
+
+    #[test]
+    fn a_selection_takes_its_ground_and_turns_the_page_s_text_and_a_title_strong() {
+        let recolour = Recolour::between(FOREST, TEXT, MOSS, CREAM).expect("one way");
+        assert!(near(recolour.over(FOREST), MOSS, 0.002));
+        assert!(near(recolour.over(TEXT), CREAM, 0.002));
+        // A title already in strong stays strong, where one blend went
+        // past it, though its blue is a little darker than the text's.
+        assert!(near(recolour.over(CREAM), CREAM, 0.002));
+        let half: [f32; 3] = std::array::from_fn(|c| f32::midpoint(FOREST[c], TEXT[c]));
+        let between: [f32; 3] =
+            std::array::from_fn(|c| MOSS[c] + (CREAM[c] - MOSS[c]) * 0.5 / super::WHOLE_COVER);
+        assert!(
+            near(recolour.over(half), between, 0.002),
+            "a glyph's soft edge"
+        );
+    }
+
+    #[test]
+    fn the_cursor_on_a_selection_is_its_ground_with_its_glyph_dark() {
+        // Its passes double at most, so a spread of less than a half takes
+        // more than one.
+        let recolour = Recolour::between(MOSS, CREAM, CREAM, FOREST).expect("one way");
+        assert!(recolour.gains.len() > 1);
+        assert!(near(recolour.over(MOSS), CREAM, 0.002));
+        assert!(near(recolour.over(CREAM), FOREST, 0.002));
+        assert!(near(recolour.over([1.0; 3]), FOREST, 0.002));
+    }
+
+    #[test]
+    fn a_light_page_is_read_from_its_ground_down() {
+        let (paper, ink) = ([0.95, 0.93, 0.88], [0.15, 0.14, 0.12]);
+        let recolour = Recolour::between(paper, ink, ink, paper).expect("one way");
+        assert!(near(recolour.over(paper), ink, 0.002));
+        assert!(near(recolour.over(ink), paper, 0.002));
+    }
+
+    #[test]
+    fn colours_that_part_two_ways_are_left_to_one_blend() {
+        let crossed = [0.8, 0.05, 0.8];
+        assert_eq!(Recolour::between(FOREST, crossed, MOSS, CREAM), None);
+        assert_eq!(Recolour::between(FOREST, INK, MOSS, [0.9, 0.1, 0.9]), None);
     }
 }

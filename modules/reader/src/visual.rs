@@ -304,16 +304,15 @@ impl App {
         let px = self.px_per_pt();
         let offset = self.offset;
         let left = f64::from(self.page_x());
-        let mark = |(swatch, blend): &(gl::Texture, gl::Blend), ground: (f64, f64, f64, f64)| {
+        let mark = |chosen: &gl::Mark, ground: (f64, f64, f64, f64)| {
             let (top, foot, from, to) = ground;
             let y = top * px - offset;
             let height = (foot - top) * px;
             if y + height < 0.0 || y > f64::from(screen) {
                 return;
             }
-            gl.mark(
-                swatch,
-                blend,
+            gl.lay(
+                chosen,
                 (left + from * px) as f32,
                 y as f32,
                 ((to - from) * px) as f32,

@@ -44,9 +44,18 @@ pub struct Selection {
     pub anchor: Pos,
     pub cursor: Pos,
     want_pt: Option<f64>,
-    /// The file's lines a paragraph's object took, blank lines and all,
-    /// which copying takes as they are.
-    taken: Option<(usize, usize)>,
+    /// What of the file an object took, which copying takes as it is.
+    taken: Option<Taken>,
+}
+
+/// What of the file an object took, beyond the words the page shows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Taken {
+    /// A paragraph's lines, blank lines and all.
+    Lines(usize, usize),
+    /// A code span's bytes: its words alone for i`, and for a` its
+    /// backticks too, which the page doesn't show.
+    Bytes(Range<usize>),
 }
 
 impl Selection {
@@ -134,7 +143,8 @@ fn holds_its_words(written: &str, text: &str) -> bool {
         .all(|word| written.contains(&word.to_lowercase()))
 }
 
-/// A text object: what iw, aw, is, as, ip, ap and `` i` `` select.
+/// A text object: what iw, aw, is, as, ip, ap, `` i` `` and `` a` ``
+/// select.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Object {
     InWord,
@@ -144,6 +154,7 @@ pub enum Object {
     InParagraph,
     AParagraph,
     InCode,
+    ACode,
 }
 
 /// A piece of the file the page sets as one, and where its mark is.
@@ -175,8 +186,9 @@ pub struct Layout {
     /// Each span of markup round words, emphasis, a link or code: the
     /// bytes it takes and the first and last of its words.
     spans: Vec<(Range<usize>, Range<usize>)>,
-    /// The words inside each span of code.
-    code: Vec<Range<usize>>,
+    /// Each span of code: its words, and the bytes it takes with its
+    /// backticks.
+    code: Vec<(Range<usize>, Range<usize>)>,
 }
 
 /// Lines this close to a mark are under it: the mark sits on its first
@@ -739,7 +751,17 @@ impl Layout {
             Object::InSentence | Object::ASentence => {
                 self.sentence(at, object == Object::ASentence)
             }
-            Object::InCode => self.code_at(at),
+            Object::InCode | Object::ACode => {
+                let Some((from, to, bytes)) = self.code_at(at, object == Object::ACode) else {
+                    return;
+                };
+                selection.kind = Kind::Chars;
+                selection.anchor = from;
+                selection.cursor = to;
+                selection.want_pt = None;
+                selection.taken = Some(Taken::Bytes(bytes));
+                return;
+            }
             Object::InParagraph | Object::AParagraph => {
                 self.paragraph(selection, at, object == Object::AParagraph);
                 return;
@@ -862,18 +884,45 @@ impl Layout {
         Some((places[start], places[stop]))
     }
 
-    /// `` i` ``: the words of the code span the cursor is in.
-    fn code_at(&self, at: Pos) -> Option<(Pos, Pos)> {
+    /// `` i` ``: the words of the code span the cursor is in, and the
+    /// file's bytes of them. `` a` `` takes its backticks too, and as
+    /// Vim's does, the blanks after it, or before it where none follow.
+    fn code_at(&self, at: Pos, around: bool) -> Option<(Pos, Pos, Range<usize>)> {
         let unit = self.of_line[at.line]?;
         let matched = self.matched(unit);
         let byte = matched.iter().find(|(pos, _)| *pos == at)?.1;
-        let span = self.code.iter().find(|span| span.contains(&byte))?;
-        let inside: Vec<Pos> = matched
+        let (inside, whole) = self
+            .code
             .iter()
-            .filter(|(_, byte)| span.contains(byte))
+            .find(|(inside, _)| inside.contains(&byte))?;
+        let shown: Vec<Pos> = matched
+            .iter()
+            .filter(|(_, byte)| inside.contains(byte))
             .map(|(pos, _)| *pos)
             .collect();
-        Some((*inside.first()?, *inside.last()?))
+        let (mut from, mut to) = (*shown.first()?, *shown.last()?);
+        if !around {
+            return Some((from, to, inside.clone()));
+        }
+        let bytes = self.source.as_bytes();
+        let blank = |b: &u8| *b == b' ' || *b == b'\t';
+        let (mut start, mut end) = (whole.start, whole.end);
+        let after = bytes[end..].iter().take_while(|b| blank(b)).count();
+        if after > 0 {
+            end += after;
+            while self.chars[to.line]
+                .get(to.ch + 1)
+                .is_some_and(|c| c.is_whitespace())
+            {
+                to.ch += 1;
+            }
+        } else {
+            start -= bytes[..start].iter().rev().take_while(|b| blank(b)).count();
+            while from.ch > 0 && self.chars[from.line][from.ch - 1].is_whitespace() {
+                from.ch -= 1;
+            }
+        }
+        Some((from, to, start..end))
     }
 
     /// ip and ap: the paragraph the cursor is in, by its pieces, and for ap
@@ -890,7 +939,7 @@ impl Layout {
         selection.anchor = Pos { line: start, ch: 0 };
         selection.cursor = Pos { line: end, ch: 0 };
         selection.want_pt = None;
-        selection.taken = self.file_lines(start, end).map(|(mut first, mut last)| {
+        let taken = self.file_lines(start, end).map(|(mut first, mut last)| {
             // The lines either side that aren't blank and no piece holds,
             // a fence or a table's rule, are the paragraph's too.
             while first > 1 && !self.blank(first - 1) {
@@ -912,6 +961,7 @@ impl Layout {
             }
             (first, last)
         });
+        selection.taken = taken.map(|(first, last)| Taken::Lines(first, last));
     }
 
     /// Whether a line of the file, from 1, is blank.
@@ -1046,8 +1096,11 @@ impl Layout {
         let (from, to) = selection.ends();
         if selection.kind == Kind::Pieces {
             let (first, last) = self.covered_lines(selection);
-            let Some((start, end)) = selection.taken.or_else(|| self.file_lines(first, last))
-            else {
+            let taken = match selection.taken {
+                Some(Taken::Lines(first, last)) => Some((first, last)),
+                _ => self.file_lines(first, last),
+            };
+            let Some((start, end)) = taken else {
                 return self.page_text(from, to);
             };
             let mut out = String::new();
@@ -1057,6 +1110,9 @@ impl Layout {
                 out.push('\n');
             }
             return out;
+        }
+        if let Some(Taken::Bytes(bytes)) = &selection.taken {
+            return self.source[bytes.clone()].to_string();
         }
         let within = |pos: &Pos| *pos >= from && *pos <= to;
         let mut units: Vec<usize> = (from.line..=to.line)
@@ -1072,7 +1128,7 @@ impl Layout {
                 .rev()
                 .find(|(pos, _)| within(pos))
         });
-        let (Some((_, start)), Some((end_at, end))) = (first, last) else {
+        let (Some((start_at, start)), Some((end_at, end))) = (first, last) else {
             return self.page_text(from, to);
         };
         let end = end + self.at(end_at).len_utf8();
@@ -1091,10 +1147,27 @@ impl Layout {
                 None => break,
             }
         }
+        // A blank the selection ends on past its words, as aw and as take,
+        // is the file's blanks there too, as Neovim yanks them.
+        let blank_at = |pos: Pos| {
+            self.chars[pos.line]
+                .get(pos.ch)
+                .is_some_and(|c| c.is_whitespace())
+        };
+        let bytes = self.source.as_bytes();
+        let blank = |b: &&u8| **b == b' ' || **b == b'\t';
+        if to > end_at && blank_at(to) {
+            end += bytes[end..].iter().take_while(blank).count();
+        }
+        if from < start_at && blank_at(from) {
+            start -= bytes[..start].iter().rev().take_while(blank).count();
+        }
         self.source[start..end].to_string()
     }
 
-    /// The words between two places as the page sets them, a line each.
+    /// The words between two places as the page sets them: a line each
+    /// where the file breaks the line, and joined where only the page
+    /// wrapped it.
     fn page_text(&self, from: Pos, to: Pos) -> String {
         let mut out = String::new();
         for line in from.line..=to.line {
@@ -1106,20 +1179,47 @@ impl Layout {
                 chars.len()
             };
             if line > from.line {
-                out.push('\n');
+                out.push_str(self.between(line - 1, line));
             }
             out.extend(chars[start.min(end)..end].iter().filter(|c| **c != BREAK));
         }
         out
     }
+
+    /// What goes between two page lines in their words: a line break where
+    /// the file has one, and where the page wrapped a line of the file, the
+    /// blank the wrap took, if the page left none at the first line's end.
+    fn between(&self, above: usize, below: usize) -> &'static str {
+        let Some(unit) = self.of_line[above].filter(|&unit| self.of_line[below] == Some(unit))
+        else {
+            return "\n";
+        };
+        let matched = self.matched(unit);
+        let last = matched.iter().rev().find(|(pos, _)| pos.line == above);
+        let first = matched.iter().find(|(pos, _)| pos.line == below);
+        let (Some(&(_, last)), Some(&(_, first))) = (last, first) else {
+            return "\n";
+        };
+        let past = last + self.source[last..].chars().next().map_or(1, char::len_utf8);
+        let gap = self.source.get(past..first).unwrap_or("\n");
+        if gap.contains('\n') {
+            "\n"
+        } else if gap.contains(char::is_whitespace)
+            && !self.chars[above].last().is_some_and(|c| c.is_whitespace())
+        {
+            " "
+        } else {
+            ""
+        }
+    }
 }
 
-/// The file's words, its spans of markup and its code spans' words, by
-/// bytes, as comrak reads the file.
+/// The file's words, its spans of markup and its code spans, by bytes, as
+/// comrak reads the file.
 type Markup = (
     Vec<bool>,
     Vec<(Range<usize>, Range<usize>)>,
-    Vec<Range<usize>>,
+    Vec<(Range<usize>, Range<usize>)>,
 );
 
 fn markup(source: &str, lines: &[Range<usize>]) -> Markup {
@@ -1162,7 +1262,7 @@ fn markup(source: &str, lines: &[Range<usize>]) -> Markup {
                 let ticks = span.num_backticks.min(whole.len() / 2);
                 let inside = whole.start + ticks..whole.end - ticks;
                 words[inside.clone()].fill(true);
-                code.push(inside);
+                code.push((inside, whole.clone()));
                 nodes.push((whole, true));
             }
             NodeValue::CodeBlock(_) => {
@@ -1436,13 +1536,68 @@ mod tests {
         let mut s = Selection::new(Kind::Chars, at(6, 8));
         page.object(&mut s, Object::InCode);
         assert_eq!(s.ends(), (at(6, 7), at(6, 10)));
-        assert_eq!(page.copied(&s), "`code`", "its words whole take its ticks");
+        assert_eq!(page.copied(&s), "code", "inside, as Vim's i` takes it");
         let mut elsewhere = Selection::new(Kind::Chars, at(4, 2));
         page.object(&mut elsewhere, Object::InCode);
         assert_eq!(
             elsewhere.ends(),
             (at(4, 2), at(4, 2)),
             "outside code, nothing"
+        );
+    }
+
+    #[test]
+    fn a_backtick_takes_the_ticks_and_the_blank_after_them() {
+        let page = page();
+        let mut s = Selection::new(Kind::Chars, at(6, 9));
+        page.object(&mut s, Object::ACode);
+        assert_eq!(s.ends(), (at(6, 7), at(6, 11)), "the page has no ticks");
+        assert_eq!(page.copied(&s), "`code` ");
+        s.put(at(6, 13));
+        assert_eq!(
+            page.copied(&s),
+            "`code` it",
+            "moved, it copies what it covers"
+        );
+        let at_end = Layout::new(
+            vec![line(20.0, "Say code")],
+            vec![unit(20.0, 1, 1)],
+            &[5.0],
+            "Say `code`\n".into(),
+        );
+        let mut s = Selection::new(Kind::Chars, at(0, 5));
+        at_end.object(&mut s, Object::ACode);
+        assert_eq!(s.ends(), (at(0, 3), at(0, 7)), "none after, so before");
+        assert_eq!(at_end.copied(&s), " `code`");
+    }
+
+    #[test]
+    fn a_line_the_page_wraps_is_copied_and_shown_as_one() {
+        let page = Layout::new(
+            vec![
+                line(20.0, "Some words wrap "),
+                line(41.0, "here, and hy\u{ad}"),
+                line(62.0, "phens too."),
+                line(100.0, "Its own line."),
+                line(121.0, "And another."),
+            ],
+            vec![unit(20.0, 1, 1), unit(100.0, 3, 4)],
+            &[5.0, 90.0],
+            "Some words wrap here, and hyphens too.\n\nIts own line.\nAnd another.\n".into(),
+        );
+        let mut s = Selection::new(Kind::Chars, at(0, 5));
+        s.cursor = at(2, 4);
+        assert_eq!(page.copied(&s), "words wrap here, and hyphens");
+        assert_eq!(page.shown(&s), "words wrap here, and hyphens");
+        s.cursor = at(4, 2);
+        assert_eq!(
+            page.copied(&s),
+            "words wrap here, and hyphens too.\n\nIts own line.\nAnd",
+            "the file's own breaks stay"
+        );
+        assert_eq!(
+            page.shown(&s),
+            "words wrap here, and hyphens too.\nIts own line.\nAnd"
         );
     }
 
@@ -1527,11 +1682,13 @@ mod tests {
         Layout::read(&page.frame, markdown.to_string())
     }
 
-    /// The page's line holding `words`.
+    /// The page's line holding `words`, past the eyebrow, which names the
+    /// file's folder by the test's process and the time it was written,
+    /// so holds a 12 when either does.
     fn holding(page: &Layout, words: &str) -> usize {
         page.lines
             .iter()
-            .position(|line| line.text.contains(words))
+            .position(|line| !line.text.starts_with("READER-SELECT-") && line.text.contains(words))
             .unwrap_or_else(|| panic!("no line holds {words}"))
     }
 

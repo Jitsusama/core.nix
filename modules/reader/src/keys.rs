@@ -231,6 +231,7 @@ const SPOKEN: &[(&str, Act)] = &[
     ("in-paragraph", Act::Object(Object::InParagraph)),
     ("a-paragraph", Act::Object(Object::AParagraph)),
     ("in-code", Act::Object(Object::InCode)),
+    ("a-code", Act::Object(Object::ACode)),
     ("copy-selection", Act::Copy),
     ("copy", Act::CopyPiece),
     ("copy-paragraph", Act::CopyParagraph),
@@ -456,6 +457,7 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
             ("Text Objects", "A paragraph and the blank line after it")
         }
         Act::Object(Object::InCode) => ("Text Objects", "The code between backticks"),
+        Act::Object(Object::ACode) => ("Text Objects", "The code, its backticks and a space"),
         Act::Copy => ("Copying", "Copy the selection as markdown"),
         Act::CopyPiece => ("Copying", "Copy the first block in view"),
         Act::CopyParagraph => ("Copying", "Copy the paragraph in view"),
@@ -728,8 +730,9 @@ mod tests {
         assert!(selecting.iter().any(|(ways, _)| ways == &["v"]));
         assert!(selecting.iter().any(|(ways, _)| ways == &["V"]));
         let objects = rows_of("Text Objects");
-        assert_eq!(objects.len(), 7);
+        assert_eq!(objects.len(), 8);
         assert!(objects.iter().any(|(ways, _)| ways == &["i`"]));
+        assert!(objects.iter().any(|(ways, _)| ways == &["a`"]));
         let copying = rows_of("Copying");
         assert!(copying.iter().any(|(ways, _)| ways == &["y", "Ctrl+C"]));
         assert!(copying.iter().any(|(ways, _)| ways == &["yy"]));
@@ -884,11 +887,12 @@ mod tests {
     fn text_objects_and_motions_work_only_while_selecting() {
         let mut machine = Machine::default();
         assert_eq!(
-            typed_in(&mut machine, "iwapi`o$e{}", true),
+            typed_in(&mut machine, "iwapi`a`o$e{}", true),
             [
                 (Act::Object(Object::InWord), None),
                 (Act::Object(Object::AParagraph), None),
                 (Act::Object(Object::InCode), None),
+                (Act::Object(Object::ACode), None),
                 (Act::OtherEnd, None),
                 (Act::LineEnd, None),
                 (Act::WordEnd, None),
