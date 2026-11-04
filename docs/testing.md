@@ -351,6 +351,12 @@ picture caught before its state was drawn is a fault in the test instead.
   behind, so it can run alone. `every-vm-test-keeps-to-the-pyramid` fails on
   one past twenty subtests; those past it already are listed in `checks.nix`
   with their counts, which may only fall.
+- One machine carried through a story whose every step needs the ones
+  before it stays whole, since each part of a split would replay the story
+  to reach its first step and finish no sooner. The guide's install is one:
+  its reinstall needs the first install's keys, sealed TPM and account, so
+  `vm-guide-installs` keeps its subtests as the story's checkpoints, listed
+  with the rest, its count held as theirs is.
 - A check that only repeats another one's signal goes.
 - A new module is evaluated by the examples once a role or another module
   imports it. One that nothing imports goes into an example.
