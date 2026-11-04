@@ -134,7 +134,7 @@ for key in dd Delete; do
     exit 1
   fi
   typed u d.ppm
-  if [ ! -e d.ppm ] || [ -n "$(ls -A "$trash/files" "$trash/info")" ]; then
+  if [ ! -e d.ppm ] || [ -n "$(find "$trash/files" "$trash/info" -mindepth 1)" ]; then
     echo "u didn't bring d.ppm back: $(ls -A . "$trash/files" "$trash/info")"
     exit 1
   fi
