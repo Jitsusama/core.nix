@@ -157,6 +157,13 @@ impl App {
                 self.end_selection();
                 return true;
             }
+            // A mark made while selecting is the cursor's line, as his
+            // Neovim's is, and the selection holds.
+            Act::SetMark(letter) => {
+                let (top, _) = layout.line_extent(selection.cursor.line);
+                self.marks.insert(letter, top);
+                return true;
+            }
             _ => return false,
         };
         layout.moved(selection, motion, times);

@@ -138,6 +138,16 @@ shows '"bold"'
 act 1 y
 copied '"**bold**"'
 shows 'nothing'
+# m while selecting marks the cursor's line and keeps the selection, as
+# his Neovim's does, so ' and its letter at rest go to that line rather
+# than the view's top, where the page still is.
+act 4 'v}wiw'
+act 1 ma
+shows '"bold"'
+act 1 -k Escape
+act 1 "'a"
+awk "BEGIN { exit !($(heading) > 0) }" || fail "'a went to $(heading) pt, not the marked line"
+act 1 gg
 # e takes the selection to a word's end, and Ctrl+C copies as y does.
 act 5 'v}wiwe'
 shows '"bold start"'
