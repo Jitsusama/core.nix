@@ -25,13 +25,16 @@ def test_the_launcher_opens_finds_and_runs_a_row_on_each_screen(unlocked: Screen
     unlocked.launcher_works_on_both()
 
 
-def test_a_return_held_does_its_row_once(unlocked: Screens) -> None:
-    """A Return held, or let go late by a busy machine, does its row once.
+def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once(
+    unlocked: Screens,
+) -> None:
+    """Super+Space held opens the launcher once, and a Return held does its row once.
 
     A key let go past the repeat delay repeats as if held (modules/keyboard/repeat.nix), and
     this machine keeps repeat on, as Joel's does. Each repeat ran the row again: on a loaded
     host Keep Awake was started and stopped within half a second, and the next check found it
-    off.
+    off. niri repeats a chord too, unless it's told not to: after a sleep, one Super+Space
+    opened the launcher and closed it again 0.4 s later (2026-11-04).
     """
     screens = unlocked
     machine = screens.machine
@@ -43,15 +46,30 @@ def test_a_return_held_does_its_row_once(unlocked: Screens) -> None:
         f"journalctl --user -u caffeinate.service --since @{since} -o cat"
         " | grep -c '^Starting ' || true"
     )
+    # Each time niri runs the chord's launcher-say, systemd starts it a scope of its own. They're
+    # counted, rather than the launcher looked at, since a repeat toggles it shut and the next
+    # one open again, faster than a look sees.
+    chords = screens.in_niri(
+        "journalctl --user -o cat | grep -c 'Started app-niri-launcher.x2dsay' || true"
+    )
+    before = int(machine.succeed(chords))
+    # Held a second, past the 200 ms delay at 40 a second, a key repeats some thirty times.
+    held = 1.0
     try:
-        screens.super_space_on("Virtual-1")
+        machine.succeed(screens.in_niri("niri msg action focus-monitor Virtual-1"))
+        machine.send_monitor_command(f"sendkey meta_l-spc {int(held * 1000)}")
+        # Counted once it's let go and a second after, since a repeat comes only while held.
+        time.sleep(held + 1)
+        ran = int(machine.succeed(chords)) - before
+        assert ran == 1, f"a held Super+Space ran the launcher {ran} times"
+        screens.launcher_until(
+            lambda shown: shown["open"] and shown["keys"], "took the keys at a held chord"
+        )
         machine.send_chars("keep awake")
         screens.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake",
             "found 'Keep Awake'",
         )
-        # Held a second, past the 200 ms delay at 40 a second, it repeats some thirty times.
-        held = 1.0
         machine.send_monitor_command(f"sendkey ret {int(held * 1000)}")
         deadline = time.monotonic() + 10
         while not screens.awake():
