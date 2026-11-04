@@ -247,6 +247,29 @@ class Shell:
             self.send_key("down" if steps > 0 else "up")
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
 
+    def windows(self) -> list[Json]:
+        """Give every window niri lists."""
+        return cast("list[Json]", json.loads(self.as_account("niri msg --json windows")))
+
+    def opened(self, title: str) -> Json:
+        """Open a window with this title, and give it once niri lists it.
+
+        It's foot's, which draws without a GPU, where the desktop's machine opens a kitty.
+        """
+        self.as_account(f"niri msg action spawn -- foot --title '{title}' sleep 3600")
+        deadline = time.monotonic() + STARTING.total_seconds()
+        while time.monotonic() < deadline:
+            titled = [window for window in self.windows() if window["title"] == title]
+            if titled:
+                return titled[0]
+            time.sleep(POLL * 2)
+        failed = f"no window titled {title!r} opened"
+        raise AssertionError(failed)
+
+    def close(self, window: Json) -> None:
+        """Close a window niri listed."""
+        self.as_account(f"niri msg action close-window --id {window['id']}")
+
     def copied(self) -> str:
         """Give what the clipboard holds."""
         return self.as_account("wl-paste --no-newline")

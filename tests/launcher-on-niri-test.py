@@ -14,7 +14,7 @@ import re
 import subprocess
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import launcher_on_niri
 import pytest
@@ -363,6 +363,143 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
     shell.send_key("esc")
     shell.launcher_closed()
+
+
+def laid_out(shell: Shell) -> Json:
+    """Give where the launcher draws each word, once two reads in a row agree."""
+    was = None
+    for _ in range(20):
+        now = json.loads(shell.as_account(shell.ipc("laidOut")))
+        if now == was:
+            return cast("Json", now)
+        was = now
+    return cast("Json", was)
+
+
+def test_the_selection_glides_to_its_row_and_typing_never_glides(shell: Shell) -> None:
+    """An arrow glides the selection to its row; a letter, making rows afresh, never does."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("o")
+    # A row to glide from and one to glide to.
+    shell.launcher_until(lambda shown: len(shown["rows"]) > 1)
+    since = shell.mark()
+    shell.send_key("down")
+
+    def down_a_row(rest: str) -> bool:
+        start, _, end = rest.split()
+        return int(end) > int(start)
+
+    shell.reported("glides ", down_a_row, since)
+    since = shell.mark()
+    shell.send_chars("u")
+    shell.launcher_until(lambda shown: shown["typed"] == "ou")
+    said, _ = shell.said_since(since)
+    shell.send_key("esc")
+    shell.launcher_closed()
+    glided = [report for report in said if report.startswith("glides ")]
+    assert not glided, f"the selection glided as a letter made the rows: {glided}"
+
+
+def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(shell: Shell) -> None:
+    """Letters typed in a list scrolled down leave the selection drawn on its selected row.
+
+    Rows coming or going above a scrolled list move where the list's rows start, and the
+    selection drawn from the top stayed where its row had been, under another.
+    """
+    windows = [shell.opened(f"Fill {at:02}") for at in range(1, 13)]
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("fill")
+    shell.launcher_until(
+        lambda shown: {f"Fill {at:02}" for at in range(1, 13)} <= set(shown["rows"])
+    )
+    drift = []
+    typed = "fill"
+    # Each a letter added or taken away, so rows above the selection go or come back.
+    for change in [" 1", "", " 0", " ", " 1"]:
+        # Down to the last row, so the list is scrolled.
+        shown = shell.showing()
+        below = len(shown["rows"]) - 1 - shown["rows"].index(shown["selected"]["name"])
+        for _ in range(below):
+            shell.send_key("down")
+        shell.launcher_until(lambda shown: shown["selected"]["name"] == shown["rows"][-1])
+        wanted = f"fill{change}"
+        while not wanted.startswith(typed):
+            shell.send_key("backspace")
+            typed = typed[:-1]
+        if wanted[len(typed) :]:
+            shell.send_chars(wanted[len(typed) :])
+        typed = wanted
+        shell.launcher_until(
+            lambda shown: (
+                shown["typed"] == typed  # noqa: B023
+                and (shown["selected"] or {"settled": True})["settled"]
+            )
+        )
+        selection = laid_out(shell)["selection"]
+        if selection and selection["y"] != selection["row"]:
+            drift.append((typed, selection))
+    shell.send_key("esc")
+    shell.launcher_closed()
+    for window in windows:
+        shell.close(window)
+    assert not drift, f"the selection was drawn off its row: {drift}"
+
+
+def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> None:
+    """A name too long for its row slides to show its end while selected, and only it moves."""
+    title = (
+        "Edgewise notes, and a title that runs on well past the edge of the launcher row"
+        " as the title of a web page often does"
+    )
+    long = shell.opened(title)
+    short = shell.opened("Edgewise")
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("edgewise")
+    shell.launcher_until(lambda shown: {title, "Edgewise"} <= set(shown["rows"]))
+    shell.down_to(title)
+
+    def selected_words() -> list[Json]:
+        """Give the words the selected row draws, with where each is."""
+        laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+        return cast("list[Json]", next(row["words"] for row in laid["rows"] if row["selected"]))
+
+    def named(words: list[Json], name: str = title) -> Json:
+        # A row not selected draws its name with the letters typed brought forward, as styled
+        # text, so its tags are set aside.
+        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == name)
+
+    # Where every name starts, read from the short one, which never moves: the long one may
+    # already be on its way, selected as the rows came.
+    laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+    start = next(
+        named(row["words"], "Edgewise")["x"]
+        for row in laid["rows"]
+        if row["reads"].startswith("Edgewise \u00b7")
+    )
+    rest = sorted((word["text"], word["x"]) for word in selected_words() if word["text"] != title)
+    sliding = time.monotonic() + 30
+    while True:
+        words = selected_words()
+        # Whatever else the row says holds still while its name moves.
+        others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
+        assert others == rest, words
+        if int(named(words)["x"]) < int(start):
+            break
+        assert time.monotonic() < sliding, f"the long name never slid: {words}"
+        time.sleep(0.1)
+    # Given up by the selection, it's back at its start at once.
+    shell.send_key("up" if shell.showing()["rows"].index(title) > 0 else "down")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
+    laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+    row = next(row for row in laid["rows"] if row["reads"].startswith(title))
+    shell.send_key("esc")
+    shell.launcher_closed()
+    shell.close(long)
+    shell.close(short)
+    assert named(row["words"])["x"] == start, row
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
