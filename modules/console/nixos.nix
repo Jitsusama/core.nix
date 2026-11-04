@@ -89,6 +89,16 @@ let
 
   # What sets a console's font and keymap, given the console.
   setup = "${config.systemd.package}/lib/systemd/systemd-vconsole-setup";
+  # The same, done with when a compositor takes the console for graphics
+  # while it's set (setup.sh).
+  consoleSetup = pkgs.writeShellApplication {
+    name = "console-setup";
+    runtimeInputs = [ pkgs.kbd ];
+    text = lib.concatLines [
+      "setup=${setup}"
+      (builtins.readFile ./setup.sh)
+    ];
+  };
 
   # Medium, since a console draws each pixel on or off: the regular weight's
   # stems fall on one pixel in some letters and two in others, and Medium's
@@ -118,7 +128,14 @@ in
       # boot's emergency shell sets it on the console in front once Plymouth
       # has let go of it: after, since Plymouth's module empties its list
       # first.
+      # udev's run, as a driver takes the console over, can lose its console
+      # to a compositor part way, which failed the unit at a boot on
+      # 2026-11-04; setup.sh says when.
       systemd.services = {
+        systemd-vconsole-setup.serviceConfig.ExecStart = [
+          ""
+          (lib.getExe consoleSetup)
+        ];
         "getty@".serviceConfig.ExecStartPre = [ "-${setup} /dev/%I" ];
         emergency.serviceConfig.ExecStartPre = lib.mkAfter [ "-${setup} /dev/tty0" ];
       };
