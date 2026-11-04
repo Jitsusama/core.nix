@@ -489,7 +489,7 @@ ShellRoot {
         const lead = rows[0];
         expect("with none marked, it says none and nothing more, Return saying nothing",
             lead.side === "none" && lead.note === "" && lead.still === true && lead.stays === true
-                && !lead.verbs && !lead.drawer,
+                && !lead.verbs && !lead.drawer && !lead.plated,
             `${lead.side} ${lead.note} ${lead.still} ${lead.stays} ${typeof lead.verbs}`);
         lead.run();
         expect("with none marked, Open the Marked opens nothing", answers.length === 5
@@ -516,6 +516,10 @@ ShellRoot {
             rows[0].name === "Open the Marked" && rows[0].side === "2"
                 && rows[0].note === "a.md \u00b7 old.md" && rows[0].still === false,
             `${rows[0].name} ${rows[0].side} ${rows[0].note} ${rows[0].still}`);
+        // The launcher draws a plate only for a thing or a row that says
+        // it's plated, and the lead is neither by its kind.
+        expect("Open the Marked says it's plated, so the launcher draws its plate",
+            rows[0].plated === true, `${rows[0].plated}`);
         const plate = rows[0].drawer();
         expect("its plate counts them and lists each with its folder, their size waiting on old.md's",
             plate.eyebrow === "2\u00a0marked" && plate.title === "Open the Marked"

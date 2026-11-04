@@ -661,8 +661,11 @@ Provider {
                     provider.choose(provider.marked.slice());
             }
         };
+        // The launcher draws a plate only for a thing, by its kind, or a
+        // row that says it's plated, as Now does at home; the lead is no
+        // thing, so it says so while it has the marked files to list.
         if (count > 0)
-            row.drawer = () => provider.markedPlate(name);
+            Object.assign(row, { plated: true, drawer: () => provider.markedPlate(name) });
         if (count > 0 || inMarked())
             row.verbs = () => provider.insideMarked();
         return thing(row);
