@@ -237,22 +237,44 @@ Provider {
     ])
 
     // Every other window, found only by typing its title or program, since
-    // listing them all would bury the rest.
+    // listing them all would bury the rest. Each event niri sends moved its
+    // revision and made every window's row again, 343 rows over 8 changes
+    // in one closing on Joel's shell (2026-11-04), so a window's row is
+    // kept by its id while its program and title read the same. A plain
+    // object, so keeping one notifies nothing.
+    readonly property var keptWindows: ({})
     readonly property var windows: {
         Niri.revision;
-        return Object.values(Niri.windows)
+        const next = {};
+        const rows = Object.values(Niri.windows)
             .filter(window => provider.focused === null || window.id !== provider.focused.id)
-            .map(window => member({
-                key: `capture:window:${window.app_id}`,
-                verb: "take",
-                name: titled(window),
-                // Its program by the name Joel knows, never its app id.
-                side: provider.programOf(window),
-                glyph: picture,
-                hue: "action",
-                later: true,
-                run: () => provider.shoot(window)
-            }));
+            .map(window => {
+                const from = `${window.app_id}\n${provider.titled(window)}`;
+                const before = provider.keptWindows[window.id];
+                next[window.id] = before && before.from === from
+                    ? before : { from: from, row: provider.takingRow(window) };
+                return next[window.id].row;
+            });
+        for (const id of Object.keys(provider.keptWindows))
+            delete provider.keptWindows[id];
+        Object.assign(provider.keptWindows, next);
+        return rows;
+    }
+
+    // The row that takes a picture of another window.
+    function takingRow(window) {
+        const id = window.id;
+        return member({
+            key: `capture:window:${window.app_id}`,
+            verb: "take",
+            name: provider.titled(window),
+            // Its program by the name Joel knows, never its app id.
+            side: provider.programOf(window),
+            glyph: provider.picture,
+            hue: "action",
+            later: true,
+            run: () => provider.shoot({ id: id })
+        });
     }
 
     onFixedChanged: changed()

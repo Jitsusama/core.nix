@@ -108,6 +108,15 @@ Provider {
         return { rows: kept.map(f => f.choice), grade: grade };
     }
 
+    // Each window's row, by its id, with what it was made from. Every event
+    // niri sends moves its revision, and a focus moving changes only the two
+    // windows it moved between, yet every window's row was made again: 348
+    // rows over 8 changes in one closing on Joel's shell (2026-11-04). A
+    // row is now made again only when its window's record, its workspace's
+    // place or what its row says of it changed. A plain object, so keeping
+    // one notifies nothing.
+    readonly property var kept: ({})
+
     things: {
         Niri.revision;
         const waiting = Sessions.waitingWindows.split(" ");
@@ -134,41 +143,78 @@ Provider {
         const alike = {};
         for (const one of named)
             alike[one.title] = (alike[one.title] ?? 0) + 1;
-        const current = named.find(one => one.window.id === Niri.current) ?? null;
-        return (current ? [provider.thisWindow(current)] : []).concat(named.map(one => {
-                const window = one.window;
-                const entry = one.entry;
-                const program = one.program;
-                const title = one.title;
-                const workspace = Niri.workspaces[window.workspace_id];
-                const where = provider.placeOf(window, workspace, here, alike[title]);
-                const below = entry
-                    ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
-                return thing({
-                    // What learning knows it by, which outlives the window.
-                    thing: true,
-                    key: `window:${window.app_id}:${title}`,
-                    // What it is now: this window, or its program when the
-                    // program's name is all its title says.
-                    is: one.untitled && entry ? `program:${entry.id}` : `window:${window.id}`,
-                    id: window.id,
-                    program: entry ? entry.id : (window.app_id ?? ""),
-                    owner: Fuzzy.prepare(program),
-                    verb: "go",
-                    name: title,
-                    glyph: provider.glyphOf(window, entry),
-                    hue: "program",
-                    side: [title === program ? "" : program, where]
-                        .filter(part => part !== "").join(" \u00b7 "),
-                    context: workspace ? `on workspace ${workspace.idx}` : "",
-                    focused: window.id === Niri.current,
-                    waiting: waiting.includes(String(window.id)),
-                    count: waiting.includes(String(window.id)) ? "waiting on you" : "",
-                    run: () => Niri.act({ FocusWindow: { id: window.id } }),
-                    below: below,
-                    verbs: () => provider.verbs(window, title, program, below)
-                });
-            }));
+        const next = {};
+        const rows = named.map(one => {
+            const window = one.window;
+            const workspace = Niri.workspaces[window.workspace_id];
+            const said = {
+                where: provider.placeOf(window, workspace, here, alike[one.title]),
+                workspace: workspace ? workspace.idx : null,
+                focused: window.id === Niri.current,
+                waiting: waiting.includes(String(window.id))
+            };
+            const from = [JSON.stringify(window, provider.unsaid), one.entry ? one.entry.id : "",
+                one.program, JSON.stringify(said)].join("\n");
+            const before = provider.kept[window.id];
+            next[window.id] = before && before.from === from
+                ? before : { from: from, row: provider.ownRow(one, said) };
+            // The window Joel's in is This Window too, made from the same.
+            if (said.focused) {
+                const was = provider.kept.this;
+                next.this = was && was.from === from
+                    ? was : { from: from, row: provider.thisWindow(one) };
+            }
+            return next[window.id].row;
+        });
+        for (const id of Object.keys(provider.kept))
+            delete provider.kept[id];
+        Object.assign(provider.kept, next);
+        return (next.this ? [next.this.row] : []).concat(rows);
+    }
+
+    // What niri says of a window that its row never says, left out of what
+    // the row is made from: when it was focused orders the rows and whether
+    // it is focused is `said`, both changing at every move of the focus,
+    // and its layout, but for the column `said` gives, changes at every
+    // scroll of the view.
+    function unsaid(key, value) {
+        return key === "focus_timestamp" || key === "is_focused" || key === "layout"
+            ? undefined : value;
+    }
+
+    // A window's own row, from what niri says of it and what its row says
+    // of where it is (`said`).
+    function ownRow(one, said) {
+        const window = one.window;
+        const entry = one.entry;
+        const program = one.program;
+        const title = one.title;
+        const below = entry
+            ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
+        return thing({
+            // What learning knows it by, which outlives the window.
+            thing: true,
+            key: `window:${window.app_id}:${title}`,
+            // What it is now: this window, or its program when the
+            // program's name is all its title says.
+            is: one.untitled && entry ? `program:${entry.id}` : `window:${window.id}`,
+            id: window.id,
+            program: entry ? entry.id : (window.app_id ?? ""),
+            owner: Fuzzy.prepare(program),
+            verb: "go",
+            name: title,
+            glyph: provider.glyphOf(window, entry),
+            hue: "program",
+            side: [title === program ? "" : program, said.where]
+                .filter(part => part !== "").join(" \u00b7 "),
+            context: said.workspace !== null ? `on workspace ${said.workspace}` : "",
+            focused: said.focused,
+            waiting: said.waiting,
+            count: said.waiting ? "waiting on you" : "",
+            run: () => Niri.act({ FocusWindow: { id: window.id } }),
+            below: below,
+            verbs: () => provider.verbs(window, title, program, below)
+        });
     }
 
     // The window Joel's in, as Desktop's first row (the approved proposal):
