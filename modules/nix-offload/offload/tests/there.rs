@@ -2267,6 +2267,52 @@ fn a_vm_test_sent_apart_that_passed_at_a_commit_isnt_built_again() {
 // room those still going leave, as many as the machine says, else 4.
 #[test]
 fn two_runs_send_a_vm_builder_no_more_vm_tests_at_once_than_its_room() {
+    let four: Vec<String> = ["-L", "github:o/r/abc"]
+        .into_iter()
+        .map(str::to_owned)
+        .chain((0..4).map(|test| format!("checks.x.vm-{test}")))
+        .collect();
+    let (at_once, said) = side_by_side([&four, &four]);
+    assert_eq!(at_once, ["1", "1"], "one run's 4 at a time, at a room of 4");
+    assert_eq!(
+        said.matches("so this waits for room").count(),
+        1,
+        "the second says so once: {said}"
+    );
+}
+
+// run-subtests --there builds a VM test's subtests through `there`, so
+// they wait for room beside other runs' VM tests the same way.
+#[test]
+fn run_subtests_there_waits_for_the_vm_builders_room_too() {
+    let four: Vec<String> = ["-L", "github:o/r/abc"]
+        .into_iter()
+        .map(str::to_owned)
+        .chain((0..4).map(|test| format!("checks.x.vm-{test}")))
+        .collect();
+    let subtests: Vec<String> = [
+        "-L",
+        "--apply",
+        "subtests: subtests { check = \"vm-x\"; words = [ ]; }",
+        "github:o/r/abc",
+        "legacyPackages.x.subtests",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    let (at_once, said) = side_by_side([&four, &subtests]);
+    assert_eq!(at_once, ["1", "1"], "the subtests wait for the 4");
+    assert_eq!(
+        said.matches("so this waits for room").count(),
+        1,
+        "the second says so once: {said}"
+    );
+}
+
+/// Two `there` runs started at once with `runs`' arguments, beside a VM
+/// builder at a room of 4, each build there lasting 2 seconds: how many
+/// it built at once as each began, and what both said.
+fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
     let folder = tempfile::tempdir().unwrap();
     let bin = folder.path().join("bin");
     fs::create_dir(&bin).unwrap();
@@ -2276,14 +2322,14 @@ fn two_runs_send_a_vm_builder_no_more_vm_tests_at_once_than_its_room() {
     fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
     fs::write(
         folder.path().join("nix-offload/vm-tests"),
-        "checks.*.vm-*\n",
+        "checks.*.vm-*\nlegacyPackages.*.subtests\n",
     )
     .unwrap();
     fs::write(bin.join("holds-nix-offload-vm"), "2").unwrap();
-    let run = || {
+    let run = |args: &[String]| {
         Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L", "github:o/r/abc"])
-            .args((0..4).map(|test| format!("checks.x.vm-{test}")))
+            .arg("there")
+            .args(args)
             .env(
                 "PATH",
                 format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
@@ -2300,8 +2346,8 @@ fn two_runs_send_a_vm_builder_no_more_vm_tests_at_once_than_its_room() {
             .spawn()
             .unwrap()
     };
-    let runs = [run(), run()];
-    let ended: Vec<Output> = runs
+    let started = runs.map(run);
+    let ended: Vec<Output> = started
         .into_iter()
         .map(|run| run.wait_with_output().unwrap())
         .collect();
@@ -2309,20 +2355,11 @@ fn two_runs_send_a_vm_builder_no_more_vm_tests_at_once_than_its_room() {
         assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     }
     let at_once = fs::read_to_string(bin.join("at-once-nix-offload-vm")).unwrap();
-    assert_eq!(
-        at_once.lines().collect::<Vec<_>>(),
-        ["1", "1"],
-        "one run's 4 at a time, at a room of 4"
-    );
-    let said: String = ended
+    let said = ended
         .iter()
         .map(|ran| String::from_utf8_lossy(&ran.stderr).into_owned())
         .collect();
-    assert_eq!(
-        said.matches("so this waits for room").count(),
-        1,
-        "the second says so once: {said}"
-    );
+    (at_once.lines().map(str::to_owned).collect(), said)
 }
 
 // The VM builder runs six VM tests at once, and the rest wait their turn
