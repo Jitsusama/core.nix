@@ -1600,8 +1600,21 @@ Delete or Backspace forgets the front card; dG, as vi deletes to the last
 line, or Shift with Delete or Backspace forgets them all. yy copies what
 the front card said, as vi yanks a line, and the stack stays held; its
 acts show dd, dG and yy as their keys. gg and G go to
-the newest and the oldest, and Escape steps out, then lets the stack go.
-The stack shows one card at a time, so it has no screen keys. In
+the newest and the oldest, and a count goes before any of them, as 3dd.
+u brings back what was forgotten last, since nothing forgotten while the
+stack is held is let go until the stack is. / and ? search what the cards
+say and who signed them, with smartcase, turning to the first match as
+it's typed; the front card's matches take the search wash, Neovim's
+Search, and its foot says the search and which match of how many it is.
+n and N go to the next match either way, round the stack. V selects
+whole cards, j and k carry the selection on without going round, and d
+or y forgets or copies them all; the foot says "visual line" in the
+accent meanwhile. Space ? lists every key in the acts' place, scrolled
+there by j and k as Neovim's help is, with its ruler in the foot, so the
+card never grows. Escape
+cancels what's begun, a search or a selection, then steps out, then
+lets the stack go. The stack shows one card at a time, so it has no
+screen keys. In
 the viewfinder, q closes as Escape does, and nothing else changes, since
 its keys are few on purpose.
 

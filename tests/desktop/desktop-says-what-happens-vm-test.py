@@ -268,12 +268,56 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         machine.send_key("y")
         machine.send_key("y")
     assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
+    for scale in JOELS_SCALES:
+        searched_selected_and_undone(desktop, scale)
+    desktop.as_account("niri msg output winit scale 1")
     with desktop.told("lets notices go"):
         machine.send_key("q")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
     )
+
+
+def searched_selected_and_undone(desktop: Desktop, scale: str) -> None:
+    """Search the held Build log and Deploy log cards, select and copy both, forget and undo.
+
+    At one of Joel's scales, for a person to look at the search wash and the selection by: /
+    turns to the first card holding what's typed as it's typed, V selects the front card, j
+    carries it on to the next, y copies both, dd forgets one, u brings it back, and Space ?
+    lists every key in the acts' place until Escape puts them away.
+    """
+    machine = desktop.machine
+    desktop.as_account(f"niri msg output winit scale {scale}")
+    named = scale.replace(".", "-")
+    with desktop.told("notice front Deploy log"), desktop.told("notice finds Deploy in 1"):
+        machine.send_key("slash")
+        machine.send_chars("Deploy")
+    desktop.photograph(f"notice-search-at-{named}")
+    machine.send_key("ret")
+    with desktop.told("notice selects 1"):
+        machine.send_key("shift-v")
+    with desktop.told("notice selects 2"):
+        machine.send_key("j")
+    desktop.photograph(f"notice-visual-at-{named}")
+    with desktop.told("copied card Build log"):
+        machine.send_key("y")
+    copied = desktop.as_account("wl-paste --no-newline")
+    assert copied == "Deploy log\nall out\n\nBuild log\nall green", copied
+    with desktop.told("notice front Deploy log"):
+        machine.send_key("d")
+        machine.send_key("d")
+    with desktop.told("notice brought back Build log"):
+        machine.send_key("u")
+    with desktop.told("notice lists keys"):
+        machine.send_key("spc")
+        machine.send_key("shift-slash")
+    desktop.photograph(f"notice-keys-at-{named}")
+    # Thirteen lines scroll in the room of the card's five acts, so G shows the last five.
+    with desktop.told("notice lists keys from 9"):
+        machine.send_key("shift-g")
+    with desktop.told("notice hides keys"):
+        machine.send_key("esc")
 
 
 def test_a_click_on_a_notice_about_nothing_to_open_puts_it_away(desktop: Desktop) -> None:
