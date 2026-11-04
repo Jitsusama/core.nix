@@ -6,7 +6,10 @@
 # still sets up the account, whose service manager waits for that. The
 # greeter says what it does to the journal as greeter
 # (modules/quickshell/Report.qml), which the test waits on rather than
-# guessing how long anything takes. The script is greeter-vm-test.py.
+# guessing how long anything takes. greetd must leave the console in
+# graphics for the greeter, so the kernel's console never shows before the
+# greeter's compositor does, and tuigreet must find it in text again. The
+# script is greeter-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -23,6 +26,17 @@ let
     echo "$(${pkgs.coreutils}/bin/id -un) $class" \
       > /tmp/signed-in.part
     mv /tmp/signed-in.part /tmp/signed-in
+  '';
+
+  # Says the mode greetd left the greeter's console in, before the
+  # greeter's compositor takes the screen and sets its own, then starts it,
+  # unless the test asks for a compositor that falls over before taking it.
+  consoleMode = pkgs.writeShellScript "console-mode" ''
+    ${pkgs.kbd}/bin/kbdinfo getmode >> /tmp/greeter-console-modes
+    if [ -e /run/greeter-falls-at-once ]; then
+      exit 1
+    fi
+    exec "$@"
   '';
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
@@ -56,6 +70,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # holds options only they add; nixpkgs's niri falls back to its own
         # defaults and never starts the greeter.
         compositor = [
+          "${consoleMode}"
           (lib.getExe' pkgs.coreutils "env")
           "WLR_RENDERER=pixman"
           (lib.getExe pkgs.cage)

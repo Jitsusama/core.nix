@@ -137,8 +137,11 @@ let
   greeter = pkgs.writeShellScript "greeter" (
     lib.concatLines [
       (lib.concatStringsSep " " [
+        "busctl=${lib.getExe' config.systemd.package "busctl"}"
+        "kbdinfo=${lib.getExe' pkgs.kbd "kbdinfo"}"
         "mktemp=${lib.getExe' pkgs.coreutils "mktemp"}"
         "rm=${lib.getExe' pkgs.coreutils "rm"}"
+        "sleep=${lib.getExe' pkgs.coreutils "sleep"}"
         "systemd_cat=${lib.getExe' config.systemd.package "systemd-cat"}"
       ])
       "compositor=(${lib.escapeShellArgs cfg.compositor}) niri_config=${compositor}/config.kdl"
@@ -193,6 +196,22 @@ in
   config = {
     services.greetd = {
       enable = true;
+      # greetd set each session's console to text, which, the moment the
+      # splash let go of the screen, made the kernel draw its console back
+      # until niri opened the GPU: on a laptop docked with its lid shut, a
+      # box sized for the panel in the monitor's top left for seconds. The
+      # patch (vt-left-in-graphics.patch) leaves it in graphics, so the
+      # splash's last frame stays up. Only where niri greets: tuigreet alone
+      # needs the console in text. tuigreet after a greeter that fell over
+      # gets it back from logind, which sets text again as the greeter's
+      # compositor lets go of the screen. logind does that only for a
+      # compositor that took the screen, so for one that fell over before
+      # it, greeter.sh has logind set text before tuigreet asks.
+      package = lib.mkIf (home != null) (
+        pkgs.greetd.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./vt-left-in-graphics.patch ];
+        })
+      );
       settings = {
         default_session.command = asks;
       }
