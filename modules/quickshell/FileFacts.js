@@ -54,6 +54,7 @@ function wordsOf(of, date) {
             lines: said("file-chooser:text"),
             pages: said("file-chooser:file")
         },
+        marked: said("verb:file-chooser:marked"),
         days: { yesterday: said("file-chooser:changed").yesterday, date }
     };
 }
@@ -207,6 +208,29 @@ function previewOf(said) {
         return { lines: said.names, quiet: true };
     }
     return undefined;
+}
+
+// The drawer's plate for the files marked, in the order they were, each
+// its name, its folder from ~ (where) and its size where its folder's read
+// said it: the eyebrow how many, a quiet line each with its folder beside
+// it, then their Size together, not yet known while any one's isn't
+// (VKCF3Z, 2026-11-03).
+function markedPlate(title, files, words) {
+    const sizes = files.map(file => file.size);
+    const known = sizes.every(size => typeof size === "number");
+    return {
+        eyebrow: filled(words.marked.marked, "count", files.length),
+        title,
+        preview: {
+            lines: files.map(file => file.where === "" ? file.name
+                : `${file.name}${BETWEEN}${file.where}`),
+            quiet: true
+        },
+        facts: [{
+            label: words.size,
+            value: known ? weighed(sizes.reduce((all, size) => all + size, 0)) : null
+        }]
+    };
 }
 
 // The drawer's plate for a file or a folder, `file` its path, name,

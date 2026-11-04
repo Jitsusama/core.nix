@@ -1484,7 +1484,9 @@
     a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
     fetched before they're answered; saving there, its folders take the name, ask before replacing
     one, and answer the path the place stages it at once its folder is made, marked beside it with
-    the program that asked; the files selected in one ask are previewed by one file-preview
+    the program that asked; the files selected in one ask are previewed by one file-preview; where
+    several may be opened, the lead counts and names what's marked, Return on it saying nothing
+    until one is, and inside it each can be unmarked; a folder's Copy the Path comes last
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

@@ -398,3 +398,82 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
+
+
+def selected_is(shown: Json, name: str, side: str | None = None, told: str | None = None) -> bool:
+    """Say whether the row selected is the one named, saying the side and the keys given."""
+    row = shown["selected"]
+    return (
+        row is not None
+        and row["name"] == name
+        and (side is None or row["side"] == side)
+        and (told is None or told in row["told"])
+    )
+
+
+def test_the_file_picker_says_whats_marked_and_what_return_does(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Marking in the file picker says what Return does, and Open the Marked counts and lists."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/marking"
+    chose = "/run/user/1000/portal-chose"
+    desktop.as_account(
+        f"mkdir -p {folder}/more && printf 'one\\n' > {folder}/a.md"
+        f" && printf 'two\\n' > {folder}/b.md"
+        f" && touch {folder}/c.md {folder}/more/d.md {folder}/more/e.md"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            said = scale.replace(".", "-")
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-to-mark"
+                f" {desktop.values['choose_a_file']} open-several {folder}"
+            )
+            desktop.launcher_until(
+                lambda shown: shown["path"][-1:] == ["~/marking"] and shown["selected"] is not None,
+                timeout=timedelta(seconds=60),
+            )
+            desktop.down_to("Open the Marked")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="none"))
+            assert not [key for key in desktop.showing()["selected"]["told"] if "\u21b5" in key], (
+                "with none marked, Open the Marked says a Return"
+            )
+            desktop.down_to("a.md")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
+            desktop.photograph(f"file-picker-nothing-marked-at-{said}")
+            for name in ["a.md", "b.md"]:
+                desktop.down_to(name)
+                machine.send_key("ret")
+                desktop.launcher_until(partial(selected_is, name=name, told="\u21b5 unmark"))
+            desktop.down_to("Open the Marked")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
+            desktop.launcher_until(
+                lambda shown: (shown["drawer"] or {}).get("eyebrow") == "2\u00a0marked"
+            )
+            desktop.photograph(f"file-picker-two-marked-at-{said}")
+            desktop.down_to("more")
+            machine.send_key("right")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/marking/more"])
+            desktop.down_to("Open the Marked")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
+            desktop.photograph(f"file-picker-marked-elsewhere-at-{said}")
+            machine.send_key("right")
+            desktop.launcher_until(lambda shown: "Unmark All" in shown["rows"])
+            desktop.down_to("a.md")
+            machine.send_key("ret")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
+            rows = desktop.showing()["rows"]
+            assert rows[-3:] == ["b.md", "Unmark All", "Copy the Paths"], rows
+            desktop.photograph(f"file-picker-inside-marked-at-{said}")
+            machine.send_key("left")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="1"))
+            desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
+            desktop.down_to("Copy the Path")
+            desktop.photograph(f"file-picker-copy-last-at-{said}")
+            machine.send_key("esc")
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")

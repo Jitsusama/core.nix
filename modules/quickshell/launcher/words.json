@@ -5304,7 +5304,25 @@
       "in": "path:folder",
       "name": "Open the Marked",
       "verb": "open",
+      "glyph": "marked",
+      "said": {
+        "none": "none",
+        "marked": "{count} marked"
+      }
+    },
+    {
+      "id": "verb:file-chooser:unmark-all",
+      "in": "verb:file-chooser:marked",
+      "name": "Unmark All",
+      "verb": "unmark",
       "glyph": "marked"
+    },
+    {
+      "id": "verb:file-chooser:copy-marked",
+      "in": "verb:file-chooser:marked",
+      "name": "Copy the Paths",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "file-chooser:size",

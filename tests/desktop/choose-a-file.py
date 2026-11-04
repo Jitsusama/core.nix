@@ -1,6 +1,8 @@
 """Ask the desktop portal for a file to open or save, in a folder, as a program does.
 
-    choose-a-file open|save FOLDER [NAME]
+    choose-a-file open|open-several|save FOLDER [NAME]
+
+Opening several asks for as many files as are chosen, as a program that attaches them does.
 
 It stays on the bus until the portal answers, since the portal drops a request whose caller
 has gone. Its answer, 0 for chosen and 1 for refused, then each file's link, lands in the
@@ -46,12 +48,14 @@ def main(argv: list[str]) -> None:
         interface="org.freedesktop.portal.FileChooser",
     )
     # The portal takes a folder as bytes ending in a nul, as a path is on disk.
-    options = {
+    options: dict[str, tuple[str, object]] = {
         "handle_token": ("s", HANDLE),
         "current_folder": ("ay", folder.encode() + b"\0"),
     }
     if named:
         options["current_name"] = ("s", named[0])
+    if mode == "open-several":
+        options["multiple"] = ("b", True)
     method = "SaveFile" if mode == "save" else "OpenFile"
     title = "Save the Notes" if mode == "save" else "Open the Notes"
     asked = new_method_call(portal, method, "ssa{sv}", ("", title, options))

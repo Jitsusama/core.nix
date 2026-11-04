@@ -1328,6 +1328,20 @@ works the same way everywhere.
   the whole ask, a line at a time, and what it's made is pruned past
   128 MB, the longest unshown first. Every word the rows and the plate
   say is the launcher's own, in its words.
+- **What's marked is in sight** (Joel, 2026-11-03: "it is hard when
+  marking files to know what to do once mmarked"). Where a program takes
+  several files, Return on one marks it and the foot says "↵ mark" or
+  "↵ unmark"; a marked row's glyph is the mark, in an act's hue, the one
+  colour on its row. Open the Marked leads every folder from the start,
+  so nothing slides when the first is marked: until then it says "none"
+  and nothing more, and the foot gives it no Return; after, its side
+  counts them, its note names them in the order marked, its plate lists
+  each with its folder and their Size together, and the right arrow
+  steps into Marked: the files, each with its folder, where Return
+  unmarks one and it stays until he leaves, then Unmark All, then Copy
+  the Paths (VKCF3Z, 2026-11-03). A folder's Copy the Path comes after
+  its files and filters, held back until the folder's read so it never
+  heads the list.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

@@ -1768,10 +1768,14 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice);
-        const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
+        // One with nothing to do yet (`still`), as the file chooser's Open
+        // the Marked before anything is marked, says no Return at all
+        // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
+        const keys = choice.still ? []
+            : [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
         // One that keeps the launcher can be done and closed at once, the
         // font having no Ctrl key's mark, so it's spelled as chords are.
-        if (keepsOpen(choice))
+        if (!choice.still && keepsOpen(choice))
             keys.push(["Ctrl+\u21b5", "close"]);
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);

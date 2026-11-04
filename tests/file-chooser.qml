@@ -19,10 +19,14 @@
 // Folder. Closing the launcher answers nothing, a request that isn't JSON
 // is refused at once, and a withdrawn one closes the launcher. Where several
 // may be opened, Open the Marked leads from the start, saying none and
-// opening nothing; Return marks a file, the launcher staying, and its row
-// wears the mark, says what Return does now and holds Marked, yes; Return
-// again unmarks it; and Open the Marked answers every one marked, in the
-// order they were, wherever each was. A place kept elsewhere, given by a
+// nothing more, with no Return; Return marks a file, the launcher staying,
+// and its row wears the mark in an act's hue, says what Return does now
+// and holds Marked, yes; Return again unmarks it; Open the Marked counts
+// them, names them in the order marked and lists them on its plate; inside
+// it are the files, each with its folder, then Unmark All and Copy the
+// Paths, one unmarked there staying until it's left; and Open the Marked
+// answers every one marked, in the order they were, wherever each was. A
+// folder holds its Copy the Path and filters only once it's read. A place kept elsewhere, given by a
 // stand-in for Google's Drive, is listed after home's files, apart, and
 // found by typing from another folder, never for a local folder alone;
 // held, it says
@@ -417,6 +421,10 @@ ShellRoot {
         let rows = rowsIn(notes);
         expect("lately elsewhere, then folders, then files the filter passes, then the filters",
             names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files", names(rows));
+        const unread = names(chooser.folderRow(`${home}/unread`).verbs());
+        const read = names(chooser.folderRow(notes).verbs());
+        expect("a folder holds its Copy the Path and filters only once it's read, so they come last",
+            unread === "" && read.endsWith("All Files, Copy the Path"), `${unread}; ${read}`);
         expect("a file opened lately elsewhere says where", rows[0].side === "~/elsewhere"
             && rows[0].key === `file:${home}/elsewhere/old.md`, `${rows[0].side} ${rows[0].key}`);
         const own = named(rows, "a.md");
@@ -479,19 +487,21 @@ ShellRoot {
         expect("Open the Marked leads from the start, then lately, folders and files",
             names(rows) === "Open the Marked, | old.md, | sub, a.md, b.png, notes.txt", names(rows));
         const lead = rows[0];
-        expect("with none marked, it says none and why, and Return keeps the launcher",
-            lead.side === "none" && lead.note !== "" && lead.stays === true,
-            `${lead.side} ${lead.note} ${lead.stays}`);
+        expect("with none marked, it says none and nothing more, Return saying nothing",
+            lead.side === "none" && lead.note === "" && lead.still === true && lead.stays === true
+                && !lead.verbs && !lead.drawer,
+            `${lead.side} ${lead.note} ${lead.still} ${lead.stays} ${typeof lead.verbs}`);
         lead.run();
         expect("with none marked, Open the Marked opens nothing", answers.length === 5
             && chooser.asking?.reply.endsWith("/7.sock"), `${answers.length} answers`);
         const a = named(rows, "a.md");
         const unmarked = a.glyph;
-        expect("Return marks a file, the launcher staying", a.verb === "mark" && a.stays === true,
-            `${a.verb} ${a.stays}`);
+        expect("Return marks a file, the launcher staying", a.verb === "mark" && a.stays === true
+            && a.hue === "program", `${a.verb} ${a.stays} ${a.hue}`);
         a.run();
-        expect("a file marked wears the mark and says Return unmarks it", a.glyph !== unmarked
-            && a.verb === "unmark", `${a.glyph} ${a.verb}`);
+        expect("a file marked wears the mark in an act's hue and says Return unmarks it",
+            a.glyph !== unmarked && a.hue === "action" && a.verb === "unmark",
+            `${a.glyph} ${a.hue} ${a.verb}`);
         expect("inside, Marked says yes, then Open for it alone, then Copy the Path",
             names(a.verbs()) === "Marked, Open, Copy the Path" && a.verbs()[0].side === "yes",
             `${names(a.verbs())} ${a.verbs()[0].side}`);
@@ -502,10 +512,60 @@ ShellRoot {
         expect("Return again unmarks it", b.verb === "mark" && b.glyph === unmarked
             && b.verbs()[0].side === "no", `${b.verb} ${b.verbs()[0].side}`);
         rows = rowsIn(notes);
-        expect("Open the Marked says how many are", rows[0].name === "Open the Marked"
-            && rows[0].side === "2" && rows[0].note === "", `${rows[0].name} ${rows[0].side}`);
+        expect("Open the Marked says how many are and names them in the order marked",
+            rows[0].name === "Open the Marked" && rows[0].side === "2"
+                && rows[0].note === "a.md \u00b7 old.md" && rows[0].still === false,
+            `${rows[0].name} ${rows[0].side} ${rows[0].note} ${rows[0].still}`);
+        const plate = rows[0].drawer();
+        expect("its plate counts them and lists each with its folder, their size waiting on old.md's",
+            plate.eyebrow === "2\u00a0marked" && plate.title === "Open the Marked"
+                && JSON.stringify(plate.preview) === JSON.stringify({
+                    lines: ["a.md \u00b7 ~/notes", "old.md \u00b7 ~/elsewhere"], quiet: true })
+                && plate.facts.length === 1 && plate.facts[0].value === null,
+            JSON.stringify(plate));
+        insideMarked(rows[0]);
         launcher.open = false;
-        rows[0].run();
+        rowsIn(notes)[0].run();
+    }
+
+    // The right arrow on Open the Marked steps into Marked: the files in
+    // the order marked, each with its folder, then Unmark All, then Copy
+    // the Paths; one unmarked there stays, unmarked, until it's left, and
+    // so do all of them once Unmark All has been. It leaves a.md and old.md
+    // marked again, in that order, for Open the Marked to answer.
+    function insideMarked(lead) {
+        launcher.enter(lead);
+        const shown = () => rowsIn(notes)[0].verbs();
+        let inside = shown();
+        expect("inside Marked: the files marked, each with its folder, then Unmark All and Copy",
+            names(inside) === "a.md, old.md, Unmark All, Copy the Paths"
+                && inside[0].note === "~/notes" && inside[1].note === "~/elsewhere"
+                && inside[3].copy === `${notes}/a.md\n${home}/elsewhere/old.md`,
+            `${names(inside)} ${inside[0].note} ${inside[1].note} ${inside[3].copy}`);
+        inside[0].run();
+        inside = shown();
+        expect("one unmarked there stays, unmarked", names(inside)
+            === "a.md, old.md, Unmark All, Copy the Paths" && inside[0].verb === "mark"
+            && rowsIn(notes)[0].side === "1", `${names(inside)} ${inside[0].verb}`);
+        named(inside, "Unmark All").run();
+        inside = shown();
+        expect("with all unmarked, Marked still holds them while it's shown, with nothing to do",
+            names(inside) === "a.md, old.md, Unmark All, Copy the Paths"
+                && inside[2].still === true && inside[3].still === true
+                && rowsIn(notes)[0].still === true, `${names(inside)} ${inside[2].still}`);
+        inside[0].run();
+        inside[1].run();
+        launcher.held = launcher.held.slice(0, -1);
+        expect("left, Marked is stepped into afresh, holding only what's marked",
+            names(rowsIn(notes)[0].verbs()) === "a.md, old.md, Unmark All, Copy the Paths",
+            names(rowsIn(notes)[0].verbs()));
+        launcher.enter(rowsIn(notes)[0]);
+        named(launcher.held[launcher.held.length - 1].rows, "old.md").run();
+        launcher.held = launcher.held.slice(0, -1);
+        expect("and one unmarked there is gone from it once it's left",
+            names(rowsIn(notes)[0].verbs()) === "a.md, Unmark All, Copy the Paths",
+            names(rowsIn(notes)[0].verbs()));
+        named(rowsIn(notes), "old.md").run();
     }
 
     // The file kept elsewhere, as the case picking it last drew it.
