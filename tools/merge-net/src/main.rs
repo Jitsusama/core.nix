@@ -99,12 +99,17 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         branch,
     };
     // With nothing passed yet, the first round starts where it's told, or
-    // at main's head as it is now, which it takes as passing.
+    // at main's head as it is now, which it takes as passing. It's written
+    // down at once, so a first round cut short, by a hold or a restart,
+    // starts from the same place when it runs again.
     let start = match (state.heads().0, from) {
         (Some(passed), _) => passed,
         (None, Some(from)) => from,
         (None, None) => watch::World::head(&world)?,
     };
+    if state.heads().0.is_none() {
+        state.set_heads(&start, &start)?;
+    }
     state.say(&format!(
         "watching {}'s {} from {}",
         world.url,
@@ -115,7 +120,14 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         let round = watch::round(&world, &state, &start);
         let rest = match &round {
             Ok(Round::Passed(_) | Round::Failed(_)) => 0,
-            Ok(Round::Idle | Round::Unfinished(_)) => 60,
+            Ok(Round::Idle) => 60,
+            Ok(Round::Unfinished(head)) => {
+                state.say(&format!(
+                    "{} isn't done: a test wasn't sent, so it runs again",
+                    short(head)
+                ));
+                60
+            }
             Err(why) => {
                 state.say(why);
                 120
