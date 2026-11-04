@@ -27,12 +27,6 @@
 //! prints and this keeps, in `tuple-call/room` in the state folder, for
 //! the record to say from then on; until then, the record says the newest
 //! of Joel's own rooms, as Tuple's state lists them.
-//!
-//! Who a call is with is kept in `tuple-call.json` in the runtime folder
-//! too, for what records a call without asking (a transcript names its
-//! folder by them; `Held::with` says what it holds): written whole while
-//! a call is on, as it changes, and removed once there's none. One left
-//! by a run that was stopped is removed as this starts.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -105,9 +99,6 @@ struct Daemon {
     /// When it last changed, in milliseconds since the epoch.
     heard: i64,
     since: i64,
-    /// Where who the call is with is kept, and what was last kept there.
-    with: PathBuf,
-    kept: Option<Value>,
 }
 
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
@@ -145,8 +136,6 @@ fn main() {
     };
     let runtime = folder("XDG_RUNTIME_DIR", "");
     let tuples = runtime.join("tuple-0");
-    let with = runtime.join("tuple-call.json");
-    let _ = std::fs::remove_file(&with);
     let log = folder("XDG_DATA_HOME", ".local/share").join("tuple/0");
     let room = folder("XDG_STATE_HOME", ".local/state").join("tuple-call/room");
     let kept = std::fs::read_to_string(&room)
@@ -164,8 +153,6 @@ fn main() {
             said,
             heard: began,
             since: began,
-            with,
-            kept: None,
         }),
         Condvar::new(),
     ));
@@ -241,7 +228,6 @@ fn record(daemon: &Daemon) -> Value {
 /// Tells every watch of the record, once it's no longer as last said, and
 /// wakes whatever waits on a change.
 fn changed(shared: &Shared, daemon: &mut Daemon) {
-    keep_with(daemon);
     let record_now = daemon.held.record();
     if record_now != daemon.said {
         daemon.said = record_now;
@@ -255,29 +241,6 @@ fn changed(shared: &Shared, daemon: &mut Daemon) {
         });
     }
     shared.1.notify_all();
-}
-
-/// Keeps who the call is with in its file, written beside it and moved
-/// into place so it's never read half written, or removes it once there's
-/// no call. A file that can't be written is left be: the record matters
-/// more.
-fn keep_with(daemon: &mut Daemon) {
-    let with = daemon.held.with();
-    if with == daemon.kept {
-        return;
-    }
-    match &with {
-        Some(kept) => {
-            let new = daemon.with.with_extension("new");
-            if std::fs::write(&new, format!("{kept}\n")).is_ok() {
-                let _ = std::fs::rename(&new, &daemon.with);
-            }
-        }
-        None => {
-            let _ = std::fs::remove_file(&daemon.with);
-        }
-    }
-    daemon.kept = with;
 }
 
 /// Says how Tuple stands, telling every watch once that changes, so a

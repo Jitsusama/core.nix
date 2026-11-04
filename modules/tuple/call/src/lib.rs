@@ -121,27 +121,6 @@ impl Held {
             "room": self.room.as_ref().or(self.personal.as_ref()),
         })
     }
-
-    /// Who the call is with, for what records a call without the shell
-    /// (a transcript names its folder by them), or none while there's no
-    /// call: `{"since":ms,"with":[{"id","name","email"},...]}`, an id
-    /// Tuple numbers kept a number.
-    pub fn with(&self) -> Option<Value> {
-        let live = self.live.as_ref()?;
-        let with = live
-            .people
-            .iter()
-            .map(|person| {
-                let said = self.person(person);
-                let id = person
-                    .id
-                    .parse::<i64>()
-                    .map_or_else(|_| json!(person.id), |id| json!(id));
-                json!({"id": id, "name": said["name"], "email": said["email"]})
-            })
-            .collect::<Vec<_>>();
-        Some(json!({"since": live.since, "with": with}))
-    }
 }
 
 #[cfg(test)]
@@ -263,34 +242,6 @@ mod tests {
         assert_eq!(held.record()["room"], "https://tuple.app/c/listed");
         held.room = Some("https://tuple.app/c/opened".into());
         assert_eq!(held.record()["room"], "https://tuple.app/c/opened");
-    }
-
-    #[test]
-    fn who_a_call_is_with_is_said_while_it_lasts() {
-        let mut held = held();
-        assert_eq!(held.with(), None);
-        held.live = Some(Live {
-            since: Some(NOON),
-            joel: Person::default(),
-            people: vec![
-                Person {
-                    id: "7".into(),
-                    ..Person::default()
-                },
-                Person {
-                    id: "guest-1".into(),
-                    name: "A Guest".into(),
-                    ..Person::default()
-                },
-            ],
-        });
-        assert_eq!(
-            held.with(),
-            Some(json!({"since": NOON, "with": [
-                {"id": 7, "name": "Ada Brightwater", "email": "ada@example.com"},
-                {"id": "guest-1", "name": "A Guest", "email": ""},
-            ]}))
-        );
     }
 
     #[test]
