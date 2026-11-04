@@ -1147,7 +1147,10 @@
     controller cuts a direction only once its own delay has stood a second, a tenth under what got
     through, climbs a quarter a second until it nears its last queue and 5% after, takes the air's
     lateness and an idle direction's path off, leaves the line unlimited with no timestamps, and
-    goes back to its base when a queue outlasts half a minute of cuts
+    goes back to its base when a queue outlasts half a minute of cuts; live, it answers what a
+    replay of the same recorded lines does, read as the day files grow and across midnight, for
+    the link the recorder names, and lets the link go unlimited when the recorder falls silent or
+    begins a new stay
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests

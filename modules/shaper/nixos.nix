@@ -50,6 +50,7 @@
 let
   shaper = pkgs.callPackage ./package.nix { };
   vpns = config.jitsusama.shaper.vpns;
+  oneWay = config.jitsusama.shaper.controller == "one-way";
 in
 {
   imports = [
@@ -66,6 +67,20 @@ in
     description = ''
       The VPNs to shape inside, by their links' names: those that ride the
       connection as one flow and carry traffic this machine sends.
+    '';
+  };
+
+  options.jitsusama.shaper.controller = lib.mkOption {
+    type = lib.types.enum [
+      "round-trip"
+      "one-way"
+    ];
+    default = "round-trip";
+    description = ''
+      What sets the shaper's rates. `round-trip` is the controller it has
+      had (src/rate.rs), from pings to distant resolvers. `one-way` is its
+      rebuild (src/oneway.rs), from each direction's own delay as
+      shaper-record measures it, the controller `shaper replay` scores.
     '';
   };
 
@@ -105,7 +120,9 @@ in
     wantedBy = [ ];
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.
-    wants = [ "network-pre.target" ];
+    # The one-way controller reads what the recorder writes, so it wants
+    # the recorder running; a recorder that stops leaves the link unlimited.
+    wants = [ "network-pre.target" ] ++ lib.optional oneWay "shaper-record.service";
     before = [ "network-pre.target" ];
     after = [ "nftables.service" ];
     requires = [ "nftables.service" ];
@@ -117,7 +134,8 @@ in
     serviceConfig = {
       ExecStart =
         "${shaper}/bin/shaper run"
-        + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}";
+        + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}"
+        + lib.optionalString oneWay " --controller one-way --record /var/lib/shaper-record";
       ExecStopPost = "${shaper}/bin/shaper stop";
       Restart = "always";
       RestartSec = 2;

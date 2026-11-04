@@ -84,8 +84,13 @@ impl Controller for Unlimited {
 /// One line of a day file.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Sample {
-    /// The reflectors chosen; the first of a recording names its network.
-    Pool { at: u64, network: Option<String> },
+    /// The reflectors chosen; the first of a recording names its network,
+    /// and each names the link it records, when the recorder wrote it.
+    Pool {
+        at: u64,
+        network: Option<String>,
+        link: Option<String>,
+    },
     /// A timestamp answered: each way's delay, in ms, with the reflector's
     /// clock offset in it, and the link's byte counters.
     Stamp {
@@ -115,8 +120,12 @@ pub fn parse(line: &str) -> Option<Sample> {
         return Some(Sample::Lost { at });
     }
     if v.get("pool").is_some() {
-        let network = v.get("network").and_then(Value::as_str).map(String::from);
-        return Some(Sample::Pool { at, network });
+        let named = |key: &str| v.get(key).and_then(Value::as_str).map(String::from);
+        return Some(Sample::Pool {
+            at,
+            network: named("network"),
+            link: named("link"),
+        });
     }
     if v.get("gateway").is_some() {
         let (rx, tx) = counters()?;
@@ -139,7 +148,7 @@ pub fn parse(line: &str) -> Option<Sample> {
 }
 
 impl Sample {
-    fn at(&self) -> u64 {
+    pub(crate) fn at(&self) -> u64 {
         match self {
             Sample::Pool { at, .. }
             | Sample::Stamp { at, .. }
@@ -198,7 +207,7 @@ fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// A stay being read, a second at a time: a second is done once a counter
 /// read after it has come, since the samples come in order.
-struct Reading {
+pub(crate) struct Reading {
     network: String,
     first: Option<u64>,
     ticks: BTreeMap<u64, Tick>,
@@ -211,7 +220,7 @@ struct Reading {
 }
 
 impl Reading {
-    fn new(network: String) -> Self {
+    pub(crate) fn new(network: String) -> Self {
         Reading {
             network,
             first: None,
@@ -224,7 +233,13 @@ impl Reading {
         }
     }
 
-    fn take(&mut self, sample: &Sample) {
+    /// The seconds finished since this was last asked, for a reader that
+    /// steps a controller as the samples come rather than at a stay's end.
+    pub(crate) fn drain(&mut self) -> Vec<Second> {
+        std::mem::take(&mut self.seconds)
+    }
+
+    pub(crate) fn take(&mut self, sample: &Sample) {
         let at = sample.at();
         let second = at / 1_000;
         // A clock set back writes a moment already past; it's passed over.
@@ -918,14 +933,16 @@ mod tests {
             parse(&pool(5, "aa:bb")),
             Some(Sample::Pool {
                 at: 5,
-                network: Some("aa:bb".into())
+                network: Some("aa:bb".into()),
+                link: Some("wlan0".into())
             })
         );
         assert_eq!(
             parse(&repool(5)),
             Some(Sample::Pool {
                 at: 5,
-                network: None
+                network: None,
+                link: None
             })
         );
     }
