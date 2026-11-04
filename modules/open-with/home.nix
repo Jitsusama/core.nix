@@ -3,7 +3,9 @@
 # until one is picked. Its chooser of files asks here too, and
 # FileChooser.qml holds the folders and files until they're picked, with the
 # files opened lately first and the program's filters matched by the
-# desktop's kinds of file (shared-mime-info). The desktop's list of files opened lately is
+# desktop's kinds of file (shared-mime-info), and file-preview
+# (file-preview.nix) saying what the selected one is, its first page or
+# frame made once. The desktop's list of files opened lately is
 # recent-files' (recent-files.nix): on the path, for a program that adds
 # what it opens to it, as Neovim does, and read for each program's Recent
 # in the launcher, with what GIMP and Inkscape add to it themselves.
@@ -15,6 +17,7 @@
 }:
 let
   recent-files = pkgs.callPackage ./recent-files.nix { };
+  file-preview = pkgs.callPackage ./file-preview.nix { };
 in
 {
   imports = [ ../quickshell/recents.nix ];
@@ -32,6 +35,9 @@ in
       "list"
     ];
     kinds = "${pkgs.shared-mime-info}/share/mime";
+    # What says a file's preview and a folder's items, for the drawer and
+    # each row.
+    preview = [ (lib.getExe file-preview) ];
     # What makes the folder a file saved into a place kept elsewhere goes
     # in, as Google's Drive stages one to upload.
     mkdir = lib.getExe' pkgs.coreutils "mkdir";

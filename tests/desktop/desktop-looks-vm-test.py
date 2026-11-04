@@ -4,7 +4,8 @@ Here the launcher is laid out at Joel's two scales, on a screen as large as the 
 the other areas' screen is too small to hold the card and its drawer at: 1.5, as the HP draws it,
 and 2, as the laptop does. Its drawer is a plate whose every line lies on one of the card's
 (docs/design.md, the drawer), measured from what the launcher reports of both to a hundredth of a
-pixel, and photographed in the gallery for a person to measure too. tests/desktop.nix runs this
+pixel, and photographed in the gallery for a person to measure too; the file picker's plate is
+held to the same lines for each kind of file it previews. tests/desktop.nix runs this
 through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
 test proves. Every test asks for the desktop, started once a run (desktop_session.py), and leaves
 it as it found it.
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from functools import partial
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, cast
 
@@ -302,3 +304,91 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
             ), f"at {scale} a fact is off the pitch: {drawer}"
         desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         machine.send_key("esc")
+
+
+# The file picker's plate, for each kind of file it previews and one it doesn't, at both of
+# Joel's scales: its eyebrow the kind with its numbers, its name, its preview right under it,
+# and its facts after, every line on the pitch, the facts said from the folder at once and the
+# preview coming once file-preview has said (VKCF3Z, 2026-11-03). Each is its kind, what its
+# eyebrow says and what it previews.
+PICKED = {
+    "drafts": ("Folder", "lines"),
+    "archive.zip": ("ZIP", None),
+    "clip.mp4": ("MP4 \u00b7 0:20", "picture"),
+    "notes.md": ("Markdown \u00b7 5\u00a0lines", "lines"),
+    "plan.pdf": ("PDF \u00b7 1\u00a0page", "picture"),
+    "wide.png": ("PNG \u00b7 1600\u00a0\u00d7\u00a01000", "picture"),
+}
+
+
+def previewed(shown: Json, name: str, preview: str | None) -> bool:
+    """Say whether the plate is out for the file named, its facts known and its preview in.
+
+    Its row says its size, or a folder its count, and when it changed, rather than its folder,
+    even though the folder was read before the ask was shown.
+    """
+    drawer = shown["drawer"]
+    if drawer["out"] is not True or drawer["title"] != name or None in drawer["values"]:
+        return False
+    if "\u00b7" not in (shown["selected"] or {}).get("side", ""):
+        return False
+    held = drawer["preview"] or {}
+    if preview == "picture":
+        return bool(held.get("picture"))
+    if preview == "lines":
+        return bool(held.get("lines"))
+    return drawer["preview"] is None
+
+
+def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """The file picker's plate shows each file's kind, preview and facts, on the pitch."""
+    machine = desktop.machine
+    values = desktop.values
+    folder = f"/home/{desktop.account}/picked"
+    chose = "/run/user/1000/portal-chose"
+    # A note's first lines, each line break written for printf to make.
+    notes = (
+        "# The Plan\\n\\nPreviews, sizes and when each file changed,\\nthen marking,"
+        "\\n  then a one-file picker, then sorting."
+    )
+    desktop.as_account(
+        f"mkdir -p {folder}/drafts/older && cp {values['wide']} {folder}/wide.png"
+        f" && cp {values['clip']} {folder}/clip.mp4 && cp {values['page']} {folder}/plan.pdf"
+        f" && printf '{notes}\\n' > {folder}/notes.md"
+        f" && head -c 48000 /dev/urandom > {folder}/archive.zip"
+        f" && touch {folder}/drafts/one.md {folder}/drafts/two.md && chmod -R u+w {folder}"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-to-preview"
+                f" {values['choose_a_file']} open {folder}"
+            )
+            desktop.launcher_until(
+                lambda shown: shown["path"][-1:] == ["~/picked"] and shown["selected"] is not None,
+                timeout=timedelta(seconds=60),
+            )
+            for name, (eyebrow, preview) in PICKED.items():
+                desktop.down_to(name)
+                desktop.launcher_until(partial(previewed, name=name, preview=preview))
+                drawer = plate_shown(desktop, scale)
+                assert drawer["eyebrow"] == eyebrow, f"{name}'s eyebrow: {drawer}"
+                assert drawer["drawnFacts"][1:] == ["Changed", "Where"], drawer
+                title, facts = drawer["lines"]["title"], drawer["lines"]["facts"]
+                shown = drawer["lines"]["previewLines"]
+                assert all(on_the_pitch(line, title) for line in [*shown, *facts]), (
+                    f"at {scale} {name}'s plate is off the pitch: {drawer}"
+                )
+                if preview is not None:
+                    assert facts[0] > drawer["lines"]["preview"], f"{name}'s facts lead: {drawer}"
+                assert facts[-1] < drawer["foot"], f"at {scale} {name}'s facts are cut: {drawer}"
+                said = name.replace(".", "-")
+                desktop.photograph(f"file-picker-{said}-at-{scale.replace('.', '-')}")
+            machine.send_key("esc")
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")

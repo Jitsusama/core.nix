@@ -97,6 +97,7 @@ let
     "Traces.qml"
     "Words.qml"
     "Files.qml"
+    "FileFacts.js"
     "Taken.qml"
     "Pasting.qml"
     "Notices.qml"

@@ -7,7 +7,8 @@
 // elsewhere first, then its folders, then the files the filter passes, by
 // name, then the program's filters, each group apart; a file is one row,
 // though it was opened lately too, and the hidden ones show once a "." is
-// typed; a kind the filter names passes its narrower kinds too; another
+// typed; a file in the folder shown says its size and when it changed
+// rather than its folder, and its plate its facts before it's previewed; a kind the filter names passes its narrower kinds too; another
 // filter picked shows what it passes; and Return on a file answers its
 // path and the filter in use. Asked to save, it leads with the name the
 // program gave, which, being there already, steps in to Replace It first;
@@ -393,6 +394,17 @@ ShellRoot {
             names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files", names(rows));
         expect("a file opened lately elsewhere says where", rows[0].side === "~/elsewhere"
             && rows[0].key === `file:${home}/elsewhere/old.md`, `${rows[0].side} ${rows[0].key}`);
+        const own = named(rows, "a.md");
+        expect("a file in the folder shown says its size and when it changed, not its folder",
+            own.side === "0\u00a0B \u00b7 just now", own.side);
+        expect("a folder in it says when it changed, its count once it's known",
+            named(rows, "sub").side === "just now", named(rows, "sub").side);
+        const plate = own.drawer();
+        const facts = plate.facts.map(fact => `${fact.label} ${fact.value}`).join(", ");
+        expect("a file's plate says its name and its facts at once, before it's previewed",
+            plate.title === "a.md" && plate.preview === undefined
+            && facts === "Size 0\u00a0B, Changed just now, Where ~/notes",
+            `${plate.title}: ${facts}`);
         expect("each file is drawn as every file is", rows.every(row => row.component
             || row.key.startsWith("file-chooser:")), rows.map(row => row.key).join(" "));
         const typed = launcher.held[launcher.held.length - 1].row.typed(".");
