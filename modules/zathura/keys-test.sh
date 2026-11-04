@@ -54,20 +54,29 @@ until_true "Home" on 0
 sleep 2
 grim -t png s0-home.png
 echo "home page $(page)"
-wtype /
+wtype /find -k Return
+sleep 3
+grim -t png s1-together.png
+echo "together page $(page)"
+wtype -k Escape
+wtype -k Home
 sleep 1
-grim -t png s1-slash.png
-wtype find
-sleep 2
-grim -t png s2-typed.png
-echo "typed page $(page)"
+wtype /find
+sleep 1
+wtype -k KP_Enter
+sleep 3
+grim -t png s2-kp.png
+echo "kp page $(page)"
+wtype -k Escape
+wtype -k Home
+sleep 1
+wtype /find
+sleep 1
+wtype -k Return
+sleep 1
 wtype -k Return
 sleep 3
-grim -t png s3-return.png
-echo "return page $(page)"
-wtype n
-sleep 2
-grim -t png s4-n.png
-echo "n page $(page)"
+grim -t png s3-twice.png
+echo "twice page $(page)"
 cat said
 touch passed
