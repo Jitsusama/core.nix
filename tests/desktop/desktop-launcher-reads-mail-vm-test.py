@@ -83,6 +83,12 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_ACCOUNT")
 
 
+# When the stand-in's mail came or its documents were opened, minutes before it started, as
+# a side says it: just now within a minute, on a fast builder, minutes ago within the hour,
+# then its time, or yesterday past midnight.
+CAME = r"(just now|\d+ min ago|\d\d:\d\d|yesterday)"
+
+
 @pytest.mark.usefixtures("google")
 def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_does(
     desktop: Desktop,
@@ -109,9 +115,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
         drawer = selected.get("drawer") or {}
         return (
             selected.get("is") == "mail:lunch"
-            # Past midnight, what came minutes before it is yesterday's.
-            and re.fullmatch(r"Ada Lovelace \u00b7 (\d\d:\d\d|yesterday)", selected["side"])
-            is not None
+            and re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", selected["side"]) is not None
             and drawer.get("title") == lunch["title"]
             and drawer.get("facts", [])[:2] == lunch["facts"]
             and drawer.get("facts", [{}] * 3)[2].get("label") == "Date"
@@ -837,8 +841,7 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
     plan = desktop.showing()["selected"]
     assert plan["is"] == "gdoc:plan", plan
-    # Past midnight, what he viewed minutes before it is yesterday's.
-    assert re.fullmatch(r"Ada Lovelace \u00b7 (\d\d:\d\d|yesterday)", plan["side"]), plan
+    assert re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", plan["side"]), plan
     facts = (plan.get("drawer") or {}).get("facts") or [{}]
     assert facts[0] == {"label": "Owner", "value": "Ada Lovelace"}, plan
     # Return opens it in a window of its own, leaving the launcher.
@@ -849,13 +852,12 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Its title finds the same row from anywhere, one on a shared drive saying
-    # only when it was opened, which past midnight is yesterday.
+    # only when it was opened.
     desktop.answer("team budget")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("is") == "gdoc:budget"
-            and re.fullmatch(r"\d\d:\d\d|yesterday", str(shown["selected"].get("side", "")))
-            is not None
+            and re.fullmatch(CAME, str(shown["selected"].get("side", ""))) is not None
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
@@ -876,10 +878,7 @@ def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lunch on Friday"
-            and re.fullmatch(
-                r"Ada Lovelace \u00b7 (\d\d:\d\d|yesterday)",
-                str(shown["selected"].get("side", "")),
-            )
+            and re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", str(shown["selected"].get("side", "")))
         )
     )
     # Return opens it in Mail, in a window of its own, and the launcher

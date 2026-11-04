@@ -8,43 +8,59 @@
 .import "Calendar.js" as Calendar
 
 // In milliseconds.
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
 const DAY = 86_400_000;
 // Within how many days mail is said by its day of the week: a week.
 const WEEK = 7;
 
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
-    "September", "October", "November", "December"];
+function sameYear(at, now) {
+    return new Date(at).getFullYear() === new Date(now).getFullYear();
+}
 
-// When mail came, as its row says it: its time today, "yesterday", its
-// day within the week, else its date, "12 October".
-function came(at, now) {
+// When mail came, as its row says it, in the launcher's one way to say
+// when (Y2YBTS's): "just now" within a minute, "12 min ago" within the
+// hour, its time earlier today, "yesterday", its weekday within the last
+// six days, else "28 Oct", with the year only when it isn't this one. A
+// moment ahead of now, from a wrong clock, says its time on its own day,
+// else its date. The words are `said`'s, the vocabulary's, and the names
+// the locale's, as `said.date` gives them, Qt's `formatDate` in the shell.
+function came(at, now, said) {
+    const since = now - at;
+    if (since >= 0 && since < MINUTE) {
+        return said.now;
+    }
+    if (since >= 0 && since < HOUR) {
+        return String(said.minutes).replace("{minutes}", Math.floor(since / MINUTE));
+    }
     const days = Math.round((Calendar.midnight(now) - Calendar.midnight(at)) / DAY);
     const date = new Date(at);
-    if (days <= 0) {
+    if (days === 0) {
         return Calendar.clock(date);
     }
     if (days === 1) {
-        return "yesterday";
+        return said.yesterday;
     }
-    if (days < WEEK) {
-        return DAYS[date.getDay()];
+    if (days > 1 && days < WEEK) {
+        return said.date(date, "dddd");
     }
-    return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+    return said.date(date, sameYear(at, now) ? "d MMM" : "d MMM yyyy");
 }
 
 // What its row says beside it: who it's from and when it came, "Ada
 // Lovelace · 14:02", or only when it came where the sender gives no name.
-function beside(mail, now) {
-    const when = came(mail.at, now);
+function beside(mail, now, said) {
+    const when = came(mail.at, now, said);
     return mail.from === "" ? when : `${mail.from} · ${when}`;
 }
 
-// When it came, in full, as its details say it: "Monday 26 October, 14:02".
-function dated(at) {
+// When it came, in full, as its details say it and the launcher says any
+// full date: "Monday 26 October · 14:02", with the year only when it
+// isn't this one.
+function dated(at, now, said) {
     const date = new Date(at);
-    return `${DAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}, `
-        + Calendar.clock(date);
+    const day = said.date(date, sameYear(at, now) ? "dddd d MMMM" : "dddd d MMMM yyyy");
+    return `${day} · ${Calendar.clock(date)}`;
 }
 
 // Who sent it, as its details say it: by name and address, as mail writes
@@ -60,14 +76,14 @@ function sender(mail) {
 // subject, who it's from and to, when it came, the files it carries by
 // name, and what it says, every one plain text, since they're someone
 // else's words.
-function details(mail, untitled) {
+function details(mail, untitled, now, said) {
     const attachments = mail.attachments ?? [];
     const facts = [
         { label: "From", value: sender(mail) },
         { label: "To", value: mail.to ?? "" },
         // Copied to, as every mail program shows it, and only when someone was.
         { label: "Cc", value: mail.cc ?? "" },
-        { label: "Date", value: dated(mail.at) },
+        { label: "Date", value: dated(mail.at, now, said) },
         {
             label: attachments.length === 1 ? "Attachment" : "Attachments",
             value: attachments.map(file => file.name).join(", ")

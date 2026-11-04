@@ -27,19 +27,21 @@ function kindOf(program) {
 }
 
 // What its row says at the right: who owns it and when he last opened it,
-// as a mail says when it came, either alone when the other isn't known.
-function beside(document, now) {
-    return [document.owner ?? "", document.viewed ? Mail.came(document.viewed, now) : ""]
+// as a mail says when it came, in `said`'s words, either alone when the
+// other isn't known.
+function beside(document, now, said) {
+    return [document.owner ?? "", document.viewed ? Mail.came(document.viewed, now, said) : ""]
         .filter(part => part !== "").join(" \u00b7 ");
 }
 
 // Its details, as the launcher's drawer shows them beside its row: its
 // title, who owns it, when he last opened it and when it last changed.
-function details(document, untitled) {
+function details(document, untitled, now, said) {
+    const when = at => (at ? Mail.dated(at, now, said) : "");
     const facts = [
         { label: "Owner", value: document.owner ?? "" },
-        { label: "Opened", value: document.viewed ? Mail.dated(document.viewed) : "" },
-        { label: "Changed", value: document.changed ? Mail.dated(document.changed) : "" }
+        { label: "Opened", value: when(document.viewed) },
+        { label: "Changed", value: when(document.changed) }
     ];
     return {
         title: document.title === "" ? untitled : document.title,
@@ -72,22 +74,22 @@ function pickedAs(file) {
 // (open-with's FileChooser.qml): its key, name, what it says beside it
 // and its details. Beside a file are its size and when it changed; beside
 // one of Google's own kinds, what it comes as.
-function placed(file, now) {
+function placed(file, now, said) {
     const exported = EXPORTED[file.kind];
     const folder = file.kind === "folder";
     // Drive says a size only of a file it holds as it is.
     const size = typeof file.size === "number" ? Mail.weighed(file.size) : "";
-    const said = exported ? [`as ${exported.ending}`]
-        : [size, file.changed ? Mail.came(file.changed, now) : ""];
+    const noted = exported ? [`as ${exported.ending}`]
+        : [size, file.changed ? Mail.came(file.changed, now, said) : ""];
     const facts = [
         { label: "Owner", value: file.owner ?? "" },
-        { label: "Changed", value: file.changed ? Mail.dated(file.changed) : "" },
+        { label: "Changed", value: file.changed ? Mail.dated(file.changed, now, said) : "" },
         { label: "Size", value: size }
     ];
     return {
         key: folder ? `drive:folder:${file.id}` : `drive:${file.id}`,
         name: file.name,
-        note: said.filter(part => part !== "").join(" \u00b7 "),
+        note: noted.filter(part => part !== "").join(" \u00b7 "),
         drawer: { title: file.name, facts: facts.filter(fact => fact.value !== ""), body: "" }
     };
 }
