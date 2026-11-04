@@ -454,10 +454,16 @@ class Camera:
 
         A run has gone a minute without it, so what the recording was doing then is printed.
         """
+        look = (
+            "niri msg --json focused-window | head -c 300; echo;"
+            " niri msg --json layers | tr -d ' \\n' | head -c 1500; echo"
+        )
+        print(f"PROBE before {key}: {self.desktop.as_account(look)}")
         try:
             with self.desktop.told("shows card Video saved", timeout=WAKING):
                 self.machine.send_key(key)
         except AssertionError:
+            print(f"PROBE after {key}: {self.desktop.as_account(look)}")
             self.said()
             raise
 
