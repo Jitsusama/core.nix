@@ -45,6 +45,50 @@ onLinux {
       touch $out
     '';
 
+  # mpv's keys, as the account's input.conf binds them, do what the launcher
+  # says they do (keys-test.sh): Neovim's land where the arrows they twin
+  # do, gg and G go to the start and the end, J and L do what j and l did,
+  # and y and yy copy the frame as a PNG, through wl-copy, stood in here.
+  mpv-keys-go-where-they-say =
+    let
+      home = account graphical;
+      mpv = lib.findFirst (package: lib.hasPrefix "mpv" (lib.getName package)) null home.home.packages;
+      files = home.xdg.configFile;
+      # The wl-copy copy-frame's options name, for the stand-in to take its
+      # place.
+      wl-copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
+    in
+    pkgs.runCommandLocal "mpv-keys-go-where-they-say"
+      {
+        nativeBuildInputs = [
+          mpv
+          pkgs.ffmpeg-headless
+          pkgs.jq
+          pkgs.socat
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        mkdir -p mpv/scripts mpv/script-opts run
+        cp ${files."mpv/mpv.conf".source} mpv/mpv.conf
+        cp ${files."mpv/input.conf".source} mpv/input.conf
+        cp ${files."mpv/scripts/copy-frame.lua".source} mpv/scripts/copy-frame.lua
+        printf '#!%s\ncat > %s/copied\n' "$BASH" "$PWD" > wl-copy
+        chmod +x wl-copy
+        sed 's|${wl-copy}|'"$PWD"'/wl-copy|' ${files."mpv/script-opts/copy-frame.conf".source} \
+          > mpv/script-opts/copy-frame.conf
+        grep -q "$PWD/wl-copy" mpv/script-opts/copy-frame.conf \
+          || { echo "copy-frame names no wl-copy to copy with"; exit 1; }
+        ffmpeg -loglevel error -f lavfi -i testsrc=duration=200:size=32x32:rate=1 -g 1 clip.mkv
+        for subtitles in one two; do
+          printf '1\n00:00:00,000 --> 00:03:20,000\n%s\n' $subtitles > $subtitles.srt
+        done
+        $BASH ${./keys-test.sh} $PWD/mpv clip.mkv one.srt two.srt > ran 2>&1 || true
+        if [ ! -e passed ]; then cat ran; exit 1; fi
+        touch $out
+      '';
+
   # mpv says each file it plays to the desktop's list of files opened
   # lately, through recent-files where the desktop has it, stood in here,
   # each by its whole path, as mpv gives it, and a stream too, which

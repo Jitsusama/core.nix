@@ -20,7 +20,12 @@
 # colour with the text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
 # mpv's own: Space pauses, the arrows seek, f fills the screen, q quits and
-# ? lists every key, on the statistics' page of them, and 1 to 9 play that
+# ? lists every key, on the statistics' page of them. Neovim's twin them,
+# as docs/design.md's Vi's Keys has them: h and l seek as Left and Right
+# do, j and k as Down and Up, so j goes back, gg goes to the start and G
+# to the end, where the last frame stays, and y or yy copies the frame as
+# a picture (copy-frame.lua). j and l were mpv's subtitles and A-B loop,
+# which go to J, where mpv cycles subtitles already, and L. 1 to 9 play that
 # one in the list, as numbers choose that one everywhere, rather than change
 # the picture's contrast, brightness, gamma and saturation as mpv has them;
 # the launcher lists the
@@ -60,7 +65,10 @@ let
   # through what's playing as Seeking, those that change how fast as
   # Playback speed, those that change how loud as Loudness, those that
   # choose from what it was given as In the list, and the rest loose; a key
-  # with a run is bound to it here, the rest are mpv's own.
+  # with a run is bound to it here, on its key as mpv spells one (`key`)
+  # where that isn't its chord, the rest are mpv's own. A key that twins
+  # another says the same words after it, so the launcher lists both in
+  # one row, and does the same, as mpv's own does it.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "seeking" [
@@ -69,16 +77,53 @@ let
         does = "Back 5 seconds";
       }
       {
+        chord = "h";
+        does = "Back 5 seconds";
+        run = "seek -5";
+      }
+      {
         chord = "Right";
         does = "On 5 seconds";
+      }
+      {
+        chord = "l";
+        does = "On 5 seconds";
+        run = "seek 5";
       }
       {
         chord = "Down";
         does = "Back a minute";
       }
       {
+        chord = "j";
+        does = "Back a minute";
+        run = "seek -60";
+      }
+      {
         chord = "Up";
         does = "On a minute";
+      }
+      {
+        chord = "k";
+        does = "On a minute";
+        run = "seek 60";
+      }
+      {
+        chord = "Home";
+        does = "The start";
+      }
+      {
+        chord = "g g";
+        key = "g-g";
+        does = "The start";
+        run = "seek 0 absolute";
+      }
+      # keep-open holds the last frame there.
+      {
+        chord = "Shift+g";
+        key = "G";
+        does = "The end";
+        run = "seek 100 absolute-percent";
       }
       {
         chord = "Page_Down";
@@ -124,7 +169,24 @@ let
       }
       {
         chord = "f";
-        does = "Fill the screen, or not";
+        does = "Full screen, and out of it";
+      }
+      {
+        chord = "Escape";
+        does = "Full screen, and out of it";
+      }
+      # Where j and l were.
+      {
+        chord = "Shift+j";
+        key = "J";
+        does = "The next subtitles";
+        run = "cycle sub";
+      }
+      {
+        chord = "Shift+l";
+        key = "L";
+        does = "Repeat between two points, set in turn";
+        run = "ab-loop";
       }
     ]
     # The list mpv was given, by number and in turn.
@@ -146,6 +208,16 @@ let
       ]
     )
     ++ [
+      # y alone copies too, since nothing else follows a y here.
+      {
+        chord = "y y";
+        does = "Copy the frame as a picture";
+      }
+      {
+        chord = "y";
+        does = "Copy the frame as a picture";
+        run = "script-binding copy-frame/copy";
+      }
       {
         chord = "s";
         does = "Save the frame as a picture";
@@ -178,6 +250,7 @@ in
 
   xdg.configFile."mpv/scripts/recent-files.lua".source = ./recent-files.lua;
   xdg.configFile."mpv/scripts/playing.lua".source = ./playing.lua;
+  xdg.configFile."mpv/scripts/copy-frame.lua".source = ./copy-frame.lua;
 
   # The file each mpv plays now, for its Recent in the launcher to lead
   # with, kept in a folder made at sign-in (playing.lua), each mpv's line
@@ -203,7 +276,9 @@ in
     # mpv's 0, louder beside 9's quieter, does nothing now that 9 plays the
     # ninth in the list; / and * stay mpv's quieter and louder.
     bindings =
-      lib.listToAttrs (map (key: lib.nameValuePair key.chord key.run) (lib.filter (key: key ? run) keys))
+      lib.listToAttrs (
+        map (key: lib.nameValuePair (key.key or key.chord) key.run) (lib.filter (key: key ? run) keys)
+      )
       // {
         "0" = "ignore";
       };
@@ -238,6 +313,7 @@ in
       screenshot-format = "png";
       screenshot-template = "%F %wH-%wM-%wS";
     };
+    scriptOpts.copy-frame.wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
     scriptOpts.osc = {
       background_color = colours.deepest;
       timecode_color = colours.text;
