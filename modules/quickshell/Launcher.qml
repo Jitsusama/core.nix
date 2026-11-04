@@ -1,10 +1,11 @@
 // The launcher on Super+Space, the desktop's command palette: type what you
 // want, a window, an application, an action or what a key does, pick it
 // with the arrows, and Return runs it, or Shift+Return opens it below the
-// focused window. Tab takes the grey completion the command line shows, and
-// does nothing while it shows none, as at home, where the arrows already
-// reach every category. Each
-// action shows its chord, so keys are learned by use.
+// focused window. The command line is modal, as Neovim's is (Prompt.qml,
+// QueryKeys.js): it opens in insert, where letters type and Ctrl+Y takes
+// the grey completion it shows, and Escape gives normal, where nothing
+// types and the keys move. Each action shows its chord, so keys are learned
+// by use.
 //
 // It opens as fast as niri can hand it the keys. Super+Space says "toggle"
 // down a socket the shell keeps open (launcher-say, in home.nix), not
@@ -18,11 +19,11 @@
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
 // into Providers.qml), so a kind of thing is added or removed in one line.
 //
-// The right arrow at the end of the line steps into the selected row: what
-// can be done to it, its verbs, searched the same way, and for a verb that
-// needs one, its target. What's held shows as chips in the field; the left
-// arrow, or Backspace with nothing typed, steps back out, and Escape always
-// closes the launcher.
+// In normal, the right arrow steps into the selected row: what can be done
+// to it, its verbs, searched the same way, and for a verb that needs one,
+// its target. What's held shows as chips in the field; the left arrow, or
+// Backspace, steps back out. Each Escape takes one step back, and at the
+// level the launcher opened on closes it.
 //
 // What everything is called is the vocabulary's (Words.qml): its names,
 // the words that find it, its parts, and the categories it's in. A
@@ -2373,6 +2374,8 @@ Scope {
     function ask(row) {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
         restart("");
+        // Words are what it asks for, so the line is typed in at once.
+        prompt.typing();
     }
 
     // Hands over what was typed, and empties the field for another try
@@ -3628,6 +3631,13 @@ Scope {
             open: root.open,
             keys: root.open && prompt.Window.active,
             typed: root.typed,
+            // The query line's mode, insert or normal, and where its caret
+            // is, between letters in insert and on one in normal.
+            mode: prompt.mode,
+            caret: prompt.caret,
+            // How wide its caret is drawn: a block or a bar. How lit it is
+            // as it blinks isn't said, since this is said on every change.
+            caretWidth: root.hundredths(prompt.caretWidth),
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
             // What the field asks while nothing's typed.
@@ -3816,7 +3826,20 @@ Scope {
         const lead = source.leading ? source.leading() : null;
         if (lead)
             enter(lead);
+        openedHere();
     }
+
+    // Says the place it shows now is where it opened, so normal's Escape at
+    // rest closes it here; a collection that leads somewhere deeper than
+    // into() does, as the file chooser does into its folder, says so too.
+    function openedHere() {
+        homeDepth = held.length;
+    }
+
+    // How deep the place it opened on is: home's 0, or a collection opened
+    // straight into, where normal's Escape at rest closes it, as it does at
+    // home, rather than stepping out to a home it never showed.
+    property int homeDepth: 0
 
     onOpenChanged: {
         madeSince(open ? "opening" : "closing");
@@ -3841,6 +3864,7 @@ Scope {
             factsWidest = {};
             figuresStep = "";
             held = [];
+            homeDepth = 0;
             prompt.forget();
             often = picks.counts();
             spotsLater.stop();
@@ -4155,6 +4179,12 @@ Scope {
                         id: prompt
                         steady: true
                         voiced: true
+                        // Neovim's command line, opening in insert.
+                        modal: true
+                        awake: root.open
+                        fade: Options.caret.fade
+                        stopsAfter: Options.caret.stopsAfter
+                        keyWords: Words.field.keys ?? {}
                         x: Theme.inset
                         y: Theme.inset
                         width: parent.width - 2 * Theme.inset
@@ -4198,18 +4228,17 @@ Scope {
                             else
                                 root.run(root.selected, below, closing);
                         }
-                        // Tab on an answer puts the answer in place of the
-                        // question, so a sum can be carried on; one still
-                        // being asked for leaves the question as it is.
+                        // Ctrl+Y on an answer puts the answer in place of
+                        // the question, so a sum can be carried on; one
+                        // still being asked for leaves the question as it is.
                         onCompleted: {
                             root.searchNow();
                             trials.pressed("tabs");
-                            // Tab does something only while the field
-                            // shows a grey completion, and only takes it;
-                            // stepping in is the right arrow's (Joel,
-                            // 2026-10-26). At home there's none, since
-                            // nothing is typed (2026-10-25: "i don't like
-                            // tab for browse, that seems useless").
+                            // Ctrl+Y does something only while the field
+                            // shows a grey completion, and only takes it, as
+                            // his Neovim's completion menu does; stepping in
+                            // is normal's right arrow's (Joel, 2026-10-26).
+                            // At home there's none, since nothing is typed.
                             if (root.completion === "")
                                 return;
                             // A command puts its start in the field.
@@ -4227,7 +4256,15 @@ Scope {
                                 text = root.answer.copy ?? root.answer.headline;
                             root.searchNow();
                         }
-                        onCancelled: root.open = false
+                        // Normal's Escape at rest, the Escape ladder's last
+                        // rungs (docs/design.md, Vi's Keys): a step back out,
+                        // or, at the level it opened on, closing it.
+                        onCancelled: {
+                            if (root.held.length > root.homeDepth)
+                                root.back();
+                            else
+                                root.open = false;
+                        }
                         onForward: {
                             root.searchNow();
                             trials.pressed("steps");
@@ -4242,37 +4279,38 @@ Scope {
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        // With Shift, the arrows scroll the drawer instead,
-                        // since Page Up and Page Down page the list: the
-                        // outer column and the right hand's arrows, never
-                        // the little finger's Ctrl (Joel, 2026-11-02: "all
-                        // of those ctrl keys do not feel very vim to me").
-                        Keys.onUpPressed: event => {
+                        // The rows' keys, in either mode (QueryKeys.js). With
+                        // Shift, the arrows scroll the drawer instead, since
+                        // Page Up and Page Down page the list: the outer
+                        // column and the right hand's arrows, never the
+                        // little finger's Ctrl (Joel, 2026-11-02: "all of
+                        // those ctrl keys do not feel very vim to me").
+                        onStepped: act => {
                             root.searchNow();
-                            if (event.modifiers & Qt.ShiftModifier) {
+                            switch (act) {
+                            case "drawerUp":
                                 drawerCard.scroll(-1);
-                                return;
-                            }
-                            root.arrowed(Math.max(root.current - 1, highest), "\u2191");
-                        }
-                        Keys.onDownPressed: event => {
-                            root.searchNow();
-                            if (event.modifiers & Qt.ShiftModifier) {
+                                break;
+                            case "drawerDown":
                                 drawerCard.scroll(1);
-                                return;
-                            }
-                            root.arrowed(Math.max(highest,
-                                Math.min(root.current + 1, root.matches.length - 1)), "\u2193");
-                        }
-                        Keys.onPressed: event => {
-                            root.searchNow();
-                            if (event.key === Qt.Key_PageUp) {
+                                break;
+                            case "previous":
+                                root.arrowed(Math.max(root.current - 1, highest), "\u2191");
+                                break;
+                            case "next":
+                                root.arrowed(Math.max(highest,
+                                    Math.min(root.current + 1, root.matches.length - 1)),
+                                    "\u2193");
+                                break;
+                            case "pageUp":
                                 root.arrowed(Math.max(root.current - root.rows, highest),
                                     "page up");
-                            } else if (event.key === Qt.Key_PageDown) {
+                                break;
+                            case "pageDown":
                                 root.arrowed(
                                     Math.min(root.current + root.rows, root.matches.length - 1),
                                     "page down");
+                                break;
                             }
                         }
                     }
@@ -4691,8 +4729,9 @@ Scope {
                         // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.l
                             - Math.max(root.footKeysWidest, keys.implicitWidth)
-                        // The room the left has, short of the keys.
-                        readonly property real room: keysFrom - Theme.space.xl - Theme.space.l
+                        // The room the left has, short of the keys, after the
+                        // mode's word.
+                        readonly property real room: keysFrom - Theme.space.xl - standing.x
 
                         // As the card last showed it, while it's closed.
                         property string said: ""
@@ -4744,6 +4783,24 @@ Scope {
                         // facts side by side under one glyph (the day's
                         // AI spend and the agents, both AI's) wear it
                         // once.
+                        // The query line's mode, while it isn't normal, first
+                        // at the foot's left, in the accent and lowercase, as
+                        // his Neovim's status line names it (modules/neovim/
+                        // status.lua): the one word saying where his keys go.
+                        Text {
+                            id: modeWord
+
+                            readonly property string said: (Words.field.modes ?? {})[prompt.mode]
+                                ?? ""
+                            x: Theme.space.l
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: said !== ""
+                            text: said
+                            textFormat: Text.PlainText
+                            color: Theme.accent
+                            font: measure.font
+                        }
+
                         Row {
                             id: standing
 
@@ -4825,7 +4882,8 @@ Scope {
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
 
-                            x: Theme.space.l
+                            x: modeWord.visible
+                                ? modeWord.x + modeWord.implicitWidth + keys.spacing : Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: keys.spacing
 

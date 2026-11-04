@@ -8,6 +8,7 @@ says what the test proves. Each area asks for a `Desktop` as a fixture, made onc
 from __future__ import annotations
 
 import contextlib
+import functools
 import itertools
 import json
 import re
@@ -508,12 +509,55 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.as_account("qs ipc call launcher toggle")
         self.machine.wait_until_fails(self.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
+    def normal(self) -> None:
+        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        if self.showing()["mode"] == "normal":
+            return
+        self.machine.send_key("esc")
+        self.launcher_until(lambda shown: shown["mode"] == "normal")
+
+    def insert(self) -> None:
+        """Put the launcher's query line in insert mode, by A from normal, and wait for it.
+
+        A puts the caret at the end of what's typed, so what's typed next goes after it.
+        """
+        if self.showing()["mode"] == "insert":
+            return
+        self.machine.send_chars("A")
+        self.launcher_until(lambda shown: shown["mode"] == "insert")
+
+    def close_launcher(self) -> None:
+        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+
+        From insert the first gives normal, each after it steps back out a level, and the one
+        at the level it opened on closes it. A key sent before this that the launcher hears late
+        moves it on too, so each Escape waits only for something to change.
+        """
+
+        def where(shown: Json) -> tuple[object, ...]:
+            return (shown["open"], shown["mode"], len(shown["held"]))
+
+        def moved(was: tuple[object, ...], shown: Json) -> bool:
+            return where(shown) != was
+
+        for _ in range(12):
+            was = where(self.showing())
+            if not was[0]:
+                return
+            self.machine.send_key("esc")
+            self.launcher_until(functools.partial(moved, was))
+        still = self.showing()
+        message = f"the launcher was still open after 12 Escapes: {still}"
+        raise AssertionError(message)
+
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter with Return's row settled.
 
-        An answer still being looked up closes the launcher without copying. A row that comes
-        from something found later, such as a window or a copy, can be named to wait for too.
+        In normal mode it goes into insert first, at the end of what's typed. An answer still
+        being looked up closes the launcher without copying. A row that comes from something
+        found later, such as a window or a copy, can be named to wait for too.
         """
+        self.insert()
         self.machine.send_chars(text, delay=KEY_PACE)
 
         def holds(shown: Json) -> object:
@@ -539,8 +583,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     def step_in(self, key: str = "right") -> None:
         """Press a key that steps into the selected row, and wait until the launcher holds it.
 
-        That's the right arrow into a thing's verbs, or Return into what a verb asks.
+        That's the right arrow into a thing's verbs, from normal mode, which it goes into
+        first, or Return into what a verb asks, from either.
         """
+        if key == "right":
+            self.normal()
         before = len(self.showing()["held"])
         self.machine.send_key(key)
         self.launcher_until(lambda shown: len(shown["held"]) > before)

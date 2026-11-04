@@ -2486,6 +2486,7 @@ onLinux {
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
+      cp ${./QueryKeys.js} QueryKeys.js
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
@@ -2844,6 +2845,23 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-keys.qml
+      touch $out
+    '';
+
+  # The launcher's query line takes vi's two modes from one table, as
+  # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
+  # ways back into insert, sequences, and where the caret goes.
+  the-query-line-takes-vi-modes =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-query-line-takes-vi-modes" { } ''
+      cp ${../../tests/query-keys.qml} query-keys.qml
+      cp ${./QueryKeys.js} QueryKeys.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml query-keys.qml
       touch $out
     '';
 

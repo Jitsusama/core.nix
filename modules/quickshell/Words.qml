@@ -33,6 +33,9 @@ Singleton {
     // Now first, in the one place it always has, then the rest by name.
     readonly property var home: all.home ?? []
     readonly property var commands: all.commands ?? []
+    // The query line's own words: each mode's name, as the foot says it
+    // while the mode isn't normal, and what each of its keys does.
+    readonly property var field: all.field ?? {}
     readonly property var things: {
         const out = {};
         for (const entry of all.things ?? [])

@@ -1722,6 +1722,11 @@
     the prompt starts only git-engine and its mkfifo, then forks nothing across prompts in and out
     of a repository, reftable included
   '';
+  the-query-line-takes-vi-modes = ''
+    the launcher's query line reads its keys from one table in two modes: insert's caret moves,
+    Ctrl+W and Ctrl+U, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I A, cc and
+    S into insert, with an Escape that cancels a c begun before it steps back
+  '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
     saver, so a shutdown with the lid shut loses nothing set since

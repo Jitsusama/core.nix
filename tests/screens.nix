@@ -273,6 +273,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         jitsusama.quickshell.reports = true;
+        # A caret that holds still, so a still launcher draws nothing.
+        jitsusama.quickshell.caret.fade = 0;
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
       };
       # As in the greeter test: debug lines copied to the serial console make

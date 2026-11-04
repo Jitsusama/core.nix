@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
+from desktop_session import NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -271,8 +271,7 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
         )
     )
     desktop.photograph("capture-recent")
-    desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 def test_capture_takes_a_window_found_by_its_title_on_any_workspace(desktop: Desktop) -> None:
@@ -387,8 +386,7 @@ def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
     with desktop.told("gone picker"):
         machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["captures"])
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 class Camera:
@@ -580,8 +578,7 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     desktop.capture()
     desktop.launcher_until(lambda shown: "A Region" in shown["rows"])
     assert "Stop Recording" not in desktop.showing()["rows"], desktop.showing()
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"rm {state}")
 
 
@@ -618,8 +615,7 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
     finally:
         desktop.as_account(f"rm -f {state}")
     desktop.launcher_until(lambda shown: length(shown) is None)
-    desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
@@ -639,8 +635,7 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     # The camera, then the copy.
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Built-In Camera", "Copy"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.answer("built-in camera")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     assert desktop.showing()["selected"]["side"] == "in use by chrome"

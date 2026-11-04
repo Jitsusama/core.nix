@@ -609,6 +609,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # A cursor that holds still, so two runs photograph kitty the same
         # rather than catching its fade wherever it happens to be.
         xdg.configFile."kitty/kitty.conf".text = lib.mkAfter "cursor_blink_interval 0";
+        # And the launcher's caret, for the same reason.
+        jitsusama.quickshell.caret.fade = 0;
         jitsusama.quickshell.reports = true;
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.

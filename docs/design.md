@@ -992,7 +992,7 @@ works the same way everywhere.
   something whole ("time in tokyo", "time left") is given back whole, as
   the question it is. A place lists last the typed commands whose
   answers it gives, each with its form muted ("ip ⟨address or network⟩", "time in ⟨place⟩", "⟨amount⟩
-  ⟨unit⟩ in ⟨unit⟩"), and Tab or Return on one puts its start in the
+  ⟨unit⟩ in ⟨unit⟩"), and Ctrl+Y or Return on one puts its start in the
   field, out at the top, to finish there. A command is the one row
   written as it's typed, in lowercase; every other row's name, and every
   step of the path, is in Title Case as the glossary sets it, and what an
@@ -1048,7 +1048,7 @@ works the same way everywhere.
   60. What's on the right, a kind, a chord or a count, stays in the mono.
   Inside a place, things come by importance and relation, never A to Z,
   and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
-  Tab does nothing at home, since an arrow reaches every place.
+  Tab goes to the next row, as in his Neovim's completion menu.
 - **Needs You holds only what only Joel can do, and keeps itself
   true.** Each item is raised by the session that needs him, under its
   quest, through the one tool every session uses, and is never copied
@@ -1071,9 +1071,12 @@ works the same way everywhere.
   its quest. The name says what's in it (Joel, 2026-10-30: "i don't even
   know what waiting on me means"), so its row reads as a sentence with
   its count: "Needs You · 2".
-- **Tab only completes.** It takes the grey completion the field shows, and
-  does nothing while none shows. The field says so at its right edge,
-  "⇥ complete", only then, rather than the foot, where its coming and
+- **Ctrl+Y only completes.** It takes the grey completion the field shows,
+  as his Neovim's completion menu takes its selection, and does nothing
+  while none shows; Tab moves through the rows, as that menu's does. The
+  field says so at its right edge, "Ctrl+Y complete", only then and only
+  in insert, and in normal "← clear" in the same place while something's
+  typed, rather than the foot, where its coming and
   going with each letter moved the other keys or took room from how things
   stand. Its place there is kept while anything is typed, though nothing
   shows in it, so nothing in the field moves as it comes and goes with
@@ -1091,28 +1094,23 @@ works the same way everywhere.
   room they stay alone until it ends, rather than coming and going. What's
   typed and its completion come before the aside, which says less as they
   grow.
-- **Every row is a thing with verbs.** The right arrow at the end of the line
-  steps into the selected row, so a few letters reach inside a thing from
-  anywhere: what can be done to it,
+- **Every row is a thing with verbs.** In normal mode the right arrow, or
+  l, steps into the selected row, so a few letters and Escape reach inside
+  a thing from anywhere: what can be done to it,
   searched the same way, each with its chord, and a verb needing a target
   asks for it in the same field. What was typed found the row, so stepping
   in takes it away, and everything inside shows. Where Joel is shows as
   one path in the field, each step named as the row he picked was, joined
   by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
   the one before it (the Shortcuts category's Shortcuts) is said once, so
-  it reads as a place, not as tags side by side. The left arrow takes
-  away what's typed, whole, where the field says so, "← clear" at its
-  right edge after Tab's place; what it took then stands in grey, the
-  field saying "→ restore" in the same place, and the right arrow right
-  after puts it back. Any other key lets it
-  go, and with Ctrl the left arrow moves the caret as in any field. With
-  nothing typed it steps back out,
-  putting back what was typed before with the same row selected;
-  Backspace in an empty field does the same. Escape always closes, and
-  only the launcher: the window behind never hears it. These are the
-  field's keys until its modes land, as [Vi's Keys][vi] gives them: then
-  ← and → move the caret while typing, Escape gives normal mode, and in
-  normal l and h step in and out, and Escape steps out, closing at home. The foot names
+  it reads as a place, not as tags side by side. In normal mode the left
+  arrow, h or Backspace takes away what's typed, whole, where the field
+  says so, "← clear" at its right edge; what it took then stands in grey,
+  and u right after puts it back, as vi's undo does. Any other key lets it
+  go. With nothing typed it steps back out, putting back what was typed
+  before with the same row selected. In insert the arrows move the caret,
+  as in Vim. Escape takes one step back each time (Vi's Keys), and only in
+  the launcher: the window behind never hears it. The foot names
   every key that works on the selection: what Return does, Shift+Return
   where a row opens below, and the right arrow wherever there's something
   inside, a step in as well as at the top. The arrows are said by their
@@ -1210,10 +1208,10 @@ works the same way everywhere.
   shows on Return when it holds nothing more, one holding more steps in,
   and one still being read copies nothing. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
-  grey, and Tab finishes it. A row whose name starts the same way is
+  grey, and Ctrl+Y finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
-  it, and so does the theme's nearest pigment. Return copies a sum, Tab puts
-  it in place of the question, and Return or the right arrow steps into
+  it, and so does the theme's nearest pigment. Return copies a sum, Ctrl+Y
+  puts it in place of the question, and Return or normal's right arrow steps into
   an answer with parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
   40", is an answer that does: Return sets it. The field's end says where
   an answer came from. An answer that comes to nothing says why once, as
@@ -1641,6 +1639,42 @@ modes, the launcher's field and the file picker's included.
   his Neovim's yank does; at rest, y y and y i p take the first block
   wholly in view, or its paragraph, the flash the only sign of what went.
 - **Proved by a VM test of its keys,** one for each surface, as it lands.
+
+**The launcher's query line** is Neovim's command line, its rows a buffer
+below it, as Telescope lays out its prompt over its results. Its keys are
+one table, `QueryKeys.js`.
+
+- **Insert,** where it opens: letters type and Backspace deletes; ← and →
+  move the caret, and Home and End take it to the start and the end;
+  Ctrl+W deletes the word before it and Ctrl+U everything before it; ↓ ↑,
+  Tab and Shift+Tab, and Ctrl+N and Ctrl+P go to the next row and the one
+  before, and Ctrl+Y takes the selected row's completion into the line, as
+  his Neovim's completion menu does (`modules/neovim/keys.nix`); Return
+  does the row; Escape gives normal. At the line's ends the arrows and
+  Backspace do nothing, since stepping in and out is normal's.
+- **Normal:** nothing types. → and l step into the selected row; ←, h and
+  Backspace take away what's typed, then step out a level, and u brings
+  back what they took; ↓ ↑, Tab and Shift+Tab, Page Up and Page Down move
+  through the rows, and Return does the row or steps into it, as it does
+  from insert. i, a, I and A go into insert at the caret, after it, at the
+  line's start and at its end, and cc and S clear the line first. Leaving
+  insert puts the caret one left, as Vim does.
+- **Where the keys go shows twice.** The caret is a bar a quarter of a
+  letter wide in insert and a block on a letter in normal, the letter in
+  the ground's colour, as his Neovim's guicursor draws them (`init.lua`).
+  It fades out and back in over 0.8 s each way after a key, and holds
+  steady 15 s after the last, as his kitty blinks a cursor, so a launcher
+  left still draws nothing more (`jitsusama.quickshell.caret`). The foot's
+  left names the mode in the accent, lowercase, only while it isn't
+  normal ("insert"), as his status line does (`status.lua`), before how
+  things stand.
+- **The Escape ladder.** Each Escape takes one step back: it cancels a key
+  waiting for its second (cc's first c), or leaves insert for normal; at
+  rest in normal it steps out a level, and at the level the launcher
+  opened on, home or a collection a chord opened it into, it closes it.
+  Opening always puts the line in insert, and the mode stays as it is
+  through steps in and out, but for a row that asks for words, which
+  starts in insert.
 
 Where vi meets the keys already here, each clash resolves one way:
 

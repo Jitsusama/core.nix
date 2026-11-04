@@ -1124,6 +1124,10 @@ Provider {
         launcher.into(settings.name);
         for (const path of onTheWay(start))
             launcher.enter(folderRow(path));
+        // The folder it opens in is where it opened, so normal's Escape
+        // there refuses the ask, as a dialog's Escape does, rather than
+        // climbing out through every folder on the way first.
+        launcher.openedHere();
     }
 
     // One answer: connected, said, then gone.
