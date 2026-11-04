@@ -38,6 +38,16 @@ echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
 [ -f "$here/says" ] && cat "$here/says"
 [ -f "$here/complains" ] && cat "$here/complains" >&2
+case "$2" in
+  *"nix build"*)
+    if [ -f "$here/holds-$1" ]; then
+      mkdir -p "$here/building-$1"
+      : > "$here/building-$1/$$"
+      ls "$here/building-$1" | wc -l >> "$here/at-once-$1"
+      sleep "$(cat "$here/holds-$1")"
+      rm -f "$here/building-$1/$$"
+    fi ;;
+esac
 exit "$(cat "$here/status")"
 "#;
 
@@ -2248,6 +2258,70 @@ fn a_vm_test_sent_apart_that_passed_at_a_commit_isnt_built_again() {
     assert!(
         said.contains("checks.x.vm-a passed at aaaaaaaaaaaa already"),
         "{said}"
+    );
+}
+
+// Nix's max-jobs bounds each client's build, not the builder: on 4
+// November the VM builder, told 4 at once, ran 15 VM tests, each `there`
+// run 4 of its own, and timing-sensitive ones failed. So a run waits for
+// room those still going leave, as many as the machine says, else 4.
+#[test]
+fn two_runs_send_a_vm_builder_no_more_vm_tests_at_once_than_its_room() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/vm-tests"),
+        "checks.*.vm-*\n",
+    )
+    .unwrap();
+    fs::write(bin.join("holds-nix-offload-vm"), "2").unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L", "github:o/r/abc"])
+            .args((0..4).map(|test| format!("checks.x.vm-{test}")))
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_VM_DIR", &vm)
+            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+    let runs = [run(), run()];
+    let ended: Vec<Output> = runs
+        .into_iter()
+        .map(|run| run.wait_with_output().unwrap())
+        .collect();
+    for ran in &ended {
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    }
+    let at_once = fs::read_to_string(bin.join("at-once-nix-offload-vm")).unwrap();
+    assert_eq!(
+        at_once.lines().collect::<Vec<_>>(),
+        ["1", "1"],
+        "one run's 4 at a time, at a room of 4"
+    );
+    let said: String = ended
+        .iter()
+        .map(|ran| String::from_utf8_lossy(&ran.stderr).into_owned())
+        .collect();
+    assert_eq!(
+        said.matches("so this waits for room").count(),
+        1,
+        "the second says so once: {said}"
     );
 }
 
