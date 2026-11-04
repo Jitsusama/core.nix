@@ -316,9 +316,12 @@ for other people's programs.
   hashes.
 - **Serif upright, for words to read** (Fraunces roman, weight 380, opsz 14,
   SOFT 50, WONK 0, as the reader's page sets its text): a launcher row's
-  words and notes, a notice's words, the lock's day and what it says, and
-  the words of a password prompt. It's at the name's size, on the mono's
-  baseline, so the name is found first by face, not by a second size.
+  words and notes, a notice's words, the lock's day and what it says, the
+  greeter's words and the words of a password prompt. It's at the name's
+  size, on the mono's baseline, so the name is found first by face, not by a
+  second size. A line holding a strong span (a prompt's owner, the greeter's
+  name) sits at Regular 400 with the span at SemiBold 600, since Qt's span
+  styles can't move the weight axis and Fraunces names no 380 or 500.
 - **Sans** (Mona Sans) stays only where another program draws its
   own interface: GTK and Qt programs, Spotify, GIMP and web pages that ask
   for a sans, whose layouts are built for one. Programs whose words we set
@@ -329,8 +332,6 @@ for other people's programs.
   which shrinks a glyph wider than its cell to fit it. The other Monaspace
   voices only where they mean something, such as a second voice for italics
   so comments read as handwriting, chosen by looking.
-- **Wide** (Hubot Sans Expanded) is set by nothing now. The reader's titles
-  and headings are in the serif, so it goes.
 - **Serif italic, the voice** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
   points) is the desktop's voice: what the launcher says to Joel rather than
   what he typed, such as its hint while nothing's typed and its words when

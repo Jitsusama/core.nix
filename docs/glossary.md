@@ -376,8 +376,7 @@ The words core.nix is built from. Never a launcher place.
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
 | colour | what a colour means in the theme, such as the accent | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
-| face | one of the theme's typefaces, named by its kind: mono, sans, wide, serif or script | typeface | `jitsusama.theme.font` |
-| wide face | the theme's expanded grotesque, set by nothing now | | `jitsusama.theme.font.wide` |
+| face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |
 | serif face | the theme's serif: italic, the desktop's voice, what the launcher says to Joel; upright, the words to read beside a mono name | voice face | `jitsusama.theme.font.serif`, `Theme.serif` |
 | serif text | the serif face upright at large, cut into a font of its own, for a program that can't set a variable font's axes | | `jitsusama.theme.font.serif.text`, `modules/fonts/serif-text.nix` |
 | sans face | the theme's sans-serif, only for other people's programs that draw their own interface | proportional face | `jitsusama.theme.font.sans` |
