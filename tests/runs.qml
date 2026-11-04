@@ -112,6 +112,22 @@ ShellRoot {
                         === `${root.state}/subagent-workflow/runs/fleet-live/reviewers/b/result.json`,
                 JSON.stringify(Niri.spawned));
 
+            // Made again, as each opening's reading does, a finished run's row
+            // is the one made before while nothing it says changed; only the
+            // running one's is made again, its time moving. Every opening
+            // made all of Joel's day's runs again, 279 rows, with only a few
+            // of them running (2026-11-03).
+            const before = runs.everything();
+            const counted = runs.tally.rows;
+            Sessions.running = Sessions.running.concat([{ address: "OTHER", window: { id: 10 },
+                presence: { owner: { pid: 5151 } } }]);
+            const after = runs.everything();
+            expect("a finished run's row kept", after[1] === before[1] && after[2] === before[2],
+                names(after));
+            expect("a running one's made again", after[0] !== before[0], names(after));
+            expect("one row made, for the running one", runs.tally.rows - counted === 1,
+                `${runs.tally.rows - counted} rows`);
+
             Quiet.sharing = true;
             const hidden = runs.everything();
             expect("no amount while sharing",

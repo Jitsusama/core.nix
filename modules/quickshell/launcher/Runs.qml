@@ -99,11 +99,38 @@ Provider {
         return participants.reduce((sum, p) => sum + (p.cost ?? 0), 0);
     }
 
+    // Each finished run's row as last made, by its id, with what it was
+    // made from: its record, its session and whether the screen is shared.
+    // A running one's time makes every reading's text differ, so each
+    // opening made every run's row again, 279 on Joel's shell with only a
+    // few running (2026-11-03); a finished one's row is now kept while
+    // nothing it says changed. A plain object, so keeping one notifies
+    // nothing.
+    readonly property var kept: ({})
+
     // Running first, then the newest.
-    readonly property var all: runs.slice().sort((a, b) => {
-        const live = run => Number(run.participants.some(p => running(p.state)));
-        return live(b) - live(a) || String(b.started).localeCompare(String(a.started));
-    }).map(run => made(run))
+    readonly property var all: {
+        const sorted = runs.slice().sort((a, b) => {
+            const live = run => Number(run.participants.some(p => running(p.state)));
+            return live(b) - live(a) || String(b.started).localeCompare(String(a.started));
+        });
+        const sharing = Quiet.sharing;
+        const sessions = started;
+        const next = {};
+        const rows = sorted.map(run => {
+            if (run.participants.some(p => running(p.state)))
+                return made(run);
+            const address = sessions[run.pid]?.address ?? "";
+            const from = [JSON.stringify(run), address, sharing].join("\n");
+            const before = provider.kept[run.id];
+            next[run.id] = before && before.from === from ? before : { from: from, row: made(run) };
+            return next[run.id].row;
+        });
+        for (const id of Object.keys(provider.kept))
+            delete provider.kept[id];
+        Object.assign(provider.kept, next);
+        return rows;
+    }
     onAllChanged: changedTo(all)
 
     function named(run) {
