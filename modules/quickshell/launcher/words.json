@@ -3003,6 +3003,16 @@
       "name": "Fitting the Page"
     },
     {
+      "id": "shortcuts:zathura:finding",
+      "in": "shortcuts",
+      "name": "Finding Words"
+    },
+    {
+      "id": "shortcuts:zathura:places",
+      "in": "shortcuts",
+      "name": "Places"
+    },
+    {
       "id": "shortcuts:mpv:seeking",
       "in": "shortcuts",
       "name": "Seeking"

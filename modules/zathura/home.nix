@@ -23,9 +23,22 @@
 #
 # Its keys speak the keyboard's language: Left and Right turn the pages and
 # Up and Down scroll, Tab goes back to the place used last (a link followed,
-# a search, the first page) and again returns, Space finds words, C opens the
-# contents, and ? shows its keys in the launcher, over its window. Vim's keys
-# stay as zathura has them, j and k among them, unlisted.
+# a search, the first page) and again returns, C opens the contents, and
+# Space ? shows its keys in the launcher, over its window, as in Joel's
+# Neovim. Vim's keys are zathura's own, as his Vim has them, and listed
+# beside the arrow or the key each twins: j and k scroll as Down and Up do,
+# h and l sideways, J and K turn the pages as Page Down and Page Up do, gg
+# and G go to the first and the last as Home and End do, a count before G
+# to that page, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a
+# screen, / and ? find on and back and n and N again, m and ' mark a place
+# and go back to it, and Ctrl+O and Ctrl+I go back and on along the jumps.
+# ]b and [b open the next document in its folder and the one before, by
+# name, as Vim's go between buffers (next-document/). Left and Right turn
+# pages rather than scroll sideways, as Joel chose, so h and l twin
+# nothing. Space scrolls no more, since it leads, which a patch lets it.
+#
+# A key waiting for its second isn't shown, as Neovim's showcmd would: what
+# zathura waits on shows only in its bar, which it keeps hidden.
 #
 # Comic book archives are left out: that plugin also claims folders and
 # zip, tar and 7z archives, which would open in zathura.
@@ -49,16 +62,27 @@ let
 
   # zathura's jumplist goes back and forward, but only Ctrl+O and Ctrl+I
   # each go one way, so a patch lets one key toggle between the last two.
+  # Space never joins what zathura waits on, so a patch lets it lead a
+  # buffered command, Space ?. A number before a key that runs a command
+  # ran it once, so a patch has it run that many times, as 3]b does.
   core = plugins.zathura_core.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./jumplist-toggles.patch ];
+    patches = (old.patches or [ ]) ++ [
+      ./exec-repeats.patch
+      ./jumplist-toggles.patch
+      ./space-leads.patch
+    ];
   });
+  next-document = lib.getExe (pkgs.callPackage ./next-document/package.nix { });
 
   # Every key worth knowing: the chord as niri spells it, what it
   # does, and, where it isn't zathura's own already, what zathura is told to
   # do on it (`run`), on its key as zathura spells one (`key`). The
   # launcher lists them over zathura's window: those that go through the
   # document as Turning pages, those that size the page as Fitting the
-  # page, and the rest loose.
+  # page, those that go back to a place as Places, the searches as Finding
+  # words, and the rest loose. Keys that do one thing say it in the same
+  # words, the arrow first, so the launcher draws them as one row, the
+  # letter beside the arrow it twins. keys-test.sh presses each.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "turning" [
@@ -73,6 +97,10 @@ let
         does = "The previous page";
       }
       {
+        chord = "Shift+k";
+        does = "The previous page";
+      }
+      {
         chord = "Right";
         key = "<Right>";
         run = "navigate next";
@@ -83,7 +111,15 @@ let
         does = "The next page";
       }
       {
+        chord = "Shift+j";
+        does = "The next page";
+      }
+      {
         chord = "Home";
+        does = "The first page";
+      }
+      {
+        chord = "g g";
         does = "The first page";
       }
       {
@@ -91,12 +127,55 @@ let
         does = "The last page";
       }
       {
+        chord = "Shift+g";
+        does = "The last page";
+      }
+      # Any number before G, five drawn for them all.
+      {
+        chord = "5 Shift+g";
+        does = "That page";
+      }
+      {
         chord = "Up";
+        does = "Up a little";
+      }
+      {
+        chord = "k";
         does = "Up a little";
       }
       {
         chord = "Down";
         does = "Down a little";
+      }
+      {
+        chord = "j";
+        does = "Down a little";
+      }
+      {
+        chord = "h";
+        does = "Left a little";
+      }
+      {
+        chord = "l";
+        does = "Right a little";
+      }
+      {
+        chord = "Ctrl+u";
+        # Not the reader's words for its Ctrl+U, since the launcher lists
+        # every program's keys together, one row for each.
+        does = "Half a screen up";
+      }
+      {
+        chord = "Ctrl+d";
+        does = "Half a screen down";
+      }
+      {
+        chord = "Ctrl+b";
+        does = "Up a screen";
+      }
+      {
+        chord = "Ctrl+f";
+        does = "Down a screen";
       }
     ]
     ++ grouped "fitting" [
@@ -119,7 +198,7 @@ let
         does = "The page's width in view";
       }
     ]
-    ++ [
+    ++ grouped "places" [
       {
         chord = "Tab";
         key = "<Tab>";
@@ -127,18 +206,54 @@ let
         does = "The place used last";
       }
       {
-        chord = "Space";
-        key = "<Space>";
-        run = ''focus_inputbar "/"'';
-        does = "Find words in it";
+        chord = "Ctrl+o";
+        does = "Back along the jumps";
+      }
+      {
+        chord = "Ctrl+i";
+        does = "On along the jumps";
+      }
+      {
+        chord = "m";
+        does = "Mark a place, go back to it";
+      }
+      {
+        chord = "'";
+        does = "Mark a place, go back to it";
+      }
+    ]
+    ++ grouped "finding" [
+      {
+        chord = "slash";
+        does = "Find words in the document";
+      }
+      {
+        chord = "Shift+slash";
+        does = "Find words going back";
       }
       {
         chord = "n";
-        does = "The next match";
+        does = "The next words found";
       }
       {
         chord = "Shift+n";
-        does = "The match before";
+        does = "The words found before";
+      }
+    ]
+    ++ [
+      # As Vim's ]b and [b go between buffers, $DBUS the window, whose
+      # zathura says what it shows.
+      {
+        chord = "bracketright b";
+        key = "]b";
+        run = ''exec "${next-document} next $DBUS"'';
+        does = "The next document in its folder";
+      }
+      {
+        chord = "bracketleft b";
+        key = "[b";
+        run = ''exec "${next-document} previous $DBUS"'';
+        does = "The document before in its folder";
       }
       {
         chord = "c";
@@ -150,9 +265,10 @@ let
         chord = "Ctrl+r";
         does = "As printed, or in the theme";
       }
+      # Space, then ?, as zathura spells a buffered command.
       {
-        chord = "Shift+slash";
-        key = "?";
+        chord = "space Shift+slash";
+        key = ''" ?"'';
         run = ''exec "launcher-say collection shortcuts"'';
         does = "The document's keys";
       }
@@ -254,6 +370,11 @@ in
       selection-clipboard = "clipboard";
       window-title-basename = true;
     };
+    # Space leads rather than scrolls, and Shift+Space with it.
+    extraConfig = ''
+      unmap <Space>
+      unmap <S-Space>
+    '';
     # The contents close on the key that opened them, as on Escape.
     mappings =
       lib.listToAttrs (map (key: lib.nameValuePair key.key key.run) (lib.filter (key: key ? run) keys))
