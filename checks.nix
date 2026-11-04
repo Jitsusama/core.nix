@@ -884,11 +884,11 @@ gather (
           over = [
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
             "tests/desktop/desktop-launcher-answers-vm-test.py 22"
-            "tests/desktop/desktop-launcher-goes-places-vm-test.py 113"
+            "tests/desktop/desktop-launcher-goes-places-vm-test.py 114"
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
-            "tests/desktop/desktop-says-what-happens-vm-test.py 37"
+            "tests/desktop/desktop-says-what-happens-vm-test.py 38"
             "tests/desktop/desktop-starts-clean-vm-test.py 28"
-            "tests/screens-vm-test.py 34"
+            "tests/screens-vm-test.py 36"
             "tests/vm/guide/guide-install-vm-test.py 26"
             "tests/wifi-vm-test.py 40"
           ];
