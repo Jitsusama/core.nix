@@ -852,6 +852,16 @@ Singleton {
         const going = reopening;
         going.settling = false;
         reopenSettling.stop();
+        // Sessions handed over meanwhile are reopened first, and this is
+        // done once they're placed too: dropped here, they never opened
+        // (2026-11-04, a second spawn 0.7 s after the first).
+        if (going.waiting !== null || going.looking)
+            return;
+        if (going.queue.length > 0) {
+            if (!reopenPacing.running)
+                reopenSoon();
+            return;
+        }
         root.putBackOpen();
         arranging.restart();
         // Only when a session reopened moved it: one another session
@@ -935,6 +945,9 @@ Singleton {
             told })).sort(order);
         if (reopening !== null) {
             reopening.queue = reopening.queue.concat(queue);
+            // Settled again once these are placed too, beside the rest.
+            reopening.settling = false;
+            reopenSettling.stop();
             if (reopening.waiting === null && !reopening.looking && !reopenPacing.running)
                 reopenSoon();
             return;
