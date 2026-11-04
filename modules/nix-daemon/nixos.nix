@@ -143,13 +143,15 @@ in
     # virtiofsd forwards each as syncfs() of the host's whole filesystem,
     # read-only shares too. On btrfs each one commits a transaction, which
     # every program's saves then wait behind: 133 of 160 commits in ten
-    # minutes of VM checks came from there. Answered ENOSYS, the guest's
-    # FUSE stops asking, and a check's files are thrown away anyway. A
-    # build's `sync -f` fails with "Function not implemented"; sync, fsync
-    # and fdatasync still work, and Nix itself calls no syncfs(). A test
-    # run straight from its driver runs outside the daemon, so core's VM
-    # tests also start virtiofsd through without-syncfs (checks.nix).
-    SystemCallFilter = [ "~syncfs:ENOSYS" ];
+    # minutes of VM checks came from there. It's answered as done without
+    # being run, and a check's files are thrown away anyway. Answered
+    # ENOSYS, as until 4 November, a build's `sync -f` failed with "Function
+    # not implemented", and with it 2 tests of a Rust crate whose shims
+    # sync. sync, fsync and fdatasync still run, and Nix itself calls no
+    # syncfs(). A test run straight from its driver runs outside the daemon,
+    # so core's VM tests also start virtiofsd through without-syncfs
+    # (checks.nix).
+    SystemCallFilter = [ "~syncfs:0" ];
   };
 
   systemd.services.vm-first = {
