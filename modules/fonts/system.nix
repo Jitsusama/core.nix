@@ -10,11 +10,16 @@ let
     mkdir -p $out/share/fonts/truetype
     ln -s ${pkgs.fraunces}/share/fonts/truetype/*'[SOFT,WONK,opsz,wght].ttf' $out/share/fonts/truetype/
   '';
-  # The script face's families alone, rather than every script Noto draws,
-  # which would be a gigabyte of fonts nothing names; its CJK family comes
-  # in a package of its own.
+  # The script face's families and cuts alone, rather than every script
+  # Noto draws, which would be a gigabyte of fonts nothing names; its CJK
+  # cuts come in packages of their own, sans and serif.
+  named =
+    let
+      face = import ../theme/scripts.nix;
+    in
+    lib.unique (face.families ++ lib.attrValues face.serif ++ lib.attrValues face.mono);
   scripts = pkgs.noto-fonts.override {
-    variants = lib.filter (family: !lib.hasInfix "CJK" family) (import ../theme/scripts.nix);
+    variants = lib.filter (family: !lib.hasInfix "CJK" family) named;
   };
 in
 {
@@ -24,6 +29,7 @@ in
     pkgs.nerd-fonts.monaspace
     pkgs.nerd-fonts.victor-mono
     pkgs.noto-fonts-cjk-sans
+    pkgs.noto-fonts-cjk-serif
     scripts
     serif
   ];

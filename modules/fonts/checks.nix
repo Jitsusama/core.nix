@@ -126,7 +126,8 @@ onLinux {
   # and not the machine's default sans, which they fell back to before.
   # English, the locale's, is asked for too, as a program's fallback asks
   # for it, since a face that covers it would otherwise outrank the script
-  # face.
+  # face. Each cut a surface names for one script, beside the serif face or
+  # the mono one, is installed under that name and has its script's letter.
   the-scripts-are-the-script-faces =
     let
       inherit ((account graphical).fonts.fontconfig) configFile;
@@ -147,6 +148,20 @@ onLinux {
             "4e2d"
           ] script.families
         );
+      letters = {
+        hebrew = "05d0";
+        arabic = "0627";
+        # Simplified Chinese's "we", which Japanese doesn't write.
+        chinese = "4eec";
+        # Hiragana's "a".
+        japanese = "3042";
+      };
+      cut = name: family: ''
+        fc-list -f '%{family[0]}\n' ${lib.escapeShellArg ":family=${family}:charset=${letters.${name}}"} > cut
+        echo ${lib.escapeShellArg "${name} cut ${family}"}: "$(sort -u cut | tr '\n' ' ')"
+        test -s cut
+      '';
+      cuts = faces: lib.concatStrings (lib.mapAttrsToList cut faces);
     in
     withFontconfig "the-scripts-are-the-script-faces" (
       ''
@@ -166,6 +181,8 @@ onLinux {
         mono
         serif
       ]
+      + cuts script.serif
+      + cuts script.mono
     );
 
   # Asked for a Mac's system font or its monospaced one by any name a page

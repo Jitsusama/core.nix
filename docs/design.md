@@ -343,8 +343,12 @@ for other people's programs.
   line Monaspace would, aligned by baseline.
 - **Script** (Noto Sans Hebrew, Noto Naskh Arabic, Noto Sans CJK) draws the
   letters the other faces lack, script by script, such as a calendar's date
-  in its own script. No surface names it: a letter missing from the face a
-  surface names comes from it, before any other font.
+  in its own script. A letter missing from the face a surface names comes
+  from it, before any other font. Words a surface knows are in one script
+  name that script's cut beside their face, `Theme.script.serif.hebrew` or
+  `Theme.script.mono.chinese`: serif cuts beside Fraunces, sans beside
+  Monaspace, and Chinese in its own cut, since a fallback would give its
+  Han the Japanese forms.
 - **Numbers are typography too.** Tabular figures wherever a number changes
   in place, so it never jiggles; units set smaller than the number; the same
   precision for the same quantity everywhere.

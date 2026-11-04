@@ -1736,7 +1736,8 @@
   '';
   the-scripts-are-the-script-faces = ''
     a letter of Hebrew, Arabic or CJK asked for in any of the theme's faces is drawn from the
-    script face's family for that script, not DejaVu Sans
+    script face's family for that script, not DejaVu Sans, and each cut named for one script beside
+    the serif or mono face is installed and has that script's letter
   '';
   the-serif-is-its-variable-files = ''
     asked for the theme's serif face, the machine's fontconfig lists its two variable files and no

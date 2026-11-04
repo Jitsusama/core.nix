@@ -697,11 +697,28 @@ in
         families = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           # scripts.nix says which and why.
-          default = import ./scripts.nix;
+          default = (import ./scripts.nix).families;
           description = ''
             The script face, one family a script, for the scripts the theme's
             own faces lack: a letter none of them has is drawn from these, in
             turn, before any other font the machine has.
+          '';
+        };
+        serif = lib.mkOption {
+          type = lib.types.attrsOf lib.types.str;
+          default = (import ./scripts.nix).serif;
+          description = ''
+            The script face's cut to set beside the serif face, by script
+            (hebrew, arabic, chinese, japanese), for words a surface knows
+            are in that script, such as a calendar's date in its own.
+          '';
+        };
+        mono = lib.mkOption {
+          type = lib.types.attrsOf lib.types.str;
+          default = (import ./scripts.nix).mono;
+          description = ''
+            The script face's cut to set beside the mono face, by script, as
+            `font.script.serif` is beside the serif.
           '';
         };
       };
