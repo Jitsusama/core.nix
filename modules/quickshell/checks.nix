@@ -189,7 +189,9 @@ let
       inherit name;
       # Away only after an hour, since nobody types here but the check.
       away = 3600;
+      # foot gives the launcher windows to find, drawn without a GPU.
       inputs = [
+        pkgs.foot
         pkgs.wl-clipboard
         pkgs.wtype
       ];

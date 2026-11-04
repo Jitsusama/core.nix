@@ -1,8 +1,8 @@
 """The desktop test's launcher draws still area.
 
-Here the launcher draws only what changes: a list scrolled, a selection, a long name, a burst
-of changes. That it draws nothing at all left still is proven on a nested niri, in
-tests/launcher-on-niri-test.py.
+Here the launcher draws only what changes: a list scrolled, a burst of changes, the foot's facts
+and marks. That it draws nothing left still, glides a selection only by the arrows, draws it on
+its row and reads on a long name is proven on a nested niri, in tests/launcher-on-niri-test.py.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -340,108 +340,6 @@ def test_the_launcher_loses_no_letter_typed_straight_after_its_chord(desktop: De
     )
 
 
-def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(desktop: Desktop) -> None:
-    """Letters typed in a list scrolled down leave the selection drawn on its selected row.
-
-    Rows coming or going above a scrolled list move where the list's rows start, and the
-    selection drawn from the top stayed where its row had been, under another.
-    """
-    machine = desktop.machine
-    windows = [desktop.opened(f"Fill {at:02}") for at in range(1, 13)]
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("fill")
-    desktop.launcher_until(
-        lambda shown: {f"Fill {at:02}" for at in range(1, 13)} <= set(shown["rows"])
-    )
-    drift = []
-    typed = "fill"
-    # Each a letter added or taken away, so rows above the selection go or
-    # come back.
-    for change in [" 1", "", " 0", " ", " 1"]:
-        # Down to the last row, so the list is scrolled.
-        shown = desktop.showing()
-        below = len(shown["rows"]) - 1 - shown["rows"].index(shown["selected"]["name"])
-        for _ in range(below):
-            machine.send_key("down")
-        desktop.launcher_until(lambda shown: shown["selected"]["name"] == shown["rows"][-1])
-        wanted = f"fill{change}"
-        while not wanted.startswith(typed):
-            machine.send_key("backspace")
-            typed = typed[:-1]
-        machine.send_chars(wanted[len(typed) :])
-        typed = wanted
-        desktop.launcher_until(
-            lambda shown: (
-                shown["typed"] == typed  # noqa: B023
-                and (shown["selected"] or {"settled": True})["settled"]
-            )
-        )
-        selection = laid_out(desktop)["selection"]
-        if selection and selection["y"] != selection["row"]:
-            drift.append((typed, selection))
-    assert not drift, f"the selection was drawn off its row: {drift}"
-    launcher_closed(desktop)
-    for window in windows:
-        desktop.close(window)
-
-
-def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
-    """A name too long for its row slides to show its end while selected, and only it moves."""
-    machine = desktop.machine
-    title = (
-        "Edgewise notes, and a title that runs on well past the edge of the launcher row"
-        " as the title of a web page often does"
-    )
-    long = desktop.opened(title)
-    short = desktop.opened("Edgewise")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("edgewise")
-    desktop.launcher_until(lambda shown: {title, "Edgewise"} <= set(shown["rows"]))
-    desktop.down_to(title)
-
-    def selected_words() -> list[Json]:
-        """Give the words the selected row draws, with where each is."""
-        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-        return next(row["words"] for row in laid["rows"] if row["selected"])
-
-    def named(words: list[Json], name: str = title) -> Json:
-        # A row not selected draws its name with the letters typed brought
-        # forward, as styled text, so its tags are set aside.
-        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == name)
-
-    # Where every name starts, read from the short one, which never moves:
-    # the long one may already be on its way, selected as the rows came.
-    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-    start = next(
-        named(row["words"], "Edgewise")["x"]
-        for row in laid["rows"]
-        if row["reads"].startswith("Edgewise \u00b7")
-    )
-    first = selected_words()
-    rest = sorted((word["text"], word["x"]) for word in first if word["text"] != title)
-
-    def slid(_: bool) -> bool:
-        words = selected_words()
-        # Whatever else the row says holds still while its name moves.
-        others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
-        assert others == rest, words
-        return int(named(words)["x"]) < int(start)
-
-    retry(slid, timeout=dt.timedelta(seconds=30))
-    # Given up by the selection, it's back at its start at once.
-    machine.send_key("up" if desktop.showing()["rows"].index(title) > 0 else "down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
-    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-    row = next(row for row in laid["rows"] if row["reads"].startswith(title))
-    assert named(row["words"])["x"] == start, row
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
-    desktop.close(long)
-    desktop.close(short)
-
-
 # About as many people as Tuple lists on Joel's machine, said anew every
 # 0.3 s to load the shell as Slack's answers do People.
 CROWD_LOAD = 8000
@@ -646,34 +544,6 @@ def moved(before: Json, after: Json) -> list[str]:
         if was and (was["is"], was["reads"]) == (row["is"], row["reads"]):
             compare(f"row {row['at']} ({row['reads']})", was["words"], row["words"])
     return shifts
-
-
-def test_the_selection_glides_to_its_row_and_typing_never_glides(desktop: Desktop) -> None:
-    """An arrow glides the selection to its row; a letter, making rows afresh, never does."""
-    machine = desktop.machine
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("o")
-    # A row to glide from and one to glide to.
-    desktop.launcher_until(lambda shown: len(shown["rows"]) > 1)
-    since = desktop.mark()
-    machine.send_key("down")
-
-    def down_a_row(rest: str) -> bool:
-        start, _, end = rest.split()
-        return int(end) > int(start)
-
-    desktop.reported("glides ", down_a_row, since)
-    since = desktop.mark()
-    machine.send_chars("u")
-    desktop.launcher_until(lambda shown: shown["typed"] == "ou")
-    said = desktop.as_account(
-        "journalctl --user --unit=quickshell --no-pager --output=cat"
-        f" --after-cursor={shlex.quote(since)} | grep -a glides || true"
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert said.strip() == "", f"the selection glided as a letter made the rows: {said}"
 
 
 def test_the_pointer_over_the_rows_never_moves_the_selection(desktop: Desktop) -> None:

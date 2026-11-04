@@ -1442,7 +1442,8 @@
     and asks before they act, draws nothing closed as a minute turns though it says the new time
     as it opens, draws nothing left open and still, its caret steady, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
-    letters found, and warns of nothing it drew
+    letters found, glides the selection to its row by the arrows only and draws it on its row as
+    rows above it change, reads on a long name while it's selected, and warns of nothing it drew
   '';
   the-launcher-asks-a-fresh-pi = ''
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
@@ -2061,10 +2062,9 @@
     and put it back
   '';
   vm-desktop-launcher-draws-still = ''
-    the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, the
-    selection glides to its row and stays drawn on it, a long name reads on while selected, a burst
-    of changes is taken together, no letter typed after its chord is lost, and nothing moves unless
-    it changes
+    the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, a
+    burst of changes is taken together, no letter typed after its chord is lost, the pointer never
+    moves the selection, and nothing moves unless it changes
   '';
   vm-desktop-launcher-finds-sessions = ''
     the launcher finds pi's sessions and quests and goes to their windows, talks to an orchestrator
