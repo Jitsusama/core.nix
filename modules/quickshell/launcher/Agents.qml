@@ -179,8 +179,9 @@ Provider {
             drawer: () => provider.drawerOf(session, quest, spent, family)
         });
         // Itself as it reads ranked flat: at no depth, whom it's under
-        // leading its note.
-        row.flat = () => Object.assign({}, row, {
+        // leading its note. It isn't named flat, which Quickshell's
+        // JavaScript would read as the arrays' method it lacks.
+        row.ranked = () => Object.assign({}, row, {
             depth: 0,
             note: [under, noted].filter(part => part !== "").join(" \u00b7 ")
         });
@@ -310,7 +311,7 @@ Provider {
         const grade = Math.min(3, ...found.map(f => f.grade));
         const kept = found.filter(f => f.grade === grade).sort((a, b) => b.score - a.score);
         // Ranked, each reads flat, at no depth (the header says why).
-        return { rows: kept.map(f => f.row.flat ? f.row.flat() : f.row), grade: grade };
+        return { rows: kept.map(f => f.row.ranked ? f.row.ranked() : f.row), grade: grade };
     }
 
     // Starting a session, Agents' own last row, after the sessions running

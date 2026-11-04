@@ -125,9 +125,9 @@ Provider {
                 name: one.short || one.title || one.address,
                 glyph: Theme.glyph[stands === "needs" ? "waitsOnJoel" : "agent"],
                 stands: stands,
-                // A list of orchestrators is no tree, so it has no flat
+                // A list of orchestrators is no tree, so it has no ranked
                 // reading of its own, which would be the agent's row.
-                flat: null,
+                ranked: null,
                 verbs: () => (inside ? inside() : []).concat(provider.talksOf(one.address))
             });
         const row = member({

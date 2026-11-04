@@ -1180,10 +1180,13 @@ onLinux {
         property var running: Array.from({ length: 120 },
           (_, at) => ({ address: "A" + String(at).padStart(3, "0") }))
         property var present: ({})
+        function asks(session) { return false; }
         function resume(id, quest, folder, gone) {}
         function start(quest, folder) {}
         function sayUnopened(title, body) {}
       '';
+      waiting = singleton "WaitingOnYou.qml" "readonly property var standing: ({})";
+      jobs = singleton "Jobs.qml" "readonly property var jobs: []";
       delivered = words: ''{"stage":"delivered","at":"2026-10-29T10:00:00Z","text":"${words}"}'';
     in
     pkgs.runCommandLocal "the-launcher-reads-talks-boundedly" { } ''
@@ -1201,11 +1204,14 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Orchestrators.qml} launcher/Orchestrators.qml
+      cp ${./launcher/SessionRow.js} launcher/SessionRow.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
+      cp ${waiting} WaitingOnYou.qml
+      cp ${jobs} Jobs.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
