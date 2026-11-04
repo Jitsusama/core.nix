@@ -23,7 +23,7 @@ use dictation::parakeet::Parakeet;
 use dictation::transcript::{self, Line, Side, markdown};
 
 use crate::Settings;
-use crate::book::{Record, SUMMARY, Shared, TRANSCRIPT, write_whole};
+use crate::book::{self, Record, SUMMARY, Shared, TRANSCRIPT, write_whole};
 use crate::summary::Summed;
 use crate::{notices, said, summary};
 
@@ -326,24 +326,31 @@ fn resumed(book: &Shared, key: &str) -> Writing {
     }
 }
 
-/// Writes a call's transcript whole, and says in its record where it is
-/// and whether it's still being written.
+/// Writes a call's transcript whole, and says in its record where it is,
+/// how it opens and whether it's still being written.
 fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool) {
     let mut book = book.lock();
     let Some(record) = book.record(key).cloned() else {
         return;
     };
     let file = record.folder.join(TRANSCRIPT);
-    if !lines.is_empty()
-        && let Err(why) = write_whole(&file, &markdown(lines, me))
-    {
-        eprintln!("call-transcripts: writing {}: {why}", file.display());
-        return;
+    let mut opening = record.opening.clone();
+    if !lines.is_empty() {
+        let written = markdown(lines, me);
+        if let Err(why) = write_whole(&file, &written) {
+            eprintln!("call-transcripts: writing {}: {why}", file.display());
+            return;
+        }
+        opening = book::opening(&written);
     }
     let transcript = file.exists().then_some(file);
-    if record.transcript != transcript || record.transcribing != transcribing {
+    if record.transcript != transcript
+        || record.transcribing != transcribing
+        || record.opening != opening
+    {
         book.put(Record {
             transcript,
+            opening,
             transcribing,
             ..record
         });

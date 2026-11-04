@@ -6,8 +6,10 @@
 //! calendar event, `call:person:<address>:<started>` for a Tuple call, by
 //! who it's with, or `call:at:<started>` for a call with neither; its
 //! fields are the title, when it started and ended (null while it's on),
-//! the event or person, its folder, its transcript's path once there's one, its summary
-//! once written, and whether it's being transcribed. Each call's folder
+//! the event or person, its folder, its transcript's path once there's one, how the
+//! transcript opens (its first few paragraphs, so the launcher can show
+//! them without reading the folder), its summary once written, and
+//! whether it's being transcribed. Each call's folder
 //! holds a meta.json saying what isn't in its files, so the calls are read
 //! back as the daemon starts, and only then: the shell never reads the
 //! folder.
@@ -35,6 +37,36 @@ pub const TRANSCRIPT: &str = "transcript.md";
 /// The summary's file in a call's folder.
 pub const SUMMARY: &str = "summary.md";
 
+/// How many of the transcript's paragraphs its opening holds, and how many
+/// characters at most: enough to tell one call from another in the
+/// launcher's drawer, and few enough that the record stops changing once
+/// the call is a minute or two in.
+const OPENING_PARAGRAPHS: usize = 4;
+const OPENING_CHARACTERS: usize = 400;
+
+/// How a transcript opens: its first few paragraphs after its heading, as
+/// markdown, cut at a word once it's long; none while nothing's said.
+pub fn opening(transcript: &str) -> Option<String> {
+    let said: Vec<&str> = transcript
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|paragraph| !paragraph.is_empty() && !paragraph.starts_with('#'))
+        .take(OPENING_PARAGRAPHS)
+        .collect();
+    if said.is_empty() {
+        return None;
+    }
+    let whole = said.join("\n\n");
+    if whole.chars().count() <= OPENING_CHARACTERS {
+        return Some(whole);
+    }
+    let cut: String = whole.chars().take(OPENING_CHARACTERS).collect();
+    let kept = cut
+        .rfind(char::is_whitespace)
+        .map_or(cut.as_str(), |at| &cut[..at]);
+    Some(format!("{}\u{2026}", kept.trim_end()))
+}
+
 /// One call.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
@@ -46,6 +78,7 @@ pub struct Record {
     pub person: Option<String>,
     pub folder: PathBuf,
     pub transcript: Option<PathBuf>,
+    pub opening: Option<String>,
     pub summary: Option<String>,
     pub transcribing: bool,
 }
@@ -65,8 +98,8 @@ impl Record {
         json!({
             "key": self.key, "kind": KIND, "title": self.title, "started": self.started,
             "ended": self.ended, "event": self.event, "person": self.person,
-            "folder": self.folder, "transcript": self.transcript, "summary": self.summary,
-            "transcribing": self.transcribing,
+            "folder": self.folder, "transcript": self.transcript, "opening": self.opening,
+            "summary": self.summary, "transcribing": self.transcribing,
         })
     }
 
@@ -92,6 +125,9 @@ impl Record {
                 .and_then(|since| u64::try_from(since.as_millis()).ok())
         };
         let transcript = folder.join(TRANSCRIPT);
+        let opening = std::fs::read_to_string(&transcript)
+            .ok()
+            .and_then(|text| opening(&text));
         Some(Self {
             key: meta["key"].as_str()?.to_owned(),
             title: meta["title"].as_str().unwrap_or_default().to_owned(),
@@ -101,6 +137,7 @@ impl Record {
             person: meta["person"].as_str().map(str::to_owned),
             folder: folder.to_owned(),
             transcript: transcript.exists().then_some(transcript),
+            opening,
             summary: std::fs::read_to_string(folder.join(SUMMARY)).ok(),
             transcribing: false,
         })
@@ -229,6 +266,7 @@ mod tests {
             person: None,
             folder: folder.join(key),
             transcript: None,
+            opening: None,
             summary: None,
             transcribing: true,
         }
@@ -263,18 +301,50 @@ mod tests {
         let mut book = Book::default();
         let mut record = call(folder.path(), "call:e1", 10);
         book.put(record.clone());
-        std::fs::write(record.folder.join(TRANSCRIPT), "# Transcript\n").unwrap();
+        std::fs::write(
+            record.folder.join(TRANSCRIPT),
+            "# Transcript\n\n**Joel**, 0:00: Can we move it?\n",
+        )
+        .unwrap();
         let read = Book::read(folder.path());
         let back = read.record("call:e1").unwrap();
         assert!(back.ended.is_some(), "the daemon stopped during it");
         assert!(!back.transcribing);
         assert_eq!(back.transcript, Some(record.folder.join(TRANSCRIPT)));
+        assert_eq!(
+            back.opening.as_deref(),
+            Some("**Joel**, 0:00: Can we move it?")
+        );
         record.ended = Some(99);
         book.put(record);
         assert_eq!(
             Book::read(folder.path()).record("call:e1").unwrap().ended,
             Some(99)
         );
+    }
+
+    #[test]
+    fn an_opening_is_the_first_paragraphs_cut_at_a_word() {
+        assert_eq!(opening("# Transcript\n"), None);
+        let said = "# Transcript\n\n**Joel**, 0:00: Hi.\n\n**Others**, 0:02: Hello.\n";
+        assert_eq!(
+            opening(said).as_deref(),
+            Some("**Joel**, 0:00: Hi.\n\n**Others**, 0:02: Hello.")
+        );
+        let many: Vec<String> = (0..9)
+            .map(|n| format!("**Joel**, 0:0{n}: Line {n}."))
+            .collect();
+        assert_eq!(
+            opening(&format!("# Transcript\n\n{}", many.join("\n\n")))
+                .unwrap()
+                .matches("**Joel**")
+                .count(),
+            OPENING_PARAGRAPHS
+        );
+        let long = format!("# Transcript\n\n**Others**, 0:00: {}", "word ".repeat(200));
+        let cut = opening(&long).unwrap();
+        assert!(cut.chars().count() <= OPENING_CHARACTERS + 1, "{cut}");
+        assert!(cut.ends_with("word\u{2026}"), "{cut}");
     }
 
     #[test]
