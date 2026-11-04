@@ -29,6 +29,26 @@ words machine, role, module, hardware, identity and account have one
 meaning each; [docs/glossary.md][15] defines them, and every other thing's
 name. A name for something new comes from it, or is added to it.
 
+## Where a Case Is Proven
+
+Checks follow [The Pyramid][16] in docs/testing.md, and every case goes in
+its lowest tier that can show it, as [Earning a Check][17] says. Read both
+before adding a test.
+
+- Logic is proven in Qt's own engine or offscreen Quickshell, over cases in
+  `tests/`, in under a second each ([The Desktop's Logic][18]). A view that
+  works something out moves it into a `.js` beside it, where they reach it.
+- What the desktop does on niri that needs no system service, a surface
+  landing as niri's layer or what a bind runs, is proven on a nested niri in
+  the build sandbox, in seconds ([The Desktop on niri][19]).
+- A VM test proves wiring alone: one path through each connection, a unit
+  starting with its config or a key reaching niri's binds
+  ([Virtual Machines][20]). Its many cases go in the tiers above.
+- A VM test past about two minutes or twenty subtests splits by area.
+  `every-vm-test-keeps-to-the-pyramid` fails on one that grows past twenty,
+  and the few past it today may only shrink.
+- A check that repeats another's signal goes.
+
 ## Rules
 
 - Every connection must be followable by opening files. Name each new module,
@@ -84,10 +104,10 @@ everything once, before pushing, never after each edit:
 
 | Changed         | While editing, in seconds                         | Before pushing             |
 | --------------- | ------------------------------------------------- | -------------------------- |
-| Shell logic     | its own check, `quickshell-passes-qmllint`        | the VM tests it changes    |
-| A shell surface | `shell-preview`, `quickshell-passes-qmllint`, `run-subtests` | its `vm-desktop-<area>`, `shots-changed` |
+| Shell logic     | its case in Qt's engine or offscreen, `quickshell-passes-qmllint` | `changed-checks`, `run-subtests` on the subtests that reach it |
+| A shell surface | `shell-preview`, its nested-niri check, `run-subtests` | the `vm-desktop-<area>` it's in, `shots-changed` on its gallery |
 | A Rust crate    | `cargo test`, then `<crate>-passes-clippy`        | its VM test, if any        |
-| A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the VM tests it changes |
+| A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the galleries it changes, `shots-changed` |
 | The kernel      | `kernel-settings-hold-<model>`                    | the machine's kernel       |
 | A module        | `example-nixos`, `example-laptop`, `example-darwin` |                          |
 | Any script      | `nix fmt`, its own check                          |                            |
@@ -150,3 +170,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [13]: modules/quickshell/AGENTS.md
 [14]: modules/spend-watch/AGENTS.md
 [15]: docs/glossary.md
+[16]: docs/testing.md#the-pyramid
+[17]: docs/testing.md#earning-a-check
+[18]: docs/testing.md#the-desktops-logic
+[19]: docs/testing.md#the-desktop-on-niri
+[20]: docs/testing.md#virtual-machines

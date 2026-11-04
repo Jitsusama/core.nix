@@ -303,7 +303,9 @@ picture caught before its state was drawn is a fault in the test instead.
 - A VM test past about two minutes, or twenty subtests, splits by area, each
   part carrying only the stand-ins its area needs, so a change reruns only
   the part it touches. Each subtest sets up what it needs and leaves nothing
-  behind, so it can run alone.
+  behind, so it can run alone. `every-vm-test-keeps-to-the-pyramid` fails on
+  one past twenty subtests; those past it already are listed in `checks.nix`
+  with their counts, which may only fall.
 - A check that only repeats another one's signal goes.
 - A new module is evaluated by the examples once a role or another module
   imports it. One that nothing imports goes into an example.
