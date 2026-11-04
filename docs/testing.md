@@ -208,11 +208,11 @@ whose names hold the words given, in under half a minute for one desktop
 subtest, boot included:
 
 ```sh
-run-subtests vm-desktop-launcher-goes-places                   # list its subtests
-run-subtests vm-desktop-launcher-goes-places "opens kitty"     # run those named
-run-subtests -I vm-desktop-launcher-goes-places "opens kitty"  # then a Python prompt
-run-subtests -K vm-desktop-launcher-goes-places "opens kitty"  # keep the disks for next time
-run-subtests --there vm-desktop-launcher-goes-places "opens kitty"  # all of it on the builder
+run-subtests vm-desktop-launcher-moves-windows                   # list its subtests
+run-subtests vm-desktop-launcher-moves-windows "opens kitty"     # run those named
+run-subtests -I vm-desktop-launcher-moves-windows "opens kitty"  # then a Python prompt
+run-subtests -K vm-desktop-launcher-moves-windows "opens kitty"  # keep the disks for next time
+run-subtests --there vm-desktop-launcher-moves-windows "opens kitty"  # all of it on the builder
 ```
 
 With `--there`, nix-offload builds the flake's

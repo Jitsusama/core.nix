@@ -8,6 +8,7 @@ says what the test proves. Each area asks for a `Desktop` as a fixture, made onc
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import re
 import shlex
@@ -17,6 +18,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
+import pytest
 import test_driver.machine
 import vm_helpers
 from PIL import Image, ImageStat
@@ -940,3 +942,129 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.wait_until_succeeds(self.in_session(f"test -e {exited}"), timeout=timeout)
         assert self.as_account(f"cat {exited}").strip() == str(code)
         assert self.as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer") == answer
+
+
+# What the launcher's areas share: the harness's files they write, Google's stand-in, and how
+# they read what the launcher draws.
+HARNESS = "~/.local/state/pi/agentic-harness.pi"
+# How long a window may take to start the stand-in pi. The first zsh in the fresh test machine
+# makes its completion dump before running anything, and under the builder's load that has
+# kept a window's shell busy past a minute, so a subtest run on its own waited it out.
+SHELL_STARTS = timedelta(seconds=120)
+INBOX = f"{HARNESS}/steer/TESTQA"
+
+
+def lighthouse_listed(desktop: Desktop) -> None:
+    """List Lighthouse as an orchestrator, as the harness would, its inbox empty."""
+    listed = {
+        "orchestrators": [
+            {"quest": "QEST-20261022-TESTQA", "address": "TESTQA", "short": "Lighthouse",
+             "title": "Keep the lighthouse lit"},
+        ]
+    }  # fmt: skip
+    desktop.as_account(
+        f"mkdir -p {HARNESS}/quest-workflow && echo '{json.dumps(listed)}'"
+        f" > {HARNESS}/quest-workflow/.o && mv {HARNESS}/quest-workflow/.o"
+        f" {HARNESS}/quest-workflow/orchestrators.json && rm -rf {INBOX}"
+    )
+
+
+def started_apart(desktop: Desktop, since: str, said: str) -> list[float]:
+    """Give the seconds between each journal line of the shell's saying `said`, since a mark.
+
+    The first is zero, so there's one for every line.
+    """
+    lines = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=short-unix"
+        f" --after-cursor={shlex.quote(since)}"
+    ).splitlines()
+    times = [float(line.split()[0]) for line in lines if said in line]
+    return [0.0] + [later - sooner for sooner, later in itertools.pairwise(times)]
+
+
+@pytest.fixture
+def google(desktop: Desktop) -> Iterator[None]:
+    """Start the stand-in Google afresh for one test, and stop it after.
+
+    Its meetings are timed from when it starts, so one left running would come to start during
+    a later test, wanting Joel in Now and said as a notice.
+    """
+    desktop.as_account("systemctl --user restart google.service")
+    yield
+    desktop.as_account("systemctl --user stop google.service")
+
+
+def now_rows(desktop: Desktop) -> Json:
+    """Open the launcher on Now, and give what it shows once it holds Now's rows."""
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now"] and shown["selected"])
+    return desktop.showing()
+
+
+def repeating(said: Json) -> str:
+    """Say each row the walk found whose drawer would only repeat it, one a line."""
+    # Joel, 2026-10-29: "we should never show the side panel when it is
+    # just repeating the currently selected text". A drawer says more with
+    # a fact, a picture, or words that aren't the row's name, side or note.
+    return "\n".join(
+        drawer["in"]
+        for drawer in cast("list[Json]", said["drawers"])
+        if drawer["facts"] == 0
+        and not drawer["picture"]
+        and all(words in ("", *drawer["row"]) for words in (drawer["title"], drawer["body"]))
+    )
+
+
+# Where the agents keep what waits on Joel.
+MISSION = "$HOME/.local/state/mission"
+
+
+def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
+    """Write a file the agents keep, whole, as they do."""
+    desktop.as_account(
+        f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}"
+    )
+
+
+def launcher_closed(desktop: Desktop) -> None:
+    """Close the launcher with Escape, and wait until it's gone."""
+    desktop.machine.send_key("esc")
+    desktop.machine.wait_until_fails(
+        desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10)
+    )
+
+
+def laid_out(desktop: Desktop) -> Json:
+    """Give where the launcher draws each word, once two reads in a row agree."""
+    was = None
+    for _ in range(20):
+        now = cast("Json", json.loads(desktop.as_account("qs ipc call launcher laidOut")))
+        if now == was:
+            return now
+        was = now
+    return cast("Json", was)
+
+
+def drawn_held_still(desktop: Desktop) -> int:
+    """Count the frames the open launcher draws in three seconds left still.
+
+    What the last key moved draws first: its glide, and a drawer it opened, which a loaded guest
+    draws slowly, so the count begins once a second passes with no frame, or after ten. A
+    launcher that keeps drawing, as a blinking caret would, never settles, and is counted
+    anyway. The foot's clock may turn its minute in the three seconds, once.
+    """
+
+    def frames() -> int:
+        return int(desktop.as_account("qs ipc call launcher frames"))
+
+    began = frames()
+    settling = time.monotonic() + 10
+    while time.monotonic() < settling:
+        time.sleep(1)
+        settled, began = began, frames()
+        if began == settled:
+            break
+    time.sleep(3)
+    return frames() - began

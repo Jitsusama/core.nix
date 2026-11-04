@@ -300,6 +300,30 @@ let
       inherit self pkgs;
       area = "launcher-goes-places";
     };
+    vm-desktop-launcher-finds-sessions = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-finds-sessions";
+    };
+    vm-desktop-launcher-waits-on-joel = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-waits-on-joel";
+    };
+    vm-desktop-launcher-holds-meetings = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-holds-meetings";
+    };
+    vm-desktop-launcher-reads-mail = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-reads-mail";
+    };
+    vm-desktop-launcher-moves-windows = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-moves-windows";
+    };
+    vm-desktop-launcher-draws-still = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-draws-still";
+    };
     vm-desktop-launcher-answers = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "launcher-answers";
@@ -884,7 +908,6 @@ gather (
           over = [
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
             "tests/desktop/desktop-launcher-answers-vm-test.py 22"
-            "tests/desktop/desktop-launcher-goes-places-vm-test.py 114"
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
             "tests/desktop/desktop-says-what-happens-vm-test.py 38"
             "tests/desktop/desktop-starts-clean-vm-test.py 28"

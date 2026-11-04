@@ -2032,22 +2032,45 @@
     emoji in their own place, and takes the weather's here from where whereabouts says the laptop
     is
   '';
+  vm-desktop-launcher-draws-still = ''
+    the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, the
+    selection glides to its row and stays drawn on it, a long name reads on while selected, a burst
+    of changes is taken together, no letter typed after its chord is lost, and nothing draws while
+    it's left still
+  '';
+  vm-desktop-launcher-finds-sessions = ''
+    the launcher finds pi's sessions and quests and goes to their windows, talks to an orchestrator
+    through its inbox, and reopens the sessions a boot took away, each where it sat, in the agents'
+    slice
+  '';
   vm-desktop-launcher-goes-places = ''
-    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting about to start by its name, lists it in Now, counts one within the hour down as a
-    want, marked from ten minutes off and said at its reminder and as it starts, shows one further
-    off with who's asked and how each answered, its details beside it, answers its invitation,
-    writes to its guests, copies its call's link and opens its attachments, cancels one Joel holds
-    once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
-    its Meet call in Now while it's open, says Google signed out in Now with Return signing in again
-    in pi, counts the mail that wants Joel in Now with Return listing it as Mail does, details and
-    all, opens mail by its subject, keeping one Mail window, replies to it, and to all on mail that
-    went to others too, flips its Read switch both ways, archives it, and opens a file it carries or
-    saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
-    its title finds, joins a Meet call by its code after Meet's New Meeting and copies a new
-    meeting's link last, finds a person by name with the ways to reach them, their next meeting,
-    their Recent and their address last, and steps to them from a meeting's guests and a mail's
-    sender, sets the volume, loses no letter typed after its chord, and shows the shortcuts
+    the launcher's home lists what to browse, its catalogue opens places and does actions, a detail
+    inside a thing is found from the root, programs' acts are found by name, every row has a
+    Return act, the volume is set to a number, and an opening is traced to the collector
+  '';
+  vm-desktop-launcher-holds-meetings = ''
+    a meeting about to start is found by its name and joined, Now lists today's and counts one
+    within the hour down, said at its reminder and as it starts; one further off shows who's asked,
+    is answered, written to, cancelled or moved once Joel's sure, its link copied and its attachments
+    opened; Google signed out wants a sign-in, the transcripts list each call written down and
+    open it in the reader, and Meet joins a call by its code
+  '';
+  vm-desktop-launcher-moves-windows = ''
+    the launcher opens kitty and learns it was meant, frames the focused window, switches to and
+    moves windows by their titles, Super+Tab goes back to the window before, and Super+Shift shows
+    every layer's shortcuts
+  '';
+  vm-desktop-launcher-reads-mail = ''
+    Now counts the mail and the Slack that want Joel, mail opens by its subject in one Mail window,
+    is replied to, marked read, archived and its files fetched; Slack's program holds its unread,
+    a person is found with the ways to reach them, Docs lists what Joel opened lately, and Search
+    Slack ends a search, asking Slack once on Return
+  '';
+  vm-desktop-launcher-waits-on-joel = ''
+    Now leads with what waits on Joel and Needs You holds only what's true, a session wanting him
+    waits as the session, its notice going to it and going read once it stops waiting; the agents
+    list every session from the shell's start and hold still as one changes, and pi's runs are
+    found
   '';
   vm-desktop-looks = ''
     on the laptop's screen at 1.5 and at 2, the launcher's drawer takes the room beside the card,
