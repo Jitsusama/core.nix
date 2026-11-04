@@ -721,7 +721,11 @@ def test_agents_reopens_a_session_another_machine_carried_here(desktop: Desktop)
 
 
 def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -> None:
-    """The shell takes the sessions the harness hands it, answering at once, and reopens each."""
+    """The shell takes the sessions the harness hands it, answering at once, and reopens each.
+
+    One handed over as the one before it had just opened was dropped, as the shell settled where
+    that one sat, and never opened (2026-11-04, a second spawn 0.7 s after the first).
+    """
     opened = "$XDG_RUNTIME_DIR/pi-opened"
     handed = "$XDG_RUNTIME_DIR/handed.json"
     desktop.as_account(f"rm -f {opened} && mkdir -p ~/quay")
@@ -746,7 +750,29 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
     said = desktop.as_account(f"cat {opened}").split("\n")
     # The harness says for itself what a session it hands over is to do.
     assert said[1:] == ["--session", "01b2-quay", ""], said
-    desktop.as_account(f"rm -rf {opened} {handed} ~/quay")
+    desktop.as_account(f"rm -rf {opened} {handed}")
+    # A second handed over the moment the first's window shows, in one shell on the machine so
+    # it lands while the shell settles the first, and not a command's round trip later.
+    ahead = {"sessions": [{"id": "01b2-ahead", "cwd": "/home/jitsusama/quay"}]}
+    behind = {"sessions": [{"id": "01b2-behind", "cwd": "/home/jitsusama/quay"}]}
+    shown = "niri msg --json windows | grep -q 'pi --session 01b2-{}'"
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays")
+    try:
+        answers = desktop.machine.succeed(
+            desktop.in_session(
+                f"qs ipc call sessions reopen {shlex.quote(json.dumps(ahead))}"
+                f" && until {shown.format('ahead')}; do sleep 0.02; done"
+                f" && qs ipc call sessions reopen {shlex.quote(json.dumps(behind))}"
+            ),
+            timeout=300,
+        ).split()
+        assert answers == ["taken", "taken"], answers
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(shown.format("behind")), timeout=dt.timedelta(seconds=60)
+        )
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+        desktop.as_account("rm -rf ~/quay")
 
 
 def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Desktop) -> None:
