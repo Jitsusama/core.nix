@@ -358,13 +358,15 @@ for other people's programs.
   `jitsusama.theme.type`, so every surface draws from the same few steps. The
   ratio is a major third, 1.25, from a 10.5 point body. Only some powers are
   used, so every step taken reads: a surface that seems to need a size
-  between two of them needs a weight or a colour instead.
+  between two of them needs a weight or a colour instead. No level of the
+  shell's takes section; it's kept for the reader's page.
 
   | Step    | Power | Size (pt) |
   | ------- | ----- | --------- |
   | small   | -1    | 8.4       |
   | body    | 0     | 10.5      |
   | large   | 1     | 13.1      |
+  | section | 2     | 16.4      |
   | title   | 3     | 20.5      |
   | display | 6     | 40.1      |
   | hero    | 8     | 62.6      |
