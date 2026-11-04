@@ -7,8 +7,11 @@
 // fails here rather than on screen. The time is told with tzdata's zones
 // kept beside it, a character with Unicode's names, a network with no
 // lookups, and Waits reads what lag-watch would write. Currency names its
-// parts by the currencies alone, so it builds no id to check. It exits 0
-// once every case holds, and otherwise 1, saying which case didn't.
+// parts by the currencies alone, so it builds no id to check. The time
+// here and the date share no part, since the clock is Time's and the
+// calendar Date's (VKCF3Z's ruling, 2026-10-30: "Nothing repeats"). It
+// exits 0 once every case holds, and otherwise 1, saying which case
+// didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -114,5 +117,13 @@ ShellRoot {
                 shown.slice().sort().join(", ") === named.slice().sort().join(", "),
                 `${shown.join(", ")}, not ${named.join(", ")}`);
         }
+        const parts = said => said.rows.map(row => row.name);
+        const clock = parts(clocks.answer("time"));
+        const calendar = parts(today.answer("date"));
+        expect("the time here holds no date", !clock.includes(Words.name("time:day")),
+            clock.join(", "));
+        expect("the time here and the date share no part",
+            !clock.some(name => calendar.includes(name)),
+            clock.filter(name => calendar.includes(name)).join(", "));
     }
 }
