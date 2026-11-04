@@ -44,7 +44,7 @@ on() { [ "$(page)" = "$1" ]; }
 until_true "the first page" on 0
 
 ends=0
-until wtype -k End && waits 300 on 5; do
+until wtype -k Return -k End && waits 300 on 5; do
   ends=$((ends + 1))
   if [ "$ends" -ge 6 ]; then never "End to the last page"; fi
 done
