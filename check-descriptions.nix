@@ -1212,7 +1212,9 @@
     goes back to its base when a queue outlasts half a minute of cuts; live, it answers what a
     replay of the same recorded lines does, read as the day files grow and across midnight, for
     the link the recorder names, and lets the link go unlimited when the recorder falls silent or
-    begins a new stay
+    begins a new stay; and on sixteen simulated lines, clean and rough, from a known base, none or a
+    wrong one, it holds the review's bar against the same line unshaped: a p95 delay of 100 ms or
+    half the unshaped one, 75% of each way carried, and no direction under half 30 s longer
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
