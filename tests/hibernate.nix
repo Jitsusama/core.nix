@@ -81,8 +81,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # frozen mid-word. A hibernation the tests make roll back keeps it,
       # since the shell only freezes and thaws with everything else, and a
       # new one would leave the driver reading its greeting as an answer.
-      powerManagement.powerDownCommands = "[ -e /run/rolls-back ] || systemctl --no-block stop backdoor.service";
-      powerManagement.resumeCommands = "[ -e /run/rolls-back ] || systemctl --no-block restart backdoor.service";
+      powerManagement.powerDownCommands = ''
+        [ -e /run/rolls-back ] || systemctl --no-block stop backdoor.service
+      '';
+      powerManagement.resumeCommands = ''
+        [ -e /run/rolls-back ] || systemctl --no-block restart backdoor.service
+      '';
       # systemd-sleep tells the kernel where the swap file is before it runs
       # the hooks, so taking the file away here leaves the kernel nowhere
       # to write the image.
