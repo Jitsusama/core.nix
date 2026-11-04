@@ -308,6 +308,63 @@ def test_the_launcher_left_still_draws_nothing(shell: Shell) -> None:
     assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
+def searched(shell: Shell) -> int:
+    """Give how many searches of what's typed the launcher has run."""
+    return int(shell.as_account(shell.ipc("searched")).strip())
+
+
+def typed_at_once(shell: Shell, typing: str) -> None:
+    """Type with wtype while the shell is frozen, so every key reaches it in one turn of its loop.
+
+    A program's keys come together, but a busy sandbox can space them out a search apart, which
+    would leave nothing to show; held in the shell's socket until it goes on, they come at once.
+    """
+    with shell.frozen():
+        shell.as_account(f"wtype {typing}")
+
+
+def test_text_typed_at_once_is_searched_once(shell: Shell) -> None:
+    """Text a program types at once is searched for its newest letters, not once a letter."""
+    # Its first letter alone selects Windows, and the word a workspace, so a report said partway
+    # through its search selects the wrong row.
+    word = "workspace"
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = searched(shell)
+    since = shell.mark()
+    typed_at_once(shell, word)
+    seen: list[str] = []
+
+    def whole(said: str) -> bool:
+        shown = json.loads(said)
+        if shown["typed"] != word:
+            return False
+        seen.append((shown["selected"] or {}).get("name", ""))
+        return True
+
+    shell.reported("showing ", whole, since)
+    searches = searched(shell) - before
+    assert searches < len(word), f"{len(word)} letters typed at once took {searches} searches"
+    # Said as a frame can draw it, the text comes with what it found, never partway through
+    # the search, the letters there and the rows still those before them.
+    settled = (shell.showing()["selected"] or {}).get("name", "")
+    assert settled, f"{word!r} found nothing, so it can't tell a report said partway"
+    shell.send_key("esc")
+    shell.launcher_closed()
+    assert seen == [settled], f"the launcher said {word!r} selecting {seen}, not {settled!r}"
+
+
+def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
+    """Return typed at once with the text acts on the row the text found, never one before it."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    # Found before its letters, Return would step into the first row at home, Now.
+    typed_at_once(shell, "'needs you' -k Return")
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
+    shell.send_key("esc")
+    shell.launcher_closed()
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

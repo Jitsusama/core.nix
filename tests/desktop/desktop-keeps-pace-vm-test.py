@@ -4,9 +4,9 @@ Here the launcher keeps pace with the keys while the machine is busy. Every core
 account's jobs.slice and in build.slice, where a workstation's agents and builds run, and each key
 is timed from the moment a stand-in keyboard pressed it to the first frame the launcher drew for
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
-those under load are held against the others, so the builder's own load slows both alike. Text a
-program types at once keeps pace too: it's searched once, not once a letter, and a Return among it
-acts on what it found.
+those under load are held against the others, so the builder's own load slows both alike. That
+text a program types at once is searched once, and a Return among it acts on what it found, is
+proven on a nested niri, in tests/launcher-on-niri-test.py.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
@@ -283,70 +283,6 @@ class Timing:
             f"one key in twenty of the middle turn under load took over {turn_tail:.0f} ms to "
             f"its frame, against {turn_tail_free:.0f} ms with the load frozen"
         )
-
-
-def searched(desktop: Desktop) -> int:
-    """Give how many searches of what's typed the launcher has run."""
-    return int(desktop.as_account("qs ipc call launcher searched").strip())
-
-
-def typed_at_once(desktop: Desktop, typing: str) -> None:
-    """Type with wtype while the shell is frozen, so every key reaches it in one turn of its loop.
-
-    A program's keys come together, but a busy machine can space them out a search apart, which
-    would leave nothing to show; held in the shell's socket until it thaws, they come at once.
-    """
-    desktop.as_account("systemctl --user freeze quickshell")
-    try:
-        desktop.as_account(f"wtype {typing}")
-    finally:
-        desktop.as_account("systemctl --user thaw quickshell")
-
-
-def test_text_typed_at_once_is_searched_once(desktop: Desktop) -> None:
-    """Text a program types at once is searched for its newest letters, not once a letter."""
-    # Its first letter alone selects Windows, and the word a workspace, so a report said partway
-    # through its search selects the wrong row.
-    word = "workspace"
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    try:
-        before = searched(desktop)
-        since = desktop.mark()
-        typed_at_once(desktop, word)
-        seen: list[str] = []
-
-        def whole(said: str) -> bool:
-            shown = json.loads(said)
-            if shown["typed"] != word:
-                return False
-            seen.append((shown["selected"] or {}).get("name", ""))
-            return True
-
-        desktop.reported("showing ", whole, since)
-        searches = searched(desktop) - before
-        assert searches < len(word), f"{len(word)} letters typed at once took {searches} searches"
-        # Said as a frame can draw it, the text comes with what it found, never partway
-        # through the search, the letters there and the rows still those before them.
-        settled = (desktop.showing()["selected"] or {}).get("name", "")
-        assert settled, f"{word!r} found nothing, so it can't tell a report said partway"
-        assert seen == [settled], f"the launcher said {word!r} selecting {seen}, not {settled!r}"
-    finally:
-        desktop.machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
-
-
-def test_return_typed_with_the_text_acts_on_what_it_found(desktop: Desktop) -> None:
-    """Return typed at once with the text acts on the row the text found, never one before it."""
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    try:
-        # Found before its letters, Return would step into the first row at home, Now.
-        typed_at_once(desktop, "'needs you' -k Return")
-        desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
-    finally:
-        desktop.machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
 
 
 @pytest.mark.usefixtures("keyboard", "loaded")
