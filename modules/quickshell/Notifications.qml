@@ -598,7 +598,8 @@ Scope {
 
         // Where the front card is drawn, as a fraction of the screen across
         // and down, for a test to click on it, since no photograph says
-        // where a card without a coloured mark is; and what it's signed.
+        // where a card without a coloured mark is; and what it's signed,
+        // the glyph it wears and that glyph's hue.
         function front(): string {
             const card = cards.itemAt(server.trackedNotifications.values
                 .findIndex(one => one.id === root.shown[0])) as Floating;
@@ -607,8 +608,11 @@ Scope {
                 return "{}";
             const at = card.mapToItem(null, 0, 0);
             const left = screen.width - window.width + at.x;
+            const from = Notices.sender(root.front.appName);
             return JSON.stringify({
-                signed: Notices.sender(root.front.appName).name,
+                signed: from.name,
+                glyph: String.fromCodePoint(from.glyph),
+                hue: from.hue,
                 left: left / screen.width,
                 top: at.y / screen.height,
                 right: (left + card.width) / screen.width,

@@ -52,6 +52,10 @@ BESIDE_THE_MIDDLE = 2
 # The scales Joel's screens are drawn at, as niri spells them.
 JOELS_SCALES = ("1.5", "2")
 
+# The theme's glyph for a call, a handset (modules/theme/glyphs.nix), as the shell's front card
+# says the glyph it wears.
+CALL_GLYPH = "\U000f03f2"
+
 # How long the same wait lasts before the VM's margin marks it, in seconds,
 # as tests/desktop.nix sets the Lag piece's `lasts`.
 LAG_LASTS = 3600
@@ -452,6 +456,31 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.as_account("qs ipc call notices seen")
     desktop.as_account("niri msg output winit scale 1")
+
+
+def test_a_notice_from_calls_is_signed_as_a_call_and_wears_a_calls_glyph(desktop: Desktop) -> None:
+    """A notice call-transcripts sends is signed Calls, in a call's glyph and a person's hue.
+
+    Calls is the name its notices go by (notices.rs); unknown, a notice is signed by its own
+    name but wears the bell any program's would, in a program's hue.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    with desktop.told("shows card Standup Is Written Down"):
+        desktop.as_account(
+            "notify-send --app-name=Calls --hint=string:x-answers:call --expire-time=60000"
+            " --action=default='Open the Transcript' -- 'Standup Is Written Down'"
+            " 'Its transcript is in its folder.' > /dev/null 2>&1 < /dev/null &"
+        )
+    front = json.loads(desktop.as_account("qs ipc call notices front"))
+    assert (front.get("signed"), front.get("glyph"), front.get("hue")) == (
+        "Calls",
+        CALL_GLYPH,
+        "person",
+    ), f"Calls' notice is {front}"
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
+    desktop.as_account("qs ipc call notices seen")
 
 
 def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(

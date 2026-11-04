@@ -92,6 +92,14 @@ Singleton {
             glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true,
             name: "Camera"
         },
+        // A call being written down, or written (call-transcripts'
+        // notices.rs), a call's as Tuple's are, since each is about a
+        // call with others. Each says itself whether it answers what Joel
+        // is doing, so it's never missed.
+        "calls": {
+            glyph: Words.glyph("notices:calls").codePointAt(0), hue: "person",
+            name: Words.name("notices:calls")
+        },
         // A meeting about to start (Starting.qml), with others in it.
         "calendar": {
             glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true,
