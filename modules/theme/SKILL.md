@@ -175,6 +175,12 @@ constrain".
   in every way that makes sense" (2026-11-04). Every list and text box has
   vi's modes, a field opening in insert; every app of ours reads its keys
   from one key language, checked, as docs/design.md's Vi's Keys says.
+- **A sans-serif without class.** Of Mona Sans on the launcher's rows: "I
+  don't like seeing sans-serif fonts in the launcher, the current one feels
+  so out of place. like if the sans serif has some more class to it maybe,
+  but generally, not a fan of sans-serif" (2026-11-04). His non-monospace
+  is the serif: nothing of ours sets a sans unless it earns it, beating
+  Fraunces and Monaspace side by side in shots at 1.5 and 2.
 - **Polish that changes nothing he'd feel.** "i think you do have some
   general improvements here, but the UI still doesn't feel materially
   changed. what actually has impacted your design choices? you don't seem

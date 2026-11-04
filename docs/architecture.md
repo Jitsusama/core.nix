@@ -181,7 +181,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.theme.colours.*`        | what each colour means: text, muted, accent, alert       |
 | `jitsusama.theme.terminal.*`       | the terminal's own colours and its sixteen ANSI ones     |
 | `jitsusama.theme.shades`           | eight colours from the background to the brightest text  |
-| `jitsusama.theme.font.*`           | the monospaced and proportional faces, and their sizes   |
+| `jitsusama.theme.font.*`           | the faces by kind (mono, serif, sans), and their sizes   |
 | `jitsusama.theme.shape.*`          | the border, corners and gaps every surface shares        |
 | `jitsusama.theme.appearance`       | dark or light, as the desktop tells programs and sites   |
 | `jitsusama.theme.icons`            | the Yaru icon theme programs draw icons from             |
