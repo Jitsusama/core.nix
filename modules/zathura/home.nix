@@ -239,18 +239,18 @@ let
       }
     ]
     ++ [
-      # As Vim's ]b and [b go between buffers, $DBUS the window and $FILE
-      # what it shows.
+      # As Vim's ]b and [b go between buffers, $DBUS the window, whose
+      # zathura says what it shows.
       {
         chord = "bracketright b";
         key = "]b";
-        run = ''exec "${next-document} next $DBUS $FILE"'';
+        run = ''exec "${next-document} next $DBUS"'';
         does = "The next document in its folder";
       }
       {
         chord = "bracketleft b";
         key = "[b";
-        run = ''exec "${next-document} previous $DBUS $FILE"'';
+        run = ''exec "${next-document} previous $DBUS"'';
         does = "The document before in its folder";
       }
       {

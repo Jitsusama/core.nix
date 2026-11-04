@@ -1,29 +1,36 @@
 //! zathura's `]b` and `[b`: the next or the previous document in the folder of the one a
 //! zathura shows, by name, as Vim's go between buffers, coming round at either end.
 //!
-//! zathura has no such command, so its keys run this, given which way, the window's bus
-//! name (`$DBUS`) and the document it shows (`$FILE`), and this asks that zathura to open
-//! the one it chose, at the place zathura remembers for it.
+//! zathura has no such command, so its keys run this, given which way and the window's
+//! bus name (`$DBUS`). It asks that zathura what it shows, and asks it to open the one
+//! beside, at the place zathura remembers for it.
 //!
-//! Usage: `zathura-next-document next|previous BUS DOCUMENT`
+//! Usage: `zathura-next-document next|previous BUS`
 //!
-//! A number before the key runs this that many times at once, each given the same
-//! document, so each waits its turn on a lock and goes on from where the one before it
-//! went: a file of the window's says what the last was given and what it opened, and one
-//! given that same document again starts from the one opened.
+//! A number before the key runs this that many times at once. zathura answers a request to
+//! open before it opens, so each run waits its turn on a lock and holds it until zathura
+//! shows what it asked for, and the next goes on from there.
 
 use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 use std::{env, io};
 
-/// What this answers when it isn't given its three words.
+/// What this answers when it isn't given its two words.
 const MISUSED: u8 = 2;
 
 /// What this answers when there's nothing to open, or zathura couldn't be asked.
 const FAILED: u8 = 1;
+
+/// How long zathura may take to show a document, the one it has or the one asked for.
+const PATIENCE: Duration = Duration::from_secs(10);
+
+/// How often zathura is asked what it shows while it opens one.
+const EVERY: Duration = Duration::from_millis(50);
 
 /// The kinds of document zathura's `MuPDF` plugin opens, by the end of their names.
 const OPENS: [&str; 6] = ["cbz", "epub", "fb2", "oxps", "pdf", "xps"];
@@ -40,19 +47,15 @@ enum Way {
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
-    let [way, bus, document] = arguments.as_slice() else {
-        eprintln!("Usage: zathura-next-document next|previous BUS DOCUMENT");
-        return ExitCode::from(MISUSED);
-    };
-    let way = match way.as_str() {
-        "next" => Way::Next,
-        "previous" => Way::Previous,
+    let way = match arguments.as_slice() {
+        [way, _] if way == "next" => Way::Next,
+        [way, _] if way == "previous" => Way::Previous,
         _ => {
-            eprintln!("Usage: zathura-next-document next|previous BUS DOCUMENT");
+            eprintln!("Usage: zathura-next-document next|previous BUS");
             return ExitCode::from(MISUSED);
         }
     };
-    match went(way, bus, Path::new(document)) {
+    match went(way, &arguments[1]) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("zathura-next-document: {error}");
@@ -61,16 +64,12 @@ fn main() -> ExitCode {
     }
 }
 
-/// Opens the document `way` of `document` in the zathura on `bus`, in turn with any other
+/// Opens the document `way` of the one the zathura on `bus` shows, in turn with any other
 /// run for the same window.
-fn went(way: Way, bus: &str, document: &Path) -> io::Result<()> {
-    let kept = kept_for(bus)?;
-    let lock = File::create(kept.with_extension("lock"))?;
+fn went(way: Way, bus: &str) -> io::Result<()> {
+    let lock = File::create(lock_for(bus)?)?;
     lock.lock()?;
-    let from = match fs::read_to_string(&kept) {
-        Ok(last) => went_on_from(&last, document),
-        Err(_) => document.to_path_buf(),
-    };
+    let from = awaited(bus, |_| true)?;
     let folder = from.parent().unwrap_or(Path::new("."));
     let names = documents_in(folder)?;
     let name = from.file_name().unwrap_or_default();
@@ -82,30 +81,72 @@ fn went(way: Way, bus: &str, document: &Path) -> io::Result<()> {
     };
     let chosen = folder.join(chosen);
     opened(bus, &chosen)?;
-    fs::write(
-        &kept,
-        format!("{}\n{}\n", document.display(), chosen.display()),
-    )?;
+    awaited(bus, |shown| shown == chosen)?;
     Ok(())
 }
 
-/// Where the window on `bus` keeps what its last run was given and opened.
-fn kept_for(bus: &str) -> io::Result<PathBuf> {
+/// The lock the runs for the window on `bus` take in turn.
+fn lock_for(bus: &str) -> io::Result<PathBuf> {
     let runtime =
         env::var_os("XDG_RUNTIME_DIR").ok_or_else(|| io::Error::other("no XDG_RUNTIME_DIR"))?;
     let folder = Path::new(&runtime).join("zathura-next-document");
     fs::create_dir_all(&folder)?;
-    Ok(folder.join(bus.replace('/', "_")))
+    Ok(folder.join(format!("{}.lock", bus.replace('/', "_"))))
 }
 
-/// Where a run given `document` goes on from, after the last run kept `last`: the one it
-/// opened when it was given the same document, else the document itself.
-fn went_on_from(last: &str, document: &Path) -> PathBuf {
-    let mut lines = last.lines();
-    match (lines.next(), lines.next()) {
-        (Some(given), Some(opened)) if Path::new(given) == document => PathBuf::from(opened),
-        _ => document.to_path_buf(),
+/// The document the zathura on `bus` shows, once it shows one `wanted` is true of.
+fn awaited(bus: &str, wanted: impl Fn(&Path) -> bool) -> io::Result<PathBuf> {
+    let started = Instant::now();
+    loop {
+        if let Some(shown) = showing(bus)?
+            && wanted(&shown)
+        {
+            return Ok(shown);
+        }
+        if started.elapsed() > PATIENCE {
+            return Err(io::Error::other(format!(
+                "zathura on {bus} showed no document it was to"
+            )));
+        }
+        thread::sleep(EVERY);
     }
+}
+
+/// The document the zathura on `bus` shows, if any: none while it opens one.
+fn showing(bus: &str) -> io::Result<Option<PathBuf>> {
+    let answer = Command::new(env!("GDBUS"))
+        .args(["call", "--session", "--dest", bus, "--object-path"])
+        .args(["/org/pwmt/zathura", "--method"])
+        .args([
+            "org.freedesktop.DBus.Properties.Get",
+            "org.pwmt.zathura",
+            "filename",
+        ])
+        .stderr(Stdio::null())
+        .output()?;
+    if !answer.status.success() {
+        return Ok(None);
+    }
+    Ok(filename_in(&String::from_utf8_lossy(&answer.stdout)).map(PathBuf::from))
+}
+
+/// The name in gdbus's answer for the `filename` property, as `(<'/d/a.pdf'>,)`, or none
+/// when it's empty. `GVariant` quotes a string holding `'` in `"` instead.
+fn filename_in(answer: &str) -> Option<String> {
+    let after = &answer[answer.find('<')? + 1..];
+    let mut characters = after.chars();
+    let quote = characters
+        .next()
+        .filter(|first| *first == '\'' || *first == '"')?;
+    let mut name = String::new();
+    while let Some(character) = characters.next() {
+        match character {
+            '\\' => name.push(characters.next()?),
+            ended if ended == quote => return Some(name).filter(|name| !name.is_empty()),
+            _ => name.push(character),
+        }
+    }
+    None
 }
 
 /// The documents zathura opens in `folder`, by name.
@@ -166,7 +207,7 @@ fn opened(bus: &str, document: &Path) -> io::Result<()> {
         .args(["--method", "org.pwmt.zathura.OpenDocument", "--"])
         .arg(quoted(&document.to_string_lossy()))
         .args(["''", REMEMBERED])
-        .stdout(std::process::Stdio::null())
+        .stdout(Stdio::null())
         .status()?;
     if status.success() {
         Ok(())
@@ -237,21 +278,25 @@ mod tests {
     }
 
     #[test]
-    fn a_run_given_the_same_document_goes_on_from_the_one_opened() {
-        let last = "/d/a.pdf\n/d/b.pdf\n";
+    fn the_name_shown_is_read_from_gdbus() {
         assert_eq!(
-            went_on_from(last, Path::new("/d/a.pdf")),
-            PathBuf::from("/d/b.pdf")
+            filename_in("(<'/d/a.pdf'>,)\n"),
+            Some("/d/a.pdf".to_owned())
         );
     }
 
     #[test]
-    fn a_run_given_another_document_starts_from_it() {
-        let last = "/d/a.pdf\n/d/b.pdf\n";
+    fn a_name_holding_a_quote_is_read_from_its_double_quotes() {
         assert_eq!(
-            went_on_from(last, Path::new("/d/b.pdf")),
-            PathBuf::from("/d/b.pdf")
+            filename_in("(<\"/d/it's \\\"a\\\".pdf\">,)\n"),
+            Some("/d/it's \"a\".pdf".to_owned())
         );
+    }
+
+    #[test]
+    fn no_name_while_nothing_is_shown() {
+        assert_eq!(filename_in("(<''>,)\n"), None);
+        assert_eq!(filename_in(""), None);
     }
 
     #[test]
