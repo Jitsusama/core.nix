@@ -1702,6 +1702,11 @@ in
                   // lib.mapAttrs (_: builtins.fromJSON) type.serif
                 )
               }
+              // The script face's cut for words known to be in one script, by
+              // the face beside it and the script, as script.serif.hebrew: Qt
+              // falls back by script, not language, so Chinese is drawn in its
+              // own forms only where its cut is named.
+              readonly property var script: ${object { inherit (font.script) serif mono; }}
               // The line above a name, saying when, where or who.
               readonly property var eyebrow: ${object type.eyebrow}
               readonly property var space: ${object (removeAttrs space [ "unit" ])}

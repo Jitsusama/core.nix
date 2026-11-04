@@ -689,6 +689,8 @@ gather (
             "Adwaita Mono"
             "DejaVu"
             "Noto Sans"
+            "Noto Serif"
+            "Noto Naskh"
             "Terminus"
           ];
           pattern = lib.concatStringsSep "|" (colours ++ [ "\\b(${lib.concatStringsSep "|" faces})\\b" ]);
