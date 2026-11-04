@@ -1231,11 +1231,17 @@ works the same way everywhere.
   one row
   first in the list, named by what it says and saying it's an answer at its
   right edge, with its parts a step in, so a question never lists a column
-  of bare figures. The weather's parts are Now, Rain, Wind, Today, Tomorrow
-  and the day after, Rain saying when it next rains ("from 15:00, 70%")
-  beside the next twelve hours' chance, and holding those hours, each its
-  chance and how much; "rain", "umbrella" or "when will it rain", here or
-  in a place, answers with the next rain, its hours a step in. The time
+  of bare figures. The weather's parts are Now, Rain, then the seven days
+  from today. Now holds every figure of this moment: the temperature, what
+  it feels like, the humidity, the dew point, the precipitation, the wind
+  and its gusts, the cloud cover, the UV index, the visibility and the
+  pressure. Rain says when it next rains ("from 15:00, 70%") beside the
+  next twelve hours' chance, and holds those hours. A day holds its own
+  figures, its high and low, the most it rains and blows and its sun, then
+  its hours; an hour ("14:00") holds its figures, the same thing in Rain as
+  in its day, and a day never says a figure its hours do. "rain",
+  "umbrella" or "when will it rain", here or in a place, answers with the
+  next rain, its hours a step in. The time
   here is the clock's, which follows the laptop into another zone once a
   Wi-Fi fix says it's there to within ten kilometres, never for a fix from
   the network's address alone; the time then says so ("clock moved to
