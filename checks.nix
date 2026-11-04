@@ -863,6 +863,35 @@ gather (
             ${lib.getExe pkgs.python3} ${./tests/glossary.py} ${./docs/glossary.md}
             touch $out
           '';
+
+      # No VM test grows past twenty subtests, where docs/testing.md says one
+      # splits by area (tests/every-vm-test-keeps-to-the-pyramid.py). Those past it
+      # today are listed with their counts, which may only fall, and each
+      # comes off once it's within the limit, so the list only shrinks. It
+      # reads the VM tests' files alone, so no other change reruns it.
+      every-vm-test-keeps-to-the-pyramid =
+        let
+          over = [
+            "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
+            "tests/desktop/desktop-launcher-answers-vm-test.py 22"
+            "tests/desktop/desktop-launcher-goes-places-vm-test.py 113"
+            "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
+            "tests/desktop/desktop-says-what-happens-vm-test.py 37"
+            "tests/desktop/desktop-starts-clean-vm-test.py 28"
+            "tests/screens-vm-test.py 34"
+            "tests/vm/guide/guide-install-vm-test.py 26"
+            "tests/wifi-vm-test.py 40"
+          ];
+          tests = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.fileFilter (file: lib.hasSuffix "-vm-test.py" file.name) ./.;
+          };
+        in
+        pkgs.runCommandLocal "every-vm-test-keeps-to-the-pyramid" { } ''
+          ${lib.getExe pkgs.python3} ${./tests/every-vm-test-keeps-to-the-pyramid.py} ${tests} \
+            ${pkgs.writeText "over" (lib.concatLines over)}
+          touch $out
+        '';
     }
     # shell-preview shows the shell nested in a Wayland session, which only
     # Linux has.

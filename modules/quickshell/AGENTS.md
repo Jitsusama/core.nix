@@ -11,6 +11,12 @@ Every surface is held to [`docs/design.md`][design] and the aesthetic skill
 beside it ([`../theme/SKILL.md`][skill]). Read both before changing anything
 Joel sees.
 
+Every case the shell is proven by goes in the lowest tier of [the
+pyramid][pyramid] that can show it, as [Checking](#checking) below sets out:
+its logic in Qt's engine or offscreen Quickshell in under a second, what it
+does on niri on a nested niri in seconds, and in a VM test only what needs a
+machine, one path through each connection.
+
 ## How It's Built
 
 - **State and drawing.** A singleton (`pragma Singleton`) holds what the
@@ -82,16 +88,29 @@ disable` comment and the reason above it.
 
 ## Checking
 
-The shell's logic is proven where it's cheapest: in Qt's JavaScript engine
-or offscreen Quickshell, over cases in `tests/`, in under a second each, as
-[testing][logic] lists. Logic that sits in a view file moves into a `.js`
-beside it, where those checks can reach it.
+A case goes in the first of these that can show it, cheapest first:
+
+1. **Qt's engine or offscreen Quickshell**, over cases in `tests/`, in under
+   a second each, as [testing][logic] lists: a ranking, an order, what a key
+   does to a list, how a row or a drawer is laid out and cut. Logic that sits
+   in a view file moves into a `.js` beside it, where those checks can reach
+   it, and a surface's drawing is held offscreen in a `FloatingWindow`, as
+   `tests/rows.qml` does.
+2. **A nested niri** in the build sandbox ([testing][nested]), in seconds:
+   a surface landing as niri's layer, what a bind's command does, what the
+   shell reports as niri's windows change. Nothing types there, so a check
+   runs what a key runs.
+3. **A VM test**: only what needs a machine, such as keys pressed through
+   niri's binds, a system service, screens coming and going or Joel coming
+   back, and one path through each connection, never each case of it.
 
 The desktop's VM tests ([`tests/desktop.nix`][desktop]), one per area, each
 named `vm-desktop-<area>`, start niri and the shell in a virtual machine and
-drive each surface by its keys; what only a
-running desktop shows gets a subtest in its area's file under
-`tests/desktop/`, and a helper two areas use goes in its prelude.
+drive each surface by its keys. A case only a running machine shows gets a
+subtest in its area's file under `tests/desktop/`, and a helper two areas use
+goes in its prelude. An area past about two minutes or twenty subtests splits,
+as [Earning a Check][earning] says, and `every-vm-test-keeps-to-the-pyramid`
+fails on one that grows.
 A picture is taken with `photograph`, once the screen holds still, after
 waiting on what the shell reports for the state it shows. Only an area's
 gallery, `vm-desktop-<area>.gallery`, takes them, so a subtest never leans
@@ -105,11 +124,12 @@ reloads it; `--type sl` opens the launcher on a query, with the test
 machine's stand-in programs. What Nix generates, such as `Theme.qml`, takes a
 new preview.
 
-To prove it, run only its subtests, with `run-subtests vm-desktop-<area>
-<words>` from the dev shell, in under half a minute; each runs alone. Before
-pushing, run the areas it touches once, and compare their galleries with main's using
-`shots-changed`, as [testing][testing] says, looking at every one it draws:
-a change to one surface can move another.
+To prove it, run its cases in the tiers below first, then only its subtests,
+with `run-subtests vm-desktop-<area> <words>` from the dev shell, in under
+half a minute; each runs alone. Before pushing, run the area it's about once,
+and compare its gallery with main's using `shots-changed`, as [testing][testing]
+says, looking at every picture it draws: a change to one surface can move
+another.
 
 [checks]: checks.nix
 [clipboard]: clipboard/
@@ -125,4 +145,7 @@ a change to one surface can move another.
 [words]: launcher/words.json
 [skill]: ../theme/SKILL.md
 [logic]: ../../docs/testing.md#the-desktops-logic
+[nested]: ../../docs/testing.md#the-desktop-on-niri
+[pyramid]: ../../docs/testing.md#the-pyramid
+[earning]: ../../docs/testing.md#earning-a-check
 [testing]: ../../docs/testing.md#what-changed-on-screen
