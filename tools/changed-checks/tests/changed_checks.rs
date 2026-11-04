@@ -148,6 +148,11 @@ impl StandIn {
     }
 
     fn run(&self, arguments: &[&str]) -> Output {
+        self.run_told(arguments, &[])
+    }
+
+    /// Run it with these variables set besides.
+    fn run_told(&self, arguments: &[&str], told: &[(&str, &str)]) -> Output {
         let path = format!(
             "{}:{}",
             self.folder.join("bin").display(),
@@ -162,6 +167,9 @@ impl StandIn {
                 .env("XDG_CACHE_HOME", self.folder.join("cache"))
                 .env("XDG_STATE_HOME", self.folder.join("state"))
                 .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
+                // No stall, whatever the machine running the tests holds.
+                .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
+                .envs(told.iter().copied())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
@@ -467,6 +475,70 @@ fn it_builds_each_check_from_the_derivation_it_evaluated_rather_than_evaluating_
         format!("--no-link --keep-going -L {}^* {flake}.a\n", new.display()),
         "a derivation collected since its evaluation is built from the flake"
     );
+}
+
+#[test]
+fn a_check_told_it_passed_at_this_commit_isnt_built_again() {
+    // A run sent to a builder whose store was new built again what an
+    // earlier builder had passed: 631 s, then 1608 s, on 3 November.
+    let stand_in = StandIn::new("passed");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::write(stand_in.path("clean"), "").expect("written");
+    let arguments = ["--system", "x86_64-linux", "--here"];
+    let repo = stand_in.path("repo");
+    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+
+    let ran = stand_in.run_told(
+        &arguments,
+        &[("CHANGED_CHECKS_PASSED", "fedcba9876543210fedc a")],
+    );
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
+        "what changed is still named"
+    );
+    assert!(
+        text(&ran.stderr).contains("a passed at fedcba987654 already, so it isn't built again"),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert_eq!(
+        stand_in.built(),
+        format!("--no-link --keep-going -L {flake}.new\n")
+    );
+
+    fs::remove_file(stand_in.path("built")).expect("removed");
+    let ran = stand_in.run_told(
+        &arguments,
+        &[("CHANGED_CHECKS_PASSED", "fedcba9876543210fedc a new")],
+    );
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(stand_in.built(), "", "with each passed, nothing is built");
+
+    // Passes at another commit, or told a tree with changes, say nothing
+    // of this one.
+    for (label, told) in [
+        ("another commit", "0123456789abcdef0123 a new"),
+        ("changes", ""),
+    ] {
+        let told = if told.is_empty() {
+            fs::remove_file(stand_in.path("clean")).expect("removed");
+            "fedcba9876543210fedc a new"
+        } else {
+            told
+        };
+        let ran = stand_in.run_told(&arguments, &[("CHANGED_CHECKS_PASSED", told)]);
+        assert!(ran.status.success(), "{label}: {}", text(&ran.stderr));
+        assert_eq!(
+            stand_in.built(),
+            format!("--no-link --keep-going -L {flake}.new {flake}.a\n"),
+            "{label}"
+        );
+        fs::remove_file(stand_in.path("built")).expect("removed");
+    }
 }
 
 #[test]
