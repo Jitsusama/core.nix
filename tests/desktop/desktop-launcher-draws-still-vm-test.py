@@ -584,13 +584,30 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
         # utime and stime, the stat's 14th and 15th, counted past its name.
         return (int(fields[11]) + int(fields[12])) * 1000 / tick
 
+    def threads() -> dict[str, float]:
+        """Each thread's processor time, by its name and id, in milliseconds."""
+        said = desktop.as_account(
+            f"for t in /proc/{pid}/task/*; do echo \"$(basename $t) $(cat $t/stat)\"; done"
+        )
+        out: dict[str, float] = {}
+        for line in said.splitlines():
+            tid, rest = line.split(" ", 1)
+            name = rest.split("(", 1)[1].rsplit(")", 1)[0]
+            fields = rest.rsplit(")", 1)[1].split()
+            out[f"{name}/{tid}"] = (int(fields[11]) + int(fields[12])) * 1000 / tick
+        return out
+
     since = desktop.mark()
+    each = threads()
     before = worked()
     machine.send_key("ret")
     # Its programs drawn, not only the step taken: a step that threw once
     # left Programs blank until something else redrew it (2026-10-28).
     desktop.launcher_until(lambda shown: shown["held"] == ["programs"] and len(shown["rows"]) > 0)
     cost = worked() - before
+    after = threads()
+    shares = {k: v - each.get(k, 0) for k, v in after.items() if v - each.get(k, 0) > 0}
+    print(f"THREADS {pid}: {sorted(shares.items(), key=lambda kv: -kv[1])}")
     # The launcher times a step to its frame as it does a key, and says it
     # once it's felt (Trials.js).
     said = desktop.as_account(
