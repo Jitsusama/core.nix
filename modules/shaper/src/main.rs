@@ -35,6 +35,8 @@ mod quiet;
 mod rate;
 mod record;
 mod replay;
+#[cfg(test)]
+mod sim;
 mod stamp;
 
 use memory::{Held, Memory};

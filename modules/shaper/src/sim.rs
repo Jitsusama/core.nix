@@ -1,4 +1,4 @@
-//! A simulated line, to hold the one-way controller to the bar its review
+//! A simulated line, to hold the one-way controller (src/oneway.rs) to the bar its review
 //! set before it shapes anything: a modem's two queues, flows that grow
 //! until something drops them, other machines beside this one, a call, and
 //! the air's late spells. Each of sixteen lines runs ten minutes clean and
@@ -12,7 +12,7 @@
 //! 75% of what the line could carry each way; and no direction held under
 //! half of that more than 30 s longer than unshaped holds it.
 
-use super::{Controller, Seen};
+use crate::oneway::{Controller, Seen};
 use crate::rate::float;
 
 const DT: f64 = 0.2;

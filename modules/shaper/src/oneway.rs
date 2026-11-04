@@ -330,9 +330,6 @@ impl crate::replay::Controller for Controller {
 }
 
 #[cfg(test)]
-mod sim;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::replay::{self, Base, Stay};
