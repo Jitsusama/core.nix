@@ -2051,7 +2051,19 @@ in
         # logging thread: two wakes a second of the locked shell's, for lines
         # nobody reads (2026-10-31). Without them its file keeps what's shown,
         # as the journal does.
-        ExecStart = "${lib.getExe' pkgs.heaptrack "heaptrack"} -o %t/heap ${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
+        # A throwaway probe: heaptrack traces only the process it starts, so
+        # it starts the program the wrapper would, with the wrapper's paths.
+        ExecStart = toString (
+          pkgs.writeShellScript "quickshell-heaptracked" ''
+            wrapper=${lib.getExe' pkgs.quickshell "quickshell"}
+            while read -r name value; do
+              export "$name=$value''${!name:+:''${!name}}"
+            done < <(grep -a -o "\-\-prefix '[A-Z_0-9]*' ':' '[^']*'" "$wrapper" \
+              | sed "s/--prefix '\([^']*\)' ':' '\([^']*\)'/\1 \2/")
+            exec ${lib.getExe' pkgs.heaptrack "heaptrack"} -o "$XDG_RUNTIME_DIR/heap" \
+              "$(dirname "$wrapper")/.quickshell-wrapped" --no-detailed-logs
+          ''
+        );
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
         # theme itself.
