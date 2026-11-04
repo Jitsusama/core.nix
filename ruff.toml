@@ -38,5 +38,7 @@ ignore = [
 "tests/desktop/desktop_session.py" = ["FBT001", "S101"]
 # The shell on a nested niri asserts what a test needs, as the desktop does.
 "tests/launcher_on_niri.py" = ["S101"]
+# The screens test's machine and steps assert what each step needs, as the desktop does.
+"tests/screens/screens_session.py" = ["S101"]
 # wifid as the Wi-Fi test's areas reach it asserts what a refusal says, as the desktop does.
 "tests/wifi/wifi_session.py" = ["S101"]

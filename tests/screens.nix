@@ -16,8 +16,17 @@
 # dock's two screens, one goes and comes back: the margin and dictation's
 # bar must stay on the other and the margin come back on both. Sessions
 # reopened while a screen they were kept on is gone must go to it, in their
-# order, once it comes back. The script is screens-vm-test.py.
-{ self, pkgs }:
+# order, once it comes back. The tests are in screens/, an area to a file,
+# each run through pytest on a machine of its own, so the areas run side by
+# side; the machine and the steps it's taken through are
+# screens/screens_session.py's fixtures, so each area takes only the steps
+# its tests ask for.
+{
+  self,
+  pkgs,
+  # Which area's tests run: come-and-go, keep-the-launcher or keep-places.
+  area,
+}:
 let
   account = "jitsusama";
 
@@ -32,7 +41,15 @@ let
   } (builtins.readFile ./desktop/stand-in-dictation.py);
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
-  name = "screens";
+  name = "screens-${area}";
+  extraPythonPackages = python: [
+    (python.toPythonModule (
+      pkgs.runCommandLocal "screens-session" { } ''
+        mkdir -p $out/${python.python.sitePackages}
+        cp ${./screens/screens_session.py} $out/${python.python.sitePackages}/screens_session.py
+      ''
+    ))
+  ];
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
 
@@ -263,6 +280,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "info";
     };
 
-  tests = ./screens-vm-test.py;
+  tests = ./screens/screens-${area}-vm-test.py;
   inherit values;
 }

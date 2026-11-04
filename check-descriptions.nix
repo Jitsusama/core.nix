@@ -2304,16 +2304,23 @@
     stage, and Plymouth hears which
   '';
   vm-screens-come-and-go = ''
-    niri started with the laptop's lid shut on a dock connects the monitor alone, never the
-    laptop's screen, until the lid opens; the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
+    the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
     and returns, after a console switch and after a sleep and wake, after which the shell still
-    hears a notice, dictation's keys and Keep Awake let go; when one of two screens goes, the
-    margin and dictation's bar stay on the other and the margin comes back on both; the launcher
-    opens, finds and runs a row on either of two screens as each goes and comes back, as both go,
-    and after a sleep, its foot still telling the time after the wake; Quickshell warns of nothing
-    meanwhile; desk-facts stops naming the screen once it's gone and names it again once it's
-    back; sessions reopened while the screen they sat on is gone go to it, in their order, once
-    it comes back; and keys typed through the virtual keyboard keep the session from going idle
+    hears a notice, dictation's keys and Keep Awake let go; desk-facts stops naming the screen
+    once it's gone and names it again once it's back; and when one of two screens goes, the
+    margin and dictation's bar stay on the other and the margin comes back on both
+  '';
+  vm-screens-keep-places = ''
+    niri started with the laptop's lid shut on a dock connects the monitor alone, never the
+    laptop's screen, until the lid opens, holds the monitor's first frame, and from before that
+    hold takes a switch's settings; keys typed through the virtual keyboard keep the session
+    from going idle; sessions reopened while the screen they sat on is gone go to it, in their
+    order, once it comes back; and a screen back takes back its workspaces
+  '';
+  vm-screens-keep-the-launcher = ''
+    the launcher opens, finds and runs a row on either of two screens, a Return held doing it
+    once, as each goes and comes back, as both go, and after a sleep, its foot still telling the
+    time after the wake; Quickshell warns of nothing meanwhile
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it; the firmware starts the loader by

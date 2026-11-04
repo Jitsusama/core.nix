@@ -417,8 +417,20 @@ let
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
     # Whether the shell's surfaces come back after a screen goes shows only
-    # with niri on the screen itself, not nested in Cage.
-    vm-screens-come-and-go = import ./tests/screens.nix { inherit self pkgs; };
+    # with niri on the screen itself, not nested in Cage. Each area is a
+    # machine of its own, so they run side by side (tests/screens.nix).
+    vm-screens-come-and-go = import ./tests/screens.nix {
+      inherit self pkgs;
+      area = "come-and-go";
+    };
+    vm-screens-keep-places = import ./tests/screens.nix {
+      inherit self pkgs;
+      area = "keep-places";
+    };
+    vm-screens-keep-the-launcher = import ./tests/screens.nix {
+      inherit self pkgs;
+      area = "keep-the-launcher";
+    };
     vm-boot-asks-in-the-theme = import ./tests/plymouth.nix { inherit self pkgs; };
     # Whether the ask shows whole on screens of different sizes shows only
     # with Plymouth drawing on two of them at once.
@@ -943,7 +955,6 @@ gather (
         let
           over = [
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
-            "tests/screens-vm-test.py 36"
             # One machine's story, kept whole since a split would replay it
             # (docs/testing.md, Earning a Check).
             "tests/vm/guide/guide-install-vm-test.py 26"
