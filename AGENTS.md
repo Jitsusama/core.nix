@@ -106,8 +106,8 @@ everything once, before pushing, never after each edit:
 | Changed         | While editing, in seconds                         | Before pushing             |
 | --------------- | ------------------------------------------------- | -------------------------- |
 | Shell logic     | its case in Qt's engine or offscreen, `quickshell-passes-qmllint` | `changed-checks`, `run-subtests` on the subtests that reach it |
-| A shell surface | `shell-preview`, its nested-niri check, `run-subtests` | the `vm-desktop-<area>` it's in, `shots-changed` on its gallery |
-| A Rust crate    | `cargo test`, then `<crate>-passes-clippy`        | its VM test, if any        |
+| A shell surface | `shell-preview`, its nested-niri check, `run-subtests` | `run-subtests --there` on its `vm-desktop-<area>`, `shots-changed` on its gallery |
+| A Rust crate    | `cargo test`, then `<crate>-passes-clippy`        | its VM test's subtests, if any |
 | A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the galleries it changes, `shots-changed` |
 | The kernel      | `kernel-settings-hold-<model>`                    | the machine's kernel       |
 | A module        | `example-nixos`, `example-laptop`, `example-darwin` |                          |
@@ -119,15 +119,17 @@ it would build, so a change that reaches a VM test is seen before it's paid
 for. Watching a check fail is done
 the same narrow way, never by copying the tree and running everything.
 
-A change is done when the checks it touched pass locally, those
-`changed-checks` names and the VM tests `merge-net needs` names, and its
-machine builds with core pointed at the checkout. The net runs the other VM
-tests after the merge and reverts a merge that breaks one. Only a change every check reads, such as
-`flake.lock`, runs `nix flake check`: a whole run evaluates every check, about
-15 minutes and over 20 GB on a machine other work shares. There's no CI, and
-nothing runs on a schedule but the net, which follows main
-([docs/testing.md][1]). A refactor is done when the machine repositories' machines evaluate
-to the same derivations as before. A new check has to earn its place. All of
+A change is done when the checks it touched pass locally: those
+`changed-checks` names, VM tests aside; the subtests of each VM test that owns
+a file it touches, with `run-subtests --there`; and the VM tests
+`merge-net needs` names, whole. Its machine builds with core pointed at the
+checkout too. The net runs the other VM tests after the merge and reverts a
+merge that breaks one. Only a change every check reads, such as `flake.lock`,
+runs `nix flake check`: a whole run evaluates every check, about 15 minutes
+and over 20 GB on a machine other work shares. There's no CI, and nothing runs
+on a schedule but the net, which follows main ([docs/testing.md][1]). A
+refactor is done when the machine repositories' machines evaluate to the same
+derivations as before. A new check has to earn its place. All of
 it is in [docs/testing.md][1].
 
 ## Commits

@@ -119,10 +119,14 @@ merge commit, so that commit stays on main.
 ## The Net Under Main
 
 A change merges once the checks `changed-checks` builds pass, VM tests
-aside, unless `merge-net needs` says it touches something a revert would
-come too late for: boot, the initrd, the kernel, the disk, the TPM, secure
-boot, the install, the greeter or lock, `flake.lock` or nix-offload
-(`tools/merge-net/must-run.txt`). Those run the VM tests it names first.
+aside, and the subtests that reach what it touched, in each VM test that
+owns one of its files, pass with `run-subtests --there`: about ten minutes.
+A change `merge-net needs` says touches something a revert would come too
+late for runs the VM tests it names, whole, first: boot, the initrd, the
+kernel, the disk and LUKS, the TPM, secure boot, the install, the stick and
+its guide, the greeter or lock, `flake.lock` or nix-offload
+(`tools/merge-net/must-run.txt`). A machine switches only to merged main,
+and a bad switch is undone by switching back to the generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which
 `modules/merge-net` runs as a daemon, follows main and runs each VM test
