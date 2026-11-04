@@ -322,8 +322,6 @@ in
       screenshot-template = "%F %wH-%wM-%wS";
     };
     scriptOpts.copy-frame.wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
-    # What waits shows in the muted colour, blue first, as ASS writes one.
-    scriptOpts.vi-keys.muted = bgr colours.muted;
     scriptOpts.osc = {
       background_color = colours.deepest;
       timecode_color = colours.text;

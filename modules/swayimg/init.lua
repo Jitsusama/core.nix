@@ -118,23 +118,6 @@ local function face(chord)
   return chord
 end
 
--- Every key each mode answers that's worth knowing, one row for each thing
--- it does, which ? lists, a key's twins after it.
-local function listed(mode)
-  local rows, row = {}, {}
-  for _, key in ipairs(nix.keys) do
-    if works(key, mode) then
-      if row[key.does] then
-        row[key.does][1] = row[key.does][1] .. '  ' .. key.face
-      else
-        row[key.does] = { key.face, key.does }
-        table.insert(rows, row[key.does])
-      end
-    end
-  end
-  return rows
-end
-
 -- The few keys that move on, which a quiet line names as a picture opens.
 local hint = {
   [swayimg.viewer] = face('Left')
@@ -148,69 +131,34 @@ local hint = {
   [swayimg.gallery] = face('Return') .. '  open     ' .. face('Shift+slash') .. '  keys',
 }
 
--- Whether ? has the keys listed, which stays until it's pressed again.
-local listing = false
-
 -- A number, or the first of a pair of keys, waiting for what comes after
--- it, shown at the foot's right as it's typed (Neovim's showcmd).
-local waiting = { count = '', first = nil, shown = false, turn = 0 }
+-- it. Nothing shows it, as Joel's Neovim has showcmd off.
+local waiting = { count = '', first = nil, turn = 0 }
 
 local function shown(mode)
   local bottom = {}
-  if listing then
-    for _, row in ipairs(listed(mode)) do
-      table.insert(bottom, row[1] .. '\t' .. row[2])
-    end
-  elseif mode ~= swayimg.viewer or swayimg.imagelist.size > 1 then
+  if mode ~= swayimg.viewer or swayimg.imagelist.size > 1 then
     bottom = { hint[mode] }
   end
   mode.text =
     { topleft = { '{name}' }, topright = counted(), bottomleft = bottom, bottomright = {} }
 end
 
--- What's waiting shows alone and muted when the words had gone, and beside
--- them when they show, since they share one colour.
-local function show_waiting(mode)
-  local typed = waiting.count .. (waiting.first or '')
-  if not waiting.shown then
-    waiting.shown = true
-    waiting.visible = swayimg.text.visible
-  end
-  swayimg.text.timeout = 0
-  if waiting.visible then
-    shown(mode)
-    mode.text = { bottomright = { typed } }
-  else
-    swayimg.text.color = colour.muted
-    mode.text = { topleft = {}, topright = {}, bottomleft = {}, bottomright = { typed } }
-  end
-  swayimg.text.visible = true
-end
-
--- Nothing waits any more: the words are as they were.
-local function stop_waiting(mode)
+-- Nothing waits any more.
+local function stop_waiting()
   waiting.count, waiting.first = '', nil
   waiting.turn = waiting.turn + 1
-  if not waiting.shown then
-    return
-  end
-  waiting.shown = false
-  swayimg.text.color = colour.strong
-  swayimg.text.timeout = listing and 0 or 2
-  shown(mode)
-  swayimg.text.visible = waiting.visible
 end
 
 -- What's waiting goes 300 ms on with nothing more, as Joel's Neovim's
 -- timeoutlen has it, doing what it does alone, if anything.
-local function wait(mode, timed_out)
-  show_waiting(mode)
+local function wait(timed_out)
   waiting.turn = waiting.turn + 1
   local turn = waiting.turn
   swayimg.defer(0.3, function()
     if waiting.turn == turn then
       local count = tonumber(waiting.count)
-      stop_waiting(mode)
+      stop_waiting()
       if timed_out then
         timed_out(count)
       end
@@ -218,13 +166,12 @@ local function wait(mode, timed_out)
   end)
 end
 
--- The list shows until ? is pressed again, and then goes with the rest of
--- the words, two seconds on.
-local function list(mode)
-  listing = not listing
-  swayimg.text.timeout = listing and 0 or 2
-  shown(mode)
-  swayimg.text.visible = true
+-- The keys are listed where every program's are, in the launcher's
+-- Shortcuts, which opens at swayimg's own, as zathura's Space ? does. A
+-- list drawn in the window ran past its foot, as a window fits fewer rows
+-- than swayimg has keys.
+local function list()
+  os.execute('launcher-say collection shortcuts >/dev/null 2>&1 &')
 end
 
 -- The picture looked at is kept for the launcher, which leads swayimg's
@@ -558,9 +505,12 @@ local function pressed(mode, key)
   if waiting.first then
     local first = waiting.first
     local act = paired[mode][first][key]
-    stop_waiting(mode)
+    stop_waiting()
     if act then
       acts[act](mode, count)
+    elseif alone[mode][key] == 'escape' then
+      -- Escape only takes back what waited, as in Vim.
+      return
     else
       -- As in Vim: the first does what it does alone, and this key is
       -- heard on its own.
@@ -574,18 +524,18 @@ local function pressed(mode, key)
   local act = alone[mode][key]
   if key:match('^%d$') and not act and (count or key ~= '0') then
     waiting.count = waiting.count .. key
-    wait(mode)
+    wait()
   elseif paired[mode][key] then
     -- A key that starts a pair waits for its second, and alone, as y and
     -- [ are too, does what it does once none comes.
     waiting.first = key
-    wait(mode, act and function(times_over)
+    wait(act and function(times_over)
       acts[act](mode, times_over)
     end)
-  elseif act == 'escape' and waiting.shown then
-    stop_waiting(mode)
+  elseif act == 'escape' and count then
+    stop_waiting()
   else
-    stop_waiting(mode)
+    stop_waiting()
     if act then
       acts[act](mode, count)
     end

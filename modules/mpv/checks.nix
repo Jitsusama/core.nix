@@ -84,7 +84,6 @@ onLinux {
         cp ${files."mpv/input.conf".source} mpv/input.conf
         cp ${files."mpv/scripts/copy-frame.lua".source} mpv/scripts/copy-frame.lua
         cp ${files."mpv/scripts/vi-keys.lua".source} mpv/scripts/vi-keys.lua
-        cp ${files."mpv/script-opts/vi-keys.conf".source} mpv/script-opts/vi-keys.conf
         cp ${stats} mpv/scripts/stats.lua
         printf '#!%s\ncat > %s/copied\n' "$BASH" "$PWD" > wl-copy
         chmod +x wl-copy

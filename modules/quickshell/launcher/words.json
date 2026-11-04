@@ -2998,6 +2998,11 @@
       "name": "Turning Pages"
     },
     {
+      "id": "shortcuts:zathura:scrolling",
+      "in": "shortcuts",
+      "name": "Scrolling"
+    },
+    {
       "id": "shortcuts:zathura:fitting",
       "in": "shortcuts",
       "name": "Fitting the Page"
