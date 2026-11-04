@@ -3,21 +3,20 @@
 It speaks the program's daemon interface (modules/google/src/daemon.rs), on the socket systemd
 hands it or else the one it's named: each meeting, piece of mail and document a record, and the
 account one more, each told to a watch as it changes, and what a shell asks taken as an act, a
-line of ask.rs. It leaves the whole state in the runtime folder's google.json too, as the
-program does (src/state.rs). The account is ready, unless a test signs it out, with three
+line of ask.rs. The account is ready, unless a test signs it out, with three
 meetings on Meet from when the stand-in starts: Design Review five minutes on, Joel's own,
 reminding him a minute before, or nearer or further as a test asks; Standup half an hour on,
 Ada's in Room 4 every weekday, with Grace not going and Ada's Quarterly Plan and an agenda
 attached; and Planning two hours on, Joel's own with Grace asked. Joel may change his own, and
 Standup on Ada's calendar, which she shares with him. An answer a shell writes is written down
 in the runtime folder's google-asked, for the test to read, and taken as Google would take it,
-so the file and every shell say the meeting answered or moved; a meeting Joel holds that's cancelled
+so every watch hears the meeting answered or moved; a meeting Joel holds that's cancelled
 is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
 with three unread in the inbox; one marked read or archived is written down too, and taken
 out of the mail that wants him, as Gmail would, and one read and then marked unread again
 wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
-open, kept in google-files beside the socket, or to save, where the shell says or else in
+open, kept in the runtime folder's google-files, or to save, where the shell says or else in
 Downloads, said as fetched as the program says it. Joel looked at two documents lately: Ada's
 Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-in grants Meet's
 scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg. His
@@ -156,13 +155,13 @@ class Watch:
 
 
 class Account:
-    """The account as the program would hold it, the file it leaves, and the watches it tells."""
+    """The account as the program would hold it, and the watches it tells."""
 
-    def __init__(self, told: Path, asked: Path) -> None:
-        """Hold the meetings, answered yes, with no shell yet, and leave them in the file."""
+    def __init__(self, runtime: Path) -> None:
+        """Hold the meetings, answered yes, with no shell yet."""
         now = int(time.time() * 1000)
-        self.told = told
-        self.asked = asked
+        self.files = runtime / "google-files"
+        self.asked = runtime / "google-asked"
         self.lock = threading.Lock()
         self.watches: list[Watch] = []
         self.meetings = [
@@ -272,7 +271,6 @@ class Account:
         self.downloads: list[dict[str, object]] = []
         # What every watch was last told of, by key.
         self.said = self.records()
-        self.leave()
 
     def state(self) -> dict[str, object]:
         """Give the state the program would say."""
@@ -320,12 +318,6 @@ class Account:
             "account": account,
         }
         return made
-
-    def leave(self) -> None:
-        """Leave the state in the file, replacing it whole as the program does."""
-        new = self.told.with_name(f"{self.told.name}.new")
-        new.write_text(f"{json.dumps(self.state())}\n")
-        new.replace(self.told)
 
     def tell(self) -> None:
         """Tell each watch the records that changed and those gone, since it was last told."""
@@ -394,7 +386,6 @@ class Account:
                 }
             self.schedule(said)
             self.tidy(said)
-            self.leave()
             self.tell()
 
     def schedule(self, said: dict[str, dict[str, object]]) -> None:
@@ -440,7 +431,7 @@ class Account:
             failed = "runs"
         else:
             folder = (
-                self.told.with_name("google-files") / str(asked["id"])
+                self.files / str(asked["id"])
                 if asked["how"] == "open"
                 else Path.home() / "Downloads"
             )
@@ -485,7 +476,7 @@ class Account:
             failed = "gone"
         else:
             name = f"{file['name']}{EXPORTED.get(str(file['kind']), '')}"
-            path = self.told.with_name("google-files") / "drive" / str(file["id"]) / name
+            path = self.files / "drive" / str(file["id"]) / name
             if asked["how"] == "save":
                 path = Path(str(asked.get("to") or Path.home() / "Downloads" / name))
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -536,10 +527,9 @@ def listening(path: Path) -> socket.socket:
 
 
 def main() -> None:
-    """Serve the daemon interface on the socket given, leaving the state in the runtime folder."""
+    """Serve the daemon interface on the socket given, in the runtime folder's daemons."""
     path = Path(sys.argv[1])
-    runtime = path.parent.parent
-    account = Account(runtime / "google.json", runtime / "google-asked")
+    account = Account(path.parent.parent)
     server = listening(path)
     while True:
         shell, _ = server.accept()

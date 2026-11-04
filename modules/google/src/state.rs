@@ -1,5 +1,5 @@
-//! What the shell is told: how the account stands and what it holds, as
-//! one JSON object to a line.
+//! What the shell is told: how the account stands and what it holds,
+//! which the daemon serves as a record for each thing (daemon.rs).
 
 use serde::Serialize;
 
@@ -69,12 +69,6 @@ pub struct Made {
 }
 
 impl State {
-    pub fn line(&self) -> String {
-        let mut line = serde_json::to_string(self).unwrap_or_else(|_| "{}".into());
-        line.push('\n');
-        line
-    }
-
     /// The account gone or signed out: nothing it held is kept, since it
     /// may not be Joel's to see any more.
     pub fn without(standing: Standing) -> State {
@@ -82,22 +76,5 @@ impl State {
             account: standing,
             ..State::default()
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_state_is_one_line_of_json() {
-        let line = State::without(Standing::SignedOut).line();
-        assert_eq!(
-            line,
-            "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
-             \"documents\":[],\"heard\":null,\"fetched\":null,\
-             \"meet\":{\"granted\":false,\"made\":null},\
-             \"drive\":{\"listings\":[],\"downloads\":[],\"uploads\":[]}}\n"
-        );
     }
 }

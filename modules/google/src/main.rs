@@ -3,13 +3,10 @@
 //!
 //! It asks Google's own API as the account the harness signed in (pi's
 //! `/google-auth`), reading the harness's file and never writing it
-//! (account.rs), and hands what it learns over a socket (socket.rs): the
-//! whole state as one JSON line when a client connects, and again
-//! whenever it changes (state.rs), and the same line left in google.json
-//! beside the socket, which call transcripts read. Given a third socket,
-//! or handed one by systemd, it serves the same in the daemon interface
-//! the shell holds it through, a record for each thing it holds
-//! (daemon.rs).
+//! (account.rs), and serves what it learns (state.rs) in the daemon
+//! interface, a record for each thing it holds, on the socket systemd
+//! hands it or else one it binds (daemon.rs): the shell holds it there,
+//! and call transcripts ask it for the meeting on.
 //!
 //! Google only pushes changes to a public web address, which a laptop
 //! hasn't got, so this program asks: once a minute while answers come,
@@ -21,10 +18,10 @@
 //! The shell asks it to answer an invitation, to mark mail read or
 //! archive it, to fetch a file mail carries, to make a Meet meeting for
 //! its link, which Joel's sign-in must grant, and to list a Drive folder
-//! or download a file in one, on the same socket (ask.rs), which it does
-//! at once, telling every shell what changed. A file to open, or to hand
-//! a program through the picker, is kept in google-files beside the
-//! socket, in the session's runtime folder; one to save goes where Joel
+//! or download a file in one, as acts on the same socket (ask.rs), which
+//! it does at once, telling every watch what changed. A file to open, or
+//! to hand a program through the picker, is kept in google-files, in the
+//! session's runtime folder; one to save goes where Joel
 //! picked, else to Downloads (`$XDG_DOWNLOAD_DIR`, or `~/Downloads`)
 //! (files.rs). One ask is done at a time, so a large download holds the
 //! next until it's written.
@@ -37,9 +34,9 @@
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
-//! usage: google SOCKET CREDENTIALS [DAEMON], CREDENTIALS the harness's
-//! file, the account asked as being the file's default, as pi's own is,
-//! and DAEMON the daemon interface's socket.
+//! usage: google CREDENTIALS DAEMON, CREDENTIALS the harness's file, the
+//! account asked as being the file's default, as pi's own is, and DAEMON
+//! the daemon interface's socket.
 
 use std::env;
 use std::path::Path;
@@ -57,7 +54,6 @@ use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
 use google::saves;
-use google::socket::Socket;
 use google::state::{Standing, State};
 use google::watch::Watch;
 
@@ -70,34 +66,22 @@ const TICK: Duration = Duration::from_secs(10);
 
 fn main() -> ExitCode {
     let mut args = env::args_os().skip(1);
-    let (Some(path), Some(credentials)) = (
+    let (Some(credentials), Some(at)) = (
         args.next().map(PathBuf::from),
         args.next().map(PathBuf::from),
     ) else {
-        eprintln!("<3>usage: google SOCKET CREDENTIALS [DAEMON]");
+        eprintln!("<3>usage: google CREDENTIALS DAEMON");
         return ExitCode::from(2);
     };
-    let told = path.with_extension("json");
     let (asks, asked) = mpsc::channel();
-    let socket = match Socket::listen(&path, &told, State::default().line(), asks.clone()) {
+    let daemon = match Daemon::listen(&at, asks.clone(), Timestamp::now().as_millisecond()) {
         Ok(listening) => listening,
         Err(error) => {
-            eprintln!("<3>couldn't listen at {}: {error}", path.display());
+            eprintln!("<3>couldn't serve at {}: {error}", at.display());
             return ExitCode::FAILURE;
         }
     };
-    // Without it, the shell still has the socket above.
-    let daemon = args.next().map(PathBuf::from).and_then(|at| {
-        Daemon::listen(&at, asks.clone(), Timestamp::now().as_millisecond())
-            .inspect_err(|error| eprintln!("<4>couldn't serve at {}: {error}", at.display()))
-            .ok()
-    });
-    let tell = |state: &State| {
-        socket.say(state.line());
-        if let Some(daemon) = &daemon {
-            daemon.say(state, Timestamp::now().as_millisecond());
-        }
-    };
+    let tell = |state: &State| daemon.say(state, Timestamp::now().as_millisecond());
     let staged = saves::root(env::var_os("XDG_STATE_HOME"), env::var_os("HOME"));
     saves::prune(&staged, SystemTime::now());
     // Without its watch, what Joel saves stays staged, to go up as the
@@ -106,7 +90,9 @@ fn main() -> ExitCode {
         eprintln!("<4>couldn't watch Drive saves: {error}");
     }
     let places = Places {
-        kept: path.with_file_name("google-files"),
+        kept: env::var_os("XDG_RUNTIME_DIR")
+            .map_or_else(env::temp_dir, PathBuf::from)
+            .join("google-files"),
         saves: env::var_os("XDG_DOWNLOAD_DIR").map_or_else(
             || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join("Downloads"),
             PathBuf::from,

@@ -2,9 +2,8 @@
 # meetings on Joel's calendar and the mail that wants him, and keeps them
 # for the shell in its daemon interface, a record for each thing it holds,
 # on $XDG_RUNTIME_DIR/daemons/google.sock, a socket systemd holds for it
-# (src/daemon.rs). It says the same as one state on
-# $XDG_RUNTIME_DIR/google.sock, and in a file beside it, google.json,
-# which call transcripts read (src/main.rs says how).
+# (src/daemon.rs), where call transcripts ask it for the meeting on too
+# (src/main.rs says how).
 #
 # It asks as the account the harness signed in, from the harness's own
 # file, which pi writes when Joel signs in with /google-auth and rewrites
@@ -248,21 +247,14 @@ in
         Slice = "background.slice";
         ExecStart = lib.concatStringsSep " " [
           (lib.getExe google)
-          "%t/google.sock"
           (lib.escapeShellArg credentials)
           "%t/daemons/google.sock"
         ];
         Restart = "on-failure";
         RestartSec = 10;
-        # What it held goes with it, so the shell shows no account rather than
-        # what was true when it stopped.
-        # The files fetched to open go with the program, as what it held does.
-        ExecStopPost = lib.concatStringsSep " " [
-          "${pkgs.coreutils}/bin/rm -rf"
-          "%t/google.json"
-          "%t/.writing/google.json.new"
-          "%t/google-files"
-        ];
+        # The files fetched to open go with the program, as what it held
+        # does once its daemon stops answering.
+        ExecStopPost = "${pkgs.coreutils}/bin/rm -rf %t/google-files";
       };
     };
   };
