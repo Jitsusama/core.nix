@@ -3,8 +3,9 @@
 # them, rather than fontconfig's own: a program's words and a page's plain sans in the
 # account's sans face, wherever none is chosen. kitty, and so
 # Neovim inside it, reads the face's features from fontconfig too, so the
-# theme's features come with it: the face's coding ligatures beside its
-# texture healing. After each face comes the script face, so a letter the
+# theme's features come with it: the face's coding ligatures, beside the
+# texture healing everywhere but kitty, which draws without it
+# (modules/kitty). After each face comes the script face, so a letter the
 # theme's faces lack, Hebrew, Arabic or CJK, is drawn from Noto's face for
 # its script rather than whichever font fontconfig ranks next. A face
 # fontconfig doesn't know, as each of the theme's is, falls back through

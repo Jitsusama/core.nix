@@ -170,8 +170,13 @@ in
     key: "map ${key.chord} ${key.action}\n"
   ) keys;
 
+  # kitty draws the face without its contextual alternates, which are the
+  # mono face's texture healing: a healed letter is wider than its cell,
+  # and kitty shrinks it to fit, so the m of "limit" would draw small.
+  # The bold and italic faces are chosen by kitty and take these features
+  # too, beside the ligature sets fontconfig gives every face.
   config.xdg.configFile."kitty/theme.conf".text = ''
-    font_family family="${font.mono.family}"
+    font_family family="${font.mono.family}" features="-calt"
     font_size ${font.mono.size}
     window_padding_width ${points space.l} ${points space.xl}
 

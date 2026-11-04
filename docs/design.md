@@ -310,9 +310,10 @@ script face for the letters none of them has.
   interfaces, a browser's interface, notification text, menu labels, dialogs
   and the greeter.
 - **Monaspace's own art, on purpose.** Texture healing and the coding
-  ligatures wherever monospace is drawn. The other Monaspace voices only where
-  they mean something, such as a second voice for italics so comments read as
-  handwriting, chosen by looking.
+  ligatures wherever monospace is drawn, but for texture healing in kitty,
+  which shrinks a glyph wider than its cell to fit it. The other Monaspace
+  voices only where they mean something, such as a second voice for italics
+  so comments read as handwriting, chosen by looking.
 - **Wide** (Hubot Sans Expanded) sets a page's titles and headings, in the
   reader.
 - **Serif** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
@@ -1788,6 +1789,17 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **kitty draws every letter at its own size** (2026-11-04, from the m
+  of "limit" drawn visibly smaller in the terminal at 1.5). Texture
+  healing gives a wide letter beside narrow ones, such as that m between
+  two i's, a glyph reaching into its neighbours' room. kitty draws each
+  glyph inside its own cell and shrinks one that's wider to fit, so the
+  healed m came out small (githubnext/monaspace#222). kitty alone draws
+  the face without its contextual alternates, which are texture healing,
+  in all four styles; the ligature sets stay, as does texture healing
+  everywhere else monospace is drawn. A kitty that drew a healed glyph
+  whole, over its narrow neighbours, would bring it back.
 
 - **A notice reads in three groups, at the launcher's size** (2026-11-03,
   look 3, from Joel's "the differing font sizes, and too much information
