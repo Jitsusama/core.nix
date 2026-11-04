@@ -38,9 +38,9 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
     shell.launcher_left_closed()
 
 
-def now(form: str) -> str:
+def now(*form: str) -> str:
     """Give the time now, as date gives it in this form."""
-    done = subprocess.run(["date", form], capture_output=True, text=True, check=True)  # noqa: S603, S607
+    done = subprocess.run(["date", *form], capture_output=True, text=True, check=True)  # noqa: S603, S607
     return done.stdout.strip()
 
 
@@ -74,11 +74,11 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
     shell.send_key("esc")
     # The zones come from the list built from tzdata, so this proves it's
     # there. The minute may turn while it's asked, so either will do.
-    before = now("-u +%H:%M")
+    before = now("-u", "+%H:%M")
     shell.answer("time in utc")
     shell.send_key("ret")
     shell.launcher_closed()
-    assert shell.copied() in [before, now("-u +%H:%M")]
+    assert shell.copied() in [before, now("-u", "+%H:%M")]
     # A theme's colour is found by its name, as the theme exports it.
     theme = json.loads(shell.as_account("cat $XDG_CONFIG_HOME/jitsusama/theme.json"))
     copied(shell, "colour accent", theme["colours"]["accent"].lower())
@@ -252,7 +252,11 @@ def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> N
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()
-    errors = [line for line in log if "ERROR" in line or "Error:" in line]
+    # The build has no PipeWire, which the shell says once as it starts;
+    # that's the sandbox's, never an answer's.
+    errors = [
+        line for line in log if ("ERROR" in line or "Error:" in line) and "pipewire" not in line
+    ]
     assert errors == [], f"an answer raised an error: {errors}"
     # Quickshell colours its levels and categories even in its log, so a
     # colour code may stand between the two words.
