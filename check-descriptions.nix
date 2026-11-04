@@ -582,6 +582,10 @@
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
   '';
+  kitty-draws-every-letter-whole = ''
+    kitty draws each letter of limit and will as the letter alone, in regular, bold, italic and
+    bold italic, so texture healing never gives one a glyph wider than its cell
+  '';
   kitty-draws-the-ligatures = ''
     kitty draws !=, >= and -> as the mono face's ligatures with the account's fontconfig features,
     and |> and 1..=2 plain
