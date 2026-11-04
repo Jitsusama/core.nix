@@ -1050,9 +1050,15 @@ works the same way everywhere.
   does nothing while none shows. The field says so at its right edge,
   "⇥ complete", only then, rather than the foot, where its coming and
   going with each letter moved the other keys or took room from how things
-  stand. Its place there is kept while nothing shows in it, so nothing in
-  the field moves as it comes and goes; flush after the completion, a bare
-  ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
+  stand. Its place there is kept while anything is typed, though nothing
+  shows in it, so nothing in the field moves as it comes and goes with
+  each letter. With nothing typed and nothing to restore no key can show,
+  so no place is kept, and the aside ends at the field's end, where the
+  rows' sides end (Joel, 2026-11-04: "the text in being inset left from
+  the right edge of the launcher"); the first letter moves it over once,
+  as it changes what the aside says. The aside has all the room the path,
+  what's typed and the keys leave it before it gives way. Flush after the
+  completion, a bare ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
   text feels wrong and they are not super obvious what they mean"). The
   keys' words take a third of the field, so they're said only while the
   path, what's typed with its completion and the aside all fit whole
