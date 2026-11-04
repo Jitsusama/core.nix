@@ -178,8 +178,13 @@ for digit = 0, 9 do
 end
 -- A seek held down goes on seeking, as mpv's arrows do.
 local held = { h = true, j = true, k = true, l = true }
+-- Bound ahead of mpv's own keys but not forced, so the input.conf beside
+-- this script, which binds none of these, and any program that runs mpv
+-- with keys of its own forced, as the camera's viewfinder takes Escape,
+-- always win. Every mpv loads this script, and of two forced bindings on
+-- one key the last loaded wins, which took Escape from the viewfinder.
 for key in pairs(bound) do
-  mp.add_forced_key_binding(key, 'vi-' .. key, function()
+  mp.add_key_binding(key, 'vi-' .. key, function()
     pressed(key)
   end, { repeatable = held[key] or false })
 end
