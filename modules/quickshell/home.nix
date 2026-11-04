@@ -2051,7 +2051,7 @@ in
         # logging thread: two wakes a second of the locked shell's, for lines
         # nobody reads (2026-10-31). Without them its file keeps what's shown,
         # as the journal does.
-        ExecStart = "${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
+        ExecStart = "${lib.getExe pkgs.heaptrack} -o %t/heap ${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs";
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
         # theme itself.
