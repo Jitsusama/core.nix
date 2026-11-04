@@ -1881,15 +1881,20 @@ Singleton {
         }
         if (!Array.isArray(windows))
             return;
+        // The hidden window that keeps the sessions' kitty running between
+        // sessions (home.nix's sessions-kitty) is one niri never lists, so
+        // it's left out, or every window after it would be taken for the
+        // next one niri has.
+        const shown = windows.filter(window => window.wm_class !== "pi-sessions-kept");
         const of = {};
-        windows.slice().sort((a, b) => a.id - b.id).forEach((window, rank) => {
+        shown.sort((a, b) => a.id - b.id).forEach((window, rank) => {
             for (const tab of window.tabs ?? []) {
                 for (const inside of tab.windows ?? [])
                     of[inside.id] = rank;
             }
         });
         const next = Object.assign({}, ranks);
-        next[socket] = { windows: windows.length, of: of };
+        next[socket] = { windows: shown.length, of: of };
         ranks = next;
     }
 
