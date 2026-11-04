@@ -29,7 +29,6 @@ from desktop_session import (
     drawn_held_still,
     kept,
     laid_out,
-    launcher_closed,
     retry,
 )
 
@@ -199,17 +198,12 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
             return bool(desktop.window_titled(title).get("focus_timestamp") != was)
 
         retry(used, timeout=dt.timedelta(seconds=10))
-    closed = desktop.in_session(LAUNCHER_OPEN)
 
     def tabbed() -> None:
         """Open the windows with Super+Tab, and wait until they're listed."""
         machine.send_key("meta_l-tab")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: shown["held"] == ["windows"])
-
-    def shut() -> None:
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
     # Its session's words, "Tidy the tests", find it, and so does its
     # quest's whole title, though its window says neither.
@@ -219,7 +213,7 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("is") == f"window:{pi['id']}"
         )
-        shut()
+        desktop.close_launcher()
     # Waiting on Joel, it comes straight after the window used last, and
     # says so beside its name.
     question = {
@@ -240,7 +234,7 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
             )
         )
     )
-    shut()
+    desktop.close_launcher()
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
     desktop.close(between)
 
@@ -276,7 +270,6 @@ def test_the_launchers_home_counts_the_sessions_whose_names_are_too_long_to_list
     desktop: Desktop,
 ) -> None:
     """The launcher's home counts the sessions whose names are too long to list."""
-    machine = desktop.machine
     desktop.pi_session()
     # A session whose quest's name is longer than home's row has room for,
     # as Joel's are, in the window used last, so it's listed first.
@@ -294,8 +287,7 @@ def test_the_launchers_home_counts_the_sessions_whose_names_are_too_long_to_list
     )
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
     assert "No sessions" not in reads["collection:agents"], reads
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
 
@@ -355,8 +347,7 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     shown = desktop.showing()
     assert shown["rows"] == order, "the agents moved under the selection"
     assert shown["selected"]["name"] == chosen, "the selection left its row"
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(other)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqb.json")
     present("TESTQA", {"addresses": ["TESTQA"], "busy": False})
@@ -399,8 +390,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
     retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
     after = name_of(cast("Json", its_row("working")))
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
     assert after["room"] == before["room"], (before, after)
@@ -525,7 +515,7 @@ def waiting_inside(desktop: Desktop) -> tuple[str, list[str]]:
     side = cast("str", (desktop.showing()["selected"] or {}).get("side"))
     desktop.step_in()
     rows = cast("list[str]", desktop.showing()["rows"])
-    launcher_closed(desktop)
+    desktop.close_launcher()
     return side, rows
 
 
@@ -637,7 +627,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         timeout=dt.timedelta(seconds=10),
     )
     assert desktop.showing()["open"]
-    launcher_closed(desktop)
+    desktop.close_launcher()
     retry(
         lambda _: waiting_inside(desktop) == ("2", ["Restart Once", "Prove the Keys", "Later"]),
         timeout=dt.timedelta(seconds=30),
@@ -649,7 +639,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     desktop.step_in()
     desktop.down_to("Not Now")
     machine.send_key("ret")
-    launcher_closed(desktop)
+    desktop.close_launcher()
     retry(
         lambda _: waiting_inside(desktop) == ("1", ["Prove the Keys", "Later"]),
         timeout=dt.timedelta(seconds=30),
@@ -707,7 +697,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
             lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
             timeout=dt.timedelta(seconds=30),
         )
-        # Return on Needs You steps in, as the right arrow does.
+        # Return on Needs You steps in, as the right arrow does in normal mode.
         waiting_opened(desktop)
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "more")
         desktop.step_in("ret")
@@ -721,7 +711,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         # Return on it steps in, with nowhere to go: Done, then Not Now.
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: shown["rows"] == ["Done", "Not Now"])
-        launcher_closed(desktop)
+        desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -f {asked}")
         # Its notice goes a moment after its item does; until then the
@@ -758,12 +748,13 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         )
         selected = desktop.showing()["selected"] or {}
         assert (selected["side"], selected["verb"]) == ("nothing now", "more"), selected
-        # What's typed narrows Now to the rows it names, and clearing it
-        # brings them all back.
+        # What's typed narrows Now to the rows it names, and clearing it, by
+        # the left arrow in normal mode, brings them all back.
         desktop.type_in("awake")
         desktop.launcher_until(
             lambda shown: shown["rows"][:1] == ["Keep Awake"] and not shown["nothing"]
         )
+        desktop.normal()
         machine.send_key("left")
         desktop.launcher_until(
             lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Needs You"]
@@ -784,7 +775,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
                 and shown["nothing"] == "Nothing needs you."
             )
         )
-        launcher_closed(desktop)
+        desktop.close_launcher()
         # Home's Now leaves it out of what's on while it holds nothing.
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
@@ -796,7 +787,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         )
         now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
         assert "Needs You" not in now["reads"], now
-        launcher_closed(desktop)
+        desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user stop caffeinate.service")
 
@@ -872,7 +863,7 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
                 shown["held"] == ["now", "Needs You"] and shown["rows"] == ["Sign the Form"]
             )
         )
-        launcher_closed(desktop)
+        desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -f {asked}")
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})

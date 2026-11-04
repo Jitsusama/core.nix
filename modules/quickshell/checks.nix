@@ -112,6 +112,9 @@ let
           home-manager.users.someone.jitsusama.quickshell = {
             reports = true;
             notices.away = away;
+            # A caret that holds still, as the desktop test's does, so a
+            # launcher left still draws nothing.
+            caret.fade = 0;
           };
         }
       ]);

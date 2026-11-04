@@ -16,6 +16,7 @@ shell, since there's no machine.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
 import signal
@@ -50,6 +51,7 @@ KEYS = {
     "down": ["-k", "Down"],
     "ctrl-left": ["-M", "ctrl", "-k", "Left", "-m", "ctrl"],
     "ctrl-ret": ["-M", "ctrl", "-k", "Return", "-m", "ctrl"],
+    "ctrl-y": ["-M", "ctrl", "-k", "y", "-m", "ctrl"],
     # The notices read a letter by what it types (NoticeKeys.js), so Shift and g come as the
     # G they type, typed as text: wtype finds a key's name without its case, so -k G is a g.
     "shift-g": ["--", "G"],
@@ -231,8 +233,49 @@ class Shell:
             self.as_account(self.ipc("toggle"))
             self.launcher_closed()
 
+    def normal(self) -> None:
+        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        if self.showing()["mode"] == "normal":
+            return
+        self.send_key("esc")
+        self.launcher_until(lambda shown: shown["mode"] == "normal")
+
+    def insert(self) -> None:
+        """Put the launcher's query line in insert mode, by A, at the end of what's typed."""
+        if self.showing()["mode"] == "insert":
+            return
+        self.send_chars("A")
+        self.launcher_until(lambda shown: shown["mode"] == "insert")
+
+    def close_launcher(self) -> None:
+        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+
+        From insert the first gives normal, each after it steps back out a level, and the one
+        at the level it opened on closes it.
+        """
+
+        def where(shown: Json) -> tuple[object, ...]:
+            return (shown["open"], shown["mode"], len(shown["held"]))
+
+        def moved(was: tuple[object, ...], shown: Json) -> bool:
+            return where(shown) != was
+
+        for _ in range(12):
+            was = where(self.showing())
+            if not was[0]:
+                return
+            self.send_key("esc")
+            self.launcher_until(functools.partial(moved, was))
+        still = self.showing()
+        message = f"the launcher was still open after 12 Escapes: {still}"
+        raise AssertionError(message)
+
     def type_in(self, text: str, selecting: str = "") -> None:
-        """Type into the launcher, and wait until it holds every letter, Return's row settled."""
+        """Type into the launcher, and wait until it holds every letter, Return's row settled.
+
+        In normal mode it goes into insert first, at the end of what's typed.
+        """
+        self.insert()
         self.send_chars(text)
 
         def holds(shown: Json) -> object:
@@ -251,7 +294,12 @@ class Shell:
         self.type_in(typed)
 
     def step_in(self, key: str = "right") -> None:
-        """Press a key that steps into the selected row, and wait until the launcher holds it."""
+        """Press a key that steps into the selected row, and wait until the launcher holds it.
+
+        The right arrow steps in from normal mode, which it goes into first; Return from either.
+        """
+        if key == "right":
+            self.normal()
         before = len(self.showing()["held"])
         self.send_key(key)
         self.launcher_until(lambda shown: len(shown["held"]) > before)
@@ -318,7 +366,9 @@ class Shell:
 
         What the last key moved draws first, its glide and a drawer it opened, so the count
         begins once a second passes with no frame, or after ten. A launcher that keeps drawing,
-        as a blinking caret would, never settles, and is counted anyway. The foot's clock may
+        as a blinking caret would, never settles, and is counted anyway: Joel's caret blinks
+        for 15 s after a key, as his kitty's does, so the check holds it steady
+        (jitsusama.quickshell.caret.fade). The foot's clock may
         turn its minute in the three seconds, once.
         """
         began = self.frames()

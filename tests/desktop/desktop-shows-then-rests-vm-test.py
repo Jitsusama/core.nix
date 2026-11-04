@@ -87,8 +87,7 @@ def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_thin
         )
     )
     desktop.photograph("launcher-glance-typing")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    desktop.close_launcher()
 
 
 def test_a_notification_appears(desktop: Desktop) -> None:
@@ -321,8 +320,7 @@ def test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows(desktop: D
     desktop.as_account("qs ipc call frames start")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    desktop.close_launcher()
     opening = json.loads(desktop.as_account("qs ipc call frames said"))
     assert opening.get("launcher", 0) > 0, f"the launcher opened without a frame: {opening}"
 

@@ -303,7 +303,6 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
 ) -> None:
     """An orchestrator is found by its name, and talked to through its session's inbox."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     # A running one is its session, drawn as every session is: its address
     # and what it's doing beside it, and its Return goes to its window.
@@ -316,15 +315,16 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
             and shown["selected"]["verb"] == "go"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Found from the root by its name, the right arrow goes straight inside
-    # it, though its Return goes to its window, the crumbs saying where it
-    # lives; the left arrow comes back to the search, Lighthouse selected
-    # (VKCF3Z, 2026-10-29: "\u2190 is where you came from").
+    desktop.close_launcher()
+    # Found from the root by its name, the right arrow in normal mode goes
+    # straight inside it, though its Return goes to its window, the crumbs
+    # saying where it lives; the left arrow comes back to the search,
+    # Lighthouse selected (VKCF3Z, 2026-10-29: "\u2190 is where you came
+    # from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.normal()
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -340,12 +340,12 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
             and (shown["selected"] or {}).get("name") == "Lighthouse"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Inside, its acts come in the order every session keeps them.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.normal()
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -366,14 +366,11 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
     assert said["from"] == "joel", said
     assert str(said.get("id", "")).startswith("talk-"), said
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> None:
     """An orchestrator's earlier talks say how each went, and read its reply."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     talk = [
         {"at": "2026-10-26T04:00:00Z", "stage": "delivered", "session": "s",
@@ -400,14 +397,12 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
     # Read, it says his words and how it went, each a part to copy.
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["You Said", "How It Went"])
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) -> None:
     """A question asked is talked over with an orchestrator, from Ask's answer."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     desktop.answer("what is a fjord?")
     machine.send_key("ret")
@@ -436,8 +431,7 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
             shown["path"] == ["Agents", "Orchestrators", "Lighthouse"] and "Talk" in shown["rows"]
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
@@ -588,8 +582,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(
         f"rm -rf {opened} {sessions} ~/lighthouse {HARNESS}/quest-workflow/orchestrators.json"
         f" {HARNESS}/quest-workflow/quests.json"
@@ -660,8 +653,7 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
         lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
     )
     assert "Sessions to Reopen" not in desktop.showing()["rows"], desktop.showing()
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"rm -rf {opened} ~/harbour")
 
 
@@ -715,8 +707,7 @@ def test_agents_reopens_a_session_another_machine_carried_here(desktop: Desktop)
             and "Sessions to Reopen" not in shown["rows"]
         )
     )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"rm -rf {opened} ~/ferry")
 
 

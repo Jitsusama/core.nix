@@ -25,7 +25,6 @@ from desktop_session import (
     LAUNCHER_OPEN,
     STARTING,
     laid_out,
-    launcher_closed,
     retry,
     started_apart,
 )
@@ -60,7 +59,6 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     still waking it (2026-10-31). Now a closed launcher doesn't watch the queue at all, and
     reads it once as it opens, its note saying the last write.
     """
-    machine = desktop.machine
     jobs = "$XDG_RUNTIME_DIR/jobs"
     # Once as it opens, once as Agents makes its rows on opening, once as
     # the queue is read on opening, and three to spare for anything else
@@ -74,8 +72,7 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     # later.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     before = int(desktop.as_account("qs ipc call launcher joined"))
     since = desktop.mark()
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
@@ -124,10 +121,7 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
             f"the closed launcher joined its rows {joined} times, {lags} lags heard"
         )
     finally:
-        machine.send_key("esc")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
+        desktop.close_launcher()
         desktop.as_account(f"rm -f {jobs}/queue.json")
 
 
@@ -204,10 +198,7 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         # A coarse timer, Qt's own, may wake up to 5% early: 12 ms of 250.
         assert min(apart, default=1000) >= 235, f"refreshes began {apart} ms apart"  # noqa: PLR2004
     finally:
-        machine.send_key("esc")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
+        desktop.close_launcher()
         desktop.as_account(f"rm -f {jobs}/queue.json")
 
 
@@ -265,7 +256,7 @@ def test_a_refresh_leaves_the_list_where_it_was_scrolled(desktop: Desktop) -> No
         shown = desktop.showing()
         assert shown["scrolled"] == scrolled, shown
         assert (shown["selected"] or {}).get("name") == first, shown
-    launcher_closed(desktop)
+    desktop.close_launcher()
     for window in found:
         desktop.close(window)
 
@@ -286,8 +277,7 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
     machine.succeed(f"echo 99 > {capacity}")
     desktop.launcher_until(lambda shown: " 99%" in shown["glance"])
     after = laid_out(desktop)
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     machine.succeed(f"echo {was} > {capacity}")
     # It measures something: the battery is in the foot, and after it more.
     battery = next(word for word in after["foot"] if "99%" in word["text"])
@@ -331,10 +321,7 @@ def test_the_launcher_loses_no_letter_typed_straight_after_its_chord(desktop: De
             return bool(went + held == "slack")
 
         retry(none_lost, timeout=dt.timedelta(seconds=10))
-        machine.send_key("esc")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
+        desktop.close_launcher()
         machine.wait_until_succeeds(
             desktop.in_session("niri msg focused-window | grep -q type-ahead"),
             timeout=dt.timedelta(seconds=10),
@@ -452,8 +439,7 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     shown = desktop.showing()
     assert "Ctrl+\u21b5 close" in shown["selected"]["told"], shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     # A switch restarts the shell: the first foot it draws has every mark,
     # each read from its source as it starts, none waited on.
     desktop.as_account("systemctl --user restart quickshell")
@@ -464,8 +450,7 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.launcher_ready()
     first = desktop.showing()["glance"]
     assert marks_in(first) == home, (first, home)
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> None:
@@ -473,9 +458,7 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
     machine = desktop.machine
     # A launcher left open by the subtest before is closed first, so the
     # toggle opens it at home.
-    if desktop.showing()["open"]:
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
     tick = int(desktop.as_account("getconf CLK_TCK").strip())
 
@@ -507,8 +490,7 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
             f" --after-cursor={shlex.quote(since)} | grep -a -F '\u2192 Programs'; true"
         ).strip()
         print(f"stepping into Programs: {said or 'within a frame'}, {cost:.0f} ms worked")
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
         return cost, said
 
     # The VM draws in software, several times slower than a laptop, and
@@ -592,8 +574,7 @@ def test_the_pointer_over_the_rows_never_moves_the_selection(desktop: Desktop) -
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[2])
     desktop.held_still()
     assert (desktop.showing()["selected"] or {}).get("name") == first[2], desktop.showing()
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.point(0.99, 0.99)
 
 
@@ -611,8 +592,7 @@ def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
 
     retry(read_again, timeout=dt.timedelta(seconds=30))
     then = laid_out(desktop)
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     assert then["drawn"] == first["drawn"], (
         f"rows made {then['made'] - first['made']} times drew"
         f" {then['drawn'] - first['drawn']} rows afresh"
@@ -649,8 +629,7 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
         desktop.photograph(f"launcher-still-{step:02}-{key}")
         shifts += [f"after {key!r} ({typed!r}) {shift}" for shift in moved(before, after)]
         before = after
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
 
 

@@ -99,7 +99,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
             and any(thing["reads"].startswith("Health \u00b7 Good, ") for thing in shown["things"])
         )
     )
-    machine.send_key("esc")
+    desktop.close_launcher()
     # A part is asked by its own words, its figure the headline.
     desktop.answer("battery health")
     desktop.launcher_until(
@@ -108,7 +108,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
             and (shown["selected"] or {}).get("name", "").startswith("Good, ")
         )
     )
-    machine.send_key("esc")
+    desktop.close_launcher()
 
 
 def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
@@ -173,8 +173,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     share = f"{int(now * 100 / most + 0.5)}%"
     desktop.answer("brightness")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == share)
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # With a number, Return sets it, as the brightness keys do.
     desktop.answer("brightness 30")
     desktop.launcher_until(
@@ -186,14 +185,12 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
         timeout=dt.timedelta(seconds=10),
     )
     # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # The room's light, as the stand-in sensor hears it, is asked by its
     # word.
     desktop.answer("room light")
     desktop.launcher_until(lambda shown: str((shown["selected"] or {}).get("name")).endswith(" lx"))
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # The screen the backlight lights holds its Brightness after Return's
     # own Focus, a setting whose levels are a step in by Return, and the
     # Room light beside it.
@@ -212,8 +209,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
         timeout=dt.timedelta(seconds=10),
     )
     # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # "keyboard light" asks it alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
@@ -236,8 +232,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {KBD_LIGHT}", timeout=dt.timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # The keyboards QEMU gives it, however many, and caps lock.
     desktop.answer("keyboards")
     desktop.photograph("launcher-keyboards")
@@ -273,10 +268,12 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
     # A path this long leaves no room for the field's words for its keys,
-    # so a letter brings the left arrow's key alone, and the path is never
-    # cut to make room for them.
+    # so a letter typed in insert, then normal, brings the left arrow's key
+    # alone, and the path is never cut to make room for them.
+    desktop.insert()
     machine.send_chars("l")
     desktop.launcher_until(lambda shown: shown["typed"] == "l")
+    desktop.normal()
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
     assert not any(word["cut"] for word in field if board in word["text"]), field
     assert any("\u2190" in word["text"] for word in field), field
@@ -298,8 +295,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {KBD_LIGHT}", timeout=dt.timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.answer("keyboards")
     desktop.step_in()
     desktop.launcher_until(lambda shown: board in shown["rows"])
@@ -321,7 +317,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     assert re.search("^after \\d+ ms, \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
 
 
-def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa: PLR0915
+def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     desktop: Desktop,
 ) -> None:
     """The disks and the network say their room, their speed and their round trip."""
@@ -399,8 +395,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa:
             and shown["drawer"]["body"] == "The disk is filling, with 20.0 GiB free."
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # After Space, what's filling the disks, the biggest beside it, and a
     # step in each holder, saying whether the guard clears any of it or
     # why not, its own sentence below.
@@ -417,8 +412,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa:
             and str(shown["selected"]["reads"]).startswith("Container storage holds")
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # A part asked for alone, by its own words: how fast the disk
     # reads and writes, each a step in.
     desktop.answer("disk speed")
@@ -431,8 +425,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa:
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing", "Copy"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # What the network carries now, in and out, from the kernel's
     # counters, and what the line can and how quickly it answers, from
     # what the shaper last wrote, here a stand-in for the machine's card.
@@ -473,8 +466,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa:
     assert (
         desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # "round trip" asks it alone, the middle of the servers, each a step
     # in, the quickest first.
     desktop.answer("round trip")
@@ -483,8 +475,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa:
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9", "Copy"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # A guard that stops writing is asked about once its last heartbeat
     # is two minutes old, by a deadline that heartbeat set, with nothing
     # read again in between, and this machine runs no guard's unit.
@@ -502,8 +493,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(  # noqa:
         lambda shown: shown["footer"] == "the machine's disk guard stopped; it was turned off",
         timeout=dt.timedelta(seconds=60),
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     machine.succeed("rm /run/disk-guard/status.json")
 
 
@@ -574,8 +564,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
             )
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Found from the top by name, which counts nothing as it's typed, the
     # room below it says the same.
     desktop.answer("queue")
@@ -624,8 +613,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
         )
     )
     desktop.photograph("launcher-queue")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # How busy the processors are, read again while it's shown, so a
     # moment on it says just now; a step in, each core and the rest.
@@ -642,16 +630,14 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
     desktop.down_to("Cores")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Core 0")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # The memory, and the programs holding most of it, read once it's
     # asked.
     desktop.answer("memory")
     desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"Used", "Cached", "Using It"} <= set(shown["rows"]))
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def guard_says(desktop: Desktop, holders: list[Json]) -> None:
@@ -711,7 +697,6 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
 ) -> None:
     """A folder filling the disk is kept from the guard's clearing, for the reason Joel gives."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     folder = a_scratch_folder(desktop)
 
     def into_it() -> None:
@@ -740,8 +725,7 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
         machine.send_chars("the thesis data")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["footer"] == f"Kept {folder}: the thesis data.")
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
         # It stays kept, saying why, and Return lets it go.
         into_it()
         desktop.launcher_until(lambda shown: "Keep" in shown["rows"])
@@ -754,8 +738,7 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
         )
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["footer"] == f"No longer kept: {folder}.")
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     finally:
         guard_says(desktop, [])
         desktop.as_account("rm -rf ~/scratch ~/.local/state/disk-guard")
@@ -764,7 +747,6 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
 def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop) -> None:
     """A folder filling the disk is cleared of what the guard takes now, asked once."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     folder = a_scratch_folder(desktop)
     try:
         # Clear says what it takes, and asks once, since it can't be taken
@@ -783,15 +765,13 @@ def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop
                 shown["footer"] == f"Clearing {folder}; the guard starts on its next step."
             )
         )
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
         into_whats_filling_it(desktop)
         desktop.launcher_until(lambda shown: shown["footer"] == "the guard is clearing it now")
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: "Copy the Path" in shown["rows"])
         assert "Clear" not in desktop.showing()["rows"], desktop.showing()["rows"]
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     finally:
         guard_says(desktop, [])
         desktop.as_account("rm -rf ~/scratch ~/.local/state/disk-guard")
@@ -800,14 +780,12 @@ def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop
 def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     """The weather's here follows the laptop."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     fix = "$XDG_RUNTIME_DIR/whereabouts.json"
 
     def asked(test: Callable[[Json], bool]) -> None:
         desktop.answer("rain")
         desktop.launcher_until(test)
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
 
     def nowhere(shown: Json) -> bool:
         return (shown["selected"] or {}).get("name") == "where?"
@@ -855,8 +833,7 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
             and (shown["selected"] or {}).get("side") == "10.12, -20.46"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # And once the file says nowhere, here is nowhere again, and the
     # location is said to be unknown rather than guessed. It's never
     # removed, since the shell can't see a removed file come back.
@@ -869,14 +846,12 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
             and (shown["selected"] or {}).get("side") == "unknown"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
     """The clock follows the laptop into another zone, says so in Time, and is put back."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     fix = "$XDG_RUNTIME_DIR/whereabouts.json"
     zone = "timedatectl show --property=Timezone --value"
     began = machine.succeed(zone).strip()
@@ -920,8 +895,7 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         # Put back, it's held where it was while the laptop stays there.
         machine.send_key("ret")
         keeps(began)
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
         found("America/Edmonton", 300, "Lighthouse, Alberta")
         assert machine.succeed(zone).strip() == began
         # Somewhere else lets it go, and the clock follows again.
@@ -940,7 +914,6 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
 def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desktop) -> None:
     """A place set by hand holds over GeoClue until the laptop is found again."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     fix = "$XDG_RUNTIME_DIR/whereabouts.json"
     pin = "~/.local/state/whereabouts/pin.json"
     began = machine.succeed("timedatectl show --property=Timezone --value").strip()
@@ -955,8 +928,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         )
 
     def close() -> None:
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
 
     try:
         # A town no place is called sets nothing, and the foot says why:
@@ -1026,7 +998,6 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
 def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     """The time here says how the clock is kept, its server a thing to dig into."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     kept = "$XDG_RUNTIME_DIR/timekeeping.json"
     # timekeeping runs, and timesyncd, asking a server that isn't there,
     # has made no exchange, so the time says it isn't synchronised, and
@@ -1044,8 +1015,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: "Service" in shown["rows"])
     rows = cast("list[str]", desktop.showing()["rows"])
     assert rows[rows.index("Synchronised") + 1] == "Service", rows
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # An exchange made, written as timekeeping writes it, with it stopped
     # so nothing writes over it; heard back two minutes ago.
     desktop.as_account("systemctl --user stop timekeeping")
@@ -1114,8 +1084,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             "Frequency \u00b7 +6.267 ppm",
         ):
             assert any(it.startswith(read) for it in reads), (read, reads)
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
         # With nothing keeping the time, Time says so, and no more.
         desktop.as_account(f"echo '{{}}' > {kept}.new && mv {kept}.new {kept}")
         desktop.answer("time")
@@ -1127,8 +1096,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             )
         )
         assert "Service" not in desktop.showing()["rows"], desktop.showing()["rows"]
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start timekeeping")
 
@@ -1149,7 +1117,6 @@ def last_place(shown: Json) -> str:
 def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Desktop) -> None:
     """Firmware says whether an update is offered, last in Machine, and each device's version."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     said = "$XDG_RUNTIME_DIR/fwupd"
     # With nothing offered, as the laptop's fwupd says, it's up to date,
     # Machine's last place, after Lag where Lag is shown (only once
@@ -1163,8 +1130,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
             and firmware_reads(shown).startswith("Firmware \u00b7 up to date")
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # LVFS offers the BIOS an update: Firmware says so, and the BIOS is
     # listed first, its version and what's offered a step in and in its
     # drawer.
@@ -1207,8 +1173,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
         desktop.photograph("launcher-firmware")
         desktop.step_in()
         desktop.launcher_until(lambda shown: shown["rows"] == ["Install 1.13.0", "Version"])
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -rf {said}")
 
@@ -1218,7 +1183,6 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
 ) -> None:
     """Install asks once, installs once however often Return is pressed, then waits."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     said = "$XDG_RUNTIME_DIR/fwupd"
     offered = {"Devices": [{"DeviceId": "bios", "Releases": [{"Version": "1.13.0"}]}]}
     # Once in, fwupd's history says the BIOS's update waits for the
@@ -1280,8 +1244,7 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.photograph("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()
         assert ran == ["update bios --assume-yes --no-reboot-check"], ran
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -rf {said}")
 
@@ -1343,8 +1306,7 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
         )
     )
     desktop.as_account("systemctl --user stop warmth-heard")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 # A binding that throws or assigns the wrong type only warns, and
@@ -1417,7 +1379,6 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop: Desktop,
 ) -> None:
     """The processor's telemetry shows its own parts in Heat, what held it back and kept it up."""
-    machine = desktop.machine
     own = ["NPU", "Image Processor", "Media Engine", "Display Engine"]
     # Heat is looked at before the reader is there, so its connection is
     # refused first, as when the reader's socket is missing on a machine.
@@ -1435,8 +1396,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     )
     desktop.type_in("npu", "NPU")
     assert desktop.showing()["selected"]["side"] == "62 \u00b0C"
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # The Processor says what held it back, after its Clock, and each core
     # held, a step in; the core its cluster didn't hold isn't listed.
     desktop.answer("processor")
@@ -1455,8 +1415,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0", "Copy"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # What kept it from resting comes and goes, so it's the last part, before
     # the step's Copy, saying the part that kept it most, and each part that
     # did a step in.
@@ -1474,8 +1433,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop.photograph("launcher-kept-from-resting")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     the_telemetry_is_let_go(desktop)
 
 
@@ -1491,7 +1449,6 @@ def open_power(desktop: Desktop) -> None:
 
 def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Desktop) -> None:
     """Power says what kept the processor from resting while on battery, and not on mains."""
-    machine = desktop.machine
     stand_in_for_the_telemetry(desktop)
     # On battery, Power holds it too, right after Battery, where Joel looks
     # when the battery drains; nothing else shown asks for the reading, so
@@ -1549,10 +1506,7 @@ def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Des
         the_telemetry_says(desktop, more)
         desktop.launcher_until(said_dimmed)
         assert lit == [], lit
-        machine.send_key("esc")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
+        desktop.close_launcher()
     finally:
         desktop.power("on")
     open_power(desktop)
@@ -1560,8 +1514,7 @@ def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Des
         lambda shown: shown["path"] == ["Machine", "Power"] and "Battery" in shown["rows"]
     )
     assert "Kept From Resting" not in desktop.showing()["rows"], desktop.showing()["rows"]
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     the_telemetry_is_let_go(desktop)
 
 

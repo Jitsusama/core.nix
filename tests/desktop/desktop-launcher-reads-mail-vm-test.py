@@ -561,10 +561,10 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
         )
 
     # Save a Copy asks where in the launcher's own picker, starting in
-    # Downloads with the file's name; Escape picks nothing and saves nothing.
+    # Downloads with the file's name; Escape, pressed until the launcher
+    # closes, picks nothing and saves nothing.
     save_a_copy()
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     machine.fail(f"grep -qs save {asked}")
     machine.fail(f"test -e {saved}")
     # Return saves it where the picker stands, and the launcher closes.
@@ -968,7 +968,6 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
 ) -> None:
     """Mail is marked read, unread again or archived from its acts, said so, the launcher kept."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
 
@@ -993,12 +992,10 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
         )
     )
     was_asked({"unread": {"id": "lunch"}})
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     tidy_from_its_acts(desktop, "Quarterly Numbers", "Archive", "archived")
     was_asked({"archive": {"id": "numbers"}})
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop: Desktop) -> None:

@@ -27,7 +27,6 @@ from desktop_session import (
     STARTING,
     google,  # noqa: F401
     kept,
-    launcher_closed,
     now_rows,
     retry,
 )
@@ -163,8 +162,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
             and shown["drawer"]["drawn"] == "Design Review"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 @pytest.mark.usefixtures("google")
@@ -223,6 +221,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "not going")
     # Back out, its acts lead with seeing it, Return's own, and then
     # joining, which goes into its call.
+    desktop.normal()
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
@@ -244,7 +243,6 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
 ) -> None:
     """An invitation is answered from a meeting's acts, the one given noted, and it stays."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
     # The stand-in's Standup, answered yes, which it hears answered again.
@@ -278,8 +276,7 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
             and shown["footer"] == "maybe"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 @pytest.mark.usefixtures("google")
@@ -420,7 +417,7 @@ def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
     def listed() -> list[str]:
         """Open Now, and give which of those it lists, in its order."""
         shown = now_rows(desktop)
-        launcher_closed(desktop)
+        desktop.close_launcher()
         return [thing["is"] for thing in shown["things"] if thing["is"] in groups]
 
     try:
@@ -768,8 +765,7 @@ def test_the_transcripts_list_each_call_written_down_and_return_opens_it_in_the_
     finally:
         # The next test opens the launcher as a toggle, so it's left closed.
         if desktop.showing()["open"]:
-            machine.send_key("esc")
-            desktop.launcher_until(lambda shown: not shown["open"])
+            desktop.close_launcher()
         desktop.as_account("rm -rf ~/Documents/Calls/standup ~/Documents/Calls/ada")
         desktop.as_account("systemctl --user restart call-transcripts.service")
 
@@ -778,7 +774,6 @@ def test_the_transcripts_list_each_call_written_down_and_return_opens_it_in_the_
 def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> None:
     """Meet's acts start a new meeting or join one by its code, however it's typed."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     desktop.answer("meet")
@@ -800,8 +795,7 @@ def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> Non
         f"grep -qxF 'https://meet.google.com/abc-defg-hij' {opened}",
         timeout=dt.timedelta(seconds=30),
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 @pytest.mark.usefixtures("google")

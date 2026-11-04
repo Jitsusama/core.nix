@@ -1078,14 +1078,6 @@ def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
     )
 
 
-def launcher_closed(desktop: Desktop) -> None:
-    """Close the launcher with Escape, and wait until it's gone."""
-    desktop.machine.send_key("esc")
-    desktop.machine.wait_until_fails(
-        desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10)
-    )
-
-
 def laid_out(desktop: Desktop) -> Json:
     """Give where the launcher draws each word, once two reads in a row agree."""
     was = None
@@ -1103,7 +1095,9 @@ def drawn_held_still(desktop: Desktop) -> int:
     What the last key moved draws first: its glide, and a drawer it opened, which a loaded guest
     draws slowly, so the count begins once a second passes with no frame, or after ten. A
     launcher that keeps drawing, as a blinking caret would, never settles, and is counted
-    anyway. The foot's clock may turn its minute in the three seconds, once.
+    anyway: Joel's caret blinks for 15 s after a key, as his kitty's does, so the test machine
+    holds it steady (jitsusama.quickshell.caret.fade). The foot's clock may turn its minute in
+    the three seconds, once.
     """
 
     def frames() -> int:

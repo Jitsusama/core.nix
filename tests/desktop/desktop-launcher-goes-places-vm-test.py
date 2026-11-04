@@ -62,14 +62,15 @@ def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: D
 
 
 def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
-    """The launcher shows the volume's chords, and Escape closes it."""
-    machine = desktop.machine
+    """The launcher shows the volume's chords, and Escape closes it.
+
+    The first Escape puts the line in normal mode, and the next, at home, closes it.
+    """
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("volume")
     desktop.photograph("launcher-volume")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_an_opening_says_what_each_source_made(desktop: Desktop) -> None:
@@ -84,8 +85,7 @@ def test_an_opening_says_what_each_source_made(desktop: Desktop) -> None:
     # Opening makes rows, each source's counted and named.
     opening = said.format("opening", "[1-9][0-9]*", "[a-z]+ [1-9][0-9]*.*", "")
     machine.wait_until_succeeds(desktop.in_session(opening), timeout=dt.timedelta(seconds=20))
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Closing is said too, though it may make nothing new, with which
     # sources changed since it opened, if any did.
     closing = said.format("closing", "[0-9]+", ".*", ", after [0-9]+ changes \\(.*\\)")
@@ -110,8 +110,7 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
         timeout=dt.timedelta(seconds=10),
     )
     # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("volume")
@@ -122,14 +121,12 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     # A step in, each device's level drawn as a bar.
     desktop.step_in()
     desktop.photograph("launcher-volume-parts")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
     """The drawer stays in for a place, a thing with nothing more to say, and an act."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # Home opens on Now, whose drawer is the moment's plate (look 3), and the
@@ -162,8 +159,7 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
             and (shown.get("drawer") or {}).get("out") is False
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 # Stepping back out of a collection finds the launcher as it was left,
@@ -202,8 +198,7 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
     desktop.launcher_until(
         lambda shown: shown["held"] == [] and (shown["selected"] or {}).get("name") == chosen
     )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 def at_rotation(shown: Json) -> bool:
@@ -221,7 +216,6 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
 ) -> None:
     """A detail inside a thing is found from the root, and Return goes there."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     where = "Desktop \u203a Screens \u203a "
 
     def spot(shown: Json) -> int:
@@ -246,22 +240,25 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
 
     # A screen's rotation is a step inside the screen, inside Screens,
     # inside Desktop; from the root it's found by its name, saying so,
-    # below the focused screen's answer. The right arrow goes there as
-    # Return does, the foot saying the two as one (Joel, 2026-10-26: where
-    # Return goes somewhere in the launcher, the right arrow does the same).
+    # below the focused screen's answer. The right arrow, in normal mode,
+    # goes there as Return does, the foot saying the two as one (Joel,
+    # 2026-10-26: where Return goes somewhere in the launcher, the right
+    # arrow does the same).
     find_rotation()
     told = desktop.showing()["selected"]["told"]
     assert "\u21b5 \u2192 go" in told, told
+    desktop.normal()
     machine.send_key("right")
     desktop.launcher_until(at_rotation)
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Return goes there: the crumbs say each step, and the spot is selected.
     find_rotation()
     machine.send_key("ret")
     desktop.launcher_until(at_rotation)
     screen = desktop.showing()["path"][-1]
-    # The left arrow goes back up, onto the screen it was inside.
+    # The left arrow, in normal mode, goes back up, onto the screen it was
+    # inside.
+    desktop.normal()
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: (
@@ -287,8 +284,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
             and str((shown["selected"] or {}).get("side", "")).startswith(where)
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # An answer's part is found the same way: the stand-in battery's
     # Health, inside Battery, inside Power, inside Machine.
     inside = "Machine \u203a Power \u203a Battery"
@@ -312,16 +308,13 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
             and (shown["selected"] or {}).get("name") == "Health"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_the_first_search_after_the_shell_starts_finds_everything_made_ready(
     desktop: Desktop,
 ) -> None:
     """The first search after the shell starts finds details and texts made ready already."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     # Every switch restarts the shell, and its first search of three letters
     # made every detail inside things there and then, that opening's slowest
     # key; a few seconds after it starts, they're made while it's closed.
@@ -345,8 +338,7 @@ def test_the_first_search_after_the_shell_starts_finds_everything_made_ready(
     desktop.launcher_until(
         lambda shown: any(thing["reads"].startswith("Rotation ") for thing in shown["things"])
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)}"
@@ -367,8 +359,6 @@ def test_a_closing_makes_again_only_the_details_whose_source_changed(
     desktop: Desktop,
 ) -> None:
     """A closing makes again only the details inside things whose source changed since."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     # Every closing made each detail inside things again, though nothing it
     # was made from had changed: Sound's 111 rows on each of Joel's closings,
     # with no change to Sound at all. The first closing here makes what
@@ -386,8 +376,7 @@ def test_a_closing_makes_again_only_the_details_whose_source_changed(
         desktop.launcher_until(
             lambda shown: any(thing["reads"].startswith("Rotation ") for thing in shown["things"])
         )
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
         desktop.reported("spots made while closed ", heard, since)
     assert "computer/sound" in said[-1]["kept"], said[-1]
 
@@ -468,9 +457,9 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
 ) -> None:
     """A program's acts are found from the top by their own names, saying where they live.
 
-    Return does the act, as it does inside the program, and the right arrow goes into the
-    program onto it, so the left arrow climbs back out. Typing the program's name lists the
-    program first, and only those acts whose own names it starts a word of.
+    Return does the act, as it does inside the program, and the right arrow in normal mode
+    goes into the program onto it, so the left arrow climbs back out. Typing the program's
+    name lists the program first, and only those acts whose own names it starts a word of.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
@@ -484,7 +473,8 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
             and shown["selected"]["note"] == "Programs \u203a Meet"
         )
     )
-    # The right arrow goes into Meet, onto New Meeting.
+    # In normal mode the right arrow goes into Meet, onto New Meeting.
+    desktop.normal()
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -518,8 +508,7 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
         f"grep -qxF https://meet.google.com/abc-defg-hij {opened}",
         timeout=dt.timedelta(seconds=30),
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # And Copy a New Meeting's Link, while Meet's scope is granted.
     desktop.answer("copy a new meeting")
     desktop.launcher_until(
@@ -550,7 +539,6 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
 ) -> None:
     """Machine holds Power, which holds the battery, its profile and what ends a session."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     power = [
         "Battery", "Power Profile", "Keep Awake", "Sleep", "Lock", "Log Out", "Reboot",
         "Power Off",
@@ -598,16 +586,16 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
             and shown["rows"][-1:] == ["Copy"]
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Found by its name from the top, it opens where it lives, and the
-    # left arrow climbs out through Machine.
+    # left arrow, in normal mode, climbs out through Machine.
     desktop.answer("power")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
     desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
     )
+    desktop.normal()
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: (
@@ -616,22 +604,18 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     )
     # A name going on from the word and a space is searched for where it's
     # typed, so "power off" never steps into Power under the keys.
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.answer("power off")
     desktop.launcher_until(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Power Off"
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_lag_stands_in_its_place_until_its_first_ten_seconds_then_says_them(
     desktop: Desktop,
 ) -> None:
     """Lag stands in its place in Machine until its first ten seconds, then says them."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     # As just after a start, before lag-watch has written its first window
     # (UTMDGL, 2026-11-03): Lag was missing from Machine then, and stayed
     # missing while Machine was open, however long after the window came.
@@ -660,8 +644,7 @@ def test_lag_stands_in_its_place_until_its_first_ten_seconds_then_says_them(
             lambda shown: shown["path"] == ["Machine"] and (lag(shown) or {}).get("gone") is False,
             timeout=dt.timedelta(seconds=40),
         )
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start lag-watch.service")
 
@@ -717,8 +700,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
         "said": "opened Machine \u203a Power",
     }
     desktop.launcher_until(lambda shown: shown["open"] and shown["path"] == ["Machine", "Power"])
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # One that ends something is shown ready, never done.
     reboot = one(entries, "Reboot", "Machine \u203a Power")
     assert reboot["disruptive"]
@@ -729,8 +711,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
             and (shown["selected"] or {}).get("name") == "Reboot"
         )
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine \u203a Power")
     assert not awake["disruptive"]
@@ -742,9 +723,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let It Sleep")
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
-    if machine.execute(closed)[0] == 0:
-        machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # One not there says so.
     assert "error" in ran({"id": "nothing:here"})
 
@@ -858,23 +837,22 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         f"home moved as the queue changed: from {scrolled} to {still}"
     )
     desktop.photograph("launcher-home-categories")
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
     )
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
-    # Tab, with nothing typed, does nothing and says nothing, since the
-    # arrows reach every category; Return on one steps into it. The foot
-    # names no Tab either.
+    # Ctrl+Y, which completes, does nothing and says nothing with nothing
+    # typed, since the arrows reach every category; Return on one steps
+    # into it. The foot names no key for completing either.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     first = desktop.showing()["selected"]
-    assert not any(key.startswith("\u21e5") for key in first["told"]), first
-    machine.send_key("tab")
+    assert not any(key.startswith(("\u21e5", "Ctrl+Y")) for key in first["told"]), first
+    machine.send_key("ctrl-y")
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
-    # Had Tab moved to the first place, the arrow would be past it.
+    # Had Ctrl+Y moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
     # Past Programs and People.
     for _step in range(3):
@@ -888,8 +866,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
             and [row for row in shown["rows"] if row != "This Window"][:2] == ["Windows", "Screens"]
         )
     )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 # The programs using the processors and the memory are read as the
@@ -899,21 +876,17 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
 
 def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Desktop) -> None:
     """The machine's programs are there the first time it's asked."""
-    machine = desktop.machine
     for figure in ("processor", "memory"):
         desktop.answer(figure)
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Using It" in shown["rows"])
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
 
 
 def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
     """A word typed whole lands on what it says."""
-    machine = desktop.machine
     # Agents lists pi's sessions, so there has to be one.
     desktop.pi_session()
-    closed = desktop.in_session(LAUNCHER_OPEN)
 
     def selects(key: str) -> Callable[[Json], bool]:
         """Give a test that Return's row is the one with this key."""
@@ -930,8 +903,7 @@ def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
     for typed, holds in lands:
         desktop.answer(typed)
         desktop.launcher_until(holds)
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
 
 
 def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says(

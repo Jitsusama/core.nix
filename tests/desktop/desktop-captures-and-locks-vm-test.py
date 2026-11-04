@@ -378,8 +378,8 @@ def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
     with desktop.told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
         machine.send_chars("b\n")
 
-    # Escape clears the letters typed first, then goes back to Capture,
-    # taking nothing.
+    # Escape leaves insert first, with the letters typed, then goes back
+    # to Capture, taking nothing.
     picker()
     machine.send_chars("c")
     machine.send_key("esc")
