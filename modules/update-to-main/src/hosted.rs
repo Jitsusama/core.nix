@@ -152,7 +152,8 @@ fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fail
 /// last one's taken away first. It archives the folder's own tree rather
 /// than the commit with the folder as a pathspec: git reads a commit's
 /// whole tree into an index first, for its attributes, which in a
-/// monorepo took 5 minutes and 4.9 GB for a folder of a few hundred files.
+/// large repository took 5 minutes and 4.9 GB for a folder of a few hundred
+/// files.
 fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Failure> {
     let source = config.source();
     let _ = fs::remove_dir_all(&source);

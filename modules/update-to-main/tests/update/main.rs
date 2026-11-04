@@ -908,7 +908,7 @@ fn a_hosted_main_is_built_from_its_folder_unsigned() {
 
 /// The folder's own tree is archived, not the commit with the folder as a
 /// pathspec, which reads the commit's whole tree into an index for its
-/// attributes first: a monorepo's took minutes and gigabytes. So what the
+/// attributes first: a large repository's took minutes and gigabytes. So what the
 /// rest of main says about the folder's files never leaves one out.
 #[test]
 fn a_hosted_mains_folder_is_unpacked_from_its_own_tree() {
