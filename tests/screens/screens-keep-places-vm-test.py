@@ -203,9 +203,15 @@ def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they
             booted.outputs_say(screen, there=False)
         # One that opens with no screen to go to holds the next back until a
         # screen comes or its 30 seconds' patience runs out, so the third may
-        # wait that long.
+        # wait that long. The shell says when it begins one; a process
+        # naming it is no sign, since the stand-in pi becomes a bare sleep
+        # within a second, and one begun as the screens went was missed.
         machine.wait_until_succeeds(
-            "pgrep -f 'session 01c6-righ[t]'", timeout=dt.timedelta(seconds=180)
+            booted.in_niri(
+                "journalctl --user -u quickshell -o cat"
+                " | grep -qF 'report[resumed session 01c6-right]'"
+            ),
+            timeout=dt.timedelta(seconds=180),
         )
         booted.plug("detect")
         for screen in sorted(booted.both):
