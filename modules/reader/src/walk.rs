@@ -318,6 +318,28 @@ fn text_of(node: &Handle) -> String {
     s
 }
 
+/// What a block's metadata says of it, as a Typst dictionary: its number,
+/// the source lines comrak says it was written on, and a heading's level
+/// and words (place.rs reads it back).
+fn block_said(node: &Handle, name: &str, number: usize) -> String {
+    // comrak's sourcepos is `3:1-5:10`: lines and columns, from and to.
+    let lines = attr(node, "data-sourcepos").and_then(|pos| {
+        let (from, to) = pos.split_once('-')?;
+        let line = |at: &str| at.split(':').next()?.parse::<usize>().ok();
+        Some((line(from)?, line(to)?))
+    });
+    let lines = lines.map_or_else(|| "none".into(), |(from, to)| format!("({from}, {to})"));
+    let heading = match name.as_bytes() {
+        [b'h', level @ b'1'..=b'6'] => format!(
+            "({}, {})",
+            level - b'0',
+            literal(collapse(&text_of(node)).trim())
+        ),
+        _ => "none".into(),
+    };
+    format!("(block: {number}, lines: {lines}, heading: {heading})")
+}
+
 /// A picture's kind by its first bytes, as Typst names it, for the kinds
 /// Typst sets: PNG, JPEG, GIF, WebP, SVG and PDF.
 pub fn picture_kind(bytes: &[u8]) -> Option<&'static str> {
@@ -524,8 +546,14 @@ impl Walker<'_> {
         if top && BLOCKS.contains(&name.as_str()) {
             // Each block says where it starts on the page, so a place on it
             // is kept as a block and a distance into it, which the first
-            // set can reach without setting the whole file.
-            let _ = write!(self.out, "\n// block\n#metadata({})\n", self.blocks);
+            // set can reach without setting the whole file. It says too the
+            // source lines it was written on, for :{n}, and a heading its
+            // level and words, for ]], [[ and gO's outline.
+            let _ = write!(
+                self.out,
+                "\n// block\n#metadata({})\n",
+                block_said(node, &name, self.blocks)
+            );
             self.blocks += 1;
         }
         // The paragraph right after the title is its lede, and a title

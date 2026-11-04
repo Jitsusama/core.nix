@@ -47,6 +47,44 @@ pub enum Act {
     First,
     /// The last line, or with a count that line, as G.
     Last,
+    /// } and {: the view's top to the next paragraph, or the one before,
+    /// blocks with no blank line between them in the file being one, as
+    /// vi's paragraphs; while selecting, the selection's cursor.
+    ParagraphOn,
+    ParagraphBack,
+    /// ]] and [[: the view's top to the next heading, or the one before.
+    HeadingOn,
+    HeadingBack,
+    /// H, M and L: the cursor, a line the page doesn't show at rest, to the
+    /// top, middle or bottom line in view; what acts on the line here (zt,
+    /// *, gf) acts on it.
+    ViewTop,
+    ViewMiddle,
+    ViewBottom,
+    /// zt, zz and zb: the view placed with the cursor's line at its top,
+    /// middle or bottom.
+    PlaceTop,
+    PlaceMiddle,
+    PlaceBottom,
+    /// %: to a bracket's other end, from the first on the cursor's line;
+    /// with a count, that percent of the way down, as vi's N%.
+    Bracket,
+    /// Star and hash: a search down or up for the first word on the
+    /// cursor's line, whole, as vi's `\<word\>`.
+    SameWordOn,
+    SameWordBack,
+    /// ]b and [b: the next markdown file in the folder, or the one before,
+    /// as vi's next buffer.
+    FileOn,
+    FileBack,
+    /// gf: the file the first link from the cursor's line names, or a path
+    /// written there; Ctrl+]: the first link from the cursor's line.
+    FollowFile,
+    FollowLink,
+    /// gO: the headings, as a list to go to one from, as Neovim's gO.
+    Outline,
+    /// `:`: the command line, for :{n}, :q and :noh.
+    Command,
     /// Starts a search forward or backward: what follows is typed.
     SearchForward,
     SearchBackward,
@@ -78,15 +116,13 @@ pub enum Act {
     /// of the other kind.
     Select,
     SelectPieces,
-    /// While selecting, the cursor on by words as w, b and e, to a line's
-    /// ends as 0 and $, and by paragraphs as { and }.
+    /// While selecting, the cursor on by words as w, b and e, and to a
+    /// line's ends as 0 and $.
     WordOn,
     WordBack,
     WordEnd,
     LineStart,
     LineEnd,
-    ParagraphBack,
-    ParagraphOn,
     /// o: the cursor to the selection's other end.
     OtherEnd,
     /// A text object round the cursor: iw, aw, is, as, ip, ap and `` i` ``.
@@ -153,6 +189,25 @@ const SPOKEN: &[(&str, Act)] = &[
     ("screen-up", Act::ScreenUp),
     ("first", Act::First),
     ("last", Act::Last),
+    ("paragraph-on", Act::ParagraphOn),
+    ("paragraph-back", Act::ParagraphBack),
+    ("heading-on", Act::HeadingOn),
+    ("heading-back", Act::HeadingBack),
+    ("view-top", Act::ViewTop),
+    ("view-middle", Act::ViewMiddle),
+    ("view-bottom", Act::ViewBottom),
+    ("place-top", Act::PlaceTop),
+    ("place-middle", Act::PlaceMiddle),
+    ("place-bottom", Act::PlaceBottom),
+    ("bracket", Act::Bracket),
+    ("search-word-forward", Act::SameWordOn),
+    ("search-word-backward", Act::SameWordBack),
+    ("next-file", Act::FileOn),
+    ("previous-file", Act::FileBack),
+    ("follow-file", Act::FollowFile),
+    ("follow-link", Act::FollowLink),
+    ("outline", Act::Outline),
+    ("command-line", Act::Command),
     ("search-forward", Act::SearchForward),
     ("search-backward", Act::SearchBackward),
     ("next", Act::Next),
@@ -168,8 +223,6 @@ const SPOKEN: &[(&str, Act)] = &[
     ("word-end", Act::WordEnd),
     ("line-start", Act::LineStart),
     ("line-end", Act::LineEnd),
-    ("paragraph-back", Act::ParagraphBack),
-    ("paragraph-on", Act::ParagraphOn),
     ("other-end", Act::OtherEnd),
     ("in-word", Act::Object(Object::InWord)),
     ("a-word", Act::Object(Object::AWord)),
@@ -353,8 +406,27 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::HalfUp => ("Moving", "Up half a screen"),
         Act::ScreenDown => ("Moving", "Down a screen"),
         Act::ScreenUp => ("Moving", "Up a screen"),
+        Act::ParagraphOn => ("Moving", "On a paragraph"),
+        Act::ParagraphBack => ("Moving", "Back a paragraph"),
+        Act::ViewTop => ("Moving", "To the top line in view"),
+        Act::ViewMiddle => ("Moving", "To the middle line in view"),
+        Act::ViewBottom => ("Moving", "To the bottom line in view"),
+        Act::PlaceTop => ("Moving", "This line to the top"),
+        Act::PlaceMiddle => ("Moving", "This line to the middle"),
+        Act::PlaceBottom => ("Moving", "This line to the bottom"),
         Act::First => ("Jumping", "To the top, or a count's line"),
         Act::Last => ("Jumping", "To the end, or a count's line"),
+        Act::HeadingOn => ("Jumping", "On to the next heading"),
+        Act::HeadingBack => ("Jumping", "Back to the heading before"),
+        Act::Outline => ("Jumping", "Go to a heading from a list of them"),
+        Act::Bracket => ("Jumping", "To a bracket's other end, or a count's percent"),
+        Act::FollowLink => ("Jumping", "Follow the link here"),
+        Act::FollowFile => ("Jumping", "Open the file a link here names"),
+        Act::FileOn => ("Jumping", "On to the next markdown file here"),
+        Act::FileBack => ("Jumping", "Back to the markdown file before"),
+        Act::SameWordOn => ("Searching", "Search down for the word here"),
+        Act::SameWordBack => ("Searching", "Search up for the word here"),
+        Act::Command => ("The Page", "A command: a line's number, q or noh"),
         Act::LastJump => ("Jumping", "Back to before the last jump"),
         Act::JumpBack => ("Jumping", "Back through the jumps"),
         Act::JumpForward => ("Jumping", "Forward through the jumps"),
@@ -374,8 +446,6 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::WordEnd => ("Selecting", "On to a word's end"),
         Act::LineStart => ("Selecting", "To the line's start"),
         Act::LineEnd => ("Selecting", "To the line's end"),
-        Act::ParagraphBack => ("Selecting", "Back a paragraph"),
-        Act::ParagraphOn => ("Selecting", "On a paragraph"),
         Act::OtherEnd => ("Selecting", "To the selection's other end"),
         Act::Object(Object::InWord) => ("Text Objects", "A word"),
         Act::Object(Object::AWord) => ("Text Objects", "A word and the space after it"),
@@ -832,6 +902,68 @@ mod tests {
             typed_in(&mut machine, "V", true),
             [(Act::SelectPieces, None)]
         );
+    }
+
+    #[test]
+    fn vis_paragraph_heading_and_view_keys_take_counts() {
+        let mut machine = Machine::default();
+        assert_eq!(
+            typed(&mut machine, "}{2]][["),
+            [
+                (Act::ParagraphOn, None),
+                (Act::ParagraphBack, None),
+                (Act::HeadingOn, Some(2)),
+                (Act::HeadingBack, None),
+            ]
+        );
+        assert_eq!(
+            typed(&mut machine, "H3MLztzzzb"),
+            [
+                (Act::ViewTop, None),
+                (Act::ViewMiddle, Some(3)),
+                (Act::ViewBottom, None),
+                (Act::PlaceTop, None),
+                (Act::PlaceMiddle, None),
+                (Act::PlaceBottom, None),
+            ]
+        );
+        assert_eq!(
+            typed(&mut machine, "%50%*#"),
+            [
+                (Act::Bracket, None),
+                (Act::Bracket, Some(50)),
+                (Act::SameWordOn, None),
+                (Act::SameWordBack, None),
+            ]
+        );
+        // Only { and } of these move a selection's cursor; the rest are a
+        // page's at rest.
+        assert_eq!(
+            typed_in(&mut machine, "{}H", true),
+            [(Act::ParagraphBack, None), (Act::ParagraphOn, None)]
+        );
+    }
+
+    #[test]
+    fn files_links_the_outline_and_the_command_line_have_their_keys() {
+        let mut machine = Machine::default();
+        assert_eq!(
+            typed(&mut machine, "]b2[bgfgO:"),
+            [
+                (Act::FileOn, None),
+                (Act::FileBack, Some(2)),
+                (Act::FollowFile, None),
+                (Act::Outline, None),
+                (Act::Command, None),
+            ]
+        );
+        assert_eq!(
+            machine.press(Ctrl(']'), false),
+            Some((Act::FollowLink, None))
+        );
+        // ] waits for its second key, as g does, and a wrong one drops it.
+        assert_eq!(typed(&mut machine, "]x"), []);
+        assert!(!machine.busy());
     }
 
     #[test]

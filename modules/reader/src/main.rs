@@ -16,10 +16,13 @@
 //! compositor's presentation feedback, and holds the worst 1% of intervals
 //! against one refresh interval.
 
+mod ex;
 mod gl;
 mod keys;
 mod links;
 mod motion;
+mod moves;
+mod outline;
 mod page;
 mod painter;
 mod place;
@@ -443,6 +446,27 @@ struct App {
     flash: Option<(Vec<text::Piece>, Instant)>,
     /// The selection's swatch and blend, then the cursor's.
     chosen: Option<[(gl::Texture, gl::Blend); 2]>,
+    /// The cursor's line's top, in points: a line the page never draws, as
+    /// vi keeps a cursor, where H, M and L, a landing or a match left it,
+    /// for zt, %, * and gf to act on. Until then, and once it's out of
+    /// view, it's the view's nearest line (moves.rs).
+    aim: Option<f64>,
+    /// Whether the key being done put where it left from on the jump list,
+    /// so a move longer than a screen that didn't is put there after.
+    leapt: bool,
+    /// A command being typed after :, and what the prompt's row says until
+    /// the next key, as a command's error.
+    commanding: Option<search::Typing>,
+    said: Option<String>,
+    /// gO's outline while it shows, a search through it being typed, and
+    /// it set, waiting to be painted, and painted.
+    outline: Option<outline::Outline>,
+    outline_typing: Option<search::Typing>,
+    outline_set: Option<prompt::Set>,
+    outline_canvas: Option<gl::Texture>,
+    /// Whether the last search was * or #'s, which ignores case whatever
+    /// it holds, as vi's do.
+    word_search: bool,
 }
 
 /// One line of the page's body text, what j and k move by.
@@ -741,6 +765,334 @@ impl App {
         });
         self.jump_at = self.jumps.len();
         self.last_jump = Some(here);
+        self.leapt = true;
+    }
+
+    /// The cursor's line, among the page's lines, once they're read.
+    fn cursor(&self) -> Option<usize> {
+        let (top, foot) = self.view_pt();
+        moves::cursor(self.words.as_deref()?, top, foot, self.aim)
+    }
+
+    /// Where the cursor's line's top is, in points, or the view's top
+    /// before the page's lines are read.
+    fn cursor_pt(&self) -> f64 {
+        self.cursor()
+            .zip(self.words.as_deref())
+            .map_or_else(|| self.view_pt().0, |(i, lines)| moves::top_of(&lines[i]))
+    }
+
+    /// The first line whose top is at or below `pt`: where a block's words
+    /// start, which a move to it lands on.
+    fn line_from(&self, pt: f64) -> Option<usize> {
+        self.words
+            .as_deref()?
+            .iter()
+            .position(|line| moves::top_of(line) >= pt - 0.5)
+    }
+
+    /// Puts the view's top on a place, in points, and the cursor on its
+    /// line, as a heading's link lands; past the page's end is its end, the
+    /// cursor on the last line.
+    fn land(&mut self, pt: f64) {
+        let to = self
+            .line_from(pt)
+            .zip(self.words.as_deref())
+            .map_or(pt, |(i, lines)| moves::top_of(&lines[i]));
+        self.aim = Some(to);
+        self.jump_to(to * self.px_per_pt());
+    }
+
+    /// Puts the cursor on a line: the view stays where the line shows
+    /// whole, as vi's cursor moves within the screen, and else the line
+    /// lands at its top.
+    fn reach(&mut self, line: usize) {
+        let Some(lines) = self.words.as_deref() else {
+            return;
+        };
+        let (top, foot) = (moves::top_of(&lines[line]), moves::foot_of(&lines[line]));
+        let (view_top, view_foot) = self.view_pt();
+        if top >= view_top - 0.5 && foot <= view_foot {
+            self.aim = Some(top);
+        } else {
+            self.land(top);
+        }
+    }
+
+    /// Star and hash: a search down or up for the cursor's line's first
+    /// word, whole and whatever its case, from that word on, as vi's.
+    fn same_word(&mut self, forward: bool, times: u32) {
+        let Some((from, word)) = self
+            .cursor()
+            .zip(self.words.as_deref())
+            .and_then(|(i, lines)| {
+                moves::first_word(&lines[i]).map(|word| (moves::top_of(&lines[i]), word))
+            })
+        else {
+            return;
+        };
+        self.searched = Some((format!("\\<{word}\\>"), forward));
+        self.word_search = true;
+        self.refind();
+        // From the word itself, as vi's * starts on the word under the
+        // cursor, so it's passed over once.
+        self.current = search::from(&self.found, from - 0.5, true);
+        self.go_on(true, times);
+    }
+
+    /// gf: opens the file the first link from the cursor's line down names,
+    /// or the first path written from there that is a file, as vi's gf
+    /// opens the one named under the cursor: markdown in this window, and
+    /// anything else as the desktop opens it.
+    fn follow_file(&mut self) {
+        let (_, foot) = self.view_pt();
+        let from = self.cursor_pt();
+        let folder = folder_of(&self.file).to_path_buf();
+        let mut named: Vec<(f64, f64, std::path::PathBuf)> =
+            links::links(&self.painter.page().frame)
+                .into_iter()
+                .filter(|link| link.baseline_pt > from && link.top_pt < foot)
+                .filter_map(|link| {
+                    let file = match links::target(&link.href, &self.file) {
+                        links::Target::Page(file, _) => file,
+                        links::Target::Elsewhere(to) if !to.contains("://") => to.into(),
+                        _ => return None,
+                    };
+                    file.is_file()
+                        .then_some((link.baseline_pt.round(), link.left_pt, file))
+                })
+                .collect();
+        // A path written on a line comes after the links on it.
+        for line in self.words.as_deref().unwrap_or_default() {
+            if line.baseline_pt <= from || moves::foot_of(line) > foot {
+                continue;
+            }
+            for path in moves::written_paths(line) {
+                let file = folder.join(&path);
+                if file.is_file() {
+                    named.push((line.baseline_pt.round(), f64::INFINITY, file));
+                }
+            }
+        }
+        named.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+        let Some((_, _, file)) = named.into_iter().next() else {
+            self.say("E446: No file name under cursor");
+            return;
+        };
+        if keys_logged() {
+            eprintln!("file: {}", file.display());
+        }
+        if links::markdown(&file) {
+            self.remember(self.heading() / self.px_per_pt());
+            self.open(file, Landing::Kept);
+        } else {
+            desktop_open(&file.to_string_lossy());
+        }
+    }
+
+    /// Says something in the prompt's row until the next key, as Neovim
+    /// says an error on its command line.
+    fn say(&mut self, said: &str) {
+        if keys_logged() {
+            eprintln!("said: {said}");
+        }
+        self.said = Some(said.to_string());
+        self.ask_prompt();
+    }
+
+    /// Takes a key while a command is typed after :, doing it on Return.
+    fn commanded(&mut self, said: search::Typed) {
+        match said {
+            search::Typed::Changed => self.ask_prompt(),
+            search::Typed::Done => {
+                let Some(typing) = self.commanding.take() else {
+                    return;
+                };
+                self.prompt_shown = false;
+                let command = ex::parse(&typing.typed);
+                let here = self.heading() / self.px_per_pt();
+                match &command {
+                    ex::Command::Line(n) => {
+                        let blocks = place::blocks(&self.painter.page().frame);
+                        let to = moves::source_line(&blocks, *n).unwrap_or(0.0);
+                        self.remember(here);
+                        self.land(to);
+                    }
+                    ex::Command::Last => {
+                        self.remember(here);
+                        self.land(f64::INFINITY);
+                    }
+                    ex::Command::Quit => self.exit = true,
+                    ex::Command::NoHighlight => self.highlighting = false,
+                    ex::Command::Nothing => {}
+                    ex::Command::Unknown(typed) => self.say(&ex::unknown(typed)),
+                }
+                if keys_logged() {
+                    eprintln!(
+                        "command: {:?} is {command:?}: heading {:.1} pt",
+                        typing.typed,
+                        self.heading() / self.px_per_pt()
+                    );
+                }
+            }
+            search::Typed::Cancelled => {
+                self.commanding = None;
+                self.prompt_shown = false;
+            }
+            search::Typed::Nothing => {}
+        }
+        if !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Asks for gO's outline set as it stands now.
+    fn ask_outline(&mut self) {
+        let px_per_pt = self.prompt_px_per_pt();
+        let (Some(outline), Some(prompt), Some(gl)) = (
+            self.outline.as_ref(),
+            self.prompt.as_ref(),
+            self.gl.as_ref(),
+        ) else {
+            return;
+        };
+        if keys_logged() {
+            eprintln!(
+                "outline: {} rows, chosen {:?}",
+                outline.rows.len(),
+                outline.rows[outline.chosen].words
+            );
+        }
+        prompt.ask(prompt::Ask {
+            serial: 0,
+            keys: false,
+            labels: Vec::new(),
+            outline: outline
+                .shown()
+                .map(|(row, chosen)| (row.level, row.words.clone(), chosen))
+                .collect(),
+            mark: "",
+            typed: String::new(),
+            cursor: false,
+            count: None,
+            width_pt: f64::from(gl.width) / px_per_pt,
+            px_per_pt,
+            page: self.width,
+        });
+    }
+
+    /// Puts gO's outline away.
+    fn close_outline(&mut self) {
+        self.outline = None;
+        self.outline_set = None;
+        if let (Some(gl), Some(old)) = (self.gl.as_ref(), self.outline_canvas.take()) {
+            gl.forget(old);
+        }
+        if keys_logged() {
+            eprintln!("outline: closed");
+        }
+    }
+
+    /// A key while gO's outline shows, as Neovim's location list takes
+    /// them in normal mode: j and k, gg and G, Ctrl+D and Ctrl+U and the
+    /// screen's keys through its rows, / and ? then n and N through its
+    /// words, Return to the heading chosen, and q or Escape away.
+    fn outline_key(&mut self, key: keys::Key) {
+        if let Some(typing) = self.outline_typing.as_mut() {
+            let said = typing.key(key);
+            match said {
+                search::Typed::Changed => self.ask_prompt(),
+                search::Typed::Done => {
+                    let typing = self.outline_typing.take();
+                    self.prompt_shown = false;
+                    if let (Some(typing), Some(outline)) = (typing, self.outline.as_mut()) {
+                        let query = if typing.typed.is_empty() {
+                            outline.searched.as_ref().map(|(query, _)| query.clone())
+                        } else {
+                            Some(typing.typed)
+                        };
+                        if let Some(query) = query {
+                            outline.find(&query, typing.forward, 1);
+                            outline.searched = Some((query, typing.forward));
+                        }
+                    }
+                    self.ask_outline();
+                }
+                search::Typed::Cancelled => {
+                    self.outline_typing = None;
+                    self.prompt_shown = false;
+                }
+                search::Typed::Nothing => {}
+            }
+        } else {
+            // Return takes the row chosen, as in his location list; the
+            // page's own keys take nothing of it, so it drops a key
+            // waiting for its second, as any key vi doesn't know does.
+            let pressed = self.keys.press(key, false);
+            if key == keys::Key::Return {
+                self.outline_go();
+            } else if let Some((act, count)) = pressed {
+                self.outline_act(act, count);
+            }
+        }
+        if !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Return in gO's outline: to the heading chosen, as a jump.
+    fn outline_go(&mut self) {
+        let Some(outline) = self.outline.as_ref() else {
+            return;
+        };
+        let row = outline.rows[outline.chosen].clone();
+        self.close_outline();
+        self.remember(self.heading() / self.px_per_pt());
+        self.land(row.top_pt);
+        if keys_logged() {
+            eprintln!(
+                "outline went to {:?}: heading {:.1} pt",
+                row.words,
+                self.heading() / self.px_per_pt()
+            );
+        }
+    }
+
+    fn outline_act(&mut self, act: keys::Act, count: Option<u32>) {
+        use keys::Act;
+        let Some(outline) = self.outline.as_mut() else {
+            return;
+        };
+        let n = count.unwrap_or(1);
+        let rows = |each: usize| isize::try_from(n as usize * each).unwrap_or(isize::MAX);
+        match act {
+            Act::Down | Act::ScrollDown => outline.by(rows(1)),
+            Act::Up | Act::ScrollUp => outline.by(-rows(1)),
+            Act::HalfDown => outline.by(rows(outline::SHOWN / 2)),
+            Act::HalfUp => outline.by(-rows(outline::SHOWN / 2)),
+            Act::ScreenDown => outline.by(rows(outline::SHOWN)),
+            Act::ScreenUp => outline.by(-rows(outline::SHOWN)),
+            Act::First => outline.choose(count.map_or(0, |n| n.saturating_sub(1) as usize)),
+            Act::Last => {
+                outline.choose(count.map_or(usize::MAX, |n| n.saturating_sub(1) as usize));
+            }
+            Act::SearchForward | Act::SearchBackward => {
+                self.outline_typing = Some(search::Typing::new(act == Act::SearchForward, 0.0));
+                self.ask_prompt();
+                return;
+            }
+            Act::Next | Act::Previous => {
+                if let Some((query, forward)) = outline.searched.clone() {
+                    outline.find(&query, forward == (act == Act::Next), n);
+                }
+            }
+            Act::Close | Act::Rest => {
+                self.close_outline();
+                return;
+            }
+            _ => return,
+        }
+        self.ask_outline();
     }
 
     /// Device pixels a point of the prompt takes: the page's at zoom 1.
@@ -818,10 +1170,11 @@ impl App {
             }
             (None, None) => return,
         };
+        let smartcase = self.typing.is_some() || !self.word_search;
         self.found = self
             .words
             .as_ref()
-            .map_or_else(Vec::new, |lines| text::find(lines, &query));
+            .map_or_else(Vec::new, |lines| text::find_as(lines, &query, smartcase));
         self.current = search::from(&self.found, from_pt, forward);
         if self.typing.is_some() {
             self.highlighting = true;
@@ -857,6 +1210,7 @@ impl App {
             }
             self.current = Some(i);
             self.show_match(i, true);
+            self.aim = Some(search::top_pt(&self.found[i]));
         }
         self.ask_prompt();
     }
@@ -877,11 +1231,13 @@ impl App {
                 };
                 if let Some(query) = query {
                     self.searched = Some((query, typing.forward));
+                    self.word_search = false;
                     self.step_to(typing.from_pt * self.px_per_pt());
                     self.remember(typing.from_pt);
                     self.refind();
                     if let Some(i) = self.current {
                         self.show_match(i, false);
+                        self.aim = Some(search::top_pt(&self.found[i]));
                     }
                 } else {
                     self.prompt_shown = false;
@@ -925,11 +1281,22 @@ impl App {
     }
 
     /// Asks for the prompt as it should read now.
+    /// A command typed comes first, then a search, then one through gO's
+    /// outline, then what a command said, then the last search.
     fn ask_prompt(&mut self) {
-        let (forward, typed, cursor) = match (&self.typing, &self.searched) {
-            (Some(typing), _) => (typing.forward, typing.typed.clone(), true),
-            (None, Some((query, forward))) => (*forward, query.clone(), false),
-            (None, None) => return,
+        let way = |forward: bool| if forward { "/" } else { "?" };
+        let (mark, typed, cursor, counted) = if let Some(typing) = &self.commanding {
+            (":", typing.typed.clone(), true, false)
+        } else if let Some(typing) = &self.typing {
+            (way(typing.forward), typing.typed.clone(), true, true)
+        } else if let Some(typing) = &self.outline_typing {
+            (way(typing.forward), typing.typed.clone(), true, false)
+        } else if let Some(said) = &self.said {
+            ("", said.clone(), false, false)
+        } else if let Some((query, forward)) = &self.searched {
+            (way(*forward), query.clone(), false, true)
+        } else {
+            return;
         };
         let px_per_pt = self.prompt_px_per_pt();
         let (Some(prompt), Some(gl)) = (self.prompt.as_ref(), self.gl.as_ref()) else {
@@ -940,12 +1307,14 @@ impl App {
             serial: self.prompt_serial,
             keys: false,
             labels: Vec::new(),
-            forward,
+            outline: Vec::new(),
+            mark,
             typed,
             cursor,
             count: self
                 .words
                 .as_ref()
+                .filter(|_| counted)
                 .map(|_| (self.current.map_or(0, |i| i + 1), self.found.len())),
             width_pt: f64::from(gl.width) / px_per_pt,
             px_per_pt,
@@ -974,7 +1343,8 @@ impl App {
                 serial: 0,
                 keys: true,
                 labels: Vec::new(),
-                forward: true,
+                outline: Vec::new(),
+                mark: "",
                 typed: String::new(),
                 cursor: false,
                 count: None,
@@ -1104,7 +1474,8 @@ impl App {
                 serial: 0,
                 keys: false,
                 labels: labelling.labels.clone(),
-                forward: true,
+                outline: Vec::new(),
+                mark: "",
                 typed: String::new(),
                 cursor: false,
                 count: None,
@@ -1170,26 +1541,20 @@ impl App {
                 self.remember(self.heading() / self.px_per_pt());
                 self.open(file, heading.map_or(Landing::Kept, Landing::Heading));
             }
-            links::Target::Elsewhere(to) => {
-                let opened = std::process::Command::new("xdg-open")
-                    .arg(&to)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
-                match opened {
-                    // Waited for on a thread of its own, so it never
-                    // lingers once it ends.
-                    Ok(mut child) => {
-                        std::thread::spawn(move || child.wait());
-                    }
-                    Err(error) => eprintln!("reader: can't open {to}: {error}"),
-                }
-            }
+            links::Target::Elsewhere(to) => desktop_open(&to),
         }
     }
 
     fn prompt_arrived(&mut self, set: prompt::Set) {
+        if set.outline {
+            if self.outline.is_some() {
+                self.outline_set = Some(set);
+                if !self.frame_pending {
+                    self.draw();
+                }
+            }
+            return;
+        }
         if !set.labels.is_empty() {
             if self.labelling.is_some() {
                 self.labels_set = Some(set.labels);
@@ -1284,6 +1649,9 @@ impl App {
     /// Does what a key asks, `count` times where a count means anything.
     fn act(&mut self, act: keys::Act, count: Option<u32>) {
         use keys::Act;
+        let from_pt = self.heading() / self.px_per_pt();
+        let screen_pt = self.screen_px() / self.px_per_pt();
+        self.leapt = false;
         // The prompt stays while n and N go on, as Neovim's search count.
         if !matches!(
             act,
@@ -1314,23 +1682,7 @@ impl App {
                 self.after_view_moved(matches!(act, Act::Next | Act::Previous));
             }
         }
-        if keys_logged() {
-            // What it selected goes first, so it's there once the key is.
-            self.log_selection();
-            eprintln!(
-                "key {act:?} {count:?}: heading {:.1} pt",
-                self.heading() / self.px_per_pt()
-            );
-            if matches!(
-                act,
-                Act::Next | Act::Previous | Act::SearchForward | Act::SearchBackward | Act::Rest
-            ) {
-                self.log_search(&format!("{act:?}"));
-            }
-        }
-        if !self.frame_pending {
-            self.draw();
-        }
+        self.acted(act, count, from_pt, screen_pt);
     }
 
     /// Does what a key asks of the view, at rest or of one it moves while
@@ -1348,8 +1700,14 @@ impl App {
             Act::HalfUp => self.jump_to(at - n * screen / 2.0),
             Act::ScreenDown => self.jump_to(at + n * screen),
             Act::ScreenUp => self.jump_to(at - n * screen),
-            Act::First => self.leap(count.map_or(0.0, |n| f64::from(n.saturating_sub(1)) * line)),
+            // gg and a count's G take the cursor to the view's top line, and G
+            // alone to its bottom one, as vi's go to a line and to the last.
+            Act::First => {
+                self.aim = None;
+                self.leap(count.map_or(0.0, |n| f64::from(n.saturating_sub(1)) * line));
+            }
             Act::Last => {
+                self.aim = count.is_none().then_some(f64::INFINITY);
                 self.leap(count.map_or(f64::MAX, |n| f64::from(n.saturating_sub(1)) * line));
             }
             Act::SetMark(letter) => {
@@ -1422,13 +1780,172 @@ impl App {
             | Act::WordEnd
             | Act::LineStart
             | Act::LineEnd
-            | Act::ParagraphBack
-            | Act::ParagraphOn
             | Act::OtherEnd
             | Act::Object(_)
             | Act::Copy
             | Act::CopyPiece
             | Act::CopyParagraph => {}
+            other => self.act_as_vi(other, count),
+        }
+    }
+
+    /// After a key: a move longer than a screen kept as a jump, and what
+    /// it did logged for the tests.
+    fn acted(&mut self, act: keys::Act, count: Option<u32>, from_pt: f64, screen_pt: f64) {
+        use keys::Act;
+        // A move longer than a screen is a jump, as vi's are, however it
+        // was made; going through the jumps never adds to them.
+        let to_pt = self.heading() / self.px_per_pt();
+        if !self.leapt
+            && !matches!(
+                act,
+                Act::JumpBack | Act::JumpForward | Act::ZoomIn | Act::ZoomOut | Act::ZoomBack
+            )
+            && (to_pt - from_pt).abs() > screen_pt + 0.5
+        {
+            self.remember(from_pt);
+        }
+        if keys_logged() {
+            // What it selected goes first, so it's there once the key is.
+            self.log_selection();
+            eprintln!(
+                "key {act:?} {count:?}: heading {:.1} pt",
+                self.heading() / self.px_per_pt()
+            );
+            eprintln!("cursor: {:.1} pt", self.cursor_pt());
+            if matches!(
+                act,
+                Act::Next
+                    | Act::Previous
+                    | Act::SearchForward
+                    | Act::SearchBackward
+                    | Act::SameWordOn
+                    | Act::SameWordBack
+                    | Act::Rest
+            ) {
+                self.log_search(&format!("{act:?}"));
+            }
+        }
+        if !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// ]b and [b: the markdown file a count on or back in this one's
+    /// folder, by name, round its ends.
+    fn file_beside(&mut self, on: bool, times: u32) {
+        let files = moves::markdown_files(folder_of(&self.file));
+        if let Some(file) = moves::neighbour(&files, &self.file, times, on) {
+            if keys_logged() {
+                eprintln!("file: {}", file.display());
+            }
+            self.remember(self.heading() / self.px_per_pt());
+            self.open(file, Landing::Kept);
+        }
+    }
+
+    /// Ctrl+]: the first link from the cursor's line down, in view.
+    fn follow_link_here(&mut self) {
+        let from = self.cursor_pt();
+        let (_, foot) = self.view_pt();
+        let link = links::links(&self.painter.page().frame)
+            .into_iter()
+            .filter(|link| link.baseline_pt > from && link.top_pt < foot)
+            .min_by(|a, b| {
+                a.baseline_pt
+                    .round()
+                    .total_cmp(&b.baseline_pt.round())
+                    .then(a.left_pt.total_cmp(&b.left_pt))
+            });
+        match link {
+            Some(link) => self.follow(&link),
+            None => self.say("No link from the line here"),
+        }
+    }
+
+    /// The keys vi moves its cursor and the view by that the page took on
+    /// last: paragraphs and headings, the lines in view, the view on a
+    /// line, brackets, the word here, the files beside this one, and links,
+    /// the outline and the command line.
+    fn act_as_vi(&mut self, act: keys::Act, count: Option<u32>) {
+        use keys::Act;
+        let times = count.unwrap_or(1);
+        let which = |act| match act {
+            Act::ViewTop | Act::PlaceTop => moves::InView::Top,
+            Act::ViewMiddle | Act::PlaceMiddle => moves::InView::Middle,
+            _ => moves::InView::Bottom,
+        };
+        match act {
+            Act::ParagraphOn | Act::ParagraphBack | Act::HeadingOn | Act::HeadingBack => {
+                let blocks = place::blocks(&self.painter.page().frame);
+                let to = moves::block_from(
+                    &blocks,
+                    self.words.as_deref().unwrap_or_default(),
+                    self.cursor_pt(),
+                    times,
+                    matches!(act, Act::ParagraphOn | Act::HeadingOn),
+                    matches!(act, Act::HeadingOn | Act::HeadingBack),
+                );
+                self.land(to);
+            }
+            Act::ViewTop | Act::ViewMiddle | Act::ViewBottom => {
+                let (top, foot) = self.view_pt();
+                if let Some(lines) = self.words.as_deref()
+                    && let Some(i) = moves::line_in_view(lines, top, foot, which(act), times)
+                {
+                    self.aim = Some(moves::top_of(&lines[i]));
+                }
+            }
+            // With a count, zt goes to that line of the file, as vi's.
+            Act::PlaceTop | Act::PlaceMiddle | Act::PlaceBottom => {
+                let (top, foot) = self.view_pt();
+                let line = match count {
+                    Some(n) => {
+                        let blocks = place::blocks(&self.painter.page().frame);
+                        moves::source_line(&blocks, n as usize).and_then(|pt| self.line_from(pt))
+                    }
+                    None => self.cursor(),
+                };
+                if let Some((i, lines)) = line.zip(self.words.as_deref()) {
+                    let to = moves::placed(&lines[i], foot - top, which(act));
+                    self.aim = Some(moves::top_of(&lines[i]));
+                    self.step_to(to * self.px_per_pt());
+                }
+            }
+            Act::Bracket => {
+                let line = match count {
+                    Some(n) => self
+                        .words
+                        .as_deref()
+                        .and_then(|lines| moves::percent(lines, n)),
+                    None => self
+                        .cursor()
+                        .zip(self.words.as_deref())
+                        .and_then(|(i, lines)| moves::bracket(lines, i)),
+                };
+                if let Some(i) = line {
+                    self.reach(i);
+                }
+            }
+            Act::SameWordOn | Act::SameWordBack => self.same_word(act == Act::SameWordOn, times),
+            Act::FileOn | Act::FileBack => self.file_beside(act == Act::FileOn, times),
+            Act::FollowLink => self.follow_link_here(),
+            Act::FollowFile => self.follow_file(),
+            Act::Outline => {
+                let blocks = place::blocks(&self.painter.page().frame);
+                self.outline = outline::Outline::new(&blocks, self.view_pt().0);
+                if self.outline.is_some() {
+                    self.ask_outline();
+                } else {
+                    self.say("No headings on this page");
+                }
+            }
+            Act::Command => {
+                self.commanding =
+                    Some(search::Typing::new(true, self.heading() / self.px_per_pt()));
+                self.ask_prompt();
+            }
+            _ => {}
         }
     }
 
@@ -2000,6 +2517,35 @@ impl App {
         self.draw_after_measure(began, waited_before, script_ms);
     }
 
+    /// What stands over the page: the prompt at its foot, gO's outline on
+    /// it, and the key list in the middle.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a canvas or a buffer is a whole number of pixels within a screen's few thousand"
+    )]
+    fn draw_over(&mut self, screen: f32) {
+        let Some(gl) = self.gl.as_ref() else { return };
+        if self.prompt_shown
+            && let Some(canvas) = painted(gl, &mut self.prompt_canvas, self.prompt_set.take())
+        {
+            let (width, height) = (canvas.width as f32, canvas.height as f32);
+            gl.draw(canvas, 0.0, screen - height, width, height);
+        }
+        // gO's outline stands on the prompt's row while that shows, as his
+        // location list stands on his command line.
+        let below = match self.prompt_canvas.as_ref() {
+            Some(canvas) if self.prompt_shown => canvas.height as f32,
+            _ => 0.0,
+        };
+        if self.outline.is_some()
+            && let Some(canvas) = painted(gl, &mut self.outline_canvas, self.outline_set.take())
+        {
+            let (width, height) = (canvas.width as f32, canvas.height as f32);
+            gl.draw(canvas, 0.0, screen - below - height, width, height);
+        }
+        self.draw_keys();
+    }
+
     /// The frame past the first frame's wait and the measure's script: the
     /// view moved, bands taken in and asked for, drawn, marked, and swapped.
     #[expect(
@@ -2080,14 +2626,7 @@ impl App {
         self.draw_marks(gl, screen);
         self.draw_selection(gl, screen);
         self.draw_labels();
-        let Some(gl) = self.gl.as_ref() else { return };
-        if self.prompt_shown
-            && let Some(canvas) = painted(gl, &mut self.prompt_canvas, self.prompt_set.take())
-        {
-            let (width, height) = (canvas.width as f32, canvas.height as f32);
-            gl.draw(canvas, 0.0, screen - height, width, height);
-        }
-        self.draw_keys();
+        self.draw_over(screen);
         let Some(gl) = self.gl.as_ref() else { return };
         if self.ask_next_frame() {
             self.frame_pending = true;
@@ -2318,6 +2857,7 @@ impl App {
     /// and the launcher's Recent is told.
     fn shown_now(&mut self, file: std::path::PathBuf) {
         self.following = None;
+        self.aim = None;
         self.marks.clear();
         self.kept_marks = place::read(&file)
             .map(|kept| kept.marks)
@@ -2730,6 +3270,22 @@ impl App {
         if let Some(key) = key_of(event, self.ctrl) {
             if self.labelling.is_some() {
                 self.label_key(key);
+                return;
+            }
+            // What a command said stays until the next key, as Neovim's.
+            if self.said.take().is_some() {
+                self.prompt_shown = false;
+                if !self.frame_pending {
+                    self.draw();
+                }
+            }
+            if let Some(typing) = self.commanding.as_mut() {
+                let said = typing.key(key);
+                self.commanded(said);
+                return;
+            }
+            if self.outline.is_some() {
+                self.outline_key(key);
                 return;
             }
             if let Some(typing) = self.typing.as_mut() {
@@ -3278,6 +3834,33 @@ fn painted<'a>(
     canvas.as_ref()
 }
 
+/// Opens what a link names as the desktop opens it: a site, an address, or
+/// a file the reader doesn't show.
+fn desktop_open(to: &str) {
+    let opened = std::process::Command::new("xdg-open")
+        .arg(to)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match opened {
+        // Waited for on a thread of its own, so it never lingers once it
+        // ends.
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+        }
+        Err(error) => eprintln!("reader: can't open {to}: {error}"),
+    }
+}
+
+/// The folder a file is in, a bare name's being the one the reader runs
+/// in.
+fn folder_of(file: &std::path::Path) -> &std::path::Path {
+    file.parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."))
+}
+
 /// A channel whose every message is handed to the app on the loop.
 fn heard<T: 'static>(
     handle: &LoopHandle<'static, App>,
@@ -3487,6 +4070,15 @@ impl App {
             selection: None,
             flash: None,
             chosen: None,
+            aim: None,
+            leapt: false,
+            commanding: None,
+            said: None,
+            outline: None,
+            outline_typing: None,
+            outline_set: None,
+            outline_canvas: None,
+            word_search: false,
         }
     }
 }

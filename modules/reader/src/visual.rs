@@ -20,8 +20,9 @@ use crate::{App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, gl, keys_logged, pr
 impl App {
     /// The view the cursor keeps to, its top and foot in points down the
     /// page: where the view is heading, above the prompt's row while the
-    /// prompt shows.
-    fn view_pt(&self) -> (f64, f64) {
+    /// prompt shows; the lines H, M and L pick from, and the page's cursor
+    /// stays among.
+    pub(crate) fn view_pt(&self) -> (f64, f64) {
         let px = self.px_per_pt();
         let top = self.heading() / px;
         let prompt = if self.prompt_shown {

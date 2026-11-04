@@ -21,15 +21,34 @@ pub struct Place {
     pub marks: Vec<(char, usize, f64)>,
 }
 
+/// A block of the page, as its metadata says it (walk.rs): its number,
+/// where it starts, the source lines it was written on, and a heading's
+/// level and words.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Block {
+    pub number: usize,
+    pub top_pt: f64,
+    pub lines: Option<(usize, usize)>,
+    pub heading: Option<(u8, String)>,
+}
+
 /// Where each block starts on a page, by its number, top to bottom.
 pub fn starts(frame: &Frame) -> Vec<(usize, f64)> {
+    blocks(frame)
+        .into_iter()
+        .map(|block| (block.number, block.top_pt))
+        .collect()
+}
+
+/// Every block of a page, top to bottom.
+pub fn blocks(frame: &Frame) -> Vec<Block> {
     let mut found = Vec::new();
     walk(frame, Point::zero(), &mut found);
-    found.sort_by(|a, b| a.1.total_cmp(&b.1));
+    found.sort_by(|a, b| a.top_pt.total_cmp(&b.top_pt));
     found
 }
 
-fn walk(frame: &Frame, at: Point, found: &mut Vec<(usize, f64)>) {
+fn walk(frame: &Frame, at: Point, found: &mut Vec<Block>) {
     for (place, item) in frame.items() {
         let here = at + *place;
         match item {
@@ -39,14 +58,55 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<(usize, f64)>) {
             }
             FrameItem::Tag(Tag::Start(content, _)) => {
                 if let Some(metadata) = content.to_packed::<MetadataElem>()
-                    && let Value::Int(block) = metadata.value
-                    && let Ok(block) = usize::try_from(block)
+                    && let Some(block) = said(&metadata.value, here.y.to_pt())
                 {
-                    found.push((block, here.y.to_pt()));
+                    found.push(block);
                 }
             }
             _ => {}
         }
+    }
+}
+
+/// A block's metadata read back: a dictionary of its number, lines and
+/// heading, or its number alone.
+fn said(value: &Value, top_pt: f64) -> Option<Block> {
+    let number = |value: &Value| match value {
+        Value::Int(n) => usize::try_from(*n).ok(),
+        _ => None,
+    };
+    match value {
+        Value::Int(_) => Some(Block {
+            number: number(value)?,
+            top_pt,
+            lines: None,
+            heading: None,
+        }),
+        Value::Dict(dict) => {
+            let lines = match dict.get("lines").ok() {
+                Some(Value::Array(pair)) => match pair.as_slice() {
+                    [from, to] => number(from).zip(number(to)),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let heading = match dict.get("heading").ok() {
+                Some(Value::Array(pair)) => match pair.as_slice() {
+                    [level, Value::Str(words)] => number(level)
+                        .and_then(|level| u8::try_from(level).ok())
+                        .map(|level| (level, words.as_str().to_string())),
+                    _ => None,
+                },
+                _ => None,
+            };
+            Some(Block {
+                number: number(dict.get("block").ok()?)?,
+                top_pt,
+                lines,
+                heading,
+            })
+        }
+        _ => None,
     }
 }
 

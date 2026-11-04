@@ -10,17 +10,22 @@
 # Its keys are Neovim's own, from the key language every surface of ours
 # speaks (../keys/language.toml), which the reader reads as it builds: j
 # and k a line, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen,
-# gg and G, counts, / and ? to search with n and N, marks, '' and Ctrl+O and
-# Ctrl+I through the jumps, g x to follow a link by its label, q, ZZ or
-# Space w to close, and Space ? or F1 for every key. v and V select, from the
-# first word in view, with the terminal's cursor, moved by the arrows and
-# h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap and i` for text
-# objects and o for the other end; y or Ctrl+C copies the selection as the
-# file's markdown through wl-copy, and at rest y y and y i p copy the
-# first block in view, or its paragraph, each flashing what it took for
-# 200 ms, as his Neovim's yank does. A link to another markdown
+# gg and G, { and } a paragraph, ]] and [[ a heading, H, M and L and zt, zz
+# and zb, % and N%, counts, / and ? to search with n and N, * and # for the
+# word here, marks, '' and Ctrl+O and Ctrl+I through the jumps, which a
+# move longer than a screen joins, g x to follow a link by its label and
+# Ctrl+] the one here, gf for the file a line names, ]b and [b to the
+# folder's next markdown file, gO for the headings as a list, :{n}, :q and
+# :noh, q, ZZ or Space w to close, and Space ? or F1 for every key. v and
+# V select, from the first word in view, with the terminal's cursor, moved
+# by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap
+# and i` for text objects and o for the other end; y or Ctrl+C copies the
+# selection as the file's markdown through wl-copy, and at rest y y and
+# y i p copy the first block in view, or its paragraph, each flashing what
+# it took for 200 ms, as his Neovim's yank does. A link to another markdown
 # file sets it in the same window, as Neovim's gf, keeping the place on the
-# first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only cancels. The same table, as the launcher lists it over
+# first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only
+# cancels. The same table, as the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
 #
@@ -132,6 +137,25 @@ let
     (moving "screen-up" "Page_Up" "Up a screen")
     (jumping "first" "g g" "To the top, or a count's line")
     (jumping "last" "G" "To the end, or a count's line")
+    (moving "paragraph-on" "}" "On a paragraph")
+    (moving "paragraph-back" "{" "Back a paragraph")
+    (jumping "heading-on" "] ]" "On to the next heading")
+    (jumping "heading-back" "[ [" "Back to the heading before")
+    (moving "view-top" "H" "To the top line in view")
+    (moving "view-middle" "M" "To the middle line in view")
+    (moving "view-bottom" "L" "To the bottom line in view")
+    (moving "place-top" "z t" "This line to the top")
+    (moving "place-middle" "z z" "This line to the middle")
+    (moving "place-bottom" "z b" "This line to the bottom")
+    (jumping "bracket" "%" "To a bracket's other end, or a count's percent")
+    (searching "search-word-forward" "*" "Search down for the word here")
+    (searching "search-word-backward" "#" "Search up for the word here")
+    (jumping "next-file" "] b" "On to the next markdown file here")
+    (jumping "previous-file" "[ b" "Back to the markdown file before")
+    (jumping "follow-file" "g f" "Open the file a link here names")
+    (jumping "follow-link" "Ctrl+]" "Follow the link here")
+    (jumping "outline" "g O" "Go to a heading from a list of them")
+    (page "command-line" ":" "A command: a line's number, q or noh")
     (jumping "last-jump" "' '" "Back to before the last jump")
     (jumping "last-jump" "` `" "Back to before the last jump")
     (jumping "jump-back" "Ctrl+O" "Back through the jumps")
@@ -155,8 +179,6 @@ let
     (selecting "word-end" "e" "On to a word's end")
     (selecting "line-start" "0" "To the line's start")
     (selecting "line-end" "$" "To the line's end")
-    (selecting "paragraph-back" "{" "Back a paragraph")
-    (selecting "paragraph-on" "}" "On a paragraph")
     (selecting "other-end" "o" "To the selection's other end")
     (objects "in-word" "i w" "A word")
     (objects "a-word" "a w" "A word and the space after it")

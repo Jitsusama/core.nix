@@ -1117,15 +1117,18 @@
     by their first bytes, places kept and read back, saves heard and the watch moved to another file,
     the file shown said, the theme read, search across a hyphen, an equation shown as written
     without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
-    counts and keys, and visual mode's motions, text objects and copies of the file's markdown
+    counts and keys, visual mode's motions, text objects and copies of the file's markdown, where
+    vi's paragraph, heading, view, bracket and file moves land, whole-word search, the command line
+    read as Neovim reads it, and gO's outline
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
     zoom, / and n, Space ? and Escape, copies the first block in view and its paragraph with y y and
     y i p, selects with v and V and every visual-mode key, copies each selection's markdown onto
     the clipboard with y and Ctrl+C, and follows a link by g x's label, to a heading and to another
-    markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then closes on q;
-    markdown files open in it
+    markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
+    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, a mark kept between openings, and
+    closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
