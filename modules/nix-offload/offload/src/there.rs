@@ -1973,11 +1973,15 @@ pub const VM_ROOM: usize = 4;
 /// it asks, and it goes when nothing else is sent, so one past the room
 /// waits for none. It waits, saying so once, checking and claiming under a
 /// lock so two runs can't both take the last room; with none to be had,
-/// as where the folder can't be written, it goes at once.
+/// as where the folder can't be written, it goes at once. Runs waiting go
+/// in the order they came, each holding its place in the folder's
+/// `waiting`, since one past the room goes only once nothing else is
+/// sent, and smaller runs coming after it kept finding room first.
 pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
     let mut said = false;
+    let mut place: Option<Claim> = None;
     loop {
         let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
             return claim(dir, wants);
@@ -1987,20 +1991,76 @@ pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
             return claim(dir, wants);
         }
         let busy = claimed(dir);
-        if busy == 0 || busy + wants <= room {
-            // Claimed before the lock is let go, as dropping it does.
-            return claim(dir, wants);
+        let before = ahead(dir, place.as_ref());
+        if before == 0 && (busy == 0 || busy + wants <= room) {
+            // Claimed, and its place given up, before the lock is let go,
+            // as dropping it does.
+            let claimed = claim(dir, wants);
+            drop(place);
+            return claimed;
+        }
+        if place.is_none() {
+            place = queued(dir);
         }
         drop(lock);
         if !said {
+            let queue = match before {
+                0 => String::new(),
+                1 => ", and a run waits ahead of this".to_owned(),
+                runs => format!(", and {runs} runs wait ahead of this"),
+            };
             eprintln!(
                 "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
-                 {room}, so this waits for room"
+                 {room}{queue}, so this waits for room"
             );
             said = true;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
+}
+
+/// A place among the runs waiting for room in `dir`, after every run
+/// already there: named by when it was taken, then this run's pid, so
+/// they sort in the order they came and one whose run ended is seen.
+fn queued(dir: &Path) -> Option<Claim> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let waiting = dir.join("waiting");
+    fs::create_dir_all(&waiting).ok()?;
+    let came = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    let path = waiting.join(format!(
+        "{came:020}.{}.{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&path, "").ok()?;
+    Some(Claim(path))
+}
+
+/// How many runs still going wait for room in `dir` ahead of the one at
+/// `place`, or at all for one with no place yet. A place whose run ended
+/// without giving it up is taken away here.
+fn ahead(dir: &Path, place: Option<&Claim>) -> usize {
+    let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
+        return 0;
+    };
+    let mine = place.and_then(|place| place.0.file_name().map(std::ffi::OsStr::to_owned));
+    let mut before = 0;
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let pid = name
+            .to_str()
+            .and_then(|name| name.split('.').nth(1)?.parse().ok());
+        if !pid.is_some_and(runs) {
+            let _ = fs::remove_file(entry.path());
+        } else if mine.as_ref().is_none_or(|mine| name < *mine) {
+            before += 1;
+        }
+    }
+    before
 }
 
 /// How many VM tests runs still going have sent the builder `dir`'s

@@ -91,8 +91,8 @@
 //! `nix-offload/vm-builds` says it runs at once, else 4 (as both VM
 //! lenders' helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs
 //! still going have sent it, each saying so in its folder's `sending`.
-//! Past both builders' room, a run's VM tests wait for room, since Nix
-//! bounds each run's build alone. A run's parts go at once, each to its
+//! Past both builders' room, a run's VM tests wait for room, in the order
+//! runs came, since Nix bounds each run's build alone. A run's parts go at once, each to its
 //! own builder.
 //!
 //! Builders always there, such as other machines at home, are named in
@@ -553,6 +553,15 @@ fn sent(
         }
         store => store,
     };
+    // Said apart from the lent builder's absence, which the line after it
+    // reads as.
+    if vm && store.is_none() {
+        eprintln!(
+            "nix-offload: the VM lender in {} lent no VM builder, so its VM tests weren't \
+             sent, nor the lent way",
+            dir.display()
+        );
+    }
     let again = |since| there::stood_again(dir, there::WAITING, since);
     there::run(
         part,
