@@ -164,7 +164,16 @@ in
   # (src/record.rs): each direction's own delay from ICMP timestamps, the
   # gateway's round trip and what the link carried, a file a day for eight
   # days, so a new controller is replayed over a real week before it shapes
-  # anything. It needs a raw socket and nothing else.
+  # anything. It needs a raw socket and nothing else. It runs as a user of
+  # its own rather than a dynamic one, whose state systemd keeps in a folder
+  # only root can open: the days are replayed by the machine's user, and they
+  # hold only delays to public resolvers and what the link carried.
+  config.users.users.shaper-record = {
+    isSystemUser = true;
+    group = "shaper-record";
+  };
+  config.users.groups.shaper-record = { };
+
   config.systemd.services.shaper-record = {
     description = "Record each direction's delay, for the shaper's rebuild";
     wantedBy = [ "multi-user.target" ];
@@ -174,8 +183,10 @@ in
       ExecStart = "${shaper}/bin/shaper record --state /var/lib/shaper-record";
       Restart = "always";
       RestartSec = 5;
-      DynamicUser = true;
+      User = "shaper-record";
+      Group = "shaper-record";
       StateDirectory = "shaper-record";
+      StateDirectoryMode = "0755";
       AmbientCapabilities = [ "CAP_NET_RAW" ];
       CapabilityBoundingSet = [ "CAP_NET_RAW" ];
       RestrictAddressFamilies = [
