@@ -1,7 +1,8 @@
 //! The page: the markdown set once in Typst as one tall page, its text one
 //! measure of about 66 characters with room either side for a wide table to
 //! spread into, on one pitch and one type scale. The window draws it
-//! centred, so its margins are what the window leaves.
+//! centred, so its margins are what the window leaves, and a window too
+//! narrow for that has the page set again to fit it.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -13,16 +14,72 @@ use crate::world::PageWorld;
 
 /// The measure: 580 px, about 66 characters of the text face, the most a
 /// line should hold.
-pub const MEASURE_PT: f64 = 435.0;
+const MEASURE_PT: f64 = 435.0;
+
+/// The least a measure holds: 45 characters of the text face, below which
+/// lines break too often to read.
+const LEAST_MEASURE_PT: f64 = 300.0;
+
+/// Space's xxl, the least margin a window leaves either side of the words,
+/// and its xl, which a window too narrow for both xxl and 45 characters
+/// leaves instead.
+const XXL_PT: f64 = 24.0;
+const XL_PT: f64 = 18.0;
+
+/// However narrow the window, a line still holds a few words, so Typst
+/// always has a measure to set.
+const NARROWEST_PT: f64 = 72.0;
 
 /// How far a wide table may spread past the measure on each side, which
 /// the page keeps as its side margins: in a window half the laptop's panel
 /// wide (720 px, 540 pt), what's left once Space's xxl stays inside each
 /// edge, so a spread table never reaches the window's edge.
-pub const SPREAD_PT: f64 = 28.5;
+const SPREAD_PT: f64 = 28.5;
 
-/// The page's width: its measure and the room on each side.
-pub const WIDTH_PT: f64 = MEASURE_PT + 2.0 * SPREAD_PT;
+/// The narrowest window the whole page fits, its spread and xxl inside
+/// each edge: 540 pt.
+const WHOLE_FROM_PT: f64 = MEASURE_PT + 2.0 * (SPREAD_PT + XXL_PT);
+
+/// How wide the page is set: its measure, and the room either side of it a
+/// wide table may spread into, chosen for the window it shows in.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Width {
+    pub measure_pt: f64,
+    pub spread_pt: f64,
+}
+
+impl Width {
+    /// The whole page, as a window of 540 pt or more shows it.
+    pub const WHOLE: Width = Width {
+        measure_pt: MEASURE_PT,
+        spread_pt: SPREAD_PT,
+    };
+
+    /// The page for a window this many points of the page wide at zoom 1.
+    /// A narrower window than the whole page's has no room to spread a
+    /// table into, and the measure gives way to keep xxl either side, down
+    /// to 45 characters; then the margins give way to xl, and only then the
+    /// measure again.
+    pub fn for_window(window_pt: f64) -> Width {
+        if window_pt >= WHOLE_FROM_PT {
+            return Width::WHOLE;
+        }
+        let measure_pt = if window_pt >= LEAST_MEASURE_PT + 2.0 * XL_PT {
+            (window_pt - 2.0 * XXL_PT).clamp(LEAST_MEASURE_PT, MEASURE_PT)
+        } else {
+            (window_pt - 2.0 * XL_PT).max(NARROWEST_PT)
+        };
+        Width {
+            measure_pt,
+            spread_pt: 0.0,
+        }
+    }
+
+    /// The page's width: its measure and the room on each side.
+    pub fn page_pt(self) -> f64 {
+        self.measure_pt + 2.0 * self.spread_pt
+    }
+}
 
 /// Above the first line's capitals: Space's xxl, 24 pt. Lines start at
 /// their capitals' height (Typst's top edge), so the margin is the gap.
@@ -335,11 +392,12 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 }
 "#;
 
-/// What every page is set with: the theme's ink, then the page's look,
-/// its words' capitals read from the face `world` finds for them.
-pub fn template(world: &PageWorld) -> &'static str {
-    static TEMPLATE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    TEMPLATE.get_or_init(|| {
+/// What every page is set with: the theme's ink, then the page at `width`,
+/// then its look, its words' capitals read from the face `world` finds for
+/// them. All but the width is the same for every page, so it is made once.
+pub fn template(world: &PageWorld, width: Width) -> String {
+    static LOOK: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+    let (ink, look) = LOOK.get_or_init(|| {
         let theme = crate::theme::get();
         let size = theme.sizes.text;
         let cap = world.capitals_pt(&theme.faces.text, size);
@@ -347,11 +405,21 @@ pub fn template(world: &PageWorld) -> &'static str {
         // eyebrow, so the page holds its line in whatever faces it finds.
         let caps = cap / size;
         let code_caps = world.capitals_pt(&theme.faces.code, 1.0);
-        format!(
-            "{ink}#set page(width: {WIDTH_PT}pt, height: auto, margin: (x: {SPREAD_PT}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {MEASURE_PT}pt\n#let spread = {SPREAD_PT}pt\n#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}",
-            ink = theme.typst(),
+        (
+            theme.typst(),
+            format!(
+                "#let body-size = {size}pt\n#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
+            ),
         )
-    })
+    });
+    let Width {
+        measure_pt,
+        spread_pt,
+    } = width;
+    format!(
+        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let spread = {spread_pt}pt\n{look}",
+        page = width.page_pt(),
+    )
 }
 
 fn compile(world: &PageWorld) -> Result<PagedDocument, String> {
@@ -510,8 +578,8 @@ impl Rest {
 /// Sets the file's first blocks, up to about two screens of source, as a
 /// page of their own; the rest comes back to set, unless that was all.
 /// Given a block to open at, it sets as far as that block and about two
-/// screens past it.
-pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
+/// screens past it. The rest is set at the same `width`.
+pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First, String> {
     let start = Instant::now();
     let mut parts = Vec::new();
     let markdown = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
@@ -527,9 +595,9 @@ pub fn set_first(file: &str, reach: Option<usize>) -> Result<First, String> {
     });
     let about = about(std::path::Path::new(file), &markdown);
     let program = timed(&mut parts, "walk", || {
-        walk::program(&markdown, &about, base, &pieces, &world, &mut costs)
+        walk::program(&markdown, &about, base, &pieces, &world, width, &mut costs)
     });
-    let (head, blocks) = walk::blocks(&program, &world);
+    let (head, blocks) = walk::blocks(&program, &world, width);
     let mut first = head;
     let mut chars = 0;
     let mut all = true;
@@ -573,6 +641,7 @@ pub struct Setter {
     file: String,
     world: PageWorld,
     pieces: Pieces,
+    width: Width,
 }
 
 impl Setter {
@@ -581,7 +650,13 @@ impl Setter {
             file: file.to_string(),
             world: new_world(),
             pieces: Pieces::new(),
+            width: Width::WHOLE,
         }
+    }
+
+    /// Sets the page at another width from now on, for a window resized.
+    pub fn fit(&mut self, width: Width) {
+        self.width = width;
     }
 
     /// Sets another file from now on, keeping the world and its pieces, so
@@ -615,6 +690,7 @@ impl Setter {
             base,
             &self.pieces,
             &self.world,
+            self.width,
             &mut costs,
         );
         let page = set_page(&mut self.world, &program)?;
@@ -669,7 +745,7 @@ pub fn trim() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Setter, lives, when};
+    use super::{Setter, Width, lives, when};
 
     fn at(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> jiff::Zoned {
         jiff::civil::date(year, month, day)
@@ -715,6 +791,77 @@ mod tests {
         assert_eq!(when(&at(2026, 11, 3, 9, 14), &now), "09:14");
         assert_eq!(when(&at(2026, 11, 2, 23, 5), &now), "2 Nov");
         assert_eq!(when(&at(2025, 10, 30, 8, 0), &now), "30 Oct 2025");
+    }
+
+    /// The measure and spread a window this many points wide sets.
+    fn width(window_pt: f64) -> (f64, f64) {
+        let Width {
+            measure_pt,
+            spread_pt,
+        } = Width::for_window(window_pt);
+        (measure_pt, spread_pt)
+    }
+
+    #[test]
+    fn a_window_too_narrow_for_the_whole_page_gives_way_measure_then_margin() {
+        assert_eq!(width(1080.0), (435.0, 28.5), "the whole page");
+        assert_eq!(width(540.0), (435.0, 28.5), "the whole page, just");
+        assert_eq!(width(539.0), (435.0, 0.0), "no spread, the whole measure");
+        assert_eq!(
+            width(483.0),
+            (435.0, 0.0),
+            "the whole measure, xxl either side"
+        );
+        assert_eq!(
+            width(360.0),
+            (312.0, 0.0),
+            "a third of the panel: xxl either side"
+        );
+        assert_eq!(width(348.0), (300.0, 0.0), "45 characters, xxl either side");
+        assert_eq!(
+            width(340.0),
+            (300.0, 0.0),
+            "45 characters, the margins giving way"
+        );
+        assert_eq!(width(336.0), (300.0, 0.0), "45 characters, xl either side");
+        assert_eq!(
+            width(300.0),
+            (264.0, 0.0),
+            "under 45 characters, xl either side"
+        );
+    }
+
+    #[test]
+    fn a_page_set_for_a_narrow_window_is_its_measure_wide_and_keeps_to_it() {
+        let dir = std::env::temp_dir().join(format!("reader-narrow-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        let file = dir.join("page.md");
+        std::fs::write(&file, OPENING).expect("the file");
+        let mut setter = Setter::new(file.to_str().expect("a path"));
+        setter.fit(Width::for_window(360.0));
+        let (page, _) = setter.set().expect("set");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+        assert!(
+            (page.frame.size().x.to_pt() - 312.0).abs() < 0.01,
+            "the page is {} pt wide, not its measure",
+            page.frame.size().x.to_pt()
+        );
+        let runs = crate::text::runs(&page.frame);
+        let right = runs
+            .iter()
+            .flat_map(|run| run.chars.iter().map(|c| c.2))
+            .fold(0.0, f64::max);
+        assert!(
+            right <= 312.01,
+            "a line runs to {right} pt, past the measure"
+        );
+        let mut lines: Vec<f64> = runs.iter().map(|run| run.baseline_pt).collect();
+        lines.sort_by(f64::total_cmp);
+        lines.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+        assert!(
+            lines.len() > 2,
+            "the words never wrapped on the narrow measure"
+        );
     }
 
     /// Every baseline from the first run holding `from` to the last holding

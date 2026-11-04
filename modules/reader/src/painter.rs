@@ -77,6 +77,11 @@ impl Painter {
         Arc::clone(&self.page)
     }
 
+    /// How wide the page is in points, as it was set for the window.
+    pub fn width_pt(&self) -> f64 {
+        self.page.frame.size().x.to_pt()
+    }
+
     /// How tall the page is in points.
     pub fn height_pt(&self) -> f64 {
         self.page.frame.size().y.to_pt()
