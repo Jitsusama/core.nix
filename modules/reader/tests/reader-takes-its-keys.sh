@@ -334,9 +334,12 @@ press '[['
 logged '^key HeadingBack None' 1
 
 # H, M and L put the cursor on the view's top, middle and bottom lines,
-# and zt puts the bottom one at the top; zz and zb place it too.
+# and zt puts the bottom one at the top; zz and zb place it too. The page
+# draws no cursor, so each flashes the line it's on.
+flashes=$(seen '^flash: 1 lines for 200 ms')
 press H
 logged '^key ViewTop None' 1
+logged '^flash: 1 lines for 200 ms' $((flashes + 1))
 high=$(cursor)
 press M
 logged '^key ViewMiddle None' 1

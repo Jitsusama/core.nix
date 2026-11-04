@@ -251,8 +251,8 @@ fn source(ask: &Ask) -> String {
 /// the sunken ground the prompt's row is on, the full width of the window,
 /// each heading's words where the page's measure starts, set in from it by
 /// two characters for each level below the outline's highest, as Neovim's
-/// gO sets them in; the row chosen on the raised ground in the strong
-/// text, as his `CursorLine` in a list. Its rows stand on the key list's
+/// gO sets them in; the row chosen on the selection's ground in the strong
+/// text, as the launcher's chosen row and his `CursorLine` in a list. Its rows stand on the key list's
 /// 18.75 pt, the page's 25 px rhythm, with Space's l above and below.
 fn outline(ask: &Ask) -> String {
     let highest = ask
@@ -266,7 +266,7 @@ fn outline(ask: &Ask) -> String {
         .iter()
         .map(|(level, words, chosen)| {
             let (fill, ink) = if *chosen {
-                ("ink.raised", "ink.strong")
+                ("ink.selection", "ink.strong")
             } else {
                 ("none", "ink.text")
             };

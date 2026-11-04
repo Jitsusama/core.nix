@@ -1894,6 +1894,7 @@ impl App {
                     && let Some(i) = moves::line_in_view(lines, top, foot, which(act), times)
                 {
                     self.aim = Some(moves::top_of(&lines[i]));
+                    self.flash_cursor();
                 }
             }
             // With a count, zt goes to that line of the file, as vi's.
@@ -1925,6 +1926,7 @@ impl App {
                 };
                 if let Some(i) = line {
                     self.reach(i);
+                    self.flash_cursor();
                 }
             }
             Act::SameWordOn | Act::SameWordBack => self.same_word(act == Act::SameWordOn, times),
