@@ -5678,6 +5678,14 @@
       "why": "GIMP and the reader both select, and each group says which program's it is beside it."
     },
     {
+      "word": "scrolling",
+      "things": [
+        "shortcuts:reader:scrolling",
+        "shortcuts:zathura:scrolling"
+      ],
+      "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
+    },
+    {
       "word": "focus",
       "things": [
         "shortcuts:desktop:windows:focus",
