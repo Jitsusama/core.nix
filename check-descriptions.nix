@@ -2112,13 +2112,18 @@
     a whole number of half rows below; and a row's words, home's lists and a found row's note,
     are in the sans a step after its name and on its baseline to half a device pixel
   '';
+  vm-desktop-minds-the-margin = ''
+    the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
+    disturb, a missed notice, waiting, the muted microphone, dictation, what's playing and caps
+    lock, and What's on says each and answers the keys
+  '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
     power profile, displays and Wi-Fi from the launcher
   '';
   vm-desktop-says-what-happens = ''
-    notices come, go and are acted on, and the margin, What's on, Tuple's calls and caps lock say
-    what's happening and answer the keys
+    notices come, go and are found again, are signed by the name Joel knows, are acted on by the
+    keys and the pointer, bring what they're about forward, and sit inside the window under them
   '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
@@ -2129,6 +2134,11 @@
     the desktop boots without an ordering cycle and its shell without an error, niri alone keeps
     its priority, programs wear the theme, the wallpaper stands behind the workspaces, and swipes
     and Bluetooth's agent work
+  '';
+  vm-desktop-takes-calls = ''
+    Tuple's daemon starts before the other apps, a call shows in the margin while it lasts, people
+    coming and going are said, a ringing call wants Joel and is kept as missed, a copied link
+    joins, and the call's windows find their places
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of
