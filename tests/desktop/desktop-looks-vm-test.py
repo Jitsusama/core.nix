@@ -44,10 +44,9 @@ NEAR = 0.02
 # How far the text keeps from the plate's frame on every side, its foot included: an inset and a
 # step, 4 and 16, inside the border.
 INSIDE = 20
-# A row's words stand a step from its name (Theme.space.m), in the sans, and on its baseline to
-# half a device pixel.
+# A row's words stand a step from its name (Theme.space.m), in the theme's sans, and on its
+# baseline to half a device pixel.
 WORDS_GAP = 12
-WORDS_FACE = "Mona Sans"
 HALF_A_PIXEL = 0.5
 
 
@@ -100,7 +99,7 @@ def plate_shown(desktop: Desktop, scale: str) -> Json:
     return cast("Json", drawer)
 
 
-def words_on_their_names(card: Json, scale: str) -> int:
+def words_on_their_names(card: Json, scale: str, sans: str) -> int:
     """Hold each drawn row's words to its name's baseline, the gap and the sans; say how many."""
     drawn = [
         (name, words)
@@ -115,7 +114,7 @@ def words_on_their_names(card: Json, scale: str) -> int:
         assert abs(words["gap"] - WORDS_GAP) <= NEAR, (
             f"at {scale} a row's words stand {words['gap']} from its name: {card}"
         )
-        assert words["face"] == WORDS_FACE, f"at {scale} a row's words are in {words['face']}"
+        assert words["face"] == sans, f"at {scale} a row's words are in {words['face']}"
     return len(drawn)
 
 
@@ -124,18 +123,26 @@ def test_a_rows_words_are_in_the_sans_on_its_names_baseline(
 ) -> None:
     """Home's lists and a found row's note are in the sans, on the name's baseline, a step on."""
     machine = desktop.machine
+    # The sans is the theme's, read as the theme exports it, so a theme with another face is
+    # held to that face.
+    theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
+    sans = theme["font"]["sans"]["family"]
     for scale in at_each_scale:
         at_scale(desktop, scale)
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: shown["drawer"]["out"] is True)
         card = desktop.showing()["drawer"]["cardLines"]
-        assert words_on_their_names(card, scale) > 1, f"at {scale} home's rows say nothing: {card}"
+        assert words_on_their_names(card, scale, sans) > 1, (
+            f"at {scale} home's rows say nothing: {card}"
+        )
         desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
         card = desktop.showing()["drawer"]["cardLines"]
-        assert words_on_their_names(card, scale) > 0, f"at {scale} kitty's row says nothing: {card}"
+        assert words_on_their_names(card, scale, sans) > 0, (
+            f"at {scale} kitty's row says nothing: {card}"
+        )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
         machine.send_key("esc")
 
