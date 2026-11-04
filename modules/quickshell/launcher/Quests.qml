@@ -60,20 +60,43 @@ Provider {
     }
     readonly property var loaded: JSON.parse(holding)
 
+    // Each quest's row as last made, by its id, with what it was made from:
+    // its record and the session that has it loaded. pi-quests' text
+    // differs once any quest is written, so every quest's row was made
+    // again at each change, about 824 on Joel's shell (2026-11-03); a row
+    // is now kept while nothing it says changed. A plain object, so keeping
+    // one notifies nothing.
+    readonly property var kept: ({})
+
     // Open first, by priority and then rank; the rest, last touched first.
-    readonly property var all: quests.slice().sort((a, b) => {
-        const open = Number(isOpen(b)) - Number(isOpen(a));
-        if (open !== 0)
-            return open;
-        if (isOpen(a)) {
-            const bucket = q => {
-                const at = priorities.indexOf(q.priority);
-                return at < 0 ? priorities.length : at;
-            };
-            return bucket(a) - bucket(b) || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9);
-        }
-        return String(b.updated).localeCompare(String(a.updated));
-    }).map(quest => made(quest))
+    readonly property var all: {
+        const sorted = quests.slice().sort((a, b) => {
+            const open = Number(isOpen(b)) - Number(isOpen(a));
+            if (open !== 0)
+                return open;
+            if (isOpen(a)) {
+                const bucket = q => {
+                    const at = priorities.indexOf(q.priority);
+                    return at < 0 ? priorities.length : at;
+                };
+                return bucket(a) - bucket(b) || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9);
+            }
+            return String(b.updated).localeCompare(String(a.updated));
+        });
+        const sessions = loaded;
+        const next = {};
+        const rows = sorted.map(quest => {
+            const from = JSON.stringify([quest, sessions[quest.id] ?? null]);
+            const before = provider.kept[quest.id];
+            next[quest.id] = before && before.from === from
+                ? before : { from: from, row: made(quest) };
+            return next[quest.id].row;
+        });
+        for (const id of Object.keys(provider.kept))
+            delete provider.kept[id];
+        Object.assign(provider.kept, next);
+        return rows;
+    }
     onAllChanged: changedTo(all)
 
     // A day as a clock's calendar says it, with its year when it isn't this one.
@@ -120,8 +143,8 @@ Provider {
             verbs: () => provider.verbs(quest)
         });
         // Its id and kind, made ready to match when first searched, as its
-        // name is, and kept while they read the same (Fuzzy.kept), since
-        // every quest's row is made again whenever one quest is written.
+        // name is, and kept while they read the same (Fuzzy.kept), for a
+        // row made again when its quest is written.
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,

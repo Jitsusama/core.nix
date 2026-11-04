@@ -24,6 +24,9 @@ ShellRoot {
     readonly property string store: Quickshell.env("QUESTS")
     readonly property string here: Quickshell.env("PWD")
     property string waiting: "the first reading"
+    // The rows before the store is written again, and how many were made.
+    property var made: []
+    property int counted: 0
 
     function expect(what, holds, said) {
         if (!holds)
@@ -174,6 +177,8 @@ ShellRoot {
             expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go",
                 held.verbs()[0].name);
 
+            root.made = quests.looksThrough();
+            root.counted = quests.tally.rows;
             root.waiting = "the quest made since";
             making.running = true;
         } catch (error) {
@@ -188,6 +193,15 @@ ShellRoot {
         try {
             const found = quests.search("newly").rows;
             expect("a quest made since", names(found) === "Newly made", names(found));
+            // pi-quests' text differs once any quest is written, and every
+            // quest's row was made again: about 824 at each change on Joel's
+            // shell (2026-11-03). Each row is kept while its quest and its
+            // session read the same, so only the new one is made.
+            const now = quests.looksThrough();
+            const remade = root.made.filter(row => !now.includes(row));
+            expect("every other quest's row kept", remade.length === 0, names(remade));
+            expect("one row made, for the new quest", quests.tally.rows - root.counted === 1,
+                `${quests.tally.rows - root.counted} rows`);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
