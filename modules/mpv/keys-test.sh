@@ -210,4 +210,38 @@ for _ in $(seq 600); do
   sleep 0.1
 done
 if kill -0 "$mpv" 2> /dev/null; then never "q to close"; fi
+
+# A program that runs mpv with Escape of its own, forced, as the camera's
+# viewfinder does, always gets it, whichever script mpv loads first: of
+# two forced bindings the last loaded wins, so it's tried several times.
+cat > own-escape.lua << 'lua'
+mp.add_forced_key_binding('ESC', 'own-escape', function()
+  io.open('escaped', 'w'):close()
+end)
+lua
+# How many of the two scripts' Escapes mpv has bound.
+escapes() {
+  asked '["get_property","input-bindings"]' \
+    | jq '[.data // [] | .[] | select(.cmd | test("own-escape|vi-ESC"))] | length'
+}
+for time in 1 2 3 4 5 6; do
+  rm -f escaped
+  mpv --config-dir="$config" --vo=null --ao=null --force-window=no --idle=yes \
+    --save-position-on-quit=no --load-stats-overlay=no --input-ipc-server="$PWD/mpv.sock" \
+    --script="$PWD/own-escape.lua" > said 2>&1 &
+  mpv=$!
+  for _ in $(seq 600); do
+    if [ "$(escapes)" = 2 ]; then break; fi
+    sleep 0.1
+  done
+  [ "$(escapes)" = 2 ] || never "both scripts to bind Escape, time $time"
+  keys ESC
+  for _ in $(seq 50); do
+    if [ -e escaped ]; then break; fi
+    sleep 0.1
+  done
+  [ -e escaped ] || never "a program's own forced Escape to have it, time $time"
+  kill "$mpv"
+  wait "$mpv" 2> /dev/null || true
+done
 touch passed

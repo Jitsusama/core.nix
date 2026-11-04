@@ -50,8 +50,9 @@ onLinux {
   # arrows they twin do, with a number before them that many times, 0 and
   # $ go to the start and the end, gg, G and ]b and [b go through the list,
   # J and L do what j and l did, yy copies the frame as a PNG, through
-  # wl-copy, and Space ? lists the keys, through mpv's statistics, both
-  # stood in here.
+  # wl-copy, and ? and Space ? ask the launcher for the keys, both stood
+  # in here. A program that runs mpv with Escape of its own, forced, as
+  # the camera's viewfinder does, always gets it.
   mpv-keys-go-where-they-say =
     let
       home = account graphical;

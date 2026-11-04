@@ -689,7 +689,8 @@
     many times and alone chooses nothing, Escape stops one, 0 and $ go to the start and the end, [ and
     ] alone change the speed, J and L do what j and l did, yy copies the frame as a PNG and y alone
     nothing, ? and Space ? ask the launcher for the keys, ]b and [b, gg, G and a number before G go
-    through the list, f and Escape go in and out of full screen, Space pauses and q closes it
+    through the list, f and Escape go in and out of full screen, Space pauses and q closes it, and
+    a program running mpv with its own forced Escape always gets it
   '';
   mpv-says-the-file-it-plays-now = ''
     mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
