@@ -319,6 +319,14 @@ Item {
 
     // A modal line's key: what the table says it does in this mode, done
     // here, or left to the field to type.
+    // A key Qt gives a handler of its own, read from the table all the
+    // same, and kept from the field whether the table has it or not, since
+    // the field would only take it again in Keys.onPressed.
+    function tabled(event: KeyEvent) {
+        modalKey(event);
+        event.accepted = true;
+    }
+
     function modalKey(event: KeyEvent) {
         const key = named(event);
         woken();
@@ -646,10 +654,15 @@ Item {
         // Return does what it does once a press: let go late by a busy
         // shell, it repeats as a held key does (Keys.onPressed below), and
         // each repeat would do it again, a setting turned on and off.
-        Keys.onReturnPressed: event => prompt.returned(event)
-        Keys.onEnterPressed: event => prompt.returned(event)
-        Keys.onTabPressed: prompt.completed()
-        Keys.onEscapePressed: prompt.cancelled()
+        // Qt calls these before Keys.onPressed, so a modal line hands them
+        // to its table here, or Escape would close the launcher from
+        // insert and Tab would complete rather than move.
+        Keys.onReturnPressed: event => prompt.modal ? prompt.tabled(event)
+            : prompt.returned(event)
+        Keys.onEnterPressed: event => prompt.modal ? prompt.tabled(event)
+            : prompt.returned(event)
+        Keys.onTabPressed: event => prompt.modal ? prompt.tabled(event) : prompt.completed()
+        Keys.onEscapePressed: event => prompt.modal ? prompt.tabled(event) : prompt.cancelled()
         onTextChanged: {
             if (text !== "")
                 prompt.cleared = "";
