@@ -2109,9 +2109,9 @@
     its devices, saying what one plays at only while it plays; and names a USB keyboard with its
     polling rate until it's pulled out
   '';
-  vm-desktop-captures-and-locks = ''
-    the desktop takes a screen, a window, a region, a recording and the camera's pictures by the
-    keys, and its lock screen, polkit's prompt and the askpass answer and hold
+  vm-desktop-captures = ''
+    the desktop takes a screen, a window, a region, a recording and the camera's pictures and
+    videos by the keys, and says how long a recording has run
   '';
   vm-desktop-keeps-copies = ''
     the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V
@@ -2173,6 +2173,10 @@
     waits as the session, its notice going to it and going read once it stops waiting; the agents
     list every session from the shell's start and hold still as one changes, and pi's runs are
     found
+  '';
+  vm-desktop-locks-and-asks = ''
+    the lock screen takes only the right password, lets go when released or told to by logind,
+    and holds through a shell's restart; polkit's prompt and the askpass answer and hold
   '';
   vm-desktop-looks = ''
     on the laptop's screen at 1.5 and at 2, the launcher's drawer takes the room beside the card,
