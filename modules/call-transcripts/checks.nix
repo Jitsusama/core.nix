@@ -25,7 +25,8 @@ onLinux {
         self.nixosModules.graphical
         self.nixosModules.dell-xps-14-da14260
       ];
-      sums = machine: lib.hasInfix "call-summarizer" (service machine).ExecStart;
+      # Home Manager keeps ExecStart as a list of its lines.
+      sums = machine: lib.hasInfix "call-summarizer" (toString (service machine).ExecStart);
     in
     holds "calls-are-summed-up-only-where-the-model-runs"
       "call-transcripts is given a summarizer on a machine whose hardware names no device for it, or none on the XPS 14."
