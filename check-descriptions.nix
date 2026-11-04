@@ -1426,7 +1426,8 @@
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
     colours and copies them, says once and quietly what needs a network couldn't, holds an
     answer's row from the keystroke, finds the power acts by their names and the names they had
-    and asks before they act, and warns of nothing it drew
+    and asks before they act, draws nothing closed as a minute turns though it says the new time
+    as it opens, and warns of nothing it drew
   '';
   the-launcher-asks-a-fresh-pi = ''
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
@@ -2102,8 +2103,8 @@
   '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
-    shell's, and once nothing shows the shell draws nothing and barely wakes, as a minute turns and
-    behind the lock as its files are written
+    shell's, and once nothing shows the shell draws nothing and barely wakes, behind the lock too
+    as its files are written
   '';
   vm-desktop-starts-clean = ''
     the desktop boots without an ordering cycle and its shell without an error, niri alone keeps
