@@ -3783,7 +3783,6 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
         lambda shown: (
             not any(thing["is"] == "calendar:meeting:planning" for thing in shown["things"])
         ),
-        timeout=dt.timedelta(seconds=10),
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
