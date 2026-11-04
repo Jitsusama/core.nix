@@ -408,6 +408,9 @@ in
         # corner. So, as GDM does, Plymouth lets go of the screen as greetd
         # starts, keeping the GPU open (`plymouth deactivate` drops only its
         # hold on the display), and quits once niri has had time to open it.
+        # With the hold dropped, a console set to text draws it all the same,
+        # which greetd did until its patch (modules/greetd) left it in
+        # graphics.
         # The guide quits it sooner when it has something to show.
         plymouth-quit = {
           wantedBy = lib.mkForce [ ];

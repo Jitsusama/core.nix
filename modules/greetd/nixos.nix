@@ -201,7 +201,9 @@ in
       # splash's last frame stays up. Only where niri greets: tuigreet alone
       # needs the console in text. tuigreet after a greeter that fell over
       # gets it back from logind, which sets text again as the greeter's
-      # compositor lets go of the screen.
+      # compositor lets go of the screen. logind does that only for a
+      # compositor that took the screen, so one that fell over before it
+      # would leave tuigreet unseen; Cage and niri take it first thing.
       package = lib.mkIf (home != null) (
         pkgs.greetd.overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [ ./vt-left-in-graphics.patch ];
