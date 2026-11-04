@@ -161,7 +161,7 @@ fn sum_up(
             }
         }
         eprintln!("call-transcripts: summing up {}", record.key);
-        match summarizer.try_once(program, &record.title, text) {
+        match summarizer.try_once(program, &record.title, them(record), text) {
             Tried::Summed(written) => {
                 keep(book, record, &written, again);
                 return;
@@ -200,7 +200,7 @@ impl Summarizer {
 
     /// Sums the call up once with a model of its own, holding off sleep
     /// while it does.
-    fn try_once(&self, program: &Path, title: &str, text: &str) -> Tried {
+    fn try_once(&self, program: &Path, title: &str, them: Option<&str>, text: &str) -> Tried {
         let sleep = match Sleep::hold() {
             Ok(sleep) => sleep,
             Err(why) => return Tried::Failed(why),
@@ -221,6 +221,7 @@ impl Summarizer {
                 })
             },
             title,
+            them,
             text,
         );
         if let Some(stop) = stopped {
@@ -235,6 +236,15 @@ impl Summarizer {
             (Err(why), _) => Tried::Failed(why),
         }
     }
+}
+
+/// Who the others on a call are, where the call knows: a Tuple call with
+/// one person is titled by their name (meeting.rs); one with more, titled
+/// "Ada and 2 more", and a meeting, whose title names no one for certain,
+/// leave them as the transcript has them.
+fn them(record: &Record) -> Option<&str> {
+    record.person.as_ref()?;
+    (!record.title.ends_with(" more")).then_some(record.title.as_str())
 }
 
 /// Whether the laptop runs from the wall: a supply in `power` says it's

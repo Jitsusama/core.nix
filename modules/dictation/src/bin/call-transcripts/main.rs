@@ -32,10 +32,11 @@
 //! call-transcripts hear MODEL_DIR CLIP.wav...
 //!     print what's said in each 16 kHz mono WAV, heard whole as one take,
 //!     a line each, which is how a model's mishearings are counted
-//! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md
+//! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]
 //!     print the summary of the call titled TITLE that a transcript
-//!     writes down (summary.rs), or that too little was said to sum up,
-//!     with the model loaded here, minding none of serve's manners
+//!     writes down (summary.rs), the others on it called NAME if given,
+//!     or that too little was said to sum up, with the model loaded here,
+//!     minding none of serve's manners
 //! ```
 //!
 //! A call is what modules/calls counts as one: a program recording from a
@@ -75,7 +76,7 @@ const USAGE: &str = "usage: call-transcripts serve SOCKET MODEL_DIR [SUMMARIZER]
     | ask SUMMARIZER_DIR \
     | transcribe MODEL_DIR MINE.wav THEIRS.wav \
     | hear MODEL_DIR CLIP.wav... \
-    | summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md";
+    | summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -94,8 +95,14 @@ fn main() -> ExitCode {
         ),
         ["ask", summarizer] => return ask::serve(Path::new(summarizer)),
         ["summarize", summarizer, title, transcript] => {
-            summarize(Path::new(summarizer), title, Path::new(transcript))
+            summarize(Path::new(summarizer), title, None, Path::new(transcript))
         }
+        ["summarize", summarizer, title, transcript, them] => summarize(
+            Path::new(summarizer),
+            title,
+            Some(them),
+            Path::new(transcript),
+        ),
         ["transcribe", model, mine, theirs] => {
             transcribe(Path::new(model), Path::new(mine), Path::new(theirs))
         }
@@ -170,7 +177,12 @@ fn serve(
     follow::follow(&book, calls, &jobs, &calling)
 }
 
-fn summarize(summarizer: &Path, title: &str, transcript: &Path) -> Result<(), String> {
+fn summarize(
+    summarizer: &Path,
+    title: &str,
+    them: Option<&str>,
+    transcript: &Path,
+) -> Result<(), String> {
     let text = std::fs::read_to_string(transcript)
         .map_err(|e| format!("reading {}: {e}", transcript.display()))?;
     if said::too_little(&text) {
@@ -188,6 +200,7 @@ fn summarize(summarizer: &Path, title: &str, transcript: &Path) -> Result<(), St
             Ok(answer)
         },
         title,
+        them,
         &text,
     )?;
     println!("{written}");
