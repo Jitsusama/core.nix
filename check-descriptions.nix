@@ -2028,9 +2028,16 @@
     its newest letters, with a Return typed among them acting on the row those letters found
   '';
   vm-desktop-launcher-answers = ''
-    the launcher lists each thing once for everything Joel types, copies what it answers, keeps
-    emoji in their own place, and takes the weather's here from where whereabouts says the laptop
-    is
+    the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
+    its charger, heat, the screen's and keyboard's lights, which it sets, the keyboards, the disks
+    and what fills them, the network, the queue, the processors and memory, the firmware, and the
+    weather and time from where whereabouts says the laptop is
+  '';
+  vm-desktop-launcher-finds-by-name = ''
+    the launcher lists each thing once for everything Joel types, finds a thing by every name it
+    had, a collection by its name and emoji in their own place, steps in by a category's word and
+    a row's hidden words, its field's keys take what's typed away and put it back, the power acts
+    ask before they act, and units, zones, colours and what needs a network are answered
   '';
   vm-desktop-launcher-draws-still = ''
     the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, the

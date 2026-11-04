@@ -328,6 +328,10 @@ let
       inherit self pkgs;
       area = "launcher-answers";
     };
+    vm-desktop-launcher-finds-by-name = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-finds-by-name";
+    };
     vm-desktop-opens-and-sets = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "opens-and-sets";
@@ -907,7 +911,6 @@ gather (
         let
           over = [
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
-            "tests/desktop/desktop-launcher-answers-vm-test.py 22"
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
             "tests/desktop/desktop-says-what-happens-vm-test.py 38"
             "tests/desktop/desktop-starts-clean-vm-test.py 28"
