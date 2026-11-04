@@ -411,7 +411,11 @@ impl Recorder<'_> {
             self.reflectors = pool(&answering(&self.socket, self.id));
             self.pooled = Instant::now();
             self.misses.clear();
-            self.journal.write(&pool_line(&self.reflectors));
+            // Each pool names its link, so a shaper started mid-stay
+            // (src/live.rs) learns within the hour which link it holds.
+            let mut line = pool_line(&self.reflectors);
+            line["link"] = json!(self.link);
+            self.journal.write(&line);
         }
     }
 }
