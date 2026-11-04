@@ -44,16 +44,26 @@ onLinux {
         touch $out
       '';
 
-  # Its keys go where the launcher says they go: Left and Right turn the
-  # pages, Tab goes back to the place used last and again returns, and ?
-  # asks the launcher for the keys, which keys-test.sh reads back from
-  # zathura itself over its bus, in a compositor of its own.
+  # Every key the launcher lists for zathura goes where it says, the page
+  # each lands on read back from zathura itself over its bus and each
+  # scroll from its screen, in a compositor of its own (keys-test.sh). The
+  # account's settings are read as they are, but for the word zathura
+  # draws on a page not drawn yet, which would tell a page being drawn
+  # from one that's done.
   zathura-keys-go-where-they-say =
     let
       home = account graphical;
       pages = import ../../tests/page.nix {
         inherit lib pkgs;
-        pages = 3;
+        pages = 6;
+        words = [
+          ""
+          ""
+          ""
+          "find"
+          ""
+          "find"
+        ];
       };
       # The launcher, which only has to say it was asked.
       launcher = pkgs.writeShellScriptBin "launcher-say" ''echo "$*" > asked'';
@@ -66,6 +76,7 @@ onLinux {
           pkgs.cage
           pkgs.dbus
           pkgs.glib
+          pkgs.grim
           pkgs.wtype
         ];
       }
@@ -77,6 +88,8 @@ onLinux {
         mkdir -p config/zathura data run
         chmod 700 run
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
+        chmod u+w config/zathura/zathurarc
+        echo 'set render-loading false' >> config/zathura/zathurarc
         dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
           cage -- $BASH ${./keys-test.sh} ${pages} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
