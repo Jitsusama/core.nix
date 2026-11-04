@@ -1,0 +1,21 @@
+Lets the screens VM test say which of its screens is a laptop's own
+panel (tests/screens.nix): niri knows one only by its connector's name,
+eDP, LVDS or DSI, and the VM's are all Virtual-N. NIRI_LAPTOP_PANEL
+names the connector that stands in for one, so its stand-in lid shuts
+that screen as a laptop's lid shuts its panel.
+
+diff --git a/src/utils/mod.rs b/src/utils/mod.rs
+index bbeac5b..ad93cf2 100644
+--- a/src/utils/mod.rs
++++ b/src/utils/mod.rs
+@@ -325,7 +325,10 @@ pub fn output_matches_name(output: &Output, target: &str) -> bool {
+ }
+ 
+ pub fn is_laptop_panel(connector: &str) -> bool {
++    // A virtual machine's screens are all Virtual-N, so its test names the one that stands in
++    // for a laptop's own panel.
+     matches!(connector.get(..4), Some("eDP-" | "LVDS" | "DSI-"))
++        || std::env::var_os("NIRI_LAPTOP_PANEL").is_some_and(|panel| panel == connector)
+ }
+ 
+ /// Returns the geometry of the surface.

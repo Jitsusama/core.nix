@@ -1,7 +1,10 @@
 # Boots the graphical role in a virtual machine with niri straight on its
 # screen, not nested in Cage as the desktop test runs it, so the screen can
-# really go and come back, as at an undock. niri must first have held each
-# screen's first frame for the wallpaper, and a niri from before that hold
+# really go and come back, as at an undock. It starts as a laptop shut on a
+# dock: the second screen stands in for the laptop's own panel, and a
+# stand-in lid is shut from the start, so niri must never light that
+# screen until the lid opens. niri must have held the monitor's first
+# frame for the wallpaper, and a niri from before that hold
 # must still take the account's settings, as it reloads them at a switch
 # while it runs, and keys typed through the virtual keyboard, as dictation
 # types, must keep the session from going idle. The shell's surfaces must be
@@ -117,7 +120,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       nixpkgs.overlays = [
         (_: prev: {
           niri = prev.niri.overrideAttrs (old: {
-            patches = (old.patches or [ ]) ++ [ ./niri-software-renderer.patch ];
+            patches = (old.patches or [ ]) ++ [
+              ./niri-software-renderer.patch
+              ./niri-laptop-panel-named.patch
+            ];
           });
         })
       ];
@@ -200,6 +206,43 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           ];
         };
       };
+
+      # The second screen is the laptop's own panel, which the stand-in lid
+      # (tests/stand-in-lid) shuts: shut from the start, as a laptop started
+      # on a dock is, until the script opens it. logind is to leave the lid
+      # to niri, as it does at a desk.
+      boot.extraModulePackages = [
+        (config.boot.kernelPackages.callPackage ./stand-in-lid { })
+      ];
+      boot.kernelModules = [ "stand-in-lid" ];
+      boot.extraModprobeConfig = ''
+        options stand-in-lid shut=1
+      '';
+      services.logind.settings.Login.HandleLidSwitch = "ignore";
+      systemd.user.services.niri.environment.NIRI_LAPTOP_PANEL = "Virtual-2";
+      # niri asks logind for the lid as it starts, so greetd waits, a while
+      # at most, until logind has read the shut lid, as on a laptop, where it
+      # has long before; the script says so if it never did.
+      systemd.services.greetd.serviceConfig.ExecStartPre = [
+        "-${lib.getExe' pkgs.coreutils "timeout"} 30 ${
+          lib.getExe (
+            pkgs.writeShellApplication {
+              name = "logind-reads-the-lid-shut";
+              runtimeInputs = [
+                pkgs.systemd
+                pkgs.gnugrep
+                pkgs.coreutils
+              ];
+              text = ''
+                until busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+                  org.freedesktop.login1.Manager LidClosed | grep -qx 'b true'; do
+                  sleep 0.2
+                done
+              '';
+            }
+          )
+        }"
+      ];
 
       # greetd signs the account in by itself, into niri's own session.
       jitsusama.login.account = account;

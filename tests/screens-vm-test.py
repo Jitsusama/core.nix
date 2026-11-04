@@ -3,11 +3,11 @@
 tests/screens.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Each test asks for the state it starts from as a
 fixture, and each fixture takes the machine one step on from the one it asks for: signed in
-with a notice and the margin's marks up, the screens gone and back, the console switched, a
-sleep, then two screens apart, and the launcher through the screens going and a sleep. A
-fixture's work is done once a run, however many tests ask for it, so any test runs alone with
-`-k`, and a whole run takes the steps in the order they were always taken. The account greetd
-signs in is screens.nix's, given as the `values` fixture.
+with the lid shut since it started, the lid opened, a notice and the margin's marks up, the
+screens gone and back, the console switched, a sleep, then two screens apart, and the launcher
+through the screens going and a sleep. A fixture's work is done once a run, however many tests
+ask for it, so any test runs alone with `-k`, and a whole run takes the steps in the order they
+were always taken. The account greetd signs in is screens.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations
@@ -38,6 +38,10 @@ SURFACING = dt.timedelta(seconds=60)
 STEPPING = dt.timedelta(seconds=30)
 # Each screen's card, by the id screens.nix gives it, so QEMU can say what that card shows.
 CARDS = {"Virtual-1": "first", "Virtual-2": "second"}
+# The screen that stands in for the laptop's own panel, which its stand-in lid shuts, and the
+# monitor beside it, as screens.nix names them.
+LAPTOP = "Virtual-2"
+MONITOR = "Virtual-1"
 # More colours than a screen nothing drew on shows, one or the console's few, and far fewer
 # than the wallpaper's.
 DRAWN = 64
@@ -69,6 +73,9 @@ class Screens:
         self.both = set(self.connectors)
         # Where the shell's journal stood before the launcher's tests, set by their fixture.
         self.launcher_since = ""
+        # The screens niri said it connected while the lid was shut from the start, set by
+        # that fixture before the lid opens.
+        self.connected_shut: list[str] = []
 
     def in_niri(self, command: str) -> str:
         """Give a command, run as the account inside its niri session, to run on the machine."""
@@ -128,6 +135,25 @@ class Screens:
         while (now := self.held_on(namespace)) != screens:
             assert time.monotonic() < deadline, f"{namespace} is on {sorted(now)}, not {screens}"
             time.sleep(1)
+
+    def lid(self, *, shut: bool) -> None:
+        """Shut the stand-in lid, or open it."""
+        self.machine.succeed(f"echo {int(shut)} > /sys/module/stand_in_lid/parameters/shut")
+
+    def lid_shut(self) -> bool:
+        """Say whether logind reads the lid as shut."""
+        said = self.machine.succeed(
+            "busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
+            " org.freedesktop.login1.Manager LidClosed"
+        )
+        return said.strip() == "b true"
+
+    def niri_said(self, words: str) -> str:
+        """Give the lines niri has written this boot holding these words, its colours taken out."""
+        said = self.machine.succeed(
+            f"journalctl -b -o cat | grep -a -F {shlex.quote(words)} || true"
+        )
+        return re.sub(r"\x1b\[[0-9;]*m", "", said)
 
     def plug(self, status: str, *named: str) -> None:
         """Force screens' connectors to a status and tell niri, as a cable coming or going does.
@@ -411,8 +437,8 @@ class Apart:
 
 
 @pytest.fixture(scope="module")
-def booted(machine: BaseMachine, values: dict[str, Any]) -> Screens:
-    """Give the machine signed in, with the wallpaper and the launcher on its screens."""
+def shut_at_start(machine: BaseMachine, values: dict[str, Any]) -> Screens:
+    """Give the machine signed in with its lid shut since it started, the desktop up."""
     # The test's one machine is QEMU's, which takes keys and screenshots.
     qemu = cast("QemuMachine", machine)
     qemu.wait_for_unit("multi-user.target")
@@ -421,7 +447,22 @@ def booted(machine: BaseMachine, values: dict[str, Any]) -> Screens:
     assert sorted(screens.connectors) == ["Virtual-1", "Virtual-2"], (
         f"the screens are {screens.connectors}"
     )
+    assert screens.lid_shut(), "logind never read the stand-in lid as shut"
+    screens.connected_shut = re.findall(
+        r"tty: connecting connector: (\S+)$",
+        screens.niri_said("connecting connector: "),
+        re.MULTILINE,
+    )
     return screens
+
+
+@pytest.fixture(scope="module")
+def booted(shut_at_start: Screens) -> Screens:
+    """Give the machine signed in with its lid open, the wallpaper on both its screens."""
+    shut_at_start.lid(shut=False)
+    shut_at_start.outputs_say(LAPTOP, there=True)
+    shut_at_start.wait_for_held_on("wallpaper", shut_at_start.both)
+    return shut_at_start
 
 
 @pytest.fixture(scope="module")
@@ -594,22 +635,30 @@ def test_the_margin_shows_a_mark_and_dictation_listens_first(marked: Screens) ->
     marked.wait_for_surfaces("margin", "dictation")
 
 
-def test_niri_held_each_screens_first_frame_for_the_desktop(booted: Screens) -> None:
-    """Each screen's first frame was held for the wallpaper, or until niri's hold ran out."""
-    # niri's lines start with its time and level, in colour.
-    said = re.sub(
-        r"\x1b\[[0-9;]*m",
-        "",
-        booted.machine.succeed("journalctl -b -o cat | grep -a -F ': first frame drawn ' || true"),
+def test_a_lid_shut_as_niri_starts_keeps_the_laptops_screen_dark(shut_at_start: Screens) -> None:
+    """Niri started with the lid shut connects the monitor alone, never the laptop's screen.
+
+    On 2026-11-03 a laptop started on a dock with its lid shut had niri connect its panel and
+    lay the monitor out beside it, then take the panel away 67 ms later, when it heard the lid.
+    """
+    assert shut_at_start.connected_shut == [MONITOR], (
+        f"niri connected {shut_at_start.connected_shut} with the lid shut, not {MONITOR} alone"
     )
+
+
+def test_niri_held_the_monitors_first_frame_for_the_desktop(booted: Screens) -> None:
+    """The monitor's first frame was held for the wallpaper, or until niri's hold ran out.
+
+    The laptop's screen comes once the lid opens, after the hold, so it isn't held.
+    """
+    said = booted.niri_said(": first frame drawn ")
     print(said)
-    for screen in ("Virtual-1", "Virtual-2"):
-        assert re.search(
-            rf' {screen}: first frame drawn (once "wallpaper" covered it'
-            r"|as its hold ran out), \d+ ms after starting$",
-            said,
-            re.MULTILINE,
-        ), f"niri never said it held {screen}'s first frame: {said}"
+    assert re.search(
+        rf' {MONITOR}: first frame drawn (once "wallpaper" covered it'
+        r"|as its hold ran out), \d+ ms after starting$",
+        said,
+        re.MULTILINE,
+    ), f"niri never said it held {MONITOR}'s first frame: {said}"
 
 
 def test_typing_through_the_virtual_keyboard_keeps_the_session_awake(booted: Screens) -> None:
