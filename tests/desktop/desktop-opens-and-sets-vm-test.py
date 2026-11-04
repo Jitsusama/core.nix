@@ -726,34 +726,85 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
         f'echo "Paragraph $n, a line or two of words for the keys to go past."; done; }} > {page}'
     )
 
-    def closed_at() -> dict[str, object]:
-        machine.wait_until_fails(
-            f"pgrep -u {desktop.account} -f '[r]eader {page}'", timeout=timedelta(seconds=10)
-        )
-        kept: dict[str, object] = json.loads(
-            desktop.as_account("cat ~/.local/state/reader/places/*.json")
-        )
-        return kept
-
-    desktop.opens_in(page, "text/markdown", "reader")
+    reader = reader_opened(desktop, page)
     desktop.photograph("reader")
     machine.send_key("shift-g")
     machine.send_key("q")
-    assert closed_at()["at_end"], "G didn't go to the end, or q didn't close"
+    assert reader_closed_at(desktop, reader)["at_end"], "G didn't go to the end, or q didn't close"
 
-    desktop.opens_in(page, "text/markdown", "reader")
+    reader = reader_opened(desktop, page)
     machine.send_key("q")
-    assert closed_at()["at_end"], "the reader didn't open where it closed"
+    assert reader_closed_at(desktop, reader)["at_end"], "the reader didn't open where it closed"
 
-    desktop.opens_in(page, "text/markdown", "reader")
+    reader = reader_opened(desktop, page)
     machine.send_key("g")
     machine.send_key("g")
     machine.send_key("ctrl-d")
     machine.send_key("q")
-    kept = closed_at()
+    kept = reader_closed_at(desktop, reader)
     assert not kept["at_end"], kept
     assert kept["block"] != 0 or kept["into_pt"] != 0, "Ctrl+D didn't move from the top"
     machine.succeed(f"rm {page}")
+
+
+def test_the_reader_closed_straight_after_a_jump_keeps_its_place_and_dies_in_nothing(
+    desktop: Desktop,
+) -> None:
+    """The reader closed straight after a jump keeps its place and dies in nothing.
+
+    q just after G used to close it while its loader still made the landing's textures, and
+    the driver's own teardown at exit freed what the loader used: it died in Mesa now and
+    then, after keeping its place or before. Opened on a long page, G then q at once, again
+    and again, keeps the end each time, and no thread of the reader faults.
+    """
+    machine = desktop.machine
+    page = f"/home/{desktop.account}/long.md"
+    desktop.as_account(
+        f"{{ echo '# A Long Page'; for n in $(seq 600); do echo; "
+        f'echo "Paragraph $n, a line or two of words for the jump to land past."; done; }} > {page}'
+    )
+    for _ in range(8):
+        desktop.as_account("rm -f ~/.local/state/reader/places/*.json")
+        reader = reader_opened(desktop, page)
+        machine.send_key("shift-g")
+        machine.send_key("q")
+        assert reader_closed_at(desktop, reader)["at_end"], "G then q at once didn't keep the end"
+    machine.succeed(f"rm {page}")
+
+
+def reader_opened(desktop: Desktop, page: str) -> tuple[str, int]:
+    """Open a page in the reader as a click would, and give its process id and kernel lines.
+
+    Its command line is the inner wrapper's path and the file, since each wrapper script
+    starts the next by its path, so a pattern of the command's own name never matches it:
+    the reader is known by its id instead. The kernel's lines so far are counted, so only
+    what this reader did is read for faults.
+    """
+    kernel_lines = int(desktop.machine.succeed("dmesg | wc -l"))
+    desktop.opens_in(page, "text/markdown", "reader")
+    pid = desktop.as_account("pgrep -u $(id -u) -n -x .reader-wrapped").strip()
+    return pid, kernel_lines
+
+
+def reader_closed_at(desktop: Desktop, reader: tuple[str, int]) -> dict[str, object]:
+    """Where the reader closed, once its process has gone, having faulted nowhere."""
+    machine = desktop.machine
+    pid, kernel_lines = reader
+    # Gone, or ended and not yet reaped.
+    machine.wait_until_fails(
+        f"test -e /proc/{pid}/status && ! grep -q '^State:[[:space:]]*Z' /proc/{pid}/status",
+        timeout=timedelta(seconds=10),
+    )
+    faults = machine.execute(
+        f"dmesg | tail -n +{kernel_lines + 1} | grep -E"
+        " ' (\\.reader-wrapped|loader|painter-[0-9]+|setter|reloader)"
+        "\\[[0-9]+\\]: segfault'"
+    )[1]
+    assert not faults, f"a thread of the reader faulted:\n{faults}"
+    kept: dict[str, object] = json.loads(
+        desktop.as_account("cat ~/.local/state/reader/places/*.json")
+    )
+    return kept
 
 
 def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -> None:

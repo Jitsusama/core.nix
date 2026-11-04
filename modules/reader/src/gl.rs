@@ -10,6 +10,8 @@ use smithay_client_toolkit::reexports::calloop;
 use wayland_client::Proxy;
 use wayland_client::protocol::wl_surface::WlSurface;
 
+use crate::worker::{Jobs, Worker};
+
 const VERTEX: &str = r"#version 300 es
 uniform vec4 rect;
 out highp vec2 uv;
@@ -88,23 +90,23 @@ pub struct Made<T> {
     fence: Fence,
 }
 
-/// Where bands go to be made into textures off the frame's path.
+/// Where bands go to be made into textures off the frame's path. Let go,
+/// it stops the loader and waits for it to let go of its context, so it
+/// must go before the `Gl` it shares.
 pub struct Loader<T> {
-    jobs: std::sync::mpsc::Sender<Job<T>>,
+    jobs: Worker<Job<T>>,
 }
 
 impl<T> Loader<T> {
     /// Sends a band's pixels to be made into a texture, four bytes a pixel.
     /// False once the loader has stopped.
     pub fn load(&self, tag: T, width: u32, height: u32, pixels: Vec<u8>) -> bool {
-        self.jobs
-            .send(Job {
-                tag,
-                width,
-                height,
-                pixels,
-            })
-            .is_ok()
+        self.jobs.send(Job {
+            tag,
+            width,
+            height,
+            pixels,
+        })
     }
 }
 
@@ -184,6 +186,47 @@ unsafe fn make<T>(
         // and its window never showed.
         let _ = gl.client_wait_sync(fence, glow::SYNC_FLUSH_COMMANDS_BIT, 1_000_000_000);
         Ok((texture, fence))
+    }
+}
+
+/// Makes each band sent into a texture on the loader's context, current on
+/// this thread, and sends it back, until the loader is let go or nothing
+/// takes what it makes.
+fn make_all<T>(
+    egl: &egl::Instance<egl::Static>,
+    jobs: Jobs<Job<T>>,
+    made: &calloop::channel::Sender<Made<T>>,
+) {
+    let gl = unsafe {
+        glow::Context::from_loader_function(|name| {
+            egl.get_proc_address(name)
+                .map_or(std::ptr::null(), |f| f as *const c_void)
+        })
+    };
+    unsafe { gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4) };
+    let warm = std::env::var_os("READER_WARM").is_some();
+    for job in jobs {
+        match unsafe { make(&gl, &job, warm) } {
+            Ok((texture, fence)) => {
+                let texture = Texture {
+                    handle: texture,
+                    width: job.width,
+                    height: job.height,
+                };
+                let fence = Fence(fence);
+                if made
+                    .send(Made {
+                        tag: job.tag,
+                        texture,
+                        fence,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Err(error) => eprintln!("can't load a band: {error}"),
+        }
     }
 }
 
@@ -396,51 +439,22 @@ impl Gl {
             display: self.display,
             context,
         };
-        let (jobs, queue) = std::sync::mpsc::channel::<Job<T>>();
-        std::thread::Builder::new()
-            .name("loader".into())
-            .spawn(move || {
-                let share = share;
-                let egl = egl::Instance::new(egl::Static);
-                // No surface: the loader only makes textures.
-                if let Err(error) = egl.make_current(share.display, None, None, Some(share.context))
-                {
-                    eprintln!("the loader can't start: {error}");
-                    return;
-                }
-                let gl = unsafe {
-                    glow::Context::from_loader_function(|name| {
-                        egl.get_proc_address(name)
-                            .map_or(std::ptr::null(), |f| f as *const c_void)
-                    })
-                };
-                unsafe { gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4) };
-                let warm = std::env::var_os("READER_WARM").is_some();
-                while let Ok(job) = queue.recv() {
-                    match unsafe { make(&gl, &job, warm) } {
-                        Ok((texture, fence)) => {
-                            let texture = Texture {
-                                handle: texture,
-                                width: job.width,
-                                height: job.height,
-                            };
-                            let fence = Fence(fence);
-                            if made
-                                .send(Made {
-                                    tag: job.tag,
-                                    texture,
-                                    fence,
-                                })
-                                .is_err()
-                            {
-                                return;
-                            }
-                        }
-                        Err(error) => eprintln!("can't load a band: {error}"),
-                    }
-                }
-            })
-            .map_err(|e| format!("the loader: {e}"))?;
+        let jobs = Worker::start("loader", move |jobs| {
+            let share = share;
+            let egl = egl::Instance::new(egl::Static);
+            // No surface: the loader only makes textures.
+            if let Err(error) = egl.make_current(share.display, None, None, Some(share.context)) {
+                eprintln!("the loader can't start: {error}");
+                let _ = egl.destroy_context(share.display, share.context);
+                return;
+            }
+            make_all(&egl, jobs, &made);
+            // Let go here, on the thread it's current on, before the
+            // display it belongs to ends.
+            let _ = egl.make_current(share.display, None, None, None);
+            let _ = egl.destroy_context(share.display, share.context);
+        })
+        .map_err(|e| format!("the loader: {e}"))?;
         Ok(Loader { jobs })
     }
 
@@ -596,6 +610,19 @@ impl Gl {
         self.egl
             .swap_buffers(self.display, self.surface)
             .map_err(|e| format!("EGL: {e}"))
+    }
+}
+
+impl Drop for Gl {
+    /// Lets go of the context and its surface while the window and the
+    /// Wayland connection they draw to are still there, and ends the
+    /// display, so the driver has nothing left to tear down at exit. The
+    /// loader is let go first, so no thread is in the driver as it ends.
+    fn drop(&mut self) {
+        let _ = self.egl.make_current(self.display, None, None, None);
+        let _ = self.egl.destroy_surface(self.display, self.surface);
+        let _ = self.egl.destroy_context(self.display, self.context);
+        let _ = self.egl.terminate(self.display);
     }
 }
 
