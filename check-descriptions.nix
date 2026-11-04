@@ -2001,7 +2001,8 @@
     on the laptop's screen at 1.5 and at 2, the launcher's drawer takes the room beside the card,
     up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
-    a whole number of half rows below
+    a whole number of half rows below; and a row's words, home's lists and a found row's note,
+    are in the sans a step after its name and on its baseline to half a device pixel
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

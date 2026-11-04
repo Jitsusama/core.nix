@@ -3680,6 +3680,8 @@ Scope {
                     // null for one not drawn.
                     rows: root.matches.slice(0, 20)
                         .map((_, at) => root.hundredths(list.baselineOf(at))),
+                    // Each of the same rows' words, where they sit.
+                    words: root.matches.slice(0, 20).map((_, at) => list.wordsOf(at)),
                     // The middle of each row shown, which the moment's time
                     // centres its capitals on.
                     middles: root.rowLines.map(line => root.hundredths(line))
@@ -4390,6 +4392,20 @@ Scope {
                                 const entry = list.itemAtIndex(at);
                                 return entry ? entry.mapToItem(card, 0, entry.nameBaseline).y : null;
                             }
+                            // A drawn row's words, what it holds or its
+                            // note: their baseline on the card, how far
+                            // they stand from its name, and their face;
+                            // null for a row not drawn or saying none.
+                            function wordsOf(at) {
+                                const entry = list.itemAtIndex(at);
+                                const row = entry?.drawnRow;
+                                return row && row.detail !== "" ? {
+                                    baseline: root.hundredths(
+                                        entry.mapToItem(card, 0, row.y + row.detailBaseline).y),
+                                    gap: root.hundredths(row.detailGap),
+                                    face: row.detailFace
+                                } : null;
+                            }
 
                             // Scrolls just far enough to show the row, as
                             // positionViewAtIndex's Contain does, gliding
@@ -4491,6 +4507,9 @@ Scope {
                                 // Its name's baseline, down from its top.
                                 readonly property real nameBaseline: choice.y
                                     + choice.nameBaseline
+                                // Its row, which the report reads its
+                                // words' place from.
+                                readonly property alias drawnRow: choice
 
                                 Choice {
                                     id: choice
