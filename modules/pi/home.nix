@@ -335,6 +335,12 @@ in
     # default meant to.
     jitsusama.pi.settings.compaction.keepRecentTokens = lib.mkDefault 10000;
 
+    # Links pi draws, which a click opens. pi turns them on only when it can
+    # tell it runs in kitty, by KITTY_WINDOW_ID or TERM_PROGRAM, and a
+    # session held apart from its window has neither; pi then draws no
+    # links, and in fullscreen it takes every click, so a click opens nothing.
+    jitsusama.pi.settings.terminal.hyperlinks = lib.mkDefault true;
+
     home.activation.piTakesCoresSettings =
       lib.hm.dag.entryAfter
         [
