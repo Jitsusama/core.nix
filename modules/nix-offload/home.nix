@@ -66,6 +66,18 @@ let
   reloaded = {
     X-ReloadIfChanged = true;
   };
+  # What a VM-test lender's helper is told: its own environment, and how
+  # many VM tests its builder runs at once as OFFLOAD_MAX_JOBS, from the one
+  # number `there` splits them by, so the two can't differ.
+  vmEnvironment =
+    environment:
+    zoned
+    ++ lib.mapAttrsToList (name: value: "${name}=${value}") (
+      environment
+      // lib.optionalAttrs (cfg.vmTests.builds != null) {
+        OFFLOAD_MAX_JOBS = toString cfg.vmTests.builds;
+      }
+    );
   sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
 in
 {
@@ -159,9 +171,10 @@ in
               default = null;
               example = 6;
               description = ''
-                How many VM tests its builder runs at once, as the helper
-                holds its Nix to, so `there` sends what's past that to the
-                second, `more`, rather than leave it waiting its turn.
+                How many VM tests each VM builder runs at once, told to both
+                VM lenders' helpers as OFFLOAD_MAX_JOBS, so `there` sends
+                what's past that to the second, `more`, rather than leave it
+                waiting its turn.
               '';
             };
             more = lib.mkOption {
@@ -421,7 +434,7 @@ in
             "--dir /run/nix-offload-vm --only-there"
           ]
         );
-        Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.vmTests.environment;
+        Environment = vmEnvironment cfg.vmTests.environment;
       }
       // stopping;
       Install.WantedBy = [ "default.target" ];
@@ -430,7 +443,10 @@ in
     systemd.user.services.nix-offload-vm-more =
       lib.mkIf (cfg.helper != null && cfg.vmTests.more or null != null)
         {
-          Unit.Description = "Lends a second builder for VM tests while the first is full and a build sent there waits on one";
+          Unit = {
+            Description = "Lends a second builder for VM tests while the first is full";
+          }
+          // reloaded;
           Service = {
             ExecStart = lib.concatStringsSep " " (
               serving
@@ -439,8 +455,7 @@ in
                 "--dir /run/nix-offload-vm-more --only-there"
               ]
             );
-            Environment =
-              zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.vmTests.more.environment;
+            Environment = vmEnvironment cfg.vmTests.more.environment;
           }
           // stopping;
           Install.WantedBy = [ "default.target" ];

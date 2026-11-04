@@ -85,7 +85,8 @@
 //! there first meanwhile, and sends the VM tests it names the same way.
 //! Another such lender, in /run/nix-offload-vm-more, lends a second VM
 //! builder, which takes the VM tests past the first's room: as many as
-//! `nix-offload/vm-builds` says it runs at once, counting those runs still
+//! `nix-offload/vm-builds` says it runs at once (as both VM lenders'
+//! helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs still
 //! going have sent it, each saying so in its folder's `sending`. A run's
 //! parts go at once, each to its own builder.
 //!
