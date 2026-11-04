@@ -6,6 +6,7 @@
 
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -117,7 +118,22 @@ impl Real {
             .status()
             .map_err(|error| format!("running changed-checks: {error}"))?;
         if !checked.success() {
-            return Err(format!("its checks failed, {}", log.display()));
+            let before = self.git(&["rev-parse", &followed])?;
+            let failed = unbuilt(&fs::read_to_string(&log).unwrap_or_default());
+            let new: Vec<&String> = failed
+                .iter()
+                .filter(|check| !self.fails_at(&before, check))
+                .collect();
+            if failed.is_empty() || !new.is_empty() {
+                return Err(format!("its checks failed, {}", log.display()));
+            }
+            append_line(
+                &log,
+                &format!(
+                    "merge-net: {} fail before this change too, so it lands",
+                    failed.join(" ")
+                ),
+            );
         }
         let slug = self.slug();
         let made = run(Command::new("gh").args([
@@ -172,6 +188,53 @@ impl Real {
             std::thread::sleep(Duration::from_secs(6));
         }
         Ok(Merged { pr, commit: merged })
+    }
+}
+
+impl Real {
+    /// Whether `check` fails at `commit` as well, so a change isn't refused
+    /// for a check that was failing before it: a revert waiting on main's
+    /// other breaks would leave its own break in place.
+    fn fails_at(&self, commit: &str, check: &str) -> bool {
+        if !matches!(self.has_check(commit, check), Ok(true)) {
+            return false;
+        }
+        let built = Command::new("nix")
+            .args([
+                "build",
+                "--no-link",
+                &format!(
+                    "github:{}/{commit}#checks.{}.{check}",
+                    self.slug(),
+                    self.system
+                ),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        built.is_ok_and(|status| !status.success())
+    }
+}
+
+/// The checks a nix build's log says it couldn't build, by the names their
+/// derivations go by.
+pub fn unbuilt(log: &str) -> Vec<String> {
+    let mut names: Vec<String> = log
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("error: Cannot build '/nix/store/"))
+        .filter_map(|rest| rest.split_once(".drv'").map(|(path, _)| path))
+        .filter_map(|path| path.split_once('-').map(|(_, name)| name.to_owned()))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Add a line to a log, as the net's own word among a command's.
+fn append_line(log: &Path, line: &str) {
+    if let Ok(mut file) = fs::OpenOptions::new().append(true).open(log) {
+        let _ = writeln!(file, "{line}");
     }
 }
 
@@ -294,7 +357,10 @@ impl World for Real {
         );
         let parents = self.git(&["rev-list", "--parents", "-n", "1", &bad.commit])?;
         let merge = parents.split_whitespace().count() > 2;
-        let body = revert_body(bad, &unnamed(&tail(Path::new(&bad.log), 15), &hostname()));
+        let body = revert_body(
+            bad,
+            &unnamed(&failure(Path::new(&bad.log), 15), &hostname()),
+        );
         self.land(
             &format!("merge-net/revert-{}", short(&bad.commit)),
             &message,
@@ -384,7 +450,8 @@ pub fn revert_body(bad: &Bad, log: &str) -> String {
          were before it. Its owner fixes it forward on a new branch.\n\n\
          ### 🔬 Validation\n\n\
          - Checked: {test} failed twice at {short} on the VM builder, through nix-offload there.\n\
-         - Checked: changed-checks passed on this branch, for the checks it names other than VM tests.\n\
+         - Checked: changed-checks passed on this branch, for the checks it names other than VM tests \
+         and those that fail before it too.\n\
          - Watch: the net runs {test} at the next head; a failure there means this didn't undo it.\n",
         test = bad.test,
         commit = bad.commit,
@@ -409,7 +476,8 @@ pub fn quarantine_body(test: &str, owner: Option<u64>, commit: &str, reason: &st
          makes it steady and takes it off.\n\n\
          ### 🔬 Validation\n\n\
          - Checked: {test} failed and then passed at {commit} on the VM builder.\n\
-         - Checked: changed-checks passed on this branch.\n"
+         - Checked: changed-checks passed on this branch, for the checks it names other than those \
+         that fail before it too.\n"
     )
 }
 
@@ -423,6 +491,36 @@ pub fn tail(log: &Path, lines: usize) -> String {
         .filter(|line| !line.trim().is_empty())
         .collect();
     kept[kept.len().saturating_sub(lines)..].join("\n")
+}
+
+/// What says a test failed and why, read out of its log: the lines pytest
+/// and the driver mark a failure with, each once, however often nix repeats
+/// them. A log's last lines are its machines shutting down, which say
+/// nothing; they're given only when no line is marked.
+pub fn failure(log: &Path, lines: usize) -> String {
+    const MARKS: [&str; 5] = [
+        "FAILED ",
+        "AssertionError",
+        "Error: ",
+        "failed with error",
+        "Traceback",
+    ];
+    let text = fs::read_to_string(log).unwrap_or_default();
+    let mut said: Vec<String> = Vec::new();
+    for line in text.lines().map(plain) {
+        let bare = line
+            .split_once("> ")
+            .map_or(line.as_str(), |(_, rest)| rest)
+            .trim()
+            .to_owned();
+        if MARKS.iter().any(|mark| bare.contains(mark)) && !said.contains(&bare) {
+            said.push(bare);
+        }
+    }
+    if said.is_empty() {
+        return tail(log, lines);
+    }
+    said[said.len().saturating_sub(lines)..].join("\n")
 }
 
 /// This machine's name, which a log may hold and a PR mustn't, since core
@@ -509,6 +607,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_build_log_names_the_checks_it_couldnt_build() {
+        let log = "building '/nix/store/aaa-stands-alone.drv'...\n\
+            error: Cannot build '/nix/store/abc123-nothing-names-its-own-look.drv'.\n\
+            \x20      Reason: builder failed with exit code 1.\n\
+            error: Cannot build '/nix/store/def456-vm-clock-keeps-time.drv'.\n\
+            error: Cannot build '/nix/store/abc123-nothing-names-its-own-look.drv'.\n";
+        assert_eq!(
+            unbuilt(log),
+            vec![
+                "nothing-names-its-own-look".to_owned(),
+                "vm-clock-keeps-time".to_owned()
+            ]
+        );
+    }
+
+    #[test]
     fn a_log_line_loses_its_colours_and_what_isnt_ascii() {
         assert_eq!(
             plain("\u{1b}[31mred\u{1b}[0m and \u{2014} dash"),
@@ -566,6 +680,34 @@ mod tests {
         let log = std::env::temp_dir().join(format!("merge-net-tail-{}.log", std::process::id()));
         fs::write(&log, "one\n\ntwo\nthree\n\n").unwrap();
         assert_eq!(tail(&log, 2), "two\nthree");
+        fs::remove_file(&log).unwrap();
+    }
+
+    #[test]
+    fn a_failure_is_read_from_the_lines_that_mark_it_not_the_shutdown() {
+        let log =
+            std::env::temp_dir().join(format!("merge-net-failure-{}.log", std::process::id()));
+        fs::write(
+            &log,
+            "vm-test-run-clock> machine # RAS: Correctable Errors collector initialized.\n\
+             vm-test-run-clock> E       AssertionError: assert 'planted' == 'caught'\n\
+             vm-test-run-clock> FAILED clock-vm-test.py::test_planted - AssertionError\n\
+             vm-test-run-clock> server # qemu-system-x86_64: terminating on signal 15\n\
+             \x20      > FAILED clock-vm-test.py::test_planted - AssertionError\n\
+             \x20      > (finished: cleanup, in 0.56 seconds)\n",
+        )
+        .unwrap();
+        assert_eq!(
+            failure(&log, 15),
+            "E       AssertionError: assert 'planted' == 'caught'\n\
+             FAILED clock-vm-test.py::test_planted - AssertionError"
+        );
+        fs::write(&log, "one\ntwo\n").unwrap();
+        assert_eq!(
+            failure(&log, 1),
+            "two",
+            "with nothing marked, its last lines"
+        );
         fs::remove_file(&log).unwrap();
     }
 }

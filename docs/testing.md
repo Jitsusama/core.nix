@@ -130,7 +130,9 @@ a head changed since the last head it passed, on the VM builder, two at
 once. A test that fails twice at one commit is broken: the net finds
 which merge broke it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, reverts it through a PR merged on its own checks, and
-writes a finding for its owner in `~/.local/state/net/findings`. One that
+writes a finding for its owner in `~/.local/state/net/findings`. A check
+that fails before the revert too doesn't stop it, or one break on main
+would keep another in place. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
