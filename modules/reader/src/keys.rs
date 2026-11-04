@@ -185,9 +185,11 @@ const SPOKEN: &[(&str, Act)] = &[
     ("show-keys", Act::ShowKeys),
 ];
 
-/// The acts whose key takes the letter typed after it, as a mark's name.
-const SLOTS: &[(&str, fn(char) -> Act)] =
-    &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
+/// An act that takes the letter typed after its key, as a mark's name.
+type Slot = fn(char) -> Act;
+
+/// The acts whose key takes a letter after it, by their names.
+const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
 
 /// The reader's own keys, for what Vim has nothing for: a browser's zoom,
 /// at rest and while selecting.
@@ -205,7 +207,7 @@ pub type Sequence = (Vec<Key>, Act, In);
 /// letter after it, with where each works.
 pub struct Table {
     pub sequences: Vec<Sequence>,
-    slots: Vec<(Key, fn(char) -> Act, In)>,
+    slots: Vec<(Key, Slot, In)>,
 }
 
 /// The keys, read from the language once.
@@ -233,12 +235,15 @@ fn read(language: &str) -> Table {
             })
             .collect();
         // An act is pressed in normal mode unless the language says.
-        let modes: Vec<&str> = act.get("modes").and_then(|modes| modes.as_array()).map_or_else(
-            || vec!["normal"],
-            |modes| modes.iter().filter_map(|mode| mode.as_str()).collect(),
-        );
-        let held = In::of(&modes)
-            .unwrap_or_else(|| panic!("{name} is in neither normal nor visual mode"));
+        let modes: Vec<&str> = act
+            .get("modes")
+            .and_then(|modes| modes.as_array())
+            .map_or_else(
+                || vec!["normal"],
+                |modes| modes.iter().filter_map(|mode| mode.as_str()).collect(),
+            );
+        let held =
+            In::of(&modes).unwrap_or_else(|| panic!("{name} is in neither normal nor visual mode"));
         (keys, held)
     };
     let mut sequences: Vec<Sequence> = SPOKEN
@@ -248,7 +253,10 @@ fn read(language: &str) -> Table {
             keys.into_iter().map(move |keys| (keys, act, held))
         })
         .collect();
-    sequences.extend(OWN.iter().map(|(keys, act)| (keys.to_vec(), *act, In::Both)));
+    sequences.extend(
+        OWN.iter()
+            .map(|(keys, act)| (keys.to_vec(), *act, In::Both)),
+    );
     let slots = SLOTS
         .iter()
         .flat_map(|&(name, slot)| {
@@ -414,7 +422,7 @@ fn shown(key: Key) -> String {
 }
 
 /// A key as the desktop's key map spells it, which names a key of two
-/// words in one, as Page_Down, since a space there parts the keys of a
+/// words in one, as `Page_Down`, since a space there parts the keys of a
 /// sequence.
 fn spelled(key: Key) -> String {
     match key {
@@ -475,7 +483,7 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
 }
 
 /// A chord as the desktop's key map lists it.
-pub struct Chord {
+pub struct Listed {
     /// The launcher's group for it.
     pub group: String,
     /// The keys, as the key map spells them.
@@ -489,7 +497,7 @@ pub struct Chord {
 /// group for it, what it does and its act: a sequence's keys apart (g g),
 /// and a mark's keys by the key before its letter. The launcher lists a
 /// mark's keys with the jumps, since two keys make no group of their own.
-pub fn chords() -> Vec<Chord> {
+pub fn chords() -> Vec<Listed> {
     table()
         .sequences
         .iter()
@@ -514,7 +522,7 @@ pub fn chords() -> Vec<Chord> {
                 "The Page" => "page".to_string(),
                 other => other.to_lowercase(),
             };
-            Some(Chord {
+            Some(Listed {
                 group,
                 chord,
                 does,
@@ -526,7 +534,7 @@ pub fn chords() -> Vec<Chord> {
 
 /// A letter slot: these keys take the next letter typed as a mark's name,
 /// where they work.
-fn takes_a_letter(key: Key, selecting: bool) -> Option<fn(char) -> Act> {
+fn takes_a_letter(key: Key, selecting: bool) -> Option<Slot> {
     table()
         .slots
         .iter()
