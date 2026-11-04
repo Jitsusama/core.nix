@@ -1,7 +1,8 @@
 """The desktop test's launcher draws still area.
 
 Here the launcher draws only what changes: a list scrolled, a selection, a long name, a burst
-of changes, and nothing at all while left still.
+of changes. That it draws nothing at all left still is proven on a nested niri, in
+tests/launcher-on-niri-test.py.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -23,7 +24,6 @@ import pytest
 from desktop_session import (
     LAUNCHER_OPEN,
     STARTING,
-    drawn_held_still,
     laid_out,
     launcher_closed,
     retry,
@@ -759,28 +759,6 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
-
-
-def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
-    """The launcher left open and still draws nothing, its caret steady rather than blinking."""
-    machine = desktop.machine
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    machine.send_chars("sou")
-    desktop.launcher_until(lambda shown: shown["typed"] == "sou")
-    # A blinking caret would draw six times in the three seconds.
-    drawn = drawn_held_still(desktop)
-    still = int(desktop.as_account("qs ipc call launcher frames"))
-    # A letter draws, so the count sees frames at all.
-    machine.send_chars("n")
-    desktop.launcher_until(lambda shown: shown["typed"] == "soun")
-    retry(
-        lambda _: int(desktop.as_account("qs ipc call launcher frames")) > still,
-        timeout=dt.timedelta(seconds=10),
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
 # A binding that throws or assigns the wrong type only warns, and

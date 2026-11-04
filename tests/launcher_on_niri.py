@@ -252,6 +252,28 @@ class Shell:
             time.sleep(POLL)
         return False
 
+    def frames(self) -> int:
+        """Give how many frames the launcher has drawn since the shell started."""
+        return int(self.as_account(self.ipc("frames")))
+
+    def drawn_held_still(self) -> int:
+        """Count the frames the open launcher draws in three seconds left still.
+
+        What the last key moved draws first, its glide and a drawer it opened, so the count
+        begins once a second passes with no frame, or after ten. A launcher that keeps drawing,
+        as a blinking caret would, never settles, and is counted anyway. The foot's clock may
+        turn its minute in the three seconds, once.
+        """
+        began = self.frames()
+        settling = time.monotonic() + 10
+        while time.monotonic() < settling:
+            time.sleep(1)
+            settled, began = began, self.frames()
+            if began == settled:
+                break
+        time.sleep(3)
+        return self.frames() - began
+
 
 def started() -> Shell:
     """Start the shell in the folder the check gives, logging where it says."""

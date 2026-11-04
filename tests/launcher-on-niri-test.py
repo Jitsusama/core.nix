@@ -287,6 +287,27 @@ def test_the_closed_launcher_draws_nothing_as_the_time_it_would_show_turns(shell
     shell.launcher_closed()
 
 
+def test_the_launcher_left_still_draws_nothing(shell: Shell) -> None:
+    """The launcher left open and still draws nothing, its caret steady rather than blinking."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.send_chars("sou")
+    shell.launcher_until(lambda shown: shown["typed"] == "sou")
+    # A blinking caret would draw six times in the three seconds.
+    drawn = shell.drawn_held_still()
+    still = shell.frames()
+    # A letter draws, so the count sees frames at all.
+    shell.send_chars("n")
+    shell.launcher_until(lambda shown: shown["typed"] == "soun")
+    counting = time.monotonic() + 10
+    while shell.frames() <= still:
+        assert time.monotonic() < counting, "a letter drew no frame, so none are counted"
+        time.sleep(0.05)
+    shell.send_key("esc")
+    shell.launcher_closed()
+    assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

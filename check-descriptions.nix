@@ -1427,7 +1427,7 @@
     colours and copies them, says once and quietly what needs a network couldn't, holds an
     answer's row from the keystroke, finds the power acts by their names and the names they had
     and asks before they act, draws nothing closed as a minute turns though it says the new time
-    as it opens, and warns of nothing it drew
+    as it opens, draws nothing left open and still, its caret steady, and warns of nothing it drew
   '';
   the-launcher-asks-a-fresh-pi = ''
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
@@ -2049,8 +2049,8 @@
   vm-desktop-launcher-draws-still = ''
     the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, the
     selection glides to its row and stays drawn on it, a long name reads on while selected, a burst
-    of changes is taken together, no letter typed after its chord is lost, and nothing draws while
-    it's left still
+    of changes is taken together, no letter typed after its chord is lost, and nothing moves unless
+    it changes
   '';
   vm-desktop-launcher-finds-sessions = ''
     the launcher finds pi's sessions and quests and goes to their windows, talks to an orchestrator
