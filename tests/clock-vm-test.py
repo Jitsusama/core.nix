@@ -59,8 +59,3 @@ def test_the_clock_sets_from_the_machines_own_server(syncing: BaseMachine) -> No
         "timedatectl show -p NTPSynchronized --value | grep -qx yes", timeout=SYNCING
     )
     assert syncing.succeed("timedatectl show-timesync -p ServerName --value").strip() == "server"
-
-
-def test_a_planted_failure_the_net_must_catch(syncing: BaseMachine) -> None:
-    """Fails on purpose, on a throwaway branch, so the net is seen to revert it."""
-    assert syncing.succeed("echo planted").strip() == "caught"
