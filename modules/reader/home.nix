@@ -187,6 +187,7 @@ let
     (objects "in-paragraph" "i p" "A paragraph")
     (objects "a-paragraph" "a p" "A paragraph and the blank line after it")
     (objects "in-code" "i `" "The code between backticks")
+    (objects "a-code" "a `" "The code, its backticks and a space")
     (copying "copy-selection" "y" "Copy the selection as markdown")
     (copying "copy-selection" "Ctrl+C" "Copy the selection as markdown")
     (copying "copy" "y y" "Copy the first block in view")

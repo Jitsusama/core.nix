@@ -364,9 +364,15 @@ keys = ["ap"]
 modes = ["visual"]
 kinds = ["page"]
 
-# Code between backticks, as Vim's i` takes what's between two of them.
+# Code between backticks, as Vim's i` takes what's between two of them,
+# and a` the backticks too, with the blanks after them.
 [acts.in-code]
 keys = ["i`"]
+modes = ["visual"]
+kinds = ["page"]
+
+[acts.a-code]
+keys = ["a`"]
 modes = ["visual"]
 kinds = ["page"]
 

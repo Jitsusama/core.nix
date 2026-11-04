@@ -173,12 +173,18 @@ shows 'nothing'
 act 5 'v}wiw{'
 shows '"A b"'
 act 1 -k Escape
-# A count goes with a motion; i` takes a code span's words.
+# A count goes with a motion; i` takes a code span's words, and a` its
+# backticks and the space after them too, which the page doesn't show.
 act 3 'v}5w'
 act 1 'i`'
 shows '"code"'
 act 1 y
-copied '"`code`"'
+copied '"code"'
+act 3 'v}5w'
+act 1 'a`'
+shows '"code "'
+act 1 y
+copied '"`code` "'
 # is and as take a sentence, as without and with the space after it; aw
 # a word with its space.
 act 4 'v}wis'
@@ -186,7 +192,7 @@ shows '"A bold start, then code in a line."'
 act 1 as
 shows '"A bold start, then code in a line. "'
 act 1 y
-copied '"A **bold** start, then `code` in a line."'
+copied '"A **bold** start, then `code` in a line. "'
 act 4 'v}waw'
 shows '"bold "'
 act 1 -k Escape
@@ -230,6 +236,25 @@ act 2 vV
   || fail "V didn't make the selection one of blocks"
 act 1 -k Escape
 shows 'nothing'
+# A paragraph the page wraps is one line of the file, and is copied as
+# one: $ stops where the page broke it, and 22e goes past the break to
+# its last word.
+act 5 'v}}}iw'
+shows '"Paragraph"'
+act 1 '$'
+said=$(grep -a -E '^selected: ' said | tail -n 1)
+[[ $said != *somewhere* ]] || fail "the paragraph fits a line, so nothing wraps: $said"
+act 1 -k Escape
+act 6 'v}}}iw22e'
+whole='Paragraph 1 says enough to take a line or two of the page, so that every key here has somewhere to go'
+shows "\"$whole\""
+act 1 y
+copied "\"$whole\""
+deadline=$((SECONDS + 10))
+until [ "$(wl-paste -n 2> /dev/null)" = "$whole" ]; do
+  ((SECONDS < deadline)) || fail "the clipboard holds $(wl-paste -n 2>&1), not the paragraph"
+  sleep 0.1
+done
 
 press 5j
 logged '^key Down Some\(5\)' 1
