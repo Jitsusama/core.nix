@@ -1784,6 +1784,38 @@ in
       "d ${config.xdg.dataHome}/pi/agentic-harness.pi/quest-workflow/quests - - - -"
     ];
 
+    # The kitty every session's window opens in (Sessions.qml's
+    # inSessions), kept running with a hidden window of its own. kitty's
+    # single instance quits as its last window closes, and a session asked
+    # of it as it quit was lost without a word: Reopen Them All asked for
+    # one 0.07 s before the last session's kitty quit, and it never opened
+    # (2026-11-04). Started first, it's the instance; started beside one
+    # already running, its hidden window keeps that one instead, and it
+    # waits on that window either way, so the unit stays up. It runs in
+    # agents.slice, where kitty puts each session's scope. Its window is
+    # classed pi-sessions-kept, so the shell, which numbers that kitty's
+    # windows as niri lists them, leaves out the one niri never shows.
+    systemd.user.services.sessions-kitty = {
+      Unit = {
+        Description = "The kitty every session's window opens in, kept between sessions";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+        # Kept trying while the session's display isn't there yet.
+        StartLimitIntervalSec = 0;
+      };
+      Service = {
+        Slice = "agents.slice";
+        ExecStart = lib.concatStringsSep " " [
+          "${config.home.profileDirectory}/bin/kitty"
+          "-1 --instance-group pi-sessions --wait-for-single-instance-window-close"
+          "--class pi-sessions-kept --start-as=hidden ${lib.getExe' pkgs.coreutils "sleep"} infinity"
+        ];
+        Restart = "always";
+        RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
     systemd.user.services.clipboard-history = lib.mkIf keepsCopies {
       Unit = {
         Description = "The clipboard's history, kept in memory for the launcher";
