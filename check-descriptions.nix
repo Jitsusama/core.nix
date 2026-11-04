@@ -2100,10 +2100,15 @@
     notices come, go and are acted on, and the margin, What's on, Tuple's calls and caps lock say
     what's happening and answer the keys
   '';
+  vm-desktop-shows-then-rests = ''
+    the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
+    shell's, and once nothing shows the shell draws nothing and barely wakes, as a minute turns and
+    behind the lock as its files are written
+  '';
   vm-desktop-starts-clean = ''
-    the desktop boots without an ordering cycle and its shell without an error, the shell draws
-    nothing and barely wakes while nothing shows, the meters answer the keys, programs wear the
-    theme, and swipes and Bluetooth's agent work
+    the desktop boots without an ordering cycle and its shell without an error, niri alone keeps
+    its priority, programs wear the theme, the wallpaper stands behind the workspaces, and swipes
+    and Bluetooth's agent work
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of
