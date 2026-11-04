@@ -1664,10 +1664,11 @@ one table, `QueryKeys.js`.
   the ground's colour, as his Neovim's guicursor draws them (`init.lua`).
   It fades out and back in over 0.8 s each way after a key, and holds
   steady 15 s after the last, as his kitty blinks a cursor, so a launcher
-  left still draws nothing more (`jitsusama.quickshell.caret`). The foot's
-  left names the mode in the accent, lowercase, only while it isn't
-  normal ("insert"), as his status line does (`status.lua`), before how
-  things stand.
+  left still draws nothing more (`jitsusama.quickshell.caret`). The foot
+  names the mode in the accent, lowercase, only while it isn't normal
+  ("insert"), after how things stand, as his status line puts it after
+  what's already on its left (`status.lua`). Its room is kept in every
+  mode, so nothing else in the foot moves as the mode changes.
 - **The Escape ladder.** Each Escape takes one step back: it cancels a key
   waiting for its second (cc's first c), or leaves insert for normal; at
   rest in normal it steps out a level, and at the level the launcher

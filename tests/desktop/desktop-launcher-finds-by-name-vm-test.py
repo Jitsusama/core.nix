@@ -48,23 +48,20 @@ def field_key(field: list[Json], mark: str, word: str) -> Json:
     return said[0]
 
 
-def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
-    """Press every key the query line's insert and normal take, from "batt" typed to "battery".
+def the_modes_look_as_vims(desktop: Desktop) -> None:
+    """See the line in insert, then in normal by Escape, then in insert again by A.
 
-    It starts with "batt" typed and the battery's answer selected, and ends with Ctrl+Y having
-    completed it, in insert, as Joel would press them through niri.
+    It starts and ends with "batt" typed, in insert, the caret at its end.
     """
     machine = desktop.machine
     # The line opens in insert, as Neovim's command line does, the foot
-    # naming the mode at its left and the caret a bar a quarter of a
-    # letter wide. Insert's keys are Vim's, through niri as Joel presses
-    # them (QueryKeys.js holds the rest): the caret moves by the arrows,
-    # Home and End, Backspace, Ctrl+W and Ctrl+U delete before it, and
-    # the rows' keys are his completion menu's.
+    # naming the mode after how things stand and the caret a bar a
+    # quarter of a letter wide.
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     field = laid["field"]
-    said = sorted(laid["foot"], key=lambda word: word["x"])
-    assert said[0]["text"] == "insert", said
+    mode = next(word for word in laid["foot"] if word["text"] == "insert")
+    rest = sorted(word["x"] for word in laid["foot"] if word is not mode)
+    assert rest[0] < mode["x"], laid["foot"]
     complete = field_key(field, "Ctrl+Y", "complete")
     # It isn't flush against what's typed, and it's the field's one key in
     # insert: clearing is normal's.
@@ -72,6 +69,33 @@ def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
     assert typed["x"] < complete["x"], field
     assert not any(word["text"].endswith(" clear") for word in field), field
     bar = desktop.showing()["caretWidth"]
+    # Escape gives normal: the caret one left, a block on its letter, no
+    # word for the mode with the rest of the foot where it was, and the
+    # left arrow's key in the field's place. It's read before the walk's
+    # edits, since a wider aside they bring crowds the keys' words out
+    # until the step ends; A goes back.
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
+    assert desktop.showing()["caretWidth"] > 3 * bar, (bar, desktop.showing()["caretWidth"])
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    assert sorted(word["x"] for word in laid["foot"]) == rest, (rest, laid["foot"])
+    assert field_key(laid["field"], "\u2190", "clear")["x"] == complete["x"], laid["field"]
+    machine.send_chars("A")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("insert", 4))
+
+
+def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
+    """Press every key the query line's insert and normal take, from "batt" typed to "battery".
+
+    It starts with "batt" typed and the battery's answer selected, and ends with Ctrl+Y having
+    completed it, in insert, as Joel would press them through niri.
+    """
+    machine = desktop.machine
+    the_modes_look_as_vims(desktop)
+    # Insert's keys are Vim's, through niri as Joel presses them
+    # (QueryKeys.js holds the rest): the caret moves by the arrows, Home
+    # and End, Backspace, Ctrl+W and Ctrl+U delete before it, and the
+    # rows' keys are his completion menu's.
 
     def holds(text: str, caret: int) -> None:
         desktop.launcher_until(lambda shown: (shown["typed"], shown["caret"]) == (text, caret))
@@ -97,14 +121,8 @@ def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
         desktop.launcher_until(lambda shown: shown["selected"]["name"] != first)
         machine.send_key(back)
         desktop.launcher_until(lambda shown: shown["selected"]["name"] == first)
-    # Escape gives normal: the caret one left, a block on its letter, no
-    # word for the mode, and the left arrow's key in the field's place.
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
-    assert desktop.showing()["caretWidth"] > 3 * bar, (bar, desktop.showing()["caretWidth"])
-    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-    assert all(word["text"] != "insert" for word in laid["foot"]), laid["foot"]
-    field_key(laid["field"], "\u2190", "clear")
     # Letters type nothing there, so u brings back only what the left
     # arrow took, the selection staying on the battery.
     machine.send_chars("z")

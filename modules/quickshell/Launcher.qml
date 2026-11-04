@@ -4729,9 +4729,11 @@ Scope {
                         // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.l
                             - Math.max(root.footKeysWidest, keys.implicitWidth)
-                        // The room the left has, short of the keys, after the
-                        // mode's word.
+                        // The room the left has, short of the keys and the
+                        // mode's word, which keeps its room in every mode so
+                        // the facts say the same whichever it is.
                         readonly property real room: keysFrom - Theme.space.xl - standing.x
+                            - modeWord.room
 
                         // As the card last showed it, while it's closed.
                         property string said: ""
@@ -4783,16 +4785,25 @@ Scope {
                         // facts side by side under one glyph (the day's
                         // AI spend and the agents, both AI's) wear it
                         // once.
-                        // The query line's mode, while it isn't normal, first
-                        // at the foot's left, in the accent and lowercase, as
-                        // his Neovim's status line names it (modules/neovim/
-                        // status.lua): the one word saying where his keys go.
+                        // The query line's mode, while it isn't normal, after
+                        // the facts, in the accent and lowercase, as his
+                        // Neovim's status line puts it after what's already
+                        // there (modules/neovim/status.lua): the one word
+                        // saying where his keys go. It comes and goes without
+                        // moving anything else.
                         Text {
                             id: modeWord
 
                             readonly property string said: (Words.field.modes ?? {})[prompt.mode]
                                 ?? ""
-                            x: Theme.space.l
+                            // The widest of the modes' words and its gap,
+                            // held whichever shows.
+                            readonly property real room: {
+                                const words = Object.values(Words.field.modes ?? {});
+                                return words.length === 0 ? 0 : keys.spacing
+                                    + Math.max(...words.map(word => measure.advanceWidth(word)));
+                            }
+                            x: standing.x + standing.width + keys.spacing
                             anchors.verticalCenter: parent.verticalCenter
                             visible: said !== ""
                             text: said
@@ -4882,8 +4893,7 @@ Scope {
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
 
-                            x: modeWord.visible
-                                ? modeWord.x + modeWord.implicitWidth + keys.spacing : Theme.space.l
+                            x: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: keys.spacing
 
