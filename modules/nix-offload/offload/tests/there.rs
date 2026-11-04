@@ -9,7 +9,8 @@ use std::process::{Command, Output};
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
 /// command) apart, each command after the last in `ssh-commands` and each
-/// host after the last in `ssh-hosts`, prints
+/// host after the last in `ssh-hosts`, and both on one line in `ssh-sent`,
+/// written at once, for a run whose parts go at once, prints
 /// what the `says` file beside it holds and, on stderr, what the
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
@@ -27,6 +28,7 @@ done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
+printf '%s %s\n' "$1" "$2" >> "$here/ssh-sent"
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
@@ -77,6 +79,10 @@ exit "$(cat "$here/nix-status" 2>/dev/null || echo 0)"
 /// second builder unless a test lends it one: the default,
 /// /run/nix-offload-more, is this machine's own.
 const NO_SECOND: &str = "/nonexistent/nix-offload-more";
+
+/// And a second VM lender's, as /run/nix-offload-vm-more is this
+/// machine's own.
+const NO_SECOND_VM: &str = "/nonexistent/nix-offload-vm-more";
 
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
                      base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n";
@@ -1429,6 +1435,7 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
         .env("NIX_OFFLOAD_DIR", &offload)
         .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
+        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
         .env("XDG_RUNTIME_DIR", folder.path())
         .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path())
@@ -1596,4 +1603,125 @@ fn with_no_builder_or_none_reached_it_builds_nothing_unless_asked_to_build_here(
     let ran = there_with(folder.path(), &offload, &["--here"]);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     assert_eq!(fs::read_to_string(&given).unwrap(), here);
+}
+
+/// A lender's folder in `folder`, named `name`, its lender this test and
+/// its builder `host`.
+fn lending(folder: &Path, name: &str, host: &str) -> PathBuf {
+    let dir = folder.join(name);
+    fs::create_dir(&dir).unwrap();
+    fs::write(dir.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(dir.join("store"), STORE.replace("nix-offload", host)).unwrap();
+    dir
+}
+
+// The VM builder runs six VM tests at once, and the rest wait their turn
+// there: on 3 November 49 of 189 runs failed, 37% of VM tests failing
+// with 7 to 12 runs overlapping. So while a second VM lender runs, the VM
+// tests past the first's room go to its builder, at once beside the
+// first's, counting those other runs already sent.
+#[test]
+fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
+    let more = folder.path().join("offload-vm-more");
+    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        folder.path().join("nix-offload/vm-tests"),
+        "checks.*.vm-*\n",
+    )
+    .unwrap();
+    fs::write(folder.path().join("nix-offload/vm-builds"), "6\n").unwrap();
+    let sent = |tests: usize| {
+        let _ = fs::remove_file(bin.join("ssh-sent"));
+        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L", "github:o/r/abc", "checks.x.a"])
+            .args((0..tests).map(|test| format!("checks.x.vm-{test}")))
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_VM_DIR", &vm)
+            .env("NIX_OFFLOAD_VM_MORE_DIR", &more)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        let sent = fs::read_to_string(bin.join("ssh-sent")).unwrap();
+        let mut built: Vec<(String, usize)> = sent
+            .lines()
+            .filter_map(|line| line.split_once(' '))
+            .filter(|(_, command)| command.contains("nix build"))
+            .map(|(host, command)| (host.to_owned(), command.matches("#checks.x.vm-").count()))
+            .collect();
+        built.sort();
+        (built, String::from_utf8_lossy(&ran.stderr).into_owned())
+    };
+    let tests_on = |built: &[(String, usize)], host: &str| {
+        built
+            .iter()
+            .find(|(to, _)| to == host)
+            .map_or(0, |(_, tests)| *tests)
+    };
+
+    let (built, _) = sent(8);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm"),
+        8,
+        "no second lender runs: {built:?}"
+    );
+
+    fs::create_dir(&more).unwrap();
+    fs::write(more.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        more.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm-more"),
+    )
+    .unwrap();
+    let (built, said) = sent(8);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm"),
+        6,
+        "the first's room: {built:?}"
+    );
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        2,
+        "the rest: {built:?}"
+    );
+    assert!(
+        built.iter().any(|(to, _)| to == "nix-offload"),
+        "the rest: {built:?}"
+    );
+    assert!(said.contains("so 2 go to a second VM builder"), "{said}");
+
+    let (built, _) = sent(3);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        0,
+        "room on the first: {built:?}"
+    );
+
+    // Another run's five are there already, so one of these fits.
+    fs::create_dir_all(vm.join("sending")).unwrap();
+    fs::write(vm.join(format!("sending/{}.0", std::process::id())), "5\n").unwrap();
+    // And a run since gone counts for nothing.
+    fs::write(vm.join("sending/999999999.0"), "6\n").unwrap();
+    let (built, _) = sent(3);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 1, "{built:?}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 2, "{built:?}");
+    assert!(
+        !vm.join("sending/999999999.0").exists(),
+        "the gone run's is taken away"
+    );
+    let claims = fs::read_dir(vm.join("sending")).unwrap().count();
+    assert_eq!(claims, 1, "each run takes its own away as it ends");
 }

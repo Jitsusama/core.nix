@@ -154,6 +154,48 @@ in
                 way to it takes, so it holds one beside the first builder's.
               '';
             };
+            builds = lib.mkOption {
+              type = lib.types.nullOr lib.types.ints.positive;
+              default = null;
+              example = 6;
+              description = ''
+                How many VM tests its builder runs at once, as the helper
+                holds its Nix to, so `there` sends what's past that to the
+                second, `more`, rather than leave it waiting its turn.
+              '';
+            };
+            more = lib.mkOption {
+              type = lib.types.nullOr (
+                lib.types.submodule {
+                  options = {
+                    prefix = lib.mkOption {
+                      type = lib.types.str;
+                      description = ''
+                        What every such builder's name starts with, apart from
+                        the others', none of whose prefixes it may start with.
+                      '';
+                    };
+                    environment = lib.mkOption {
+                      type = lib.types.attrsOf lib.types.str;
+                      default = { };
+                      description = ''
+                        What the helper is told for this builder, such as the
+                        port its way to it takes, so it holds one beside the
+                        others'.
+                      '';
+                    };
+                  };
+                }
+              );
+              default = null;
+              description = ''
+                A second builder for VM tests, lent by the same helper only
+                while a `nix-offload there` build waits on it, which takes
+                the VM tests past the first's `builds`, counting those every
+                run here has sent it, so none waits its turn behind them. It's
+                given back idle once the first has room.
+              '';
+            };
           };
         }
       );
@@ -348,8 +390,22 @@ in
       Install.WantedBy = [ "default.target" ];
     };
 
+    assertions = [
+      {
+        assertion = cfg.vmTests == null || cfg.vmTests.more == null || cfg.vmTests.builds != null;
+        message = ''
+          jitsusama.nix-offload.vmTests.more takes the VM tests past the first's
+          room, so vmTests.builds must say how many it runs at once.
+        '';
+      }
+    ];
+
     xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
       text = lib.concatMapStrings (pattern: "${pattern}\n") cfg.vmTests.patterns;
+    };
+
+    xdg.configFile."nix-offload/vm-builds" = lib.mkIf (cfg.vmTests.builds or null != null) {
+      text = "${toString cfg.vmTests.builds}\n";
     };
 
     systemd.user.services.nix-offload-vm = lib.mkIf (cfg.helper != null && cfg.vmTests != null) {
@@ -370,6 +426,25 @@ in
       // stopping;
       Install.WantedBy = [ "default.target" ];
     };
+
+    systemd.user.services.nix-offload-vm-more =
+      lib.mkIf (cfg.helper != null && cfg.vmTests.more or null != null)
+        {
+          Unit.Description = "Lends a second builder for VM tests while the first is full and a build sent there waits on one";
+          Service = {
+            ExecStart = lib.concatStringsSep " " (
+              serving
+              ++ [
+                "--prefix ${cfg.vmTests.more.prefix}"
+                "--dir /run/nix-offload-vm-more --only-there"
+              ]
+            );
+            Environment =
+              zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.vmTests.more.environment;
+          }
+          // stopping;
+          Install.WantedBy = [ "default.target" ];
+        };
 
     systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
       Unit = {

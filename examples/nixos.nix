@@ -36,6 +36,13 @@ nixpkgs.lib.nixosSystem {
             helper = pkgs.writeShellScript "offload-helper" "exit 1";
             prefix = "example-offload-";
             rate = "0.68";
+            # VM tests on builders of their own, six at once on each, a
+            # second lent while more than six wait.
+            vmTests = {
+              prefix = "example-offload-vm-";
+              builds = 6;
+              more.prefix = "example-offload-vm2-";
+            };
           };
 
           # Setting one of core's options, the way a machine is meant to

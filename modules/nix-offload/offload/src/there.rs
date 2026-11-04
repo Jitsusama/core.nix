@@ -831,8 +831,7 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
         folder.display(),
         sized(size)
     );
-    // A folder named for this run, gone when its shell ends.
-    let into = format!("/tmp/nix-offload-there-{}", std::process::id());
+    let into = far_folder();
     let command = format!(
         "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
          tar -xzf - -C {into}; {}",
@@ -842,6 +841,19 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
         command,
         bundle: Some(tarball),
     })
+}
+
+/// A folder on the builder named for this run's part, gone when its shell
+/// ends: a run's parts go at once, and two may go to one builder when a
+/// second VM builder doesn't come.
+fn far_folder() -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    format!(
+        "/tmp/nix-offload-there-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// What the lent builder is given for a build: the command its shell
@@ -897,8 +909,7 @@ impl Source {
                 dir,
                 bundle,
             } => {
-                // A folder named for this run, gone when its shell ends.
-                let into = format!("/tmp/nix-offload-there-{}", std::process::id());
+                let into = far_folder();
                 let flake = format!(
                     "git+file://{into}?rev={commit}{}",
                     dir.map(|dir| format!("&dir={dir}")).unwrap_or_default()
@@ -1761,6 +1772,96 @@ pub fn vm_tests(asked: &Asked, patterns: &[String]) -> (Option<Asked>, Option<As
         (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes))
     };
     (part(vm), part(rest))
+}
+
+/// How many of `count` VM tests go to the first of two VM builders, each
+/// running `builds` at once, with `busy` already sent to each by runs
+/// still going: each goes to the first while it has room, then to the
+/// second while it has, then to the less busy, the first when they're
+/// even. On 3 November a third of VM tests failed with 7 to 12 runs
+/// overlapping, those past the builder's room waiting their turn there.
+pub fn spread(count: usize, busy: [usize; 2], builds: usize) -> usize {
+    let [mut first, mut second] = busy;
+    let mut to_first = 0;
+    for _ in 0..count {
+        if first < builds || (second >= builds && first <= second) {
+            first += 1;
+            to_first += 1;
+        } else {
+            second += 1;
+        }
+    }
+    to_first
+}
+
+/// VM tests asked for, split between two VM builders as `spread` says,
+/// in the order they were asked.
+pub fn overflow(asked: &Asked, busy: [usize; 2], builds: usize) -> (Option<Asked>, Option<Asked>) {
+    let to_first = spread(asked.attributes.len(), busy, builds);
+    let (first, second) = asked.attributes.split_at(to_first);
+    let part = |attributes: &[String]| {
+        (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes.to_vec()))
+    };
+    (part(first), part(second))
+}
+
+/// How many attributes a part asks for.
+pub fn count(asked: &Asked) -> usize {
+    asked.attributes.len()
+}
+
+/// The VM tests a run has sent a VM builder, counted while it goes on: a
+/// file in its lender's folder's `sending`, named for the run's pid, that
+/// holds how many, and goes once it's dropped.
+pub struct Claim(PathBuf);
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// Says `count` VM tests go to the builder `dir`'s lender lends, for as
+/// long as what's given lives; none when the folder can't be written.
+pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    // One run may send two parts to one folder, when a second builder
+    // doesn't come.
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let sending = dir.join("sending");
+    fs::create_dir_all(&sending).ok()?;
+    let path = sending.join(format!(
+        "{}.{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&path, format!("{count}\n")).ok()?;
+    Some(Claim(path))
+}
+
+/// How many VM tests runs still going have sent the builder `dir`'s
+/// lender lends. A claim whose run ended without taking it away, as one
+/// killed does, is taken away here.
+pub fn claimed(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir.join("sending")) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for entry in entries.filter_map(Result::ok) {
+        let pid = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.split('.').next()?.parse().ok());
+        if pid.is_some_and(runs) {
+            sent += fs::read_to_string(entry.path())
+                .ok()
+                .and_then(|text| text.trim().parse::<usize>().ok())
+                .unwrap_or(0);
+        } else {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    sent
 }
 
 /// Whether a lender runs for `dir`, as its `lender` file says.
@@ -2808,6 +2909,50 @@ mod tests {
             !to_second(None, &Second::Unlent),
             "a first that can't be read keeps it"
         );
+    }
+
+    #[test]
+    fn vm_tests_fill_the_first_vm_builder_then_the_second_then_the_less_busy() {
+        assert_eq!(spread(8, [0, 0], 6), 6, "the first's room, the rest on");
+        assert_eq!(spread(3, [0, 0], 6), 3, "all fit the first");
+        assert_eq!(spread(3, [5, 0], 6), 1, "another run's five there");
+        assert_eq!(spread(2, [6, 0], 6), 0, "the first full");
+        assert_eq!(spread(4, [6, 6], 6), 2, "both full, shared evenly");
+        assert_eq!(spread(3, [9, 7], 6), 1, "the less busy first");
+        assert_eq!(spread(0, [0, 0], 6), 0);
+    }
+
+    #[test]
+    fn a_vm_part_overflowing_its_builder_is_split_keeping_its_order() {
+        let asked = asked(&words(
+            "-L path:/z checks.x.vm-a checks.x.vm-b checks.x.vm-c",
+        ))
+        .unwrap();
+        let (first, second) = overflow(&asked, [4, 0], 6);
+        assert_eq!(
+            first.map(|first| first.attributes),
+            Some(words("checks.x.vm-a checks.x.vm-b"))
+        );
+        let second = second.unwrap();
+        assert_eq!(second.attributes, words("checks.x.vm-c"));
+        assert_eq!(second.flags, words("-L"));
+        assert_eq!(overflow(&asked, [0, 0], 6).1, None, "all fit the first");
+        assert_eq!(overflow(&asked, [6, 0], 6).0, None, "none fit the first");
+    }
+
+    #[test]
+    fn a_vm_builders_claims_count_while_their_runs_live() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(claimed(dir.path()), 0, "none yet");
+        let held = claim(dir.path(), 4);
+        let other = claim(dir.path(), 2);
+        assert_eq!(claimed(dir.path()), 6);
+        fs::write(dir.path().join("sending/999999999.0"), "5\n").unwrap();
+        assert_eq!(claimed(dir.path()), 6, "a gone run's counts for nothing");
+        drop(held);
+        assert_eq!(claimed(dir.path()), 2, "taken away as its run ends");
+        drop(other);
+        assert_eq!(fs::read_dir(dir.path().join("sending")).unwrap().count(), 0);
     }
 
     #[test]
