@@ -18,8 +18,12 @@
 # around the gallery; Home and End to the first and last; Enter goes
 # between the picture and the gallery of its folder; e edits in GIMP, or
 # Inkscape for a drawing, and closes the viewer; y copies the picture as
-# shown; Delete moves it to the trash rather than deleting it; q closes it,
-# as in mpv. As a picture opens, a quiet line under it names the keys that
+# shown; Delete moves it to the trash rather than deleting it, and u brings
+# it back; q closes it, as in mpv. Neovim's keys twin them: h j k l the
+# arrows, gg and G the first and last, a number before G that picture and
+# before a move that many, dd the trash and yy the copy. A number or a
+# key waiting for its second shows, muted, at the foot's right, as
+# Neovim's showcmd does, for a second at most. As a picture opens, a quiet line under it names the keys that
 # move on, for as long as its name shows, and ? lists them all until it's
 # pressed again.
 #
@@ -78,33 +82,57 @@ let
   # without is swayimg's own, listed as swayimg binds it. The launcher's
   # Shortcuts groups those that go between pictures and those that change
   # how the one in view is shown; the rest are few enough to stay loose.
+  #
+  # Neovim's keys are here too, as docs/design.md's Vi's Keys has them, each
+  # beside the arrow or key it twins, by the same words and the same act, so
+  # one row lists them both: h j k l as the arrows, gg and G as Home and
+  # End, dd as Delete. A key pressed after a number does it that many times,
+  # and G after one goes to that picture; init.lua gathers the number and
+  # waits for a pair's second key.
   grouped = group: map (key: key // { inherit group; });
+  # A key doing one thing where it works, by its act, with the key it twins.
+  twins =
+    when: does: act: chords:
+    map (chord: {
+      inherit
+        chord
+        when
+        does
+        act
+        ;
+    }) chords;
   keys =
     grouped "moving" (
-      [
+      twins places.viewer "Previous picture" "left" [
+        "Left"
+        "h"
+      ]
+      ++ twins places.viewer "Next picture" "right" [
+        "Right"
+        "l"
+      ]
+      ++ twins places.viewer "Up a little, on a picture larger than the window" "up" [
+        "Up"
+        "k"
+      ]
+      ++ twins places.viewer "Down a little, on a picture larger than the window" "down" [
+        "Down"
+        "j"
+      ]
+      ++ twins places.viewer "First picture" "first" [
+        "Home"
+        "g g"
+      ]
+      ++ twins places.viewer "Last picture" "last" [
+        "End"
+        "Shift+g"
+      ]
+      ++ [
+        # Any number before G, five drawn for them all; G's own act counts.
         {
-          chord = "Left";
-          does = "Previous picture";
+          chord = "5 Shift+g";
+          does = "That picture, by its number";
           when = places.viewer;
-          act = "prev";
-        }
-        {
-          chord = "Right";
-          does = "Next picture";
-          when = places.viewer;
-          act = "next";
-        }
-        {
-          chord = "Home";
-          does = "First picture";
-          when = places.viewer;
-          act = "first";
-        }
-        {
-          chord = "End";
-          does = "Last picture";
-          when = places.viewer;
-          act = "last";
         }
         {
           chord = "Return";
@@ -112,28 +140,34 @@ let
           when = places.viewer;
         }
       ]
-      ++
-        map
-          (chord: {
-            inherit chord;
-            does = "Choose a picture that way";
-            when = places.gallery;
-          })
-          [
-            "Left"
-            "Right"
-            "Up"
-            "Down"
-          ]
+      ++ twins places.gallery "Choose a picture that way" "left" [
+        "Left"
+        "h"
+      ]
+      ++ twins places.gallery "Choose a picture that way" "right" [
+        "Right"
+        "l"
+      ]
+      ++ twins places.gallery "Choose a picture that way" "up" [
+        "Up"
+        "k"
+      ]
+      ++ twins places.gallery "Choose a picture that way" "down" [
+        "Down"
+        "j"
+      ]
+      ++ twins places.gallery "First picture" "first" [
+        "Home"
+        "g g"
+      ]
+      ++ twins places.gallery "Last picture" "last" [
+        "End"
+        "Shift+g"
+      ]
       ++ [
         {
-          chord = "Home";
-          does = "First picture";
-          when = places.gallery;
-        }
-        {
-          chord = "End";
-          does = "Last picture";
+          chord = "5 Shift+g";
+          does = "That picture, by its number";
           when = places.gallery;
         }
         {
@@ -146,6 +180,11 @@ let
     ++ grouped "picture" [
       {
         chord = "Shift+plus";
+        does = "Closer";
+        when = places.viewer;
+      }
+      {
+        chord = "equal";
         does = "Closer";
         when = places.viewer;
       }
@@ -175,6 +214,11 @@ let
         when = places.gallery;
       }
       {
+        chord = "equal";
+        does = "Larger";
+        when = places.gallery;
+      }
+      {
         chord = "minus";
         does = "Smaller";
         when = places.gallery;
@@ -186,19 +230,32 @@ let
         does = "Edit in GIMP, or Inkscape for a drawing";
         act = "edit";
       }
+    ]
+    # y alone copies too, since nothing else follows a y here.
+    ++ twins places.viewer "Copy the picture as shown" "copy" [
+      "y y"
+      "y"
+    ]
+    ++ twins places.gallery "Copy the file" "copy" [
+      "y y"
+      "y"
+    ]
+    ++ twins "" "Move to the trash" "trash" [
+      "Delete"
+      "d d"
+    ]
+    ++ [
       {
-        chord = "y";
-        does = "Copy the picture";
-        act = "copy";
+        chord = "u";
+        does = "Bring back the last one trashed";
+        act = "restore";
       }
-      {
-        chord = "Delete";
-        does = "Move to the trash";
-        act = "trash";
-      }
+      # Escape stops a number or a key waiting for its second, and leaves
+      # full screen, before it closes.
       {
         chord = "Escape";
         does = "Close";
+        act = "escape";
       }
       # As in mpv.
       {
@@ -214,13 +271,16 @@ let
     ];
 
   # How a key is drawn, as the desktop draws it: a shifted key as what it
-  # types, a letter as a capital. swayimg draws its words in the one face,
+  # types. A letter is drawn as it's typed, as Neovim's own lists draw
+  # them, since G and g are two keys here, and keys pressed one after
+  # another run together, as gg. swayimg draws its words in the one face,
   # with no other to fall back on, and the sans face has no return arrow,
   # so there Return is its name.
   faces = config.jitsusama.theme.keys;
   themed = {
     bracketleft = "BracketLeft";
     bracketright = "BracketRight";
+    equal = "Equal";
     minus = "Minus";
   };
   typed = {
@@ -228,10 +288,20 @@ let
     "Shift+plus" = "+";
     Return = "Enter";
   };
-  drawn =
+  drawnOne =
     chord:
-    typed.${chord} or faces.${themed.${chord} or chord}.text
-      or (if lib.stringLength chord == 1 then lib.toUpper chord else chord);
+    let
+      shifted = lib.removePrefix "Shift+" chord;
+    in
+    typed.${chord} or faces.${themed.${chord} or chord}.text or (
+      if lib.stringLength chord == 1 then
+        chord
+      else if lib.stringLength shifted == 1 then
+        lib.toUpper shifted
+      else
+        chord
+    );
+  drawn = chord: lib.concatMapStrings drawnOne (lib.splitString " " chord);
 
   given = {
     colour = {
