@@ -3,9 +3,10 @@
 modules/quickshell/checks.nix runs a file of tests through pytest inside
 tests/nested-niri.sh, in the build sandbox: the shell's own QML on niri's real
 surfaces, typed at through wtype, in seconds rather than a machine booted for
-it. wtype's keys reach the surface holding the keyboard, the launcher's, but
-never niri's binds, and nothing of a machine's is here: no battery, backlight,
-system services or other programs. A case needing any of those stays in the
+it. wtype's keys reach the surface holding the keyboard, the launcher's or the
+held notices', but never niri's binds, so what a bind runs is run instead, and
+nothing of a machine's is here: no battery, backlight, system services or
+other programs. A case needing any of those stays in the
 desktop's VM tests (tests/desktop/); one that only types and reads the
 launcher comes here. The helpers keep desktop_session.Desktop's names, so a
 case moves between the two with few words changed: keys are pressed on the
@@ -49,6 +50,9 @@ KEYS = {
     "down": ["-k", "Down"],
     "ctrl-left": ["-M", "ctrl", "-k", "Left", "-m", "ctrl"],
     "ctrl-ret": ["-M", "ctrl", "-k", "Return", "-m", "ctrl"],
+    # The notices read a letter by what it types (NoticeKeys.js), so Shift and g come as the
+    # G they type, typed as text: wtype finds a key's name without its case, so -k G is a g.
+    "shift-g": ["--", "G"],
 }
 
 
@@ -190,12 +194,27 @@ class Shell:
             shown = self.showing()
 
     def send_key(self, key: str) -> None:
-        """Press a key by QEMU's name for it, as the desktop's tests do."""
-        self.as_account(" ".join(["wtype", *KEYS[key]]))
+        """Press a key by QEMU's name for it, as the desktop's tests do; a letter is itself."""
+        self.as_account(" ".join(["wtype", *KEYS.get(key, ["-k", key])]))
 
     def send_chars(self, text: str) -> None:
         """Type the text, a key at a time, at the desktop test's pace."""
         subprocess.run(["wtype", "-d", str(KEY_PACE_MS), "--", text], check=True)  # noqa: S603, S607
+
+    def take_notices(self) -> None:
+        """Take the notices by the keys, by what Super+N runs, since wtype never reaches it."""
+        self.as_account(os.environ["TAKE_NOTICES"])
+
+    def notices_gone(self, timeout: timedelta = WAITING) -> None:
+        """Wait until niri lists no notices' layer."""
+        deadline = time.monotonic() + timeout.total_seconds()
+        while time.monotonic() < deadline:
+            status, _ = self.execute("niri msg layers | grep -q notifications")
+            if status != 0:
+                return
+            time.sleep(POLL)
+        failed = f"the notices never went:\n{self.tail()}"
+        raise AssertionError(failed)
 
     def launcher_ready(self) -> None:
         """Wait until the launcher is open and holds the keys."""

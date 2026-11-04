@@ -1449,7 +1449,9 @@
     as it opens, draws nothing left open and still, its caret steady, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
     letters found, glides the selection to its row by the arrows only and draws it on its row as
-    rows above it change, reads on a long name while it's selected, and warns of nothing it drew
+    rows above it change, reads on a long name while it's selected, and warns of nothing it drew;
+    and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
+    by vi's keys
   '';
   the-launcher-asks-a-fresh-pi = ''
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which

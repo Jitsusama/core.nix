@@ -1,9 +1,10 @@
-"""The launcher answers what's typed into it, on the account's whole shell on a nested niri.
+"""The launcher and the held notices answer what's typed, on the account's whole shell on niri.
 
 modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts once a run. Each case here needs only the launcher, what it's
-typed and what it draws, so none boots a machine; a case needing the machine's battery, lights,
-services, other programs or niri's binds stays in tests/desktop/. Every test starts with the
+shell launcher_on_niri.py starts once a run. Each case here needs only the launcher or the
+notices, what they're typed and what they draw, so none boots a machine; a case needing the
+machine's battery, lights, services, other programs or niri's binds pressed stays in
+tests/desktop/. Every test starts with the
 launcher closed and leaves it so, so any test runs alone.
 """
 
@@ -500,6 +501,59 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> No
     shell.close(long)
     shell.close(short)
     assert named(row["words"])["x"] == start, row
+
+
+def test_the_held_notices_take_vis_keys(shell: Shell) -> None:
+    """The held notices take vi's keys, as design.md's Vi's Keys sets them out.
+
+    j and k turn the cards, gg and G turn to the newest and the oldest, a count goes before a
+    motion, dd forgets the front one, l and h step into its acts and out, where gg and G
+    choose the first and last, q gives the keys back, Escape cancels a count, and dG forgets
+    them all. Each key's act is told by what the stack says it did.
+    """
+    # They stay a minute, so they're all still there when the keys come, the oldest in front.
+    for summary in ["Alpha", "Bravo", "Charlie"]:
+        with shell.told(f"shows card {summary}"):
+            shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'one of three'")
+    with shell.told("keys notices"):
+        shell.take_notices()
+    turns = [
+        (["j"], "Bravo"),
+        (["k"], "Alpha"),
+        (["g", "g"], "Charlie"),
+        (["shift-g"], "Alpha"),
+        (["2", "j"], "Charlie"),
+        # Forgetting the front one brings the next one round.
+        (["d", "d"], "Alpha"),
+    ]
+    for keys, front in turns:
+        with shell.told(f"notice front {front}"):
+            for key in keys:
+                shell.send_key(key)
+    # It offers nothing, so forgetting it leads its acts and copying it ends them.
+    steps = [
+        ("l", "notice verb Forget It"),
+        ("shift-g", "notice verb Copy What It Said"),
+        ("g g", "notice verb Forget It"),
+        ("j", "notice verb Read"),
+        ("h", "notice back"),
+        ("q", "lets notices go"),
+    ]
+    for typed, said in steps:
+        with shell.told(said):
+            for key in typed.split():
+                shell.send_key(key)
+    with shell.told("keys notices"):
+        shell.take_notices()
+    # Four turns of two cards would leave Alpha in front, so Bravo coming shows the count
+    # went with Escape.
+    with shell.told("notice front Bravo"):
+        for key in ["4", "esc", "j"]:
+            shell.send_key(key)
+    with shell.told("lets notices go"):
+        shell.send_key("d")
+        shell.send_key("shift-g")
+    shell.notices_gone()
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

@@ -156,6 +156,20 @@ let
         touch $out
       '';
 
+  # What a chord runs, as the account's niri binds it, word by word: niri in
+  # a window reads keys through its own keymap, and no keyboard here types
+  # into it, so a check runs the bind's own command.
+  spawnedBy =
+    chord:
+    let
+      bind = lib.findFirst (
+        bind: bind.chord == chord
+      ) (throw "Nothing is bound to ${chord}.") (account graphical).jitsusama.niri.binds;
+      spawned = builtins.match "spawn (.*);" bind.action;
+    in
+    assert spawned != null;
+    lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
+
   # The account's notices alone on niri (tests/notices.qml): a script run
   # against them, given the shell's folder, the logs and what more it's
   # given.
@@ -189,9 +203,11 @@ let
       inherit name;
       # Away only after an hour, since nobody types here but the check.
       away = 3600;
-      # foot gives the launcher windows to find, drawn without a GPU.
+      # foot gives the launcher windows to find, drawn without a GPU, and
+      # notify-send the notices something to hold.
       inputs = [
         pkgs.foot
+        pkgs.libnotify
         pkgs.wl-clipboard
         pkgs.wtype
       ];
@@ -199,6 +215,7 @@ let
         "env"
         "SHELL_FOLDER=quickshell"
         "LOGS=logs"
+        "TAKE_NOTICES=${lib.escapeShellArgs (spawnedBy "Super+N")}"
         "PYTHONPATH=${checked}"
         (lib.getExe python)
         "-m"
@@ -222,18 +239,7 @@ onLinux {
     name = "the-notices-land-on-niri";
     away = 3600;
     script = ../../tests/notices-on-niri.sh;
-    # What Super+Shift+N runs, as the account's niri binds it: niri in a
-    # window reads keys through its own keymap, and no keyboard here types
-    # into it, so the check runs the bind's own command.
-    given =
-      let
-        bind = lib.findFirst (
-          bind: bind.chord == "Super+Shift+N"
-        ) (throw "Nothing puts the notices away.") (account graphical).jitsusama.niri.binds;
-        spawned = builtins.match "spawn (.*);" bind.action;
-      in
-      assert spawned != null;
-      lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
+    given = spawnedBy "Super+Shift+N";
   };
 
   # A notice that comes while Joel's away waits, past the time its sender
@@ -245,9 +251,9 @@ onLinux {
     script = ../../tests/notices-wait-while-away.sh;
   };
 
-  # The launcher answers what's typed into it, on the account's whole shell
-  # on niri, in seconds rather than a machine's minutes
-  # (tests/launcher-on-niri-test.py).
+  # The launcher answers what's typed into it, and the held notices take
+  # vi's keys, on the account's whole shell on niri, in seconds rather than
+  # a machine's minutes (tests/launcher-on-niri-test.py).
   the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
     name = "the-launcher-answers-whats-typed-on-niri";
     tests = ../../tests/launcher-on-niri-test.py;
