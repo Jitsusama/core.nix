@@ -9,6 +9,7 @@
 //! own to cause it, and a rate held under half the line while traffic
 //! wanted more.
 
+use crate::oneway;
 use crate::rate::{float, whole};
 use crate::record;
 use serde::Serialize;
@@ -83,8 +84,13 @@ impl Controller for Unlimited {
 /// One line of a day file.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Sample {
-    /// The reflectors chosen; the first of a recording names its network.
-    Pool { at: u64, network: Option<String> },
+    /// The reflectors chosen; the first of a recording names its network,
+    /// and each names the link it records, when the recorder wrote it.
+    Pool {
+        at: u64,
+        network: Option<String>,
+        link: Option<String>,
+    },
     /// A timestamp answered: each way's delay, in ms, with the reflector's
     /// clock offset in it, and the link's byte counters.
     Stamp {
@@ -114,8 +120,12 @@ pub fn parse(line: &str) -> Option<Sample> {
         return Some(Sample::Lost { at });
     }
     if v.get("pool").is_some() {
-        let network = v.get("network").and_then(Value::as_str).map(String::from);
-        return Some(Sample::Pool { at, network });
+        let named = |key: &str| v.get(key).and_then(Value::as_str).map(String::from);
+        return Some(Sample::Pool {
+            at,
+            network: named("network"),
+            link: named("link"),
+        });
     }
     if v.get("gateway").is_some() {
         let (rx, tx) = counters()?;
@@ -138,7 +148,7 @@ pub fn parse(line: &str) -> Option<Sample> {
 }
 
 impl Sample {
-    fn at(&self) -> u64 {
+    pub(crate) fn at(&self) -> u64 {
         match self {
             Sample::Pool { at, .. }
             | Sample::Stamp { at, .. }
@@ -197,7 +207,7 @@ fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// A stay being read, a second at a time: a second is done once a counter
 /// read after it has come, since the samples come in order.
-struct Reading {
+pub(crate) struct Reading {
     network: String,
     first: Option<u64>,
     ticks: BTreeMap<u64, Tick>,
@@ -210,7 +220,7 @@ struct Reading {
 }
 
 impl Reading {
-    fn new(network: String) -> Self {
+    pub(crate) fn new(network: String) -> Self {
         Reading {
             network,
             first: None,
@@ -223,7 +233,13 @@ impl Reading {
         }
     }
 
-    fn take(&mut self, sample: &Sample) {
+    /// The seconds finished since this was last asked, for a reader that
+    /// steps a controller as the samples come rather than at a stay's end.
+    pub(crate) fn drain(&mut self) -> Vec<Second> {
+        std::mem::take(&mut self.seconds)
+    }
+
+    pub(crate) fn take(&mut self, sample: &Sample) {
         let at = sample.at();
         let second = at / 1_000;
         // A clock set back writes a moment already past; it's passed over.
@@ -685,10 +701,23 @@ pub fn summary(report: &Report) -> String {
     out
 }
 
+const USAGE: &str = "shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...";
+
+/// Which controller a replay runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Choice {
+    /// The rebuilt controller, from each direction's own delay
+    /// (src/oneway.rs), starting each stay as on a network it never met.
+    OneWay,
+    /// The stand-in that limits nothing, for what the line alone scores.
+    Unlimited,
+}
+
 /// What `shaper replay` was asked.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Asked {
     pub base: Option<Base>,
+    pub controller: Choice,
     pub json: bool,
     pub files: Vec<PathBuf>,
 }
@@ -696,6 +725,7 @@ pub struct Asked {
 pub fn asked(args: &[String]) -> Result<Asked, String> {
     let mut asked = Asked {
         base: None,
+        controller: Choice::OneWay,
         json: false,
         files: Vec::new(),
     };
@@ -710,6 +740,13 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
                     .ok_or_else(|| format!("--base takes UP,DOWN in kbit/s, not {value:?}"))?;
                 asked.base = Some(Base { up, down });
             }
+            "--controller" => {
+                asked.controller = match it.next().map_or("", String::as_str) {
+                    "one-way" => Choice::OneWay,
+                    "none" => Choice::Unlimited,
+                    other => return Err(format!("--controller is one-way or none, not {other:?}")),
+                };
+            }
             "--json" => asked.json = true,
             file => asked.files.push(file.into()),
         }
@@ -720,14 +757,15 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     Ok(asked)
 }
 
-/// `shaper replay [--base UP,DOWN] [--json] FILES...`: replays the files
-/// through the stand-in until a real controller is replayed, and prints
-/// the summary, or the report as JSON.
+/// `shaper replay [--base UP,DOWN] [--controller one-way|none] [--json]
+/// FILES...`: replays the files through the controller chosen, the rebuilt
+/// one unless told otherwise, and prints the summary, or the report as
+/// JSON.
 pub fn command(args: &[String]) -> ExitCode {
     let asked = match asked(args) {
         Ok(asked) => asked,
         Err(e) => {
-            eprintln!("{e}\nusage: shaper replay [--base UP,DOWN] [--json] FILES...");
+            eprintln!("{e}\nusage: {USAGE}");
             return ExitCode::from(2);
         }
     };
@@ -738,7 +776,10 @@ pub fn command(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let report = replay(&stays, asked.base, || Unlimited);
+    let report = match asked.controller {
+        Choice::OneWay => replay(&stays, asked.base, || oneway::Controller::new(None, None)),
+        Choice::Unlimited => replay(&stays, asked.base, || Unlimited),
+    };
     let text = if asked.json {
         serde_json::to_string(&report).expect("a report serialises") + "\n"
     } else {
@@ -892,14 +933,16 @@ mod tests {
             parse(&pool(5, "aa:bb")),
             Some(Sample::Pool {
                 at: 5,
-                network: Some("aa:bb".into())
+                network: Some("aa:bb".into()),
+                link: Some("wlan0".into())
             })
         );
         assert_eq!(
             parse(&repool(5)),
             Some(Sample::Pool {
                 at: 5,
-                network: None
+                network: None,
+                link: None
             })
         );
     }
@@ -1259,14 +1302,20 @@ mod tests {
             asked(&args("--base 10000,50000 --json a.jsonl b.jsonl")),
             Ok(Asked {
                 base: Some(BASE),
+                controller: Choice::OneWay,
                 json: true,
                 files: vec!["a.jsonl".into(), "b.jsonl".into()],
             })
         );
         assert_eq!(
-            asked(&args("a.jsonl")).map(|a| (a.base, a.json)),
-            Ok((None, false))
+            asked(&args("a.jsonl")).map(|a| (a.base, a.controller, a.json)),
+            Ok((None, Choice::OneWay, false))
         );
+        assert_eq!(
+            asked(&args("--controller none a.jsonl")).map(|a| a.controller),
+            Ok(Choice::Unlimited)
+        );
+        assert!(asked(&args("--controller cake a.jsonl")).is_err());
         assert!(asked(&args("--base 10000 a.jsonl")).is_err());
         assert!(asked(&args("--json")).is_err(), "no files");
     }
