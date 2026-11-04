@@ -253,8 +253,8 @@ impl Layout {
 
     /// The page's lines and the pieces' marks, each block's start, in
     /// points, and the file.
-    pub fn new(lines: Vec<Line>, mut units: Vec<Unit>, starts: &[f64], source: String) -> Self {
-        let chars: Vec<Vec<char>> = lines
+    pub fn new(mut lines: Vec<Line>, mut units: Vec<Unit>, starts: &[f64], source: String) -> Self {
+        let mut chars: Vec<Vec<char>> = lines
             .iter()
             .map(|line| line.text.chars().collect())
             .collect();
@@ -320,8 +320,12 @@ impl Layout {
                 beside && !holds_its_words(&written, &lines[line].text)
             })
             .collect();
-        for line in labels {
-            of_line[line] = None;
+        // Taken off the lines a selection goes over, since one standing
+        // between a piece's lines would part the piece.
+        for &line in labels.iter().rev() {
+            lines.remove(line);
+            chars.remove(line);
+            of_line.remove(line);
         }
         let mut unit_lines: Vec<Option<(usize, usize)>> = vec![None; units.len()];
         for (line, unit) in of_line.iter().enumerate() {
@@ -1544,10 +1548,9 @@ mod tests {
         assert_eq!(piece("One item"), Some(8));
         assert_eq!(piece("Two items"), Some(9));
         assert_eq!(piece("echo one"), Some(12));
-        assert_eq!(
-            piece("SH"),
-            None,
-            "the code's language, beside its first line, is no piece's"
+        assert!(
+            !page.lines.iter().any(|line| line.text.contains("SH")),
+            "the code's language, beside its first line, is no line to select"
         );
         let table = set("cells", "| Name | Size |\n|---|---|\n| one | 12 |\n");
         let cell =
@@ -1578,6 +1581,7 @@ mod tests {
         let code = page.of_line[holding(&page, "echo two")].expect("a piece");
         let whole = page.paragraph_of(code).expect("its paragraph");
         assert_eq!(page.copied(&whole), "```sh\necho one\necho two\n```\n");
+        assert_eq!(page.pieces(&whole).len(), 2, "both lines of code show it");
     }
 
     #[test]
