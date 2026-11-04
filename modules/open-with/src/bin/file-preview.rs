@@ -9,16 +9,26 @@
 //! says how many `pages` it has and a video how many `seconds` it runs,
 //! each with a `picture` made of its first page or of a frame a tenth of
 //! the way in, and that picture's width and height. A file of text gives
-//! its first whole `lines` and the `count` of all of them, a folder how many `items` it shows and the
-//! `names` of its first, and anything else only its facts.
+//! its first whole `lines` and the `count` of them all, or, past 64 MB,
+//! of those in its first 64 MB with `more` true; a folder how many
+//! `items` it shows and the `names` of its first; and anything else only
+//! its facts.
 //!
 //! `file-preview items FOLDER` prints one line of JSON saying, for each
 //! folder inside FOLDER, how many items it shows, by its path.
 //!
+//! `file-preview serve` answers both, asked as lines on its input, `show
+//! PATH` or `items FOLDER`, each with one line of JSON on its output, in
+//! the order asked, `{"error": ...}` for one it can't, until its input
+//! ends. The chooser keeps one running for as long as it's asked, so
+//! nothing is started for each file selected or folder read.
+//!
 //! A picture made of a PDF or a video is kept under the cache, named by the
 //! file's path, size and change time, so it's made once for each version
-//! of the file. The programs that make them, poppler's `pdfinfo` and
-//! `pdftoppm` and `FFmpeg`'s `ffprobe` and `ffmpeg`, are found on the path.
+//! of the file. Each one's change time is when it was last shown, and once
+//! they pass 128 MB in all the longest unshown go first. The programs that
+//! make them, poppler's `pdfinfo` and `pdftoppm` and `FFmpeg`'s `ffprobe`
+//! and `ffmpeg`, are found on the path.
 
 use std::env;
 use std::fs;
@@ -29,7 +39,8 @@ use std::time::UNIX_EPOCH;
 
 use serde_json::{Map, Value, json};
 
-const USAGE: &str = "usage: file-preview show PATH | file-preview items FOLDER";
+const USAGE: &str =
+    "usage: file-preview show PATH | file-preview items FOLDER | file-preview serve";
 
 /// How wide a picture made of a PDF or a video is drawn, in pixels: the
 /// drawer at its widest, 520, at a scale of 2.
@@ -39,6 +50,11 @@ const READ: usize = 4096;
 /// How many of its lines a file of text shows, and of its items a folder.
 const LINES: usize = 16;
 const NAMES: usize = 8;
+/// How much of a file of text is read to count its lines, so a log of
+/// gigabytes never holds up the file selected after it.
+const COUNTED_MOST: u64 = 64 * 1024 * 1024;
+/// How much the pictures made of files may hold in all.
+const KEPT_MOST: u64 = 128 * 1024 * 1024;
 /// The most of one line shown, in characters, before it's cut.
 const LINE_WIDE: usize = 160;
 
@@ -48,6 +64,7 @@ const VIDEOS: &[&str] = &["mp4", "m4v", "mkv", "webm", "mov", "avi"];
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
     let said = match arguments.as_slice() {
+        [verb] if verb == "serve" => return serve(io::stdin().lock(), &mut io::stdout().lock()),
         [verb, path] if verb == "show" => shown(Path::new(path)),
         [verb, folder] if verb == "items" => Ok(items_inside(Path::new(folder))),
         _ => Err(USAGE.to_owned()),
@@ -64,6 +81,30 @@ fn main() -> ExitCode {
             eprintln!("file-preview: {error}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Answers each line asked with one of JSON, until what's asked ends.
+fn serve(asked: impl io::BufRead, out: &mut impl Write) -> ExitCode {
+    for line in asked.lines() {
+        let Ok(line) = line else {
+            return ExitCode::FAILURE;
+        };
+        let said = answer(&line);
+        if writeln!(out, "{said}").and_then(|()| out.flush()).is_err() {
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn answer(line: &str) -> Value {
+    match line.split_once(' ') {
+        Some(("show", path)) => {
+            shown(Path::new(path)).unwrap_or_else(|error| json!({ "error": error }))
+        }
+        Some(("items", folder)) => items_inside(Path::new(folder)),
+        _ => json!({ "error": USAGE }),
     }
 }
 
@@ -115,8 +156,11 @@ fn shown(path: &Path) -> Result<Value, String> {
         picture_of(&mut said, made(&version, |from, to| frame_at(from, to, at)));
     } else if let Some(lines) = text_lines(path) {
         said.insert("lines".into(), json!(lines));
-        if let Some(count) = lines_in(path) {
+        if let Some((count, whole)) = lines_in(path, COUNTED_MOST) {
             said.insert("count".into(), json!(count));
+            if !whole {
+                said.insert("more".into(), json!(true));
+            }
         }
     }
     Ok(Value::Object(said))
@@ -197,22 +241,28 @@ fn text_lines(path: &Path) -> Option<Vec<String>> {
     lines_of(&read)
 }
 
-/// How many lines a file of text has in all, read through once: its
-/// line ends, and one more for a last line with none.
-fn lines_in(path: &Path) -> Option<u64> {
-    let mut file = fs::File::open(path).ok()?;
+/// How many lines a file of text has, read through once, and whether
+/// that's all of them: its line ends, and one more for a last line with
+/// none; past `most` bytes, only the whole lines in what was read.
+fn lines_in(path: &Path, most: u64) -> Option<(u64, bool)> {
+    let mut file = fs::File::open(path).ok()?.take(most + 1);
     let mut buffer = vec![0; 64 * 1024];
     let mut count = 0;
+    let mut read_in_all = 0;
     let mut last = b'\n';
     loop {
         let read = file.read(&mut buffer).ok()?;
         if read == 0 {
             break;
         }
+        read_in_all += read as u64;
         count += counted_ends(&buffer[..read]);
         last = buffer[read - 1];
     }
-    Some(if last == b'\n' { count } else { count + 1 })
+    if read_in_all > most {
+        return Some((count, false));
+    }
+    Some((if last == b'\n' { count } else { count + 1 }, true))
 }
 
 fn counted_ends(read: &[u8]) -> u64 {
@@ -292,15 +342,50 @@ fn made(version: &Version, make: impl Fn(&Path, &Path) -> bool) -> Option<PathBu
     let folder = kept_in()?;
     let kept = folder.join(version.name());
     if kept.is_file() {
+        // Shown again, so it's the last to go.
+        let _ = fs::File::options()
+            .append(true)
+            .open(&kept)
+            .and_then(|file| file.set_modified(std::time::SystemTime::now()));
         return Some(kept);
     }
     fs::create_dir_all(&folder).ok()?;
     let making = folder.join(format!(".{}.{}.png", version.name(), std::process::id()));
     if make(version.path, &making) && making.is_file() && fs::rename(&making, &kept).is_ok() {
+        pruned(&folder, KEPT_MOST);
         return Some(kept);
     }
     let _ = fs::remove_file(&making);
     None
+}
+
+/// Removes the pictures kept longest unshown until those left hold no
+/// more than `most` bytes, the one just made being the newest, so it's
+/// kept. One being made, its name starting with a dot, is left alone.
+fn pruned(folder: &Path, most: u64) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    let mut kept: Vec<(std::time::SystemTime, u64, PathBuf)> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .filter_map(|entry| {
+            let facts = entry.metadata().ok()?;
+            facts
+                .is_file()
+                .then(|| Some((facts.modified().ok()?, facts.len(), entry.path())))?
+        })
+        .collect();
+    kept.sort();
+    let mut held: u64 = kept.iter().map(|(_, size, _)| size).sum();
+    for (_, size, path) in kept.iter().take(kept.len().saturating_sub(1)) {
+        if held <= most {
+            break;
+        }
+        if fs::remove_file(path).is_ok() {
+            held -= size;
+        }
+    }
 }
 
 /// Says the picture made, and its width and height, if one was.
@@ -427,6 +512,76 @@ mod tests {
         let empty = folder.join("empty.txt");
         fs::write(&empty, "").unwrap();
         assert_eq!(shown(&empty).unwrap()["count"], 0);
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn text_past_the_bound_counts_what_was_read_and_says_theres_more() {
+        let folder = folder("bounded");
+        let long = folder.join("long.log");
+        fs::write(&long, "a line\n".repeat(100)).unwrap();
+        // 100 bytes hold 14 whole lines of 7, and a part of the 15th.
+        assert_eq!(lines_in(&long, 100), Some((14, false)));
+        assert_eq!(lines_in(&long, 700), Some((100, true)));
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn serving_answers_each_line_with_one_and_a_bad_one_with_an_error() {
+        let folder = folder("served");
+        let file = folder.join("notes.md");
+        fs::write(&file, "one\ntwo\n").unwrap();
+        let asked = format!(
+            "show {}\nitems {}\nshow {}/gone\nlook at it\n",
+            file.display(),
+            folder.display(),
+            folder.display()
+        );
+        let mut out = Vec::new();
+        assert_eq!(serve(asked.as_bytes(), &mut out), ExitCode::SUCCESS);
+        let said: Vec<Value> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(said.len(), 4);
+        assert_eq!(said[0]["count"], 2);
+        assert_eq!(said[1], json!({}));
+        assert!(said[2]["error"].as_str().unwrap().contains("gone"));
+        assert_eq!(said[3]["error"], USAGE);
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn the_kept_pictures_lose_the_longest_unshown_first_past_their_cap() {
+        let folder = folder("pruned");
+        let at = |seconds| UNIX_EPOCH + std::time::Duration::from_secs(seconds);
+        for (name, shown) in [
+            ("old.png", 1),
+            ("older.png", 0),
+            ("new.png", 3),
+            ("mid.png", 2),
+        ] {
+            let path = folder.join(name);
+            fs::write(&path, [0; 10]).unwrap();
+            fs::File::options()
+                .append(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(at(shown))
+                .unwrap();
+        }
+        fs::write(folder.join(".being-made.png"), [0; 10]).unwrap();
+        pruned(&folder, 20);
+        let mut left: Vec<String> = fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, [".being-made.png", "mid.png", "new.png"]);
+        // However small the cap, the one just made, the newest, is kept.
+        pruned(&folder, 0);
+        assert!(folder.join("new.png").is_file());
         fs::remove_dir_all(folder).unwrap();
     }
 

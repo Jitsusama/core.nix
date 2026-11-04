@@ -8,8 +8,10 @@
 // name, then the program's filters, each group apart; a file is one row,
 // though it was opened lately too, and the hidden ones show once a "." is
 // typed; a file in the folder shown says its size and when it changed
-// rather than its folder, and its plate its facts before it's previewed; a kind the filter names passes its narrower kinds too; another
-// filter picked shows what it passes; and Return on a file answers its
+// rather than its folder, and its plate its facts before it's previewed,
+// it and those selected after it asked of the one file-preview kept for
+// the ask (the check's script reads which); a kind the filter names passes
+// its narrower kinds too; another filter picked shows what it passes; and Return on a file answers its
 // path and the filter in use. Asked to save, it leads with the name the
 // program gave, which, being there already, steps in to Replace It first;
 // what's typed names it instead, saved in the folder it's typed in. Asked
@@ -95,6 +97,7 @@ ShellRoot {
             name: "fileChooser",
             recent: [Quickshell.env("RECENT_LIST")],
             kinds: Quickshell.env("KINDS"),
+            preview: [Quickshell.env("PREVIEWER")],
             savedIn: `${root.home}/state/open-with/saved-in`
         })
     }
@@ -229,7 +232,16 @@ ShellRoot {
         function onChanged() {
             Qt.callLater(root.step);
         }
+
+        function onPreviewsChanged() {
+            Qt.callLater(root.step);
+        }
     }
+
+    // The file Return picks once the files selected have been previewed,
+    // and the one whose preview is waited on.
+    property var picking: null
+    property string previewing: ""
 
     // Each case, once what it waits on is there.
     function step() {
@@ -237,6 +249,19 @@ ShellRoot {
             if (stage === 0 && ready(["/", notes].concat(chooser.onTheWay(notes)))) {
                 stage = 1;
                 opening();
+            } else if (stage === 1 && previewing === "a.md" && `${notes}/a.md` in chooser.previews) {
+                // Two more selected in turn, the later of which the check's
+                // script finds was asked of the one file-preview a.md was;
+                // the one passed over may never be asked.
+                previewing = "old.md";
+                const rows = rowsIn(notes);
+                named(rows, "notes.txt").drawer();
+                named(rows, "old.md").drawer();
+            } else if (stage === 1 && previewing === "old.md"
+                && `${home}/elsewhere/old.md` in chooser.previews) {
+                stage = 2;
+                launcher.open = false;
+                picking.run();
             } else if (stage === 2 && answers.length === 1) {
                 stage = 3;
                 expect("Return on a file answers its path and the filter in use",
@@ -418,9 +443,9 @@ ShellRoot {
         const a = named(rows, "a.md");
         expect("Return on a file opens it by the program's word", a.verb === "upload"
             && a.verbs()[0].name === "Upload", `${a.verb} ${a.verbs()[0].name}`);
-        stage = 2;
-        launcher.open = false;
-        a.run();
+        // Picked once a.md's plate, drawn above, is previewed.
+        picking = a;
+        previewing = "a.md";
     }
 
     function save() {

@@ -5307,6 +5307,59 @@
       "glyph": "marked"
     },
     {
+      "id": "file-chooser:size",
+      "in": "path:file",
+      "name": "Size"
+    },
+    {
+      "id": "file-chooser:changed",
+      "in": "path:file",
+      "name": "Changed",
+      "said": {
+        "now": "just now",
+        "minutes": "{count} min ago"
+      }
+    },
+    {
+      "id": "file-chooser:where",
+      "in": "path:file",
+      "name": "Where"
+    },
+    {
+      "id": "file-chooser:items",
+      "in": "path:folder",
+      "name": "Items",
+      "said": {
+        "none": "empty",
+        "one": "{count} item",
+        "many": "{count} items"
+      }
+    },
+    {
+      "id": "file-chooser:folder",
+      "in": "path:folder",
+      "name": "Folder"
+    },
+    {
+      "id": "file-chooser:text",
+      "in": "path:file",
+      "name": "Text",
+      "said": {
+        "one": "{count} line",
+        "many": "{count} lines",
+        "more": "over {count} lines"
+      }
+    },
+    {
+      "id": "file-chooser:file",
+      "in": "path:file",
+      "name": "File",
+      "said": {
+        "one": "{count} page",
+        "many": "{count} pages"
+      }
+    },
+    {
       "id": "verb:float",
       "in": "windows",
       "name": "Float",

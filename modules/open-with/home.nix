@@ -4,8 +4,8 @@
 # FileChooser.qml holds the folders and files until they're picked, with the
 # files opened lately first and the program's filters matched by the
 # desktop's kinds of file (shared-mime-info), and file-preview
-# (file-preview.nix) saying what the selected one is, its first page or
-# frame made once. The desktop's list of files opened lately is
+# (file-preview.nix), one kept running for each ask, saying what the
+# selected one is, its first page or frame made once. The desktop's list of files opened lately is
 # recent-files' (recent-files.nix): on the path, for a program that adds
 # what it opens to it, as Neovim does, and read for each program's Recent
 # in the launcher, with what GIMP and Inkscape add to it themselves.
