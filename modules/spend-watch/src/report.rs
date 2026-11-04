@@ -402,6 +402,75 @@ pub fn helpers_by_session(
         .collect()
 }
 
+/// What each quest spent in a period with every quest under it, at any
+/// depth, by the quest's id: a quest's family, as an orchestrator's row
+/// says it, since a quest's sessions orchestrate the quests under it.
+/// Only this machine's: spend no log here knows, and spend on no quest,
+/// is in none. A family that spent less than a cent says nothing.
+pub fn by_family(picture: &Picture, period: Period) -> std::collections::BTreeMap<String, Family> {
+    let (from, to) = period.days(&picture.zone, picture.now);
+    let parents: HashMap<&str, &str> = picture
+        .quests
+        .iter()
+        .filter_map(|quest| Some((quest.id.as_str(), quest.parent.as_deref()?)))
+        .collect();
+    // Each quest's own and under, and whether either was estimated.
+    let mut spent: HashMap<&str, (f64, f64, bool, bool)> = HashMap::new();
+    let pieces = picture.between(from, to);
+    for piece in &pieces {
+        let Some(quest) = piece.quest.as_deref() else {
+            continue;
+        };
+        if piece.session == "elsewhere" {
+            continue;
+        }
+        let estimated = piece.source.estimated() && piece.dollars > 0.005;
+        let own = spent.entry(quest).or_default();
+        own.0 += piece.dollars;
+        own.2 |= estimated;
+        // Up through its parents, each once, so a family whose record names
+        // itself above itself still ends.
+        let mut seen = vec![quest];
+        let mut at = quest;
+        while let Some(&parent) = parents.get(at) {
+            if seen.contains(&parent) {
+                break;
+            }
+            seen.push(parent);
+            let above = spent.entry(parent).or_default();
+            above.1 += piece.dollars;
+            above.3 |= estimated;
+            at = parent;
+        }
+    }
+    let figure = |amount: f64, estimated: bool| {
+        crate::money::maybe_about(dollars(amount), estimated && amount >= 0.005)
+    };
+    spent
+        .into_iter()
+        .filter(|(_, (own, under, _, _))| own + under >= 0.005)
+        .map(|(quest, (own, under, own_estimated, under_estimated))| {
+            (
+                quest.to_owned(),
+                Family {
+                    all: figure(own + under, own_estimated || under_estimated),
+                    own: figure(own, own_estimated),
+                    under: figure(under, under_estimated),
+                },
+            )
+        })
+        .collect()
+}
+
+/// A quest's family's spend: all of it, the quest's own, and what the
+/// quests under it spent, each a figure ready to draw.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Family {
+    pub all: String,
+    pub own: String,
+    pub under: String,
+}
+
 /// One kind of run a session started, and what it cost.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Helper {

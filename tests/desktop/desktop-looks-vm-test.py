@@ -592,3 +592,169 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
+
+
+# A session sits under the one orchestrating it, a step in, its glyph where its orchestrator's
+# name starts, with no line, box or fold; typed, every row is at no depth, whom it's under
+# leading its note; and an orchestrator says what its whole orchestration spent today
+# (QEST-20261026-15J7N3's agents-tree-look.md). The orchestrator listens while an owner under it
+# runs a builder that works, so the orchestration stands with those working, the owner and its
+# builder before the other, listening, session under it.
+ORCHESTRATION = [
+    # address, title, whom it's under, whether it works
+    ("TESTQA", "A quest of its own & whole", None, False),
+    ("TESTQB", "The Other One Under It", "TESTQA", False),
+    ("TESTQC", "An Owner Under It", "TESTQA", False),
+    ("TESTQD", "A Builder Under the Owner", "TESTQC", True),
+]
+TREE = {"TESTQA": 0, "TESTQC": 1, "TESTQD": 2, "TESTQB": 1}
+SPENT = {
+    "v": 2,
+    "sessions": {"01a1face-test": "$3.10", "01a1face-qd": "$5.10"},
+    "helpers": {},
+    "families": {
+        "QEST-20261022-TESTQA": {"all": "$14.20", "own": "$3.10", "under": "$11.10"},
+    },
+}
+
+
+def window_of(address: str, title: str) -> str:
+    """Give the title of a session's window, as its label: its quest's name and its folder."""
+    return f"\u03c0 - {title} - {address.lower()}-tree"
+
+
+def orchestrated(desktop: Desktop) -> None:
+    """Start the orchestration's sessions, each in a window of its own, saying whom it's under."""
+    desktop.pi_session()
+    for address, title, under, works in ORCHESTRATION:
+        if address != "TESTQA":
+            desktop.pi_window(address, window_of(address, title))
+        desktop.presence_says(
+            {
+                "session": (
+                    "01a1face-test" if address == "TESTQA" else f"01a1face-{address[-2:].lower()}"
+                ),
+                "addresses": [address],
+                "busy": works,
+                "owns": [f"QEST-20261022-{address}"],
+                "orchestratedBy": under,
+            },
+            address,
+        )
+    desktop.as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo '{json.dumps(SPENT)}'"
+        " > $XDG_RUNTIME_DIR/spend-watch/.c"
+        " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
+    )
+
+
+def unorchestrated(desktop: Desktop) -> None:
+    """Close the sessions the orchestration started, and forget what they spent."""
+    for address, title, _, _ in ORCHESTRATION[1:]:
+        window = desktop.window_titled(window_of(address, title))
+        desktop.as_account(f"niri msg action close-window --id {window['id']}")
+        desktop.as_account(f"rm -f {desktop_session.PI_PRESENCE}/{address.lower()}.json")
+    desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
+def address_of(row: Json) -> str:
+    """Say which of the orchestration's sessions a drawn row is."""
+    return next(address for address in TREE if address in row["reads"])
+
+
+def orchestration_drawn(desktop: Desktop) -> list[Json]:
+    """Give the orchestration's rows as they're drawn, once two reads in a row agree."""
+    was = None
+    for _ in range(20):
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        now = [row for row in laid["rows"] if any(address in row["reads"] for address in TREE)]
+        if now == was:
+            return now
+        was = now
+    return cast("list[Json]", was)
+
+
+def into_agents(desktop: Desktop) -> None:
+    """Open the launcher into Agents, once it lists every session of the orchestration."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("agents")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents"]
+            and sum(any(address in thing["reads"] for address in TREE) for thing in shown["things"])
+            == len(TREE)
+        )
+    )
+
+
+def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A session sits a step in under its orchestrator, its glyph on its name; flat once typed."""
+    machine = desktop.machine
+    orchestrated(desktop)
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            into_agents(desktop)
+            rows = orchestration_drawn(desktop)
+            order = [address_of(row) for row in rows]
+            assert order == list(TREE), f"at {scale} the orchestration reads {order}"
+            depths = {address_of(row): row["depth"] for row in rows}
+            assert depths == TREE, f"at {scale} the steps in are {depths}"
+            # Its glyph stands where the name above it starts: the first word a row draws is
+            # its glyph.
+            words = {address_of(row): row["words"] for row in rows}
+            titles = {address: title for address, title, _, _ in ORCHESTRATION}
+            for one, above in [("TESTQC", "TESTQA"), ("TESTQB", "TESTQA"), ("TESTQD", "TESTQC")]:
+                glyph = words[one][0]["starts"]
+                name = next(w["starts"] for w in words[above] if w["text"] == titles[above])
+                assert abs(glyph - name) <= 1, (
+                    f"at {scale} {one}'s glyph is at {glyph}, not on {above}'s name at {name}"
+                )
+            # The orchestrator says what all of it spent; one under it, its own. One idle
+            # is listening, never waiting.
+            reads = {address_of(row): row["reads"] for row in rows}
+            assert "$14.20 today in all" in reads["TESTQA"], reads
+            assert "$5.10 today" in reads["TESTQD"], reads
+            assert "in all" not in reads["TESTQD"], reads
+            assert "listening" in reads["TESTQB"], reads
+            assert "waiting" not in " ".join(reads.values()), reads
+            desktop.photograph(f"launcher-agents-tree-at-{scale.replace('.', '-')}")
+            machine.send_key("esc")
+            desktop.launcher_until(lambda shown: not shown["open"])
+        # Inside the orchestrator, what all of it spent, then its own and its sessions'.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("testqa", selecting="A quest of its own & whole")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
+        for name, side in [
+            ("Spent Today", "$14.20 in all"),
+            ("Its Own", "$3.10"),
+            ("Its Sessions", "$11.10"),
+        ]:
+            desktop.down_to(name)
+            assert desktop.showing()["selected"]["side"] == side, desktop.showing()["selected"]
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
+        # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
+        # which the foot says for the row selected.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("testqd", selecting="A Builder Under the Owner")
+        # Found from the top, it reads as the thing it is, its window, beside its kind.
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        row = next(row for row in laid["rows"] if row["selected"])
+        assert row["depth"] == 0, row
+        note = desktop.showing()["selected"]["note"]
+        assert note.startswith("under TESTQC"), note
+        desktop.photograph("launcher-agents-typed-flat")
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
+    finally:
+        unorchestrated(desktop)

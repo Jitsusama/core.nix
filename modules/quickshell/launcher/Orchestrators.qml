@@ -2,9 +2,11 @@
 // orchestrates others, as the harness lists them (orchestrators.json under
 // its quest workflow, written whole whenever one changes), so Joel can pick
 // one and talk to it (Joel, 2026-10-25: "it needs a good name and should
-// allow me to pick an orchestrator"). One waiting on him comes first, then
-// those listening, those busy, those paused and those not running, each
-// saying so beside its name, as its session's presence says.
+// allow me to pick an orchestrator"), in the one order every list of
+// sessions keeps (SessionRow.js): those needing him, then those working,
+// in line, listening and paused, then those not running, each saying so
+// beside its name, as its session says, and what its whole orchestration
+// spent today, as Agents says it.
 //
 // One running is its session, drawn as every session is (Agents.qml,
 // SessionRow.js): Return goes to its window, and stepping in gives its acts,
@@ -35,6 +37,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
@@ -58,20 +61,17 @@ Provider {
     readonly property string harness: Sessions.state
     readonly property string inboxes: Sessions.inboxes
 
-    // How each stands, in the order they're listed: what only Joel can
-    // move first (collection-order.md under the launcher's quest).
-    readonly property var standings: ["waiting", "listening", "busy", "paused", "off"]
-
-    function standing(presence) {
-        if (!presence)
-            return "off";
-        if (presence.state === "paused")
-            return "paused";
-        if (presence.wants || presence.state === "waiting")
-            return "waiting";
-        if (presence.state === "listening")
-            return "listening";
-        return presence.busy || presence.state === "busy" ? "busy" : "listening";
+    // How one stands (SessionRow.js): as its running session does, as
+    // Agents reads it, or by its presence alone while no session is found
+    // for it, as one whose window isn't open yet, its want judged as
+    // Sessions judges any, and "off" with neither.
+    function standing(address) {
+        const session = sessionOf(address);
+        const agents = source("agents");
+        if (session && agents)
+            return agents.stateOf(session);
+        const presence = Sessions.present[address] ?? null;
+        return SessionRow.state(presence, Sessions.asks({ presence: presence }), false);
     }
 
     // Its running session, by its address, or null.
@@ -82,17 +82,23 @@ Provider {
     readonly property var all: {
         Sessions.present;
         Niri.revision;
+        // What a session's state reads besides its presence: its want and
+        // its place in line.
+        WaitingOnYou.standing;
+        Jobs.jobs;
         const rows = listed.map((one, at) => ({ one: one, at: at,
-            stands: standing(Sessions.present[one.address] ?? null) }));
-        rows.sort((a, b) => standings.indexOf(a.stands) - standings.indexOf(b.stands)
+            stands: standing(one.address) }));
+        rows.sort((a, b) => SessionRow.rank(a.stands) - SessionRow.rank(b.stands)
             || a.at - b.at);
         return rows.map(row => made(row.one, row.stands));
     }
     onAllChanged: changedTo(all)
 
     function said(stands, presence) {
-        const words = Words.of("orchestrators").said ?? {};
-        const step = stands === "busy" && presence && presence.step ? `, ${presence.step}` : "";
+        const words = stands === "off" ? Words.of("orchestrators").said ?? {}
+            : Words.of("agents").said ?? {};
+        const step = stands === "working" && presence && presence.step
+            ? `, ${presence.step}` : "";
         return `${words[stands] ?? stands}${step}`;
     }
 
@@ -108,7 +114,8 @@ Provider {
         // it shows (SessionRow.js): its acts, its drawer and what's inside are
         // Agents' own, under the orchestrator's name.
         const session = stands === "off" ? null : sessionOf(one.address);
-        const own = session ? source("agents")?.made(session) ?? null : null;
+        const own = session ? source("agents")?.made(session, { orchestrates: true }) ?? null
+            : null;
         // Its talks with Joel follow what the session holds, as only an
         // orchestrator's inbox keeps them.
         const inside = own?.verbs ?? null;
@@ -116,8 +123,11 @@ Provider {
             return Object.assign(own, {
                 key: `orchestrator:${one.address}`,
                 name: one.short || one.title || one.address,
-                glyph: Theme.glyph[stands === "waiting" ? "waitsOnJoel" : "agent"],
+                glyph: Theme.glyph[stands === "needs" ? "waitsOnJoel" : "agent"],
                 stands: stands,
+                // A list of orchestrators is no tree, so it has no flat
+                // reading of its own, which would be the agent's row.
+                flat: null,
                 verbs: () => (inside ? inside() : []).concat(provider.talksOf(one.address))
             });
         const row = member({
@@ -125,7 +135,7 @@ Provider {
             key: `orchestrator:${one.address}`,
             verb: "open",
             name: one.short || one.title || one.address,
-            glyph: Theme.glyph[stands === "waiting" ? "waitsOnJoel" : "agent"],
+            glyph: Theme.glyph[stands === "needs" ? "waitsOnJoel" : "agent"],
             hue: "program",
             side: said(stands, presence),
             note: one.title ?? "",
@@ -311,7 +321,7 @@ Provider {
     // session, for Agents' Start a Session, named as its own row is.
     readonly property var startable: {
         Sessions.present;
-        return listed.filter(one => standing(Sessions.present[one.address] ?? null) === "off")
+        return listed.filter(one => standing(one.address) === "off")
             .map(one => thing({
                 key: `orchestrator:start:${one.address}`,
                 verb: Words.verb("verb:orchestrator:resume"),

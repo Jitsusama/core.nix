@@ -23,6 +23,10 @@ Singleton {
     // What each one's councils, judges and fleets cost today, costliest
     // first: [{ on, spent }].
     readonly property var helpers: said?.helpers ?? {}
+    // What each quest spent today with every quest under it, by its id:
+    // { all, own, under }, so an orchestrator's row says its whole
+    // orchestration's without the shell adding anything up.
+    readonly property var families: said?.families ?? {}
 
     function parsed(text) {
         try {

@@ -25,6 +25,14 @@ Rectangle {
     id: row
 
     property bool selected: false
+    // How many steps in it sits under the row it belongs to, as a session
+    // under the one orchestrating it: 0, 1 or 2 (docs/design.md keeps no
+    // layer deeper). Each step is the glyph's column, so a row's glyph
+    // stands where the name above it starts, and nothing nearly lines up
+    // (agents-tree-look.md). Its name's room gives the step up, never
+    // what it says at its right, and the selection keeps the whole row.
+    property int depth: 0
+    readonly property real indent: Math.max(0, Math.min(2, depth)) * Theme.space.xxl
     // Whether the row can be seen. A closed launcher only fades its card
     // out, keeping its selection, so without this a cut row would read on
     // unseen, drawing every frame of it while nothing is shown.
@@ -88,7 +96,7 @@ Rectangle {
         : "transparent"
 
     Text {
-        x: Theme.space.l
+        x: Theme.space.l + row.indent
         anchors.verticalCenter: parent.verticalCenter
         // A swatch is the figure itself, so it stays.
         visible: row.sort !== "figure" || row.swatch
@@ -120,7 +128,7 @@ Rectangle {
     // The name's room, which it's cut to.
     ReadsOn {
         id: nameBox
-        x: Theme.space.l + Theme.space.xxl
+        x: Theme.space.l + Theme.space.xxl + row.indent
         width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.xxl
             - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
                 + Theme.space.m)))
@@ -202,9 +210,11 @@ Rectangle {
         // however long it runs it can't reach the name, and it gives the
         // name its room first, down to a fifth of the row: a window's
         // title is what Joel looks for, its program and place only help
-        // (Joel, 2026-10-25: titles "get elipsed really quick").
+        // (Joel, 2026-10-25: titles "get elipsed really quick"). It's
+        // reckoned from where a name starts at no depth, so a row a step in
+        // says as much at its right as the row above it.
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
-            row.width - nameBox.x - nameBox.implicitWidth - 2 * Theme.space.xxl
+            row.width - nameBox.x + row.indent - nameBox.implicitWidth - 2 * Theme.space.xxl
             - Theme.space.l - (row.detail === "" ? 0
                 : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
         // As wide as the widest beside a graph in the list, so the graphs

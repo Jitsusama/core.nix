@@ -116,7 +116,18 @@
         "spend"
       ],
       "ask": "which session?",
-      "empty": "No sessions running."
+      "empty": "No sessions running.",
+      "said": {
+        "needs": "needs you",
+        "working": "working",
+        "inLine": "{place} in line",
+        "listening": "listening",
+        "paused": "paused",
+        "today": "{spent} today",
+        "inAll": "{spent} today in all",
+        "allOf": "{spent} in all",
+        "under": "under {address}"
+      }
     },
     {
       "id": "agents:task",
@@ -215,6 +226,16 @@
       "id": "agents:spent",
       "in": "agents",
       "name": "Spent Today"
+    },
+    {
+      "id": "agents:own",
+      "in": "agents",
+      "name": "Its Own"
+    },
+    {
+      "id": "agents:under",
+      "in": "agents",
+      "name": "Its Sessions"
     },
     {
       "id": "agents:works",
@@ -5489,10 +5510,6 @@
       "ask": "which orchestrator?",
       "empty": "No orchestrators.",
       "said": {
-        "waiting": "waiting on you",
-        "listening": "listening",
-        "busy": "busy",
-        "paused": "paused",
         "off": "not running",
         "sent": "talked to {name}"
       }

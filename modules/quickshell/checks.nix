@@ -649,6 +649,25 @@ onLinux {
       touch $out
     '';
 
+  # Every list of pi sessions keeps one order of how they stand, and Agents
+  # lays each under the session orchestrating it, a step in, at most two,
+  # an orchestration standing where its most urgent row would, as
+  # tests/session-row.qml holds launcher/SessionRow.js to it in Qt's own
+  # engine.
+  the-launcher-lays-sessions-under-their-orchestrators =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
+      cp ${../../tests/session-row.qml} session-row.qml
+      cp ${./launcher/SessionRow.js} SessionRow.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml session-row.qml
+      touch $out
+    '';
+
   # Each opening of the launcher is kept as what it took: its keys by kind,
   # its pick and how long it took, and a miss only where letters were typed
   # and nothing picked, as tests/trials.qml holds launcher/Trials.js to it in

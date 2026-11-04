@@ -73,7 +73,8 @@ Scope {
     // whose rows are made again whenever anything they're made from moves,
     // as the agents' are every few seconds, since each change searches an
     // open list again. What they show is each row's identity, name, what
-    // Return does, words at the right and after it, note and glyph, as one
+    // Return does, words at the right and after it, note, glyph and how
+    // far in it sits, as one
     // string; and for the row the launcher has stepped into, what it holds,
     // as far down as it's held, since that can change while the row reads
     // the same, as a window's do when it's floated or moved. Only the rows
@@ -104,7 +105,8 @@ Scope {
         let open = held.length > 0;
         return rows.map(row => {
             const own = [row.is ?? "", row.key ?? "", row.name ?? "", row.verb ?? "",
-                row.side ?? "", row.count ?? "", row.note ?? "", row.glyph ?? ""]
+                row.side ?? "", row.count ?? "", row.note ?? "", row.glyph ?? "",
+                row.depth ?? 0]
                 .join("\u241f");
             if (!open || row.key !== held[0])
                 return own;
