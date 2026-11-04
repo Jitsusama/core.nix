@@ -27,6 +27,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -110,8 +111,14 @@ enum Heard {
     Stop(String),
 }
 
-/// Follows calls until PipeWire goes, for systemd to start it again.
-pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<(), String> {
+/// Follows calls until PipeWire goes, for systemd to start it again,
+/// saying in `calling` whether one is on, for the summarizer to wait on.
+pub fn follow(
+    book: &Arc<Shared>,
+    calls: &Path,
+    jobs: &Sender<Job>,
+    calling: &AtomicBool,
+) -> Result<(), String> {
     let mut dump = Command::new("pw-dump")
         .args(["--monitor", "--no-colors"])
         .stdout(Stdio::piped())
@@ -160,6 +167,7 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
         }
         match call.step(graph.call().is_some(), Instant::now()) {
             Some(Change::Started) => {
+                calling.store(true, Ordering::SeqCst);
                 count += 1;
                 let at = now();
                 let on = meeting::on(&runtime, at);
@@ -187,6 +195,7 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
             }
             Some(Change::Ended) => {
                 drop(awake.take());
+                calling.store(false, Ordering::SeqCst);
                 if let Some(mut ended) = recording.take() {
                     ended.stop();
                 }

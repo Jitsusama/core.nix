@@ -1,237 +1,942 @@
-//! Sums a call up from its transcript, with a language model on the NPU
-//! (dictation's language.rs) at its background priority, once the call is
-//! written and Parakeet let go.
+//! Sums a call up from its transcript in nothing but its own words: a
+//! language model picks the lines worth reading and the words in each
+//! worth keeping, and code copies those words from the line, so every
+//! quote is what was said, by whom and when.
 //!
-//! The NPU's model reads a prompt of at most `PROMPT_TOKENS`, so a call
-//! too long for one is read in parts: notes are taken on each, and the
-//! summary is written from the notes, which are read in parts again while
-//! they're still too long.
+//! Every earlier summarizer wrote sentences of its own, and each bent or
+//! made up what was said (Phi-3.5 and Qwen3-8B on the NPU, Qwen3-14B on
+//! the processor, and Gemma 4's own sentences, judged by itself), and a
+//! wrong summary is worse than none. So the model here writes nothing
+//! that's kept: it names lines by number, and its copy of a line's words
+//! is kept only where code finds those words, in order, in that line.
+//!
+//! It asks in three narrow passes, as the prototype that held on the
+//! Chad and Mohit calls did (2026-11-03):
+//!
+//! 1. Pick: a part of the call as numbered lines, and which numbers
+//!    matter for someone who missed it.
+//! 2. Quote: each picked line, with the lines around it, and the words
+//!    in it that carry its point, found in the line or dropped.
+//! 3. Keep: whether the quote alone says something worth knowing and
+//!    reads clearly without the lines around it, the whole line in view,
+//!    leaving out small talk and pay. It can only drop a quote.
+//!
+//! Each part keeps about a quote for every two minutes it lasts, taken
+//! in the order the pick ranks its lines, so a long call reads in a few
+//! minutes and what's cut is what mattered least.
+//!
+//! What a speaker reports someone else saying is dropped by code before
+//! the keep pass, from the words just before the quote, reaching back
+//! into the speaker's line before (she said, he was like), from she's
+//! like inside it, and from the speaker called by their own name (Joel,
+//! you keep...), since the model passed such quotes as the speaker's own
+//! on the Chad call.
 
-use dictation::language::LanguageModel;
+use std::fmt::Write as _;
 
-use crate::said;
+/// The most of a call's words one pick is asked over, in characters:
+/// about a thousand tokens, which Gemma read whole and picked well from.
+const PART_CHARS: usize = 4000;
 
-/// The most of a transcript one prompt holds, in characters. English runs
-/// about four characters a token, so this is about 600 of the 1024 tokens
-/// the NPU reads, leaving room for what it's asked and a word that's
-/// longer in tokens than most.
-const PART_CHARS: usize = 2400;
+/// How many lines a part's pick is asked for. Asked for eight, Gemma
+/// passed over a speaker's news (an illness, a review on Thursday) that
+/// mattered.
+const MOST_PICKS: usize = 10;
 
-/// How many times notes are taken on notes before what's left is read as
-/// it is: enough for a call of several hours, and an end if the notes
-/// somehow stop getting shorter.
-const ROUNDS: usize = 4;
+/// How many of a part's picks are taken. Asked for eight, Gemma named
+/// up to seventeen; past a few more, they cost time and add little.
+const MOST_TAKEN: usize = 14;
 
-/// A summary as written, kept or not.
-pub enum Summed {
-    /// It names only what the call does.
-    Kept(String),
-    /// Written twice, it named what the call never did each time, these.
-    Strayed(Vec<String>),
+/// How long of a call each quote kept stands for, in seconds. Kept
+/// wherever a pick passed, the Chad call's 91 minutes gave 101 quotes,
+/// too many to read.
+const SECONDS_PER_QUOTE: u64 = 120;
+
+/// A line of fewer words than this makes no point worth a quote.
+const FEWEST_WORDS: usize = 6;
+
+/// How many words a quote is asked to keep.
+const MOST_QUOTE_WORDS: usize = 20;
+
+/// How many it may keep: a longer copy is still the speaker's words, and
+/// one past this is cut short, marked so.
+const MOST_QUOTE_WORDS_TAKEN: usize = 30;
+
+/// How many of a line's words a quote may skip between two it keeps, as
+/// filler left out, each skip shown by an ellipsis. Where the model's
+/// copy says it left words out with an ellipsis of its own, any number
+/// may be, since the summary shows that gap as one too.
+const MOST_SKIPPED: usize = 3;
+
+/// How many of a line's words before a quote are looked at for a speaker
+/// telling what someone else said.
+const REPORT_REACH: usize = 6;
+
+/// The words that tell what someone said, after who said it: she said.
+const REPORTING: [&str; 5] = ["said", "says", "told", "asked", "goes"];
+
+/// The words before a reporting word that name nobody else: the speaker
+/// in their own words (I was like, I went and said) or no one (it goes,
+/// that said).
+const OWN: [&str; 10] = [
+    "i", "we", "and", "then", "it", "that", "this", "there", "which", "what",
+];
+
+/// Someone else, said with what they said: she's like.
+const SOMEONE_LIKE: [&str; 3] = ["she's", "he's", "they're"];
+
+/// The answer each pass is given room for, in tokens.
+const PICK_TOKENS: usize = 80;
+const QUOTE_TOKENS: usize = 70;
+const VERDICT_TOKENS: usize = 3;
+
+/// What the others on a call are called in its transcript.
+const OTHERS: &str = "Others";
+
+/// What the summary says of itself, so nobody reads a quote as more
+/// than it is.
+pub const HOW_MADE: &str = "These are the lines a language model on this laptop picked as \
+    worth reading, each copied word for word from the transcript.";
+
+/// What a summary with no line picked says.
+const NONE_KEPT: &str = "- No line was picked as worth reading.";
+
+/// One paragraph of a transcript: who said it, when, and what.
+#[derive(Debug, PartialEq)]
+pub struct Said {
+    pub who: String,
+    pub stamp: String,
+    pub text: String,
 }
 
-/// The summary of the call titled `title` that `transcript` writes down,
-/// naming only what the call does. One naming what the call never did
-/// is written once more, told not to name it, and given up on if it
-/// still does; each such summary is logged, since nothing else keeps it,
-/// to tell a made-up name from a word the check mistook for one.
+/// The paragraphs of a transcript as transcript.rs writes them,
+/// `**Who**, 1:23: what was said`.
+pub fn lines(transcript: &str) -> Vec<Said> {
+    transcript
+        .split("\n\n")
+        .filter_map(|paragraph| {
+            let (who, rest) = paragraph.trim().strip_prefix("**")?.split_once("**, ")?;
+            let (stamp, text) = rest.split_once(": ")?;
+            let timed = !stamp.is_empty()
+                && stamp
+                    .split(':')
+                    .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+            timed.then(|| Said {
+                who: who.to_owned(),
+                stamp: stamp.to_owned(),
+                text: text.split_whitespace().collect::<Vec<_>>().join(" "),
+            })
+        })
+        .collect()
+}
+
+/// The summary of the call `transcript` writes down, titled `title`,
+/// asking `ask` each question with the most tokens its answer may take.
+/// The others on it are called `them` where the call knows who they are,
+/// and Others where it doesn't.
 ///
 /// # Errors
 ///
-/// When the model fails to answer.
-pub fn grounded(
-    model: &mut LanguageModel,
+/// When `ask` fails, as it does once it's stopped; nothing is written
+/// then, since a summary of part of a call reads as the whole.
+pub fn summarize(
+    ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
     title: &str,
+    them: Option<&str>,
     transcript: &str,
-) -> Result<Summed, String> {
-    let mut strays = Vec::new();
-    for _ in 0..2 {
-        let written = summarize(model, title, transcript, &strays)?;
-        let named = said::strays(&written, transcript);
-        if named.is_empty() {
-            return Ok(Summed::Kept(written));
-        }
-        eprintln!(
-            "call-transcripts: a summary named {}, which the call never did:\n{written}",
-            named.join(", ")
-        );
-        strays.extend(named);
-    }
-    Ok(Summed::Strayed(strays))
-}
-
-/// The summary of the call titled `title` that `transcript` writes down,
-/// told not to name what `strays` holds, which an earlier summary named
-/// and the call never did.
-fn summarize(
-    model: &mut LanguageModel,
-    title: &str,
-    transcript: &str,
-    strays: &[String],
 ) -> Result<String, String> {
-    let mut texts = parts(transcript, PART_CHARS);
-    let mut from = From::Transcript;
-    for _ in 0..ROUNDS {
-        if texts.len() <= 1 {
-            break;
-        }
-        let count = texts.len();
-        let notes = texts
-            .iter()
-            .enumerate()
-            .map(|(at, text)| model.answer(&notes_on(title, at + 1, count, from, text)))
-            .collect::<Result<Vec<_>, _>>()?;
-        texts = parts(&notes.join("\n\n"), PART_CHARS);
-        from = From::Notes;
-    }
-    model.answer(&summary_of(title, from, &texts.join("\n\n"), strays))
-}
-
-/// What a prompt gives the model to read.
-#[derive(Clone, Copy)]
-enum From {
-    Transcript,
-    Notes,
-}
-
-impl From {
-    fn what(self) -> &'static str {
-        match self {
-            Self::Transcript => "the transcript",
-            Self::Notes => "notes taken on the transcript",
+    let mut said = lines(transcript);
+    let me = said
+        .iter()
+        .map(|line| line.who.as_str())
+        .find(|who| *who != OTHERS)
+        .unwrap_or("Me")
+        .to_owned();
+    if let Some(them) = them {
+        for line in said.iter_mut().filter(|line| line.who == OTHERS) {
+            them.clone_into(&mut line.who);
         }
     }
-}
-
-/// What the call is called in a prompt.
-fn named(title: &str) -> String {
-    if title.is_empty() {
-        "a call".to_owned()
-    } else {
-        format!("a call titled \"{title}\"")
-    }
-}
-
-fn summary_of(title: &str, from: From, text: &str, strays: &[String]) -> String {
-    let unsaid = if strays.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " The call never mentions {}, so don't either.",
-            strays.join(" or ")
-        )
+    let call = Call {
+        said: &said,
+        me,
+        them: them.map(str::to_owned),
     };
-    format!(
-        "Below is {} of {}. Write a short summary of it for Joel, who was on the call. Start \
-         with a sentence or two saying what it was about. Then list, as bullets, what was \
-         decided and what anyone said they would do, naming who. Say only what the call \
-         says, and name nothing it doesn't name.{unsaid} If nothing was decided or promised, \
-         stop after those sentences. Write only the summary, with no note of your own.\n\n{text}",
-        from.what(),
-        named(title),
-    )
-}
-
-fn notes_on(title: &str, part: usize, parts: usize, from: From, text: &str) -> String {
-    format!(
-        "Below is part {part} of {parts} of {} of {}. Note briefly what was discussed, what was \
-         decided and what anyone said they would do in this part, naming who.\n\n{text}",
-        from.what(),
-        named(title),
-    )
-}
-
-/// `text` cut into parts of at most `most` characters, each part whole
-/// lines where a line fits, and a line too long for one part cut between
-/// words.
-fn parts(text: &str, most: usize) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut part = String::new();
-    for line in text.lines().flat_map(|line| pieces(line, most)) {
-        if !part.is_empty() && part.len() + 1 + line.len() > most {
-            parts.push(std::mem::take(&mut part));
+    let parts = parts(&said, PART_CHARS);
+    let mut kept = Vec::new();
+    for (at, part) in parts.iter().enumerate() {
+        let end = parts
+            .get(at + 1)
+            .map_or(&said[said.len() - 1], |next| &said[next[0]]);
+        let lasts = seconds(&end.stamp).saturating_sub(seconds(&said[part[0]].stamp));
+        let room = ((lasts + SECONDS_PER_QUOTE / 2) / SECONDS_PER_QUOTE).max(1);
+        let answer = ask(&call.pick_prompt(part), PICK_TOKENS)?;
+        let mut chosen: Vec<usize> = Vec::new();
+        for index in numbers(&answer) {
+            if part.contains(&index) && !chosen.contains(&index) {
+                chosen.push(index);
+            }
         }
-        if !part.is_empty() {
-            part.push('\n');
+        let mut taken = 0;
+        for index in chosen.into_iter().take(MOST_TAKEN) {
+            if taken == room {
+                break;
+            }
+            if let Some(quote) = call.quote(ask, index)? {
+                kept.push((index, quote));
+                taken += 1;
+            }
         }
-        part.push_str(line);
     }
-    if !part.trim().is_empty() {
+    kept.sort_unstable_by_key(|(index, _)| *index);
+    let kept: Vec<String> = kept.into_iter().map(|(_, quote)| quote).collect();
+    let mut summary = String::new();
+    if !title.is_empty() {
+        let _ = write!(summary, "# {title}\n\n");
+    }
+    let _ = write!(summary, "{HOW_MADE}\n\n");
+    if kept.is_empty() {
+        summary.push_str(NONE_KEPT);
+    } else {
+        summary.push_str(&kept.join("\n"));
+    }
+    Ok(summary)
+}
+
+/// A call's lines, what Joel is called in them, and who the others are
+/// where the call knows.
+struct Call<'a> {
+    said: &'a [Said],
+    me: String,
+    them: Option<String>,
+}
+
+impl Call<'_> {
+    /// Who a line is said to: Joel for the others' lines, the others for
+    /// his. Their names are never guessed from a meeting's title.
+    fn listener(&self, speaker: &str) -> String {
+        if speaker == self.me {
+            self.them.clone().unwrap_or_else(|| "the others".to_owned())
+        } else {
+            self.me.clone()
+        }
+    }
+
+    /// What the others' lines are under.
+    fn others(&self) -> &str {
+        self.them.as_deref().unwrap_or(OTHERS)
+    }
+
+    /// Who the call is between, for a prompt.
+    fn between(&self) -> String {
+        match &self.them {
+            Some(them) => format!("a call between {} and {them}", self.me),
+            None => format!(
+                "a call between {} and the others on it, called {OTHERS}",
+                self.me
+            ),
+        }
+    }
+
+    /// The line `index` as a quote to keep, or nothing when the model
+    /// finds no point in it, its copy isn't the line's, the words are
+    /// someone else's, or they aren't worth keeping.
+    fn quote(
+        &self,
+        ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
+        index: usize,
+    ) -> Result<Option<String>, String> {
+        let line = &self.said[index];
+        if line.text.split_whitespace().count() < FEWEST_WORDS {
+            return Ok(None);
+        }
+        let answer = ask(&self.quote_prompt(index), QUOTE_TOKENS)?;
+        if none(&answer) {
+            return Ok(None);
+        }
+        let mut quote = quoted(&line.text, &answer);
+        if quote.is_none() {
+            // Asked once more, since the Chad call's review on Thursday
+            // was lost to a copy that left words out unmarked.
+            let again = ask(&self.again_prompt(index, &answer), QUOTE_TOKENS)?;
+            if none(&again) {
+                return Ok(None);
+            }
+            quote = quoted(&line.text, &again);
+        }
+        let Some(Quote {
+            words,
+            reported: false,
+            start,
+        }) = quote
+        else {
+            return Ok(None);
+        };
+        if self.told_before(index, start) || named(&words, &line.who) {
+            return Ok(None);
+        }
+        let verdict = ask(&self.keep_prompt(index, &words), VERDICT_TOKENS)?;
+        // Gemma sometimes answers in bold, **NO**.
+        let verdict = verdict.trim().trim_matches('*').trim().to_uppercase();
+        Ok(verdict.starts_with("YES").then(|| {
+            format!(
+                "- {}, to {}: \"{words}\" [{}]",
+                line.who,
+                self.listener(&line.who),
+                line.stamp
+            )
+        }))
+    }
+
+    /// Whether a quote starting `start` words into line `index` follows
+    /// its speaker telling what someone else said at the end of their
+    /// line before: on the Chad call, "she's like but also", then "Yeah,
+    /// you're autistic" in the next.
+    fn told_before(&self, index: usize, start: usize) -> bool {
+        if start >= REPORT_REACH {
+            return false;
+        }
+        let who = &self.said[index].who;
+        let Some(before) = self.said[..index]
+            .iter()
+            .rev()
+            .find(|line| &line.who == who)
+        else {
+            return false;
+        };
+        let mut words = plain_words(&before.text);
+        words.extend(plain_words(&self.said[index].text).into_iter().take(start));
+        reported(&words[words.len().saturating_sub(REPORT_REACH)..])
+    }
+
+    fn shown(&self, index: usize) -> String {
+        let line = &self.said[index];
+        format!("L{index} [{}] {}: {}", line.stamp, line.who, line.text)
+    }
+
+    fn pick_prompt(&self, part: &[usize]) -> String {
+        let numbered: Vec<String> = part.iter().map(|&index| self.shown(index)).collect();
+        format!(
+            "These are numbered lines from {}.\n\n{}\n\nWhich lines matter most for someone \
+             who missed the call: news about someone's health, work or plans, what {them} \
+             told {me}, what {me} told them, every request, offer or worry, and every line \
+             where someone says they or another will do something? Skip greetings, filler and \
+             small talk. Answer with at most {MOST_PICKS} line numbers like L12, the most \
+             important first, separated by commas, and nothing else.",
+            self.between(),
+            numbered.join("\n"),
+            me = self.me,
+            them = self.others(),
+        )
+    }
+
+    /// The lines around a line, for a prompt: the two before, the line
+    /// marked, and the one after.
+    fn around(&self, index: usize) -> String {
+        let mut shown: Vec<String> = (index.saturating_sub(2)..index)
+            .map(|at| self.shown(at))
+            .collect();
+        shown.push(format!(">>> {}", self.shown(index)));
+        if index + 1 < self.said.len() {
+            shown.push(self.shown(index + 1));
+        }
+        shown.join("\n")
+    }
+
+    fn quote_prompt(&self, index: usize) -> String {
+        let speaker = &self.said[index].who;
+        format!(
+            "From {}, the lines before, the marked line, and the line after:\n\n{}\n\nCopy, \
+             word for word from the marked line, the words that carry the point {speaker} \
+             makes, at most {MOST_QUOTE_WORDS} words. You may leave out filler such as you \
+             know, I mean, like or um, but change no word and add none. Answer with the copied \
+             words only, or NONE if the line makes no clear point.",
+            self.between(),
+            self.around(index),
+        )
+    }
+
+    /// The quote question again, after a copy that wasn't the line's.
+    fn again_prompt(&self, index: usize, answer: &str) -> String {
+        format!(
+            "{}\n\nIt was answered \"{answer}\", which isn't the marked line's words as \
+             written. Copy one unbroken run of the marked line's words, exactly as written, \
+             leaving none out, at most {MOST_QUOTE_WORDS} words. Answer with the copied words \
+             only, or NONE.",
+            self.quote_prompt(index),
+        )
+    }
+
+    /// Whether a quote is worth showing, asked with the whole line in
+    /// view, so a quote that drops what turns its meaning is seen to.
+    /// Asked for a point worth knowing and the speaker's own view, Gemma
+    /// turned down plain news (a review on Thursday, an offer to help) on
+    /// the Chad call, so it's asked what someone would learn, and what
+    /// would make a quote unfit, rather than whether it's a view.
+    fn keep_prompt(&self, index: usize, quote: &str) -> String {
+        let line = &self.said[index];
+        format!(
+            "From {}, {} said: \"{}\"\n\nQuoted from it: \"{quote}\"\n\nWould someone who \
+             missed the call learn something from the quoted words alone: news, a worry, a \
+             plan, a request, an offer or a view? Answer NO if the quoted words are small \
+             talk, are garbled, are about pay, money or a raise, or can't be understood \
+             without the lines around them, such as a they or that with nothing it points to. \
+             Otherwise answer YES.",
+            self.between(),
+            line.who,
+            line.text,
+        )
+    }
+}
+
+/// The lines cut into parts of about `most` characters of what was said,
+/// by index, every line in one part.
+fn parts(said: &[Said], most: usize) -> Vec<Vec<usize>> {
+    let mut parts = Vec::new();
+    let mut part = Vec::new();
+    let mut size = 0;
+    for (index, line) in said.iter().enumerate() {
+        if !part.is_empty() && size + line.text.len() > most {
+            parts.push(std::mem::take(&mut part));
+            size = 0;
+        }
+        part.push(index);
+        size += line.text.len();
+    }
+    if !part.is_empty() {
         parts.push(part);
     }
     parts
 }
 
-/// A line cut between words into pieces of at most `most` characters, a
-/// word longer than that being a piece of its own.
-fn pieces(line: &str, most: usize) -> Vec<&str> {
-    let mut pieces = Vec::new();
-    let mut rest = line;
-    while rest.len() > most {
-        // Up to the character after the last that fits, so a space there
-        // is a cut too, and never inside a character.
-        let window = (0..=most + 1)
-            .rev()
-            .find(|&end| rest.is_char_boundary(end))
-            .unwrap_or(0);
-        let cut = rest[..window]
-            .rfind(' ')
-            .filter(|&cut| cut > 0)
-            .or_else(|| rest.find(' '))
-            .unwrap_or(rest.len());
-        pieces.push(&rest[..cut]);
-        rest = rest[cut..].trim_start();
+/// How far into a call a stamp, 1:05:28 or 3:14, is, in seconds.
+fn seconds(stamp: &str) -> u64 {
+    stamp
+        .split(':')
+        .fold(0, |sum, part| sum * 60 + part.parse::<u64>().unwrap_or(0))
+}
+
+/// Whether a quote question was answered that the line makes no point.
+fn none(answer: &str) -> bool {
+    answer.is_empty() || answer.to_uppercase().starts_with("NONE")
+}
+
+/// Whether a quote calls its own speaker by name, as in "Joel, you keep
+/// giving them fuel" or "it's like Joel" said by Joel: words someone
+/// else said to them, as Joel told his wife's on the Chad call.
+fn named(quote: &str, speaker: &str) -> bool {
+    if speaker == OTHERS {
+        return false;
     }
-    pieces.push(rest);
-    pieces
+    let Some(name) = speaker.split_whitespace().next().map(plain) else {
+        return false;
+    };
+    let spans = spans(quote);
+    spans.iter().enumerate().any(|(at, &(a, b))| {
+        plain(&quote[a..b]) == name
+            && (quote[b..].starts_with(',')
+                || at.checked_sub(1).is_some_and(|before| {
+                    plain(&quote[spans[before].0..spans[before].1]) == "like"
+                }))
+    })
+}
+
+/// The line numbers an answer names, as L12, in the order it names them.
+fn numbers(answer: &str) -> Vec<usize> {
+    let mut found = Vec::new();
+    let mut rest = answer;
+    while let Some(at) = rest.find('L') {
+        rest = &rest[at + 1..];
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        if let Ok(number) = digits.parse() {
+            found.push(number);
+        }
+    }
+    found
+}
+
+/// A word as it's compared: lowercase, with a typeset apostrophe as a
+/// plain one.
+fn plain(word: &str) -> String {
+    word.to_lowercase().replace('\u{2019}', "'")
+}
+
+/// Where each of `text`'s words is, a word being letters, digits and
+/// apostrophes.
+fn spans(text: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut start = None;
+    for (at, c) in text.char_indices() {
+        let inside = c.is_alphanumeric() || c == '\'' || c == '\u{2019}';
+        match (inside, start) {
+            (true, None) => start = Some(at),
+            (false, Some(from)) => {
+                spans.push((from, at));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(from) = start {
+        spans.push((from, text.len()));
+    }
+    spans
+}
+
+/// A quote copied from a line, and whether the words just before it, or
+/// within it, say the speaker is telling what someone else said.
+#[derive(Debug, PartialEq)]
+struct Quote {
+    words: String,
+    reported: bool,
+    /// How many of the line's words come before it.
+    start: usize,
+}
+
+/// A line's words as they're compared.
+fn plain_words(text: &str) -> Vec<String> {
+    spans(text)
+        .into_iter()
+        .map(|(a, b)| plain(&text[a..b]))
+        .collect()
+}
+
+/// The words of `answer` as `text` spells them, or nothing when they
+/// aren't `text`'s: each must come in the line's order, at most
+/// `MOST_SKIPPED` of its words apart unless the answer marks a gap with
+/// an ellipsis, and words left out between show as an ellipsis, so
+/// nothing reads as said that wasn't.
+fn quoted(text: &str, answer: &str) -> Option<Quote> {
+    let answer = answer.trim().trim_matches(['"', '\u{201c}', '\u{201d}']);
+    // Each word wanted, and whether the answer left words out before it.
+    let mut want: Vec<(String, bool)> = Vec::new();
+    for piece in answer
+        .split("...")
+        .flat_map(|piece| piece.split('\u{2026}'))
+    {
+        let gap = !want.is_empty();
+        for (at, (a, b)) in spans(piece).into_iter().enumerate() {
+            want.push((plain(&piece[a..b]), gap && at == 0));
+        }
+    }
+    if want.len() < 3 {
+        return None;
+    }
+    let spans = spans(text);
+    let line = plain_words(text);
+    // Of every place the words are found, the closest together, so a
+    // word said twice (I was like, I do not) starts where it's meant.
+    let found = (0..line.len())
+        .filter(|&start| line[start] == want[0].0)
+        .filter_map(|start| {
+            let mut picked = vec![start];
+            for (word, gap) in &want[1..] {
+                let at = *picked.last()?;
+                let reach = if *gap {
+                    line.len()
+                } else {
+                    (at + 2 + MOST_SKIPPED).min(line.len())
+                };
+                let next = (at + 1..reach).find(|&j| line[j] == *word)?;
+                picked.push(next);
+            }
+            Some(picked)
+        })
+        .min_by_key(|picked| picked[picked.len() - 1] - picked[0])?;
+    let tail = if found.len() > MOST_QUOTE_WORDS_TAKEN {
+        " ..."
+    } else {
+        ""
+    };
+    let found = &found[..found.len().min(MOST_QUOTE_WORDS_TAKEN)];
+    // Someone else's words told inside the quote count too: on the Chad
+    // call a quote ran on into "She's like your 50th percentile".
+    let reported = reported(&line[found[0].saturating_sub(REPORT_REACH)..found[0]])
+        || someone_like(&line[found[0]..=found[found.len() - 1]]);
+    // Each unbroken run keeps the line's own text, punctuation and all.
+    let mut runs = Vec::new();
+    let mut first = found[0];
+    for (at, &word) in found.iter().enumerate() {
+        let next = found.get(at + 1);
+        if next != Some(&(word + 1)) {
+            runs.push(&text[spans[first].0..spans[word].1]);
+            if let Some(&next) = next {
+                first = next;
+            }
+        }
+    }
+    Some(Quote {
+        words: runs.join(" ... ") + tail,
+        reported,
+        start: found[0],
+    })
+}
+
+/// Whether the words before a quote say its speaker is telling what
+/// someone else said (she said, my boss told me, he was like, she's
+/// like) rather than saying it themselves (I was like, it goes).
+fn reported(before: &[String]) -> bool {
+    let someone = |who: &String| !OWN.contains(&who.as_str());
+    let said = before
+        .windows(2)
+        .any(|pair| someone(&pair[0]) && REPORTING.contains(&pair[1].as_str()))
+        || someone_like(before);
+    let was_like = before.windows(3).any(|three| {
+        someone(&three[0])
+            && matches!(three[1].as_str(), "was" | "is" | "were")
+            && three[2] == "like"
+    });
+    said || was_like
+}
+
+/// Whether `words` tell what someone else said with she's like, he's like
+/// or they're like. The other reporting words are looked for only before a
+/// quote, since inside one they're as often the speaker's own: you have
+/// asked, my brain is like.
+fn someone_like(words: &[String]) -> bool {
+    words
+        .windows(2)
+        .any(|pair| SOMEONE_LIKE.contains(&pair[0].as_str()) && pair[1] == "like")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const CALL: &str = "# Transcript\n\n**Joel**, 0:13: Hi there.\n\n\
+         **Others**, 0:19: I think we should move the review to Thursday, you know, because \
+         the release slipped.\n\n\
+         **Joel**, 1:02: Okay, I will tell the team that the review moves to Thursday \
+         morning.\n\n**Others**, 1:05:10: Thanks, bye.\n";
+
+    /// Answers as a model would, by what each prompt asks, noting each.
+    struct Model {
+        picks: &'static str,
+        quotes: Vec<&'static str>,
+        verdict: &'static str,
+        asked: Vec<String>,
+    }
+
+    impl Model {
+        fn ask(&mut self, prompt: &str) -> String {
+            self.asked.push(prompt.to_owned());
+            if prompt.starts_with("These are numbered lines") {
+                self.picks.to_owned()
+            } else if prompt.contains("Copy, word for word") {
+                if self.quotes.is_empty() {
+                    "NONE".to_owned()
+                } else {
+                    self.quotes.remove(0).to_owned()
+                }
+            } else {
+                self.verdict.to_owned()
+            }
+        }
+    }
+
+    fn summed(model: &mut Model) -> String {
+        summarize(&mut |p, _| Ok(model.ask(p)), "Review", None, CALL).unwrap()
+    }
+
+    fn words(text: &str, answer: &str) -> Option<String> {
+        quoted(text, answer).map(|quote| quote.words)
+    }
+
     #[test]
-    fn a_short_call_is_one_part() {
+    fn a_transcript_reads_as_its_speakers_times_and_words() {
+        let said = lines(CALL);
+        assert_eq!(said.len(), 4);
         assert_eq!(
-            parts("**Me**, 0:01: Hi.\n\n**Others**, 0:02: Hello.", 100).len(),
-            1
+            said[3],
+            Said {
+                who: "Others".to_owned(),
+                stamp: "1:05:10".to_owned(),
+                text: "Thanks, bye.".to_owned(),
+            }
         );
     }
 
     #[test]
-    fn a_long_call_is_cut_between_lines_and_loses_none() {
-        let line = "**Me**, 0:01: one two three four";
-        let text = [line; 10].join("\n");
-        let cut = parts(&text, 3 * line.len() + 2);
-        assert_eq!(cut.len(), 4);
-        assert!(cut.iter().all(|part| part.lines().all(|l| l == line)));
+    fn a_quote_is_the_lines_own_words_with_who_said_it_to_whom_and_when() {
+        let mut model = Model {
+            picks: "L1, L2",
+            quotes: vec!["we should move the review to Thursday", "tell the team"],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        let summary = summed(&mut model);
         assert_eq!(
-            cut.iter().map(|part| part.lines().count()).sum::<usize>(),
-            10
+            summary,
+            format!(
+                "# Review\n\n{HOW_MADE}\n\n\
+                 - Others, to Joel: \"we should move the review to Thursday\" [0:19]\n\
+                 - Joel, to the others: \"tell the team\" [1:02]"
+            )
         );
     }
 
     #[test]
-    fn a_line_too_long_for_a_part_is_cut_between_words() {
-        let cut = parts("one two three four five", 9);
-        assert_eq!(cut, ["one two", "three", "four five"]);
+    fn the_others_are_named_where_the_call_knows_them() {
+        let mut model = Model {
+            picks: "L1, L2",
+            quotes: vec!["we should move the review to Thursday", "tell the team"],
+            verdict: "**YES**",
+            asked: Vec::new(),
+        };
+        let summary = summarize(&mut |p, _| Ok(model.ask(p)), "Review", Some("Ada"), CALL).unwrap();
+        assert!(summary.contains("- Ada, to Joel: \"we should move the review to Thursday\""));
+        assert!(summary.contains("- Joel, to Ada: \"tell the team\""));
+        assert!(model.asked[0].contains("a call between Joel and Ada"));
     }
 
     #[test]
-    fn a_word_longer_than_a_part_is_a_part_of_its_own() {
-        assert_eq!(parts("a abcdefghijk b", 4), ["a", "abcdefghijk", "b"]);
+    fn words_the_line_never_said_are_never_kept() {
+        let mut model = Model {
+            picks: "L1",
+            quotes: vec![
+                "we must move the review to Friday",
+                "we must move it to Friday",
+            ],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        assert!(summed(&mut model).ends_with(NONE_KEPT));
+        // Asked once more for an exact copy, and the worth of a quote
+        // that isn't found is never asked.
+        assert_eq!(model.asked.len(), 3);
     }
 
     #[test]
-    fn a_line_is_never_cut_inside_a_character() {
+    fn a_copy_not_found_is_asked_for_once_more() {
+        let mut model = Model {
+            picks: "L1",
+            quotes: vec![
+                "we must move the review to Friday",
+                "we should move the review to Thursday",
+            ],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        assert!(summed(&mut model).contains("\"we should move the review to Thursday\" [0:19]"));
+        assert!(model.asked[2].contains("\"we must move the review to Friday\", which isn't"));
+    }
+
+    #[test]
+    fn a_part_keeps_a_quote_for_each_two_minutes_in_the_order_picked() {
+        let call = "**Joel**, 0:00: We start the review on Monday this week.\n\n\
+             **Others**, 1:00: I will send the plan to the team today.\n\n\
+             **Joel**, 2:00: The release moves out to the end of May.\n\n\
+             **Others**, 3:00: I am worried the tests will not be ready.\n\n\
+             **Joel**, 4:00: Thanks, that is all for today then, bye.\n";
+        let mut model = Model {
+            picks: "L3, L1, L2",
+            quotes: vec![
+                "I am worried the tests will not be ready",
+                "I will send the plan to the team",
+            ],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
+        assert!(summary.ends_with(
+            "- Others, to Joel: \"I will send the plan to the team\" [1:00]\n\
+             - Others, to Joel: \"I am worried the tests will not be ready\" [3:00]"
+        ));
+        assert_eq!(model.asked.len(), 5, "L2 is never asked about");
+    }
+
+    #[test]
+    fn a_line_opening_on_what_the_speaker_began_to_tell_isnt_theirs() {
+        let call = "**Others**, 0:10: She read my report and she's like but also\n\n\
+             **Joel**, 0:20: Okay, go on then.\n\n\
+             **Others**, 0:25: Yeah, you're autistic, level one autistic and I agree.\n";
+        let mut model = Model {
+            picks: "L2",
+            quotes: vec!["Yeah, you're autistic, level one autistic"],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
+        assert!(summary.ends_with(NONE_KEPT));
+        assert_eq!(model.asked.len(), 2);
+    }
+
+    #[test]
+    fn a_speaker_called_by_their_own_name_is_telling_someone_elses_words() {
+        assert!(named("Joel, you keep giving them fuel", "Joel"));
+        assert!(named("it's like Joel you keep giving them fuel", "Joel"));
+        assert!(!named("I told Joel about the fuel", "Joel"));
+        assert!(!named("Joel, you keep giving them fuel", "Ada"));
+        assert!(!named("Others, you keep giving them fuel", "Others"));
+        let call = "**Joel**, 0:10: And it's like Joel, you keep giving them fuel for their \
+             fire.\n";
+        let mut model = Model {
+            picks: "L0",
+            quotes: vec!["Joel, you keep giving them fuel for their fire"],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
+        assert!(summary.ends_with(NONE_KEPT));
+        assert_eq!(model.asked.len(), 2);
+    }
+
+    #[test]
+    fn a_quote_judged_not_worth_keeping_is_dropped() {
+        let mut model = Model {
+            picks: "L1",
+            quotes: vec!["we should move the review to Thursday"],
+            verdict: "NO",
+            asked: Vec::new(),
+        };
+        assert!(summed(&mut model).ends_with(NONE_KEPT));
+    }
+
+    #[test]
+    fn a_line_named_outside_the_call_or_too_short_isnt_asked_about() {
+        let mut model = Model {
+            picks: "L0, L3, L9",
+            quotes: Vec::new(),
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        assert!(summed(&mut model).ends_with(NONE_KEPT));
+        assert_eq!(model.asked.len(), 1);
+    }
+
+    #[test]
+    fn the_keep_question_sees_the_whole_line() {
+        let mut model = Model {
+            picks: "L1",
+            quotes: vec!["move the review to Thursday"],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        summed(&mut model);
+        assert!(model.asked[2].contains("because the release slipped"));
+    }
+
+    #[test]
+    fn a_failed_answer_writes_no_summary() {
+        let result = summarize(&mut |_, _| Err("stopped".to_owned()), "Review", None, CALL);
+        assert_eq!(result, Err("stopped".to_owned()));
+    }
+
+    #[test]
+    fn filler_left_out_shows_as_an_ellipsis() {
+        let text = "I think we should, you know, move it to Thursday.";
         assert_eq!(
-            parts("caf\u{e9} cr\u{e8}me", 4),
-            ["caf\u{e9}", "cr\u{e8}me"]
+            words(text, "\"we should move it to Thursday\"").as_deref(),
+            Some("we should ... move it to Thursday")
         );
     }
 
     #[test]
-    fn nothing_said_is_no_part() {
-        assert!(parts("\n\n", 10).is_empty());
+    fn words_the_copy_marks_as_left_out_may_be_many() {
+        let text = "Add me on LinkedIn, in case you get shut down right after the call, and \
+             let me know.";
+        assert_eq!(
+            words(
+                text,
+                "Add me on LinkedIn, in case you get shut down... let me know"
+            )
+            .as_deref(),
+            Some("Add me on LinkedIn, in case you get shut down ... let me know")
+        );
+        assert_eq!(words(text, "Add me on LinkedIn and let me know"), None);
+    }
+
+    #[test]
+    fn what_someone_else_said_is_known_from_the_words_before_it() {
+        let reports = [
+            "My psychologist was like dude, she's like if they want your brain, back off",
+            "and she said. Like it was nitpicking at this point, right?",
+            "so my boss told me it was nitpicking at this point, right?",
+            "and he was like it was nitpicking at this point, right?",
+        ];
+        for text in reports {
+            let answer = if text.contains("brain") {
+                "if they want your brain, back off"
+            } else {
+                "it was nitpicking at this point"
+            };
+            assert!(quoted(text, answer).unwrap().reported, "{text}");
+        }
+        let within = "but your processing speed is average. She's like your 50th percentile";
+        let answer = "your processing speed is average. She's like your 50th percentile";
+        assert!(quoted(within, answer).unwrap().reported);
+        let own = [
+            "and I was like I do not see this as a correction at all",
+            "I went and said I do not see this as a correction at all",
+            "it goes I do not see this as a correction at all",
+            "I do not see this as a correction at all",
+        ];
+        for text in own {
+            let quote = quoted(text, "I do not see this as a correction").unwrap();
+            assert!(!quote.reported, "{text}");
+            assert_eq!(quote.words, "I do not see this as a correction");
+        }
+    }
+
+    #[test]
+    fn a_quote_of_what_someone_else_said_is_never_asked_about() {
+        let call = "**Joel**, 0:13: Hi there.\n\n**Others**, 0:19: and she said we should \
+             move the review to Thursday.\n";
+        let mut model = Model {
+            picks: "L1",
+            quotes: vec!["we should move the review to Thursday"],
+            verdict: "YES",
+            asked: Vec::new(),
+        };
+        let summary = summarize(&mut |p, _| Ok(model.ask(p)), "", None, call).unwrap();
+        assert!(summary.ends_with(NONE_KEPT));
+        assert_eq!(model.asked.len(), 2);
+    }
+
+    #[test]
+    fn a_quote_keeps_the_lines_spelling_and_punctuation() {
+        let text = "Well, Q2 is done; it's shipped.";
+        assert_eq!(
+            words(text, "q2 is done it’s shipped").as_deref(),
+            Some("Q2 is done; it's shipped")
+        );
+    }
+
+    #[test]
+    fn words_too_far_apart_or_out_of_order_arent_a_quote() {
+        let text = "move it, and then after all of that, to Thursday";
+        assert_eq!(words(text, "move it to Thursday"), None);
+        assert_eq!(words("Thursday we move it", "we move Thursday"), None);
+    }
+
+    #[test]
+    fn a_copy_of_too_few_words_isnt_a_quote() {
+        assert_eq!(words("move it to Thursday", "Thursday"), None);
+    }
+
+    #[test]
+    fn a_long_copy_is_cut_short_and_marked() {
+        let text: Vec<String> = (0..40).map(|n| format!("w{n}")).collect();
+        let text = text.join(" ");
+        let quote = words(&text, &text).unwrap();
+        assert!(quote.ends_with("w29 ..."));
+    }
+
+    #[test]
+    fn a_long_call_is_picked_from_in_parts_and_loses_no_line() {
+        let said: Vec<Said> = (0..10)
+            .map(|n| Said {
+                who: "Joel".to_owned(),
+                stamp: format!("0:{n:02}"),
+                text: "x".repeat(30),
+            })
+            .collect();
+        let cut = parts(&said, 100);
+        assert_eq!(cut, [vec![0, 1, 2], vec![3, 4, 5], vec![6, 7, 8], vec![9]]);
+    }
+
+    #[test]
+    fn a_pick_reads_each_number_it_names() {
+        assert_eq!(numbers("L3, L12,L40 and L"), [3, 12, 40]);
     }
 }

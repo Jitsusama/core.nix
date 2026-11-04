@@ -5,12 +5,16 @@
 # others answer, another program says something of its own meanwhile, and
 # Joel answers back; the transcript must hold the three turns in order and
 # nothing of the other program's. The daemon runs as the service does,
-# with no summarizer, so the call is only written down, and a notice says
-# so, which a stand-in for the shell's notices keeps; a notice as the call
-# started offered the line for its chat. The session says where its
-# screen is only after the daemon starts, as niri does, and the notice's
-# Open the Transcript must still open it in the session's reader, which a
-# stand-in for it notes. The next meeting is stopped
+# with a stand-in for the summarizer's model, which a VM can't run
+# (stand-in-summarizer.py): it's started once the call is written, holds
+# a delay on sleep, is ended when another call starts, writing nothing,
+# and is started again once that call ends, and its summary holds the
+# call's own words; a notice says it's ready, which a stand-in for the
+# shell's notices keeps, and a notice as the call started offered the
+# line for its chat. The session says where its screen is only after the
+# daemon starts, as niri does, and the summary's notice's Read It must
+# still open it in the session's reader, which a stand-in for it notes.
+# The next meeting is stopped
 # from that notice, chosen on the stand-in as a click would, and joined
 # again, which mustn't be recorded. The voices are
 # espeak-ng's, made as the test builds. The tests are
@@ -37,6 +41,10 @@ let
         pkgs.python3.withPackages (python: [ python.dbus-fast ])
       }/bin/python3 ${./stand-in-notices.py} "$@"
     '';
+  };
+  summarizer = pkgs.writeShellApplication {
+    name = "stand-in-summarizer";
+    text = ''exec ${pkgs.python3}/bin/python3 ${./stand-in-summarizer.py} "$HOME"'';
   };
   # Joel's side, the others', and a program that isn't the call, each a
   # 16 kHz mono WAV from the call's start.
@@ -77,6 +85,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [
       dictation
       notices
+      # gdbus, which the daemon hears logind's PrepareForSleep with.
+      pkgs.glib.bin
       pkgs.jq
       pkgs.libnotify
       pkgs.pulseaudio
@@ -97,6 +107,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     pkgs.writeText "call-transcripts-values.json" (
       builtins.toJSON {
         inherit model;
+        summarizer = "${summarizer}/bin/stand-in-summarizer";
         # The library the service names, given as it gives it.
         tokenizers = "${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so";
       }
