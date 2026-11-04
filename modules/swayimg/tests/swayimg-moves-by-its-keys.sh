@@ -143,7 +143,8 @@ for key in dd Delete; do
   fi
 done
 
-# y copies the picture as shown, a PNG, and yy as y does.
+# yy copies the picture as shown, a PNG, and y alone waits for what it's
+# to copy, as in Vim, and copies nothing.
 copied() {
   for _ in $(seq 100); do
     if [ -s copied ] && [ "$(head -c 4 copied | tail -c 3)" = PNG ]; then return 0; fi
@@ -152,12 +153,31 @@ copied() {
   echo "$1 didn't copy the picture as a PNG"
   exit 1
 }
-wtype y
-copied y
-rm copied
 wtype yy
 copied yy
 rm copied
+wtype y
+sleep 1
+if [ -e copied ]; then
+  echo "y alone copied the picture"
+  exit 1
+fi
+
+# Space ? lists the keys over the picture, as ? does, and again puts them
+# away. The list is only drawn, so it's seen on the screen, once the words
+# a picture opens with have gone, two seconds on.
+sleep 3
+until_still
+grim -t ppm bare.ppm
+wtype -k space -M shift -k slash -m shift
+listed=0
+for _ in $(seq 100); do
+  grim -t ppm now.ppm
+  if ! cmp -s bare.ppm now.ppm; then listed=1 && break; fi
+  sleep 0.1
+done
+[ "$listed" = 1 ] || { echo "Space ? listed no keys"; exit 1; }
+wtype -k space -M shift -k slash -m shift
 
 # On a picture larger than the window, Down moves it and Up back, and j and
 # k as far.
@@ -178,7 +198,7 @@ typed k "$top"
 
 # In the gallery, h j k l choose as the arrows do, gg and G go to the
 # first and the last, a number before G to that picture, and a number
-# before a move makes it that many. y copies the file.
+# before a move makes it that many. yy copies the file.
 press Return "in gallery"
 typed gg a.ppm
 typed l b.ppm
@@ -196,12 +216,12 @@ below=$(line 1)
 typed gg a.ppm
 typed j "$below"
 typed k a.ppm
-wtype y
+wtype yy
 for _ in $(seq 100); do
   if cmp -s copied a.ppm; then break; fi
   sleep 0.1
 done
-cmp -s copied a.ppm || { echo "y in the gallery didn't copy the file"; exit 1; }
+cmp -s copied a.ppm || { echo "yy in the gallery didn't copy the file"; exit 1; }
 
 # Escape at rest closes it.
 wtype -k Escape

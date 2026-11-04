@@ -17,17 +17,18 @@
 # language: the arrows go that way, to the previous and next picture, or
 # around the gallery; Home and End to the first and last; Enter goes
 # between the picture and the gallery of its folder; e edits in GIMP, or
-# Inkscape for a drawing, and closes the viewer; y copies the picture as
-# shown; Delete moves it to the trash rather than deleting it, and u brings
-# it back; q closes it, as in mpv. Neovim's keys twin them: h j k l the
+# Inkscape for a drawing, and closes the viewer; Delete moves the picture
+# to the trash rather than deleting it, and u brings it back; q closes it,
+# as in mpv. Vim's keys twin them, as Joel's Vim has them: h j k l the
 # arrows, gg and G the first and last, a number before G that picture and
-# before a move that many, dd the trash and yy the copy. A number or a
-# key waiting for its second shows, muted, at the foot's right, as
-# Neovim's showcmd does, for 300 ms at most, Joel's Neovim's timeoutlen;
-# [ and ] start ]b and [b, the next and previous picture, as Vim's go
-# between buffers, and turn the picture when no b follows. As a picture opens, a quiet line under it names the keys that
-# move on, for as long as its name shows, and ? lists them all until it's
-# pressed again.
+# before a move that many, dd the trash, yy copies the picture as shown,
+# and Space ? lists the keys, as ? does. A number or a key waiting for its
+# second shows, muted, at the foot's right, as Neovim's showcmd does, for
+# 300 ms at most, his Neovim's timeoutlen; [ and ] start ]b and [b, the
+# next and previous picture, as Vim's go between buffers, and turn the
+# picture when no b follows. As a picture opens, a quiet line under it
+# names the keys that move on, for as long as its name shows, and ? lists
+# them all until it's pressed again.
 #
 # The keys are the picture viewer's layer of jitsusama.keys, so the
 # launcher lists them over its window, and init.lua binds and lists them
@@ -241,15 +242,9 @@ let
         act = "edit";
       }
     ]
-    # y alone copies too, since nothing else follows a y here.
-    ++ twins places.viewer "Copy the picture as shown" "copy" [
-      "y y"
-      "y"
-    ]
-    ++ twins places.gallery "Copy the file" "copy" [
-      "y y"
-      "y"
-    ]
+    # y alone waits for what it's to copy, as in Vim, and does nothing.
+    ++ twins places.viewer "Copy the picture as shown" "copy" [ "y y" ]
+    ++ twins places.gallery "Copy the file" "copy" [ "y y" ]
     ++ twins "" "Move to the trash" "trash" [
       "Delete"
       "d d"
@@ -273,8 +268,14 @@ let
         does = "Close";
         act = "close";
       }
+      # Space ?, as in Joel's Neovim, which shows them everywhere.
       {
         chord = "Shift+slash";
+        does = "These keys";
+        act = "keys";
+      }
+      {
+        chord = "space Shift+slash";
         does = "These keys";
         act = "keys";
       }
@@ -297,6 +298,7 @@ let
     "Shift+slash" = "?";
     "Shift+plus" = "+";
     Return = "Enter";
+    space = "Space";
   };
   drawnOne =
     chord:
@@ -311,7 +313,14 @@ let
       else
         chord
     );
-  drawn = chord: lib.concatMapStrings drawnOne (lib.splitString " " chord);
+  # Letters pressed one after another run together, gg, and a named key
+  # stands apart, Space ?.
+  drawn =
+    chord:
+    let
+      parts = map drawnOne (lib.splitString " " chord);
+    in
+    lib.concatStringsSep (if lib.all (part: lib.stringLength part == 1) parts then "" else " ") parts;
 
   given = {
     colour = {

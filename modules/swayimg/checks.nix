@@ -54,10 +54,10 @@ onLinux {
   # than its window, which is how Joel was left unable to go on. Neovim's
   # keys do as the arrows they twin, a number before one makes it that
   # many, dd and Delete move a picture to the trash and u brings it back,
-  # and y and yy copy it, through wl-copy, stood in here, on a picture and
-  # in the gallery. The picture it opened with, and only that one, is said
-  # to the desktop's list of files opened lately, through recent-files,
-  # stood in too.
+  # yy copies it, through wl-copy, stood in here, and Space ? lists the
+  # keys, on a picture and in the gallery. The picture it opened with, and
+  # only that one, is said to the desktop's list of files opened lately,
+  # through recent-files, stood in too.
   swayimg-moves-by-its-keys =
     let
       home = account graphical;
@@ -73,6 +73,7 @@ onLinux {
           home.programs.swayimg.package
           pkgs.bash
           pkgs.cage
+          pkgs.grim
           pkgs.inotify-tools
           pkgs.wtype
           recent-files
