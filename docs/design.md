@@ -299,25 +299,39 @@ over any reviewer's.
 
 ## Type
 
-Two typefaces from one family. Monaspace and Mona Sans were drawn together by
-GitHub Next, so they share proportions, x-height and voice. Beside them,
-faces for one job each: Hubot Sans, the family's wide cut, a serif, and a
-script face for the letters none of them has.
+Two faces do the work: Monaspace, a monospace, and Fraunces, a serif. Beside
+them, a script face draws the letters neither has, and Mona Sans is kept only
+for other people's programs.
 
+- **No sans-serif unless it earns it** (Joel, 4 November: "I don't like
+  seeing sans-serif fonts in the launcher, the current one feels so out of
+  place. like if the sans serif has some more class to it maybe, but
+  generally, not a fan of sans-serif"). Nothing of ours sets a sans: what
+  the mono doesn't set, the serif does. A sans comes back only if it has real
+  class and beats both, side by side in shots at 1.5 and 2. The shell's
+  theme gives it no sans to name, so one can't come back by accident.
 - **Monospace** lives where characters line up or the content is code: the
-  terminal, Neovim, a launcher's input, numbers that change in place (a clock,
-  a volume, a battery), keyboard chords, paths and commit hashes.
-- **Proportional** (Mona Sans) lives where people read: GTK and Qt
-  interfaces, a browser's interface, notification text, menu labels, dialogs
-  and the greeter.
+  terminal, Neovim, a launcher's input and a row's name, numbers that change
+  in place (a clock, a volume, a battery), keyboard chords, paths and commit
+  hashes.
+- **Serif upright, for words to read** (Fraunces roman, weight 380, opsz 14,
+  SOFT 50, WONK 0, as the reader's page sets its text): a launcher row's
+  words and notes, a notice's words, the lock's day and what it says, and
+  the words of a password prompt. It's at the name's size, on the mono's
+  baseline, so the name is found first by face, not by a second size.
+- **Sans** (Mona Sans) stays only where another program draws its
+  own interface: GTK and Qt programs, Spotify, GIMP and web pages that ask
+  for a sans, whose layouts are built for one. Programs whose words we set
+  (mpv, zathura, swayimg, the boot screen, the camera, inlyne) move to the
+  mono and the serif too.
 - **Monaspace's own art, on purpose.** Texture healing and the coding
   ligatures wherever monospace is drawn, but for texture healing in kitty,
   which shrinks a glyph wider than its cell to fit it. The other Monaspace
   voices only where they mean something, such as a second voice for italics
   so comments read as handwriting, chosen by looking.
-- **Wide** (Hubot Sans Expanded) sets a page's titles and headings, in the
-  reader.
-- **Serif** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
+- **Wide** (Hubot Sans Expanded) is set by nothing now. The reader's titles
+  and headings are in the serif, so it goes.
+- **Serif italic, the voice** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
   points) is the desktop's voice: what the launcher says to Joel rather than
   what he typed, such as its hint while nothing's typed and its words when
   nothing is shown. Upright at title, 500 and drawn for 72 points, it names
@@ -470,7 +484,8 @@ words, so Joel never wonders what he's talking to.
 | a hairline across a surface | splits what's typed from what comes back                        |
 | cloudy, lifted by a shadow  | it floats above the windows, which stay opaque                  |
 | monospace                   | typing, or the machine being precise: commands, chords, figures, programs' names |
-| Mona Sans                   | the system saying something in words                            |
+| the serif upright           | words to read: what a thing holds or says                       |
+| the serif italic            | the system speaking to Joel                                     |
 | size                        | how much attention a kind asks, set for the kind and never changed within it |
 | weight and colour           | the hierarchy within a surface                                  |
 
@@ -1019,7 +1034,7 @@ works the same way everywhere.
   as fit, so a glance reminds Joel what there is; a place that measures
   something says how it stands instead, as Processor says "99% busy".
   What a row holds, and a found row's note ("1 window · 14 tabs"), is set
-  in Mona Sans at the name's size, on its baseline and a step after it,
+  in the serif upright at the name's size, on its baseline and a step after it,
   while the name stays in the mono, so the eye finds the name first; it's
   muted, and the text colour on the selection, where muted reads under Lc
   60. What's on the right, a kind, a chord or a count, stays in the mono.
@@ -1260,7 +1275,7 @@ works the same way everywhere.
   figures on one edge 24 (xl) beyond the longest, a figure wrapping with
   each number kept to its unit, a fact still being read a fixed
   placeholder, and none that only says the name again; then its words,
-  a notice's in the sans its card reads them in; then its picture. Its
+  a notice's in the serif upright its card reads them in; then its picture. Its
   text is as far from its frame as the card's (the inset, l and the
   hairline) on every side, its foot included, so it ends at the last
   whole line inside that, and every line lies on one of
@@ -1876,14 +1891,14 @@ What each studio round settled, newest first, with the reason.
   on lines really felt gross and unrefined" of 24 October and "i'm also
   seeing some whitespace issues with the notifications, feeling quite
   cluttered" of 3 November). Who or what it's about, strong in monospace;
-  a unit below, what it says, in Mona Sans; a step below, the signature,
+  a unit below, what it says, in the serif upright; a step below, the signature,
   muted in monospace: the mark of what sent it in a column of its own, the
   name Joel knows it by (AI Spend, never a process's name) and, on the
   right, when. All three are at the large step, as the launcher is. The
   frame stands an inset and a step from the ink on every side, to the
   capital's top, the first letter, the last and the signature's baseline,
   as the launcher's card does. The card is 440 wide, so what it says holds
-  about 44 Mona Sans letters on a line at that size inside its room. The
+  about 40 of the serif's letters on a line at that size inside its room. The
   line of offers and the held card's key hints went, as the clutter he
   named: a click does what the card is about, and the keys reach every
   act. Held, the card shows its acts under a rule at once, so it shows the
@@ -2357,6 +2372,8 @@ What each studio round settled, newest first, with the reason.
   and a notice signed in its footer. Look 3's first gap (2026-11-03) gave
   a row's words back to Mona Sans, at the name's size and on its baseline
   beside the mono name, so the name is found first without a second size.
+  On 4 November those words went to the serif upright, as every sans of
+  ours did, when Joel said a sans felt out of place in the launcher.
 
 - **Windows are framed by a hairline, rounded a little** (2026-10-10). Of
   seven directions shown on the panel, from square 2 px borders to a ring
