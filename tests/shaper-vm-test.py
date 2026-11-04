@@ -486,11 +486,14 @@ def test_each_direction_is_recorded(connection: Connection) -> None:
 
     The server's kernel answers ICMP timestamps itself, as a public resolver's does, and the
     router answers the recorder's echo; the recorder runs as its own user with a raw socket alone.
+    The days are read as alice, since a controller is replayed over them by the machine's user.
     """
 
     def recorded(_last_try: bool) -> bool:
         """Say whether a day's file holds the server's one-way delays and a gateway round trip."""
-        text = connection.client.succeed("cat /var/lib/shaper-record/*.jsonl 2>/dev/null || true")
+        text = connection.client.succeed(
+            "su alice -c 'cat /var/lib/shaper-record/*.jsonl' 2>/dev/null || true"
+        )
         heard: list[Json] = [json.loads(line) for line in text.splitlines() if line.strip()]
         stamped = any(
             h.get("reflector") == connection.far and "out" in h and "back" in h for h in heard
