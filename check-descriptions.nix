@@ -21,7 +21,8 @@
   a-file-says-its-size-and-when-it-changed = ''
     a file in the launcher's chooser of files says its size in SI units, one decimal under 10, and
     when it changed by how long ago, a folder its count; its plate says its kind with its numbers,
-    its preview and its facts, each number kept to its unit, and only its facts before it's said
+    its preview and its facts, each number kept to its unit, and only its facts before it's said;
+    every word is the launcher's words', and text past what's counted says it's over its count
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -1483,7 +1484,7 @@
     a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
     fetched before they're answered; saving there, its folders take the name, ask before replacing
     one, and answer the path the place stages it at once its folder is made, marked beside it with
-    the program that asked
+    the program that asked; the files selected in one ask are previewed by one file-preview
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

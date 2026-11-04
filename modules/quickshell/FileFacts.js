@@ -3,15 +3,17 @@
 // changed, beside its name on its row, and the plate the drawer shows for
 // it while it's selected, from what file-preview says of it (VKCF3Z,
 // 2026-11-03). Plain JavaScript, held to it by tests/file-facts.qml in
-// Qt's own engine.
+// Qt's own engine. The words it says are the launcher's (launcher/
+// words.json), given it by the chooser as `words` (wordsOf), so each is
+// said in one place (Y2YBTS, 2026-11-03).
 //
 // A number keeps to its unit with a no-break space, so "2.4 MB" never
 // leaves its MB alone on the next line.
 .pragma library
+.import "When.js" as When
 
 const KEPT = "\u00a0";
 const BETWEEN = " \u00b7 ";
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const SECONDS_IN_A_MINUTE = 60;
@@ -22,14 +24,53 @@ const UNITS = [[THOUSAND ** 4, "TB"], [THOUSAND ** 3, "GB"], [THOUSAND ** 2, "MB
     [THOUSAND, "kB"]];
 // Under this a size keeps one decimal: 9.95 rounds to 10, which doesn't.
 const KEEPS_A_DECIMAL = 9.95;
-// A file of text's kind by its own name, where its ending isn't one, by
-// the ending file-preview says; any other is said as its ending.
+// A file of text's kind by its format's own name, where its ending isn't
+// it, by the ending file-preview says; plain text is said as the words
+// say Text, and any other ending as itself.
 const TEXT_NAMED = {
     C: "C", CSS: "CSS", CSV: "CSV", GO: "Go", HTML: "HTML", JS: "JavaScript",
-    JSON: "JSON", LOG: "Log", MARKDOWN: "Markdown", MD: "Markdown", NIX: "Nix",
+    JSON: "JSON", MARKDOWN: "Markdown", MD: "Markdown", NIX: "Nix",
     PY: "Python", QML: "QML", RS: "Rust", SH: "Shell", TOML: "TOML", TS: "TypeScript",
-    TXT: "Text", XML: "XML", YAML: "YAML", YML: "YAML"
+    XML: "XML", YAML: "YAML", YML: "YAML"
 };
+
+// The words it says, each thing's as `of` gives it, as Words.of does, and
+// a day's as `date(date, format)` says it, as Qt.formatDate names days and
+// months in the locale's words: the labels of a plate's facts, its kinds,
+// and what's said of a count and a time.
+function wordsOf(of, date) {
+    const said = id => of(id).said ?? {};
+    return {
+        size: of("file-chooser:size").name,
+        changed: of("file-chooser:changed").name,
+        where: of("file-chooser:where").name,
+        items: of("file-chooser:items").name,
+        folder: of("file-chooser:folder").name,
+        text: of("file-chooser:text").name,
+        file: of("file-chooser:file").name,
+        ago: said("file-chooser:changed"),
+        counts: {
+            items: said("file-chooser:items"),
+            lines: said("file-chooser:text"),
+            pages: said("file-chooser:file")
+        },
+        days: { yesterday: said("file-chooser:changed").yesterday, date }
+    };
+}
+
+// A number in its words' way, "{count} lines", kept to the word after it.
+function filled(said, name, number) {
+    return said.replace(`{${name}} `, `${number}${KEPT}`).replace(`{${name}}`, String(number));
+}
+
+// A count with its one or its many: "1 line", "4 lines"; `more` says
+// there are more than counted, "over 900 lines".
+function counted(count, said, more) {
+    if (more) {
+        return filled(said.more, "count", count);
+    }
+    return filled(count === 1 ? said.one : said.many, "count", count);
+}
 
 // A size in SI units, with one decimal under 10: 12 B, 940 kB, 2.4 MB.
 function weighed(bytes) {
@@ -48,11 +89,11 @@ function weighed(bytes) {
 }
 
 // How many items a folder shows: 14 items, 1 item, or that it's empty.
-function items(count) {
+function items(count, words) {
     if (count === 0) {
-        return "empty";
+        return words.counts.items.none;
     }
-    return `${count}${KEPT}${count === 1 ? "item" : "items"}`;
+    return counted(count, words.counts.items, false);
 }
 
 function twoFigures(number) {
@@ -63,47 +104,37 @@ function clock(at) {
     return `${twoFigures(at.getHours())}:${twoFigures(at.getMinutes())}`;
 }
 
-function sameDay(one, other) {
-    return one.getFullYear() === other.getFullYear() && one.getMonth() === other.getMonth()
-        && one.getDate() === other.getDate();
-}
-
-function day(at, now) {
-    const said = `${at.getDate()}${KEPT}${MONTHS[at.getMonth()]}`;
-    return at.getFullYear() === now.getFullYear() ? said : `${said}${KEPT}${at.getFullYear()}`;
-}
-
-// When it last changed, as its row says it, both in milliseconds: under
-// an hour ago, "12 min ago"; earlier today, "14:32"; this year, "28 Oct";
-// before, "28 Oct 2024". A moment ahead of now, as a clock set wrong
-// gives, is said as today's or its day's.
-function when(changed, now) {
+// When it last changed, as the launcher says when on a row (Y2YBTS,
+// 2026-11-03), both in milliseconds: under a minute, "just now"; under an
+// hour, "12 min ago"; earlier today, "14:32"; else its day as When.js
+// says every day, never broken across lines. A moment ahead of now, as a
+// clock set wrong gives, is said as today's time, or else its day.
+function when(changed, now, words) {
     const since = now - changed;
     if (since >= 0 && since < MINUTE) {
-        return "just now";
+        return words.ago.now;
     }
     if (since >= 0 && since < HOUR) {
-        return `${Math.floor(since / MINUTE)}${KEPT}min ago`;
+        return filled(words.ago.minutes, "minutes", Math.floor(since / MINUTE));
     }
-    const at = new Date(changed);
-    const today = new Date(now);
-    return sameDay(at, today) ? clock(at) : day(at, today);
+    const day = When.day(changed, now, words.days);
+    return day === "" ? clock(new Date(changed)) : day.replace(/ /g, KEPT);
 }
 
 // How much is in it, as its row says: a file's size, or a folder's count
 // once it's known and nothing until then.
-function amount(entry, count) {
+function amount(entry, count, words) {
     if (!entry.folder) {
         return weighed(entry.size ?? 0);
     }
-    return count === undefined || count === null ? "" : items(count);
+    return count === undefined || count === null ? "" : items(count, words);
 }
 
 // What sits beside a file's or a folder's name on its row: its size, or a
 // folder's count once it's known, and when it changed, "2.4 MB · 28 Oct".
-function side(entry, count, now) {
-    return [amount(entry, count), when(entry.modified, now)].filter(part => part !== "")
-        .join(BETWEEN);
+function side(entry, count, now, words) {
+    return [amount(entry, count, words), when(entry.modified, now, words)]
+        .filter(part => part !== "").join(BETWEEN);
 }
 
 // How long a video runs: 0:42, 3:41, 1:02:03.
@@ -117,29 +148,29 @@ function length(seconds) {
 
 // What kind of file it is: its ending, a file of text's by its own name,
 // or, with none, "Text" or "File".
-function kindOf(said) {
+function kindOf(said, words) {
     const text = said.lines !== undefined;
+    if (said.kind === "TXT" && text) {
+        return words.text;
+    }
     if (said.kind !== undefined) {
         return text ? TEXT_NAMED[said.kind] ?? said.kind : said.kind;
     }
-    return text ? "Text" : "File";
-}
-
-function counted(count, one, many) {
-    return `${count}${KEPT}${count === 1 ? one : many}`;
+    return text ? words.text : words.file;
 }
 
 // The eyebrow over its plate: its kind with its numbers, "PNG · 2400 ×
-// 1600", "PDF · 12 pages", "MP4 · 3:41", "Markdown · 4 lines", a
-// picture's numbers only when the picture is the file itself (`path`); a
-// folder's "Folder"; anything else its kind alone.
-function eyebrow(said, path) {
+// 1600", "PDF · 12 pages", "MP4 · 3:41", "Markdown · 4 lines" ("over
+// 900 lines" where file-preview stopped counting), a picture's numbers
+// only when the picture is the file itself (`path`); a folder's "Folder";
+// anything else its kind alone.
+function eyebrow(said, path, words) {
     if (said.items !== undefined) {
-        return "Folder";
+        return words.folder;
     }
-    const kind = kindOf(said);
+    const kind = kindOf(said, words);
     if (said.pages !== undefined) {
-        return `${kind}${BETWEEN}${counted(said.pages, "page", "pages")}`;
+        return `${kind}${BETWEEN}${counted(said.pages, words.counts.pages, false)}`;
     }
     if (said.seconds !== undefined) {
         return `${kind}${BETWEEN}${length(said.seconds)}`;
@@ -148,7 +179,7 @@ function eyebrow(said, path) {
         return `${kind}${BETWEEN}${said.across}${KEPT}\u00d7${KEPT}${said.down}`;
     }
     if (said.count !== undefined) {
-        return `${kind}${BETWEEN}${counted(said.count, "line", "lines")}`;
+        return `${kind}${BETWEEN}${counted(said.count, words.counts.lines, said.more)}`;
     }
     return kind;
 }
@@ -156,11 +187,11 @@ function eyebrow(said, path) {
 // Its first fact: a folder's count, the number alone since its label says
 // what it counts, null until it's said; or a file's size, null while it's
 // unknown.
-function firstFact(folder, size, said) {
+function firstFact(folder, size, said, words) {
     if (folder) {
-        return { label: "Items", value: said ? String(said.items) : null };
+        return { label: words.items, value: said ? String(said.items) : null };
     }
-    return { label: "Size", value: size === undefined ? null : weighed(size) };
+    return { label: words.size, value: size === undefined ? null : weighed(size) };
 }
 
 // What the plate previews: a picture, a file's first lines or a folder's
@@ -184,7 +215,7 @@ function previewOf(said) {
 // Changed and Where. Until file-preview has said (`said` null), it's its
 // facts from the folder read alone, so they draw at once; what's not
 // known yet is null, shown as the drawer's placeholder.
-function plate(file, said, now) {
+function plate(file, said, now, words) {
     const { path, name, where, entry } = file;
     const folder = entry?.folder === true || said?.items !== undefined;
     const changed = said?.changed ?? entry?.modified;
@@ -192,16 +223,19 @@ function plate(file, said, now) {
         eyebrow: "",
         title: name,
         facts: [
-            firstFact(folder, said?.size ?? entry?.size, said),
+            firstFact(folder, said?.size ?? entry?.size, said, words),
             // Said as its row says it, so the two never read as two dates.
-            { label: "Changed", value: changed === undefined ? null : when(changed, now) },
-            { label: "Where", value: where }
+            {
+                label: words.changed,
+                value: changed === undefined ? null : when(changed, now, words)
+            },
+            { label: words.where, value: where }
         ]
     };
     if (said) {
-        shown.eyebrow = eyebrow(said, path);
+        shown.eyebrow = eyebrow(said, path, words);
     } else if (folder) {
-        shown.eyebrow = "Folder";
+        shown.eyebrow = words.folder;
     }
     const preview = previewOf(said);
     if (preview) {

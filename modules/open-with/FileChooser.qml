@@ -27,7 +27,8 @@
 // page, a video's frame, a file's first lines or a folder's first items)
 // and its facts, which draw at once, the preview coming once file-preview
 // has said, one file asked at a time, the latest wanted next (VKCF3Z,
-// 2026-11-03).
+// 2026-11-03), of the one file-preview kept for the ask, so nothing is
+// started for each file selected (Y2YBTS, 2026-11-03).
 //
 // Other providers give it places kept elsewhere, as Google's Drive is
 // (modules/google), by `chooserPlaces(chooser)`: asked once as an ask is
@@ -82,6 +83,11 @@ Provider {
     readonly property bool folders: mode === "save-files" || request.folders === true
     readonly property string start: startOf(request)
     readonly property var filters: request.filters ?? []
+    // The words a file's row and plate say (FileFacts.js), the launcher's,
+    // and days and months as the locale names them, as the launcher says
+    // when everywhere (Y2YBTS, 2026-11-03).
+    readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
 
     // What each folder read holds, by its path: { name, path, folder,
     // size, modified }, and each of those by its own path.
@@ -93,10 +99,11 @@ Provider {
     property var counts: ({})
     property var previews: ({})
     property var askedAt: ({})
-    // The file whose preview is wanted next, while another is asked, and
-    // the folders still to count.
+    // The file whose preview is wanted next, while another is asked, the
+    // folders still to count, and what file-preview is answering now.
     property string previewNext: ""
     property var toCount: []
+    property var outstanding: null
     // The folders stepped into, read beside those on the way to the start.
     property var stepped: []
     readonly property var reading: asking === null ? [] : Array.from(new Set(["/"]
@@ -271,7 +278,8 @@ Provider {
             Object.defineProperty(made, "side", {
                 get: () => {
                     const entry = provider.known[path];
-                    return entry ? FileFacts.side(entry, provider.counts[path], Date.now())
+                    return entry ? FileFacts.side(entry, provider.counts[path], Date.now(),
+                        provider.factWords)
                         : Files.within(path);
                 },
                 enumerable: true,
@@ -290,92 +298,120 @@ Provider {
         if (settings.preview && (said === undefined || entry && askedAt[path] !== entry.modified))
             Qt.callLater(provider.preview, path);
         const file = { path: path, name: Files.named(path), where: Files.within(path), entry: entry };
-        return FileFacts.plate(file, said || null, Date.now());
+        return FileFacts.plate(file, said || null, Date.now(), factWords);
     }
 
-    // Asks file-preview about a file, unless it's asking about another,
-    // when this one is asked next, in place of any wanted before it.
+    // Wants file-preview's word on a file, asked once it's answered what
+    // it's asked now, in place of any wanted before it.
     function preview(path) {
         const entry = known[path] ?? null;
         if (asking === null || path in previews && (!entry || askedAt[path] === entry.modified))
             return;
-        if (previewing.running) {
-            previewNext = path;
-            return;
-        }
-        askedAt = Object.assign({}, askedAt, { [path]: entry?.modified });
-        previewing.asked = path;
-        previewing.command = (settings.preview ?? []).concat(["show", path]);
-        previewing.running = true;
+        previewNext = path;
+        askNext();
     }
 
-    function previewed(path, text, code) {
-        let said = false;
-        if (code === 0) {
-            try {
-                said = JSON.parse(text);
-            } catch (error) {
-                said = false;
-            }
-        }
-        if (asking !== null)
-            previews = Object.assign({}, previews, { [path]: said });
-        const next = previewNext;
-        previewNext = "";
-        if (next !== "")
-            Qt.callLater(provider.preview, next);
-    }
-
-    Process {
-        id: previewing
-
-        property string asked: ""
-
-        stdout: StdioCollector {
-            id: previewSaid
-        }
-        onExited: code => Qt.callLater(provider.previewed, previewing.asked, previewSaid.text, code)
-    }
-
-    // Counts what each folder inside one just read shows, one folder at a
-    // time, so a folder's row can say it.
+    // Wants what each folder inside one just read shows counted, so a
+    // folder's row can say it.
     function count(path) {
-        if (!settings.preview || asking === null)
+        if (!settings.preview || asking === null || toCount.includes(path))
             return;
-        if (counting.running) {
-            if (!toCount.includes(path))
-                toCount = toCount.concat([path]);
-            return;
-        }
-        counting.asked = path;
-        counting.command = (settings.preview ?? []).concat(["items", path]);
-        counting.running = true;
+        toCount = toCount.concat([path]);
+        askNext();
     }
 
-    function countsHeard(text, code) {
-        if (code === 0 && asking !== null) {
-            try {
-                counts = Object.assign({}, counts, JSON.parse(text));
-                changed();
-            } catch (error) {
-                // Nothing counted: each folder's row says only when it changed.
+    // Asks file-preview one thing at a time, the file wanted first, then
+    // the folders to count, starting it again if it's stopped. A path
+    // with a line end in it can't be asked as a line, so it's said to
+    // have nothing to show.
+    function askNext() {
+        if (!settings.preview || asking === null || outstanding !== null)
+            return;
+        if (!previewer.ready) {
+            previewer.running = true;
+            return;
+        }
+        if (previewNext !== "") {
+            const path = previewNext;
+            previewNext = "";
+            askedAt = Object.assign({}, askedAt, { [path]: known[path]?.modified });
+            put("show", path);
+        } else if (toCount.length > 0) {
+            const path = toCount[0];
+            toCount = toCount.slice(1);
+            put("items", path);
+        }
+    }
+
+    function put(verb, path) {
+        outstanding = { verb: verb, path: path };
+        if (path.includes("\n"))
+            Qt.callLater(provider.previewerSaid, "");
+        else
+            previewer.write(`${verb} ${path}\n`);
+    }
+
+    // file-preview's answer to what it was asked, nothing where it
+    // couldn't say, then the next thing to ask.
+    function previewerSaid(line) {
+        const was = outstanding;
+        outstanding = null;
+        if (was === null || asking === null)
+            return;
+        let said = false;
+        try {
+            said = JSON.parse(line);
+        } catch (error) {
+            said = false;
+        }
+        if (said && "error" in said)
+            said = false;
+        if (was.verb === "show") {
+            previews = Object.assign({}, previews, { [was.path]: said });
+        } else if (said) {
+            counts = Object.assign({}, counts, said);
+            changed();
+        }
+        Qt.callLater(provider.askNext);
+    }
+
+    // One file-preview for an ask, started as the first thing is wanted of
+    // it, its folders read as it waits, and stopped as the ask ends
+    // (forget), asked a line at a time, so nothing is started for each
+    // file selected or folder read.
+    // One that stops is started again for what's wanted next; one that
+    // stops before answering anything is given up on for what's wanted,
+    // so a file-preview that can't start isn't started again and again.
+    Process {
+        id: previewer
+
+        property bool ready: false
+        property bool answered: false
+
+        command: (provider.settings.preview ?? []).concat(["serve"])
+        stdinEnabled: true
+        stdout: SplitParser {
+            onRead: line => {
+                previewer.answered = true;
+                provider.previewerSaid(line);
             }
         }
-        const next = toCount[0];
-        toCount = toCount.slice(1);
-        if (next !== undefined)
-            Qt.callLater(provider.count, next);
-    }
-
-    Process {
-        id: counting
-
-        property string asked: ""
-
-        stdout: StdioCollector {
-            id: countSaid
+        onStarted: {
+            ready = true;
+            answered = false;
+            Qt.callLater(provider.askNext);
         }
-        onExited: code => Qt.callLater(provider.countsHeard, countSaid.text, code)
+        onExited: {
+            const gaveUp = !answered;
+            ready = false;
+            if (provider.outstanding !== null)
+                provider.previewerSaid("");
+            if (gaveUp) {
+                provider.previewNext = "";
+                provider.toCount = [];
+            }
+            Qt.callLater(provider.askNext);
+        }
     }
 
     // What every folder held says, the one held deepest: a folder here by
@@ -1136,6 +1172,8 @@ Provider {
         previews = {};
         askedAt = {};
         toCount = [];
+        outstanding = null;
+        previewer.running = false;
     }
 
     function withdrawn(reply) {

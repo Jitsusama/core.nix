@@ -1307,12 +1307,15 @@ works the same way everywhere.
   previews for files ... no clue about sizes or when last updated"). In
   the file picker, a row in the folder shown says its size in SI units,
   one decimal under 10 ("940 kB", "2.4 MB"), or a folder its count, and
-  when it changed: minutes ago under an hour, its time today, its day
-  this year, and its day and year before that, muted in the side slot. A
+  when it changed, as the launcher says when on a row: "just now", then
+  minutes ago under an hour, its time today, "yesterday", its weekday
+  within six days, its day this year, and its day and year before that,
+  the locale's names for days and months, muted in the side slot. A
   row listed away from its folder says its folder instead. The drawer is
   its preview (VKCF3Z, 2026-11-03): the eyebrow its kind with its numbers
   ("PNG · 2400 × 1600", "PDF · 12 pages", "MP4 · 3:41", a text's by
-  its kind's own name, "Markdown · 4 lines"), its name, then
+  its kind's own name, "Markdown · 4 lines", or "over N lines" past
+  the first 64 MB), its name, then
   a picture as wide as the plate in its own shape (a picture itself, a
   PDF's first page, a video's frame a tenth of the way in), a text's
   first whole lines or a folder's first items, quiet, in the mono on the
@@ -1321,7 +1324,10 @@ works the same way everywhere.
   Anything else shows its facts
   alone, with no stand-in. The facts draw at once from the folder read;
   the preview fades in once it's made, kept by path and change, and no
-  key ever waits on it.
+  key ever waits on it, nor starts a program: one file-preview answers
+  the whole ask, a line at a time, and what it's made is pruned past
+  128 MB, the longest unshown first. Every word the rows and the plate
+  say is the launcher's own, in its words.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected
