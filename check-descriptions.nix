@@ -666,6 +666,11 @@
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
   '';
+  mpv-keys-go-where-they-say = ''
+    mpv's h, l, j and k seek where Left, Right, Down and Up do, gg and G go to the start and the end, J
+    and L do what j and l did, y and yy copy the frame as a PNG, f and Escape go in and out of full
+    screen, Space pauses and q closes it
+  '';
   mpv-says-the-file-it-plays-now = ''
     mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
   '';
@@ -1282,8 +1287,11 @@
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
-    End and Home to the last and first, and the picture it opened with, and none after, is said to
-    the desktop's list of files opened lately
+    End, Home, G and gg to the last and first, l and h as → and ←, a number before G to that picture
+    and before a move that many, j and k move a large picture as ↓ and ↑ do, dd and Delete trash it
+    and u brings it back, y and yy copy it, f and Escape go in and out of full screen, the gallery
+    answers the same keys, and the picture it opened with, and none after, is said to the desktop's
+    list of files opened lately
   '';
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
@@ -2321,8 +2329,11 @@
     in it
   '';
   zathura-keys-go-where-they-say = ''
-    zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
-    and the question mark key asks the launcher for the keys
+    every key zathura lists lands where it says: Left, Right, J, K and the page keys turn the pages,
+    Home, End, gg, G and a count before G go to that page, j, k, h, l, Ctrl+D, Ctrl+U, Ctrl+F and
+    Ctrl+B scroll as their arrows do, Tab, Ctrl+O and Ctrl+I go through the jumps, m and ' mark
+    and go back, / n N and Space find, the question mark key asks the launcher for the keys, and q
+    closes it
   '';
   zathura-says-the-document-it-has-open = ''
     zathura says the document it has open, read by its Recent's command as its process and whole
