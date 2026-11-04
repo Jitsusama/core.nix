@@ -619,6 +619,21 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
     desktop.close_launcher()
 
 
+def test_the_camera_panel_for_its_shots(desktop: Desktop) -> None:
+    """The camera's panel at 2 and at 1.5, for its shots."""
+    camera = Camera(desktop)
+    machine = desktop.machine
+    output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
+    for scale in ["2", "1.5"]:
+        desktop.as_account(f"niri msg output {output} scale {scale}")
+        machine.sleep(2)
+        camera.viewfinder("picture from the camera")
+        machine.sleep(8)
+        machine.screenshot(f"camera-at-{scale}")
+        machine.send_key("q")
+        camera.gone()
+
+
 def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop: Desktop,
 ) -> None:
