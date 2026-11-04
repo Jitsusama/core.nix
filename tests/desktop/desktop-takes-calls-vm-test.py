@@ -18,7 +18,6 @@ import desktop_session
 import pytest
 from desktop_session import (
     FROM_THE_EDGE,
-    LAUNCHER_OPEN,
     MARGIN,
     NEARLY_ALL,
     NOTICES,
@@ -106,8 +105,7 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     assert desktop.showing()["selected"]["verb"] == "more", desktop.showing()["selected"]
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Leave the Call" in shown["rows"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     with desktop.told("shows card Someone joined the call"):
         desktop.tuple_streams(call | {"participants": [A_GUEST]})
     desktop.photograph("notice-joined")
@@ -122,13 +120,13 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
     # stream says the call's over. Super+N again opens the history on its
     # first row, the newest notice, and the right arrow steps into its
-    # offers, Return's own Open first.
+    # offers from normal mode, Return's own Open first.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Someone left the call")
     )
-    machine.send_key("right")
+    desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the Call"])
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the Call")
@@ -160,20 +158,18 @@ def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(
     desktop.wait_for_surface("margin")
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
-    machine.send_key("esc")
+    desktop.close_launcher()
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
 
 def test_a_copied_calls_link_can_be_joined_until_something_else_is_copied(desktop: Desktop) -> None:
     """A copied call's link can be joined until something else is copied."""
-    machine = desktop.machine
     link = "https://tuple.app/c/from-a-chat"
     desktop.as_account(f"echo -n 'pair with me? {link}' | wl-copy > /dev/null 2>&1")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("join", selecting="Join the call")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
 
     # A screenshot is copied as an image alone, with no text to read.
     desktop.as_account("printf '\\211PNG\\r\\n' | wl-copy --type image/png > /dev/null 2>&1")
@@ -187,8 +183,7 @@ def test_a_copied_calls_link_can_be_joined_until_something_else_is_copied(deskto
         return row is None or row["is"] != "tuple:join"
 
     desktop.launcher_until(joins_nothing)
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_tuples_windows_find_their_places_the_face_in_a_corner_a_shared_screen_wide(

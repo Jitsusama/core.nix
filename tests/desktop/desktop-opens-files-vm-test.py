@@ -17,12 +17,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, STARTING, drawn_at, retry
+from desktop_session import STARTING, drawn_at, retry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from desktop_session import Desktop, Json
+    from desktop_session import Desktop
     from test_driver.machine import BaseMachine
 
 
@@ -103,16 +103,14 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.launcher_until(lambda shown: shown["rows"][:1] == [taken])
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Edit in GIMP", "Copy the Path"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     # GIMP holds the newest screenshot among its own acts.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("edit the newest", selecting="Edit the Newest Screenshot")
@@ -134,9 +132,10 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
 # A program asks the portal what to open a picture with, as one does when
 # more than one app could, and the launcher asks rather than GNOME's
 # dialog, holding the apps the portal offers. Return opens the picture
-# with the one taken, and the portal says it opened; asked again, Escape
-# opens nothing, and the portal says it was refused; and each ask's
-# socket goes once it's answered. Each time the apps offered change
+# with the one taken, and the portal says it opened; asked again,
+# Escape until the launcher closes, the first giving normal mode, opens
+# nothing, and the portal says it was refused; and each ask's socket
+# goes once it's answered. Each time the apps offered change
 # while it waits, as the portal says when apps are installed, so a
 # pick and a refusal still answer the ask as it was first held.
 
@@ -210,8 +209,7 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
 
     ask_portal()
     offer_only_swayimg()
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     machine.wait_until_succeeds(f"grep -qx 1 {portal_said}", timeout=timedelta(seconds=60))
     machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
     machine.fail(opened_with)
@@ -223,8 +221,9 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
 # GTK's dialog: it opens in that folder, its path the program's title and
 # then the folder, every folder on the way held above it. What's typed
 # finds a file there and Return opens it; saving, Return saves as the name
-# the program gave; and Escape chooses nothing. The portal hands the
-# program each path picked, and each ask's socket goes once it's answered.
+# the program gave; and Escape, pressed until the launcher closes,
+# chooses nothing. The portal hands the program each path picked, and
+# each ask's socket goes once it's answered.
 
 
 def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Desktop) -> None:
@@ -283,7 +282,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     answered("0", f"file://{notes}/saved.md")
 
     choose("open")
-    machine.send_key("esc")
+    desktop.close_launcher()
     answered("1")
     desktop.as_account(f"rm -r {notes}")
     # Three asks later, the shell watches no more than it did before them.
@@ -314,8 +313,7 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Design Review"
         )
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
         machine.succeed(f"rm -f {chose}")
         desktop.as_account(f"mkdir -p {notes} && touch {notes}/plan.md")
         desktop.as_account(
@@ -367,8 +365,7 @@ def test_the_launchers_picker_saves_into_google_drive_for_the_portal(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Design Review"
         )
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
         machine.succeed(f"rm -f {chose}")
         desktop.as_account(f"rm -rf {staged} && mkdir -p {notes}")
         desktop.as_account(
@@ -400,20 +397,7 @@ def test_the_launchers_picker_saves_into_google_drive_for_the_portal(
     finally:
         # An ask left open would hold the launcher for the next subtest.
         desktop.as_account("systemctl --user stop save-into-drive.service || true")
-        for _ in range(6):
-            before = desktop.showing()
-            if not before["open"]:
-                break
-
-            def backed(shown: Json, before: Json = before) -> bool:
-                """Whether Escape closed the launcher, backed out a step or cleared the typing."""
-                return not shown["open"] or (shown["path"], shown["typed"]) != (
-                    before["path"],
-                    before["typed"],
-                )
-
-            machine.send_key("esc")
-            desktop.launcher_until(backed)
+        desktop.close_launcher()
         desktop.as_account("systemctl --user stop google.service")
         desktop.as_account(f"rm -rf {notes} {staged}")
 

@@ -91,8 +91,8 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     assert (drawn["title"], drawn["body"]) == ("Build finished", "the laptop is ready"), drawn
     desktop.photograph("launcher-notices")
     # Nothing sent it that can be gone to, so Return steps in, as the right
-    # arrow does, where copying what it said comes last of its acts, never
-    # first.
+    # arrow does in normal mode, where copying what it said comes last of
+    # its acts, never first.
     desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (
@@ -117,7 +117,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
     desktop.photograph("launcher-notices-all")
-    machine.send_key("esc")
+    desktop.close_launcher()
 
 
 # How far Shift and an arrow scroll the launcher's drawer: three of its lines of 24, so what
@@ -161,7 +161,7 @@ def test_a_notices_drawer_says_who_sent_it_and_shift_scrolls_it(desktop: Desktop
     assert round(title - scrolled["drawer"]["lines"]["title"]) == SCROLLED, scrolled["drawer"]
     machine.send_key("shift-up")
     desktop.launcher_until(lambda shown: shown["drawer"]["scrolled"] == 0)
-    machine.send_key("esc")
+    desktop.close_launcher()
 
 
 def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
@@ -464,13 +464,13 @@ def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_lau
         machine.send_key("left")
     # Super+N again hands on to the history, which opens on its first row,
     # the newest notice, as every place opens on its first; the right arrow
-    # steps into its acts, which hold the same.
+    # steps into its acts from normal mode, and they hold the same.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
     )
-    machine.send_key("right")
+    desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
