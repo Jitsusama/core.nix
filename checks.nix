@@ -296,6 +296,10 @@ let
       inherit self pkgs;
       area = "starts-clean";
     };
+    vm-desktop-shows-then-rests = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "shows-then-rests";
+    };
     vm-desktop-launcher-goes-places = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "launcher-goes-places";
@@ -913,7 +917,6 @@ gather (
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
             "tests/desktop/desktop-says-what-happens-vm-test.py 38"
-            "tests/desktop/desktop-starts-clean-vm-test.py 28"
             "tests/screens-vm-test.py 36"
             "tests/vm/guide/guide-install-vm-test.py 26"
             "tests/wifi-vm-test.py 40"

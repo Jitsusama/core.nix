@@ -1433,7 +1433,8 @@
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
     colours and copies them, says once and quietly what needs a network couldn't, holds an
     answer's row from the keystroke, finds the power acts by their names and the names they had
-    and asks before they act, and warns of nothing it drew
+    and asks before they act, draws nothing closed as a minute turns though it says the new time
+    as it opens, draws nothing left open and still, its caret steady, and warns of nothing it drew
   '';
   the-launcher-asks-a-fresh-pi = ''
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
@@ -2055,8 +2056,8 @@
   vm-desktop-launcher-draws-still = ''
     the launcher draws only what changes: a list scrolled by hand stays put as it refreshes, the
     selection glides to its row and stays drawn on it, a long name reads on while selected, a burst
-    of changes is taken together, no letter typed after its chord is lost, and nothing draws while
-    it's left still
+    of changes is taken together, no letter typed after its chord is lost, and nothing moves unless
+    it changes
   '';
   vm-desktop-launcher-finds-sessions = ''
     the launcher finds pi's sessions and quests and goes to their windows, talks to an orchestrator
@@ -2107,10 +2108,15 @@
     notices come, go and are acted on, and the margin, What's on, Tuple's calls and caps lock say
     what's happening and answer the keys
   '';
+  vm-desktop-shows-then-rests = ''
+    the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
+    shell's, and once nothing shows the shell draws nothing and barely wakes, behind the lock too
+    as its files are written
+  '';
   vm-desktop-starts-clean = ''
-    the desktop boots without an ordering cycle and its shell without an error, the shell draws
-    nothing and barely wakes while nothing shows, the meters answer the keys, programs wear the
-    theme, and swipes and Bluetooth's agent work
+    the desktop boots without an ordering cycle and its shell without an error, niri alone keeps
+    its priority, programs wear the theme, the wallpaper stands behind the workspaces, and swipes
+    and Bluetooth's agent work
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of

@@ -1,10 +1,10 @@
 """The launcher answers what's typed into it, on the account's whole shell on a nested niri.
 
 modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts once a run. Each case here needs only the launcher and what
-it's typed, so none boots a machine; a case needing the machine's battery, lights, services,
-other programs or niri's binds stays in tests/desktop/. Every test starts with the launcher
-closed and leaves it so, so any test runs alone.
+shell launcher_on_niri.py starts once a run. Each case here needs only the launcher, what it's
+typed and what it draws, so none boots a machine; a case needing the machine's battery, lights,
+services, other programs or niri's binds stays in tests/desktop/. Every test starts with the
+launcher closed and leaves it so, so any test runs alone.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
@@ -247,6 +249,63 @@ def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> N
     assert len(below) == 1, f"the rows below the answer moved: {below}"
     shell.send_key("esc")
     shell.launcher_closed()
+
+
+# How long the closed launcher is watched across a minute's turn, from 45 s past it, and how
+# long the clock may take to reach that.
+QUIET = timedelta(seconds=30)
+FROM_SECOND = 45
+TURNING = timedelta(seconds=70)
+
+
+def test_the_closed_launcher_draws_nothing_as_the_time_it_would_show_turns(shell: Shell) -> None:
+    """The closed launcher draws nothing as a minute turns, though its foot says the time.
+
+    Qt draws a window for any change inside it, clear or hidden alike, so the closed
+    launcher drew a frame nobody saw each time its foot's facts changed: the time each
+    minute, the lag, the volume (2026-11-01). The sandbox has no volume to change, so the
+    minute and the lag are what's watched here.
+    """
+    frames = f"qs -p {shell.folder} ipc call frames"
+    turning = time.monotonic() + TURNING.total_seconds()
+    while int(now("+%S")) < FROM_SECOND:
+        assert time.monotonic() < turning, f"the clock never reached {FROM_SECOND} s past a minute"
+        time.sleep(0.5)
+    shell.as_account(f"{frames} start")
+    # The span measured, across the turn of the minute, not a wait for something to happen.
+    time.sleep(QUIET.total_seconds())
+    drawn = json.loads(shell.as_account(f"{frames} said"))
+    assert "launcher" not in drawn, f"the closed launcher drew as the minute turned: {drawn}"
+    # And it says the time it's now as it opens, in the opening's own report, which is made
+    # before anything else follows the opening. The minute has 45 s left to turn in.
+    turned = now("+%H:%M")
+    since = shell.mark()
+    shell.as_account(shell.ipc("toggle"))
+    shell.reported("stands ", lambda rest: turned in rest, since)
+    shell.launcher_ready()
+    shell.send_key("esc")
+    shell.launcher_closed()
+
+
+def test_the_launcher_left_still_draws_nothing(shell: Shell) -> None:
+    """The launcher left open and still draws nothing, its caret steady rather than blinking."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.send_chars("sou")
+    shell.launcher_until(lambda shown: shown["typed"] == "sou")
+    # A blinking caret would draw six times in the three seconds.
+    drawn = shell.drawn_held_still()
+    still = shell.frames()
+    # A letter draws, so the count sees frames at all.
+    shell.send_chars("n")
+    shell.launcher_until(lambda shown: shown["typed"] == "soun")
+    counting = time.monotonic() + 10
+    while shell.frames() <= still:
+        assert time.monotonic() < counting, "a letter drew no frame, so none are counted"
+        time.sleep(0.05)
+    shell.send_key("esc")
+    shell.launcher_closed()
+    assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
