@@ -17,7 +17,9 @@ from jeepney.io.blocking import Proxy, open_dbus_connection
 # The request's handle, which the portal's answer is sent on.
 HANDLE = "chosen"
 # How long the portal may take to answer, in seconds: someone has to choose.
-ANSWERING = 120
+# A test ends each ask itself, so this only bounds one left behind; a loaded
+# builder spent over two minutes previewing one folder's files at 1.5.
+ANSWERING = 600
 
 
 def say(line: str) -> None:
