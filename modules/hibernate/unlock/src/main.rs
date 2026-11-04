@@ -277,58 +277,54 @@ fn notice(why: &Why, slept: bool) -> Notice {
     let (title, said, todo) = match why {
         Why::Memory => (
             "Not enough memory to hibernate".to_owned(),
-            Some("Memory was too full to copy before writing it to the swap file.".to_owned()),
+            "Memory was too full to copy before writing it to the swap file.".to_owned(),
             close.to_owned(),
         ),
         Why::SwapGone => (
             "No swap file to hibernate to".to_owned(),
-            Some("The swap file that memory is written to wasn't there.".to_owned()),
+            "The swap file that memory is written to wasn't there.".to_owned(),
             "Put it to sleep instead: hibernating again would fail the same way.".to_owned(),
         ),
         Why::SwapFull => (
             "Not enough swap to hibernate".to_owned(),
-            Some("The swap file had no room left for memory.".to_owned()),
+            "The swap file had no room left for memory.".to_owned(),
             close.to_owned(),
         ),
         Why::Device(driver) => (
             format!("{driver} wouldn't let it hibernate"),
-            Some(format!("The driver {driver} refused to stop its device.")),
+            format!("The driver {driver} refused to stop its device."),
             again.to_owned(),
         ),
         Why::Program(program) => (
             format!("{program} wouldn't let it hibernate"),
-            Some(format!("{program} wouldn't pause.")),
+            format!("{program} wouldn't pause."),
             format!("Close {program}, then hibernate again."),
         ),
         Why::Refused => (
             "A device wouldn't let it hibernate".to_owned(),
-            Some("Something refused to stop, and the kernel didn't say what.".to_owned()),
+            "Something refused to stop, and the kernel didn't say what.".to_owned(),
             again.to_owned(),
         ),
         Why::Unwritten => (
             "Hibernation couldn't write memory".to_owned(),
-            Some("Memory couldn't be written to the swap file.".to_owned()),
+            "Memory couldn't be written to the swap file.".to_owned(),
             again.to_owned(),
         ),
         Why::Woken => (
             "Woken while hibernating".to_owned(),
-            Some(
-                "Something woke the laptop as it went down: a key, the lid or a cable.".to_owned(),
-            ),
+            "Something woke the laptop as it went down: a key, the lid or a cable.".to_owned(),
             "Hibernate again, and leave it be until it's off.".to_owned(),
         ),
         Why::Unsaid => (
             "Hibernation didn't finish".to_owned(),
-            None,
+            "The kernel didn't say why.".to_owned(),
             again.to_owned(),
         ),
     };
-    let body = said
-        .into_iter()
-        .chain([kept.to_owned(), todo])
-        .collect::<Vec<_>>()
-        .join(" ");
-    Notice { title, body }
+    Notice {
+        title,
+        body: format!("{said} {kept} {todo}"),
+    }
 }
 
 /// What a rescue does once a hibernation rolled back.
@@ -350,6 +346,13 @@ fn rescue(lid_shut: bool, tried_again: bool, why: &Why) -> Rescue {
         (true, false) => Rescue::HibernateAgain,
         (true, true) => Rescue::PowerOff,
     }
+}
+
+/// What follows the rescue asking the laptop to sleep: nothing once it
+/// sleeps, and off when it couldn't, so a laptop with its lid shut is never
+/// left on in a bag.
+fn after_asking_to_sleep(slept: bool) -> Option<Rescue> {
+    (!slept).then_some(Rescue::PowerOff)
 }
 
 /// Whether a lid's `/proc/acpi/button/lid/*/state` says it's shut.
@@ -645,8 +648,7 @@ fn rescue_now(why: &Why) {
             eprintln!(
                 "hibernate-unlock: the lid is shut and it rolled back twice, so it powers off"
             );
-            let _ = fs::remove_file(TRIED_AGAIN);
-            let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
+            power_off();
         }
         Rescue::Sleep => {
             eprintln!(
@@ -655,7 +657,13 @@ fn rescue_now(why: &Why) {
             );
             let _ = fs::remove_file(TRIED_AGAIN);
             say_to_each_session(&notice(why, true));
-            let _ = said("systemctl", &["suspend", "--check-inhibitors=no"]);
+            let slept = said("systemctl", &["suspend", "--check-inhibitors=no"]).is_some();
+            if after_asking_to_sleep(slept) == Some(Rescue::PowerOff) {
+                eprintln!(
+                    "hibernate-unlock: the lid is shut and it couldn't sleep, so it powers off"
+                );
+                power_off();
+            }
         }
         Rescue::Say => {
             eprintln!("hibernate-unlock: the lid is open, so it says so");
@@ -663,6 +671,11 @@ fn rescue_now(why: &Why) {
             say_to_each_session(&notice(why, false));
         }
     }
+}
+
+fn power_off() {
+    let _ = fs::remove_file(TRIED_AGAIN);
+    let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
 }
 
 fn main() -> ExitCode {
@@ -892,7 +905,7 @@ mod tests {
             (
                 Why::Unsaid,
                 "Hibernation didn't finish",
-                format!("{kept} {again}"),
+                format!("The kernel didn't say why. {kept} {again}"),
             ),
         ];
         for (why, title, body) in said {
@@ -949,6 +962,12 @@ mod tests {
             assert_eq!(rescue(true, false, &why), Rescue::Sleep, "{why:?}");
             assert_eq!(rescue(true, true, &why), Rescue::Sleep, "{why:?}");
         }
+    }
+
+    #[test]
+    fn a_laptop_that_cannot_sleep_powers_off() {
+        assert_eq!(after_asking_to_sleep(true), None);
+        assert_eq!(after_asking_to_sleep(false), Some(Rescue::PowerOff));
     }
 
     #[test]
