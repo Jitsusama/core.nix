@@ -80,7 +80,7 @@ onLinux {
       touch $out
     '';
 
-  # The documents read from the program's file, which program opens each
+  # The documents read from the program's state, which program opens each
   # kind, what a document's row says and its details are Drive.js's, and
   # which saves into Drive are told and how is Saves.js's, run in Qt's own
   # engine (tests/drive.qml).
@@ -102,7 +102,7 @@ onLinux {
       touch $out
     '';
 
-  # Reading the program's file is Google.js's, and when mail came and the
+  # Reading the daemon's records is Google.js's, and when mail came and the
   # lines marking it read or archiving it Mail.js's, run in Qt's own engine
   # (tests/mail.qml).
   the-shell-reads-the-mail =

@@ -1,26 +1,39 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 // Joel's Google account, as the shell knows it: what the google program
-// keeps of it (src/state.rs), read from the file it leaves beside its
-// socket, google.json, which it replaces whole whenever the state changes.
-// Calendar.qml reads the meetings from here and the mail provider the mail.
-// Until the program runs, as on a machine nobody signed in to Google on,
-// there's no file, so the account is "none", there's nothing held and
-// nothing shows; nothing is tried again and again, since the file is
-// watched.
+// keeps of it (src/state.rs), held over one connection to its daemon
+// (src/daemon.rs), which says each meeting, piece of mail and document,
+// and how the account stands, as a record of its own, and each as it
+// changes. Calendar.qml reads the meetings from here and the mail
+// provider the mail. On a machine nobody signed in to Google on there's
+// no socket, so the account is "none", there's nothing held and nothing
+// shows; Daemon.qml waits for the socket rather than trying it again and
+// again.
 //
-// `ask` hands the program a line on its socket (src/ask.rs), connecting
-// only to ask; what changes comes back in the file.
+// `ask` hands the program a line it reads (src/ask.rs), as the daemon's
+// act; what changes comes back in the records.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Google.js" as Said
 
 Singleton {
     id: root
 
-    readonly property string told: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.json`
-    readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.sock`
+    Daemon {
+        id: google
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/google.sock`
+        kind: ["meeting", "mail", "file", "account"]
+        // What Google held may not be Joel's to see once it answers again,
+        // and a meeting cancelled in the gap would otherwise stay.
+        keptThroughGap: false
+    }
+
+    // The account as the program keeps it, gathered once a change; none
+    // while the daemon isn't answering (Google.js's gathered).
+    readonly property var said: google.revision >= 0
+        ? Said.gathered(google.held, google.state === "answering") : null
+    onSaidChanged: hear(said)
 
     // "none", "signedOut", "unreachable" or "ready", as the program says.
     property string account: "none"
@@ -102,8 +115,7 @@ Singleton {
         return Said.downloading(drive, file, since);
     }
 
-    function hear(line) {
-        const said = Said.heard(line);
+    function hear(said) {
         if (!said)
             return;
         // Only what changed, since a part set again remakes all that reads
@@ -129,59 +141,11 @@ Singleton {
         return Said.withThem(thing, emails);
     }
 
-    // The program gone, as it is once it stops, is no account: what it held
-    // may not be Joel's to see any more.
-    function forget() {
-        texts = {};
-        account = "none";
-        meetings = [];
-        mail = [];
-        unread = null;
-        documents = [];
-        heard = null;
-        fetched = null;
-        meet = { granted: false, made: null };
-        drive = { listings: [], downloads: [], uploads: [] };
-    }
-
-    // Asks the program one thing, a line its ask.rs reads. It's running
-    // whenever there's something to ask about.
+    // Asks the program one thing, a line its ask.rs reads, as the daemon's
+    // act. It's running whenever there's something to ask about; while the
+    // daemon isn't answering, what's asked is let go, as nothing is there
+    // to take it.
     function ask(line) {
-        asks = asks.concat([line]);
-        asking.connected = true;
-    }
-
-    // What's to be asked of the program, said once the socket connects.
-    property var asks: []
-
-    FileView {
-        path: root.told
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: root.hear(text())
-        onLoadFailed: root.forget()
-    }
-
-    // Connected only to ask: what's waiting is written, and the connection
-    // let go, since what the program says back comes in the file. One that
-    // won't connect lets what's waiting go, as the program isn't there to
-    // take it.
-    Socket {
-        id: asking
-        path: root.socket
-        onConnectionStateChanged: {
-            if (!connected)
-                return;
-            for (const ask of root.asks)
-                write(ask);
-            flush();
-            root.asks = [];
-            Qt.callLater(() => asking.connected = false);
-        }
-        onError: {
-            root.asks = [];
-            connected = false;
-        }
+        google.ask({ ask: "act", act: JSON.parse(line) }, null);
     }
 }

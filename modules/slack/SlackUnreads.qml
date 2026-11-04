@@ -16,8 +16,7 @@ Singleton {
         id: slack
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/slack.sock`
-        kind: "slack-unread"
-        watching: ({ kind: ["slack-unread", "slack-recent", "slack-account"] })
+        kind: ["slack-unread", "slack-recent", "slack-account"]
         keptThroughGap: false
     }
 

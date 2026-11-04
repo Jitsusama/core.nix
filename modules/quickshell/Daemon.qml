@@ -28,9 +28,11 @@ Scope {
 
     // Its socket, as the daemon's unit makes it.
     required property string socket
-    // The kind of record it holds, watched whole unless `watching` narrows
-    // it.
-    required property string kind
+    // The kind of record it holds, or a list of kinds, as Google's daemon
+    // holds meetings, mail, files and its account over one connection;
+    // sent as given in both watches, and watched whole unless `watching`
+    // narrows it.
+    required property var kind
     // What narrows the watch of its kind, as the daemon reads it, such as
     // `{ listed: true }` for only those a source lists, so a kind with
     // thousands of records holds only the few shown with nothing typed.

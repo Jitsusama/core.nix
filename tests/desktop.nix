@@ -627,7 +627,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
         # The google program would ask Google, as an account nobody signed
         # in to in the VM; the test starts the stand-in when it wants it.
-        systemd.user.services.google.Service.ExecStart = lib.mkForce "${standInGoogle} %t/google.sock";
+        systemd.user.services.google.Service.ExecStart =
+          lib.mkForce "${standInGoogle} %t/daemons/google.sock";
         # tuple-call follows a stand-in for Tuple's command, whose stream
         # says what the test writes (desktop/tuple-stand-in.sh), since no
         # call can be made in the VM.

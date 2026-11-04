@@ -1693,7 +1693,8 @@
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
-    key, and what was held stays through a gap, unless the client lets it go there
+    key, what was held stays through a gap unless the client lets it go there, and a client of two
+    kinds names both in every watch
   '';
   the-shell-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
@@ -1708,8 +1709,8 @@
     alone
   '';
   the-shell-reads-the-documents = ''
-    the shell reads the documents from the google program's file, none from a line from before
-    them, knows which Google program opens each kind, and says who owns a document and when Joel
+    the shell reads the documents from the google program's state, none from one saying none,
+    knows which Google program opens each kind, and says who owns a document and when Joel
     last opened it beside its title, with its details for the drawer; reads the Drive folders
     listed and the downloads, finding each folder asked together, writes the lines that list a
     folder and download a file, a save alone saying where, and says how the newest download asked
@@ -1722,10 +1723,10 @@
     file alone
   '';
   the-shell-reads-the-mail = ''
-    the shell reads the google program's whole state from its file, a line from before mail
-    included, and nothing from half a line; says when mail came in words, and what its row and its
-    details say, who was copied and the files it carries among them, each file by its kind and size;
-    writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
+    the shell gathers the google program's whole state from its daemon's records, each kind in
+    its order, a signed-out account alone, and no account once the daemon stops answering; says
+    when mail came in words, and what its row and its details say, who was copied and the files it
+    carries among them, each file by its kind and size; writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
     everyone else a meeting names; writes the lines that mark mail read or unread again or archive
     it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
     meeting and says how one asked for stands

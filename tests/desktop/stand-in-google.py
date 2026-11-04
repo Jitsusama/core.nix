@@ -1,15 +1,17 @@
-"""Stand in for the google program, which would ask Google, on the socket it keeps.
+"""Stand in for the google program, which would ask Google, on its daemon's socket.
 
-It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the whole state as one
-line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
-that connects. The account is ready, unless a test signs it out, with three meetings on Meet
-from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
-minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4
-every weekday, with Grace not going and Ada's Quarterly Plan and an agenda attached; and
-Planning two hours on, Joel's own with Grace asked. Joel may change his own, and Standup on
-Ada's calendar, which she shares with him. An answer a shell writes is written down in
-google-asked beside the socket, for the test to read, and taken as Google would take it, so the
-file and every shell say the meeting answered or moved; a meeting Joel holds that's cancelled
+It speaks the program's daemon interface (modules/google/src/daemon.rs), on the socket systemd
+hands it or else the one it's named: each meeting, piece of mail and document a record, and the
+account one more, each told to a watch as it changes, and what a shell asks taken as an act, a
+line of ask.rs. It leaves the whole state in the runtime folder's google.json too, as the
+program does (src/state.rs). The account is ready, unless a test signs it out, with three
+meetings on Meet from when the stand-in starts: Design Review five minutes on, Joel's own,
+reminding him a minute before, or nearer or further as a test asks; Standup half an hour on,
+Ada's in Room 4 every weekday, with Grace not going and Ada's Quarterly Plan and an agenda
+attached; and Planning two hours on, Joel's own with Grace asked. Joel may change his own, and
+Standup on Ada's calendar, which she shares with him. An answer a shell writes is written down
+in the runtime folder's google-asked, for the test to read, and taken as Google would take it,
+so the file and every shell say the meeting answered or moved; a meeting Joel holds that's cancelled
 is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
 with three unread in the inbox; one marked read or archived is written down too, and taken
@@ -24,6 +26,7 @@ Budget is shared with him, and the Team shared drive is empty. A shell may ask w
 holds, and for a file in one, to open, pick or save, Google's own as their office files.
 """
 
+import copy
 import json
 import os
 import socket
@@ -31,7 +34,12 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import cast
 
+# The account's one record, as src/daemon.rs keys it.
+ACCOUNT = "account:google"
+# The descriptor systemd hands a socket over as, the first after the standard three.
+HANDED = 3
 # Milliseconds in a minute, as the program counts times.
 MINUTE = 60_000
 # How far ahead each meeting starts, and how long one lasts. A test may set
@@ -111,8 +119,44 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
     }
 
 
+def kinds_of(asked: dict[str, object]) -> set[str] | None:
+    """Read the kinds a watch names, one or a list, or none for every kind."""
+    kind = asked.get("kind")
+    if isinstance(kind, str):
+        return {kind}
+    if isinstance(kind, list):
+        return {each for each in kind if isinstance(each, str)}
+    return None
+
+
+class Watch:
+    """One watch a shell holds: its id, the kinds it sees, and the shell it's told on."""
+
+    def __init__(self, shell: socket.socket, id_: object, kinds: set[str] | None) -> None:
+        """Hold what the watch asked for."""
+        self.shell = shell
+        self.id = id_
+        self.kinds = kinds
+
+    def sees(self, key: str) -> bool:
+        """Say whether a record is of a kind this watch asked for."""
+        return self.kinds is None or key.split(":", 1)[0] in self.kinds
+
+    def replaces(self, other: Watch) -> bool:
+        """Say whether this watch is asked again on the same shell by the same id."""
+        return other.shell is self.shell and other.id == self.id
+
+    def say(self, said: dict[str, object]) -> bool:
+        """Tell the shell one line, saying whether it's still there to hear it."""
+        try:
+            self.shell.sendall(f"{json.dumps(said)}\n".encode())
+        except OSError:
+            return False
+        return True
+
+
 class Account:
-    """The account as the program would hold it, the file it leaves, and the shells it tells."""
+    """The account as the program would hold it, the file it leaves, and the watches it tells."""
 
     def __init__(self, told: Path, asked: Path) -> None:
         """Hold the meetings, answered yes, with no shell yet, and leave them in the file."""
@@ -120,7 +164,7 @@ class Account:
         self.told = told
         self.asked = asked
         self.lock = threading.Lock()
-        self.shells: list[socket.socket] = []
+        self.watches: list[Watch] = []
         self.meetings = [
             meeting("review", "Design Review", now + SOON, "pqr-stuv-wxy", reminders=[1]),
             meeting(
@@ -226,12 +270,14 @@ class Account:
         # The Drive folders listed and the downloads asked lately, each newest first.
         self.listings: list[dict[str, object]] = []
         self.downloads: list[dict[str, object]] = []
+        # What every watch was last told of, by key.
+        self.said = self.records()
         self.leave()
 
-    def line(self) -> bytes:
+    def state(self) -> dict[str, object]:
         """Give the state the program would say."""
         if SIGNED_OUT:
-            gone: dict[str, object] = {
+            return {
                 "account": "signedOut",
                 "meetings": [],
                 "mail": [],
@@ -240,9 +286,9 @@ class Account:
                 "heard": None,
                 "fetched": None,
                 "meet": {"granted": False, "made": None},
+                "drive": {"listings": [], "downloads": [], "uploads": []},
             }
-            return f"{json.dumps(gone)}\n".encode()
-        said = {
+        return {
             "account": "ready",
             "meetings": self.meetings,
             "mail": self.mail,
@@ -251,35 +297,88 @@ class Account:
             "heard": self.heard,
             "fetched": self.fetched,
             "meet": {"granted": True, "made": self.made},
-            "drive": {"listings": self.listings, "downloads": self.downloads},
+            "drive": {"listings": self.listings, "downloads": self.downloads, "uploads": []},
         }
-        return f"{json.dumps(said)}\n".encode()
+
+    def records(self) -> dict[str, dict[str, object]]:
+        """Give each record the daemon would hold, by key, as src/daemon.rs makes them."""
+        # A copy, since what's held changes in place, and what each watch was
+        # last told must stay as it was to find what changed.
+        state = copy.deepcopy(self.state())
+        made: dict[str, dict[str, object]] = {}
+        for kind, things in (("meeting", "meetings"), ("mail", "mail"), ("file", "documents")):
+            for thing in cast("list[dict[str, object]]", state[things]):
+                key = f"{kind}:{thing['id']}"
+                made[key] = {"key": key, "kind": kind, "heard": self.heard, kind: thing}
+        account = {name: state[name] for name in ("unread", "fetched", "meet", "drive")} | {
+            "standing": state["account"]
+        }
+        made[ACCOUNT] = {
+            "key": ACCOUNT,
+            "kind": "account",
+            "heard": state["heard"],
+            "account": account,
+        }
+        return made
 
     def leave(self) -> None:
         """Leave the state in the file, replacing it whole as the program does."""
         new = self.told.with_name(f"{self.told.name}.new")
-        new.write_bytes(self.line())
+        new.write_text(f"{json.dumps(self.state())}\n")
         new.replace(self.told)
 
-    def welcome(self, shell: socket.socket) -> None:
-        """Tell a shell the state and keep it for each change, unless it's already gone."""
-        with self.lock:
-            try:
-                shell.sendall(self.line())
-            except OSError:
-                return
-            self.shells.append(shell)
+    def tell(self) -> None:
+        """Tell each watch the records that changed and those gone, since it was last told."""
+        now = self.records()
+        changed = [record for key, record in now.items() if self.said.get(key) != record]
+        gone = [key for key in self.said if key not in now]
+        self.said = now
+        for watch in list(self.watches):
+            seen = [record for record in changed if watch.sees(str(record["key"]))]
+            went = [key for key in gone if watch.sees(key)]
+            if (seen or went) and not watch.say({"id": watch.id, "changed": seen, "gone": went}):
+                self.watches.remove(watch)
 
-    def ask(self, line: str) -> None:
+    def answer(self, shell: socket.socket, asked: dict[str, object]) -> dict[str, object] | None:
+        """Answer one ask, or give none once a watch's answer is sent."""
+        id_ = asked.get("id")
+        with self.lock:
+            if asked.get("ask") == "hello":
+                return {
+                    "id": id_,
+                    "version": 1,
+                    "domain": "google",
+                    "state": "answering",
+                    "since": self.heard,
+                    "sources": {"google": "signed-out" if SIGNED_OUT else "answering"},
+                }
+            if asked.get("ask") == "watch":
+                watch = Watch(shell, id_, kinds_of(asked))
+                self.watches = [one for one in self.watches if not watch.replaces(one)]
+                records = [record for key, record in self.said.items() if watch.sees(key)]
+                # Sent before the watch is added, so no change comes before it.
+                if watch.say({"id": id_, "records": records}):
+                    self.watches.append(watch)
+                return None
+            if asked.get("ask") == "unwatch":
+                self.watches = [
+                    one for one in self.watches if not (one.shell is shell and one.id == id_)
+                ]
+                return {"id": id_, "unwatched": True}
+        if asked.get("ask") == "act" and isinstance(asked.get("act"), dict):
+            self.act(cast("dict[str, dict[str, object]]", asked["act"]))
+            return {"id": id_, "taken": True}
+        return {"id": id_, "error": {"code": "unknown-ask", "message": "not here"}}
+
+    def act(self, said: dict[str, dict[str, object]]) -> None:
         """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
 
         Or mail marked read or archived, or marked unread again after it was read, or a file it
         carries fetched, or a new Meet meeting made, as new-abcd-efg, or a Drive folder listed
-        or a file in one downloaded.
+        or a file in one downloaded. It's written down as the shell's line, as compact.
         """
         with self.asked.open("a") as asked:
-            asked.write(f"{line}\n")
-        said = json.loads(line)
+            asked.write(f"{json.dumps(said, separators=(',', ':'))}\n")
         with self.lock:
             if "fetch" in said:
                 self.fetch(said["fetch"])
@@ -296,11 +395,7 @@ class Account:
             self.schedule(said)
             self.tidy(said)
             self.leave()
-            for shell in list(self.shells):
-                try:
-                    shell.sendall(self.line())
-                except OSError:
-                    self.shells.remove(shell)
+            self.tell()
 
     def schedule(self, said: dict[str, dict[str, object]]) -> None:
         """Take what a shell asked of the meetings: one answered, moved or cancelled."""
@@ -409,26 +504,43 @@ class Account:
 
 
 def keep(account: Account, shell: socket.socket) -> None:
-    """Tell a shell the state, then hear what it asks until it goes."""
+    """Answer what a shell asks until it goes, its watches with it."""
     try:
-        account.welcome(shell)
         for line in shell.makefile("r", encoding="utf-8"):
-            account.ask(line.strip())
+            asked = json.loads(line)
+            if not isinstance(asked, dict):
+                continue
+            answer = account.answer(shell, asked)
+            if answer is not None:
+                with account.lock:
+                    shell.sendall(f"{json.dumps(answer)}\n".encode())
     except OSError, ValueError:
         pass
     finally:
+        with account.lock:
+            account.watches = [one for one in account.watches if one.shell is not shell]
         shell.close()
 
 
-def main() -> None:
-    """Leave the state beside the socket the program is given, and tell each shell that connects."""
-    path = Path(sys.argv[1])
-    account = Account(path.with_suffix(".json"), path.with_name("google-asked"))
+def listening(path: Path) -> socket.socket:
+    """Give the socket systemd hands over, as it does google's, or else one bound at `path`."""
+    if os.environ.get("LISTEN_PID") == str(os.getpid()) and os.environ.get("LISTEN_FDS"):
+        return socket.socket(fileno=HANDED)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # One left by a stand-in before it would refuse the name.
     path.unlink(missing_ok=True)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(path))
     server.listen()
+    return server
+
+
+def main() -> None:
+    """Serve the daemon interface on the socket given, leaving the state in the runtime folder."""
+    path = Path(sys.argv[1])
+    runtime = path.parent.parent
+    account = Account(runtime / "google.json", runtime / "google-asked")
+    server = listening(path)
     while True:
         shell, _ = server.accept()
         threading.Thread(target=keep, args=(account, shell), daemon=True).start()

@@ -11,9 +11,12 @@
 // daemon stopping is said, keeping what was held and giving a get none,
 // unless the client is one that lets what it held go in a gap; and once
 // it starts again, the client connects again by itself, asks ahead
-// again, and the one that let go holds again. Each step waits on what
-// the client says, at most ten seconds. It exits 0 once every case holds, and otherwise 1, saying
-// which didn't.
+// again, and the one that let go holds again. A client of a daemon
+// holding two kinds, as Google's does, stood in for
+// (tests/daemon-kinds.py), holds records of both over one connection,
+// and names both in the watch ahead too. Each step waits on what the
+// client says, at most ten seconds. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -50,6 +53,26 @@ ShellRoot {
         keptThroughGap: false
     }
 
+    // Watching two kinds over one connection.
+    Daemon {
+        id: kinds
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: ["meeting", "mail"]
+    }
+
+    Process {
+        id: kindsRunning
+
+        command: [Quickshell.env("PYTHON"), Quickshell.env("KINDS"),
+            `${root.runtime}/daemons/kinds.sock`]
+    }
+
+    // The kinds a record says its watch asked for, as one line.
+    function askedOf(key) {
+        return JSON.stringify(kinds.held[key]?.asked ?? null);
+    }
+
     readonly property string eli: "person:eli@example.com"
     readonly property string hal: "person:hal@example.com"
     readonly property string ivy: "person:ivy@example.com"
@@ -64,6 +87,7 @@ ShellRoot {
     function fail(what) {
         console.warn(`FAIL ${what}: state ${people.state}, held ${JSON.stringify(people.held)}`
             + `, listed ${Object.keys(listed.held).join(" ")}`
+            + `, kinds ${JSON.stringify(kinds.held)}`
             + `, answered ${JSON.stringify(root.answered)}`);
         Qt.exit(1);
     }
@@ -159,6 +183,21 @@ ShellRoot {
             holds: () => people.state === "answering"
                 && people.held[root.ada].heard > root.heardBefore
                 && root.hal in forgetting.held
+        },
+        {
+            what: "a client watching two kinds holds records of both",
+            run: () => {
+                kindsRunning.running = true;
+            },
+            holds: () => root.askedOf("meeting:one") === '["meeting","mail"]'
+                && root.askedOf("mail:one") === '["meeting","mail"]'
+        },
+        {
+            what: "its watch ahead names both kinds too",
+            run: () => {
+                kinds.ahead = ["mail:two"];
+            },
+            holds: () => root.askedOf("mail:two") === '["meeting","mail"]'
         }
     ]
 
@@ -182,6 +221,7 @@ ShellRoot {
                 root.step += 1;
                 if (root.step === root.steps.length) {
                     running.running = false;
+                    kindsRunning.running = false;
                     Qt.callLater(() => Qt.exit(0));
                 } else {
                     root.begin();
