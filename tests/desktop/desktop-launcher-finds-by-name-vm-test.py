@@ -466,6 +466,22 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     assert len(kept) - len(absent) >= fewest, absent
 
 
+def waits_then_lets_go(desktop: Desktop, key: str) -> None:
+    """Type a key that begins a pair, and wait until it's waited for its second and let go.
+
+    It's heard from before the key, since the wait can be over before one begun after it starts.
+    """
+    before = desktop.mark()
+    desktop.machine.send_chars(key)
+    begun: list[str] = []
+
+    def let_go(said: str) -> bool:
+        begun.append(json.loads(said)["begun"])
+        return key in begun and begun[-1] == ""
+
+    desktop.reported("showing ", let_go, before)
+
+
 def walk_the_rows_moves(desktop: Desktop) -> None:
     """Press every move normal takes through a search's rows, as Joel would through niri.
 
@@ -513,17 +529,8 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "")
     assert desktop.showing()["open"], "an Escape cancelling a count closed the launcher"
-    # A g waits his timeoutlen for its second, then lets go, so a j after moves. The wait is
-    # heard from before the key, since it can be over before a wait begun after it starts.
-    before = desktop.mark()
-    machine.send_chars("g")
-    begun: list[str] = []
-
-    def lets_go(said: str) -> bool:
-        begun.append(json.loads(said)["begun"])
-        return "g" in begun and begun[-1] == ""
-
-    desktop.reported("showing ", lets_go, before)
+    # A g waits his timeoutlen for its second, then lets go, so a j after moves.
+    waits_then_lets_go(desktop, "g")
     machine.send_chars("j")
     # Half a screen moves the rows as far as the selection, so it keeps its place in view;
     # a screen goes on a list's height, eight rows.
