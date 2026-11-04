@@ -43,6 +43,7 @@
 let
   follower = "idle-sleep-follows-the-charger";
   settings = "/run/systemd/logind.conf.d";
+  systemctl = "${config.systemd.package}/bin/systemctl";
 in
 {
   services.logind.settings.Login = {
@@ -80,6 +81,6 @@ in
   };
 
   services.udev.extraRules = ''
-    SUBSYSTEM=="power_supply", RUN+="${config.systemd.package}/bin/systemctl --no-block restart ${follower}.service"
+    SUBSYSTEM=="power_supply", RUN+="${systemctl} --no-block restart ${follower}.service"
   '';
 }

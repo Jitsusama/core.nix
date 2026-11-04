@@ -48,10 +48,11 @@
         timeout: lib.hasSuffix " msg action power-off-monitors" timeout.command
       ) null swayidle.timeouts;
       hint = lib.lists.findFirstIndex (arg: arg == "idlehint") null swayidle.extraArgs;
+      idleAt = lib.elemAt swayidle.extraArgs (hint + 1);
     in
     holds "the-session-goes-idle-as-the-screens-go-off"
       "swayidle doesn't tell logind the session is idle as the screens go off."
-      (off != null && hint != null && lib.elemAt swayidle.extraArgs (hint + 1) == toString off.timeout);
+      (off != null && hint != null && idleAt == toString off.timeout);
 
   # The screens go off through the machine's own niri, the one with core's
   # patches, so the account doesn't carry a second one just to ask.
