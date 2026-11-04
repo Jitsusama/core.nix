@@ -16,7 +16,8 @@
 // program gave, which, being there already, steps in to Replace It first;
 // what's typed names it instead, saved in the folder it's typed in. Asked
 // for a folder, it lists no files and each folder leads with Open This
-// Folder. Closing the launcher answers nothing, a request that isn't JSON
+// Folder. In every folder, the field asks for one file, several, a folder
+// or where to save, in the program's word. Closing the launcher answers nothing, a request that isn't JSON
 // is refused at once, and a withdrawn one closes the launcher. Where several
 // may be opened, Open the Marked leads from the start, saying none and
 // nothing more, with no Return; Return marks a file, the launcher staying,
@@ -221,6 +222,12 @@ ShellRoot {
 
     function heldPaths() {
         return launcher.held.slice(1).map(step => step.row.key).join(" ");
+    }
+
+    // What the field asks in the folder held deepest, as the launcher
+    // asks it of the step it's on.
+    function fieldAsks() {
+        return launcher.held[launcher.held.length - 1].row.ask;
     }
 
     // Whether the folders it needs have been read: notes, and those on the
@@ -451,12 +458,17 @@ ShellRoot {
         const a = named(rows, "a.md");
         expect("Return on a file opens it by the program's word", a.verb === "upload"
             && a.verbs()[0].name === "Upload", `${a.verb} ${a.verbs()[0].name}`);
+        expect("taking one file, the field asks for one, by the program's word, in every folder",
+            fieldAsks() === "upload which file?"
+                && chooser.folderRow(`${notes}/sub`).ask === fieldAsks(), fieldAsks());
         // Picked once a.md's plate, drawn above, is previewed.
         picking = a;
         previewing = "a.md";
     }
 
     function save() {
+        expect("saving, the field asks where, by the name given", fieldAsks() === "save a.md where?",
+            fieldAsks());
         const rows = rowsIn(notes);
         expect("saving leads with the name given, then the folders lately, then the rest",
             names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding", names(rows));
@@ -475,6 +487,8 @@ ShellRoot {
     function folder() {
         const rows = rowsIn(notes);
         expect("asked for a folder, it lists no files", names(rows) === "elsewhere, | sub", names(rows));
+        expect("asked for a folder, the field asks for one", fieldAsks() === "open which folder?",
+            fieldAsks());
         const inside = named(rows, "sub").verbs();
         expect("each folder leads with Open This Folder", inside[0].name === "Open This Folder",
             names(inside));
@@ -483,6 +497,8 @@ ShellRoot {
     }
 
     function marking() {
+        expect("taking several files, the field asks for files", fieldAsks() === "open which files?",
+            fieldAsks());
         let rows = rowsIn(notes);
         expect("Open the Marked leads from the start, then lately, folders and files",
             names(rows) === "Open the Marked, | old.md, | sub, a.md, b.png, notes.txt", names(rows));

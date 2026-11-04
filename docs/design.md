@@ -1347,6 +1347,14 @@ works the same way everywhere.
   the whole ask, a line at a time, and what it's made is pruned past
   128 MB, the longest unshown first. Every word the rows and the plate
   say is the launcher's own, in its words.
+- **A picker says what it takes** (Joel, 2026-11-03: "no clue when
+  something only accepts one file what happens"). In every folder of
+  the file picker, the field asks for what the program takes, in its own
+  word where it gives one: "open which file?", "open which files?",
+  "open which folder?", "attach which files?", or "save it where?".
+  Taking one, Return on a file picks it and closes, as the foot says
+  ("↵ open"), with no mark and no Open the Marked: opening is undone
+  by opening another, so nothing asks first (VKCF3Z, 2026-11-04).
 - **What's marked is in sight** (Joel, 2026-11-03: "it is hard when
   marking files to know what to do once mmarked"). Where a program takes
   several files, Return on one marks it and the foot says "↵ mark" or

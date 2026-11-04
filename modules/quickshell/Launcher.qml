@@ -3630,6 +3630,8 @@ Scope {
             typed: root.typed,
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
+            // What the field asks while nothing's typed.
+            hint: prompt.hint,
             held: root.held.map(step => step.row.chip ?? step.row.name),
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
