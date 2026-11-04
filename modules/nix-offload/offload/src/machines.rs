@@ -38,19 +38,31 @@ const VM: [&str; 2] = ["kvm", "nixos-test"];
 
 /// A lent builder's machines line written once for each kind of big work
 /// it supports, with that kind mandatory, so Nix sends it only that work,
-/// and offering nothing a VM test needs. Nix counts a builder's slots by
-/// its URI, so the lines share one set. A line supporting none of them is
-/// kept as it is.
+/// and offering nothing a VM test needs. What the line already requires
+/// stays required beside that kind, since a builder taking only some
+/// builds, such as one whose x86 runs through Rosetta, would otherwise be
+/// sent every build of that kind. Nix counts a builder's slots by its URI,
+/// so the lines share one set. A line supporting none of them is kept as
+/// it is.
 pub fn for_big_work(line: &str) -> String {
     let (fields, offered) = offering(line);
     let supported: Vec<&str> = fields[5].split(',').collect();
+    let required: Vec<&str> = fields[6]
+        .split(',')
+        .filter(|feature| !feature.is_empty() && *feature != "-")
+        .collect();
     let lines: Vec<String> = BIG
         .iter()
         .filter(|kind| supported.contains(kind))
         .map(|kind| {
+            let mut mandatory = required.clone();
+            if !mandatory.contains(kind) {
+                mandatory.push(kind);
+            }
+            let mandatory = mandatory.join(",");
             let mut fields = fields.clone();
             fields[5] = &offered;
-            fields[6] = kind;
+            fields[6] = &mandatory;
             fields.join(" ")
         })
         .collect();
@@ -396,6 +408,18 @@ mod tests {
         assert_eq!(
             for_big_work("ssh-ng://small x86_64-linux"),
             "ssh-ng://small x86_64-linux"
+        );
+    }
+
+    #[test]
+    fn a_builder_named_for_its_big_work_keeps_what_it_already_requires() {
+        assert_eq!(
+            for_big_work("ssh-ng://vm x86_64-linux /key 4 0.5 big-parallel,own own KEY"),
+            "ssh-ng://vm x86_64-linux /key 4 0.5 big-parallel,own own,big-parallel KEY"
+        );
+        assert_eq!(
+            for_big_work("ssh-ng://vm x86_64-linux /key 4 1 big-parallel big-parallel KEY"),
+            "ssh-ng://vm x86_64-linux /key 4 1 big-parallel big-parallel KEY"
         );
     }
 
