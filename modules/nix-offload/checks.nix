@@ -51,7 +51,8 @@ onLinux {
         && unit.Service.RestartForceExitStatus == "100"
         && unit.Service.SuccessExitStatus == "100";
     in
-    holds "nix-offload-lenders-outlive-a-switch"
-      "a switch restarts a lender, cutting every build its builder runs, or a lender that ends superseded isn't started again."
-      (lib.all reloads lenders);
+    holds "nix-offload-lenders-outlive-a-switch" (
+      "a switch restarts a lender, cutting every build its builder runs, "
+      + "or a lender that ends superseded isn't started again."
+    ) (lib.all reloads lenders);
 }
