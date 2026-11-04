@@ -5670,6 +5670,14 @@
       "why": "GIMP and Inkscape both choose a tool by a letter, and each group says which program's it is beside it."
     },
     {
+      "word": "selecting",
+      "things": [
+        "shortcuts:gimp:selection",
+        "shortcuts:reader:selecting"
+      ],
+      "why": "GIMP and the reader both select, and each group says which program's it is beside it."
+    },
+    {
       "word": "focus",
       "things": [
         "shortcuts:desktop:windows:focus",
