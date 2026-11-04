@@ -1982,7 +1982,10 @@ in
         # locked (2026-10-31). With no timeout a late callback changes nothing;
         # a frame drawn while one is owed still waits for it, a tenth of a
         # second at most.
-        Environment = [ "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0" ];
+        Environment = [
+          "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
+          "MALLOC_CONF=narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:0"
+        ];
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
         # its tenfold CPU weight and behind its memory floor (modules/slices),
