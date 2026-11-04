@@ -8,7 +8,7 @@
 // texts have been asked since, the first is asked again; and every one of
 // them goes on one connection. Once it rests the connection goes, an
 // answer kept is still given without one, and the next text asked opens
-// it again. A few thousand files are found by name, best first, each key
+// it again. A few thousand files are found by name, newest first, each key
 // within a frame. Each step waits on what Taken says, at most ten
 // seconds. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
@@ -139,7 +139,7 @@ ShellRoot {
                 === JSON.stringify(["gone", "connected", "search ten"])
         },
         {
-            what: "a few thousand files are found by name, best first, each key within a frame",
+            what: "a few thousand files are found by name, newest first, each key within a frame",
             run: () => root.timeNames(),
             holds: () => root.slowest !== undefined && root.slowest <= root.frame
                 && JSON.stringify(root.wombats) === JSON.stringify(root.wombatsMeant)
@@ -175,16 +175,18 @@ ShellRoot {
                 []);
         for (const text of typed)
             Taken.named(text, [root.shots], 50);
-        let slowest = 0;
-        for (const text of typed) {
-            let best = Infinity;
-            for (let round = 0; round < 5; round++) {
+        // Each round types every key in turn, as Joel would, so a key
+        // narrows from the one before it and never from itself.
+        const best = typed.map(() => Infinity);
+        for (let round = 0; round < 5; round++)
+            typed.forEach((text, at) => {
                 const started = Date.now();
                 Taken.named(text, [root.shots], 50);
-                best = Math.min(best, Date.now() - started);
-            }
-            slowest = Math.max(slowest, best);
-        }
+                best[at] = Math.min(best[at], Date.now() - started);
+            });
+        const slowest = Math.max(...best);
+        console.warn(`keys' best times in ms: ${typed.map((text, at) => `"${text}" ${best[at]}`)
+            .join(", ")}`);
         root.wombats = Taken.named("wombat plan", [root.shots], 50);
         root.slowest = slowest;
         console.warn(`${typed.length} keys over 3002 files: the slowest took ${slowest} ms`);

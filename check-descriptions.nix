@@ -1730,7 +1730,7 @@
     what was taken lately finds screenshots by their words from the screen-text daemon, on one
     connection made only at the first search and let go at rest, each text asked once and the last
     four answers kept, each screenshot found with the line that matched; and finds a few thousand
-    files by name, best first, each key within a frame
+    files by name, newest first, each key within a frame
   '';
   the-shell-hears-tuples-call = ''
     the shell's Tuple holds the call through the real tuple-call: who's in it, since when, mutes,

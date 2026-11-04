@@ -333,7 +333,7 @@ Provider {
         })]
 
     // Everything taken that what's typed finds, not only the nine Recent
-    // shows: each file whose name matches, best first, then each
+    // shows: each file whose name matches, newest first, then each
     // screenshot whose words hold every word typed, the line that holds
     // them below it, as a source that reads them says (`takenByText`,
     // modules/screen-text). A screenshot found both ways is listed once,

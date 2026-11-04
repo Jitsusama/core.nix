@@ -72,25 +72,41 @@ Singleton {
             .sort((a, b) => b.at - a.at);
     }
 
-    // The paths in these folders whose names what's typed finds, best
-    // first, the best `most` of them: a short word such as a year finds
-    // nearly every file, and more rows than a screen holds are never seen.
+    // The paths in these folders whose names what's typed finds, newest
+    // first, as Recent lists them, the newest `most` of them: a short word
+    // such as a year finds nearly every file, and more rows than a screen
+    // holds are never seen. So it stops at the `most`th, and a key costs at
+    // most that many matches, however many files there are: ranking them
+    // by how well each matched instead had to match every one, 18 ms a key
+    // over 3,000 screenshots' names. Every name a word typed starts a word
+    // of is found, as anywhere in the launcher. The properties are read
+    // once rather than on every file, since each read crosses into the
+    // engine's objects, and a name without the letters typed is passed over
+    // before it's matched, as Fuzzy.js asks of a caller over many.
     function named(typed, within, most) {
         const words = Fuzzy.words(typed);
-        if (words.length === 0)
+        if (words.length === 0 || most <= 0)
             return [];
+        const files = root.files;
+        const prepared = root.prepared;
+        const among = new Set(within);
+        const need = Fuzzy.letters(words);
         const found = [];
-        for (const file of root.files) {
-            if (!within.includes(file.folder))
+        for (const file of files) {
+            if (!among.has(file.folder))
                 continue;
-            const name = file.path.slice(file.folder.length + 1);
-            const prepared = root.prepared[file.path]
-                ?? (root.prepared[file.path] = Fuzzy.prepare(name));
-            const m = Fuzzy.match(prepared, words, false);
-            if (m.score >= 0)
-                found.push({ item: prepared, score: m.score, grade: m.grade, path: file.path });
+            let item = prepared[file.path];
+            if (item === undefined)
+                item = prepared[file.path] = Fuzzy.prepare(file.path.slice(file.folder.length + 1));
+            if ((item.mask & need) !== need)
+                continue;
+            if (Fuzzy.match(item, words, false).score < 0)
+                continue;
+            found.push(file.path);
+            if (found.length === most)
+                break;
         }
-        return Fuzzy.keep(found).slice(0, most).map(one => one.path);
+        return found;
     }
 
     // Each file's name made ready to match, by its path, once; a file gone
