@@ -174,6 +174,7 @@
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
+        merge-net = ./modules/merge-net/home.nix;
         mpv = ./modules/mpv/home.nix;
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
@@ -455,7 +456,8 @@
       # the repository (.envrc), or `nix develop` then cargo in a program's
       # directory. It also holds shots-changed, which compares two runs of the
       # desktop test's pictures, changed-checks, which names and builds the
-      # checks a change touches, and on Linux run-subtests, which runs some
+      # checks a change touches, merge-net, whose `needs` says whether a
+      # change runs its VM tests before merging, and on Linux run-subtests, which runs some
       # of a VM test's subtests in seconds, and shell-preview, which shows the
       # shell from the working copy in a niri window (docs/testing.md).
       devShells = forEachSystem (pkgs: rec {
@@ -472,6 +474,7 @@
             pkgs.rustc
             pkgs.rustfmt
             (pkgs.callPackage ./tools/changed-checks/package.nix { })
+            (pkgs.callPackage ./tools/merge-net/package.nix { })
             (pkgs.callPackage ./tools/shots-changed/shots-changed.nix { })
           ]
           # The guide's tests check the sticks it writes with sfdisk,

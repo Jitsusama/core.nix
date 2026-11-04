@@ -6,7 +6,8 @@ cheaper check already tells them. A check sits in the `checks.nix` of the
 folder it proves something about, a module's or a hardware model's, and
 [`checks.nix`][1] at the root gathers them, names the virtual machine tests,
 and holds the few about the repository as a whole. Nothing runs on a
-schedule.
+schedule but the net under main, which runs each merge's VM tests after it
+lands, as The Net Under Main below says.
 
 ## The Loop
 
@@ -100,6 +101,28 @@ nixos-rebuild build --flake .#<machine> --override-input core path:$HOME/src/cor
 Nothing else runs them: there's no CI ([0012][7]). A machine repository can
 pin a branch's commit as soon as it's pushed, and pull requests merge with a
 merge commit, so that commit stays on main.
+
+## The Net Under Main
+
+A change merges once the checks `changed-checks` builds pass, VM tests
+aside, unless `merge-net needs` says it touches something a revert would
+come too late for: boot, the initrd, the kernel, the disk, the TPM, secure
+boot, the install, the greeter or lock, `flake.lock` or nix-offload
+(`tools/merge-net/must-run.txt`). Those run the VM tests it names first.
+
+The rest run after the merge, on the net: `merge-net watch`, which
+`modules/merge-net` runs as a daemon, follows main and runs each VM test
+a head changed since the last head it passed, on the VM builder, two at
+once. A test that fails twice at one commit is broken: the net finds
+which merge broke it, writes `~/.local/state/net/hold.json` so no machine
+switches to it, reverts it through a PR merged on its own checks, and
+writes a finding for its owner in `~/.local/state/net/findings`. One that
+fails and then passes at a commit is flaky, which is a defect in the test:
+it goes on `tools/merge-net/quarantine.json` with its owner, and the net
+reverts nothing for it until the owner makes it steady and takes it off.
+The net starts nothing while a hold on the whole machine stands, or while
+`~/.local/state/net/pause` is there, and `merge-net status` says where it
+is.
 
 ## The Pyramid
 

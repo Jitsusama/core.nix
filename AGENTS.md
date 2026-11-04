@@ -76,6 +76,7 @@ run-subtests vm-desktop-<area> <words> # a VM test's subtests named, in seconds
 shell-preview --type <words>           # the shell from the working copy, in a niri window
 changed-checks                         # names and builds what the change touched, VM tests aside
 changed-checks --build                 # the same with the VM tests among them
+merge-net needs                        # whether the change runs VM tests before merging
 nix flake check --keep-going           # everything, only for a change every check reads
 ```
 
@@ -99,11 +100,13 @@ for. Watching a check fail is done
 the same narrow way, never by copying the tree and running everything.
 
 A change is done when the checks it touched pass locally, those
-`changed-checks` names and the VM tests among them, and its machine builds
-with core pointed at the checkout. Only a change every check reads, such as
+`changed-checks` names and the VM tests `merge-net needs` names, and its
+machine builds with core pointed at the checkout. The net runs the other VM
+tests after the merge and reverts a merge that breaks one. Only a change every check reads, such as
 `flake.lock`, runs `nix flake check`: a whole run evaluates every check, about
-15 minutes and over 20 GB on a machine other work shares. There's no CI, and nothing runs on a
-schedule. A refactor is done when the machine repositories' machines evaluate
+15 minutes and over 20 GB on a machine other work shares. There's no CI, and
+nothing runs on a schedule but the net, which follows main
+([docs/testing.md][1]). A refactor is done when the machine repositories' machines evaluate
 to the same derivations as before. A new check has to earn its place. All of
 it is in [docs/testing.md][1].
 

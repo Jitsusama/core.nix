@@ -1,0 +1,12 @@
+# merge-net: the net under core's main, which runs the VM tests each merge
+# changed after it lands and reverts a merge that breaks one (src/main.rs
+# says how).
+[package]
+name = "merge-net"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1"

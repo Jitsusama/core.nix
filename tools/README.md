@@ -2,12 +2,14 @@
 
 The programs the dev shell gives whoever is changing core.nix, each in
 a folder of its own with its tests beside it. None is part of a
-machine, and none is a test: the checks that prove them are in the
+machine but merge-net, whose daemon `modules/merge-net` runs for an
+account that changes core, and none is a test: the checks that prove them are in the
 root `checks.nix`. [AGENTS.md][agents] says when to use each.
 
 | Folder            | Holds                                                         |
 | ----------------- | ------------------------------------------------------------- |
 | `changed-checks/` | the checks a change touched, found by comparing derivations   |
+| `merge-net/`      | the net under main: each merge's VM tests, run after it lands |
 | `run-subtests/`   | a VM test's named subtests, run on its driver in seconds      |
 | `shell-preview/`  | the shell from the working copy, in a nested niri window      |
 | `shots-changed/`  | which of a VM test's pictures changed, and how, between runs  |
