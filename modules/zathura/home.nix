@@ -77,7 +77,8 @@ let
   # do on it (`run`), on its key as zathura spells one (`key`). The
   # launcher lists them over zathura's window: those that go through the
   # document as Turning pages, those that size the page as Fitting the
-  # page, and the rest loose. Keys that do one thing say it in the same
+  # page, those that go back to a place as Places, the searches as Finding
+  # words, and the rest loose. Keys that do one thing say it in the same
   # words, the arrow first, so the launcher draws them as one row, the
   # letter beside the arrow it twins. keys-test.sh presses each.
   grouped = group: map (key: key // { inherit group; });
@@ -195,7 +196,7 @@ let
         does = "The page's width in view";
       }
     ]
-    ++ [
+    ++ grouped "places" [
       {
         chord = "Tab";
         key = "<Tab>";
@@ -210,6 +211,34 @@ let
         chord = "Ctrl+i";
         does = "On along the jumps";
       }
+      {
+        chord = "m";
+        does = "Mark a place, go back to it";
+      }
+      {
+        chord = "'";
+        does = "Mark a place, go back to it";
+      }
+    ]
+    ++ grouped "finding" [
+      {
+        chord = "slash";
+        does = "Find words in the document";
+      }
+      {
+        chord = "Shift+slash";
+        does = "Find words going back";
+      }
+      {
+        chord = "n";
+        does = "The next words found";
+      }
+      {
+        chord = "Shift+n";
+        does = "The words found before";
+      }
+    ]
+    ++ [
       # As Vim's ]b and [b go between buffers, $DBUS the window and $FILE
       # what it shows.
       {
@@ -223,30 +252,6 @@ let
         key = "[b";
         run = ''exec "${next-document} previous $DBUS $FILE"'';
         does = "The document before in its folder";
-      }
-      {
-        chord = "slash";
-        does = "Find, the next, the one before";
-      }
-      {
-        chord = "Shift+slash";
-        does = "Find going back";
-      }
-      {
-        chord = "n";
-        does = "Find, the next, the one before";
-      }
-      {
-        chord = "Shift+n";
-        does = "Find, the next, the one before";
-      }
-      {
-        chord = "m";
-        does = "Mark a place, go back to it";
-      }
-      {
-        chord = "'";
-        does = "Mark a place, go back to it";
       }
       {
         chord = "c";

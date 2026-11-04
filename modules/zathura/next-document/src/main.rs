@@ -25,7 +25,7 @@ const MISUSED: u8 = 2;
 /// What this answers when there's nothing to open, or zathura couldn't be asked.
 const FAILED: u8 = 1;
 
-/// The kinds of document zathura's MuPDF plugin opens, by the end of their names.
+/// The kinds of document zathura's `MuPDF` plugin opens, by the end of their names.
 const OPENS: [&str; 6] = ["cbz", "epub", "fb2", "oxps", "pdf", "xps"];
 
 /// zathura's own page number for none, so it opens at the place it remembers.
@@ -151,7 +151,7 @@ fn beside<'a, T: Ord + ?Sized, N: AsRef<T>>(names: &'a [N], name: &T, way: Way) 
     Some(others[chosen])
 }
 
-/// Asks the zathura on `bus` to open `document`, through its OpenDocument method.
+/// Asks the zathura on `bus` to open `document`, through its `OpenDocument` method.
 fn opened(bus: &str, document: &Path) -> io::Result<()> {
     let status = Command::new(env!("GDBUS"))
         .args([
@@ -162,7 +162,8 @@ fn opened(bus: &str, document: &Path) -> io::Result<()> {
             "--object-path",
             "/org/pwmt/zathura",
         ])
-        .args(["--method", "org.pwmt.zathura.OpenDocument"])
+        // The page, a negative number, would read as an option before `--`.
+        .args(["--method", "org.pwmt.zathura.OpenDocument", "--"])
         .arg(quoted(&document.to_string_lossy()))
         .args(["''", REMEMBERED])
         .stdout(std::process::Stdio::null())
@@ -177,7 +178,7 @@ fn opened(bus: &str, document: &Path) -> io::Result<()> {
     }
 }
 
-/// `text` as a string in GVariant's text, which gdbus reads its arguments as.
+/// `text` as a string in `GVariant`'s text, which gdbus reads its arguments as.
 fn quoted(text: &str) -> String {
     let mut written = String::from("'");
     for character in text.chars() {
