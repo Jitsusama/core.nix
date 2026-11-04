@@ -9,7 +9,8 @@
 // lookups, and Waits reads what lag-watch would write. Currency names its
 // parts by the currencies alone, so it builds no id to check. The time
 // here and the date share no part, since the clock is Time's and the
-// calendar Date's (VKCF3Z's ruling, 2026-10-30: "Nothing repeats"). It
+// calendar Date's (VKCF3Z's ruling, 2026-10-30: "Nothing repeats"), and
+// each says its figures as Now does. It
 // exits 0 once every case holds, and otherwise 1, saying which case
 // didn't.
 import qs
@@ -128,5 +129,33 @@ ShellRoot {
         expect("the time here and the date share no part",
             !clock.some(name => calendar.includes(name)),
             clock.filter(name => calendar.includes(name)).join(", "));
+        asNowShows();
+    }
+
+    // The time here and the date as Now shows them: each wearing its own
+    // place's glyph, as every row of Now does; the zone's next change said
+    // as the launcher says a day with its time ("14 Mar 2027 03:00"), the
+    // middle dot being kept for a time and how far off it is; the zone's
+    // plate with an eyebrow, as every plate has; and a day's number copied
+    // as a figure to paste, with nothing grouping it.
+    function asNowShows() {
+        const time = clocks.answer("time");
+        const date = today.answer("date");
+        expect("Time and Date wear their places' glyphs",
+            !!Theme.glyph.clock && time.glyph === Theme.glyph.clock
+                && !!Theme.glyph.date && date.glyph === Theme.glyph.date,
+            `${time.glyph}, ${date.glyph}`);
+        const zone = time.rows.find(row => row.name === Words.name("time:zone"));
+        const next = zone.verbs().find(row => row.name === Words.name("time:zone:next"));
+        expect("the zone's next change is a day and its time",
+            /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}$/.test(next.side), next.side);
+        const plate = typeof zone.drawer === "function" ? zone.drawer() : zone.drawer;
+        expect("the zone's plate has an eyebrow", (plate.eyebrow ?? "") !== "",
+            JSON.stringify(plate));
+        const numbers = ["today:unix-day", "today:julian", "today:mjd"].map(id => Words.name(id));
+        const days = date.rows.filter(row => numbers.includes(row.name));
+        expect("a day's number copies ungrouped",
+            days.length === numbers.length && days.every(row => /^\d+$/.test(row.copy)),
+            days.map(row => row.copy).join(", "));
     }
 }
