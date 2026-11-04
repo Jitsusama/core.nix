@@ -1,7 +1,8 @@
 // What a file says of itself in the launcher's chooser of files, run in
 // Qt's own JavaScript engine, the one the shell runs it in. The
 // `a-file-says-its-size-and-when-it-changed` check copies
-// modules/quickshell/FileFacts.js and the launcher's words.json beside
+// modules/quickshell/FileFacts.js, the When.js it says a day by, and the
+// launcher's words.json beside
 // this file and runs `qml -platform offscreen file-facts.qml`. Each case
 // is how VKCF3Z set a file's row and its plate (2026-11-03): a size in SI
 // units, one decimal under 10; when it changed by how long ago; a plate of
@@ -46,11 +47,7 @@ QtObject {
         const things = {};
         for (const thing of JSON.parse(request.responseText).things)
             things[thing.id] = thing;
-        return FileFacts.wordsOf(id => things[id] ?? {}, {
-            weekday: at => Qt.formatDate(at, "dddd"),
-            day: at => Qt.formatDate(at, "d MMM"),
-            dayAndYear: at => Qt.formatDate(at, "d MMM yyyy")
-        });
+        return FileFacts.wordsOf(id => things[id] ?? {}, (at, format) => Qt.formatDate(at, format));
     }
 
     function run() {

@@ -10,14 +10,12 @@
 // A number keeps to its unit with a no-break space, so "2.4 MB" never
 // leaves its MB alone on the next line.
 .pragma library
+.import "When.js" as When
 
 const KEPT = "\u00a0";
 const BETWEEN = " \u00b7 ";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-// How many days back a day is said by its weekday.
-const LATELY_DAYS = 6;
 const SECONDS_IN_A_MINUTE = 60;
 const SECONDS_IN_AN_HOUR = 3600;
 // SI's steps, largest first, each a thousand of the one after it.
@@ -37,10 +35,10 @@ const TEXT_NAMED = {
 };
 
 // The words it says, each thing's as `of` gives it, as Words.of does, and
-// a day's as `dates` says it, as the locale names days and months
-// (Qt.formatDate's "dddd", "d MMM" and "d MMM yyyy"): the labels of a
-// plate's facts, its kinds, and what's said of a count and a time.
-function wordsOf(of, dates) {
+// a day's as `date(date, format)` says it, as Qt.formatDate names days and
+// months in the locale's words: the labels of a plate's facts, its kinds,
+// and what's said of a count and a time.
+function wordsOf(of, date) {
     const said = id => of(id).said ?? {};
     return {
         size: of("file-chooser:size").name,
@@ -56,7 +54,7 @@ function wordsOf(of, dates) {
             lines: said("file-chooser:text"),
             pages: said("file-chooser:file")
         },
-        dates
+        days: { yesterday: said("file-chooser:changed").yesterday, date }
     };
 }
 
@@ -106,27 +104,11 @@ function clock(at) {
     return `${twoFigures(at.getHours())}:${twoFigures(at.getMinutes())}`;
 }
 
-// How many days before `now` a moment's day is, by the calendar, so a
-// day an hour short or long, as summer time makes, still counts as one.
-function daysBefore(at, now) {
-    const midnight = moment => new Date(moment.getFullYear(), moment.getMonth(),
-        moment.getDate()).getTime();
-    return Math.round((midnight(now) - midnight(at)) / DAY);
-}
-
-// Its day and month, with its year when it isn't this one, never broken
-// across lines.
-function day(at, now, dates) {
-    const said = at.getFullYear() === now.getFullYear() ? dates.day(at) : dates.dayAndYear(at);
-    return said.replace(/ /g, KEPT);
-}
-
 // When it last changed, as the launcher says when on a row (Y2YBTS,
 // 2026-11-03), both in milliseconds: under a minute, "just now"; under an
-// hour, "12 min ago"; earlier today, "14:32"; "yesterday"; its weekday
-// within the last six days; this year, "28 Oct"; before, "28 Oct 2024".
-// A moment ahead of now, as a clock set wrong gives, is said as today's
-// time, or else its day.
+// hour, "12 min ago"; earlier today, "14:32"; else its day as When.js
+// says every day, never broken across lines. A moment ahead of now, as a
+// clock set wrong gives, is said as today's time, or else its day.
 function when(changed, now, words) {
     const since = now - changed;
     if (since >= 0 && since < MINUTE) {
@@ -135,19 +117,8 @@ function when(changed, now, words) {
     if (since >= 0 && since < HOUR) {
         return filled(words.ago.minutes, "minutes", Math.floor(since / MINUTE));
     }
-    const at = new Date(changed);
-    const today = new Date(now);
-    const days = daysBefore(at, today);
-    if (days === 0) {
-        return clock(at);
-    }
-    if (days === 1) {
-        return words.ago.yesterday;
-    }
-    if (days > 1 && days <= LATELY_DAYS) {
-        return words.dates.weekday(at);
-    }
-    return day(at, today, words.dates);
+    const day = When.day(changed, now, words.days);
+    return day === "" ? clock(new Date(changed)) : day.replace(/ /g, KEPT);
 }
 
 // How much is in it, as its row says: a file's size, or a folder's count

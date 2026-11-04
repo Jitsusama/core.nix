@@ -86,11 +86,8 @@ Provider {
     // The words a file's row and plate say (FileFacts.js), the launcher's,
     // and days and months as the locale names them, as the launcher says
     // when everywhere (Y2YBTS, 2026-11-03).
-    readonly property var factWords: FileFacts.wordsOf(id => Words.of(id), {
-        weekday: at => Qt.formatDate(at, "dddd"),
-        day: at => Qt.formatDate(at, "d MMM"),
-        dayAndYear: at => Qt.formatDate(at, "d MMM yyyy")
-    })
+    readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
 
     // What each folder read holds, by its path: { name, path, folder,
     // size, modified }, and each of those by its own path.

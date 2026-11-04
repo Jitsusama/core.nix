@@ -98,6 +98,7 @@ let
     "Words.qml"
     "Files.qml"
     "FileFacts.js"
+    "When.js"
     "Taken.qml"
     "Pasting.qml"
     "Notices.qml"

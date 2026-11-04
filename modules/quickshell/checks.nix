@@ -622,6 +622,7 @@ onLinux {
     pkgs.runCommandLocal "a-file-says-its-size-and-when-it-changed" { } ''
       cp ${../../tests/file-facts.qml} file-facts.qml
       cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./launcher/words.json} words.json
       export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -1857,6 +1858,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
       cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/file-chooser.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
