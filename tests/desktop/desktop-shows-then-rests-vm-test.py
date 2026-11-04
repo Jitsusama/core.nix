@@ -79,13 +79,16 @@ def test_memory_probe(desktop: Desktop) -> None:
                 "ls -la $XDG_RUNTIME_DIR/heap*;"
                 " h=$(ls -d /nix/store/*-heaptrack-1*/bin | head -1);"
                 " $h/heaptrack_print -f $(ls $XDG_RUNTIME_DIR/heap* | head -1)"
-                " --print-leaks 1 --print-peaks 0 --print-allocators 0"
+                " --print-leaks 0 --print-peaks 1 --print-allocators 0"
                 " --print-temporary 0"
-                " --peak-limit 40 --sub-peak-limit 4 | sed 's/^/HEAP /' | head -400"
+                " --peak-limit 25 --sub-peak-limit 0"
+                " | sed 's/^/HEAP /' | head -300"
             ),
             timeout=600,
         )
     )
+    machine.succeed("cp /run/user/1000/heap.zst /tmp/heap.zst")
+    machine.copy_from_vm("/tmp/heap.zst", "heap")
 
 
 def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_things_stand(
