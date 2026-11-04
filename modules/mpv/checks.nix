@@ -39,10 +39,11 @@ onLinux {
       ${lib.concatMapStrings (script: ''
         cp ${files."mpv/script-opts/${script}.conf".source} mpv/script-opts/${script}.conf
       '') scripts}
-      grep -qx 'osd-font=${mono}' mpv/mpv.conf \
-        || { echo "mpv's messages aren't in ${mono}"; exit 1; }
-      grep -qx 'font=${mono}' mpv/script-opts/stats.conf \
-        || { echo "mpv's statistics aren't in ${mono}"; exit 1; }
+      # A string's length can lead it, as %21%, as mpv takes it.
+      grep -qE '^osd-font=(%[0-9]+%)?${mono}$' mpv/mpv.conf \
+        || { echo "mpv's messages aren't in ${mono}:"; grep font mpv/mpv.conf; exit 1; }
+      grep -qE '^font=(%[0-9]+%)?${mono}$' mpv/script-opts/stats.conf \
+        || { echo "mpv's statistics aren't in ${mono}:"; cat mpv/script-opts/stats.conf; exit 1; }
       # Kept open, mpv would hold the last frame and never finish.
       mpv --config-dir=$PWD/mpv --vo=null --ao=null --force-window=no --keep-open=no \
         --save-position-on-quit=no --frames=10 \

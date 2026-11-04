@@ -43,8 +43,8 @@ onLinux {
         printf 'P3\n1 1\n255\n0 0 0\n' > picture.ppm
         # swayimg can't say what face it was given, so its settings do.
         grep -qxF 'swayimg.text.font = nix.mono' config/swayimg/init.lua \
-          && grep -qF 'mono = "${mono}"' config/swayimg/nix.lua \
-          || { echo "swayimg's words aren't in ${mono}"; exit 1; }
+          && grep -qE '(\["mono"\]|mono) = "${mono}"' config/swayimg/nix.lua \
+          || { echo "swayimg's words aren't in ${mono}:"; grep mono config/swayimg/*.lua; exit 1; }
         timeout 30 cage -- swayimg \
           --execute='swayimg.on_redrawn(function() swayimg.exit(0) end)' picture.ppm \
           > said 2>&1 || { cat said; exit 1; }

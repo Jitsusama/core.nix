@@ -43,8 +43,8 @@ onLinux {
         mkdir -p config/zathura data run
         chmod 700 run
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
-        grep -q '^set font "${mono} ' config/zathura/zathurarc \
-          || { echo "zathura's bar isn't in ${mono}"; exit 1; }
+        grep -qE '^set font[[:space:]]+"${mono} ' config/zathura/zathurarc \
+          || { echo "zathura's bar isn't in ${mono}:"; grep font config/zathura/zathurarc; exit 1; }
         # cage ends when zathura does, so only a zathura still open at the
         # end of the wait opened.
         status=0
