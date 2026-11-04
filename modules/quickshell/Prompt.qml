@@ -171,6 +171,14 @@ Item {
     // Tab, which takes the ghost.
     signal completed
 
+    // Return pressed, said as accepted only for a press of its own, never
+    // for a repeat.
+    function returned(event: KeyEvent) {
+        if (!event.isAutoRepeat)
+            prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
+                (event.modifiers & Qt.ControlModifier) !== 0);
+    }
+
     signal cancelled
     // The right arrow past the end of what's typed, and the left arrow before
     // its start (or anywhere, with leftClears, once what's typed is gone) or
@@ -363,10 +371,11 @@ Item {
         // A fifth of the size between dots, so each reads as one character.
         // Points are 4/3 of a pixel at 96 dots an inch.
         font.letterSpacing: prompt.secret ? Theme.mono.large * 4 / 3 * 0.2 : 0
-        Keys.onReturnPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
-            (event.modifiers & Qt.ControlModifier) !== 0)
-        Keys.onEnterPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
-            (event.modifiers & Qt.ControlModifier) !== 0)
+        // Return does what it does once a press: let go late by a busy
+        // shell, it repeats as a held key does (Keys.onPressed below), and
+        // each repeat would do it again, a setting turned on and off.
+        Keys.onReturnPressed: event => prompt.returned(event)
+        Keys.onEnterPressed: event => prompt.returned(event)
         Keys.onTabPressed: prompt.completed()
         Keys.onEscapePressed: prompt.cancelled()
         onTextChanged: {

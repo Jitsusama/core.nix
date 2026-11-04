@@ -1086,6 +1086,51 @@ def test_the_launcher_opens_finds_and_runs_a_row_on_each_screen(unlocked: Screen
     unlocked.launcher_works_on_both()
 
 
+def test_a_return_held_does_its_row_once(unlocked: Screens) -> None:
+    """A Return held, or let go late by a busy machine, does its row once.
+
+    A key let go past the repeat delay repeats as if held (modules/keyboard/repeat.nix), and
+    this machine keeps repeat on, as Joel's does. Each repeat ran the row again: on a loaded
+    host Keep Awake was started and stopped within half a second, and the next check found it
+    off.
+    """
+    screens = unlocked
+    machine = screens.machine
+    machine.succeed(screens.in_niri("systemctl --user stop caffeinate.service"))
+    since = machine.succeed("date +%s").strip()
+    # Starts alone are counted, since the stop above may share the mark's second: one repeat
+    # turns it off again, which the last look finds, and two start it twice.
+    started = screens.in_niri(
+        f"journalctl --user -u caffeinate.service --since @{since} -o cat"
+        " | grep -c '^Starting ' || true"
+    )
+    try:
+        screens.super_space_on("Virtual-1")
+        machine.send_chars("keep awake")
+        screens.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake",
+            "found 'Keep Awake'",
+        )
+        # Held a second, past the 200 ms delay at 40 a second, it repeats some thirty times.
+        held = 1.0
+        machine.send_monitor_command(f"sendkey ret {int(held * 1000)}")
+        deadline = time.monotonic() + 10
+        while not screens.awake():
+            assert time.monotonic() < deadline, "a held Return never started Keep Awake"
+            time.sleep(0.2)
+        # Watched for as long as it's held and a second after, since a repeat comes only then.
+        deadline = time.monotonic() + held + 1
+        while time.monotonic() < deadline:
+            said = int(machine.succeed(started))
+            assert said == 1, f"a held Return started Keep Awake {said} times"
+            time.sleep(0.2)
+        assert screens.awake(), "a held Return turned Keep Awake on and off again"
+    finally:
+        machine.send_key("esc")
+        screens.launcher_until(lambda shown: not shown["open"], "closed at Escape")
+        machine.succeed(screens.in_niri("systemctl --user stop caffeinate.service"))
+
+
 def test_the_first_screen_goes_with_the_launcher_open_on_it(first_gone: Screens) -> None:
     """The first screen goes with the launcher open on it, and it works on the other."""
     first_gone.launcher_works_on("Virtual-2")
