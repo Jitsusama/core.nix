@@ -101,6 +101,9 @@ in
         # PATH, so it has the session's screen (notices.rs says why).
         "PATH=${
           lib.makeBinPath [
+            # cat, which systemd-inhibit runs to keep the laptop awake
+            # through a call (follow.rs says why).
+            pkgs.coreutils
             pkgs.libnotify
             pkgs.pipewire
             pkgs.systemd
