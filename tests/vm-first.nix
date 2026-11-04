@@ -58,11 +58,12 @@ let
     excludeShellChecks = [ "SC2154" ];
     text = ''
       if ${pkgs.coreutils}/bin/sync -f . 2> refused; then
-        echo "sync -f was let through" > "$out"
-        exit 0
+        echo "sync -f answered" > said
+      else
+        ${pkgs.coreutils}/bin/cat refused > said
       fi
       ${pkgs.coreutils}/bin/sync
-      { ${pkgs.coreutils}/bin/cat refused; echo "sync ran"; } > "$out"
+      { ${pkgs.coreutils}/bin/cat said; echo "sync ran"; } > "$out"
     '';
   };
   # A build that, as a container's would, mounts its cgroup, makes one below

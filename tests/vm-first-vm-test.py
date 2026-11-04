@@ -18,8 +18,8 @@ A build that has gone is said in vm-first's journal, with
 what its client ran, its quest, what it wrote and read, and what it left
 in memory still to write. Stopping a build leaves nothing of it. A build
 asking for a range of user ids gets 65,536. A build asking for its
-filesystem to be synced is told the call isn't implemented, while sync
-itself still runs, there and outside the daemon.
+filesystem to be synced is told it's done, while sync itself still runs,
+there and outside the daemon.
 
 tests/vm-first.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py). Each
 test asks for the state it starts from as a fixture: the daemon started, a VM's and a
@@ -339,17 +339,17 @@ def test_a_build_that_ends_before_the_disk_has_its_writes_says_what_it_left(
     assert mib(line, "wrote") + mib(line, "leaving up to") >= WRITTEN_MIB, line
 
 
-def test_a_builds_syncfs_is_refused_as_not_implemented_and_sync_still_runs(
+def test_a_builds_syncfs_is_answered_as_done_and_sync_still_runs(
     builds: Builds,
 ) -> None:
-    """A build's syncfs is refused as not implemented, and sync still runs."""
+    """A build's syncfs is answered as done, and sync still runs."""
     built = builds.machine.succeed(f"{NIX_BUILD} /etc/syncer-build.nix").strip()
 
     answered = builds.machine.succeed(f"cat {built}")
 
-    assert "Function not implemented" in answered, answered
+    assert "sync -f answered" in answered, answered
     assert "sync ran" in answered, answered
-    # Only the daemon and its builds are refused it.
+    # Only the daemon and its builds are answered without it running.
     builds.machine.succeed("sync -f /")
 
 
