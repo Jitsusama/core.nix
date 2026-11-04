@@ -464,6 +464,20 @@ class Camera:
                 self.machine.send_key(key)
         except AssertionError:
             print(f"PROBE after {key}: {self.desktop.as_account(look)}")
+            threads = (
+                "for p in $(pgrep -x mpv); do ps -L -o tid,stat,wchan:32,comm -p $p;"
+                " cat /proc/$p/status | grep -E 'State|SigBlk|SigPnd|ShdPnd'; done;"
+                " ls -l /run/user/1000/ | grep camera; true"
+            )
+            print(f"PROBE threads: {self.machine.succeed(threads)}")
+            self.machine.screenshot("camera-escape-lost")
+            again = True
+            try:
+                with self.desktop.told("shows card Video saved", timeout=timedelta(seconds=40)):
+                    self.machine.send_key(key)
+            except AssertionError:
+                again = False
+            print(f"PROBE a second {key} saved it: {again}")
             self.said()
             raise
 
