@@ -444,8 +444,8 @@ struct App {
     selection: Option<select::Selection>,
     /// What the last copy took, flashed until a moment after it.
     flash: Option<(Vec<text::Piece>, Instant)>,
-    /// The selection's swatch and blend, then the cursor's.
-    chosen: Option<[(gl::Texture, gl::Blend); 2]>,
+    /// The selection's mark, then the cursor's, which is drawn over it.
+    chosen: Option<[gl::Mark; 2]>,
     /// The cursor's line's top, in points: a line the page never draws, as
     /// vi keeps a cursor, where H, M and L, a landing or a match left it,
     /// for zt, %, * and gf to act on. Until then, and once it's out of
@@ -3496,8 +3496,13 @@ impl WindowHandler for App {
                     self.lit = make(search_marks())
                         .zip(make(current_marks()))
                         .map(|(a, b)| [a, b]);
-                    self.chosen = make(selection_marks())
-                        .zip(make(cursor_marks()))
+                    // The cursor always stands on a character the
+                    // selection holds, so it recolours the selection's.
+                    let page = (self::ground(), page_ink());
+                    self.chosen = gl
+                        .chosen(page, selection_marks())
+                        .ok()
+                        .zip(gl.chosen(selection_marks(), cursor_marks()).ok())
                         .map(|(a, b)| [a, b]);
                     self.gl = Some(gl);
                 }

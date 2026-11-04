@@ -110,7 +110,7 @@ onLinux {
   reader-takes-its-keys =
     let
       opens = graphical.config.xdg.mime.defaultApplications."text/markdown" or "";
-      inherit (home.jitsusama.theme) colours;
+      inherit (home.jitsusama.theme) colours terminal;
     in
     assert opens == "reader.desktop";
     pkgs.runCommandLocal "reader-takes-its-keys"
@@ -159,7 +159,8 @@ onLinux {
         } > page.md
         printf '# The Second Page\n\nWhat the first page sends here.\n' > second.md
         timeout 600 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
-          '${srgb colours.strong}' > ran 2>&1 || true
+          '${srgb colours.strong}' '${srgb terminal.cursor}' '${srgb terminal.cursor_text}' \
+          > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran said 2> /dev/null; exit 1; fi
 
         at() { magick "$1" -format "%[pixel:p{$2}]" info:; }

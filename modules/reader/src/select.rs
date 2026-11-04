@@ -1682,11 +1682,13 @@ mod tests {
         Layout::read(&page.frame, markdown.to_string())
     }
 
-    /// The page's line holding `words`.
+    /// The page's line holding `words`, past the eyebrow, which names the
+    /// file's folder by the test's process and the time it was written,
+    /// so holds a 12 when either does.
     fn holding(page: &Layout, words: &str) -> usize {
         page.lines
             .iter()
-            .position(|line| line.text.contains(words))
+            .position(|line| !line.text.starts_with("READER-SELECT-") && line.text.contains(words))
             .unwrap_or_else(|| panic!("no line holds {words}"))
     }
 
