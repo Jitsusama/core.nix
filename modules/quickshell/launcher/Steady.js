@@ -15,10 +15,10 @@
 // out of any place a tree would give it, so one that says how it reads
 // ranked flat (`flat`, as a session under its orchestrator does) reads so;
 // a list shown afresh has nothing new, and keeps every row's own. `went`
-// tells a row that left
-// from one its source draws dimmed itself, gone but there, as Write in
-// Slack stands dimmed until Slack answers. A row is known by `id`; rows alike in it
-// pair off in their order, so two windows titled alike keep their places.
+// tells a row that left from one its source draws dimmed itself, gone but
+// there, as Write in Slack stands dimmed until Slack answers. A row is
+// known by `id`; rows alike in it pair off in their order, so two windows
+// titled alike keep their places.
 function kept(shown, now, id) {
     const waiting = {};
     now.forEach((row, at) => {

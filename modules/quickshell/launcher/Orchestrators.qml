@@ -63,12 +63,15 @@ Provider {
 
     // How one stands (SessionRow.js): as its running session does, as
     // Agents reads it, or by its presence alone while no session is found
-    // for it, and "off" with neither.
+    // for it, as one whose window isn't open yet, its want judged as
+    // Sessions judges any, and "off" with neither.
     function standing(address) {
         const session = sessionOf(address);
         const agents = source("agents");
-        return session && agents ? agents.stateOf(session)
-            : SessionRow.state(Sessions.present[address] ?? null, false, false);
+        if (session && agents)
+            return agents.stateOf(session);
+        const presence = Sessions.present[address] ?? null;
+        return SessionRow.state(presence, Sessions.asks({ presence: presence }), false);
     }
 
     // Its running session, by its address, or null.
