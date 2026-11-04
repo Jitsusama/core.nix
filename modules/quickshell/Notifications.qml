@@ -365,9 +365,8 @@ Scope {
     // The front one done with: the verb chosen, or what it's about, or let
     // go when it's about nothing to open. What takes Joel out gives the
     // keys back, so what he types next reaches the window that came
-    // forward; what only changes the stack keeps them, unless he says to
-    // be done (Ctrl+Return).
-    function run(done) {
+    // forward; what only changes the stack keeps them, for q to give back.
+    function run() {
         const notification = front;
         if (!notification)
             return;
@@ -376,7 +375,7 @@ Scope {
             stepped = false;
             if (verb)
                 verb.run();
-            if (done || !(verb?.stays ?? false))
+            if (!(verb?.stays ?? false))
                 holding = false;
             return;
         }
@@ -387,8 +386,6 @@ Scope {
             holding = false;
         } else {
             notification.dismiss();
-            if (done)
-                holding = false;
         }
     }
 
@@ -438,8 +435,7 @@ Scope {
         const by = Math.max(read.count, 1);
         switch (read.act) {
         case "run":
-        case "runAndClose":
-            run(read.act === "runAndClose");
+            run();
             break;
         case "into":
             if (!stepped && verbs.length > 0) {

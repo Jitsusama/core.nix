@@ -46,7 +46,7 @@ QtObject {
             ["k and Up turn back", ["k", "Up"], ["previous", "previous"]],
             ["l steps in and h out, as the arrows", ["l", "h", "Right", "Left"],
                 ["into", "out", "into", "out"]],
-            ["Return runs, and with Ctrl closes", ["Return", "Ctrl+Return"], ["run", "runAndClose"]],
+            ["Return runs, as Enter", ["Return", "Enter"], ["run", "run"]],
             ["dd forgets, as Delete and Backspace", ["d", "d", "Delete", "Backspace"],
                 ["forget", "forget", "forget"]],
             ["dG forgets all, as Shift+Delete", ["d", "G", "Shift+Delete"],
@@ -72,6 +72,7 @@ QtObject {
 
         holds("a key begun is the stack's", typed(["d"]).ours, true);
         holds("a key it doesn't know isn't", typed(["x"]).ours, false);
+        holds("Return with Ctrl isn't, since q closes", typed(["Ctrl+Return"]).ours, false);
         holds("a key with no name isn't", typed(["d", ""]).ours, false);
         holds("a key ending a begun sequence badly is still the stack's", typed(["g", "x"]).ours,
             true);

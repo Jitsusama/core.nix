@@ -1538,7 +1538,7 @@ Where vi meets the keys already here, each clash resolves one way:
 
 On the notices on screen, held: j and k (and ↓ and ↑) turn through the
 cards, l steps into the front card's acts and h back out, and there j and
-k choose an act. Return runs it, and Ctrl+Return runs it and closes. dd,
+k choose an act. Return runs it, and q lets the stack go after. dd,
 Delete or Backspace forgets the front card; dG, as vi deletes to the last
 line, or Shift with Delete or Backspace forgets them all. yy copies what
 the front card said, as vi yanks a line, and the stack stays held; its
