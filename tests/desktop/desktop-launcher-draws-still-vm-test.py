@@ -69,6 +69,13 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     # which made one more (2026-10-30). Made again on each write, it would
     # be ten more.
     joins_on_opening = 6
+    # The shell's first opening joins its sources as they first come, so
+    # it's had before counting, and the test counts the same run first or
+    # later.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
     before = int(desktop.as_account("qs ipc call launcher joined"))
     since = desktop.mark()
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
