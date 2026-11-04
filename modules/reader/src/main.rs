@@ -1027,6 +1027,27 @@ impl App {
         clippy::cast_precision_loss,
         reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
     )]
+    /// Space ?'s key list, centred, as his which-key, on whole pixels so its
+    /// type is sharp; taller than the window, from its top down as far as
+    /// it's scrolled.
+    fn draw_keys(&mut self) {
+        let screen = self.screen_px() as f32;
+        let Some(gl) = self.gl.as_ref() else { return };
+        if self.keys_shown
+            && let Some(canvas) = painted(gl, &mut self.keys_canvas, self.keys_set.take())
+        {
+            let (width, height) = (canvas.width as f32, canvas.height as f32);
+            let x = ((gl.width as f32 - width) / 2.0).round().max(0.0);
+            let y = if height > screen {
+                let most = height - screen;
+                -(self.keys_scroll as f32).clamp(0.0, most).round()
+            } else {
+                ((screen - height) / 2.0).round()
+            };
+            gl.draw(canvas, x, y, width, height);
+        }
+    }
+
     fn draw_labels(&mut self) {
         if self.labelling.is_none() {
             return;
@@ -2061,21 +2082,8 @@ impl App {
             let (width, height) = (canvas.width as f32, canvas.height as f32);
             gl.draw(canvas, 0.0, screen - height, width, height);
         }
-        // Centred, as his which-key, on whole pixels so its type is sharp;
-        // taller than the window, from its top down as far as it's scrolled.
-        if self.keys_shown
-            && let Some(canvas) = painted(gl, &mut self.keys_canvas, self.keys_set.take())
-        {
-            let (width, height) = (canvas.width as f32, canvas.height as f32);
-            let x = ((gl.width as f32 - width) / 2.0).round().max(0.0);
-            let y = if height > screen {
-                let most = height - screen;
-                -(self.keys_scroll as f32).clamp(0.0, most).round()
-            } else {
-                ((screen - height) / 2.0).round()
-            };
-            gl.draw(canvas, x, y, width, height);
-        }
+        self.draw_keys();
+        let Some(gl) = self.gl.as_ref() else { return };
         if self.ask_next_frame() {
             self.frame_pending = true;
         }
