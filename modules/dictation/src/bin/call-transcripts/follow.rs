@@ -17,6 +17,10 @@
 //! and its Stop Transcribing stops both recorders at once, keeping what's
 //! written. A call stopped isn't transcribed again if it's rejoined, since
 //! stopping is how Joel honours someone's asking him not to.
+//!
+//! While a call is on, transcribed or not, the laptop is kept from going
+//! idle, so idle sleep on battery never ends a call that only listens,
+//! which a call app may not say is going on.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read};
@@ -55,6 +59,50 @@ struct Recording {
     asked: HashMap<(u64, u64), Instant>,
 }
 
+/// logind's hold against going idle, kept while a call is on. The
+/// screens stay on and unlocked under it, as a video call keeps them, and
+/// a sleep Joel asks for still goes ahead, where a hold against sleep
+/// would refuse his launcher's Suspend mid-call.
+///
+/// systemd-inhibit holds it for as long as the program it runs, cat, and
+/// cat reads from this process, so the hold ends when it's dropped and
+/// also when call-transcripts dies, rather than outliving it.
+struct Awake(Child);
+
+impl Awake {
+    /// Holds the laptop awake for a call.
+    fn hold() -> Option<Self> {
+        let mut inhibit = Command::new("systemd-inhibit");
+        inhibit.args([
+            "--what=idle",
+            "--mode=block",
+            "--who=call-transcripts",
+            "--why=A call is on",
+            "cat",
+        ]);
+        Self::running(inhibit)
+    }
+
+    /// Runs what holds the laptop awake, reading this process's pipe.
+    fn running(mut holding: Command) -> Option<Self> {
+        match holding.stdin(Stdio::piped()).stdout(Stdio::null()).spawn() {
+            Ok(child) => Some(Self(child)),
+            Err(why) => {
+                eprintln!("call-transcripts: couldn't keep the laptop awake for the call: {why}");
+                None
+            }
+        }
+    }
+}
+
+impl Drop for Awake {
+    /// Closes the pipe, which ends cat and with it the hold.
+    fn drop(&mut self) {
+        drop(self.0.stdin.take());
+        let _ = self.0.wait();
+    }
+}
+
 /// What the loop following calls is given: the graph as it changes, or
 /// Joel's Stop Transcribing for a call.
 enum Heard {
@@ -87,6 +135,8 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
     let mut recording: Option<Recording> = None;
     // The call on, by its record's key, recorded or not.
     let mut on_call: Option<String> = None;
+    // Held from a call's start to its end.
+    let mut awake: Option<Awake> = None;
     // The calls Joel stopped, never transcribed again while this runs.
     let mut stopped: HashSet<String> = HashSet::new();
     let mut count = 0;
@@ -115,6 +165,9 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
                 let on = meeting::on(&runtime, at);
                 let key = Record::key_for(on.event.as_deref(), on.person.as_deref(), at);
                 on_call = Some(key.clone());
+                if let Some(held) = Awake::hold() {
+                    awake.replace(held);
+                }
                 if stopped.contains(&key) {
                     eprintln!("call-transcripts: a call stopped is rejoined, {key}");
                     continue;
@@ -133,6 +186,7 @@ pub fn follow(book: &Arc<Shared>, calls: &Path, jobs: &Sender<Job>) -> Result<()
                 }
             }
             Some(Change::Ended) => {
+                drop(awake.take());
                 if let Some(mut ended) = recording.take() {
                     ended.stop();
                 }
@@ -458,6 +512,17 @@ fn hear_side(out: impl Read, key: &str, side: Side, since: usize, jobs: &Sender<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn letting_go_of_the_hold_ends_what_holds_it() {
+        let awake = Awake::running(Command::new("cat")).expect("cat runs");
+        let id = awake.0.id();
+        drop(awake);
+        assert!(
+            !Path::new(&format!("/proc/{id}")).exists(),
+            "cat still runs once the hold is let go"
+        );
+    }
 
     #[test]
     fn a_recorder_given_nothing_for_a_while_is_owed_that_silence() {

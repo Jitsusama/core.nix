@@ -254,6 +254,14 @@ def test_the_recorders_hold_no_call_open(joel: Joel, call: dict[str, Any]) -> No
     assert len(joel.calls()) == 1
 
 
+def test_an_ended_call_lets_the_machine_go_idle(joel: Joel, call: dict[str, Any]) -> None:
+    """Once the call ended, call-transcripts holds nothing against the machine going idle."""
+    assert call["ended"] is not None
+    joel.wait_for(
+        "! systemd-inhibit --list --no-legend | grep -qF call-transcripts", ANSWERS_WITHIN
+    )
+
+
 def test_a_call_is_written_down_with_no_summary(joel: Joel, written: dict[str, Any]) -> None:
     """With no summarizer, the call has no summary, and a notice from Calls says why."""
     assert written["summary"] is None
@@ -292,6 +300,16 @@ def test_stop_transcribing_stops_at_once_with_the_call_still_on(
     assert stopped["ended"] is None
     joel.run("systemctl --user is-active call")
     joel.wait_for("! pw-cli ls Node | grep -qF call-transcripts-", ANSWERS_WITHIN)
+
+
+def test_a_call_untranscribed_still_keeps_the_machine_from_going_idle(
+    joel: Joel, stopped: dict[str, Any]
+) -> None:
+    """With transcribing stopped and the call still on, idle sleep is still held off."""
+    assert stopped["ended"] is None
+    held = joel.run("systemd-inhibit --list --no-legend | grep -F call-transcripts")
+    assert "idle" in held
+    assert "block" in held
 
 
 def test_a_call_stopped_isnt_transcribed_again_once_rejoined(

@@ -2036,7 +2036,8 @@
     what was decided, and a notice from Calls says the meeting's summary is ready; a notice raised
     as the call started offers the line for its chat, and the next meeting, stopped from that
     notice's Stop Transcribing, lets its recorders go with the call still on and isn't recorded
-    once rejoined
+    once rejoined; a call holds logind's lock against going idle while it's on, transcribed or
+    not, and lets go once it ends
   '';
   vm-a-microphone-is-noise-cancelled = ''
     a microphone in Joel's PipeWire is offered a second time as "its name, Noise Cancelled",
