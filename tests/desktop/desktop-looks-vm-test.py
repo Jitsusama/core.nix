@@ -464,7 +464,8 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
-            machine.send_key("esc")
+            # Escape leaves insert, then refuses the ask from the folder it opened in.
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
@@ -582,7 +583,8 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
             for name in ["Size", "Changed", "Name"]:
                 side, listed = ORDERS[name]
                 desktop.down_to("Order")
-                machine.send_key("right")
+                # The right arrow steps in from normal, where the walk stays after the first.
+                desktop.step_in()
                 desktop.launcher_until(
                     lambda shown: sorted(shown["rows"]) == ["Changed", "Name", "Size"]
                 )
@@ -597,7 +599,7 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
                 desktop.down_to("Order")
                 desktop.launcher_until(partial(selected_is, name="Order", side=side))
                 desktop.photograph(f"file-picker-by-{name.lower()}-at-{said}")
-            machine.send_key("esc")
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
