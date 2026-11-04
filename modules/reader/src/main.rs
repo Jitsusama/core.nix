@@ -619,6 +619,12 @@ impl App {
         (self.end_px() - self.screen_px()).max(0.0)
     }
 
+    /// Whether the view is at the page's end, which it keeps to as the page
+    /// or the window changes under it, as while writing there.
+    fn at_end(&self) -> bool {
+        self.most() > 0.0 && self.offset >= self.most() - 1.0
+    }
+
     /// Where the page shown ends, in device pixels from its top at the
     /// zoom shown: the first screen's page's end while it is held.
     fn end_px(&self) -> f64 {
@@ -1771,7 +1777,14 @@ impl App {
     fn take_in(&mut self) {
         self.upload_arrived();
         if self.held_pt.is_some() && self.whole_page_covers() {
+            // At the first screen's end, the view goes on to the whole
+            // page's, which is where he was.
+            let at_end = self.at_end();
             self.held_pt = None;
+            if at_end {
+                self.offset = self.most();
+                self.ask_for_bands();
+            }
         }
         if self.incoming.is_some() {
             if self.incoming_covers() {
@@ -1995,7 +2008,7 @@ impl App {
         let offset_pt = if opens {
             self.landing(&file, &page, &lines, new_most_pt)
         } else {
-            let at_end = self.most() > 0.0 && self.offset >= self.most() - 1.0;
+            let at_end = self.at_end();
             let top_pt = self.offset / px_per_pt;
             match &self.words {
                 Some(old) => anchored(old, &lines, top_pt, at_end, new_most_pt),
@@ -2735,10 +2748,14 @@ impl WindowHandler for App {
         _: u32,
     ) {
         let (width, height) = configure.new_size;
+        let at_end = self.shown && self.at_end();
         self.size = (
             width.map_or(960, std::num::NonZero::get),
             height.map_or(900, std::num::NonZero::get),
         );
+        if at_end {
+            self.offset = self.most();
+        }
         self.fit_window();
         let (w, h) = self.buffer_size();
         if let Some(measure) = self.measure.as_mut()
@@ -2918,6 +2935,17 @@ impl Dispatch2<WpPresentationFeedback, App> for Feedback {
 /// The width the first screen is set at: the window's when the reader last
 /// closed, which niri most likely opens it at again, so the first screen
 /// seldom sets twice. Measuring sets the whole page each time.
+/// Where on the first page the view opens for a place kept, in points.
+/// Kept at the end, it opens at the end, however the window or the page
+/// has changed since: the first frame clamps it there.
+fn start_at(place: &place::Place, starts: &[(usize, f64)]) -> Option<f64> {
+    if place.at_end {
+        Some(f64::INFINITY)
+    } else {
+        place::pt_of(starts, place.block, place.into_pt)
+    }
+}
+
 fn first_width(measuring: bool) -> page::Width {
     if measuring {
         page::Width::WHOLE
@@ -2955,9 +2983,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = first_width(measuring);
     let first = page::set_first(&file, kept.as_ref().map(|place| place.block), width)?;
     let starts = place::starts(&first.page.frame);
-    let start_pt = kept
-        .as_ref()
-        .and_then(|place| place::pt_of(&starts, place.block, place.into_pt));
+    let start_pt = kept.as_ref().and_then(|place| start_at(place, &starts));
     let kept_marks = kept.map(|place| place.marks).unwrap_or_default();
     let page::First {
         page,
