@@ -613,8 +613,17 @@ in
           # Look 3's plate: a thing's name at title, a touch heavier than the
           # voice and drawn for its size, and the time at display, regular,
           # drawn for a poster's size with its wonky letters off, so its
-          # figures stand plain.
+          # figures stand plain. At large, the words the shell sets for
+          # reading, as the reader's page sets its text: the voice's weight,
+          # half softened, its wonky letters off and drawn for text's size,
+          # since Joel is "not a fan of sans-serif" (4 November).
           default = {
+            large = {
+              wght = 380;
+              SOFT = 50;
+              WONK = 0;
+              opsz = 14;
+            };
             title = {
               wght = 500;
               opsz = 72;

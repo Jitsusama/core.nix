@@ -75,6 +75,9 @@ Floating {
     readonly property var preview: shown ? shown.preview ?? null : null
     // Whether it's the moment's plate, home's Now's.
     readonly property bool moment: shown?.now === true
+    // Whether its words are prose to read, set as the reader sets its text,
+    // rather than lines in the mono.
+    readonly property bool prose: shown?.prose === true
     readonly property var momentLines: moment ? shown.lines ?? {} : ({})
     // Its groups of facts that hold any, each set on the row the next of
     // `lines.groups` names: a group with nothing to show gives up its
@@ -666,12 +669,12 @@ Floating {
                         lineHeightMode: Text.FixedHeight
                         lineHeight: drawer.pitch
                         color: Theme.text
-                        // A notice's in the face its card reads it in.
-                        font.family: drawer.shown?.sans === true ? Theme.sans.family
-                            : Theme.mono.family
-                        font.pointSize: drawer.shown?.sans === true ? Theme.sans.large
-                            : Theme.mono.large
-                        font.features: drawer.shown?.sans === true ? { "ss05": 1 } : ({})
+                        // Prose, such as a notice's, in the face its card
+                        // reads it in: the serif upright, as the reader
+                        // sets its text. The rest in the mono.
+                        font.family: drawer.prose ? Theme.serif.family : Theme.mono.family
+                        font.pointSize: drawer.prose ? Theme.serif.large : Theme.mono.large
+                        font.variableAxes: drawer.prose ? Theme.serif.upright.large : ({})
                     }
                 }
 

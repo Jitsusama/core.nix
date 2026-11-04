@@ -110,7 +110,7 @@ QtObject {
             facts: [{ label: "Length", value: "32 min" }],
             body: "\u2022 Ship it",
             styled: true,
-            sans: true
+            prose: true
         });
         const opened = Transcripts.details(call({ event: null, person: "ada@example.com",
             opening: "**Ada**, 0:00: Hi", ended: null, transcribing: true }),
@@ -121,7 +121,7 @@ QtObject {
             facts: [{ label: "With", value: "Ada Lovelace" }],
             body: "<b>Ada</b>, 0:00: Hi",
             styled: true,
-            sans: true
+            prose: true
         });
         check("a call with someone People doesn't know",
             Transcripts.details(call({ person: "ada@example.com" }), { title: "Ada", who: "" },

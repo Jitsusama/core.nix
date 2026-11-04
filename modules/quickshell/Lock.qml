@@ -250,8 +250,9 @@ Scope {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Qt.formatDateTime(clock.date, "dddd d MMMM")
                             color: Theme.text
-                            font.family: Theme.sans.family
-                            font.pointSize: Theme.sans.large
+                            font.family: Theme.serif.family
+                            font.pointSize: Theme.serif.large
+                            font.variableAxes: Theme.serif.upright.large
                         }
                     }
                 }
@@ -300,8 +301,9 @@ Scope {
                         elide: Text.ElideRight
                         text: root.said
                         color: Theme.text
-                        font.family: Theme.sans.family
-                        font.pointSize: Theme.sans.large
+                        font.family: Theme.serif.family
+                        font.pointSize: Theme.serif.large
+                        font.variableAxes: Theme.serif.upright.large
                     }
                 }
             }

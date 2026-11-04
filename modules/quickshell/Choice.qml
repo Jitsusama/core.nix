@@ -152,8 +152,9 @@ Rectangle {
         font.pointSize: Theme.mono.large
     }
 
-    // What the row holds, or its note, in the sans at the name's size, so
-    // the eye finds the name, in the mono, first (look 3's gap 1). Muted,
+    // What the row holds, or its note, in the serif upright at the name's
+    // size, as the reader sets its text, so the eye finds the name, in the
+    // mono, first (look 3's gap 1; no sans, 4 November). Muted,
     // and on the selection the text colour, since muted there reads under
     // the Lc 60 any text needs.
     Text {
@@ -167,9 +168,9 @@ Rectangle {
         visible: row.detail !== ""
         text: row.detail
         color: row.selected ? Theme.text : Theme.muted
-        font.family: Theme.sans.family
-        font.pointSize: Theme.sans.large
-        font.features: { "ss05": 1 }
+        font.family: Theme.serif.family
+        font.pointSize: Theme.serif.large
+        font.variableAxes: Theme.serif.upright.large
     }
 
     Graph {

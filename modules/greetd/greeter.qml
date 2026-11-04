@@ -246,8 +246,9 @@ ShellRoot {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Qt.formatDateTime(clock.date, "dddd d MMMM")
                             color: Theme.text
-                            font.family: Theme.sans.family
-                            font.pointSize: Theme.sans.large
+                            font.family: Theme.serif.family
+                            font.pointSize: Theme.serif.large
+                            font.variableAxes: Theme.serif.upright.large
                         }
                     }
                 }
@@ -272,16 +273,19 @@ ShellRoot {
                                 y: x
                                 width: parent.width - 2 * x
                                 textFormat: Text.RichText
+                                // Their name strong, at the serif's semibold:
+                                // a span can't set the weight axis.
                                 readonly property string called: "<span style=\""
-                                    + `color:${Theme.strong};font-weight:500">`
+                                    + `color:${Theme.strong};font-weight:600">`
                                     + `${root.account.called}</span>`
                                 text: `${root.greeting(clock.date.getHours())}, ${called}`
                                 color: Theme.text
                                 elide: Text.ElideRight
                                 lineHeight: root.line
                                 lineHeightMode: Text.FixedHeight
-                                font.family: Theme.sans.family
-                                font.pointSize: Theme.sans.large
+                                font.family: Theme.serif.family
+                                font.pointSize: Theme.serif.large
+                                font.variableAxes: Theme.serif.unweighted.large
                             }
                         }
 
@@ -374,8 +378,9 @@ ShellRoot {
                         elide: Text.ElideRight
                         text: root.said
                         color: Theme.text
-                        font.family: Theme.sans.family
-                        font.pointSize: Theme.sans.large
+                        font.family: Theme.serif.family
+                        font.pointSize: Theme.serif.large
+                        font.variableAxes: Theme.serif.upright.large
                     }
                 }
             }

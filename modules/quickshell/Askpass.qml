@@ -160,10 +160,10 @@ Scope {
                         width: parent.width
                         textFormat: Text.RichText
                         // As polkit's: programs in the monospace face, the
-                        // thing asked for strong.
+                        // thing asked for strong, at the serif's semibold.
                         readonly property var styles: ({
                             program: `font-family:'${Theme.mono.family}'`,
-                            thing: `color:${Theme.strong};font-weight:500`
+                            thing: `color:${Theme.strong};font-weight:600`
                         })
                         text: root.read === null ? "" : root.read.title.map(part => {
                             const words = root.escaped(part.text);
@@ -174,8 +174,9 @@ Scope {
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: Theme.sans.family
-                        font.pointSize: Theme.sans.large
+                        font.family: Theme.serif.family
+                        font.pointSize: Theme.serif.large
+                        font.variableAxes: Theme.serif.unweighted.large
                     }
 
                     Text {
@@ -189,9 +190,11 @@ Scope {
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
                         font.family: root.read !== null && root.read.mono ? Theme.mono.family
-                            : Theme.sans.family
+                            : Theme.serif.family
                         font.pointSize: root.read !== null && root.read.mono ? Theme.mono.large
-                            : Theme.sans.large
+                            : Theme.serif.large
+                        font.variableAxes: root.read !== null && root.read.mono ? ({})
+                            : Theme.serif.upright.large
                     }
                 }
 

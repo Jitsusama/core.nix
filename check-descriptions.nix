@@ -2129,7 +2129,7 @@
     up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
     a whole number of half rows below; and a row's words, home's lists and a found row's note,
-    are in the sans a step after its name and on its baseline to half a device pixel
+    are in the serif a step after its name and on its baseline to half a device pixel
   '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
