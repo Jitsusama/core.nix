@@ -21,7 +21,7 @@ pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
 
 /// The longest a VM test may run before it's stopped and counts as failed:
 /// the slowest pass in well under an hour on a builder of its own.
-const LONGEST: Duration = Duration::from_secs(2 * 60 * 60);
+const LONGEST: Duration = Duration::from_hours(2);
 
 /// The world as the net finds it.
 pub struct Real {
@@ -338,8 +338,8 @@ impl World for Real {
                         "test": test, "reason": reason, "owner_pr": owner, "commit": commit, "at": now(),
                     }));
                 }
-                let text = serde_json::to_string_pretty(&list).map_err(|error| error.to_string())?;
-                fs::write(&path, text + "\n").map_err(|error| format!("writing {}: {error}", path.display()))?;
+                let written = serde_json::to_string_pretty(&list).map_err(|error| error.to_string())?;
+                fs::write(&path, written + "\n").map_err(|error| format!("writing {}: {error}", path.display()))?;
                 self.git(&["add", QUARANTINE]).map(|_| ())
             },
         )
@@ -458,7 +458,7 @@ pub fn plain(line: &str) -> String {
         if character == '\u{1b}' {
             if chars.peek() == Some(&'[') {
                 chars.next();
-                while let Some(next) = chars.next() {
+                for next in chars.by_ref() {
                     if next.is_ascii_alphabetic() {
                         break;
                     }
@@ -493,11 +493,11 @@ fn run(command: &mut Command) -> Result<String, String> {
     let ran = command
         .stdin(Stdio::null())
         .output()
-        .map_err(|error| format!("running {:?}: {error}", command.get_program()))?;
+        .map_err(|error| format!("running {}: {error}", command.get_program().display()))?;
     if !ran.status.success() {
         return Err(format!(
-            "{:?} failed: {}",
-            command.get_program(),
+            "{} failed: {}",
+            command.get_program().display(),
             String::from_utf8_lossy(&ran.stderr).trim()
         ));
     }

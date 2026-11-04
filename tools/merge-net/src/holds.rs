@@ -93,7 +93,10 @@ mod tests {
     #[test]
     fn a_hold_on_everyone_stands_until_its_sender_answers_it() {
         let held = hold("h1", "A", "#machine");
-        assert_eq!(still_held(&[held.clone()]), Some("h1".to_owned()));
+        assert_eq!(
+            still_held(std::slice::from_ref(&held)),
+            Some("h1".to_owned())
+        );
         let other = json!({ "id": "x", "from": "B", "re": "h1", "intent": "fyi" });
         assert_eq!(still_held(&[held.clone(), other]), Some("h1".to_owned()));
         let ended = json!({ "id": "e", "from": "A", "re": "h1", "intent": "fyi" });

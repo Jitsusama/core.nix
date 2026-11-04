@@ -61,7 +61,7 @@ fn main() -> ExitCode {
         ["watch", rest @ ..] => watching(rest),
         ["needs"] => needs("refs/remotes/origin/main"),
         ["needs", "--base", base] => needs(base),
-        ["status"] => status(),
+        ["status"] => Ok(status()),
         ["--help"] => {
             println!("{USED}");
             Ok(ExitCode::SUCCESS)
@@ -84,7 +84,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
     while let Some(word) = words.next() {
         match *word {
             "--from" => from = Some((*words.next().ok_or("--from needs a commit")?).to_owned()),
-            "--branch" => branch = (*words.next().ok_or("--branch needs a name")?).to_owned(),
+            "--branch" => (*words.next().ok_or("--branch needs a name")?).clone_into(&mut branch),
             "--once" => once = true,
             other => return Err(format!("{other} isn't something watch takes\n{USED}")),
         }
@@ -179,7 +179,7 @@ fn known_vm_tests() -> Option<Vec<String>> {
 
 /// Say where the net is: the head it last passed, what it looked at last,
 /// any hold, and how many findings it has written.
-fn status() -> Result<ExitCode, String> {
+fn status() -> ExitCode {
     let state = State::from_env();
     let (passed, seen) = state.heads();
     let name = |head: Option<String>| {
@@ -199,7 +199,7 @@ fn status() -> Result<ExitCode, String> {
     if state.paused() {
         println!("paused");
     }
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }
 
 fn git(arguments: &[&str]) -> Result<String, String> {

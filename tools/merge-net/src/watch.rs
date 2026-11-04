@@ -275,14 +275,8 @@ pub fn pr_of(subject: &str) -> Option<u64> {
     rest.split_whitespace().next()?.parse().ok()
 }
 
-/// One round: look at main's head, if there's something new to look at.
-/// `start` is the base of the first round, before any head has passed.
-pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String> {
-    if let Some(why) = world.held() {
-        state.say(&format!("held, starting nothing: {why}"));
-        return Ok(Round::Idle);
-    }
-    let head = world.head()?;
+/// Clear the hold once its revert is on main.
+fn clear_if_reverted(world: &dyn World, state: &State) -> Result<(), String> {
     let hold = state.hold();
     if let Some(revert) = hold
         .as_ref()
@@ -295,6 +289,40 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             short(revert)
         ));
     }
+    Ok(())
+}
+
+/// Tell the owner of `head` of any check that no longer evaluates there.
+fn find_broken(
+    world: &dyn World,
+    state: &State,
+    changed: &Changed,
+    base: &str,
+    head: &str,
+) -> Result<(), String> {
+    if changed.broken.is_empty() {
+        return Ok(());
+    }
+    state.find(&json!({
+        "kind": "broken",
+        "test": changed.broken.join(" "),
+        "commit": head,
+        "since": base,
+        "owner_pr": pr_of(&world.subject(head)),
+        "at": now(),
+    }))?;
+    Ok(())
+}
+
+/// One round: look at main's head, if there's something new to look at.
+/// `start` is the base of the first round, before any head has passed.
+pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String> {
+    if let Some(why) = world.held() {
+        state.say(&format!("held, starting nothing: {why}"));
+        return Ok(Round::Idle);
+    }
+    let head = world.head()?;
+    clear_if_reverted(world, state)?;
     let hold = state.hold();
     let (passed, seen) = state.heads();
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
@@ -303,17 +331,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     }
     state.say(&format!("comparing {} with {}", short(&base), short(&head)));
     let changed = world.changed(&base, &head)?;
-    if !changed.broken.is_empty() {
-        let finding = json!({
-            "kind": "broken",
-            "test": changed.broken.join(" "),
-            "commit": head,
-            "since": base,
-            "owner_pr": pr_of(&world.subject(&head)),
-            "at": now(),
-        });
-        state.find(&finding)?;
-    }
+    find_broken(world, state, &changed, &base, &head)?;
     // A test held for a revert not yet merged is left until it is; one held
     // with no revert, as when the revert wouldn't apply, runs again, since
     // a merge since may have fixed it.
@@ -332,7 +350,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     let mut failed = false;
     let mut unfinished = false;
     for (test, outcome) in tests.iter().zip(outcomes) {
-        let held = quarantined.contains(test);
+        let kept_out = quarantined.contains(test);
         match outcome {
             Outcome::Passed => {
                 if hold
@@ -346,7 +364,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                     ));
                 }
             }
-            Outcome::Flaky if !held && !state.found("flaky", test, &head) => {
+            Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
                 let reason = format!("failed, then passed, at {}", short(&head));
                 let made = world.quarantine(test, owner, &head, &reason);
                 state.find(&json!({
@@ -361,7 +379,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                 }))?;
             }
             Outcome::Flaky => {}
-            Outcome::Failed if held => {
+            Outcome::Failed if kept_out => {
                 state.find(&json!({
                     "kind": "failed-in-quarantine",
                     "test": test,
@@ -458,10 +476,10 @@ fn broke(
         "at": now(),
     }))?;
     match reverted {
-        Ok(merged) => state.say(&format!(
+        Ok(landed) => state.say(&format!(
             "reverted {} for {test} in #{}",
             short(&commit),
-            merged.pr
+            landed.pr
         )),
         Err(why) => state.say(&format!(
             "couldn't revert {} for {test}: {why}",
