@@ -45,6 +45,12 @@
 let
   account = "jitsusama";
   secret = "correct-horse";
+  # The areas whose machine brings Slack, as a machine of Joel's does: what
+  # reads mail and Slack, and the shortcuts, which list Slack's own.
+  bringsSlack = builtins.elem area [
+    "launcher-reads-mail"
+    "launcher-moves-windows"
+  ];
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -279,10 +285,6 @@ let
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
-  # Going places holds over a hundred subtests, about two hours whole on a
-  # loaded builder, so the driver's hour would end it halfway. Its parts
-  # through run-subtests each fit the hour; this lets a whole run finish.
-  ${if area == "launcher-goes-places" then "globalTimeout" else null} = 150 * 60;
   # Reads the colours of the windows it photographs. The desktop it drives
   # is desktop/desktop_session.py, a module of the driver's Python, which
   # every area imports.
@@ -584,12 +586,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # Slack, as a machine that brings it imports it, so Now's Slack piece
         # reads the file a test writes in slack-unreads' place. Nobody signs
         # in to Slack here, so slack-unreads itself never starts. Only where
-        # the launcher's places are tested, since no other area reads it.
-        imports = lib.optional (area == "launcher-goes-places") self.homeModules.slack;
+        # an area reads it.
+        imports = lib.optional bringsSlack self.homeModules.slack;
         # And Slack's own desktop entry, as the machine's Slack brings it,
         # so Programs has the row whose note says why Slack can't be
         # checked. It starts nothing, since nothing here opens it.
-        xdg.desktopEntries = lib.optionalAttrs (area == "launcher-goes-places") {
+        xdg.desktopEntries = lib.optionalAttrs bringsSlack {
           slack = {
             name = "Slack";
             genericName = "Messages";
@@ -679,7 +681,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # Slack's reader, where Slack's module is imported, a stand-in the
         # people daemon runs in its place, with no sign-in until a test
         # gives it one.
-        jitsusama.people.sources.slack = lib.mkIf (area == "launcher-goes-places") {
+        jitsusama.people.sources.slack = lib.mkIf bringsSlack {
           daemon = lib.mkForce [
             (lib.getExe pkgs.bash)
             "${./desktop/people-slack.sh}"
