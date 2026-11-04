@@ -79,6 +79,14 @@ impl Width {
     pub fn page_pt(self) -> f64 {
         self.measure_pt + 2.0 * self.spread_pt
     }
+
+    /// What Typst counts a hyphen as costing, in percent of its own: 200 on
+    /// the whole measure, and dearer as the measure narrows, with the square
+    /// of how much, since a narrow line has fewer spaces to take up the
+    /// slack and Typst would otherwise hyphenate line after line.
+    pub fn hyphen_cost(self) -> f64 {
+        (200.0 * (MEASURE_PT / self.measure_pt).powi(2)).round()
+    }
 }
 
 /// Above the first line's capitals: Space's xxl, 24 pt. Lines start at
@@ -106,8 +114,11 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let display-axes = (opsz: 144, SOFT: 100, WONK: 1)
 #let half = pitch / 2
 #let gap(n) = n * pitch - cap
-#set text(font: face.text, size: body-size, weight: 380, variations: text-axes, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: 200%, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
+#set text(font: face.text, size: body-size, weight: 380, variations: text-axes, fill: ink.text, lang: "en", hyphenate: true, costs: (hyphenation: hyphen-cost, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
 #set par(justify: false, linebreaks: "optimized", leading: pitch - cap, spacing: gap(1.5))
+// A word that holds a hyphen of its own breaks only there, as a typesetter
+// would, never at one Typst adds, which would read as a third word.
+#show regex("[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)+"): set text(hyphenate: false)
 // Strong is the words a step heavier, at 480, in the strong text: Typst's
 // own adds 300, which draws this face black.
 #set strong(delta: 100)
@@ -417,8 +428,9 @@ pub fn template(world: &PageWorld, width: Width) -> String {
         spread_pt,
     } = width;
     format!(
-        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let spread = {spread_pt}pt\n{look}",
+        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {TOP_PT}pt, bottom: {BOTTOM_PT}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let spread = {spread_pt}pt\n#let hyphen-cost = {hyphen}%\n{look}",
         page = width.page_pt(),
+        hyphen = width.hyphen_cost(),
     )
 }
 
@@ -862,6 +874,42 @@ mod tests {
             lines.len() > 2,
             "the words never wrapped on the narrow measure"
         );
+    }
+
+    #[test]
+    fn a_narrow_page_hyphenates_as_a_typesetter_would() {
+        // Every narrow window from 180 to 360 pt, so the rules hold at any
+        // measure rather than at one that happens to break well.
+        let markdown = "When you use two or more headings, GitHub automatically generates a table of contents that you can access by clicking the \"Outline\" menu icon {% octicon \"list-unordered\" aria-label=\"Table of Contents\" %} within the file header. Each heading title is listed in the table of contents and you can click a title to navigate to the selected section.\n";
+        let dir = std::env::temp_dir().join(format!("reader-hyphens-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        let file = dir.join("page.md");
+        std::fs::write(&file, markdown).expect("the file");
+        let mut setter = Setter::new(file.to_str().expect("a path"));
+        let mut wrong = Vec::new();
+        for window in (180..=360).step_by(6) {
+            setter.fit(Width::for_window(f64::from(window)));
+            let (page, _) = setter.set().expect("set");
+            let lines: Vec<String> = crate::text::lines(crate::text::runs(&page.frame))
+                .into_iter()
+                .map(|line| line.text)
+                .collect();
+            let broken: Vec<bool> = lines.iter().map(|line| line.ends_with('\u{ad}')).collect();
+            if broken.windows(3).any(|three| three.iter().all(|b| *b)) {
+                wrong.push(format!("{window} pt: three hyphens in a row in {lines:?}"));
+            }
+            for (line, next) in lines.iter().zip(lines.iter().skip(1)) {
+                let head = line.rsplit(' ').next().unwrap_or_default();
+                let tail = next.split(' ').next().unwrap_or_default();
+                if line.ends_with('\u{ad}') && (head.contains('-') || tail.contains('-')) {
+                    wrong.push(format!(
+                        "{window} pt: {head:?} {tail:?} broken off its hyphen"
+                    ));
+                }
+            }
+        }
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// Every baseline from the first run holding `from` to the last holding
