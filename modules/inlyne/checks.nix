@@ -26,7 +26,8 @@ onLinux {
   # inlyne draws a sheet with the account's settings, on a screen of
   # nobody's, with the theme's fonts and a software GPU: the page on the
   # theme's background, its heading in the strong text, and none of
-  # inlyne's own colours. The keys page its settings name, which ? opens,
+  # inlyne's own colours, its words in the serif upright's cut, which its
+  # fonts answer for that name. The keys page its settings name, which ? opens,
   # draws in the theme too. Markdown files open in inlyne.
   inlyne-reads-in-the-theme =
     let
@@ -34,7 +35,9 @@ onLinux {
       inherit (home.jitsusama.theme) colours;
       opens = graphical.config.xdg.mime.defaultApplications."text/markdown" or "";
       inlyne = lib.findFirst (package: lib.getName package == "inlyne") null home.home.packages;
-      fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      cut = lib.findFirst (package: lib.getName package == "serif-text") null home.home.packages;
+      fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages ++ [ cut ]; };
+      words = home.jitsusama.theme.font.serif.text.family;
       # The colour as ImageMagick names a pixel's.
       srgb =
         colour:
@@ -51,6 +54,7 @@ onLinux {
           inlyne
           pkgs.bash
           pkgs.cage
+          pkgs.fontconfig
           pkgs.grim
           pkgs.imagemagick
           pkgs.inotify-tools
@@ -68,6 +72,10 @@ onLinux {
         # The account's settings, with a line logged for every frame drawn,
         # which the script waits on.
         cat ${home.xdg.configFile."inlyne/inlyne.toml".source} > config/inlyne/inlyne.toml
+        grep -qx 'regular-font = "${words}"' config/inlyne/inlyne.toml \
+          || { echo "inlyne's words aren't in ${words}:"; grep font config/inlyne/inlyne.toml; exit 1; }
+        [ "$(fc-match -f '%{file}' '${words}')" = ${cut.file} ] \
+          || { echo "${words} is $(fc-match -f '%{file}' '${words}'), not the cut"; exit 1; }
         printf '\n[debug]\nmetrics = "log"\n' >> config/inlyne/inlyne.toml
         cp ${pkgs.nixos-icons}/share/icons/hicolor/64x64/apps/nix-snowflake.png attachments/chart.png
         cat > sheet.md <<'EOF'

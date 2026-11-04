@@ -224,7 +224,7 @@ fun about_shown()
 # shadow's colour for the tight shadow.
 fun lifted(text, centre)
   {
-    local.face = "@sansFamily@ " + @sansBody@ * global.scale;
+    local.face = "@serifFamily@ " + @serifBody@ * global.scale;
     local.ink = Image.Text(text, @textColour@, 1, face);
     local.shade = Image.Text(text, @shadowColour@, 1, face);
     local.x = global.middle - ink.GetWidth() / 2;

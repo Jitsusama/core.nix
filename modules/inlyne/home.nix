@@ -9,8 +9,9 @@
 # Every colour is the theme's: the page on the background, headings in the
 # strong text, links and ticked boxes in the accent, code on a block a step
 # below the page and coloured as bat colours it (../theme/tmtheme.nix).
-# Its words are in the theme's sans face and its code in the monospaced
-# one.
+# Its words are in the serif upright, as the reader's page sets its text,
+# cut as a font of its own (../fonts/serif-text.nix), since inlyne can't
+# set a variable font's axes, and its code in the monospaced face.
 #
 # Its keys are the keyboard language's, and only these: ← and → back and
 # forward through the pages followed, ↑ and ↓ a few lines, Page Up and Page
@@ -37,6 +38,7 @@
 }:
 let
   inherit (config.jitsusama.theme) colours terminal font;
+  serifText = import ../fonts/serif-text.nix { inherit pkgs font; };
 
   # The theme's #RRGGBB as the number inlyne reads.
   number = colour: lib.fromHexString (lib.removePrefix "#" colour);
@@ -233,7 +235,7 @@ let
       }/Jitsusama.tmTheme";
     };
     font-options = {
-      regular-font = font.sans.family;
+      regular-font = font.serif.text.family;
       monospace-font = font.mono.family;
     };
     keybindings.base = map (key: [
@@ -252,7 +254,12 @@ in
     ../theme/home.nix
   ];
 
-  home.packages = [ inlyne ];
+  # The serif upright cut with it, where the Mac's fonts and fontconfig
+  # find it.
+  home.packages = [
+    inlyne
+    serifText
+  ];
 
   # The file each inlyne shows now, for its Recent in the launcher to lead
   # with, kept as mpv keeps what it plays (../mpv/home.nix says why in the

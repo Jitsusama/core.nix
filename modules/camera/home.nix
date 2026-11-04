@@ -23,13 +23,14 @@
 }:
 let
   inherit (config.jitsusama.theme) colours font;
+  serifText = import ../fonts/serif-text.nix { inherit pkgs font; };
   inherit (config.jitsusama.camera) device;
   nerd = import ../theme/nerd.nix { inherit lib; };
 
   # The theme's look for the viewfinder's panel, as mpv's script options.
   look = lib.concatStringsSep "," (
     lib.mapAttrsToList (name: value: "camera-${name}=${value}") {
-      sans = font.sans.family;
+      words = font.serif.text.family;
       mono = font.mono.family;
       inherit (colours)
         deepest
@@ -76,5 +77,10 @@ in
     '';
   };
 
-  config.home.packages = lib.optional (device != null) camera;
+  # The serif upright cut for the panel's words, where fontconfig finds
+  # it, since mpv can't set a variable font's axes.
+  config.home.packages = lib.optionals (device != null) [
+    camera
+    serifText
+  ];
 }

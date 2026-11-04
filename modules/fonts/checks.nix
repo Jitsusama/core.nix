@@ -73,6 +73,53 @@ onLinux {
     grep -q -- '-Italic\[' matched
   '';
 
+  # The serif upright's cut draws as the variable font does at the axes the
+  # theme gives it, set by pango, to a few pixels of rasterising, and
+  # unlike the variable font's default, which is drawn for 144 points:
+  # what a program that can't set axes shows is what the shell shows.
+  the-serif-text-is-the-upright-at-large =
+    let
+      cut = import ./serif-text.nix {
+        inherit pkgs;
+        font = (account graphical).jitsusama.theme.font;
+      };
+      variable = "${pkgs.fraunces}/share/fonts/truetype/Fraunces[SOFT,WONK,opsz,wght].ttf";
+      axes = serif.axes // serif.upright.large;
+      at = lib.concatStringsSep "," (lib.mapAttrsToList (tag: value: "${tag}=${toString value}") axes);
+    in
+    pkgs.runCommandLocal "the-serif-text-is-the-upright-at-large"
+      {
+        nativeBuildInputs = [
+          pkgs.fontconfig
+          pkgs.imagemagick
+          pkgs.pango.bin
+        ];
+        LC_ALL = "C.UTF-8";
+      }
+      ''
+        export HOME=$PWD XDG_CACHE_HOME=$PWD/cache
+        mkdir faces
+        cp '${variable}' ${cut.file} faces/
+        printf '<fontconfig><dir>%s</dir></fontconfig>' $PWD/faces > fonts.conf
+        export FONTCONFIG_FILE=$PWD/fonts.conf
+        [ "$(fc-match -f '%{family}' '${serif.text.family}')" = '${serif.text.family}' ] \
+          || { echo "the cut doesn't answer to ${serif.text.family}"; exit 1; }
+        words='Hamburgefonstiv, quick 0123'
+        draw() {
+          pango-view -q --no-display --antialias=gray --hinting=none --margin=0 \
+            --font="$1" --output="$2" --text="$words"
+        }
+        draw '${serif.family} 24 @${at}' set.png
+        draw '${serif.text.family} 24' cut.png
+        draw '${serif.family} 24' default.png
+        differ() { compare -fuzz 10% -metric AE "$1" "$2" null: 2>&1 | cut -d' ' -f1 | cut -d. -f1; }
+        echo "the cut differs from the axes set by $(differ set.png cut.png) pixels, the default by" \
+          "$(differ set.png default.png)"
+        [ "$(differ set.png cut.png)" -le 20 ] || { echo "the cut isn't the axes set"; exit 1; }
+        [ "$(differ set.png default.png)" -ge 500 ] || { echo "the axes set changed nothing"; exit 1; }
+        touch $out
+      '';
+
   # Asked for a letter of Hebrew, Arabic or CJK in any of the theme's faces,
   # none of which has them, the machine's fontconfig, with the account's own
   # beside it, gives the script face's family for that script, in its order,
