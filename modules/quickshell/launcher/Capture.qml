@@ -22,9 +22,10 @@
 // those folders (Taken.qml), read as the launcher opens and never
 // otherwise (VKCF3Z and Y2YBTS, 2026-10-29). Typed into, Recent finds
 // among everything taken, not only the nine: by its name, then a
-// screenshot by the words in it, where screen-text reads them; and at the
-// top its matches are one row, Return stepping into Recent with the
-// search kept (Y2YBTS, 2026-11-04).
+// screenshot by the words in it, where screen-text reads them. At the top
+// its matches are one row, Return stepping into Recent with the search
+// kept, so what was taken keeps its one home, rather than a second list of
+// the same kind of thing beside it.
 //
 // It holds nothing another program lodges: editing the newest screenshot
 // and looking through them all are GIMP's and the picture viewer's own, in
@@ -339,20 +340,9 @@ Provider {
     // by its name. What's read comes a moment later, when the source says
     // it found more.
     function found(letters) {
-        const words = Fuzzy.words(letters);
-        if (words.length === 0)
+        if (Fuzzy.words(letters).length === 0)
             return [];
-        const named = [];
-        for (const file of Taken.files) {
-            if (!provider.takenIn.includes(file.folder))
-                continue;
-            const prepared = provider.names[file.path]
-                ?? (provider.names[file.path] = Fuzzy.prepare(Files.named(file.path)));
-            const m = Fuzzy.match(prepared, words, false);
-            if (m.score >= 0)
-                named.push({ item: prepared, score: m.score, grade: m.grade, path: file.path });
-        }
-        const byName = Fuzzy.keep(named).map(f => f.path);
+        const byName = Taken.named(letters, provider.takenIn, provider.most);
         const rows = byName.map(path => provider.takenRow(path, ""));
         const listed = new Set(byName);
         const readers = (launcher?.sources ?? [])
@@ -362,13 +352,16 @@ Provider {
                 if (listed.has(record.path))
                     continue;
                 listed.add(record.path);
-                rows.push(provider.takenRow(record.path, record.line));
+                if (rows.length < provider.most * 2)
+                    rows.push(provider.takenRow(record.path, record.line));
             }
         return rows;
     }
 
-    // Each file's name made ready to match, once.
-    property var names: ({})
+    // How many files Recent finds by name, and as many again by their
+    // words: more than a screen holds are never seen, and each is a row
+    // made on every key.
+    readonly property int most: 50
 
     // Recent's matches gathered at the top as one row, though Capture's
     // own rows are searched only inside it, since what was taken is

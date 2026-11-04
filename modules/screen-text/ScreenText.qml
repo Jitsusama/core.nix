@@ -3,8 +3,9 @@
 // lists below those found by their names (launcher/Capture.qml). It lists
 // no row of its own. The asking is Taken.qml's, on its one connection to
 // the daemon, each text asked once; this says the launcher found more once
-// an answer comes, so what's typed is searched again, and a machine
-// without screen-text has no provider asking.
+// an answer comes, so what's typed is searched again, and lets the
+// connection go once the launcher closes. A machine without screen-text
+// has no provider asking.
 import qs
 import QtQuick
 
@@ -25,6 +26,17 @@ Provider {
         if (records === null)
             provider.askedAt = Date.now();
         return records ?? [];
+    }
+
+    // The launcher closing lets Taken's connection go, so none is held at
+    // rest; the next search opens it again.
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged(): void {
+            if (!provider.launcher.open)
+                Taken.rest();
+        }
     }
 
     Connections {

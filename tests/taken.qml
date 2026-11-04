@@ -6,8 +6,11 @@
 // whose screenshots, with the line that matched, it then gives at once; a
 // text asked again, in other case and spacing, asks nothing; once four
 // texts have been asked since, the first is asked again; and every one of
-// them goes on one connection. Each step waits on what Taken says, at most
-// ten seconds. It exits 0 once every case holds, and otherwise 1, saying
+// them goes on one connection. Once it rests the connection goes, an
+// answer kept is still given without one, and the next text asked opens
+// it again. A few thousand files are found by name, best first, each key
+// within a frame. Each step waits on what Taken says, at most ten
+// seconds. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import Quickshell
 import Quickshell.Io
@@ -46,7 +49,8 @@ ShellRoot {
 
     function fail(what) {
         console.warn(`FAIL ${what}: given ${JSON.stringify(root.given)}, heard`
-            + ` ${JSON.stringify(root.heard)}, asked ${JSON.stringify(root.askedSoFar())}`);
+            + ` ${JSON.stringify(root.heard)}, asked ${JSON.stringify(root.askedSoFar())}`
+            + `, slowest ${root.slowest} ms, wombats ${JSON.stringify(root.wombats)}`);
         Qt.exit(1);
     }
 
@@ -110,8 +114,81 @@ ShellRoot {
             holds: () => JSON.stringify(root.askedSoFar()) === JSON.stringify(["connected",
                     "search thursday review", "search weather", "search quarterly",
                     "search planning", "search morning", "search thursday review"])
+        },
+        {
+            what: "resting lets the connection go",
+            run: () => Taken.rest(),
+            holds: () => root.askedSoFar().slice(-1)[0] === "gone"
+        },
+        {
+            what: "an answer kept is given at rest, with nothing asked",
+            run: () => {
+                root.given = Taken.search("morning");
+            },
+            holds: () => (root.given ?? []).length === 1
+                && root.askedSoFar().slice(-1)[0] === "gone"
+        },
+        {
+            what: "the next text asked opens the connection again",
+            run: () => {
+                root.heard = [];
+                root.given = Taken.search("ten");
+            },
+            holds: () => root.heard.includes("ten")
+                && JSON.stringify(root.askedSoFar().slice(-3))
+                === JSON.stringify(["gone", "connected", "search ten"])
+        },
+        {
+            what: "a few thousand files are found by name, best first, each key within a frame",
+            run: () => root.timeNames(),
+            holds: () => root.slowest !== undefined && root.slowest <= root.frame
+                && JSON.stringify(root.wombats) === JSON.stringify(root.wombatsMeant)
         }
     ]
+
+    // How long one key may take, a frame at 60 a second, in milliseconds.
+    readonly property real frame: 1000 / 60
+    // The slowest typed key's time, the best of five rounds, and what
+    // "wombat plan" found.
+    property var slowest: undefined
+    property var wombats: []
+    readonly property var wombatsMeant: [`${root.shots}/wombat plan.png`,
+        `${root.shots}/wombat plan 2.png`]
+
+    // Three thousand files as find says them, two named for the wombat
+    // plan, the rest as screenshots and recordings are named, then every
+    // key of a few searches typed, each judged by its best of five rounds,
+    // after one round that makes each name ready to match, as the first
+    // key after a read does.
+    function timeNames() {
+        const lines = [];
+        for (let i = 0; i < 3000; i++) {
+            const day = String(1 + i % 28).padStart(2, "0");
+            const kind = i % 3 === 0 ? "Recording" : "Screenshot";
+            lines.push(`${1760000000 + i}\t${root.shots}/${kind} from 2026-10-${day} ${i}.png`);
+        }
+        lines.push(`1700000000\t${root.shots}/wombat plan.png`);
+        lines.push(`1690000000\t${root.shots}/wombat plan 2.png`);
+        Taken.heard(lines.join("\n"));
+        const typed = ["screenshot 2026-10-1", "wombat plan", "recording", "zz top"]
+            .reduce((all, text) => all.concat(Array.from(text, (_, at) => text.slice(0, at + 1))),
+                []);
+        for (const text of typed)
+            Taken.named(text, [root.shots], 50);
+        let slowest = 0;
+        for (const text of typed) {
+            let best = Infinity;
+            for (let round = 0; round < 5; round++) {
+                const started = Date.now();
+                Taken.named(text, [root.shots], 50);
+                best = Math.min(best, Date.now() - started);
+            }
+            slowest = Math.max(slowest, best);
+        }
+        root.wombats = Taken.named("wombat plan", [root.shots], 50);
+        root.slowest = slowest;
+        console.warn(`${typed.length} keys over 3002 files: the slowest took ${slowest} ms`);
+    }
 
     function begin() {
         const now = steps[step];

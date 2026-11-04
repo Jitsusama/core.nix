@@ -8,16 +8,19 @@ pragma Singleton
 // nothing is taken while the launcher shows: Capture closes it first. So
 // no folder is watched at rest (the shell's design, RSCH-20261029-0E8050).
 //
-// It finds screenshots by the words in them too (`search`), asking the
+// It finds what it read by name (`named`), each name made ready to match
+// once, and screenshots by the words in them (`search`), asking the
 // screen-text daemon (modules/screen-text) over one connection of its own
-// through Daemon.qml, made only once the first search is asked, so a
-// machine nobody searches, or one without the daemon, holds no socket at
-// rest. It watches no record, since a search's answer is all it needs:
-// each text is asked once, and the last few answers are kept, so typing
-// back over a word asks nothing again.
+// through Daemon.qml. That's made only once a search is asked, and let go
+// when what searched rests (`rest`), as the launcher closing does
+// (ScreenText.qml), so no socket is held at rest. It watches no record,
+// since a search's answer is all it needs: each text is asked once, and
+// the last few answers are kept through a rest, so typing back over a word
+// asks nothing again.
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Fuzzy.js" as Fuzzy
 
 Singleton {
     id: root
@@ -67,6 +70,48 @@ Singleton {
                 };
             })
             .sort((a, b) => b.at - a.at);
+    }
+
+    // The paths in these folders whose names what's typed finds, best
+    // first, the best `most` of them: a short word such as a year finds
+    // nearly every file, and more rows than a screen holds are never seen.
+    function named(typed, within, most) {
+        const words = Fuzzy.words(typed);
+        if (words.length === 0)
+            return [];
+        const found = [];
+        for (const file of root.files) {
+            if (!within.includes(file.folder))
+                continue;
+            const name = file.path.slice(file.folder.length + 1);
+            const prepared = root.prepared[file.path]
+                ?? (root.prepared[file.path] = Fuzzy.prepare(name));
+            const m = Fuzzy.match(prepared, words, false);
+            if (m.score >= 0)
+                found.push({ item: prepared, score: m.score, grade: m.grade, path: file.path });
+        }
+        return Fuzzy.keep(found).slice(0, most).map(one => one.path);
+    }
+
+    // Each file's name made ready to match, by its path, once; a file gone
+    // takes its own with it when the folders are read again.
+    property var prepared: ({})
+
+    onFilesChanged: {
+        const kept = {};
+        for (const file of root.files)
+            if (file.path in root.prepared)
+                kept[file.path] = root.prepared[file.path];
+        root.prepared = kept;
+    }
+
+    // What searched rests, as the launcher does once it closes: the
+    // connection is let go, and a text still asked is asked again next
+    // time, while the answers kept stay.
+    function rest() {
+        reader.active = false;
+        root.pending = [];
+        root.searches = root.searches.filter(search => search.records !== null);
     }
 
     // The last few searches, newest last: { words, records }, records null

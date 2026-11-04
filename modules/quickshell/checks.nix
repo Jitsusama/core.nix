@@ -1029,7 +1029,8 @@ onLinux {
   # What was taken lately finds screenshots by their words (Taken.qml),
   # asking a stand-in for the screen-text daemon
   # (tests/desktop/stand-in-screen-text.py) over one connection made on the
-  # first search, each text once, the last few kept, as tests/taken.qml
+  # first search and let go at rest, each text once, the last few kept, and
+  # finds a few thousand files by name within a frame, as tests/taken.qml
   # holds it to.
   the-shell-finds-screenshots-by-their-words =
     let
@@ -1046,6 +1047,7 @@ onLinux {
       EOF
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Taken.qml} Taken.qml
+      cp ${./Fuzzy.js} Fuzzy.js
       cp ${../../tests/taken.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} SHOTS=$PWD/shots

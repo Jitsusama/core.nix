@@ -9,8 +9,8 @@ screenshots whose text holds every word asked, those holding them all in one lin
 with the line that matched. What each screenshot says is TEXTS, a JSON object of lines by
 picture path, read again at every search, so a test writes it as it saves a picture rather
 than waiting for one to be read. Each connection and each search is written down in
-screen-text-asked in the runtime folder, a line each, so a test can count how often it was
-asked, and on how many connections.
+screen-text-asked in the runtime folder, a line each, and so is each connection going, so a
+test can count how often it was asked, on how many connections, and whether one is held.
 """
 
 import json
@@ -94,11 +94,12 @@ def answer(said: dict[str, object]) -> dict[str, object]:
 
 
 def serve(connection: socket.socket) -> None:
-    """Answer each line a client says, in order, until it goes."""
+    """Answer each line a client says, in order, until it goes, and write down that it went."""
     written("connected")
     with connection, connection.makefile("r") as lines:
         for said in lines:
             connection.sendall(f"{json.dumps(answer(json.loads(said)))}\n".encode())
+    written("gone")
 
 
 def main() -> None:

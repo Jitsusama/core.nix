@@ -980,11 +980,16 @@ def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_sa
     )
     asked = desktop.as_account("cat $XDG_RUNTIME_DIR/screen-text-asked").split("\n")
     searches = [line for line in asked if line.startswith("search ")]
-    assert asked.count("connected") <= 1, f"screen-text was connected to more than once: {asked}"
+    assert asked.count("connected") == 1, f"screen-text wasn't connected to once: {asked}"
     assert "search wombat" in searches, f"wombat was never asked: {searches}"
     assert len(searches) == len(set(searches)), f"a text was asked twice: {searches}"
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_until(lambda shown: not shown["open"])
+    # Closed, the launcher holds no connection to it.
+    machine.wait_until_succeeds(
+        desktop.in_session("tail -1 $XDG_RUNTIME_DIR/screen-text-asked | grep -qx gone"),
+        timeout=dt.timedelta(seconds=10),
+    )
     desktop.as_account(
         f"rm -f {shlex.quote(named)} {shlex.quote(said)}"
         f" {' '.join(shlex.quote(path) for path in newer)}"
