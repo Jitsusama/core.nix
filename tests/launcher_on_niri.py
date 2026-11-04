@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import signal
 import subprocess
 import time
 from datetime import timedelta
@@ -155,6 +156,20 @@ class Shell:
         since = self.mark()
         yield
         self.reported(what, lambda rest: rest == "", since, timeout)
+
+    @contextlib.contextmanager
+    def frozen(self) -> Iterator[None]:
+        """Hold the shell stopped while what's done inside it runs, then let it go on.
+
+        What niri sends it meanwhile waits in its socket, so it's all heard in one turn of its
+        loop as it goes on, as the desktop test's frozen unit is.
+        """
+        assert self.process is not None, "the shell isn't started"
+        self.process.send_signal(signal.SIGSTOP)
+        try:
+            yield
+        finally:
+            self.process.send_signal(signal.SIGCONT)
 
     def launcher_until(self, test: Callable[[Json], object], timeout: timedelta = WAITING) -> None:
         """Wait until what the launcher shows passes the test.

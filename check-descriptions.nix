@@ -1440,7 +1440,9 @@
     colours and copies them, says once and quietly what needs a network couldn't, holds an
     answer's row from the keystroke, finds the power acts by their names and the names they had
     and asks before they act, draws nothing closed as a minute turns though it says the new time
-    as it opens, draws nothing left open and still, its caret steady, and warns of nothing it drew
+    as it opens, draws nothing left open and still, its caret steady, searches text a program
+    types at once once for its newest letters, a Return among them acting on the row those
+    letters found, and warns of nothing it drew
   '';
   the-launcher-asks-a-fresh-pi = ''
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
@@ -2044,8 +2046,7 @@
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
     jobs.slice and build.slice as with that load frozen: half the keys, and nineteen in twenty
     of the middle turn, within twice their frozen times and design.md's budget more, timed in
-    turns in the same machine so the builder's own load slows both alike; and text a program types at once is searched once for
-    its newest letters, with a Return typed among them acting on the row those letters found
+    turns in the same machine so the builder's own load slows both alike
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
