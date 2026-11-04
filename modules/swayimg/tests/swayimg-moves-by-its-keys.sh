@@ -79,7 +79,7 @@ typed() {
 # goes 300 ms on, which a second wtype starting on a busy machine can miss.
 shifted() {
   wtype ${3:+"$3"} -M shift "$1" -m shift
-  until_shown "$2" "$3Shift+$1"
+  until_shown "$2" "${3:-}Shift+$1"
 }
 
 # The first frame waits on cage and swayimg starting, which on a machine
