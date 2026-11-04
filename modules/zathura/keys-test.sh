@@ -1,8 +1,8 @@
 # shellcheck shell=bash
-# A throwaway: what zathura shows around a search, never merged.
+# A throwaway: what zathura hears around a search, never merged.
 set -eu
 
-zathura "$1" > said 2>&1 &
+zathura -l debug "$1" > said 2>&1 &
 zathura=$!
 trap 'kill $zathura 2>/dev/null || true' EXIT
 
@@ -52,31 +52,29 @@ done
 wtype -k Home
 until_true "Home" on 0
 sleep 2
-grim -t png s0-home.png
-echo "home page $(page)"
-wtype /find -k Return
-sleep 3
-grim -t png s1-together.png
-echo "together page $(page)"
-wtype -k Escape
-wtype -k Home
+mark() { echo "=== $1 from line $(wc -l < said)"; }
+mark slash
+wtype /
 sleep 1
-wtype /find
-sleep 1
-wtype -k KP_Enter
-sleep 3
-grim -t png s2-kp.png
-echo "kp page $(page)"
-wtype -k Escape
-wtype -k Home
-sleep 1
-wtype /find
-sleep 1
-wtype -k Return
-sleep 1
+mark find
+wtype find
+sleep 2
+mark return
 wtype -k Return
 sleep 3
-grim -t png s3-twice.png
-echo "twice page $(page)"
-cat said
+grim -t png s1-return.png
+echo "return page $(page)"
+mark escape
+wtype -k Escape
+sleep 2
+grim -t png s2-escape.png
+echo "escape page $(page)"
+mark colon
+wtype ':close'
+sleep 1
+wtype -k Return
+sleep 2
+grim -t png s3-colon.png
+mark end
+cat -n said | tail -200
 touch passed
