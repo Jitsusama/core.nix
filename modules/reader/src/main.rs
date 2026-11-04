@@ -1019,14 +1019,6 @@ impl App {
         true
     }
 
-    /// g x's labels, each over its link's first letters with its letters'
-    /// baseline on the link's, on whole pixels so its letters are sharp; a
-    /// newly set batch is painted first.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
-    )]
     /// Space ?'s key list, centred, as his which-key, on whole pixels so its
     /// type is sharp; taller than the window, from its top down as far as
     /// it's scrolled.
@@ -1053,6 +1045,14 @@ impl App {
         }
     }
 
+    /// g x's labels, each over its link's first letters with its letters'
+    /// baseline on the link's, on whole pixels so its letters are sharp; a
+    /// newly set batch is painted first.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
+    )]
     fn draw_labels(&mut self) {
         if self.labelling.is_none() {
             return;
