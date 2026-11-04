@@ -210,6 +210,46 @@ function previewOf(said) {
     return undefined;
 }
 
+// A name's runs of digits, read as numbers so 2 comes before 10.
+const RUNS = /(\d+)/;
+
+// Two names A to Z, case aside, each run of digits as its number: "note
+// 2" before "Note 10".
+function natural(one, other) {
+    const ones = one.toLowerCase().split(RUNS);
+    const others = other.toLowerCase().split(RUNS);
+    const differs = ones.findIndex((mine, at) => at < others.length && mine !== others[at]);
+    if (differs >= 0) {
+        const [mine, theirs] = [ones[differs], others[differs]];
+        // split puts each run of digits at an odd place.
+        if (differs % 2 === 1 && Number(mine) !== Number(theirs)) {
+            return Number(mine) - Number(theirs);
+        }
+        return mine < theirs ? -1 : 1;
+    }
+    return ones.length - others.length || (one < other ? -1 : one > other ? 1 : 0);
+}
+
+// How big an entry is to order by: a file's bytes, a folder's items once
+// counted (`counts`, by path), anything not yet known the least.
+function bulk(entry, counts) {
+    const known = entry.folder ? counts[entry.path] : entry.size;
+    return typeof known === "number" ? known : -1;
+}
+
+// A folder's entries in `order`: by name, A to Z (natural); by when each
+// changed, newest first; or by size, largest first, a folder by how many
+// items it holds. Folders come first in every order, ordered among
+// themselves the same way, and a tie goes by name (VKCF3Z, 2026-11-04).
+function ordered(entries, order, counts) {
+    const by = {
+        changed: (one, other) => (other.modified ?? 0) - (one.modified ?? 0),
+        size: (one, other) => bulk(other, counts) - bulk(one, counts)
+    }[order];
+    return entries.slice().sort((one, other) => (other.folder === true) - (one.folder === true)
+        || (by ? by(one, other) : 0) || natural(one.name, other.name));
+}
+
 // The drawer's plate for the files marked, in the order they were, each
 // its name, its folder from ~ (where) and its size where its folder's read
 // said it: the eyebrow how many, a quiet line each with its folder beside

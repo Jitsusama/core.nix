@@ -311,6 +311,24 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
 # and its facts after, every line on the pitch, the facts said from the folder at once and the
 # preview coming once file-preview has said (VKCF3Z, 2026-11-03). Each is its kind, what its
 # eyebrow says and what it previews.
+def asked_in(desktop: Desktop, place: str, rows: set[str]) -> None:
+    """Wait until a fresh ask holds the keys in the place given, with these rows listed.
+
+    An ask is shown before its folder's read, so a row selected isn't its rows listed, and
+    before the launcher holds the keys, so a key sent then goes nowhere: down_to reads the
+    rows once and sends its keys at once, and needs both.
+    """
+    desktop.launcher_until(
+        lambda shown: (
+            shown["keys"]
+            and shown["path"][-1:] == [place]
+            and shown["selected"] is not None
+            and rows <= set(shown["rows"])
+        ),
+        timeout=timedelta(seconds=60),
+    )
+
+
 PICKED = {
     "drafts": ("Folder", "lines"),
     "archive.zip": ("ZIP", None),
@@ -368,16 +386,7 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 "systemd-run --user --collect --unit=choose-to-preview"
                 f" {values['choose_a_file']} open {folder}"
             )
-            # Every file listed, not just a row selected: a fresh ask is shown
-            # before its folder's read, and down_to reads the rows once.
-            desktop.launcher_until(
-                lambda shown: (
-                    shown["path"][-1:] == ["~/picked"]
-                    and shown["selected"] is not None
-                    and set(PICKED) <= set(shown["rows"])
-                ),
-                timeout=timedelta(seconds=60),
-            )
+            asked_in(desktop, "~/picked", set(PICKED))
             for name, (eyebrow, preview) in PICKED.items():
                 desktop.down_to(name)
                 desktop.launcher_until(partial(previewed, name=name, preview=preview))
@@ -441,16 +450,7 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
                 "systemd-run --user --collect --unit=choose-one"
                 f" {desktop.values['choose_a_file']} open {folder}"
             )
-            # A fresh ask is shown before its folder's read, so wait for the
-            # file down_to goes to, not just a row selected.
-            desktop.launcher_until(
-                lambda shown: (
-                    shown["path"][-1:] == ["~/one"]
-                    and shown["selected"] is not None
-                    and "a.md" in shown["rows"]
-                ),
-                timeout=timedelta(seconds=60),
-            )
+            asked_in(desktop, "~/one", {"a.md"})
             shown = desktop.showing()
             assert shown["hint"] == "open which file?", shown
             assert "Open the Marked" not in shown["rows"], shown["rows"]
@@ -484,16 +484,7 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
                 "systemd-run --user --collect --unit=choose-to-mark"
                 f" {desktop.values['choose_a_file']} open-several {folder}"
             )
-            # Open the Marked leads before the folder's read, so wait for the
-            # folder's files, which down_to goes to next.
-            desktop.launcher_until(
-                lambda shown: (
-                    shown["path"][-1:] == ["~/marking"]
-                    and shown["selected"] is not None
-                    and {"a.md", "b.md", "more"} <= set(shown["rows"])
-                ),
-                timeout=timedelta(seconds=60),
-            )
+            asked_in(desktop, "~/marking", {"a.md", "b.md", "more"})
             assert desktop.showing()["hint"] == "open which files?", desktop.showing()
             desktop.down_to("Open the Marked")
             desktop.launcher_until(partial(selected_is, name="Open the Marked", side="none"))
@@ -531,6 +522,72 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
+            machine.send_key("esc")
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")
+
+
+# Each order the file picker lists in, what its Order row says of it, and
+# the files it lists so: a.md is the smallest and changed between, b.md the
+# largest and oldest, c.md between and newest, and the folder first in each.
+ORDERS = {
+    "Name": ("name", ["more", "a.md", "b.md", "c.md"]),
+    "Size": ("size, largest first", ["more", "b.md", "c.md", "a.md"]),
+    "Changed": ("changed, newest first", ["more", "c.md", "a.md", "b.md"]),
+}
+
+
+def listed_from_the_top(shown: Json, listed: list[str]) -> bool:
+    """Say whether the ordered folder is shown listing these first, on its first row."""
+    return (
+        shown["path"][-1:] == ["~/ordered"]
+        and shown["rows"][: len(listed)] == listed
+        and shown["selected"] is not None
+        and shown["selected"]["name"] == listed[0]
+    )
+
+
+def test_the_file_picker_lists_a_folder_in_the_order_chosen(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Order steps into Name, Changed and Size, and each lists the folder so, folders first."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/ordered"
+    chose = "/run/user/1000/portal-chose"
+    desktop.as_account(
+        f"mkdir -p {folder}/more && head -c 3 /dev/zero > {folder}/a.md"
+        f" && head -c 3000 /dev/zero > {folder}/b.md && head -c 300 /dev/zero > {folder}/c.md"
+        f" && touch -d '2 days ago' {folder}/b.md && touch -d '1 hour ago' {folder}/a.md"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            said = scale.replace(".", "-")
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-in-order"
+                f" {desktop.values['choose_a_file']} open {folder}"
+            )
+            asked_in(desktop, "~/ordered", {"Order"})
+            for name in ["Size", "Changed", "Name"]:
+                side, listed = ORDERS[name]
+                desktop.down_to("Order")
+                machine.send_key("right")
+                desktop.launcher_until(
+                    lambda shown: sorted(shown["rows"]) == ["Changed", "Name", "Size"]
+                )
+                if name == "Size":
+                    assert desktop.showing()["rows"] == ["Name", "Changed", "Size"], (
+                        "Order doesn't start on Name, the one in use first"
+                    )
+                    desktop.photograph(f"file-picker-inside-order-at-{said}")
+                desktop.down_to(name)
+                machine.send_key("ret")
+                desktop.launcher_until(partial(listed_from_the_top, listed=listed))
+                desktop.down_to("Order")
+                desktop.launcher_until(partial(selected_is, name="Order", side=side))
+                desktop.photograph(f"file-picker-by-{name.lower()}-at-{said}")
             machine.send_key("esc")
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:

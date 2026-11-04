@@ -7,7 +7,8 @@
 // is how VKCF3Z set a file's row and its plate (2026-11-03): a size in SI
 // units, one decimal under 10; when it changed by how long ago; a plate of
 // its kind and numbers, its name, its preview and its facts, every number
-// kept to its unit, and every word said as words.json says it.
+// kept to its unit, and every word said as words.json says it. A folder
+// lists by name, change or size, its folders first (VKCF3Z, 2026-11-04).
 import QtQuick
 import "FileFacts.js" as FileFacts
 
@@ -156,6 +157,25 @@ QtObject {
         const plain = FileFacts.plate({ path: "/n/a.zip", name: "a.zip", where: "~/n", entry: null },
             { kind: "ZIP", size: 7, changed: now }, now, words);
         expect("anything else shows its facts alone, no stand-in", plain.preview, undefined);
+
+        const entries = [
+            { name: "note 10.md", path: "/n/note 10.md", size: 5, modified: 3 },
+            { name: "Note 2.md", path: "/n/Note 2.md", size: 900, modified: 1 },
+            { name: "b", path: "/n/b", folder: true, modified: 2 },
+            { name: "a", path: "/n/a", folder: true, modified: 1 },
+            { name: "apple.md", path: "/n/apple.md", size: 40, modified: 2 }
+        ];
+        const order = by => FileFacts.ordered(entries, by, { "/n/a": 1, "/n/b": 7 })
+            .map(entry => entry.name);
+        expect("by name: folders first, then A to Z, case aside, 2 before 10", order("name"),
+            ["a", "b", "apple.md", "Note 2.md", "note 10.md"]);
+        expect("by when it changed: folders first, newest first", order("changed"),
+            ["b", "a", "note 10.md", "apple.md", "Note 2.md"]);
+        expect("by size: folders first by how many they hold, then largest first", order("size"),
+            ["b", "a", "Note 2.md", "apple.md", "note 10.md"]);
+        expect("a folder not yet counted is the least", FileFacts.ordered(entries, "size", {})
+            .slice(0, 2).map(entry => entry.name), ["a", "b"]);
+        expect("the entries given are left as they were", entries[0].name, "note 10.md");
 
         if (failures.length > 0) {
             for (const failure of failures)

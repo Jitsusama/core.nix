@@ -5338,6 +5338,23 @@
       }
     },
     {
+      "id": "file-chooser:order",
+      "in": "path:folder",
+      "name": "Order",
+      "verb": "choose",
+      "glyph": "order",
+      "said": {
+        "name": "name",
+        "changed": "changed, newest first",
+        "size": "size, largest first"
+      }
+    },
+    {
+      "id": "file-chooser:name",
+      "in": "file-chooser:order",
+      "name": "Name"
+    },
+    {
       "id": "file-chooser:size",
       "in": "path:file",
       "name": "Size"

@@ -14,7 +14,10 @@
 // its narrower kinds too; another filter picked shows what it passes; and Return on a file answers its
 // path and the filter in use. Asked to save, it leads with the name the
 // program gave, which, being there already, steps in to Replace It first;
-// what's typed names it instead, saved in the folder it's typed in. Asked
+// what's typed names it instead, saved in the folder it's typed in. Its
+// Order, last, steps into Name, Changed and Size, the one in use first,
+// and Return on Size lists the folder largest first, made afresh, an
+// order the chooser made again after a restart keeps. Asked
 // for a folder, it lists no files and each folder leads with Open This
 // Folder. In every folder, the field asks for one file, several, a folder
 // or where to save, in the program's word. Closing the launcher answers nothing, a request that isn't JSON
@@ -92,6 +95,10 @@ ShellRoot {
             held = held.concat([{ row: row, rows: row.verbs() }]);
             return true;
         }
+
+        function back() {
+            held = held.slice(0, -1);
+        }
     }
 
     Launcher.FileChooser {
@@ -103,7 +110,8 @@ ShellRoot {
             recent: [Quickshell.env("RECENT_LIST")],
             kinds: Quickshell.env("KINDS"),
             preview: [Quickshell.env("PREVIEWER")],
-            savedIn: `${root.home}/state/open-with/saved-in`
+            savedIn: `${root.home}/state/open-with/saved-in`,
+            orderIn: `${root.home}/state/open-with/order`
         })
     }
 
@@ -118,6 +126,7 @@ ShellRoot {
             launcher: launcher
             settings: chooser.settings
             onSavedLastChanged: Qt.callLater(root.step)
+            onOrderChanged: Qt.callLater(root.step)
         }
     }
 
@@ -406,8 +415,10 @@ ShellRoot {
                         choices: {} }) && !launcher.open, `${answers[8]}, ${launcher.open}`);
                 expect("a save staged for a place kept elsewhere never moves where a save here went",
                     chooser.savedLastIn() === notes, chooser.savedLastIn());
+                chooser.orderBy("changed");
                 restarted = restarting.createObject(root);
-            } else if (stage === 26 && restarted?.savedLastIn() === notes) {
+            } else if (stage === 26 && restarted?.savedLastIn() === notes
+                && restarted.order === "changed") {
                 stage = 27;
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
@@ -427,11 +438,12 @@ ShellRoot {
             titles.every(title => title === "~/notes"), titles.join(" "));
         let rows = rowsIn(notes);
         expect("lately elsewhere, then folders, then files the filter passes, then the filters",
-            names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files", names(rows));
+            names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files, Order",
+            names(rows));
         const unread = names(chooser.folderRow(`${home}/unread`).verbs());
         const read = names(chooser.folderRow(notes).verbs());
         expect("a folder holds its Copy the Path and filters only once it's read, so they come last",
-            unread === "" && read.endsWith("All Files, Copy the Path"), `${unread}; ${read}`);
+            unread === "" && read.endsWith("All Files, Order, Copy the Path"), `${unread}; ${read}`);
         expect("a file opened lately elsewhere says where", rows[0].side === "~/elsewhere"
             && rows[0].key === `file:${home}/elsewhere/old.md`, `${rows[0].side} ${rows[0].key}`);
         const own = named(rows, "a.md");
@@ -453,7 +465,8 @@ ShellRoot {
         named(rows, "All Files").run();
         rows = rowsIn(notes);
         expect("another filter picked shows what it passes",
-            names(rows) === "old.md, | sub, a.md, b.png, notes.txt, | Markdown, All Files (chosen)",
+            names(rows)
+                === "old.md, | sub, a.md, b.png, notes.txt, | Markdown, All Files (chosen), Order",
             names(rows));
         const a = named(rows, "a.md");
         expect("Return on a file opens it by the program's word", a.verb === "upload"
@@ -471,7 +484,7 @@ ShellRoot {
             fieldAsks());
         const rows = rowsIn(notes);
         expect("saving leads with the name given, then the folders lately, then the rest",
-            names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding", names(rows));
+            names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding, Order", names(rows));
         const there = rows[0];
         expect("a name already there steps in to Replace It first", there.verb === "more"
             && names(there.verbs()) === "Replace It, Copy the Path", `${there.verb}: ${names(there.verbs())}`);
@@ -480,13 +493,39 @@ ShellRoot {
         const typed = sub.typed("new.md");
         expect("what's typed names the file Return saves", names(typed) === "new.md"
             && typed[0].verb === "save" && typed[0].side === "~/notes/sub", `${names(typed)} ${typed[0]?.side}`);
+        ordering();
         launcher.open = false;
         typed[0].run();
     }
 
+    // Order comes last, saying the order in use, and steps into the three,
+    // that one first; Return on one lists the folder so, back in it, made
+    // afresh, as every folder after.
+    function ordering() {
+        const rows = rowsIn(notes);
+        const order = rows[rows.length - 1];
+        expect("Order comes last, saying the order in use, stepping in", order.name === "Order"
+            && order.side === "name" && order.verb === "more", `${order.name} ${order.side}`);
+        const depth = launcher.held.length;
+        launcher.enter(order);
+        const inside = launcher.held[depth].rows;
+        expect("inside, the order in use first, then the others",
+            names(inside) === "Name (chosen), Changed, Size", names(inside));
+        inside[2].run();
+        const step = launcher.held[launcher.held.length - 1];
+        expect("Return on Size goes back to the folder, made afresh, its files largest first",
+            chooser.order === "size" && launcher.held.length === depth
+                && step.row.key === `folder:${notes}`
+                && names(step.rows).includes("| sub, notes.txt, b.png, | Encoding, Order")
+                && rowsIn(notes)[rowsIn(notes).length - 1].side === "size, largest first",
+            `${chooser.order} ${launcher.held.length}/${depth} ${step.row.key} ${names(step.rows)}`);
+        chooser.orderBy("name");
+    }
+
     function folder() {
         const rows = rowsIn(notes);
-        expect("asked for a folder, it lists no files", names(rows) === "elsewhere, | sub", names(rows));
+        expect("asked for a folder, it lists no files", names(rows) === "elsewhere, | sub, | Order",
+            names(rows));
         expect("asked for a folder, the field asks for one", fieldAsks() === "open which folder?",
             fieldAsks());
         const inside = named(rows, "sub").verbs();
@@ -501,7 +540,8 @@ ShellRoot {
             fieldAsks());
         let rows = rowsIn(notes);
         expect("Open the Marked leads from the start, then lately, folders and files",
-            names(rows) === "Open the Marked, | old.md, | sub, a.md, b.png, notes.txt", names(rows));
+            names(rows) === "Open the Marked, | old.md, | sub, a.md, b.png, notes.txt, | Order",
+            names(rows));
         const lead = rows[0];
         expect("with none marked, it says none and nothing more, Return saying nothing",
             lead.side === "none" && lead.note === "" && lead.still === true && lead.stays === true
@@ -604,8 +644,8 @@ ShellRoot {
 
     function elsewhere() {
         const rows = rowsIn(home);
-        expect("a place kept elsewhere is listed after home's files, apart",
-            names(rows).endsWith(", | Google Drive"), names(rows));
+        expect("a place kept elsewhere is listed after home's files, apart, then Order",
+            names(rows).endsWith(", | Google Drive, | Order"), names(rows));
         const away = chooser.folderRow(notes).typed("drive");
         expect("typed in another folder, it's found", names(away) === "Google Drive", names(away));
         const there = chooser.folderRow(home).typed("drive");

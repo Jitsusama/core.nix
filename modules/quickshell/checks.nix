@@ -1865,9 +1865,11 @@ onLinux {
       mkdir $XDG_RUNTIME_DIR/open-with
       export FONTCONFIG_FILE=${noFonts}
       # A folder of notes, two hidden things in it, and a file opened lately
-      # elsewhere beside one of its own.
+      # elsewhere beside one of its own; notes.txt is the largest, then b.png.
       mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere
-      touch $HOME/notes/a.md $HOME/notes/b.png $HOME/notes/notes.txt $HOME/notes/.hidden.txt
+      touch $HOME/notes/a.md $HOME/notes/.hidden.txt
+      printf 'twelve bytes' > $HOME/notes/notes.txt
+      printf 'png' > $HOME/notes/b.png
       touch $HOME/elsewhere/old.md
       printf 'Notes\t%s\nNotes\t%s\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
