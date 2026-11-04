@@ -2,13 +2,35 @@
 # every other folder's; its opening comment says what each kind of check
 # proves. The program itself is dictation's, checked with it.
 {
+  account,
+  bareNixos,
+  graphical,
+  holds,
+  lib,
   onLinux,
   pkgs,
+  self,
   shellFolderLint,
   ...
 }:
 # The transcripts serve the Linux desktop's shell, and build only on Linux.
 onLinux {
+  # Only a machine whose hardware names a device for the summarizer sums
+  # calls up, on that device; any other graphical machine is given no
+  # summarizer, so never fetches its 15 GB model.
+  calls-are-summed-up-only-where-the-model-runs =
+    let
+      service = machine: (account machine).systemd.user.services.call-transcripts.Service;
+      xps = bareNixos [
+        self.nixosModules.graphical
+        self.nixosModules.dell-xps-14-da14260
+      ];
+      sums = machine: lib.hasInfix "call-summarizer" (service machine).ExecStart;
+    in
+    holds "calls-are-summed-up-only-where-the-model-runs"
+      "call-transcripts is given a summarizer on a machine whose hardware names no device for it, or none on the XPS 14."
+      (sums xps && lib.elem "SUMMARIZER_DEVICE=GPU" (service xps).Environment && !sums graphical);
+
   # How the shell says each call written down, when it was and for how
   # long, its drawer's words set from the markdown they're written in, and
   # which calls are with someone or of a meeting (tests/transcripts.qml,

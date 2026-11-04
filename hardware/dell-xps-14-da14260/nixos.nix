@@ -59,6 +59,7 @@ let
 in
 {
   imports = [
+    ../../modules/call-transcripts/nixos.nix
     ../../modules/device-check/nixos.nix
     ../../modules/firmware-settings/nixos.nix
     # Dell publishes this laptop's firmware updates through LVFS.
@@ -167,6 +168,9 @@ in
   # starts, and has its own ready about 1.6 s later, so for that long there's
   # no card at all.
   jitsusama.gpu.path = "pci-0000:00:02.0";
+  # Its 96 compute units, on half of memory, hold Gemma 4 26B-A4B's 16 GB
+  # and sum a 90-minute call up in about seven minutes.
+  jitsusama.call-transcripts.summarizerDevice = "GPU";
 
   # The panel is 2880 by 1800 at 14 inches, which the desktop draws at twice
   # its logical size, so the sign-in consoles draw at twice too.
