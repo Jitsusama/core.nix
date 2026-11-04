@@ -243,8 +243,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     went("Scratch 07")
     # A program's name finds its windows, the one used last first.
     tab_to("kitty", "Notes for Tuesday")
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # Inside kitty, each of its windows holds what its own row among the
     # windows does (Joel, 2026-10-26: one thing, one set of insides,
     # everywhere). The one Joel is in, Scratch 07, isn't among them.
@@ -257,8 +256,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     assert "\u2192" in told, told
     desktop.step_in("right")
     desktop.launcher_until(lambda shown: {"Size", "Float"} <= set(shown["rows"]))
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     for title in scratch:
         desktop.as_account(
             f"niri msg action close-window --id {desktop.window_titled(title)['id']}"
@@ -364,7 +362,11 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
 def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
     desktop: Desktop,
 ) -> None:
-    """Escape closes only the launcher, and the window behind it never hears the key."""
+    """Escape closes only the launcher, and the window behind it never hears the key.
+
+    The first Escape puts the line in normal mode, and the next, at home, closes it; the
+    window hears neither.
+    """
     # Joel, 2026-10-26: "Escape closes only the launcher; the key never
     # reaches the program behind it." wev says every key its window hears,
     # held as it gets the keyboard or pressed and let go after. The launcher
@@ -392,10 +394,7 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
         # Opened as Joel opens it, by its chord, so its keys are his too.
         machine.send_key("meta_l-spc")
         desktop.launcher_ready()
-        machine.send_key("esc")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
+        desktop.close_launcher()
         # The keyboard is wev's again, and a key pressed after reaches it,
         # so all it was given as the launcher went is in its log.
         retry(lambda _: entered() > before, timeout=dt.timedelta(seconds=10))
@@ -449,8 +448,7 @@ def test_a_window_closed_while_shown_stays_in_its_place_until_a_key(desktop: Des
         lambda shown: shown["typed"] == "" and "Leaving soon" not in shown["rows"]
     )
     assert not gone(desktop.showing()), desktop.showing()
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 # A window's verbs, stepped into from Super+Tab, follow it as it changes
@@ -475,8 +473,7 @@ def test_a_windows_verbs_follow_it_while_theyre_shown(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: "Float" in shown["rows"])
     desktop.as_account(f"niri msg action toggle-window-floating --id {notes['id']}")
     desktop.launcher_until(lambda shown: "Tile" in shown["rows"] and "Float" not in shown["rows"])
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
     desktop.as_account(f"niri msg action toggle-window-floating --id {notes['id']}")
     front = desktop.window_titled("In front of the notes")
     desktop.as_account(f"niri msg action close-window --id {front['id']}")
@@ -599,8 +596,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # Return's row.
     desktop.type_in("workspaces", selecting="Workspaces")
     assert desktop.showing()["rows"][0] == "Workspaces"
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: Desktop) -> None:
@@ -630,8 +626,7 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     # Return goes back in.
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 # A binding that throws or assigns the wrong type only warns, and

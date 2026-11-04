@@ -5753,6 +5753,16 @@
       "says": "seconds since 1970, and the date's other facts"
     }
   ],
+  "field": {
+    "modes": {
+      "insert": "insert"
+    },
+    "keys": {
+      "complete": "complete",
+      "clear": "clear",
+      "restore": "restore"
+    }
+  },
   "meant": [
     {
       "word": "devices",

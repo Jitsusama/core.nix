@@ -83,6 +83,7 @@ ShellRoot {
         property bool open: false
         property var held: []
         property string into_: ""
+        property int homeDepth: 0
         readonly property var sources: [chooser, drive]
 
         function into(name) {
@@ -98,6 +99,10 @@ ShellRoot {
 
         function back() {
             held = held.slice(0, -1);
+        }
+
+        function openedHere() {
+            homeDepth = held.length;
         }
     }
 
@@ -433,6 +438,8 @@ ShellRoot {
         const way = chooser.onTheWay(notes).map(path => `folder:${path}`).join(" ");
         expect("every folder on the way is held above the one asked for", heldPaths() === way,
             `${heldPaths()}, not ${way}`);
+        expect("the folder asked for is where it opened, so Escape there refuses the ask",
+            launcher.homeDepth === launcher.held.length, `${launcher.homeDepth}`);
         const titles = launcher.held.slice(1).map(step => step.row.title);
         expect("the path says one folder, the one held deepest",
             titles.every(title => title === "~/notes"), titles.join(" "));

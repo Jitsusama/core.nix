@@ -48,6 +48,124 @@ def field_key(field: list[Json], mark: str, word: str) -> Json:
     return said[0]
 
 
+def the_modes_look_as_vims(desktop: Desktop) -> None:
+    """See the line in insert, then in normal by Escape, then in insert again by A.
+
+    It starts and ends with "batt" typed, in insert, the caret at its end.
+    """
+    machine = desktop.machine
+    # The line opens in insert, as Neovim's command line does, the foot
+    # naming the mode after how things stand and the caret a bar a
+    # quarter of a letter wide.
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    field = laid["field"]
+    mode = next(word for word in laid["foot"] if word["text"] == "insert")
+    rest = sorted(word["x"] for word in laid["foot"] if word is not mode)
+    assert rest[0] < mode["x"], laid["foot"]
+    complete = field_key(field, "Ctrl+Y", "complete")
+    # It isn't flush against what's typed, and it's the field's one key in
+    # insert: clearing is normal's.
+    typed = next(word for word in field if word["text"] == "batt")
+    assert typed["x"] < complete["x"], field
+    assert not any(word["text"].endswith(" clear") for word in field), field
+    bar = desktop.showing()["caretWidth"]
+    # Escape gives normal: the caret one left, a block on its letter, no
+    # word for the mode with the rest of the foot where it was, and the
+    # left arrow's key in the field's place. It's read before the walk's
+    # edits, since a wider aside they bring crowds the keys' words out
+    # until the step ends; A goes back.
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
+    assert desktop.showing()["caretWidth"] > 3 * bar, (bar, desktop.showing()["caretWidth"])
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    assert sorted(word["x"] for word in laid["foot"]) == rest, (rest, laid["foot"])
+    assert field_key(laid["field"], "\u2190", "clear")["x"] == complete["x"], laid["field"]
+    machine.send_chars("A")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("insert", 4))
+
+
+def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
+    """Press every key the query line's insert and normal take, from "batt" typed to "battery".
+
+    It starts with "batt" typed and the battery's answer selected, and ends with Ctrl+Y having
+    completed it, in insert, as Joel would press them through niri.
+    """
+    machine = desktop.machine
+    the_modes_look_as_vims(desktop)
+    # Insert's keys are Vim's, through niri as Joel presses them
+    # (QueryKeys.js holds the rest): the caret moves by the arrows, Home
+    # and End, Backspace, Ctrl+W and Ctrl+U delete before it, and the
+    # rows' keys are his completion menu's.
+
+    def holds(text: str, caret: int) -> None:
+        desktop.launcher_until(lambda shown: (shown["typed"], shown["caret"]) == (text, caret))
+
+    for keys, chars, text, caret in [
+        (["home"], "x", "xbatt", 1),
+        (["backspace"], "", "batt", 0),
+        (["end"], " sou", "batt sou", 8),
+        (["ctrl-w"], "", "batt ", 5),
+        (["backspace", "left"], "", "batt", 3),
+        (["ctrl-u"], "bat", "batt", 3),
+        (["right"], "", "batt", 4),
+    ]:
+        for key in keys:
+            machine.send_key(key)
+        machine.send_chars(chars)
+        holds(text, caret)
+    # Down, Tab and Ctrl+N each go to the next row, and Up, Shift+Tab and
+    # Ctrl+P back.
+    first = desktop.showing()["selected"]["name"]
+    for ahead, back in [("down", "up"), ("tab", "shift-tab"), ("ctrl-n", "ctrl-p")]:
+        machine.send_key(ahead)
+        desktop.launcher_until(lambda shown: shown["selected"]["name"] != first)
+        machine.send_key(back)
+        desktop.launcher_until(lambda shown: shown["selected"]["name"] == first)
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
+    # Letters type nothing there, so u brings back only what the left
+    # arrow took, the selection staying on the battery.
+    machine.send_chars("z")
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    machine.send_chars("u")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["typed"] == "batt"
+            and shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
+        )
+    )
+    # i a I A go into insert at the caret, after it, at the start and at
+    # the end, each Escape back putting the caret one left; cc and S clear
+    # the line into insert.
+    for into, caret, after in [("i", 3, 2), ("a", 3, 2), ("I", 0, 0), ("A", 4, None)]:
+        machine.send_chars(into)
+        desktop.launcher_until(
+            lambda shown: (shown["mode"], shown["caret"]) == ("insert", caret)  # noqa: B023
+        )
+        if after is not None:
+            machine.send_key("esc")
+            desktop.launcher_until(
+                lambda shown: (shown["mode"], shown["caret"]) == ("normal", after)  # noqa: B023
+            )
+    for change in ["cc", "S"]:
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["mode"] == "normal")
+        machine.send_chars(change)
+        desktop.launcher_until(lambda shown: (shown["mode"], shown["typed"]) == ("insert", ""))
+        machine.send_chars("batt")
+        holds("batt", 4)
+    desktop.launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
+        )
+    )
+    machine.send_key("ctrl-y")
+    desktop.launcher_until(lambda shown: shown["typed"] == "battery")
+
+
 def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: Desktop) -> None:
     """The launcher lists each thing once, for everything Joel types."""
     machine = desktop.machine
@@ -93,6 +211,8 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     for query in picked_in_a_week + surveyed + audited:
+        # Each query is typed in insert, and the left arrow clears it in normal.
+        desktop.insert()
         machine.send_chars(query)
         shown = settled_on(query)
         things: list[Json] = shown["things"]
@@ -105,16 +225,13 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
         # None of these leaves a step held, but one that did would
         # have the next typed inside it, so it's closed and opened.
         if shown["held"]:
-            machine.send_key("esc")
-            machine.wait_until_fails(
-                desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-            )
+            desktop.close_launcher()
             desktop.as_account("qs ipc call launcher toggle")
             desktop.launcher_ready()
         else:
+            desktop.normal()
             machine.send_key("left")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     assert listed_twice == [], "a thing was listed twice"
     # Most of those find something, so the rows were looked at.
     assert looked_at > ROWS_LOOKED_AT
@@ -136,9 +253,9 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
                 and shown["kind"] == "collection"
             )
         )
-        machine.send_key("esc")
+        desktop.close_launcher()
     # Half a word asks its question too: "batt" is the battery, and
-    # Tab finishes the word, the field saying so at its right edge.
+    # Ctrl+Y finishes the word, the field saying so at its right edge.
     # A copy kept from before saying "battery", a later word, never takes
     # the answer's place, as the battery's own copied answer did when it
     # said "on battery".
@@ -147,7 +264,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
     desktop.launcher_until(
         lambda shown: any(thing["is"] == "copy:kept from the battery" for thing in shown["things"])
     )
-    machine.send_key("esc")
+    desktop.close_launcher()
     desktop.answer("batt")
     desktop.launcher_until(
         lambda shown: (
@@ -155,44 +272,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
             and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
         )
     )
-    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    tab = field_key(field, "\u21e5", "complete")
-    # The left arrow takes what's typed away only where the field says
-    # so, after Tab's place, and the right arrow right after puts it
-    # back, what it took standing in grey, the field saying so in the
-    # left arrow's place meanwhile. With Ctrl it moves the caret, as in
-    # any field: a letter typed then lands at the start.
-    clear = field_key(field, "\u2190", "clear")
-    # Neither is flush against what's typed: both stand after it, Tab's
-    # first.
-    typed = next(word for word in field if word["text"] == "batt")
-    assert typed["x"] < tab["x"] < clear["x"], field
-    machine.send_key("ctrl-left")
-    machine.send_chars("x")
-    desktop.launcher_until(lambda shown: shown["typed"] == "xbatt")
-    machine.send_key("backspace")
-    desktop.launcher_until(lambda shown: shown["typed"] == "batt")
-    machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["typed"] == "")
-    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    # What it took stands in grey where it was typed, as any hint in an
-    # empty field starts where the first letter will.
-    took = next(word for word in field if word["text"] == "batt")
-    assert took["x"] == typed["x"], field
-    # The right arrow is said in the left arrow's place, which holds still,
-    # and Tab's place stays empty, since there's no completion.
-    assert field_key(field, "\u2192", "restore")["x"] == clear["x"], field
-    assert not any("\u21e5" in word["text"] for word in field), field
-    machine.send_key("right")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["typed"] == "batt"
-            and shown["kind"] == "answer"
-            and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
-        )
-    )
-    machine.send_key("tab")
-    desktop.launcher_until(lambda shown: shown["typed"] == "battery")
+    walk_the_fields_keys(desktop, charge)
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
@@ -212,7 +292,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
                 and (shown["selected"] or {}).get("name", "").startswith(said)  # noqa: B023
             )
         )
-        machine.send_key("esc")
+        desktop.close_launcher()
     # A name starting the same way is chosen over an answer only
     # started: "pow" is Power off, by its name.
     desktop.answer("pow")
@@ -222,7 +302,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
             and (shown["selected"] or {}).get("name", "").lower().startswith("pow")
         )
     )
-    machine.send_key("esc")
+    desktop.close_launcher()
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
@@ -232,8 +312,7 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     # The main search lists no emoji, only the place they're in.
     desktop.answer("tada")
     assert "Party popper" not in desktop.showing()["rows"]
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     machine.send_key("ret")
@@ -289,12 +368,11 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     )
 
 
-def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab(
+def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctrl_y(
     desktop: Desktop,
 ) -> None:
-    """A category's word and a space step into it, and a command finishes by Tab."""
+    """A category's word and a space step into it, and a command finishes by Ctrl+Y."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     # The word and a space become a chip, the field cleared, listing
     # what it holds; what's typed then searches only inside it.
     desktop.as_account("qs ipc call launcher toggle")
@@ -315,39 +393,36 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.photograph("launcher-category")
     desktop.type_in("add", selecting="Address")
-    # The left arrow takes what's typed, then steps out with the word
-    # put back.
+    # In normal, the left arrow takes what's typed, then steps out with
+    # the word put back.
+    desktop.normal()
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == ["network"] and shown["typed"] == "")
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "network")
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # A question that starts with a category's word is still a question.
     desktop.answer("time in utc")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # A command is in the place whose answer it gives, its form shown; Tab
-    # puts its start in the field, out at the top, where it's finished.
+    desktop.close_launcher()
+    # A command is in the place whose answer it gives, its form shown;
+    # Ctrl+Y puts its start in the field, out at the top, where it's
+    # finished.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("network ")
     desktop.launcher_until(lambda shown: shown["held"] == ["network"] and ip in shown["rows"])
     desktop.photograph("launcher-commands")
     desktop.type_in("ip", selecting="ip \u27e8address or network\u27e9")
-    machine.send_key("tab")
+    machine.send_key("ctrl-y")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ip ")
     desktop.type_in("10.0.0.0/22")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     """Every name a thing had still finds it."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     words = json.loads(desktop.as_account("cat ~/.config/quickshell/launcher/words.json"))
     kept = [
         (old, str(entry["name"]))
@@ -371,8 +446,7 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
             )
         except AssertionError:
             shown = desktop.showing()
-            machine.send_key("esc")
-            machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+            desktop.close_launcher()
             desktop.answer(name.lower())
             try:
                 desktop.launcher_until(
@@ -383,8 +457,7 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
                 lost.append(f"{old} -> {name}: {shown['rows'][:5]} {shown['footer']!r}, {found}")
             except AssertionError:
                 absent.append(name)
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     print(f"walked {len(kept)} old names, {len(absent)} absent here: {absent}")
     assert lost == [], lost
     assert len(kept) - len(absent) >= fewest, absent
@@ -392,8 +465,6 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
 
 def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     """A search lists each thing once."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;
@@ -439,18 +510,15 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     ]:
         desktop.answer(typed)
         desktop.launcher_until(once(leading))
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
     desktop.answer("zqxj")
     desktop.launcher_until(lambda shown: shown["rows"] == [])
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     # The speakers' tuning plays through them, and is no program.
     desktop.answer("volume")
     desktop.launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
     assert "pebble_x_plus_tuning_output" not in desktop.showing()["rows"]
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place(  # noqa: PLR0915
@@ -458,7 +526,6 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
 ) -> None:
     """A step finds its rows by their hidden words, and its parts move in place."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
     # Inside the addresses, the tunnel is found by the kernel's name for
     # it, a word it's known by but never says, as from the top.
     machine.succeed(
@@ -470,14 +537,15 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(lambda shown: "VPN" in shown["rows"])
     desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
-    # The left arrow takes what's typed away, the selection staying on
-    # the VPN; the right arrow right after puts it back, and then steps
-    # into it.
+    # In normal, the left arrow takes what's typed away, the selection
+    # staying on the VPN; u right after puts it back, and the right arrow
+    # then steps into it.
+    desktop.normal()
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "VPN"
     )
-    machine.send_key("right")
+    machine.send_chars("u")
     desktop.launcher_until(
         lambda shown: (
             shown["typed"] == "tailscale0" and (shown["selected"] or {}).get("name") == "VPN"
@@ -490,8 +558,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "VPN"
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
     machine.succeed("ip link delete tailscale0")
     # The processors, a step into Machine, are named as the thing they
     # are, and their cores, a step further, read again each second there
@@ -554,21 +621,18 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     # Back out, it's on the row it came from.
     machine.send_key("left")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_a_question_is_asked_on_return_and_answered_where_it_was_typed(desktop: Desktop) -> None:
     """A question is asked on Return and answered where it was typed."""
     machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
 
     def selected(shown: Json) -> Json:
         return cast("Json", shown["selected"] or {})
 
     def close() -> None:
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.close_launcher()
 
     # Asked by its first word, a model gives way to what's found, so
     # "do not disturb" is Do not disturb.
@@ -612,7 +676,6 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
     """
     if not desktop.values["photographs"]:
         return
-    machine = desktop.machine
     for typed, picture in [
         ("date", "launcher-date"),
         ("350 f in c", "launcher-units"),
@@ -624,8 +687,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         desktop.answer(typed)
         desktop.launcher_until(lambda shown: bool(shown["rows"]))
         desktop.photograph(picture)
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:

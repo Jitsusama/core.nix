@@ -76,10 +76,7 @@ def stays_showing_it_gone(desktop: Desktop, name: str) -> None:
             )
         )
     )
-    desktop.machine.send_key("esc")
-    desktop.machine.wait_until_fails(
-        desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10)
-    )
+    desktop.close_launcher()
 
 
 def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
@@ -119,8 +116,7 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
 
 
 def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
@@ -188,8 +184,7 @@ def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     # Let go, it lingers a moment, muted, then goes.
     since = desktop.mark()
     machine.succeed(
@@ -214,8 +209,7 @@ def test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera
     desktop.launcher_ready()
     desktop.type_in("camera")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by zoom")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     machine.succeed(f"rm '{usb}'")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
@@ -281,8 +275,7 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
     row = desktop.showing()["selected"] or {}
     assert "resets 14:00" in json.dumps(row), row
     assert row.get("note") == "at $300 an hour \u00b7 92% used", row
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     # Once it no longer warns, its card is taken back.
     watch_says("", "", now=False)
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
@@ -319,8 +312,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     desktop.held_still()
     desktop.photograph("launcher-whats-on")
     since = desktop.mark()
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.reported("sets margin ", margin_points(""), since)
     # Another mark comes and goes, so the row slides aside and back, and
     # what takes the pointer has to follow it there.
@@ -378,8 +370,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-held")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
@@ -423,7 +414,7 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-from-margin")
-    machine.send_key("esc")
+    desktop.close_launcher()
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 

@@ -54,6 +54,7 @@ let
   qml = [
     "shell.qml"
     "Prompt.qml"
+    "QueryKeys.js"
     "KeyHints.qml"
     "Drawer.qml"
     "Launcher.qml"
@@ -845,6 +846,29 @@ in
     '';
   };
 
+  # The launcher's caret blinks as kitty's cursor does (modules/kitty/
+  # kitty.conf), so Neovim's and the launcher's read alike.
+  options.jitsusama.quickshell.caret = {
+    fade = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 800;
+      description = ''
+        How long the launcher's caret takes to fade out, and again to come
+        back, in milliseconds, as kitty's cursor_blink_interval; 0 holds it
+        steady.
+      '';
+    };
+    stopsAfter = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 15000;
+      description = ''
+        How long after the last key the launcher's caret stops blinking and
+        holds steady, in milliseconds, as kitty's cursor_stop_blinking_after,
+        so a launcher left still draws nothing more.
+      '';
+    };
+  };
+
   options.jitsusama.quickshell.reports = lib.mkOption {
     type = lib.types.bool;
     default = false;
@@ -1598,6 +1622,8 @@ in
           Singleton {
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
+              // How the launcher's caret blinks, in milliseconds.
+              readonly property var caret: ${object config.jitsusama.quickshell.caret}
               // Whether a shut lid suspends the machine on the charger.
               readonly property bool lidSleepsOnPower: ${lib.boolToString lidSleepsOnPower}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}

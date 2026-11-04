@@ -13,7 +13,11 @@
 // name first, never both moving at once, and its name at rest ends in its
 // ellipsis rather than cut through a letter. What the shell says in its voice,
 // a quiet row's words and the launcher's hint, is drawn in the serif face
-// on the baseline the mono's would take. It exits 0 once every case holds,
+// on the baseline the mono's would take. The launcher's modal field says
+// Ctrl+Y in insert and the left arrow in normal, its caret a bar a quarter
+// of a letter wide in insert and a block a letter wide in normal, resting on
+// the last letter, and a modal caret fades and then, with no key, holds
+// steady. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -29,6 +33,7 @@ ShellRoot {
         + " of $15,000, which resets on Monday at midnight"
     readonly property string asked: "Say which issue sources to read"
     readonly property string day: "Wednesday 4 November 2026"
+    readonly property var keyWords: ({ complete: "complete", clear: "clear" })
 
     FloatingWindow {
         visible: true
@@ -128,18 +133,31 @@ ShellRoot {
                 steady: true
                 voiced: true
                 leftClears: true
+                modal: true
+                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
             }
             Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
             // The same with letters typed, so the field says its keys.
+            // A modal line blinking quickly, which fades and then, with no
+            // key, holds steady, as his kitty's cursor does.
+            Prompt {
+                id: blinker
+                width: root.panel
+                modal: true
+                fade: 100
+                stopsAfter: 600
+            }
             Prompt {
                 id: typing
                 width: root.panel
                 steady: true
                 voiced: true
                 leftClears: true
+                modal: true
+                keyWords: root.keyWords
                 glyphWidth: Theme.space.xxl
                 chips: [{ text: "Now" }]
                 hint: "which?"
@@ -285,6 +303,24 @@ ShellRoot {
             expect("typed, the launcher's note stands before the field's keys",
                 counted >= 0 && counted < texts.length - 1
                     && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
+            expect("typed in insert, the launcher's field says Ctrl+Y completes",
+                texts.length > 0 && texts[texts.length - 1].text.includes("Ctrl+Y"), said(texts));
+            // The caret says the mode, as his Neovim's guicursor draws it:
+            // a bar a quarter of a letter wide in insert, and a block a
+            // letter wide in normal, resting on the last letter typed.
+            const letter = typing.letterWidth;
+            expect("insert's caret is a bar a quarter of a letter wide",
+                typing.caretWidth === Math.max(1, Math.round(letter / 4)),
+                `${typing.caretWidth} for a letter ${letter} wide`);
+            typing.mode = "normal";
+            expect("normal's caret is a block a letter wide", typing.caretWidth === letter,
+                `${typing.caretWidth} for a letter ${letter} wide`);
+            expect("normal's caret rests on the last letter", typing.caret === 1,
+                `at ${typing.caret} of "${typing.text}"`);
+            texts = drawn(typing, []).sort((a, b) => a.from - b.from);
+            expect("typed in normal, the launcher's field says the left arrow clears",
+                texts.length > 0 && texts[texts.length - 1].text.includes("clear"), said(texts));
+            typing.mode = "insert";
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
@@ -309,6 +345,29 @@ ShellRoot {
         interval: 500
         running: true
         onTriggered: root.check()
+    }
+
+    // Watches the blinking line's caret fade, then hold steady once it's
+    // been left long enough.
+    property bool dimmed: false
+    property bool blinkHeld: false
+    Timer {
+        interval: 20
+        repeat: true
+        running: !root.blinkHeld
+        property int left: 2000 / interval
+        onTriggered: {
+            root.dimmed = root.dimmed || blinker.caretLight < 0.9;
+            left -= 1;
+            if (root.dimmed && !blinker.blinkingNow && blinker.caretLight === 1)
+                root.blinkHeld = true;
+            else if (left === 0) {
+                console.warn(`FAIL the caret didn't fade and then hold steady: dimmed `
+                    + `${root.dimmed}, blinking ${blinker.blinkingNow}, lit ${blinker.caretLight}`);
+                Qt.callLater(() => Qt.exit(1));
+                root.blinkHeld = true;
+            }
+        }
     }
 
     // Watches the selected row with both cut, a little faster than a
@@ -356,7 +415,7 @@ ShellRoot {
                 console.warn(`FAIL ${failed}: ${JSON.stringify(now)} from ${from}`);
                 turns.stop();
                 Qt.callLater(() => Qt.exit(1));
-            } else if (turns.named && turns.sided) {
+            } else if (turns.named && turns.sided && root.blinkHeld) {
                 turns.stop();
                 Qt.callLater(() => Qt.exit(0));
             }

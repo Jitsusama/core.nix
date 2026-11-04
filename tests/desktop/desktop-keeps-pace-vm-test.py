@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, retry
+from desktop_session import retry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -288,7 +288,6 @@ class Timing:
 @pytest.mark.usefixtures("keyboard", "loaded")
 def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desktop) -> None:
     """The launcher draws each key soon after it's pressed, while every core is busy."""
-    machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     timing = Timing(desktop)
@@ -308,8 +307,7 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
             timing.press("down" if step > 0 else "up")
             at += step
         timing.keep()
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         timing.begin()
@@ -322,7 +320,5 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
     finally:
         if not timing.loading:
             timing.load(on=True)
-        if desktop.showing()["open"]:
-            machine.send_key("esc")
-        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+        desktop.close_launcher()
     timing.said_and_held()

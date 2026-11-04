@@ -13,6 +13,7 @@ account greetd signs in is screens.nix's, given as the `values` fixture.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import json
 import re
 import shlex
@@ -254,8 +255,9 @@ class Screens:
     # The launcher is how Joel reaches everything, so it must work on whichever
     # screen he's on after any of these: Super+Space opens it there and gives
     # it the keys, typing finds a row, Return runs it and the launcher closes,
-    # and Escape closes it too. The row is Keep Awake, whose unit says it ran;
-    # each run turns it the other way, so it's typed by the name it has now.
+    # and Escape closes it too: the first gives normal mode, and the next one,
+    # at home, closes it. The row is Keep Awake, whose unit says it ran; each
+    # run turns it the other way, so it's typed by the name it has now.
 
     def launcher_shows(self) -> dict[str, Any]:
         """Give what the launcher says it shows, from its showing call."""
@@ -276,6 +278,30 @@ class Screens:
             assert time.monotonic() < deadline, f"the launcher never {what}: {shown}"
             time.sleep(0.5)
         return shown
+
+    def close_launcher(self, on: str = "") -> None:
+        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+
+        From insert the first gives normal, each after it steps back out a level, and the one
+        at the level it opened on closes it. A key sent before this that the launcher hears late
+        moves it on too, so each Escape waits only for something to change. Where it's closed,
+        such as on which screen, goes into what a wait that runs out says.
+        """
+        said = f" {on}" if on else ""
+
+        def where(shown: dict[str, Any]) -> tuple[object, ...]:
+            return (shown["open"], shown["mode"], len(shown["held"]))
+
+        def moved(was: tuple[object, ...], shown: dict[str, Any]) -> bool:
+            return where(shown) != was
+
+        for _ in range(12):
+            was = where(self.launcher_shows())
+            if not was[0]:
+                return
+            self.machine.send_key("esc")
+            self.launcher_until(functools.partial(moved, was), f"moved on at Escape{said}")
+        pytest.fail(f"the launcher was still open after 12 Escapes{said}: {self.launcher_shows()}")
 
     def awake(self) -> bool:
         """Say whether Keep Awake is on."""
@@ -316,8 +342,7 @@ class Screens:
             assert time.monotonic() < deadline, f"{row!r} did nothing on {screen}"
             time.sleep(0.5)
         self.super_space_on(screen)
-        self.machine.send_key("esc")
-        self.launcher_until(lambda shown: not shown["open"], f"closed at Escape on {screen}")
+        self.close_launcher(f"on {screen}")
 
     def launcher_works_on_both(self) -> None:
         """Have the launcher open, find and run a row on each screen, in their names' order."""
@@ -596,13 +621,7 @@ def slept_open(second_back: Screens) -> Screens:
     )
     second_back.unlock()
     # Whether it's still open after is the shell's to say, but it must hold
-    # the keys if it is, and close at Escape.
-    shown = second_back.launcher_until(
-        lambda shown: not shown["open"] or shown["keys"], "held the keys"
-    )
-    if shown["open"]:
-        second_back.machine.send_key("esc")
-        second_back.launcher_until(
-            lambda shown: not shown["open"], "closed at Escape after the wake"
-        )
+    # the keys if it is, and close at its Escapes.
+    second_back.launcher_until(lambda shown: not shown["open"] or shown["keys"], "held the keys")
+    second_back.close_launcher("after the wake")
     return second_back

@@ -64,7 +64,7 @@ def at_each_scale(desktop: Desktop) -> Iterator[list[str]]:
     yield list(JOELS_SCALES)
     # A test that failed with the launcher open leaves it closed for the next.
     if desktop.machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
-        desktop.machine.send_key("esc")
+        desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
 
 
@@ -124,7 +124,6 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
     """Home's lists and a found row's note are in the serif, on the name's baseline, a step on."""
-    machine = desktop.machine
     # The serif is the theme's, read as the theme exports it, so a theme with another face is
     # held to that face.
     theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
@@ -146,7 +145,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing: {card}"
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
-        machine.send_key("esc")
+        # In normal the caret is a block on the last letter and the foot names no mode, the
+        # row's words where insert left them.
+        desktop.normal()
+        card = desktop.showing()["drawer"]["cardLines"]
+        assert words_on_their_names(card, scale, serif) > 0, (
+            f"at {scale} kitty's row says nothing in normal: {card}"
+        )
+        desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
 
 
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
@@ -182,7 +189,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         assert abs(lines["words"] - (lines["title"] + 2 * PITCH)) <= NEAR, drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
-        machine.send_key("esc")
+        desktop.close_launcher()
 
 
 def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
@@ -245,7 +252,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
                 f"at {scale} the last line runs into the plate's foot: {drawer}"
             )
             desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
-            machine.send_key("esc")
+            desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start timekeeping")
 
@@ -254,7 +261,6 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
     """Now's plate centres the time on Now's row and sets the rest on home's rows' lines."""
-    machine = desktop.machine
     for scale in at_each_scale:
         at_scale(desktop, scale)
         desktop.as_account("qs ipc call launcher toggle")
@@ -303,7 +309,7 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
                 for earlier, later in pairwise(group)
             ), f"at {scale} a fact is off the pitch: {drawer}"
         desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
-        machine.send_key("esc")
+        desktop.close_launcher()
 
 
 # The file picker's plate, for each kind of file it previews and one it doesn't, at both of
@@ -403,7 +409,8 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 assert facts[-1] < drawer["foot"], f"at {scale} {name}'s facts are cut: {drawer}"
                 said = name.replace(".", "-")
                 desktop.photograph(f"file-picker-{said}-at-{scale.replace('.', '-')}")
-            machine.send_key("esc")
+            # Escape leaves insert, then refuses the ask from the folder it opened in.
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
@@ -457,7 +464,8 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
-            machine.send_key("esc")
+            # Escape leaves insert, then refuses the ask from the folder it opened in.
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
@@ -505,12 +513,13 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             )
             desktop.photograph(f"file-picker-two-marked-at-{said}")
             desktop.down_to("more")
-            machine.send_key("right")
+            # The right arrow steps in from normal, where the walk stays from here.
+            desktop.step_in()
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/marking/more"])
             desktop.down_to("Open the Marked")
             desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
             desktop.photograph(f"file-picker-marked-elsewhere-at-{said}")
-            machine.send_key("right")
+            desktop.step_in()
             desktop.launcher_until(lambda shown: "Unmark All" in shown["rows"])
             desktop.down_to("a.md")
             machine.send_key("ret")
@@ -522,7 +531,8 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
-            machine.send_key("esc")
+            # Escape climbs back to the folder it opened in, then refuses the ask there.
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
@@ -573,7 +583,8 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
             for name in ["Size", "Changed", "Name"]:
                 side, listed = ORDERS[name]
                 desktop.down_to("Order")
-                machine.send_key("right")
+                # The right arrow steps in from normal, where the walk stays after the first.
+                desktop.step_in()
                 desktop.launcher_until(
                     lambda shown: sorted(shown["rows"]) == ["Changed", "Name", "Size"]
                 )
@@ -588,7 +599,7 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
                 desktop.down_to("Order")
                 desktop.launcher_until(partial(selected_is, name="Order", side=side))
                 desktop.photograph(f"file-picker-by-{name.lower()}-at-{said}")
-            machine.send_key("esc")
+            desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")

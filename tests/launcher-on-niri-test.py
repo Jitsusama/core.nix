@@ -74,7 +74,7 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
     """Units, zones and colours are answered, and what needs a network says it couldn't."""
     shell.answer("350 f in c")
     answer_is_whole(shell, "176.667 \u00b0C")
-    shell.send_key("esc")
+    shell.close_launcher()
     # The zones come from the list built from tzdata, so this proves it's
     # there. The minute may turn while it's asked, so either will do.
     before = now("-u", "+%H:%M")
@@ -95,7 +95,7 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
     # failure is asked again is the launcher's answers check's to say.
     for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "address"]:
         shell.answer(typed)
-        shell.send_key("esc")
+        shell.close_launcher()
     shell.answer("weather tokyo")
     # Come to nothing, it says why once, as its one row, quietly: the
     # field finishes nothing and its end adds nothing (VKCF3Z, 2026-11-02:
@@ -108,16 +108,14 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
             and shown["kind"] == ""
         )
     )
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     # The rain is the weather's to answer: here asks where here is, since
     # nothing here says, and a place's rain asks the same forecast. That
     # the next rain is said from the hours is the launcher's rain check's
     # to show.
     shell.answer("rain")
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     shell.answer("rain in tokyo")
     shell.launcher_until(
         lambda shown: (
@@ -125,7 +123,7 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
             and shown["footer"] == ""
         )
     )
-    shell.send_key("esc")
+    shell.close_launcher()
 
 
 def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell) -> None:
@@ -166,8 +164,7 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
                 is not None
             )
         )
-        shell.send_key("esc")
-        shell.launcher_closed()
+        shell.close_launcher()
     # Asked to be sure, the foot says Log Out's verb whole, its first
     # word alone saying nothing.
     shell.answer("log out")
@@ -176,8 +173,7 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
     shell.launcher_until(
         lambda shown: "\u21b5 log out" in (shown["selected"] or {}).get("told", [])
     )
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     # A key's action, by the other words its bind lists.
     shell.answer("fullscreen")
     shell.launcher_until(
@@ -187,8 +183,7 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
             and shown["kind"] == "shortcut"
         )
     )
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
 
 
 def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell: Shell) -> None:
@@ -209,8 +204,7 @@ def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell
                 and shown["selected"]["verb"] == verb  # noqa: B023
             )
         )
-        shell.send_key("esc")
-        shell.launcher_closed()
+        shell.close_launcher()
     # A rename loses nothing: the old name still finds Sleep, never shown,
     # and says once what it's called now.
     shell.answer("suspend")
@@ -221,8 +215,7 @@ def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell
             and "Suspend" not in shown["rows"]
         )
     )
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
 
 
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> None:
@@ -248,8 +241,7 @@ def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> N
     assert set(firsts) == {"answer"}, f"the answer's row came and went: {firsts}"
     below = {tuple(shown["rows"][1:]) for shown in seen}
     assert len(below) == 1, f"the rows below the answer moved: {below}"
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
 
 
 # How long the closed launcher is watched across a minute's turn, from 45 s past it, and how
@@ -284,8 +276,7 @@ def test_the_closed_launcher_draws_nothing_as_the_time_it_would_show_turns(shell
     shell.as_account(shell.ipc("toggle"))
     shell.reported("stands ", lambda rest: turned in rest, since)
     shell.launcher_ready()
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
 
 
 def test_the_launcher_left_still_draws_nothing(shell: Shell) -> None:
@@ -304,8 +295,7 @@ def test_the_launcher_left_still_draws_nothing(shell: Shell) -> None:
     while shell.frames() <= still:
         assert time.monotonic() < counting, "a letter drew no frame, so none are counted"
         time.sleep(0.05)
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
@@ -350,8 +340,7 @@ def test_text_typed_at_once_is_searched_once(shell: Shell) -> None:
     # the search, the letters there and the rows still those before them.
     settled = (shell.showing()["selected"] or {}).get("name", "")
     assert settled, f"{word!r} found nothing, so it can't tell a report said partway"
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     assert seen == [settled], f"the launcher said {word!r} selecting {seen}, not {settled!r}"
 
 
@@ -362,8 +351,7 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     # Found before its letters, Return would step into the first row at home, Now.
     typed_at_once(shell, "'needs you' -k Return")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
 
 
 def laid_out(shell: Shell) -> Json:
@@ -396,8 +384,7 @@ def test_the_selection_glides_to_its_row_and_typing_never_glides(shell: Shell) -
     shell.send_chars("u")
     shell.launcher_until(lambda shown: shown["typed"] == "ou")
     said, _ = shell.said_since(since)
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     glided = [report for report in said if report.startswith("glides ")]
     assert not glided, f"the selection glided as a letter made the rows: {glided}"
 
@@ -441,8 +428,7 @@ def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(shell: Shell)
         selection = laid_out(shell)["selection"]
         if selection and selection["y"] != selection["row"]:
             drift.append((typed, selection))
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     for window in windows:
         shell.close(window)
     assert not drift, f"the selection was drawn off its row: {drift}"
@@ -496,8 +482,7 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> No
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     row = next(row for row in laid["rows"] if row["reads"].startswith(title))
-    shell.send_key("esc")
-    shell.launcher_closed()
+    shell.close_launcher()
     shell.close(long)
     shell.close(short)
     assert named(row["words"])["x"] == start, row

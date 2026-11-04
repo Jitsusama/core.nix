@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, STARTING, retry
+from desktop_session import STARTING, retry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -218,8 +218,7 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
             shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Image 256 \u00d7 256"
         )
     )
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close_launcher()
 
 
 def test_a_picture_outlives_the_program_that_copied_it(desktop: Desktop) -> None:
@@ -259,8 +258,7 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
             and (shown["selected"] or {}).get("name") != "Forget the Clipboard"
         ),
     )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("desktop ")
@@ -268,8 +266,7 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
         lambda shown: shown["held"] == ["desktop"] and "Clipboard" in shown["rows"],
     )
     assert "Forget the Clipboard" not in desktop.showing()["rows"]
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("forget the clip", selecting="Forget the Clipboard")

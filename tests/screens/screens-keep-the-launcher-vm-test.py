@@ -83,8 +83,7 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
             time.sleep(0.2)
         assert screens.awake(), "a held Return turned Keep Awake on and off again"
     finally:
-        machine.send_key("esc")
-        screens.launcher_until(lambda shown: not shown["open"], "closed at Escape")
+        screens.close_launcher()
         machine.succeed(screens.in_niri("systemctl --user stop caffeinate.service"))
 
 
@@ -119,8 +118,7 @@ def test_a_screen_coming_back_leaves_the_launcher_open_on_the_other(first_gone: 
         assert shown["keys"], f"a screen coming back took the launcher's keys: {shown}"
         assert screens.held_on("launcher") == {"Virtual-2"}, screens.held_on("launcher")
     finally:
-        screens.machine.send_key("esc")
-        screens.launcher_until(lambda shown: not shown["open"], "closed at Escape")
+        screens.close_launcher()
 
 
 def test_the_first_screen_comes_back_and_the_launcher_works_on_both(first_back: Screens) -> None:
@@ -170,8 +168,7 @@ def test_after_the_wake_the_launchers_foot_still_tells_the_time(slept_open: Scre
             lambda shown: slept_open.minute() in shown["glance"], "told the time after the wake"
         )
     finally:
-        slept_open.machine.send_key("esc")
-        slept_open.launcher_until(lambda shown: not shown["open"], "closed at Escape")
+        slept_open.close_launcher()
 
 
 def test_quickshell_warned_of_nothing_as_the_screens_came_and_went(
