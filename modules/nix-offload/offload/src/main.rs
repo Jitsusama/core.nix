@@ -14,7 +14,19 @@
 //!
 //! `nix-offload relay --listen ADDRESS --to ADDRESS` passes connections on
 //! to a builder's tunnel, dialling it again while it closes before the
-//! builder speaks, as src/relay.rs says.
+//! builder speaks, as src/relay.rs says. It prints `listening` once it
+//! listens, beside any other relay on that port, and told to leave
+//! (SIGUSR1) it takes no new connection and ends once its last closes.
+//!
+//! A builder that lives `--longest` is deleted at its end whatever it's
+//! building, and can't be given longer once it runs. So an hour before
+//! that, while a build uses it or wants one, a successor is asked for;
+//! once it stands, Nix is given its line alone, and the old builder's
+//! helper is told to hand over (SIGUSR1), so every new connection goes to
+//! the successor while the old one finishes what it has. The old one is
+//! given back once its helper ends, which it does once nothing reaches it,
+//! or once its time is up, and a run outliving its caller holds it until
+//! then.
 //!
 //! Every 20 seconds it reads the machine queue. The moment a build or a VM
 //! check is queued or running, it asks the helper for a builder, names it
@@ -53,7 +65,9 @@
 //!   to /run/nix-offload/store, whose host, key and host key a build sent
 //!   there as a command is reached by. It
 //!   ends once the builder goes on its own, and gives the way up when told
-//!   to end (SIGTERM, to its whole process group). The seconds are counted
+//!   to end (SIGTERM, to its whole process group). Told to hand over
+//!   (SIGUSR1, to it alone), it takes no new connection to the builder,
+//!   and ends once the last one closes. The seconds are counted
 //!   here, in the zone TZ names, so the helper needs no time zones of its
 //!   own: a shell without zoneinfo reads a zone's 20:00 as UTC's.
 //! - `helper hold NAME` holds the way to one already there, as `up` does
@@ -201,6 +215,14 @@ extern "C" fn superseded(_: libc::c_int) {
     SUPERSEDED.store(true, Ordering::SeqCst);
 }
 
+/// Set when a relay is told to leave (SIGUSR1), since its builder hands
+/// over to a successor.
+static LEAVING: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn leaving(_: libc::c_int) {
+    LEAVING.store(true, Ordering::SeqCst);
+}
+
 /// What a lender exits with once it has ended superseded, which its unit
 /// counts as a success and starts it again on.
 const RESTARTS: u8 = 100;
@@ -256,6 +278,14 @@ struct Lent {
     ends: u64,
 }
 
+/// A builder that handed over to a successor, finishing what it has.
+struct Leaving {
+    builder: Lent,
+    /// Whether a run outliving its caller built there as it handed over,
+    /// which holds it until its time is up, since no ssh here reaches it.
+    outliving: bool,
+}
+
 impl Lent {
     fn lending(&self) -> machines::Lending<'_> {
         machines::Lending {
@@ -309,6 +339,13 @@ fn main() -> ExitCode {
             eprintln!("nix-offload: relay needs --listen and --to\n{USED}");
             return ExitCode::from(64);
         };
+        // Heard before it listens, so a helper's word to leave never
+        // ends it with its connections.
+        // SAFETY: the handler only stores to an atomic.
+        unsafe {
+            let handler = leaving as *const () as libc::sighandler_t;
+            libc::signal(libc::SIGUSR1, handler);
+        }
         // Every address the name gives, since ssh tries localhost's ::1
         // before 127.0.0.1, as the tunnel it stands in for listens on both.
         let listeners = relay::listening(&listen);
@@ -316,6 +353,9 @@ fn main() -> ExitCode {
             eprintln!("nix-offload: couldn't listen on {listen}");
             return ExitCode::FAILURE;
         }
+        // Said, so a helper offers its builder only once its way stands.
+        println!("listening");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
         // Less than the 10 s ssh gives a server to answer, so a caller
         // hung up on hears it before ssh gives up on its own.
         relay::Relay {
@@ -323,7 +363,7 @@ fn main() -> ExitCode {
             within: Duration::from_secs(9),
             pause: Duration::from_millis(250),
         }
-        .serve_all(listeners);
+        .serve_all(listeners, &LEAVING);
         return ExitCode::SUCCESS;
     }
     if arguments.first().map(String::as_str) == Some("stand") {
@@ -1256,7 +1296,9 @@ fn serve(settings: &Settings) -> bool {
         );
     }
     let mut lent = adopt(settings, &mut machines, into_day());
+    let mut leaving: Vec<Leaving> = Vec::new();
     let mut not_before = 0;
+    let mut hand_over_after = 0;
     let mut said_on = None;
     let mut sleep = sleep::Sleep::default();
     let mut said_superseded = false;
@@ -1275,26 +1317,18 @@ fn serve(settings: &Settings) -> bool {
             ),
             woke: sleep.woke(now()),
         };
-        let unreturned = give_back_unreturned(settings, lent.as_ref());
+        let unreturned = give_back_unreturned(settings, lent.as_ref(), &leaving);
         let mut reached = false;
         lent = match lent.take() {
-            None => match decide::lend(settings.hours, tick, not_before, unreturned) {
-                Some(seconds) => {
+            None => {
+                decide::lend(settings.hours, tick, not_before, unreturned).and_then(|seconds| {
                     let lent = lend(settings, &mut machines, tick.now, seconds);
                     if lent.is_none() {
-                        not_before = decide::next_after(
-                            Event::Failed,
-                            tick.wants,
-                            0,
-                            u64::MAX,
-                            false,
-                            now(),
-                        );
+                        not_before = after_failing(tick);
                     }
                     lent
-                }
-                None => None,
-            },
+                })
+            }
             Some(mut builder) => {
                 reached = in_use(Path::new("/proc"), &builder.host)
                     || outlives_on(settings, tick, &builder);
@@ -1310,10 +1344,25 @@ fn serve(settings: &Settings) -> bool {
                             decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
-                    None => Some(builder),
+                    None => Some(handed_over(
+                        settings,
+                        &mut machines,
+                        builder,
+                        tick,
+                        reached,
+                        &mut hand_over_after,
+                        &mut leaving,
+                    )),
                 }
             }
         };
+        leaving = let_go(settings, leaving, now());
+        // A leaving builder's helper runs while a build reaches it, which
+        // a restart would cut.
+        reached = reached
+            || leaving
+                .iter_mut()
+                .any(|left| runs(&mut left.builder.helper));
         // Once a day, after the deadline, say what's there that isn't this
         // one's to give back.
         let day = local_day();
@@ -1333,7 +1382,115 @@ fn serve(settings: &Settings) -> bool {
         end(&mut builder.helper);
         leave(settings, &builder.name, builder.since, builder.rate);
     }
+    for Leaving { mut builder, .. } in leaving {
+        end(&mut builder.helper);
+        leave(settings, &builder.name, builder.since, builder.rate);
+    }
     restarts
+}
+
+/// The builder lent from this tick on: a successor once `builder`, given
+/// whether a build `reached` it this `tick`, hands over, or `builder`
+/// itself. The one handed over joins `leaving`.
+fn handed_over(
+    settings: &Settings,
+    machines: &mut Machines,
+    builder: Lent,
+    tick: Tick,
+    reached: bool,
+    hand_over_after: &mut u64,
+    leaving: &mut Vec<Leaving>,
+) -> Lent {
+    let Some(seconds) = decide::hands_over(
+        settings.hours,
+        tick,
+        builder.ends,
+        reached,
+        *hand_over_after,
+    ) else {
+        return builder;
+    };
+    let (kept, outgoing) = hand_over(settings, machines, builder, tick.now, seconds);
+    match outgoing {
+        Some(outgoing) => leaving.push(outgoing),
+        None => *hand_over_after = after_failing(tick),
+    }
+    kept
+}
+
+/// When to ask again for a builder that failed to stand.
+fn after_failing(tick: Tick) -> u64 {
+    decide::next_after(Event::Failed, tick.wants, 0, u64::MAX, false, now())
+}
+
+/// Whether a helper still runs.
+fn runs(helper: &mut Child) -> bool {
+    helper.try_wait().ok().flatten().is_none()
+}
+
+/// Ask for a successor to `builder`, whose time is nearly up while a build
+/// uses or wants it, to live `seconds`. Once it stands, Nix is given its
+/// line alone, and the old builder's helper is told to hand over, taking
+/// no new connection. It gives the builder lent from then on, and the one
+/// leaving, if any: without a successor, the old builder is kept as it was.
+fn hand_over(
+    settings: &Settings,
+    machines: &mut Machines,
+    builder: Lent,
+    now: u64,
+    seconds: u64,
+) -> (Lent, Option<Leaving>) {
+    let name = format!("{}{now}", settings.prefix);
+    eprintln!(
+        "nix-offload: {} ends within {} minutes and a build uses or wants it, so {name} is \
+         asked for to take over",
+        builder.name,
+        builder.ends.saturating_sub(now) / 60
+    );
+    // Asked while its way stands, since none reaches it once it's left.
+    let outliving = builder.store.as_deref().is_some_and(|store| {
+        let scratch = env::var_os("XDG_RUNTIME_DIR")
+            .map_or_else(env::temp_dir, PathBuf::from)
+            .join("nix-offload-serve");
+        there::outlives_on(store, &scratch, "ssh")
+    });
+    let Some(successor) = ask(settings, machines, name, now, seconds) else {
+        eprintln!(
+            "nix-offload: no successor stood, so {} keeps on",
+            builder.name
+        );
+        return (builder, None);
+    };
+    told_to_hand_over(&builder.helper);
+    eprintln!(
+        "nix-offload: {} took over; {} finishes what it has",
+        successor.name, builder.name
+    );
+    (successor, Some(Leaving { builder, outliving }))
+}
+
+/// Tell a helper its builder hands over: the helper alone, since the
+/// tunnel it holds would end on the signal.
+fn told_to_hand_over(helper: &Child) {
+    if let Ok(pid) = libc::pid_t::try_from(helper.id()) {
+        // SAFETY: a signal to our own child, which traps it.
+        unsafe { libc::kill(pid, libc::SIGUSR1) };
+    }
+}
+
+/// Give back each builder that handed over once `decide::leaves` says so,
+/// keeping the rest.
+fn let_go(settings: &Settings, leaving: Vec<Leaving>, now: u64) -> Vec<Leaving> {
+    let mut kept = Vec::new();
+    for mut left in leaving {
+        let gone = !runs(&mut left.builder.helper);
+        if decide::leaves(now, left.builder.ends, gone, left.outliving) {
+            returned(settings, left.builder, Event::Stopped);
+        } else {
+            kept.push(left);
+        }
+    }
+    kept
 }
 
 /// Leave a builder for the next start to give back, since a stop that
@@ -1353,6 +1510,7 @@ fn leave(settings: &Settings, name: &str, asked: u64, rate: Option<u64>) {
 /// the machine queue holds the builds it could take until Nix can see it.
 fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Option<Lent> {
     let name = format!("{}{now}", settings.prefix);
+    eprintln!("nix-offload: asking for {name}, since the queue has builds a builder could take");
     machines.asking(Some(&name));
     let builder = ask(settings, machines, name, now, left);
     machines.asking(None);
@@ -1367,7 +1525,6 @@ fn ask(
     now: u64,
     left: u64,
 ) -> Option<Lent> {
-    eprintln!("nix-offload: asking for {name}, since the queue has builds a builder could take");
     if let Err(error) = journal::note(&settings.journal, now, Event::Asked, &name, None) {
         // Unjournalled, it couldn't be known as this one's to give back.
         eprintln!("nix-offload: journalling the ask: {error}; none is asked for");
@@ -1510,8 +1667,13 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
 }
 
 /// Take the builder from Nix, then give it back, noting how long it ran.
-fn give_back(settings: &Settings, machines: &mut Machines, mut builder: Lent, event: Event) {
+fn give_back(settings: &Settings, machines: &mut Machines, builder: Lent, event: Event) {
     machines.show(None);
+    returned(settings, builder, event);
+}
+
+/// Give a builder Nix no longer names back, noting how long it ran.
+fn returned(settings: &Settings, mut builder: Lent, event: Event) {
     end(&mut builder.helper);
     if down(settings, &builder.name) {
         let now = now();
@@ -1529,13 +1691,16 @@ fn give_back(settings: &Settings, machines: &mut Machines, mut builder: Lent, ev
 }
 
 /// Ask again for every builder this asked for and hasn't seen gone, but
-/// the one lent, and say how many are still not gone.
-fn give_back_unreturned(settings: &Settings, lent: Option<&Lent>) -> usize {
+/// the one lent and those leaving, and say how many are still not gone.
+fn give_back_unreturned(settings: &Settings, lent: Option<&Lent>, leaving: &[Leaving]) -> usize {
     let journal = fs::read_to_string(&settings.journal).unwrap_or_default();
     let mut still = 0;
     for builder in journal::unreturned(&journal) {
         let name = &builder.name;
-        if lent.is_some_and(|lent| &lent.name == name) {
+        let mut held = lent
+            .into_iter()
+            .chain(leaving.iter().map(|left| &left.builder));
+        if held.any(|held| &held.name == name) {
             continue;
         }
         eprintln!("nix-offload: {name} isn't yet seen gone, so it's given back");
@@ -1702,9 +1867,21 @@ fn config() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{PoisonError, RwLock, RwLockReadGuard};
+
+    /// Held to stop this process, which every test hearing a helper waits
+    /// out: a stop it heard would cut the helper's word short, and failed
+    /// a test taking a builder back on 4 November.
+    static STOPS: RwLock<()> = RwLock::new(());
+
+    /// Held while a test hears a helper, so no stop is told meanwhile.
+    fn unstopped() -> RwLockReadGuard<'static, ()> {
+        STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
 
     #[test]
     fn a_stop_ends_a_rest_at_once() {
+        let _alone = STOPS.write().unwrap_or_else(PoisonError::into_inner);
         hear_stops();
         thread::spawn(|| {
             thread::sleep(Duration::from_millis(200));
@@ -1719,6 +1896,7 @@ mod tests {
             "a stop took {:?} to end a rest",
             began.elapsed()
         );
+        ENDING.store(false, Ordering::SeqCst);
     }
 
     #[test]
@@ -1855,6 +2033,7 @@ exit 1
 
     #[test]
     fn a_start_takes_back_what_the_last_stop_left() {
+        let _heard = unstopped();
         let folder = tempfile::tempdir().unwrap();
         let journal = [
             r#"{"at":5,"event":"asked","name":"lend-5"}"#,
@@ -1885,6 +2064,85 @@ exit 1
             journal::unreturned(&journal)[0].ended.is_none(),
             "{journal}"
         );
+    }
+
+    /// A helper whose `hold lend-5` hands over when told to, ending as
+    /// its relay would once its last connection closed, and whose `up`
+    /// stands `next`, or nothing for `lend-9`.
+    const HANDS_OVER: &str = r#"#!/bin/sh
+case "$1 $2" in
+"hold lend-5")
+  trap 'exit 0' USR1
+  echo "ssh-ng://far x86_64-linux /k 8 1 big-parallel - -"
+  sleep 60 &
+  wait
+  exit 3
+  ;;
+"up lend-9") exit 1 ;;
+up*)
+  echo "store ssh-ng://next?ssh-key=/k"
+  echo "ssh-ng://next x86_64-linux /k 8 1 big-parallel - -"
+  exec sleep 60
+  ;;
+esac
+exit 1
+"#;
+
+    /// How a helper ended, waiting at most 5 s; none while it runs on.
+    fn ended(helper: &mut Child) -> Option<std::process::ExitStatus> {
+        let ending = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < ending {
+            if let Some(status) = helper.try_wait().unwrap() {
+                return Some(status);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
+
+    #[test]
+    fn a_successor_takes_nixs_line_and_the_old_helper_is_told_to_hand_over() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (settings, mut machines) = holding(folder.path(), journal);
+        executable(&settings.helper, HANDS_OVER);
+        let old = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let (mut successor, left) = hand_over(&settings, &mut machines, old, 20, 12 * 3600);
+        let mut left = left.expect("no successor stood");
+        assert_eq!(
+            (successor.name.as_str(), successor.host.as_str()),
+            ("lend-20", "next")
+        );
+        assert_eq!(successor.ends, 20 + 12 * 3600);
+        let line = fs::read_to_string(folder.path().join("machines")).unwrap();
+        assert!(line.starts_with("ssh-ng://next "), "{line}");
+        assert!(!line.contains("ssh-ng://far "), "{line}");
+        let status = ended(&mut left.builder.helper).expect("the old helper ran on");
+        assert_eq!(status.code(), Some(0), "it wasn't told to hand over");
+        assert!(!left.outliving);
+        end(&mut successor.helper);
+    }
+
+    #[test]
+    fn with_no_successor_the_old_builder_keeps_on_as_it_was() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (settings, mut machines) = holding(folder.path(), journal);
+        executable(&settings.helper, HANDS_OVER);
+        let old = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let (mut old, left) = hand_over(&settings, &mut machines, old, 9, 12 * 3600);
+        assert!(left.is_none(), "a successor stood");
+        assert_eq!(old.name, "lend-5");
+        assert!(runs(&mut old.helper), "the old helper ended");
+        let line = fs::read_to_string(folder.path().join("machines")).unwrap();
+        assert!(line.starts_with("ssh-ng://far "), "{line}");
+        end(&mut old.helper);
     }
 
     #[test]

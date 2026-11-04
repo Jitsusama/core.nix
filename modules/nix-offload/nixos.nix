@@ -69,6 +69,12 @@
       cores = lib.mkDefault 8;
     };
 
+    # A builder near its end hands over to a successor, whose relay shares
+    # the old one's port until the old one stops listening; a connection
+    # waiting on that listener as it closes then goes to the successor's,
+    # rather than being refused.
+    boot.kernel.sysctl."net.ipv4.tcp_migrate_req" = 1;
+
     systemd.tmpfiles.rules = [
       "d /run/nix-offload 0755 ${config.jitsusama.nix-offload.account} - -"
       "f /run/nix-offload/machines 0644 ${config.jitsusama.nix-offload.account} - -"
