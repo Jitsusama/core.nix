@@ -15,7 +15,8 @@ onLinux {
   # on without it, and each script does the same for a key, so a setting a
   # new release drops would vanish without a word. Its messages and its
   # statistics are in the monospaced face, since they're names and
-  # figures, which Joel's never wants in a sans. A video file opens in
+  # figures, and its subtitles in the serif upright's cut, words to read,
+  # which Joel's never wants in a sans. A video file opens in
   # mpv.
   mpv-accepts-its-configuration =
     let
@@ -24,6 +25,7 @@ onLinux {
       files = home.xdg.configFile;
       opens = graphical.config.xdg.mime.defaultApplications."video/mp4" or "";
       mono = home.jitsusama.theme.font.mono.family;
+      words = home.jitsusama.theme.font.serif.text.family;
       scripts = [
         "osc"
         "console"
@@ -44,6 +46,8 @@ onLinux {
         || { echo "mpv's messages aren't in ${mono}:"; grep font mpv/mpv.conf; exit 1; }
       grep -qE '^font=(%[0-9]+%)?${mono}$' mpv/script-opts/stats.conf \
         || { echo "mpv's statistics aren't in ${mono}:"; cat mpv/script-opts/stats.conf; exit 1; }
+      grep -qE '^sub-font=(%[0-9]+%)?${words}$' mpv/mpv.conf \
+        || { echo "mpv's subtitles aren't in ${words}:"; grep font mpv/mpv.conf; exit 1; }
       # Kept open, mpv would hold the last frame and never finish.
       mpv --config-dir=$PWD/mpv --vo=null --ao=null --force-window=no --keep-open=no \
         --save-position-on-quit=no --frames=10 \

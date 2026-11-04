@@ -613,8 +613,17 @@ in
           # Look 3's plate: a thing's name at title, a touch heavier than the
           # voice and drawn for its size, and the time at display, regular,
           # drawn for a poster's size with its wonky letters off, so its
-          # figures stand plain.
+          # figures stand plain. At large, the words the shell sets for
+          # reading, as the reader's page sets its text: the voice's weight,
+          # half softened, its wonky letters off and drawn for text's size,
+          # since Joel is "not a fan of sans-serif" (4 November).
           default = {
+            large = {
+              wght = 380;
+              SOFT = 50;
+              WONK = 0;
+              opsz = 14;
+            };
             title = {
               wght = 500;
               opsz = 72;
@@ -645,6 +654,20 @@ in
             the step: the axes, weight among them, laid over
             `font.serif.axes`.
           '';
+        };
+        text = {
+          family = lib.mkOption {
+            type = lib.types.str;
+            default = "${cfg.font.serif.family} Text";
+            defaultText = lib.literalExpression ''"''${font.serif.family} Text"'';
+            description = ''
+              The serif face upright at large, cut at those axes into a font
+              of its own (../fonts/serif-text.nix), for the words a program
+              sets for reading that can't set a variable font's axes: mpv's
+              subtitles and the camera's panel, the boot screen and inlyne.
+              The variable font's own default is drawn for 144 points.
+            '';
+          };
         };
         tracking = lib.mkOption {
           type = lib.types.attrsOf lib.types.number;

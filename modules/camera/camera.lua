@@ -19,7 +19,7 @@ local options = {
   picture = '',
   video = '',
   -- The theme's, as home.nix gives them.
-  sans = 'sans-serif',
+  words = 'serif',
   mono = 'monospace',
   deepest = '',
   shadow = '',
@@ -158,11 +158,11 @@ local function draw()
 
   -- On the left, what Return makes and, while recording, for how long;
   -- on the right, the keys. Words, a key's name among them, are in the
-  -- interface's face; marks, the time and the spaces between in the
-  -- monospaced one, which has the marks, keeps the time's figures from
+  -- serif upright, as words to read are; marks, the time and the spaces
+  -- between in the monospaced face, which has the marks, keeps the time's figures from
   -- shifting as they count, and spaces the keys as evenly as before.
   local font = string.format('{\\fs%d\\bord0\\shad0}', size)
-  local words = '\\fn' .. options.sans
+  local words = '\\fn' .. options.words
   local marks = '\\fn' .. options.mono
   local left
   if not ready then

@@ -66,7 +66,15 @@ let
   );
   points = face: step: number theme.type.${face}.${step};
   mono = theme.font.mono.family;
-  sans = theme.font.sans.family;
+  # Words to read, the ask and what the boot says, in the serif upright,
+  # cut at its axes (../fonts/serif-text.nix), since neither pango's
+  # pictures nor Plymouth's own words take a variable font's axes.
+  serif = theme.font.serif.text.family;
+  serifText = import ../fonts/serif-text.nix {
+    inherit pkgs;
+    inherit (theme) font;
+  };
+  fonts = pkgs.makeFontsConf { fontDirectories = config.fonts.packages ++ [ serifText ]; };
 
   # The words under the name, keyed by the picture that says them.
   under = {
@@ -152,7 +160,7 @@ let
     ''
       ${lifted (file "name") mono (points "mono" "hero") config.networking.hostName}
       ${lib.concatStrings (
-        lib.mapAttrsToList (key: text: lifted (file key) sans (points "sans" "large") text) under
+        lib.mapAttrsToList (key: text: lifted (file key) serif (points "serif" "large") text) under
       )}
       ${lifted (file "about") mono (points "mono" "small") about}
       ${lifted (file "about-generation") mono (points "mono" "small") "${about}  ·  generation"}
@@ -191,7 +199,7 @@ let
     in
     ''
       pango-view -q --no-display --dpi=${toString (96 * scale)} --margin=0 \
-        --background=transparent --font=${lib.escapeShellArg "${sans} ${toString (points "sans" "body")}"} \
+        --background=transparent --font=${lib.escapeShellArg "${serif} ${toString (points "serif" "body")}"} \
         --output=line.png --text=Hg
       line=$(magick identify -format %h line.png)
       magick -size ${at (inner + 2 * pad)}x$((line + ${at (2 * pad)})) xc:none \
@@ -234,8 +242,8 @@ let
     inherit pad reach;
     deepest = channels colours.deepest;
     textColour = channels colours.text;
-    sansFamily = sans;
-    sansBody = toString (points "sans" "body");
+    serifFamily = serif;
+    serifBody = toString (points "serif" "body");
     shadowColour = channels colours.shadow;
     tightX = tight.x;
     tightY = tight.y;
@@ -272,7 +280,7 @@ let
         ];
         # pango-view reads its words in the locale's encoding.
         LC_ALL = "C.UTF-8";
-        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = config.fonts.packages; };
+        FONTCONFIG_FILE = fonts;
       }
       ''
         export HOME=$TMPDIR
@@ -322,18 +330,6 @@ let
       ${plymouth} update --status="generation:$number"
     fi
   '';
-
-  # The face a message is set in, the one font the initrd needs.
-  sansFile =
-    pkgs.runCommand "plymouth-sans"
-      {
-        nativeBuildInputs = [ pkgs.fontconfig ];
-        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = config.fonts.packages; };
-      }
-      ''
-        export HOME=$TMPDIR
-        cp "$(fc-match -f '%{file}' ${lib.escapeShellArg "${sans}:style=Regular"})" $out
-      '';
 in
 {
   config = lib.mkIf (theme != null) {
@@ -371,7 +367,8 @@ in
       });
       theme = "jitsusama";
       themePackages = [ art ];
-      font = "${sansFile}";
+      # The face a message is set in, the one font the initrd needs.
+      font = serifText.file;
       # The script scales its own pictures, so Plymouth leaves the screen's
       # pixels as they are rather than doubling pictures drawn at one.
       extraConfig = ''

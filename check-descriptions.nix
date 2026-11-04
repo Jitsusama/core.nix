@@ -540,8 +540,8 @@
   '';
   inlyne-reads-in-the-theme = ''
     inlyne draws a sheet and the keys page its settings name on the theme's background, headings in
-    the strong text and none of its own colours, without asking the desktop for the theme its
-    settings name, and markdown files open in it
+    the strong text and none of its own colours, its words in the serif upright's cut, without
+    asking the desktop for the theme its settings name, and markdown files open in it
   '';
   inlyne-says-the-file-it-shows = ''
     inlyne keeps the file it shows, read by its Recent's command as its process and whole path, and
@@ -682,7 +682,8 @@
   '';
   mpv-accepts-its-configuration = ''
     mpv plays a moment of video with the account's settings and its controller's without a
-    complaint, its messages and statistics in the monospaced face, and video files open in it
+    complaint, its messages and statistics in the monospaced face and its subtitles in the serif
+    upright's cut, and video files open in it
   '';
   mpv-keys-go-where-they-say = ''
     mpv's h, l, j and k seek where Left, Right, Up and Down do, a number before a key does it that
@@ -1731,6 +1732,10 @@
   the-serif-is-its-variable-files = ''
     asked for the theme's serif face, the machine's fontconfig lists its two variable files and no
     static cut, and gives the italic one for the italic
+  '';
+  the-serif-text-is-the-upright-at-large = ''
+    the serif upright's cut answers to its own name and draws as Fraunces does at the axes the theme
+    gives it, and not as the variable font's default
   '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a

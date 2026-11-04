@@ -17,8 +17,10 @@
 #
 # What mpv draws over the picture is in the theme: its messages, times
 # and statistics in the monospaced face, as names and figures are
-# everywhere, subtitles in the proportional face, the controller's bar in the deepest
-# colour with the text's colour on it, and its console, right-click menu
+# everywhere, subtitles in the serif upright, as words to read are (its
+# cut of its own, ../fonts/serif-text.nix, since mpv can't set a variable
+# font's axes), the controller's bar in the deepest colour with the
+# text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
 # mpv's own: Space pauses, the arrows seek, f fills the screen and q quits,
 # but ? opens the launcher's Shortcuts at the player's keys. Vim's keys are
@@ -49,6 +51,7 @@
 }:
 let
   inherit (config.jitsusama.theme) colours font;
+  serifText = import ../fonts/serif-text.nix { inherit pkgs font; };
 
   # Where each mpv keeps the file it plays now (playing.lua).
   playing = "${config.xdg.stateHome}/mpv/playing";
@@ -261,6 +264,9 @@ in
 
   jitsusama.unlisted = [ "umpv" ];
 
+  # The serif upright cut for the subtitles, where fontconfig finds it.
+  home.packages = [ serifText ];
+
   xdg.configFile."mpv/scripts/recent-files.lua".source = ./recent-files.lua;
   xdg.configFile."mpv/scripts/playing.lua".source = ./playing.lua;
   xdg.configFile."mpv/scripts/copy-frame.lua".source = ./copy-frame.lua;
@@ -314,7 +320,7 @@ in
       osd-back-color = colours.deepest;
       osd-selected-color = colours.on_accent;
       osd-selected-outline-color = colours.accent;
-      sub-font = font.sans.family;
+      sub-font = font.serif.text.family;
       sub-color = colours.strong;
       sub-border-color = colours.shadow;
 
