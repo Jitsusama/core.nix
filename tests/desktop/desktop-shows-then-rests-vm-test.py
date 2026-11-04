@@ -48,6 +48,29 @@ def gone(desktop: Desktop, namespace: str) -> None:
     )
 
 
+def test_memory_probe(desktop: Desktop) -> None:
+    """Read the shell's memory at rest, then after opening places a few times."""
+    machine = desktop.machine
+    read = (
+        "p=$(systemctl --user show -p MainPID --value quickshell.service);"
+        " echo PROBE $(grep -E 'VmRSS|RssAnon|Threads' /proc/$p/status | tr -s ' \\n' ' ')"
+        " $(grep -E '^Pss_Anon' /proc/$p/smaps_rollup | tr -s ' ' ' ');"
+        " echo PROBE MALLOC_CONF=$(tr '\\0' '\\n' < /proc/$p/environ | grep MALLOC_CONF)"
+    )
+    machine.succeed("sleep 20")
+    print(machine.succeed(desktop.in_session(read)))
+    for _ in range(3):
+        for place in ["sound", "displays", "machine", "agents", "now"]:
+            desktop.as_account("qs ipc call launcher toggle")
+            desktop.launcher_ready()
+            desktop.type_in(place)
+            machine.succeed("sleep 1")
+            desktop.as_account("qs ipc call launcher toggle")
+            machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    machine.succeed("sleep 15")
+    print(machine.succeed(desktop.in_session(read)))
+
+
 def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_things_stand(
     desktop: Desktop,
 ) -> None:
