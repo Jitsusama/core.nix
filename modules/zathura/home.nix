@@ -24,8 +24,17 @@
 # Its keys speak the keyboard's language: Left and Right turn the pages and
 # Up and Down scroll, Tab goes back to the place used last (a link followed,
 # a search, the first page) and again returns, Space finds words, C opens the
-# contents, and ? shows its keys in the launcher, over its window. Vim's keys
-# stay as zathura has them, j and k among them, unlisted.
+# contents, and ? shows its keys in the launcher, over its window. Neovim's
+# keys are zathura's own, and listed beside the arrow or the key each
+# twins, as docs/design.md's Vi's Keys has them: j and k scroll as Down and
+# Up do, h and l sideways, J and K turn the pages as Page Down and Page Up
+# do, gg and G go to the first and the last as Home and End do, a count
+# before G to that page, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B
+# a screen, / n and N find, m and ' mark a place and go back to it, and
+# Ctrl+O and Ctrl+I go back and forward through the jumps. Left and Right
+# turn pages rather than scroll sideways, as Joel chose, so h and l twin
+# nothing, and ? lists the keys rather than searching backward, since N
+# goes back already.
 #
 # Comic book archives are left out: that plugin also claims folders and
 # zip, tar and 7z archives, which would open in zathura.
@@ -58,7 +67,9 @@ let
   # do on it (`run`), on its key as zathura spells one (`key`). The
   # launcher lists them over zathura's window: those that go through the
   # document as Turning pages, those that size the page as Fitting the
-  # page, and the rest loose.
+  # page, and the rest loose. Keys that do one thing say it in the same
+  # words, the arrow first, so the launcher draws them as one row, the
+  # letter beside the arrow it twins. keys-test.sh presses each.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "turning" [
@@ -73,6 +84,10 @@ let
         does = "The previous page";
       }
       {
+        chord = "Shift+k";
+        does = "The previous page";
+      }
+      {
         chord = "Right";
         key = "<Right>";
         run = "navigate next";
@@ -83,7 +98,15 @@ let
         does = "The next page";
       }
       {
+        chord = "Shift+j";
+        does = "The next page";
+      }
+      {
         chord = "Home";
+        does = "The first page";
+      }
+      {
+        chord = "g g";
         does = "The first page";
       }
       {
@@ -91,12 +114,53 @@ let
         does = "The last page";
       }
       {
+        chord = "Shift+g";
+        does = "The last page";
+      }
+      # Any number before G, five drawn for them all.
+      {
+        chord = "5 Shift+g";
+        does = "That page";
+      }
+      {
         chord = "Up";
+        does = "Up a little";
+      }
+      {
+        chord = "k";
         does = "Up a little";
       }
       {
         chord = "Down";
         does = "Down a little";
+      }
+      {
+        chord = "j";
+        does = "Down a little";
+      }
+      {
+        chord = "h";
+        does = "Left a little";
+      }
+      {
+        chord = "l";
+        does = "Right a little";
+      }
+      {
+        chord = "Ctrl+u";
+        does = "Up half a screen";
+      }
+      {
+        chord = "Ctrl+d";
+        does = "Down half a screen";
+      }
+      {
+        chord = "Ctrl+b";
+        does = "Up a screen";
+      }
+      {
+        chord = "Ctrl+f";
+        does = "Down a screen";
       }
     ]
     ++ grouped "fitting" [
@@ -127,18 +191,38 @@ let
         does = "The place used last";
       }
       {
+        chord = "Ctrl+o";
+        does = "Back through the jumps";
+      }
+      {
+        chord = "Ctrl+i";
+        does = "Forward through the jumps";
+      }
+      {
         chord = "Space";
         key = "<Space>";
         run = ''focus_inputbar "/"'';
         does = "Find words in it";
       }
       {
+        chord = "slash";
+        does = "Find, the next, the one before";
+      }
+      {
         chord = "n";
-        does = "The next match";
+        does = "Find, the next, the one before";
       }
       {
         chord = "Shift+n";
-        does = "The match before";
+        does = "Find, the next, the one before";
+      }
+      {
+        chord = "m";
+        does = "Mark a place, go back to it";
+      }
+      {
+        chord = "'";
+        does = "Mark a place, go back to it";
       }
       {
         chord = "c";

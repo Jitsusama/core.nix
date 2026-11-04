@@ -2361,8 +2361,11 @@
     in it
   '';
   zathura-keys-go-where-they-say = ''
-    zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
-    and the question mark key asks the launcher for the keys
+    every key zathura lists lands where it says: Left, Right, J, K and the page keys turn the pages,
+    Home, End, gg, G and a count before G go to that page, j, k, h, l, Ctrl+D, Ctrl+U, Ctrl+F and
+    Ctrl+B scroll as their arrows do, Tab, Ctrl+O and Ctrl+I go through the jumps, m and ' mark
+    and go back, / n N and Space find, the question mark key asks the launcher for the keys, and q
+    closes it
   '';
   zathura-says-the-document-it-has-open = ''
     zathura says the document it has open, read by its Recent's command as its process and whole
