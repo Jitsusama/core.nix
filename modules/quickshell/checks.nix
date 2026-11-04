@@ -1827,6 +1827,84 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's windows list the one Joel's in as This Window, then the
+  # rest the one used last first, and when the focus moves make again only
+  # the rows of the windows it moved between, as Capture's do
+  # (tests/windows.qml), with niri, pi's sessions, the recorder, the
+  # shortcuts and what was taken stood in.
+  the-launcher-remakes-only-the-windows-that-changed =
+    let
+      # Three windows, two on the workspace in front, changed in place as
+      # niri's events change them (Niri.qml).
+      niri = singleton "Niri.qml" ''
+        property var windows: ({
+          "11": { id: 11, app_id: "tester", title: "Logbook", workspace_id: 1, is_focused: true,
+            focus_timestamp: { secs: 200, nanos: 0 }, layout: { pos_in_scrolling_layout: [1, 1] } },
+          "12": { id: 12, app_id: "tester", title: "Draft", workspace_id: 2, is_focused: false,
+            focus_timestamp: { secs: 100, nanos: 0 }, layout: { pos_in_scrolling_layout: [1, 1] } },
+          "13": { id: 13, app_id: "tester", title: "Notes", workspace_id: 1, is_focused: false,
+            focus_timestamp: { secs: 50, nanos: 0 }, layout: { pos_in_scrolling_layout: [2, 1] } }
+        })
+        property var workspaces: ({
+          "1": { id: 1, idx: 1, is_focused: true, active_window_id: 11 },
+          "2": { id: 2, idx: 2, is_focused: false, active_window_id: 12 }
+        })
+        property var focused: 11
+        property int revision: 0
+        readonly property var current: { revision; return focused; }
+        function workspace(id) {
+          return id === undefined ? Object.values(workspaces).find(one => one.is_focused) ?? null
+            : workspaces[id] ?? null;
+        }
+        function act(action) {}
+      '';
+      sessions = singleton "Sessions.qml" ''
+        property string waitingWindows: ""
+        function aboutOf(id) { return ""; }
+      '';
+      recorder = singleton "Recorder.qml" ''
+        property bool recording: false
+        property string what: ""
+      '';
+      shortcuts = singleton "Shortcuts.qml" ''
+        property var actions: []
+        property var layers: []
+      '';
+      # Nothing taken, so Capture's Recent holds no file.
+      taken = singleton "Taken.qml" ''
+        property var files: []
+        function want(folder) {}
+        function read() {}
+      '';
+      files = singleton "Files.qml" "function file(path, thing, acts) { return null; }";
+    in
+    pkgs.runCommandLocal "the-launcher-remakes-only-the-windows-that-changed" { } ''
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
+      cp ${./launcher/Windows.qml} launcher/Windows.qml
+      cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/windows.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      cp ${recorder} Recorder.qml
+      cp ${shortcuts} Shortcuts.qml
+      cp ${taken} Taken.qml
+      cp ${files} Files.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's queue, Agents' place for the machine's heavy work, says
   # what each job is from the queue pi's harness writes (tests/queue.qml),
   # with the queue, pi's sessions, niri, Quests and a slice's memory stood
