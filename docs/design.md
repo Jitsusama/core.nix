@@ -311,9 +311,9 @@ script face for the letters none of them has.
   and the greeter.
 - **Monaspace's own art, on purpose.** Texture healing and the coding
   ligatures wherever monospace is drawn, but for texture healing in kitty,
-  which shrinks a glyph wider than its cell to fit it. The other Monaspace voices only where
-  they mean something, such as a second voice for italics so comments read as
-  handwriting, chosen by looking.
+  which shrinks a glyph wider than its cell to fit it. The other Monaspace
+  voices only where they mean something, such as a second voice for italics
+  so comments read as handwriting, chosen by looking.
 - **Wide** (Hubot Sans Expanded) sets a page's titles and headings, in the
   reader.
 - **Serif** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
