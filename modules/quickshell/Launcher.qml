@@ -4,8 +4,8 @@
 // focused window. The command line is modal, as Neovim's is (Prompt.qml,
 // QueryKeys.js): it opens in insert, where letters type and Ctrl+Y takes
 // the grey completion it shows, and Escape gives normal, where nothing
-// types and the keys move. Each action shows its chord, so keys are learned
-// by use.
+// types and the keys move through the rows as Vim's do through a buffer,
+// with counts. Each action shows its chord, so keys are learned by use.
 //
 // It opens as fast as niri can hand it the keys. Super+Space says "toggle"
 // down a socket the shell keeps open (launcher-say, in home.nix), not
@@ -50,6 +50,7 @@ import KeyTimes
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
+import "QueryKeys.js" as QueryKeys
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -3655,6 +3656,14 @@ Scope {
             // is, between letters in insert and on one in normal.
             mode: prompt.mode,
             caret: prompt.caret,
+            // A count typed in normal, waiting for its move, and the keys
+            // of a sequence begun, as gg's first g.
+            counted: prompt.standing.count,
+            begun: prompt.standing.typed.join(""),
+            // Which row is selected, counted from 0, -1 for an answer's
+            // headline, and the first and last rows wholly in view.
+            current: root.current,
+            inView: list.inView(),
             // How wide its caret is drawn: a block or a bar. How lit it is
             // as it blinks isn't said, since this is said on every change.
             caretWidth: root.hundredths(prompt.caretWidth),
@@ -4204,6 +4213,7 @@ Scope {
                         awake: root.open
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
+                        wait: Options.keyTiming.wait
                         keyWords: Words.field.keys ?? {}
                         x: Theme.inset
                         y: Theme.inset
@@ -4305,39 +4315,44 @@ Scope {
                         // column and the right hand's arrows, never the
                         // little finger's Ctrl (Joel, 2026-11-02: "all of
                         // those ctrl keys do not feel very vim to me").
-                        onStepped: act => {
+                        // Every other is a move, which QueryKeys.moved
+                        // says the end of from the rows in view, as the
+                        // list has them. Ctrl+D and Ctrl+U scroll the rows
+                        // as far as they move the selection, so it keeps
+                        // its place in view, as Vim's do.
+                        onStepped: (act, count) => {
                             root.searchNow();
                             switch (act) {
                             case "drawerUp":
                                 drawerCard.scroll(-1);
-                                break;
+                                return;
                             case "drawerDown":
                                 drawerCard.scroll(1);
-                                break;
-                            case "previous":
-                                root.arrowed(Math.max(root.current - 1, highest), "\u2191");
-                                break;
-                            case "next":
-                                root.arrowed(Math.max(highest,
-                                    Math.min(root.current + 1, root.matches.length - 1)),
-                                    "\u2193");
-                                break;
-                            case "pageUp":
-                                root.arrowed(Math.max(root.current - root.rows, highest),
-                                    "page up");
-                                break;
-                            case "pageDown":
-                                root.arrowed(
-                                    Math.min(root.current + root.rows, root.matches.length - 1),
-                                    "page down");
-                                break;
+                                return;
                             case "nextFile":
                                 root.beside(1);
-                                break;
+                                return;
                             case "previousFile":
                                 root.beside(-1);
-                                break;
+                                return;
                             }
+                            const view = list.inView();
+                            const to = QueryKeys.moved(act, count, {
+                                at: root.current,
+                                highest,
+                                last: root.matches.length - 1,
+                                top: view.top,
+                                bottom: view.bottom,
+                                screen: root.rows
+                            });
+                            if (act === "halfDown" || act === "halfUp")
+                                list.scrollRows(to - root.current);
+                            // Timed under the arrows' names, as they were
+                            // before the rows had vi's moves, and the
+                            // rest under their first key.
+                            const timedAs = { previous: "\u2191", next: "\u2193",
+                                pageUp: "page up", pageDown: "page down" };
+                            root.arrowed(to, timedAs[act] ?? QueryKeys.keyOf(act, "normal"));
                         }
                     }
                 }
@@ -4528,6 +4543,51 @@ Scope {
                                     gap: root.hundredths(row.detailGap),
                                     face: row.detailFace
                                 } : null;
+                            }
+
+                            // The first and last rows wholly in view, read
+                            // from the rows the list has drawn, where it's
+                            // going if it's gliding, as H M L take them.
+                            function inView() {
+                                const from = scrolling.running ? scrolling.to : list.contentY;
+                                const whole = at => {
+                                    const entry = list.itemAtIndex(at);
+                                    return entry !== null && entry.y >= from - 0.5
+                                        && entry.y + entry.height <= from + list.height + 0.5;
+                                };
+                                // From the row at the view's top, past one
+                                // cut by it, to the last that ends in it.
+                                let top = Math.max(0, list.indexAt(list.width / 2, from));
+                                const most = Math.min(root.matches.length, top + 2 * root.rows);
+                                while (top < most && !whole(top))
+                                    top += 1;
+                                if (top >= most)
+                                    return { top: root.current, bottom: root.current };
+                                let bottom = top;
+                                while (bottom + 1 < most && whole(bottom + 1))
+                                    bottom += 1;
+                                return { top, bottom };
+                            }
+
+                            // Scrolls by a number of rows, down or up, as
+                            // far as the rows go, gliding as reveal does, so
+                            // the selection moved as far keeps its place.
+                            function scrollRows(by) {
+                                const from = scrolling.running ? scrolling.to : list.contentY;
+                                const top = Math.max(0, list.inView().top + by);
+                                const most = list.originY
+                                    + Math.max(0, list.contentHeight - list.height);
+                                const to = Math.max(list.originY,
+                                    Math.min(list.originY + list.rowTop(top), most));
+                                if (to === from)
+                                    return;
+                                if (!list.settled) {
+                                    list.contentY = to;
+                                    return;
+                                }
+                                scrolling.stop();
+                                scrolling.to = to;
+                                scrolling.start();
                             }
 
                             // Scrolls just far enough to show the row, as
@@ -4821,11 +4881,16 @@ Scope {
                         // there (modules/neovim/status.lua): the one word
                         // saying where his keys go. It comes and goes without
                         // moving anything else.
+                        // In normal, a count typed before a move stands in
+                        // its place until the move, as Neovim's showcmd
+                        // shows it, in the strong ink of what's typed, its
+                        // last digits where it's longer than the room.
                         Text {
                             id: modeWord
 
-                            readonly property string said: (Words.field.modes ?? {})[prompt.mode]
-                                ?? ""
+                            readonly property string counted: prompt.standing.count
+                            readonly property string said: counted !== "" ? counted
+                                : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows.
                             readonly property real room: {
@@ -4834,11 +4899,13 @@ Scope {
                                     + Math.max(...words.map(word => measure.advanceWidth(word)));
                             }
                             x: standing.x + standing.width + keys.spacing
+                            width: Math.max(0, room - keys.spacing)
                             anchors.verticalCenter: parent.verticalCenter
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
-                            color: Theme.accent
+                            elide: Text.ElideLeft
+                            color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
                         }
 

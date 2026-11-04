@@ -27,6 +27,9 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
+# Enough rows for a screen's moves to go a screen and more: the launcher shows eight at once.
+MANY_ROWS = 20
+
 
 @pytest.fixture(scope="module")
 def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
@@ -463,8 +466,98 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     assert len(kept) - len(absent) >= fewest, absent
 
 
-def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
-    """A search lists each thing once."""
+def walk_the_rows_moves(desktop: Desktop) -> None:
+    """Press every move normal takes through a search's rows, as Joel would through niri.
+
+    They're Vim's, with counts, as QueryKeys.js holds them (tests/query-keys.qml): this is
+    that each reaches the rows through niri, lands where the list has its rows in view, and
+    that a count shows in the foot until its move.
+    """
+    machine = desktop.machine
+    desktop.answer("s")
+    desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+    desktop.normal()
+    last = desktop.showing()["count"] - 1
+
+    def at(row: int) -> Json:
+        """Wait until this row is selected, with nothing begun, and give what's shown then."""
+        desktop.launcher_until(
+            lambda shown: (shown["current"], shown["counted"], shown["begun"]) == (row, "", "")
+        )
+        return desktop.showing()
+
+    def press(keys: str) -> None:
+        for key in keys.split():
+            if len(key) == 1:
+                machine.send_chars(key)
+            else:
+                machine.send_key(key)
+
+    for keys, row in [("j", 1), ("down", 2), ("k", 1), ("up", 0), ("G", last), ("g g", 0)]:
+        press(keys)
+        at(row)
+    # A count stands in the mode word's place in the foot until its move, which goes that
+    # many, and before G names the row.
+    machine.send_chars("3")
+    desktop.launcher_until(lambda shown: shown["counted"] == "3")
+    foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    assert any(word["text"] == "3" for word in foot), foot
+    machine.send_chars("j")
+    at(3)
+    for keys, row in [("1 2 k", 0), ("5 G", 4), ("2 g g", 1)]:
+        press(keys)
+        at(row)
+    # Escape with a count begun only lets it go, as Vim's does, and the next steps back.
+    machine.send_chars("5")
+    desktop.launcher_until(lambda shown: shown["counted"] == "5")
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["counted"] == "")
+    assert desktop.showing()["open"], "an Escape cancelling a count closed the launcher"
+    # A g waits his timeoutlen for its second, then lets go, so a j after moves.
+    machine.send_chars("g")
+    desktop.launcher_until(lambda shown: shown["begun"] == "g")
+    desktop.launcher_until(lambda shown: shown["begun"] == "")
+    machine.send_chars("j")
+    # Half a screen moves the rows as far as the selection, so it keeps its place in view;
+    # a screen goes on a list's height, eight rows.
+    start = 2
+    shown = at(start)
+    top = shown["inView"]["top"]
+    half = (shown["inView"]["bottom"] - top + 1) // 2
+    machine.send_key("ctrl-d")
+    desktop.launcher_until(
+        lambda shown: shown["current"] == start + half and shown["inView"]["top"] == top + half
+    )
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(
+        lambda shown: shown["current"] == start and shown["inView"]["top"] == top
+    )
+    screen = start + 8
+    for keys, row in [
+        ("ctrl-f", screen),
+        ("ctrl-b", start),
+        ("pgdn", screen),
+        ("pgup", start),
+        ("ctrl-f", screen),
+    ]:
+        press(keys)
+        at(row)
+    # H M L go to the top, middle and bottom rows wholly in view, as the list has them.
+    view = desktop.showing()["inView"]
+    for keys, row in [
+        ("H", view["top"]),
+        ("L", view["bottom"]),
+        ("M", view["top"] + (view["bottom"] - view["top"]) // 2),
+        ("2 H", view["top"] + 1),
+    ]:
+        press(keys)
+        at(row)
+    desktop.close_launcher()
+
+
+def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
+    """A search lists each thing once, and normal's keys move through it as Vim's do."""
+    walk_the_rows_moves(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;

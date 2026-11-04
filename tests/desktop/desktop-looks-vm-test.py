@@ -153,6 +153,17 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
+        # A count typed stands where insert's word was until its move, as showcmd shows it,
+        # moving nothing else in the foot; Escape lets it go.
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        desktop.machine.send_chars("12")
+        desktop.launcher_until(lambda shown: shown["counted"] == "12")
+        counted = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        rest = sorted(word["x"] for word in counted if word["text"] != "12")
+        assert rest == sorted(word["x"] for word in laid), (laid, counted)
+        desktop.photograph(f"launcher-count-at-{scale.replace('.', '-')}")
+        desktop.machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["counted"] == "")
         desktop.close_launcher()
 
 

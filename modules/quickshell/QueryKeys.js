@@ -31,13 +31,26 @@ const table = [
     { act: "complete", mode: "insert", keys: ["Ctrl+y"] },
     { act: "normal", mode: "insert", keys: ["Escape"] },
 
-    // Normal, until its own moves come: the rows' keys the line had before
-    // it had modes. Tab goes on as in insert until the place used last
-    // takes it. The left and right arrows step out and in, with h and l
-    // beside them, and Backspace steps out as his oil's does; a query typed
-    // is cleared first, and u brings it back, as vi's undo does.
-    { act: "next", mode: "normal", keys: ["Down", "Tab"] },
-    { act: "previous", mode: "normal", keys: ["Up", "Shift+Tab"] },
+    // Normal, over the rows as a buffer: Vim's moves, each taking a count
+    // typed before it (3j). Tab goes on as in insert until the place used
+    // last takes it. gg and {n}G go to the first row and the nth, G to the
+    // last; H M L to the top, middle and bottom row in view; Ctrl+D and
+    // Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page Up, a
+    // screen (moved, below).
+    { act: "next", mode: "normal", keys: ["Down", "j", "Tab"] },
+    { act: "previous", mode: "normal", keys: ["Up", "k", "Shift+Tab"] },
+    { act: "first", mode: "normal", keys: [["g", "g"]] },
+    { act: "last", mode: "normal", keys: ["G"] },
+    { act: "viewTop", mode: "normal", keys: ["H"] },
+    { act: "viewMiddle", mode: "normal", keys: ["M"] },
+    { act: "viewBottom", mode: "normal", keys: ["L"] },
+    { act: "halfDown", mode: "normal", keys: ["Ctrl+d"] },
+    { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
+    { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
+    { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
+    // The left and right arrows step out and in, with h and l beside them,
+    // and Backspace steps out as his oil's does; a query typed is cleared
+    // first, and u brings it back, as vi's undo does.
     { act: "into", mode: "normal", keys: ["Right", "l"] },
     { act: "out", mode: "normal", keys: ["Left", "h", "Backspace"] },
     { act: "restore", mode: "normal", keys: ["u"] },
@@ -69,10 +82,28 @@ const table = [
     { act: "drawerDown", mode: "both", keys: ["Shift+Down"] }
 ];
 
-// Where the keys stand between presses: the keys of a sequence begun.
-function rest() {
-    return { typed: [] };
+// The acts that move through the rows, which repeat while their key is
+// held, as Vim's motions do; every other act is done once a press, so a
+// key let go late by a busy shell never does it twice (Prompt.qml).
+const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
+    "halfDown", "halfUp", "pageDown", "pageUp", "drawerUp", "drawerDown"];
+
+function repeats(act) {
+    return moves.includes(act);
 }
+
+// Where the keys stand between presses: the count typed so far, as
+// digits, and the keys of a sequence begun.
+function rest() {
+    return { count: "", typed: [] };
+}
+
+// Whether anything's begun: a count or a sequence's first keys.
+function pending(standing) {
+    return standing.count !== "" || standing.typed.length > 0;
+}
+
+const digit = /^[0-9]$/;
 
 function same(a, b) {
     return a.length === b.length && a.every((key, at) => key === b[at]);
@@ -103,29 +134,86 @@ function matching(typed, mode) {
 }
 
 // What a key does in a mode from where the keys stand: the act, if one's
-// done, how the keys stand after it, and whether the key was the line's to
-// act on at all, rather than the field's own to type. Escape always cancels
-// what's begun before it steps back out of anything.
+// done, with the count typed before it (0 for none), how the keys stand
+// after it, and whether the key was the line's to act on at all, rather
+// than the field's own to type. Escape only cancels what's begun, as Vim's
+// does, and steps back out of anything on the next press.
 function read(standing, key, mode) {
     // A key with no name, as Shift pressed on its own for a capital,
-    // changes nothing, so a sequence begun carries on past it.
+    // changes nothing, so a sequence or a count begun carries on past it.
     if (key === "") {
-        return { act: "", standing, ours: false };
+        return { act: "", count: 0, standing, ours: false };
+    }
+    if (key === "Escape" && pending(standing)) {
+        return { act: "", count: 0, standing: rest(), ours: true };
+    }
+    // A count before a move, in normal, where nothing types: 0 alone is
+    // Vim's first column, which rows haven't, so it counts only after
+    // another digit.
+    if (mode === "normal" && standing.typed.length === 0 && digit.test(key)
+        && (standing.count !== "" || key !== "0")) {
+        return { act: "", count: 0, standing: { count: standing.count + key, typed: [] },
+            ours: true };
     }
     const typed = standing.typed.concat([key]);
-    if (key === "Escape" && standing.typed.length > 0) {
-        return { act: "", standing: rest(), ours: true };
-    }
+    const count = standing.count === "" ? 0 : Number(standing.count);
     const { act, begun } = matching(typed, mode);
     if (act !== "") {
-        return { act, standing: rest(), ours: true };
+        return { act, count, standing: rest(), ours: true };
     }
     if (begun) {
-        return { act: "", standing: { typed }, ours: true };
+        return { act: "", count: 0, standing: { count: standing.count, typed }, ours: true };
     }
     // In normal nothing types, so a key that ends nothing is the line's
     // and does nothing, letting what was begun go, as vi does.
-    return { act: "", standing: rest(), ours: mode === "normal" };
+    return { act: "", count: 0, standing: rest(), ours: mode === "normal" };
+}
+
+// How the keys stand once a sequence begun has waited its timeoutlen for
+// the rest: its keys let go, and a count typed before them kept, since a
+// count waits for its move as long as it takes, as Vim's does.
+function waited(standing) {
+    return { count: standing.count, typed: [] };
+}
+
+// Where a move takes the selection, from where the rows stand: the row
+// selected, the highest it may go (-1 where an answer's headline sits
+// above the rows) and the last, the first and last rows wholly in view,
+// and how many rows a screen holds. A count moves that many times, or,
+// with gg and G, goes to that row, counted from 1, as a line's number is.
+// H and L count from the view's top and bottom. Ctrl+D and Ctrl+U move
+// half the rows in view, or a count's rows, as Vim's 'scroll' takes it.
+// Every move stops at the first and last rows, never going round.
+function moved(act, count, place) {
+    const times = Math.max(1, count);
+    const within = at => Math.max(place.highest, Math.min(at, place.last));
+    const half = count > 0 ? count : Math.max(1, Math.floor((place.bottom - place.top + 1) / 2));
+    switch (act) {
+    case "next":
+        return within(place.at + times);
+    case "previous":
+        return within(place.at - times);
+    case "first":
+        return count > 0 ? within(count - 1) : place.highest;
+    case "last":
+        return count > 0 ? within(count - 1) : within(place.last);
+    case "viewTop":
+        return within(Math.min(place.top + times - 1, place.bottom));
+    case "viewMiddle":
+        return within(place.top + Math.floor((place.bottom - place.top) / 2));
+    case "viewBottom":
+        return within(Math.max(place.bottom - times + 1, place.top));
+    case "halfDown":
+        return within(place.at + half);
+    case "halfUp":
+        return within(place.at - half);
+    case "pageDown":
+        return within(place.at + times * place.screen);
+    case "pageUp":
+        return within(place.at - times * place.screen);
+    default:
+        return place.at;
+    }
 }
 
 // The first key of an act in a mode, as the table names it, for the field
