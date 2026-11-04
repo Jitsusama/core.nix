@@ -1303,6 +1303,10 @@
     a console greets the account by its description's first word, or its name, with the keys back to
     the desktop, and keeps NixOS's banner with no account
   '';
+  the-console-setup-yields-to-graphics = ''
+    the consoles' setup is done with when a compositor takes the console for graphics while it's
+    set, and fails as the setup does when the console still shows text
+  '';
   the-console-font-refuses-a-stand-in = ''
     the console font's build draws the face asked for at Medium, among its other names too, and
     refuses another face or one without a Medium, saying what fontconfig offered

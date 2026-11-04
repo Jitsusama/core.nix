@@ -133,6 +133,24 @@
         touch $out
       '';
 
+  # The consoles' setup is done with when a compositor takes the console
+  # for graphics while it's set, and fails otherwise as the setup does, as
+  # tests/console-setup.sh says, with stand-ins for the setup and kbdinfo.
+  the-console-setup-yields-to-graphics =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      service = machine.config.systemd.services.systemd-vconsole-setup;
+      started = lib.last service.serviceConfig.ExecStart;
+    in
+    pkgs.runCommandLocal "the-console-setup-yields-to-graphics" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/console-setup.sh} ${started}
+      touch $out
+    '';
+
   # The font's build takes only the face asked for at Medium, as
   # tests/console-font.sh says, with stand-ins for fontconfig and the
   # converter: the machine's real fonts show only the face that's there,
