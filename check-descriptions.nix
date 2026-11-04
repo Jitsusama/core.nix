@@ -688,6 +688,12 @@
     steer folders under the harness's per-realm roots and its own link key, apart from the home
     realm's agents key; its pis are told which realm is home
   '';
+  mycelium-flows-one-way = ''
+    a realm flow is kept one way by both realms' nodes, the sending realm's letting text out and
+    the receiving realm's letting it in, and by a machine in the sending realm alone, so what it
+    sends waits for a link; no node names a flow nobody declared, and one into its own realm or
+    between two realms the machine joins neither of is refused
+  '';
   mycelium-lets-a-link-key-only-link = ''
     each link key a machine's system names, on NixOS or nix-darwin, is authorized only to run
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
