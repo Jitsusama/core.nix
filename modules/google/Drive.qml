@@ -70,8 +70,9 @@ Singleton {
             verb: Words.verb(words.open),
             glyph: Words.glyph(words.thing),
             hue: "program",
-            side: Said.beside(document, Calendar.now),
-            drawer: Said.details(document, Words.name(words.thing, "untitled")),
+            side: Said.beside(document, Calendar.now, Mail.dates),
+            drawer: Said.details(document, Words.name(words.thing, "untitled"), Calendar.now,
+                Mail.dates),
             later: true,
             run: () => root.open(document),
             verbs: () => root.acts(document, provider)
@@ -209,7 +210,7 @@ Singleton {
     }
 
     function pickable(file) {
-        const facts = Said.placed(file, Calendar.now);
+        const facts = Said.placed(file, Calendar.now, Mail.dates);
         if (file.kind === "folder")
             return root.chooser.folder(root.savedIn(file.id, {
                 key: facts.key,

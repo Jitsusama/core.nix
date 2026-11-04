@@ -31,6 +31,14 @@ QtObject {
             if (JSON.stringify(said) !== JSON.stringify(meant))
                 failures.push(`${what}: said ${JSON.stringify(said)}, meant ${JSON.stringify(meant)}`);
         };
+        // How mail says when, as Mail.qml gives it: the vocabulary's words,
+        // and the locale's names, the check's being English.
+        const said = {
+            now: "just now",
+            minutes: "{minutes} min ago",
+            yesterday: "yesterday",
+            date: (date, format) => Qt.formatDate(date, format)
+        };
         const standup = {
             id: "standup", title: "Standup", start: now, end: now, allDay: false,
             answer: "yes", link: null, kind: null, page: ""
@@ -119,16 +127,24 @@ QtObject {
 
         // When it came: [what, when, said]
         const cames = [
+            ["a moment ago", now - 30 * 1000, "just now"],
+            ["as it is now", now, "just now"],
+            ["twelve minutes ago", at(9, 26, 15, 8), "12 min ago"],
+            ["59 minutes ago", at(9, 26, 14, 21), "59 min ago"],
+            ["an hour ago", at(9, 26, 14, 20), "14:20"],
             ["this afternoon", at(9, 26, 14, 2), "14:02"],
             ["just after midnight", at(9, 26, 0, 5), "00:05"],
             ["late last night", at(9, 25, 23, 50), "yesterday"],
             ["on Thursday", at(9, 22, 9, 0), "Thursday"],
             ["on Tuesday last week", at(9, 20, 9, 0), "Tuesday"],
-            ["a week ago today", at(9, 19, 9, 0), "19 October"],
-            ["last month", at(8, 30, 9, 0), "30 September"]
+            ["a week ago today", at(9, 19, 9, 0), "19 Oct"],
+            ["last month", at(8, 30, 9, 0), "30 Sep"],
+            ["last year", new Date(2025, 9, 28, 9, 0).getTime(), "28 Oct 2025"],
+            ["later today, by a wrong clock", at(9, 26, 17, 0), "17:00"],
+            ["tomorrow, by a wrong clock", at(9, 27, 9, 0), "27 Oct"]
         ];
-        for (const [what, time, said] of cames)
-            check(`came ${what}`, Mail.came(time, now), said);
+        for (const [what, time, meant] of cames)
+            check(`came ${what}`, Mail.came(time, now, said), meant);
 
         check("the line marking it read", Mail.tidy(mail, "read"), '{"read":{"id":"m_1"}}\n');
         check("the line archiving it", Mail.tidy(mail, "archive"),
@@ -146,34 +162,38 @@ QtObject {
             to: "Joel Gerber, Grace Hopper", subject: "Lunch & a walk?", at: at(9, 26, 14, 2),
             page: "https://mail.google.com/mail/u/0/#inbox/t_2", body: "Friday?\n\nAda"
         };
-        check("its side, who it's from and when", Mail.beside(lunch, now),
+        check("its side, who it's from and when", Mail.beside(lunch, now, said),
             "Ada Lovelace \u00b7 14:02");
-        check("its side, when alone, with no name", Mail.beside({ from: "", at: now }, now),
-            "15:20");
-        check("when it came, in full", Mail.dated(lunch.at), "Monday 26 October, 14:02");
-        check("its details", Mail.details(lunch, "No Subject"), {
+        check("its side, when alone, with no name",
+            Mail.beside({ from: "", at: at(9, 26, 9, 0) }, now, said), "09:00");
+        check("when it came, in full", Mail.dated(lunch.at, now, said),
+            "Monday 26 October \u00b7 14:02");
+        check("when it came last year, in full",
+            Mail.dated(new Date(2025, 9, 28, 9, 0).getTime(), now, said),
+            "Tuesday 28 October 2025 \u00b7 09:00");
+        check("its details", Mail.details(lunch, "No Subject", now, said), {
             title: "Lunch & a walk?",
             facts: [
                 { label: "From", value: "Ada Lovelace <ada@example.com>" },
                 { label: "To", value: "Joel Gerber, Grace Hopper" },
-                { label: "Date", value: "Monday 26 October, 14:02" }
+                { label: "Date", value: "Monday 26 October \u00b7 14:02" }
             ],
             body: "Friday?\n\nAda"
         });
         check("the details of mail copied to someone, after who it went to",
-            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject")
-                .facts.map(fact => fact.label), ["From", "To", "Cc", "Date"]);
+            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject", now,
+                said).facts.map(fact => fact.label), ["From", "To", "Cc", "Date"]);
         check("who it was copied to",
-            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject")
-                .facts[2], { label: "Cc", value: "Grace Hopper" });
+            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject", now,
+                said).facts[2], { label: "Cc", value: "Grace Hopper" });
         const menu = { name: "menu.pdf", kind: "application/pdf", size: 48213, runs: false };
         const patio = { name: "patio.jpg", kind: "image/jpeg", size: 812, runs: false };
         check("the details of mail carrying files",
-            Mail.details(Object.assign({}, lunch, { attachments: [menu, patio] }),
-                "No Subject").facts[3], { label: "Attachments", value: "menu.pdf, patio.jpg" });
+            Mail.details(Object.assign({}, lunch, { attachments: [menu, patio] }), "No Subject",
+                now, said).facts[3], { label: "Attachments", value: "menu.pdf, patio.jpg" });
         check("the details of mail carrying one file",
-            Mail.details(Object.assign({}, lunch, { attachments: [menu] }), "No Subject")
-                .facts[3], { label: "Attachment", value: "menu.pdf" });
+            Mail.details(Object.assign({}, lunch, { attachments: [menu] }), "No Subject", now,
+                said).facts[3], { label: "Attachment", value: "menu.pdf" });
         // A file it carries: its kind by its ending, its size as the launcher
         // says one, and its details.
         check("a file's side", Mail.sized(menu, "File"), "PDF \u00b7 48 kB");
@@ -213,11 +233,11 @@ QtObject {
                 "a program or a script, so only saved", ""]);
         const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
             at: lunch.at };
-        check("the details of mail saying little", Mail.details(bare, "No Subject"), {
+        check("the details of mail saying little", Mail.details(bare, "No Subject", now, said), {
             title: "No Subject",
             facts: [
                 { label: "From", value: "ada@example.com" },
-                { label: "Date", value: "Monday 26 October, 14:02" }
+                { label: "Date", value: "Monday 26 October \u00b7 14:02" }
             ],
             body: ""
         });

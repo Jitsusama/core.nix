@@ -4759,6 +4759,11 @@
         "untitled": {
           "name": "Mail Without a Subject"
         }
+      },
+      "said": {
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday"
       }
     },
     {

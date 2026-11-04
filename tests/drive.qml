@@ -33,6 +33,14 @@ QtObject {
         // Wednesday 28 October 2026, 15:20 here.
         const at = (day, hour, min) => new Date(2026, 9, day, hour, min).getTime();
         const now = at(28, 15, 20);
+        // How a document says when, as a mail does (Mail.qml): the
+        // vocabulary's words, and the locale's names, the check's being English.
+        const said = {
+            now: "just now",
+            minutes: "{minutes} min ago",
+            yesterday: "yesterday",
+            date: (date, format) => Qt.formatDate(date, format)
+        };
         const plan = {
             id: "d1", title: "Quarterly Plan", kind: "document",
             link: "https://docs.google.com/document/d/d1/edit",
@@ -57,25 +65,31 @@ QtObject {
         check("a kind it doesn't know has none", Drive.kind({ kind: "form" }), null);
 
         // What its row says beside the title.
-        check("its owner and when, today", Drive.beside(plan, now), "Ada Lovelace \u00b7 14:02");
-        check("yesterday", Drive.beside(Object.assign({}, plan, { viewed: at(27, 9, 0) }), now),
+        check("its owner and when, today", Drive.beside(plan, now, said),
+            "Ada Lovelace \u00b7 14:02");
+        check("minutes ago",
+            Drive.beside(Object.assign({}, plan, { viewed: at(28, 15, 5) }), now, said),
+            "Ada Lovelace \u00b7 15 min ago");
+        check("yesterday",
+            Drive.beside(Object.assign({}, plan, { viewed: at(27, 9, 0) }), now, said),
             "Ada Lovelace \u00b7 yesterday");
         check("one on a shared drive says only when",
-            Drive.beside(Object.assign({}, plan, { owner: null }), now), "14:02");
+            Drive.beside(Object.assign({}, plan, { owner: null }), now, said), "14:02");
         check("one never opened says only whose",
-            Drive.beside(Object.assign({}, plan, { viewed: null }), now), "Ada Lovelace");
+            Drive.beside(Object.assign({}, plan, { viewed: null }), now, said), "Ada Lovelace");
 
         // What the drawer says.
-        check("its details in full", Drive.details(plan, "Untitled"), {
+        check("its details in full", Drive.details(plan, "Untitled", now, said), {
             title: "Quarterly Plan",
             facts: [
                 { label: "Owner", value: "Ada Lovelace" },
-                { label: "Opened", value: "Wednesday 28 October, 14:02" },
-                { label: "Changed", value: "Monday 26 October, 09:30" }
+                { label: "Opened", value: "Wednesday 28 October \u00b7 14:02" },
+                { label: "Changed", value: "Monday 26 October \u00b7 09:30" }
             ],
             body: ""
         });
-        check("an untitled one's, bare", Drive.details({ title: "", kind: "document" }, "Untitled"),
+        check("an untitled one's, bare",
+            Drive.details({ title: "", kind: "document" }, "Untitled", now, said),
             { title: "Untitled", facts: [], body: "" });
 
         // Drive's folders and downloads, as the picker and Files read them.
@@ -146,16 +160,17 @@ QtObject {
                 { name: "Numbers.xlsx",
                     mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
             ]);
-        check("a file's row says its size and when it changed", Drive.placed(menu, now), {
+        check("a file's row says its size and when it changed", Drive.placed(menu, now, said), {
             key: "drive:pdf1", name: "menu.pdf", note: "2.4 MB \u00b7 09:05",
             drawer: { title: "menu.pdf", facts: [
                 { label: "Owner", value: "Ada Lovelace" },
-                { label: "Changed", value: "Wednesday 28 October, 09:05" },
+                { label: "Changed", value: "Wednesday 28 October \u00b7 09:05" },
                 { label: "Size", value: "2.4 MB" }
             ], body: "" }
         });
-        check("Google's own says what it comes as", Drive.placed(sheet, now).note, "as .xlsx");
-        check("a folder's row, keyed as one", Drive.placed(trips, now),
+        check("Google's own says what it comes as", Drive.placed(sheet, now, said).note,
+            "as .xlsx");
+        check("a folder's row, keyed as one", Drive.placed(trips, now, said),
             { key: "drive:folder:dir1", name: "Trips", note: "",
                 drawer: { title: "Trips", facts: [], body: "" } });
         check("Google's own adopts its document row, no other file",

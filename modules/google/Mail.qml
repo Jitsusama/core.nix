@@ -38,6 +38,13 @@ Singleton {
     // Each { id, from, address, to, subject, at, page, body, attachments },
     // each attachment { name, kind, size, runs }.
     readonly property var mail: Google.mail
+
+    // How mail says when, in the vocabulary's words, with the locale's
+    // names of days and months, as Qt gives them. Documents say when in
+    // the same words (Drive.qml).
+    readonly property var dates: Object.assign({}, Words.of("mail:message").said ?? {}, {
+        date: (date, format) => Qt.formatDate(date, format)
+    })
     // The launcher Mail shows in, as Messages.qml gives it, which a file
     // closes once it's open, as a program opening anywhere does.
     property var launcher: null
@@ -91,7 +98,7 @@ Singleton {
 
     // When it came, as its row says it: "14:02", "yesterday".
     function came(mail) {
-        return Said.came(mail.at, Calendar.now);
+        return Said.came(mail.at, Calendar.now, root.dates);
     }
 
     function held(id) {
@@ -121,8 +128,9 @@ Singleton {
             verb: Words.verb("verb:mail:open"),
             glyph: Words.glyph("mail:message"),
             hue: "program",
-            side: Said.beside(mail, Calendar.now),
-            drawer: Said.details(mail, Words.name("mail:message", "untitled")),
+            side: Said.beside(mail, Calendar.now, root.dates),
+            drawer: Said.details(mail, Words.name("mail:message", "untitled"), Calendar.now,
+                root.dates),
             later: true,
             run: () => root.open(mail),
             verbs: () => root.acts(mail, thing)
