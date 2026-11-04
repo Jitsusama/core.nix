@@ -1055,9 +1055,11 @@ onLinux {
   # What was taken lately finds screenshots by their words (Taken.qml),
   # asking a stand-in for the screen-text daemon
   # (tests/desktop/stand-in-screen-text.py) over one connection made on the
-  # first search and let go at rest, each text once, the last few kept, and
-  # finds a few thousand files by name within a frame, as tests/taken.qml
-  # holds it to.
+  # first search and let go at rest, each text once, the last few kept,
+  # none for fewer than three letters, a ragged line given as one short
+  # one, and finds a few thousand files by name within a frame, as
+  # tests/taken.qml holds it to, with what each screenshot says in
+  # tests/taken-texts.json.
   the-shell-finds-screenshots-by-their-words =
     let
       standIn = pkgs.writers.writePython3 "stand-in-screen-text" {
@@ -1066,11 +1068,8 @@ onLinux {
     in
     pkgs.runCommandLocal "the-shell-finds-screenshots-by-their-words" { } ''
       mkdir -p runtime/daemons shots && chmod 700 runtime
-      touch "shots/2026-10-31 09-00-00.png"
-      cat > texts.json <<EOF
-      {"$PWD/shots/2026-10-31 09-00-00.png":
-        ["Quarterly planning review", "Move the review to Thursday morning at ten"]}
-      EOF
+      touch shots/2026-10-{29,30,31}\ 09-00-00.png
+      substitute ${../../tests/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Taken.qml} Taken.qml
       cp ${./Fuzzy.js} Fuzzy.js

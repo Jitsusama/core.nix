@@ -135,16 +135,23 @@ Singleton {
     // matched.
     property var searches: []
     readonly property int keeps: 4
+    // The fewest letters asked about: typed a key at a time, every key
+    // would otherwise ask a text of its own, and a letter or two is in
+    // nearly every screenshot's words.
+    readonly property int fewest: 3
+    // The longest a matching line is given, in characters: it's a row's
+    // note, which reads as a sentence rather than a screenful.
+    readonly property int noteMost: 80
 
     // Said once a search's answer comes, for what showed it to look again.
     signal searched(string words)
 
     // The screenshots whose words hold every one of these, best first, as
     // [{ path, line }], or null while they're asked; asked at most once a
-    // text, on the one connection.
+    // text, on the one connection. Fewer letters than `fewest` find none.
     function search(words) {
         const text = root.searchedAs(words);
-        if (text === "")
+        if (text.replace(/ /g, "").length < root.fewest)
             return [];
         const kept = root.searches.find(search => search.words === text);
         if (kept)
@@ -178,6 +185,36 @@ Singleton {
             });
     }
 
+    // A line as read, given as a note: one line, its spaces single, cut at
+    // word edges to fit within `noteMost`, with nothing added to say it was
+    // cut. It begins at the start when the first word of the text matched
+    // falls within that, and otherwise two words before it, so the note
+    // always says why the screenshot was found.
+    function noted(line, text) {
+        const whole = String(line ?? "").trim().split(/\s+/).join(" ");
+        if (whole.length <= root.noteMost)
+            return whole;
+        const lower = whole.toLowerCase();
+        const found = text.split(" ").map(word => ({ at: lower.indexOf(word), word: word }))
+            .filter(match => match.at >= 0).sort((a, b) => a.at - b.at)[0];
+        let from = 0;
+        if (found && found.at + found.word.length > root.noteMost) {
+            // Where each word begins, up to the one matched.
+            const starts = [0];
+            let space = whole.indexOf(" ");
+            while (space >= 0 && space < found.at) {
+                starts.push(space + 1);
+                space = whole.indexOf(" ", space + 1);
+            }
+            from = starts[Math.max(0, starts.length - 3)];
+        }
+        const rest = whole.slice(from);
+        if (rest.length <= root.noteMost)
+            return rest;
+        const cut = rest.lastIndexOf(" ", root.noteMost);
+        return rest.slice(0, cut > 0 ? cut : root.noteMost);
+    }
+
     // A text's answer kept, unless the daemon wasn't there to give one,
     // when it's let go to be asked again.
     function answered(text, answer) {
@@ -186,7 +223,7 @@ Singleton {
             return;
         }
         const records = (answer.records ?? []).filter(record => typeof record.path === "string")
-            .map(record => ({ path: record.path, line: String(record.line ?? "") }));
+            .map(record => ({ path: record.path, line: root.noted(record.line, text) }));
         root.searches = root.searches.map(search => search.words !== text ? search
             : { words: text, records: records });
         root.searched(text);
