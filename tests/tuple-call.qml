@@ -149,7 +149,10 @@ ShellRoot {
         }
     }
 
-    Component.onCompleted: root.step("the daemon", () => Tuple.answering, root.first)
+    // Hello says the daemon answers before its watch's answer brings the
+    // call, so the first step waits for the room as well.
+    Component.onCompleted: root.step("the daemon", () => Tuple.answering && Tuple.room !== "",
+        root.first)
 
     function first() {
         expect("no call yet", !Tuple.calling && Tuple.ringing === "", JSON.stringify(Tuple.call));
