@@ -38,7 +38,7 @@ QtObject {
     }
 
     // The words as the chooser gives them: each thing as words.json says
-    // it, and the months as a locale in English names them.
+    // it, and days and months as Qt names them, in the check's English.
     function launcherWords() {
         const request = new XMLHttpRequest();
         request.open("GET", Qt.resolvedUrl("words.json"), false);
@@ -46,8 +46,11 @@ QtObject {
         const things = {};
         for (const thing of JSON.parse(request.responseText).things)
             things[thing.id] = thing;
-        return FileFacts.wordsOf(id => things[id] ?? {}, ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]);
+        return FileFacts.wordsOf(id => things[id] ?? {}, {
+            weekday: at => Qt.formatDate(at, "dddd"),
+            day: at => Qt.formatDate(at, "d MMM"),
+            dayAndYear: at => Qt.formatDate(at, "d MMM yyyy")
+        });
     }
 
     function run() {
@@ -63,18 +66,28 @@ QtObject {
         expect("one item is one", FileFacts.items(1, words), kept("1_item"));
         expect("a folder with none is empty", FileFacts.items(0, words), "empty");
 
-        const now = at(2026, 11, 3, 16, 30);
+        // A Tuesday.
+        const now = at(2026, 11, 10, 16, 30);
         expect("under a minute is just now", FileFacts.when(now - 20_000, now, words), "just now");
         expect("under an hour is minutes ago", FileFacts.when(now - 12 * 60_000, now, words),
             kept("12_min ago"));
-        expect("earlier today is its time", FileFacts.when(at(2026, 11, 3, 9, 5), now, words),
+        expect("earlier today is its time", FileFacts.when(at(2026, 11, 10, 9, 5), now, words),
             "09:05");
+        expect("the day before is yesterday, however late",
+            FileFacts.when(at(2026, 11, 9, 23, 59), now, words), "yesterday");
+        expect("within six days is its weekday",
+            [at(2026, 11, 8, 9, 0), at(2026, 11, 4, 9, 0)]
+                .map(day => FileFacts.when(day, now, words)), ["Sunday", "Wednesday"]);
+        expect("a week before is its day", FileFacts.when(at(2026, 11, 3, 9, 0), now, words),
+            kept("3_Nov"));
         expect("this year is its day", FileFacts.when(at(2026, 10, 28, 14, 32), now, words),
             kept("28_Oct"));
         expect("before this year is its day and year",
             FileFacts.when(at(2024, 10, 28, 1, 0), now, words), kept("28_Oct_2024"));
         expect("a moment ahead of now is said as today's",
             FileFacts.when(now + 3_600_000, now, words), "17:30");
+        expect("and a day ahead as its day", FileFacts.when(at(2026, 11, 12, 9, 0), now, words),
+            kept("12_Nov"));
 
         const file = { folder: false, size: 2_400_000, modified: at(2026, 10, 28, 14, 32) };
         expect("a file's row says its size and its day", FileFacts.side(file, undefined, now, words),

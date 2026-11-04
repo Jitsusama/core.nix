@@ -5317,7 +5317,8 @@
       "name": "Changed",
       "said": {
         "now": "just now",
-        "minutes": "{count} min ago"
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday"
       }
     },
     {

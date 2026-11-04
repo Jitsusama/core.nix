@@ -1307,8 +1307,10 @@ works the same way everywhere.
   previews for files ... no clue about sizes or when last updated"). In
   the file picker, a row in the folder shown says its size in SI units,
   one decimal under 10 ("940 kB", "2.4 MB"), or a folder its count, and
-  when it changed: minutes ago under an hour, its time today, its day
-  this year, and its day and year before that, muted in the side slot. A
+  when it changed, as the launcher says when on a row: "just now", then
+  minutes ago under an hour, its time today, "yesterday", its weekday
+  within six days, its day this year, and its day and year before that,
+  the locale's names for days and months, muted in the side slot. A
   row listed away from its folder says its folder instead. The drawer is
   its preview (VKCF3Z, 2026-11-03): the eyebrow its kind with its numbers
   ("PNG · 2400 × 1600", "PDF · 12 pages", "MP4 · 3:41", a text's by

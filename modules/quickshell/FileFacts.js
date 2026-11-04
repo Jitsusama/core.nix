@@ -15,6 +15,9 @@ const KEPT = "\u00a0";
 const BETWEEN = " \u00b7 ";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+// How many days back a day is said by its weekday.
+const LATELY_DAYS = 6;
 const SECONDS_IN_A_MINUTE = 60;
 const SECONDS_IN_AN_HOUR = 3600;
 // SI's steps, largest first, each a thousand of the one after it.
@@ -34,9 +37,10 @@ const TEXT_NAMED = {
 };
 
 // The words it says, each thing's as `of` gives it, as Words.of does, and
-// the months' short names, as the locale says them: the labels of a
+// a day's as `dates` says it, as the locale names days and months
+// (Qt.formatDate's "dddd", "d MMM" and "d MMM yyyy"): the labels of a
 // plate's facts, its kinds, and what's said of a count and a time.
-function wordsOf(of, months) {
+function wordsOf(of, dates) {
     const said = id => of(id).said ?? {};
     return {
         size: of("file-chooser:size").name,
@@ -52,23 +56,22 @@ function wordsOf(of, months) {
             lines: said("file-chooser:text"),
             pages: said("file-chooser:file")
         },
-        months
+        dates
     };
 }
 
-// A count in its words' way, "{count} lines", its number kept to the
-// word after it.
-function filled(said, count) {
-    return said.replace("{count} ", `${count}${KEPT}`).replace("{count}", String(count));
+// A number in its words' way, "{count} lines", kept to the word after it.
+function filled(said, name, number) {
+    return said.replace(`{${name}} `, `${number}${KEPT}`).replace(`{${name}}`, String(number));
 }
 
 // A count with its one or its many: "1 line", "4 lines"; `more` says
 // there are more than counted, "over 900 lines".
 function counted(count, said, more) {
     if (more) {
-        return filled(said.more, count);
+        return filled(said.more, "count", count);
     }
-    return filled(count === 1 ? said.one : said.many, count);
+    return filled(count === 1 ? said.one : said.many, "count", count);
 }
 
 // A size in SI units, with one decimal under 10: 12 B, 940 kB, 2.4 MB.
@@ -103,31 +106,48 @@ function clock(at) {
     return `${twoFigures(at.getHours())}:${twoFigures(at.getMinutes())}`;
 }
 
-function sameDay(one, other) {
-    return one.getFullYear() === other.getFullYear() && one.getMonth() === other.getMonth()
-        && one.getDate() === other.getDate();
+// How many days before `now` a moment's day is, by the calendar, so a
+// day an hour short or long, as summer time makes, still counts as one.
+function daysBefore(at, now) {
+    const midnight = moment => new Date(moment.getFullYear(), moment.getMonth(),
+        moment.getDate()).getTime();
+    return Math.round((midnight(now) - midnight(at)) / DAY);
 }
 
-function day(at, now, months) {
-    const said = `${at.getDate()}${KEPT}${months[at.getMonth()]}`;
-    return at.getFullYear() === now.getFullYear() ? said : `${said}${KEPT}${at.getFullYear()}`;
+// Its day and month, with its year when it isn't this one, never broken
+// across lines.
+function day(at, now, dates) {
+    const said = at.getFullYear() === now.getFullYear() ? dates.day(at) : dates.dayAndYear(at);
+    return said.replace(/ /g, KEPT);
 }
 
-// When it last changed, as its row says it, both in milliseconds: under
-// an hour ago, "12 min ago"; earlier today, "14:32"; this year, "28 Oct";
-// before, "28 Oct 2024". A moment ahead of now, as a clock set wrong
-// gives, is said as today's or its day's.
+// When it last changed, as the launcher says when on a row (Y2YBTS,
+// 2026-11-03), both in milliseconds: under a minute, "just now"; under an
+// hour, "12 min ago"; earlier today, "14:32"; "yesterday"; its weekday
+// within the last six days; this year, "28 Oct"; before, "28 Oct 2024".
+// A moment ahead of now, as a clock set wrong gives, is said as today's
+// time, or else its day.
 function when(changed, now, words) {
     const since = now - changed;
     if (since >= 0 && since < MINUTE) {
         return words.ago.now;
     }
     if (since >= 0 && since < HOUR) {
-        return filled(words.ago.minutes, Math.floor(since / MINUTE));
+        return filled(words.ago.minutes, "minutes", Math.floor(since / MINUTE));
     }
     const at = new Date(changed);
     const today = new Date(now);
-    return sameDay(at, today) ? clock(at) : day(at, today, words.months);
+    const days = daysBefore(at, today);
+    if (days === 0) {
+        return clock(at);
+    }
+    if (days === 1) {
+        return words.ago.yesterday;
+    }
+    if (days > 1 && days <= LATELY_DAYS) {
+        return words.dates.weekday(at);
+    }
+    return day(at, today, words.dates);
 }
 
 // How much is in it, as its row says: a file's size, or a folder's count
