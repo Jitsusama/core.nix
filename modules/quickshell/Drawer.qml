@@ -349,9 +349,9 @@ Floating {
                     color: Theme.muted
                     font.family: Theme.serif.family
                     font.italic: true
-                    font.pointSize: Theme.serif.title
+                    font.pointSize: Theme.serif.section
                     font.features: { "lnum": 1, "tnum": 1 }
-                    font.variableAxes: Theme.serif.slanted.title
+                    font.variableAxes: Theme.serif.slanted.section
                 }
 
                 // What needs Joel, or that nothing does, in the voice, on
@@ -483,8 +483,8 @@ Floating {
                         lineHeight: drawer.pitch
                         color: Theme.strong
                         font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.title
-                        font.variableAxes: Theme.serif.upright.title
+                        font.pointSize: Theme.serif.section
+                        font.variableAxes: Theme.serif.upright.section
                     }
                 }
 

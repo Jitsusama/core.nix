@@ -1,0 +1,23 @@
+# The shell's files that still set their type by step rather than by level,
+# by path under modules/, which type-is-set-by-level lets through. Each piece
+# of the type hierarchy that moves a file takes it off, and the check fails
+# on a file listed here that no longer needs to be, so the list only
+# shrinks; the last piece empties it.
+dictation/Speaking.qml
+greetd/greeter.qml
+quickshell/Askpass.qml
+quickshell/Choice.qml
+quickshell/Chord.qml
+quickshell/Drawer.qml
+quickshell/Graph.qml
+quickshell/KeyboardMap.qml
+quickshell/KeyHints.qml
+quickshell/Launcher.qml
+quickshell/Lock.qml
+quickshell/Margin.qml
+quickshell/Meter.qml
+quickshell/Notifications.qml
+quickshell/Picker.qml
+quickshell/Polkit.qml
+quickshell/Prompt.qml
+quickshell/ReadsOn.qml

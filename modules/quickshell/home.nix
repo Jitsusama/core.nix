@@ -51,6 +51,45 @@ let
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
   face = family: sizes: object ({ inherit family; } // lib.mapAttrs (_: builtins.fromJSON) sizes);
 
+  # A level of the type hierarchy as a Text sets it, each value its font's
+  # property of the same name, so a run of text names its level and nothing
+  # else (type-is-set-by-level).
+  setting =
+    level:
+    let
+      size = step: builtins.fromJSON type.${level.face}.${step};
+      # Qt spaces letters in pixels, which are a point's 4/3 at Linux's 96 to
+      # the inch.
+      sized = step: {
+        pointSize = size step;
+        letterSpacing = size step * 4 / 3 * level.tracking;
+      };
+      serif = level.face == "serif";
+    in
+    sized level.step
+    // {
+      family = font.${level.face}.family;
+      # The serif is weighted by its axis; a weight of its own besides would
+      # pick another instance under it, so it's the face's regular.
+      weight = if serif then 400 else level.weight;
+      variableAxes = level.axes;
+      inherit (level) italic;
+      # Font.MixedCase and Font.AllUppercase.
+      capitalization = if level.case == "capitals" then 1 else 0;
+      features = lib.genAttrs level.features (_: 1);
+      colour = colours.${level.colour};
+    }
+    // lib.optionalAttrs (level.wallpaper != null) { wallpaper = sized level.wallpaper; }
+    # A line holding strong spans: its axes but the weight, which the face
+    # gives at regular and each span at strong.
+    // lib.optionalAttrs (level.strong != null) {
+      spans = {
+        variableAxes = removeAttrs level.axes [ "wght" ];
+        weight = 400;
+        inherit (level) strong;
+      };
+    };
+
   qml = [
     "shell.qml"
     "Prompt.qml"
@@ -1735,6 +1774,9 @@ in
               readonly property var script: ${object { inherit (font.script) serif mono; }}
               // The line above a name, saying when, where or who.
               readonly property var eyebrow: ${object type.eyebrow}
+              // The type hierarchy's levels, by name, as Theme.level.name.pointSize:
+              // every run of text names one (docs/design.md, Type).
+              readonly property var level: ${object (lib.mapAttrs (_: setting) type.levels)}
               readonly property var space: ${object (removeAttrs space [ "unit" ])}
               readonly property int border: ${toString shape.border}
               readonly property int radius: ${toString shape.radius}

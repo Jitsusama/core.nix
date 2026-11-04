@@ -1969,6 +1969,11 @@
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
     above 100
   '';
+  type-is-set-by-level = ''
+    no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than
+    from a level of the theme's type, but those listed as not yet moved, and none is listed that
+    no longer needs to be
+  '';
   update-to-main-outlives-its-switch = ''
     neither NixOS nor nix-darwin restarts update-to-main while it switches them: the service never
     restarts on a switch, the Mac's daemon names no store path, both start it from the running

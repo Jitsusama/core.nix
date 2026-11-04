@@ -446,6 +446,56 @@ onLinux {
       touch $out
     '';
 
+  # Every run of text the shell sets names its type's level, never a step, a
+  # weight or a spacing of its own, but in the files not-yet-by-level.txt
+  # lists, and a file listed there that no longer needs to be fails, so the
+  # list only shrinks (type-is-set-by-level.py). So the check can't pass by
+  # seeing nothing, each way of straying is shown to fail first: a step, a
+  # level mixed with a step, a line carried on, a script's assignment, and a
+  # listed file that's moved or gone.
+  type-is-set-by-level =
+    let
+      check = "${lib.getExe pkgs.python3} ${./type-is-set-by-level.py}";
+      shells = lib.fileset.toSource {
+        root = ../.;
+        fileset = lib.fileset.fileFilter (file: file.hasExt "qml") ../.;
+      };
+    in
+    pkgs.runCommandLocal "type-is-set-by-level" { } ''
+      # A file that sets its type as given, what the check must say of it,
+      # and the files listed as not yet moved.
+      strays() {
+        rm -rf modules
+        mkdir -p modules/shell
+        printf '%s\n' "$1" > modules/shell/Surface.qml
+        printf '%s\n' "''${@:3}" > unmoved.txt
+        if ${check} modules unmoved.txt > said; then
+          echo "The type check passed on: $1"
+          exit 1
+        fi
+        if ! grep -qF -- "$2" said; then
+          echo "Of $1 the type check didn't say: $2"
+          cat said
+          exit 1
+        fi
+      }
+      strays 'font.pointSize: Theme.mono.large' 'Surface.qml:1: font.pointSize'
+      strays 'font.pointSize: row.big ? Theme.level.title.pointSize : Theme.mono.large' \
+        'font.pointSize is row.big'
+      strays $'font.weight: row.selected\n    ? Font.Medium : Theme.level.name.weight' \
+        'font.weight is row.selected ? Font.Medium'
+      strays 'label.font.letterSpacing = 2' 'font.letterSpacing is 2'
+      strays 'font.pointSize: Theme.level.note.pointSize' 'take it off' shell/Surface.qml
+      strays 'font.pointSize: Theme.level.note.pointSize' "isn't there" shell/Gone.qml
+      # A level, read from the theme or a property holding one, passes.
+      printf '%s\n' 'font.pointSize: Theme.level.note.pointSize * set.scale' \
+        'font.weight: chord.level.weight' 'font: other.font' > modules/shell/Surface.qml
+      : > unmoved.txt
+      ${check} modules unmoved.txt
+      ${check} ${shells} ${./not-yet-by-level.txt}
+      touch $out
+    '';
+
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place
