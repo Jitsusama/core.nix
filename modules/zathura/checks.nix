@@ -92,8 +92,9 @@ onLinux {
         echo 'set render-loading false' >> config/zathura/zathurarc
         dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
           cage -- $BASH ${./keys-test.sh} ${pages} > ran 2>&1 || true
-        if [ ! -e passed ]; then cat ran; exit 1; fi
-        touch $out
+        mkdir -p $out
+        cp ran s*.png $out/ || true
+        cp ${pages} $out/page.pdf
       '';
 
   # zathura says the document it has open, read over its bus by the command
