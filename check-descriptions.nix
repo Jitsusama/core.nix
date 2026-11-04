@@ -1871,6 +1871,10 @@
     empty PATH against a stand-in of busctl, stops that watchdog before a sleep and starts it again
     after at the same timeout, touching nothing when it isn't running
   '';
+  the-viewfinder-keeps-its-own-keys = ''
+    Escape closes the camera's viewfinder even where a script in mpv's own folder binds Escape,
+    as the player's vi keys do, since the viewfinder loads none of them
+  '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
     leaves window buffers alone

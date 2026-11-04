@@ -33,4 +33,43 @@ onLinux {
         [ "$(plays)" = "$want" ] || { echo "with one plugged in: $(plays)"; exit 1; }
         touch $out
       '';
+
+  # The viewfinder as camera.sh starts it, playing a test picture in place
+  # of the camera and drawing nothing, beside a player script in mpv's own
+  # folder that takes Escape (stand-in-player.lua), as the player's
+  # vi-keys.lua does: Escape closes it all the same (keeps-its-keys.py).
+  the-viewfinder-keeps-its-own-keys =
+    pkgs.runCommandLocal "the-viewfinder-keeps-its-own-keys"
+      {
+        nativeBuildInputs = [
+          pkgs.bash
+          pkgs.python3
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_RUNTIME_DIR=$PWD
+        mkdir -p bin .config/mpv/scripts
+        cp ${./stand-in-player.lua} .config/mpv/scripts/player.lua
+        # What camera.sh asks for, but the camera a test picture, and the
+        # window nowhere, answering on a socket.
+        {
+          printf '#!%s\nshift\n' "$BASH"
+          printf 'exec %s av://lavfi:testsrc=size=64x48:rate=10 "$@"' ${pkgs.mpv}/bin/mpv
+          printf ' --vo=null --ao=null --force-window=no --input-ipc-server=%s\n' "$PWD/mpv.sock"
+        } > bin/mpv
+        chmod +x bin/mpv
+        { echo 'device=/dev/null look= script=${./camera.lua}'; cat ${./camera.sh}; } > camera
+        CAMERA_ROOT=$PWD PATH=$PWD/bin:$PATH bash camera picture > mpv.log 2>&1 &
+        viewfinder=$!
+        # A viewfinder left open is stopped before what it said is shown,
+        # since it says where it's playing as long as it plays.
+        python3 ${./keeps-its-keys.py} mpv.sock || {
+          kill $viewfinder
+          wait $viewfinder || true
+          grep -a -v '^V: ' mpv.log
+          exit 1
+        }
+        wait $viewfinder
+        touch $out
+      '';
 }
