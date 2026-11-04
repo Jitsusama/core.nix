@@ -83,7 +83,7 @@ onLinux {
         export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run SAID=$PWD/said-files
         export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
         export WLR_LIBINPUT_NO_DEVICES=1
-        mkdir -p config/swayimg run
+        mkdir -p config/swayimg run pictures
         chmod 700 run
         cp ${files."swayimg/init.lua".source} config/swayimg/init.lua
         printf '#!%s\ncat > %s/copied\n' "$BASH" "$PWD" > wl-copy
@@ -93,9 +93,9 @@ onLinux {
         grep -q "$PWD/wl-copy" config/swayimg/nix.lua \
           || { echo "nix.lua names no wl-copy to copy with"; exit 1; }
         for name in a b c d e f g h i j k l m n; do
-          printf 'P3\n1 1\n255\n0 0 0\n' > $name.ppm
+          printf 'P3\n1 1\n255\n0 0 0\n' > pictures/$name.ppm
         done
-        { printf 'P5\n4 2000\n255\n'; head -c 8000 /dev/zero; } > z-tall.pgm
+        { printf 'P5\n4 2000\n255\n'; head -c 8000 /dev/zero; } > pictures/z-tall.pgm
         timeout 180 cage -- bash ${./tests/swayimg-moves-by-its-keys.sh} || true
         test -e moved
         touch $out

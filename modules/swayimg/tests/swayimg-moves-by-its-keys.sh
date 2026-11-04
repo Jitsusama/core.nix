@@ -6,15 +6,19 @@
 # picture it has drawn or chosen, the mode it's in, where the picture is
 # and whether it's full screen. cage doesn't pass on how this ended, so it
 # leaves `moved` once every press has.
-# usage: swayimg-moves-by-its-keys.sh (in a folder holding a.ppm to
-# n.ppm and z-tall.pgm, a picture taller than the window, with a wl-copy
-# on nix.lua's path that writes what it's given to ./copied)
+# usage: swayimg-moves-by-its-keys.sh (beside a folder, pictures, holding
+# a.ppm to n.ppm and z-tall.pgm, a picture taller than the window, with a
+# wl-copy on nix.lua's path that writes what it's given to ./copied)
+#
+# What the test writes stays out of the pictures' folder: swayimg reads
+# ahead through the folder's files, and one read as it's written, such as
+# its own log, stops it with a bus error.
 set -euo pipefail
 
 # swayimg lists the folder's other files too, as a folder of downloads
 # would have them. Home and End must still reach the first and last
-# picture, past a file before them that isn't one, and `shown` after them.
-echo "not a picture" > 0-first.txt
+# picture, past a file before them that isn't one.
+echo "not a picture" > pictures/0-first.txt
 : > shown
 
 swayimg --execute='swayimg.on_redrawn(function()
@@ -32,7 +36,7 @@ swayimg --execute='swayimg.on_redrawn(function()
   file:write(image and image.path:match("[^/]+$") or "", "\n", "in ", mode, "\n",
     "at ", at.x, " ", at.y, "\n", "full ", tostring(swayimg.fullscreen), "\n")
   file:close()
-end)' a.ppm b.ppm c.ppm > said 2>&1 &
+end)' pictures/a.ppm pictures/b.ppm pictures/c.ppm > said 2>&1 &
 viewer=$!
 
 # Until swayimg has drawn what's wanted, a line of `shown`, or so many
@@ -132,13 +136,13 @@ trash=.local/share/Trash
 for key in dd Delete; do
   if [ "$key" = dd ]; then wtype dd; else wtype -k Delete; fi
   until_not_shown d.ppm "$key"
-  if [ -e d.ppm ] || [ ! -e "$trash/files/d.ppm" ]; then
-    echo "$key didn't move d.ppm to the trash: $(ls -A . "$trash/files")"
+  if [ -e pictures/d.ppm ] || [ ! -e "$trash/files/d.ppm" ]; then
+    echo "$key didn't move d.ppm to the trash: $(ls -A pictures "$trash/files")"
     exit 1
   fi
   typed u d.ppm
-  if [ ! -e d.ppm ] || [ -n "$(find "$trash/files" "$trash/info" -mindepth 1)" ]; then
-    echo "u didn't bring d.ppm back: $(ls -A . "$trash/files" "$trash/info")"
+  if [ ! -e pictures/d.ppm ] || [ -n "$(find "$trash/files" "$trash/info" -mindepth 1)" ]; then
+    echo "u didn't bring d.ppm back: $(ls -A pictures "$trash/files" "$trash/info")"
     exit 1
   fi
 done
@@ -218,10 +222,10 @@ typed j "$below"
 typed k a.ppm
 wtype yy
 for _ in $(seq 100); do
-  if cmp -s copied a.ppm; then break; fi
+  if cmp -s copied pictures/a.ppm; then break; fi
   sleep 0.1
 done
-cmp -s copied a.ppm || { echo "yy in the gallery didn't copy the file"; exit 1; }
+cmp -s copied pictures/a.ppm || { echo "yy in the gallery didn't copy the file"; exit 1; }
 
 # Escape at rest closes it.
 wtype -k Escape
@@ -230,7 +234,7 @@ wait "$viewer"
 # The picture it opened with was said to the desktop's list of files opened
 # lately, once, and none it was moved to after.
 told=$(if [ -e "$SAID" ]; then tr '\n' ' ' < "$SAID"; else echo 'nothing said'; fi)
-if [ "$told" != "add swayimg $PWD/a.ppm " ]; then
+if [ "$told" != "add swayimg $PWD/pictures/a.ppm " ]; then
   echo "swayimg said: $told"
   exit 1
 fi
