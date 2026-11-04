@@ -4,9 +4,9 @@
 //! (api.rs), the meetings and the link each is joined by (calendar.rs,
 //! link.rs), the mail that wants Joel (mail.rs) and where the files it
 //! carries go (files.rs), the documents he looked at lately (drive.rs),
-//! what the shell is told (state.rs) and how (socket.rs, and daemon.rs in
-//! the daemon interface), what the shell asks (ask.rs), what Joel saves into Drive (saves.rs), and the account
-//! as it stands (watch.rs).
+//! what the shell is told (state.rs) and how, in the daemon interface
+//! (daemon.rs), what the shell asks (ask.rs), what Joel saves into Drive
+//! (saves.rs), and the account as it stands (watch.rs).
 
 pub mod account;
 pub mod api;
@@ -18,7 +18,6 @@ pub mod files;
 pub mod link;
 pub mod mail;
 pub mod saves;
-pub mod socket;
 pub mod state;
 pub mod token;
 pub mod watch;

@@ -3776,16 +3776,14 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     )
     # The launcher stays, and Google lets the meeting go, so it's found no more.
     assert desktop.showing()["open"]
-    machine.wait_until_fails(
-        'grep -qF \'"id": "planning"\' /run/user/1000/google.json',
-        timeout=dt.timedelta(seconds=10),
-    )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     desktop.answer("planning")
-    assert not any(
-        thing["is"] == "calendar:meeting:planning" for thing in desktop.showing()["things"]
-    ), desktop.showing()
+    desktop.launcher_until(
+        lambda shown: (
+            not any(thing["is"] == "calendar:meeting:planning" for thing in shown["things"])
+        ),
+    )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 

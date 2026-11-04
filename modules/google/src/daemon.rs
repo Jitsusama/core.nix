@@ -1,6 +1,5 @@
 //! What this program holds, served in the shell's daemon interface
-//! (RSCH-20261029-0E8050, "Daemons: One Interface"), version 1, beside
-//! the socket that says the whole state at once (socket.rs).
+//! (RSCH-20261029-0E8050, "Daemons: One Interface"), version 1.
 //!
 //! Each meeting is a `meeting:<id>` record, each piece of mail that wants
 //! Joel a `mail:<id>`, each document he looked at lately a `file:<id>`,

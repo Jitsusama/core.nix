@@ -228,7 +228,6 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
         Command::new("systemd-socket-activate")
             .arg(format!("--listen={}", socket.display()))
             .arg(env!("CARGO_BIN_EXE_google"))
-            .arg(folder.join("google.sock"))
             .arg(folder.join("credentials.json"))
             // A path of its own it would bind were it not handed one.
             .arg(folder.join("unhanded.sock"))
