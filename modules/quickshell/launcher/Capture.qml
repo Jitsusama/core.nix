@@ -20,7 +20,12 @@
 // one list, newest first, nine at most, each the file it is wherever it
 // shows (Files.qml), a picture shown in the drawer, from the one reader of
 // those folders (Taken.qml), read as the launcher opens and never
-// otherwise (VKCF3Z and Y2YBTS, 2026-10-29).
+// otherwise (VKCF3Z and Y2YBTS, 2026-10-29). Typed into, Recent finds
+// among everything taken, not only the nine: by its name, then a
+// screenshot by the words in it, where screen-text reads them; and at the
+// top its matches are one row, Return stepping into Recent with the
+// search kept (Y2YBTS, 2026-11-04).
+//
 // It holds nothing another program lodges: editing the newest screenshot
 // and looking through them all are GIMP's and the picture viewer's own, in
 // their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
@@ -311,8 +316,9 @@ Provider {
     // (Applications.qml). It always stands, saying none while nothing's
     // taken, since a row that came once the first capture was read would
     // go below the rows already drawn (Steady.kept), after the screenshot's
-    // own rows rather than before them.
-    readonly property var recent: [entering(member({
+    // own rows rather than before them. With nothing typed it holds the
+    // newest nine; typed into, it finds among everything taken (`finds`).
+    readonly property var recent: [Object.assign(entering(member({
             key: "capture:recent",
             name: Words.name("capture:recent"),
             glyph: Words.glyph("capture:recent"),
@@ -321,13 +327,62 @@ Provider {
                 : String(taken.length),
             ask: "which?",
             empty: Words.of("capture:recent").empty
-        }), () => provider.taken.map(path => provider.takenRow(path)))]
+        }), () => provider.taken.map(path => provider.takenRow(path, ""))), {
+            finds: letters => provider.found(letters)
+        })]
+
+    // Everything taken that what's typed finds, not only the nine Recent
+    // shows: each file whose name matches, best first, then each
+    // screenshot whose words hold every word typed, the line that holds
+    // them below it, as a source that reads them says (`takenByText`,
+    // modules/screen-text). A screenshot found both ways is listed once,
+    // by its name. What's read comes a moment later, when the source says
+    // it found more.
+    function found(letters) {
+        const words = Fuzzy.words(letters);
+        if (words.length === 0)
+            return [];
+        const named = [];
+        for (const file of Taken.files) {
+            if (!provider.takenIn.includes(file.folder))
+                continue;
+            const prepared = provider.names[file.path]
+                ?? (provider.names[file.path] = Fuzzy.prepare(Files.named(file.path)));
+            const m = Fuzzy.match(prepared, words, false);
+            if (m.score >= 0)
+                named.push({ item: prepared, score: m.score, grade: m.grade, path: file.path });
+        }
+        const byName = Fuzzy.keep(named).map(f => f.path);
+        const rows = byName.map(path => provider.takenRow(path, ""));
+        const listed = new Set(byName);
+        const readers = (launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other.takenByText === "function");
+        for (const reader of readers)
+            for (const record of reader.takenByText(letters) ?? []) {
+                if (listed.has(record.path))
+                    continue;
+                listed.add(record.path);
+                rows.push(provider.takenRow(record.path, record.line));
+            }
+        return rows;
+    }
+
+    // Each file's name made ready to match, once.
+    property var names: ({})
+
+    // Recent's matches gathered at the top as one row, though Capture's
+    // own rows are searched only inside it, since what was taken is
+    // Capture's alone: Return steps into Recent with what's typed kept.
+    function gathers(letters) {
+        return { into: provider.recent[0], rows: provider.found(letters) };
+    }
 
     // One thing taken: Return opens it in its program, the picture viewer
     // or mpv, and a picture is shown in the drawer. After Open come what
     // other providers give it (`fileActs(path)`), as GIMP gives Edit in
-    // GIMP, then Copy the Path.
-    function takenRow(path) {
+    // GIMP, then Copy the Path. One found by its words says below it the
+    // line that holds them (`line`).
+    function takenRow(path, line) {
         const key = "verb:path:file:open";
         const act = thing({
             key: `${key}:${path}`,
@@ -343,6 +398,8 @@ Provider {
         const row = Files.file(path, thing, [act].concat(given));
         if (/\.(png|jpe?g|webp)$/i.test(path))
             row.drawer = { title: row.name, picture: path };
+        if (line)
+            row.note = line;
         return row;
     }
 

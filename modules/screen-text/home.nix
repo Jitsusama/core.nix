@@ -15,7 +15,9 @@
 #
 # The shell asks for the words over
 # $XDG_RUNTIME_DIR/daemons/screen-text.sock in its daemon interface, and
-# never reads a picture itself.
+# never reads a picture itself: typed into, Capture's Recent lists the
+# screenshots whose words hold what's typed, below those whose names do,
+# as ScreenText.qml gives them.
 { config, pkgs, ... }:
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
@@ -47,5 +49,11 @@ in
       ];
     };
     Install.WantedBy = [ "default.target" ];
+  };
+
+  # Capture's Recent finds screenshots by their words through it.
+  jitsusama.quickshell.launcher.providers.screen-text = {
+    order = 48;
+    source = ./ScreenText.qml;
   };
 }

@@ -1726,6 +1726,11 @@
     the shell says who a Tuple call is with and how long it's gone on, and finds a call's link in
     what was copied
   '';
+  the-shell-finds-screenshots-by-their-words = ''
+    what was taken lately finds screenshots by their words from the screen-text daemon, on one
+    connection made only at the first search, each text asked once and the last four answers kept,
+    each screenshot found with the line that matched
+  '';
   the-shell-hears-tuples-call = ''
     the shell's Tuple holds the call through the real tuple-call: who's in it, since when, mutes,
     screens and cameras, Joel's room, comings and goings told, a ring and a missed call from

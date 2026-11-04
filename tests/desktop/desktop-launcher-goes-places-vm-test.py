@@ -934,6 +934,63 @@ def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says(
+    desktop: Desktop,
+) -> None:
+    """Typing finds what was taken past Recent's nine, by its name and then by what it says.
+
+    At the top, Recent's matches are one row, and Return steps into Capture's Recent with the
+    search kept: the screenshot named for the words first, then the one whose words hold them,
+    the line that holds them below it. The screen-text daemon's stand-in is asked each text
+    once, on one connection.
+    """
+    machine = desktop.machine
+    shots = desktop.pictures
+    named = f"{shots}/wombat plan.png"
+    said = f"{shots}/2026-10-01 09-00-00.png"
+    # Both older than the nine newest, so only a search past them finds them.
+    newer = [f"{shots}/2026-10-2{day} 09-00-00.png" for day in range(10)]
+    texts = {said: ["Standup", "The wombat review moved to Friday"], named: ["Wombat"]}
+    desktop.as_account(
+        f"mkdir -p {shlex.quote(shots)}"
+        f" && touch -d '2026-09-01' {shlex.quote(named)} {shlex.quote(said)}"
+        f" && touch {' '.join(shlex.quote(path) for path in newer)}"
+        f" && printf %s {shlex.quote(json.dumps(texts))} > $XDG_RUNTIME_DIR/screen-text-texts.json"
+        " && rm -f $XDG_RUNTIME_DIR/screen-text-asked"
+    )
+    # What was taken is read as the launcher opens, so Recent showing the newest says it's read.
+    desktop.capture()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "2026-10-29 09-00-00.png" in shown["rows"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.answer("wombat")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "wombat plan.png")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == ["Recent"]
+            and shown["typed"] == "wombat"
+            and shown["rows"] == ["wombat plan.png", "2026-10-01 09-00-00.png"]
+        )
+    )
+    desktop.down_to("2026-10-01 09-00-00.png")
+    desktop.launcher_until(
+        lambda shown: shown["selected"]["note"] == "The wombat review moved to Friday"
+    )
+    asked = desktop.as_account("cat $XDG_RUNTIME_DIR/screen-text-asked").split("\n")
+    searches = [line for line in asked if line.startswith("search ")]
+    assert asked.count("connected") <= 1, f"screen-text was connected to more than once: {asked}"
+    assert "search wombat" in searches, f"wombat was never asked: {searches}"
+    assert len(searches) == len(set(searches)), f"a text was asked twice: {searches}"
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(
+        f"rm -f {shlex.quote(named)} {shlex.quote(said)}"
+        f" {' '.join(shlex.quote(path) for path in newer)}"
+    )
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
