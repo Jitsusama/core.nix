@@ -69,6 +69,8 @@ def test_memory_probe(desktop: Desktop) -> None:
             machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
     machine.succeed("sleep 15")
     print(machine.succeed(desktop.in_session(read)))
+    machine.succeed("sleep 45")
+    print(machine.succeed(desktop.in_session(read)))
 
 
 def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_things_stand(
