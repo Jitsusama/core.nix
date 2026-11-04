@@ -669,6 +669,13 @@
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
   '';
+  mpv-keys-go-where-they-say = ''
+    mpv's h, l, j and k seek where Left, Right, Up and Down do, a number before a key does it that
+    many times and alone chooses nothing, Escape stops one, 0 and $ go to the start and the end, [ and
+    ] alone change the speed, J and L do what j and l did, yy copies the frame as a PNG and y alone
+    nothing, ? and Space ? list the keys, ]b and [b, gg, G and a number before G go through the list,
+    f and Escape go in and out of full screen, Space pauses and q closes it
+  '';
   mpv-says-the-file-it-plays-now = ''
     mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
   '';
