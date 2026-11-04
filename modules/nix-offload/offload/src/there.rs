@@ -17,9 +17,10 @@
 //!
 //! With no builder standing, it asks the lender for one and waits, since
 //! one stands in about 70 s, while a VM test here holds the person's
-//! machine for minutes. With no lender running, none being made, or none
-//! reached, it builds nothing and says so, unless `--here` asks it to
-//! build here.
+//! machine for minutes, and a lender restarting is waited for too. Each
+//! wait says how long it may last. With no lender running, none being
+//! made, or none reached, it builds nothing and says so, unless `--here`
+//! asks it to build here.
 //!
 //! `--apply` builds a Nix function applied to the one attribute, and
 //! `--out` copies its output back into a folder, as a VM test's pictures.
@@ -349,14 +350,21 @@ pub struct Ran {
 /// A builder lost mid-build, as a switch's takeback restarts its tunnel,
 /// is asked `again` for, a store's text or none, and the build is sent
 /// once more: built here, a VM test held the person's machine for minutes
-/// on 30 October while the builder stood again within 20 s.
+/// on 30 October while the builder stood again within 20 s. `again` is
+/// given when the wait began: each loss after the build sent again ran
+/// `waiting.worked` starts a wait of its own, since two switches 32
+/// minutes apart on 3 November found the second loss's wait spent by the
+/// first, while a loss sooner goes on with the last wait, so one that
+/// never reaches a builder still stops within `waiting.longest`.
 pub fn run(
     asked: &Asked,
     store: Option<&str>,
-    again: &dyn Fn() -> Option<String>,
+    again: &dyn Fn(std::time::Instant) -> Option<String>,
+    waiting: Waiting,
     scratch: &Path,
     [ssh, nix]: [&str; 2],
 ) -> Ran {
+    let mut outage: Option<std::time::Instant> = None;
     let lent = store.and_then(|store| builder(store.lines().next()?.trim()));
     let Some(mut lent) = lent else {
         return unsent(asked, nix, "no builder is lent");
@@ -393,13 +401,27 @@ pub fn run(
                 (None, true) => Bring::Store(nix),
                 (None, false) => Bring::Nothing,
             };
+            let tried = std::time::Instant::now();
             let ran = on_with(&lent, &sending, bring, scratch, ssh, asked.alone.wrap());
             if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
                 break ran;
             }
+            let lost = std::time::Instant::now();
+            let since = match outage {
+                Some(since) if lost.duration_since(tried) < waiting.worked => since,
+                _ => lost,
+            };
+            outage = Some(since);
             eprintln!(
-                "nix-offload: ssh lost {}, so this waits for a builder to stand again",
-                lent.host
+                "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
+                 to {} minutes from {}",
+                lent.host,
+                waiting.longest.as_secs().div_ceil(60),
+                if since == lost {
+                    "now"
+                } else {
+                    "its last loss"
+                }
             );
             // A builder that stayed up goes on with what it was building for
             // `far`'s grace period, and the build sent again waits on that, so
@@ -411,7 +433,7 @@ pub fn run(
                  has the rest",
                 asked.alone.lasts() / 60
             );
-            match again().and_then(|store| builder(store.lines().next()?.trim())) {
+            match again(since).and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
                 None => break ran,
             }
@@ -671,15 +693,17 @@ pub const UNSENT: i32 = 75;
 /// A build no builder took, `why`: built here only when asked to with
 /// `--here`. Built here unasked after midnight on 30 October, with no
 /// builder lent, every session's builds ran beside the person's work at a
-/// load of 145.
+/// load of 145. It says not to ask again at once, since a lender that runs
+/// was already waited on for as long as a builder takes, and an agent's
+/// loop that did asked 40 times in 12 minutes on 3 November.
 fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
     if asked.here {
         eprintln!("nix-offload: {why}, so this builds here");
         return here(asked, nix);
     }
     eprintln!(
-        "nix-offload: {why}, so nothing was built; ask again once a builder stands, \
-         or give --here to build on this machine"
+        "nix-offload: {why}, so nothing was built; asking again at once finds none either, \
+         so ask again once a builder is lent, or give --here to build on this machine"
     );
     Ran {
         on: None,
@@ -1386,12 +1410,14 @@ fn brought_from(
 /// How a build waits for a builder when none stands: how long the lender
 /// has to start making one, since it reads what's wanted every 20 s, how
 /// long a lender that stopped may take to start again, and how long one
-/// may take to stand, about 70 s on 29 October.
+/// may take to stand, about 70 s on 29 October, and how long a build sent
+/// again must have run for its loss to start a wait of its own.
 #[derive(Clone, Copy)]
 pub struct Waiting {
     pub answered: std::time::Duration,
     pub restarting: std::time::Duration,
     pub longest: std::time::Duration,
+    pub worked: std::time::Duration,
 }
 
 pub const WAITING: Waiting = Waiting {
@@ -1400,6 +1426,7 @@ pub const WAITING: Waiting = Waiting {
     // rest: 1 s apart at 20:15 on 2 November, and 35 s apart at 21:14.
     restarting: std::time::Duration::from_secs(120),
     longest: std::time::Duration::from_secs(240),
+    worked: std::time::Duration::from_secs(300),
 };
 
 /// A builder whose CPUs are this busy, as the share of the last minute
@@ -1470,17 +1497,24 @@ fn pid_in(path: &Path) -> Option<i32> {
 /// which the lender counts as queued work, for as long as it waits. It
 /// waits only while the lender whose pid `dir`'s `lender` holds runs, and
 /// gives up once that lender hasn't begun making one (`lending` is empty)
-/// within `answered`, or none stands within `longest`. It gives the
-/// store's text once one stands.
+/// within `answered`, or none stands within `longest`. A lender that
+/// stopped, its pid left there, is waited for up to `restarting` first,
+/// since a switch starts one again within seconds, and one superseded
+/// ends just as a build that would have used its builder asks. It gives
+/// the store's text once one stands.
 pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
-    if !pid_in(&dir.join("lender")).is_some_and(runs) {
+    if !lender_runs(dir, waiting) {
         return None;
     }
     let wanted = dir.join("wanted");
     let want = wanted.join(std::process::id().to_string());
     fs::create_dir_all(&wanted).ok()?;
     fs::write(&want, "").ok()?;
-    eprintln!("nix-offload: no builder stands, so this asks for one and waits for it");
+    eprintln!(
+        "nix-offload: no builder stands, so this asks for one and waits for it, for up to {} \
+         minutes",
+        waiting.longest.as_secs().div_ceil(60)
+    );
     let began = std::time::Instant::now();
     let read = |name: &str| {
         fs::read_to_string(dir.join(name))
@@ -1499,6 +1533,31 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
     };
     let _ = fs::remove_file(&want);
     stood
+}
+
+/// Whether `dir`'s lender runs, waiting up to `waiting.restarting` for one
+/// that stopped, its pid left behind, to start again; with none ever
+/// started here, it says so at once.
+fn lender_runs(dir: &Path, waiting: Waiting) -> bool {
+    let lender = dir.join("lender");
+    if pid_in(&lender).is_some_and(runs) {
+        return true;
+    }
+    if !lender.exists() {
+        return false;
+    }
+    eprintln!(
+        "nix-offload: its lender is starting again, so this waits for it, for up to {} minutes",
+        waiting.restarting.as_secs().div_ceil(60)
+    );
+    let began = std::time::Instant::now();
+    while began.elapsed() < waiting.restarting {
+        std::thread::sleep(std::time::Duration::from_millis(250).min(waiting.answered));
+        if pid_in(&lender).is_some_and(runs) {
+            return true;
+        }
+    }
+    false
 }
 
 /// A builder's store once one stands again after ssh lost it, giving up
@@ -2340,19 +2399,89 @@ mod tests {
         answered: std::time::Duration::from_millis(300),
         restarting: std::time::Duration::from_secs(1),
         longest: std::time::Duration::from_secs(5),
+        worked: std::time::Duration::from_millis(200),
     };
+
+    #[test]
+    fn a_build_lost_again_after_working_waits_afresh_but_not_after_only_trying() {
+        // Lost once, sent again and lost again after building a while, as
+        // two switches 32 minutes apart cut one at 01:55 on 3 November, then
+        // lost at once, then built.
+        let folder = tempfile::tempdir().unwrap();
+        let ssh = folder.path().join("ssh");
+        fs::write(
+            folder.path().join("tries"),
+            "sleep 0.3; exit 255\nsleep 0.3; exit 255\nexit 255\nexit 0\n",
+        )
+        .unwrap();
+        let draft = folder.path().join("ssh.draft");
+        fs::write(
+            &draft,
+            "#!/bin/sh\nhere=$(dirname \"$0\")\necho x >> \"$here/count\"\n\
+             eval \"$(sed -n \"$(wc -l < \"$here/count\")p\" \"$here/tries\")\"\n",
+        )
+        .unwrap();
+        assert!(
+            Command::new("cp")
+                .arg(&draft)
+                .arg(&ssh)
+                .status()
+                .unwrap()
+                .success()
+        );
+        fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let asked = asked(&["github:o/r/abc".to_owned(), "checks.x.a".to_owned()]).unwrap();
+        let sinces = std::cell::RefCell::new(Vec::new());
+        let again = |since| {
+            sinces.borrow_mut().push(since);
+            Some("ssh-ng://far\n".to_owned())
+        };
+        let ran = run(
+            &asked,
+            Some("ssh-ng://far\n"),
+            &again,
+            QUICK,
+            folder.path(),
+            [ssh.to_str().unwrap(), "false"],
+        );
+        assert_eq!(ran.status, 0);
+        let sinces = sinces.into_inner();
+        assert_eq!(sinces.len(), 3, "lost three times");
+        assert!(sinces[1] > sinces[0], "a loss after building waits afresh");
+        assert_eq!(sinces[2], sinces[1], "a loss at once is more of the last");
+    }
+
+    #[test]
+    fn a_build_whose_lender_is_restarting_waits_for_it_to_lend() {
+        let dir = tempfile::tempdir().unwrap();
+        // The lender that just stopped, as it does when it's superseded.
+        fs::write(dir.path().join("lender"), "999999999\n").unwrap();
+        let lender = dir.path().to_owned();
+        let restarting = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            fs::write(lender.join("lender"), format!("{}\n", std::process::id())).unwrap();
+            fs::write(lender.join("store"), "ssh-ng://far\n").unwrap();
+        });
+        assert_eq!(waited(dir.path(), QUICK).as_deref(), Some("ssh-ng://far\n"));
+        restarting.join().unwrap();
+    }
 
     #[test]
     fn with_no_lender_running_nothing_is_waited_for() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(waited(dir.path(), QUICK), None);
+        assert!(!dir.path().join("wanted").exists());
         fs::write(dir.path().join("lender"), "999999999\n").unwrap();
+        let began = std::time::Instant::now();
         assert_eq!(
             waited(dir.path(), QUICK),
             None,
-            "one that ended lends nothing"
+            "one that ended and never came back lends nothing"
         );
-        assert!(!dir.path().join("wanted").exists());
+        assert!(
+            began.elapsed() >= QUICK.restarting,
+            "it waited as long as a restart takes"
+        );
     }
 
     #[test]

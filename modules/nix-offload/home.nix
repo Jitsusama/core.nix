@@ -52,6 +52,19 @@ let
     TimeoutStopSec = "10s";
     Restart = "on-failure";
     Slice = "background.slice";
+    # A switch that changes it reloads it rather than restarting it: its
+    # end ends the way to its builder, and every build reaching it with
+    # that, which cut 8.1 hours of builds at three switches on 3 November.
+    # Told so, it ends once no build uses or waits on its builder, exiting
+    # 100, which systemd counts as a success to start the new unit after.
+    ExecReload = "${lib.getExe' pkgs.coreutils "kill"} -HUP $MAINPID";
+    SuccessExitStatus = "100";
+    RestartForceExitStatus = "100";
+  };
+  # Where home-manager's sd-switch reads that a changed unit is reloaded,
+  # in [Unit], for the reason `stopping` gives.
+  reloaded = {
+    X-ReloadIfChanged = true;
   };
   sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
 in
@@ -311,7 +324,10 @@ in
     };
 
     systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || names) {
-      Unit.Description = "Names this machine's builders, lending one while its queue has builds one could take";
+      Unit = {
+        Description = "Names this machine's builders, lending one while its queue has builds one could take";
+      }
+      // reloaded;
       Service = {
         ExecStart = lib.concatStringsSep " " (
           (
@@ -337,7 +353,10 @@ in
     };
 
     systemd.user.services.nix-offload-vm = lib.mkIf (cfg.helper != null && cfg.vmTests != null) {
-      Unit.Description = "Lends a builder for VM tests alone while a build sent there waits on one";
+      Unit = {
+        Description = "Lends a builder for VM tests alone while a build sent there waits on one";
+      }
+      // reloaded;
       Service = {
         ExecStart = lib.concatStringsSep " " (
           serving
@@ -353,7 +372,10 @@ in
     };
 
     systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
-      Unit.Description = "Lends another builder while the first is full and a build sent there waits on one";
+      Unit = {
+        Description = "Lends another builder while the first is full and a build sent there waits on one";
+      }
+      // reloaded;
       Service = {
         ExecStart = lib.concatStringsSep " " (
           serving
