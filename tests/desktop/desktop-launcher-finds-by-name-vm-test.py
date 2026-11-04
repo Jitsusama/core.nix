@@ -513,10 +513,17 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "")
     assert desktop.showing()["open"], "an Escape cancelling a count closed the launcher"
-    # A g waits his timeoutlen for its second, then lets go, so a j after moves.
+    # A g waits his timeoutlen for its second, then lets go, so a j after moves. The wait is
+    # heard from before the key, since it can be over before a wait begun after it starts.
+    before = desktop.mark()
     machine.send_chars("g")
-    desktop.launcher_until(lambda shown: shown["begun"] == "g")
-    desktop.launcher_until(lambda shown: shown["begun"] == "")
+    begun: list[str] = []
+
+    def lets_go(said: str) -> bool:
+        begun.append(json.loads(said)["begun"])
+        return "g" in begun and begun[-1] == ""
+
+    desktop.reported("showing ", lets_go, before)
     machine.send_chars("j")
     # Half a screen moves the rows as far as the selection, so it keeps its place in view;
     # a screen goes on a list's height, eight rows.
