@@ -257,6 +257,8 @@ off.
 | Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
 | wake | coming back from sleep | | |
+| idle | of the machine, every session left untouched past the screens going off, and nothing holding it awake | inactive | logind's `IdleHint` |
+| idle sleep | the sleep a laptop falls into left idle on battery, never on the charger | autosuspend | `idle-sleep`, logind's `IdleAction` |
 | hibernate | the machine off with its memory written to the swap file, until it starts again from it | | `systemctl hibernate` |
 | log out | ending the desktop, back to the greeter | sign out | `session:` |
 | reboot | starting the machine again | restart | |

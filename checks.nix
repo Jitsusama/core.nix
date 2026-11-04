@@ -481,6 +481,9 @@ let
     vm-lid-shuts-with-the-hinge = import ./tests/lid-hinge.nix { inherit self pkgs; };
     # What logind makes of a shut lid shows only with logind watching one.
     vm-lid-stays-at-the-desk = import ./tests/lid.nix { inherit self pkgs; };
+    # What logind makes of an idle machine shows only with logind counting
+    # its sessions, its locks and the charger.
+    vm-idle-sleep-comes-only-on-battery = import ./tests/idle-sleep.nix { inherit self pkgs; };
     # Whether udev turns a root hub's wakeup on shows only with a USB
     # controller and udev there.
     vm-plugging-in-wakes-it = import ./tests/usb-wake.nix { inherit self pkgs; };

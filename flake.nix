@@ -284,6 +284,7 @@
         guide = ./modules/guide/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        idle-sleep = ./modules/idle-sleep/nixos.nix;
         inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;

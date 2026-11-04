@@ -37,6 +37,22 @@
         )
       );
 
+  # logind hears the session is idle as the screens go off, which is all idle
+  # sleep waits for. Only a niri driving a graphics card turns a screen off,
+  # so this holds the two together, and idle-sleep's VM test what logind
+  # does once it hears.
+  the-session-goes-idle-as-the-screens-go-off =
+    let
+      swayidle = (account graphical).services.swayidle;
+      off = lib.findFirst (
+        timeout: lib.hasSuffix " msg action power-off-monitors" timeout.command
+      ) null swayidle.timeouts;
+      hint = lib.lists.findFirstIndex (arg: arg == "idlehint") null swayidle.extraArgs;
+    in
+    holds "the-session-goes-idle-as-the-screens-go-off"
+      "swayidle doesn't tell logind the session is idle as the screens go off."
+      (off != null && hint != null && lib.elemAt swayidle.extraArgs (hint + 1) == toString off.timeout);
+
   # The screens go off through the machine's own niri, the one with core's
   # patches, so the account doesn't carry a second one just to ask.
   one-niri =
