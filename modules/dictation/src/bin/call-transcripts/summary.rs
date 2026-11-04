@@ -373,8 +373,8 @@ fn spans(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-/// A quote copied from a line, and whether the words just before it say
-/// the speaker is telling what someone else said.
+/// A quote copied from a line, and whether the words just before it, or
+/// within it, say the speaker is telling what someone else said.
 #[derive(Debug, PartialEq)]
 struct Quote {
     words: String,
@@ -423,13 +423,16 @@ fn quoted(text: &str, answer: &str) -> Option<Quote> {
             Some(picked)
         })
         .min_by_key(|picked| picked[picked.len() - 1] - picked[0])?;
-    let reported = reported(&line[found[0].saturating_sub(REPORT_REACH)..found[0]]);
     let tail = if found.len() > MOST_QUOTE_WORDS_TAKEN {
         " ..."
     } else {
         ""
     };
     let found = &found[..found.len().min(MOST_QUOTE_WORDS_TAKEN)];
+    // Someone else's words told inside the quote count too: on the Chad
+    // call a quote ran on into "She's like your 50th percentile".
+    let reported = reported(&line[found[0].saturating_sub(REPORT_REACH)..found[0]])
+        || someone_like(&line[found[0]..=found[found.len() - 1]]);
     // Each unbroken run keeps the line's own text, punctuation and all.
     let mut runs = Vec::new();
     let mut first = found[0];
@@ -453,16 +456,26 @@ fn quoted(text: &str, answer: &str) -> Option<Quote> {
 /// like) rather than saying it themselves (I was like, it goes).
 fn reported(before: &[String]) -> bool {
     let someone = |who: &String| !OWN.contains(&who.as_str());
-    let said = before.windows(2).any(|pair| {
-        (someone(&pair[0]) && REPORTING.contains(&pair[1].as_str()))
-            || (SOMEONE_LIKE.contains(&pair[0].as_str()) && pair[1] == "like")
-    });
+    let said = before
+        .windows(2)
+        .any(|pair| someone(&pair[0]) && REPORTING.contains(&pair[1].as_str()))
+        || someone_like(before);
     let was_like = before.windows(3).any(|three| {
         someone(&three[0])
             && matches!(three[1].as_str(), "was" | "is" | "were")
             && three[2] == "like"
     });
     said || was_like
+}
+
+/// Whether `words` tell what someone else said with she's like, he's like
+/// or they're like. The other reporting words are looked for only before a
+/// quote, since inside one they're as often the speaker's own: you have
+/// asked, my brain is like.
+fn someone_like(words: &[String]) -> bool {
+    words
+        .windows(2)
+        .any(|pair| SOMEONE_LIKE.contains(&pair[0].as_str()) && pair[1] == "like")
 }
 
 #[cfg(test)]
@@ -645,6 +658,9 @@ mod tests {
             };
             assert!(quoted(text, answer).unwrap().reported, "{text}");
         }
+        let within = "but your processing speed is average. She's like your 50th percentile";
+        let answer = "your processing speed is average. She's like your 50th percentile";
+        assert!(quoted(within, answer).unwrap().reported);
         let own = [
             "and I was like I do not see this as a correction at all",
             "I went and said I do not see this as a correction at all",
