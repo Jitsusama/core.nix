@@ -165,6 +165,16 @@ constrain".
   me" (2026-11-02). Keys start from Neovim's modes and his leader, Space,
   never from a text box's Ctrl chords; on his ErgoDox, Ctrl is a held little
   finger. "you need to keep in mind my ergodox keyboard for shortcuts."
+- **A key that isn't Vim's, where Vim has one.** Asked whether pictures,
+  PDFs and video should keep their own keys or take vi's: "fuck, vi like
+  ffs" (2026-11-04). When vi and a key disagree, do what Vim does, as his
+  Neovim has it, and never bring him the question again.
+- **A list or a text box without modes.** "i want to be able to use vi
+  motion and search and shit everywhere a list can come up. i think i want
+  everything modal"; and of the reader, "should feel like we are using vi
+  in every way that makes sense" (2026-11-04). Every list and text box has
+  vi's modes, a field opening in insert; every app of ours reads its keys
+  from one key language, checked, as docs/design.md's Vi's Keys says.
 - **Polish that changes nothing he'd feel.** "i think you do have some
   general improvements here, but the UI still doesn't feel materially
   changed. what actually has impacted your design choices? you don't seem

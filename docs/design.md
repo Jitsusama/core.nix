@@ -46,11 +46,12 @@ one is answered for it in [the surfaces table][surfaces].
    its layer's palette, with its key shown beside it.
 6. **Hints in place.** Keys sit beside the actions they trigger, in muted
    type, and each surface can turn them off once they're learned.
-7. **No hidden modes.** A mode always shows that it's on, and Escape always
-   leaves it.
-8. **One gesture per meaning.** Arrows move, Enter opens or confirms, the
-   left arrow takes away what's typed and then backs out one step, Escape
-   leaves, typing filters, and each layer has one "what's here" key.
+7. **Modal, as vi is, and never hidden.** Every list and text box has vi's
+   modes ([Vi's Keys][vi]). A mode other than normal always shows that it's
+   on, and Escape always leaves it.
+8. **One gesture per meaning.** Arrows move, Enter opens or confirms,
+   Escape steps back one level, typing filters, and each layer has one
+   "what's here" key. Where vi has a key for it, the key is vi's.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
 10. **The theme, whole.** Type, colour, glyphs, space and motion come from
@@ -1085,7 +1086,10 @@ works the same way everywhere.
   nothing typed it steps back out,
   putting back what was typed before with the same row selected;
   Backspace in an empty field does the same. Escape always closes, and
-  only the launcher: the window behind never hears it. The foot names
+  only the launcher: the window behind never hears it. These are the
+  field's keys until its modes land, as [Vi's Keys][vi] gives them: then
+  ← and → move the caret while typing, Escape gives normal mode, and in
+  normal l and h step in and out, and Escape steps out, closing at home. The foot names
   every key that works on the selection: what Return does, Shift+Return
   where a row opens below, and the right arrow wherever there's something
   inside, a step in as well as at the top. The arrows are said by their
@@ -1505,28 +1509,46 @@ next, from the launcher or anywhere else.
 
 ### Vi's Keys
 
-Every surface of ours where nothing is typed speaks vi, exactly as Neovim
-does (Joel, 2026-10-31: "i want it to feel exactly like neovim"). Its keys
-are measured against Neovim's own and Joel's config in `modules/neovim`,
-and where one of ours differs, the reason is written beside it. The keys go
-by letter, wherever they sit on Colemak Mod-DH, and the arrows keep doing
-what they do, since they're what Joel presses.
+Every surface of ours speaks vi, exactly as Neovim does (Joel,
+2026-10-31: "i want it to feel exactly like neovim"). The keys go by
+letter, wherever they sit on Colemak Mod-DH, and the arrows keep doing
+what they do, since they're what Joel presses; h, j, k and l work beside
+them ("vi compatible, support hjkl even though i only use arrows").
 
-- **Where.** The reader, the notices on screen, the camera's viewfinder,
-  and any list or page of ours with no field. A surface where letters
-  type, as the launcher's field does, keeps its keys for now: pickers that
-  search as you type have no mode, Joel's own Neovim's included, and a mode
-  there would cost the one Escape that closes them. How vi reaches the
-  launcher and the pickers waits on one control system for the whole
-  desktop, still to be designed, of which this is the seed.
-- **Keys come from one table.** Each surface reads its keys from one
-  table of key and act, never scattered through its code, so ? lists them
-  and the one control system can retune them later without a rewrite.
+**When vi and a key here disagree, do what Vim does, as his Neovim has
+it** (Joel, 2026-11-04: "fuck, vi like ffs"). The answer is his config in
+`modules/neovim` where it gives the key a meaning, and Vim's own where it
+doesn't. A surface keeps a key of its own only where Vim has nothing for
+the act, as zoom, pause and full screen, or where a clash below is already
+settled. No such call goes to Joel: it's already made. His Neovim's values
+are kept too: a key that could begin a pair waits his timeoutlen, 300 ms;
+nothing shows while keys wait, since his showcmd is off; a block cursor in
+normal mode and a bar in insert; the mode named in the accent, lowercase,
+only when it isn't normal; and what's copied flashes for 200 ms.
+
+**Everything is modal** (Joel, 2026-11-04: "i want to be able to use vi
+motion and search and shit everywhere a list can come up. i think i want
+everything modal"). Every list and every text box of ours has vi's
+modes, the launcher's field and the file picker's included.
+
+- **What each opens in.** A surface with a field to type in opens in
+  insert, so typing finds at once, as Neovim's command line does; Escape
+  gives normal mode over its list, and i, a, I or A types again. A surface
+  where nothing types, as the reader, the notices and the drawer, opens in
+  normal.
+- **One key language.** Every app of ours reads its keys from one file in
+  Neovim's notation, naming each act once, with its keys and the kinds of
+  surface it belongs to. A check fails when an app binds a key against it,
+  or leaves out a key its kind must have. The language is held to
+  `modules/neovim`, so his Neovim stays the source. Until a surface reads
+  from it, its keys sit in one table of key and act, never scattered
+  through its code, so ? lists them.
 - **First, on every such surface:**
   - **Moving:** h, j, k and l, as the arrows; gg and G to the first and
     last; and, where there's more than a screen to move through, Ctrl+D
     and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen.
-  - **Counts** before a motion: 5j, 3G.
+  - **Counts** before a motion: 5j, 3G. A digit is a count and nothing
+    else; it never jumps straight to an item.
   - **Searching,** where there's text: / and ?, then n and N, with case
     ignored until a capital is typed, as his smartcase has it.
   - **Marks,** where a place lasts: m and a letter sets one, ' and the
@@ -1534,8 +1556,11 @@ what they do, since they're what Joel presses.
   - **Closing:** q closes, as his Neovim closes help and its plugin
     windows.
   - **An Escape that always works:** it cancels whatever is in progress (a
-    count, a search, a selection, labels, a key waiting for its second).
-    At rest it steps out, and closes a surface that floats over others.
+    count, a search, a selection, labels, a key waiting for its second),
+    and in insert it gives normal mode. At rest in normal it steps out a
+    level, and at the top closes a surface that floats over others.
+  - **The next of a kind:** ]b and [b go to the next and the previous
+    file, folder or item beside this one, as his Neovim's next buffer.
 - **Then, in each surface's turn:** visual mode, operators (y copies as
   the surface's own format; d does a thing's ending act, asking once when
   it can't be undone) and text objects, wherever there's text to act on.
