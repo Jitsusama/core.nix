@@ -29,7 +29,7 @@ echo '{"theme":"jitsusama","lastChangelogVersion":"1.3.0",'\
 '"compaction":{"enabled":true,"reserveTokens":16384}}' > "$file"
 "$program" "$file"
 holds '.theme == "jitsusama" and .lastChangelogVersion == "1.3.0"' "a key pi wrote went"
-holds '.compaction == {"enabled": true, "reserveTokens": 64000}' "core's compaction didn't go in"
+holds '.compaction == {"enabled": true, "reserveTokens": 64000, "keepRecentTokens": 10000}' "core's compaction didn't go in"
 
 touch -d 2000-01-01 "$file"
 "$program" "$file"

@@ -326,6 +326,15 @@ in
     # nothing and runs on toward the model's limit.
     jitsusama.pi.settings.compaction.reserveTokens = lib.mkDefault 64000;
 
+    # The recent conversation a compaction keeps whole, as pi estimates it,
+    # at four characters a token and with only the thinking it shows. On 3
+    # November, in five of one session's compactions, what pi's default of
+    # 20,000 kept was 35,265 to 42,137 tokens as the model read them, about
+    # twice, and every turn after re-reads it until the next compaction;
+    # that day's 234 compactions landed at 126k on average. Half the estimate keeps about what the
+    # default meant to.
+    jitsusama.pi.settings.compaction.keepRecentTokens = lib.mkDefault 10000;
+
     home.activation.piTakesCoresSettings =
       lib.hm.dag.entryAfter
         [
