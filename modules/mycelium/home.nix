@@ -19,6 +19,15 @@
 # Its links sign in with the realm's own key, served by tpm-signing as
 # other-link, which no session's agent reaches.
 #
+# Nothing crosses between realms but along a flow, a one-way road for text
+# a session names for the other realm, never opening its reverse:
+#
+#   jitsusama.mycelium.flows = [ { from = "personal"; to = "work"; } ];
+#
+# Both realms' nodes keep it, the sending one handing text across only
+# under it and the receiving one taking text only under it, so a fault at
+# one end can't open the other way.
+#
 # Each link is an SSH destination the machine can already reach without a
 # prompt, its host key pinned. On Linux the node signs in with the agents'
 # key from the TPM (../tpm-signing), which asks nothing, so the far machine
@@ -207,6 +216,30 @@ let
       };
     };
   };
+  flow = lib.types.submodule {
+    options = {
+      from = lib.mkOption {
+        type = name;
+        description = "The realm whose text may cross.";
+      };
+      to = lib.mkOption {
+        type = name;
+        description = "The realm it may cross into.";
+      };
+    };
+  };
+  # The flows a realm's node keeps: each realm its text may cross into,
+  # and each whose text it takes.
+  flowsOf =
+    realm:
+    lib.concatMap (one: [
+      "--flow-to"
+      one.to
+    ]) (lib.filter (one: one.from == realm) cfg.flows)
+    ++ lib.concatMap (one: [
+      "--flow-from"
+      one.from
+    ]) (lib.filter (one: one.to == realm) cfg.flows);
   # The words that run a realm's node, given what keeps it apart.
   nodeIn =
     realm: links: apart:
@@ -217,6 +250,7 @@ let
       "node"
     ]
     ++ apart
+    ++ flowsOf realm
     ++ lib.optionals (isDarwin && signer != null) (
       lib.concatMap (option: [
         "--ssh-option"
@@ -395,6 +429,24 @@ in
         nothing.
       '';
     };
+    flows = lib.mkOption {
+      type = lib.types.listOf flow;
+      default = [ ];
+      example = [
+        {
+          from = "personal";
+          to = "work";
+        }
+      ];
+      description = ''
+        The one-way roads between realms this machine's nodes keep, each
+        letting text a session names for `to` cross from `from`, and never
+        the reverse. Only a fyi, finding or question to peers by address
+        crosses, and only on a machine joining both realms, between their
+        two nodes; a machine joining `from` alone keeps what is sent for a
+        link to carry to one. Realms are apart wherever no flow is named.
+      '';
+    };
     declares = lib.mkOption {
       type = lib.types.nullOr declares;
       default = null;
@@ -440,6 +492,12 @@ in
             lib.attrNames cfg.agents
           );
           message = "jitsusama.mycelium.agents names a realm this machine doesn't join.";
+        }
+        {
+          assertion = lib.all (
+            one: one.from != one.to && (lib.elem one.from realms || lib.elem one.to realms)
+          ) cfg.flows;
+          message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
         }
         {
           assertion = lib.all (lib.types.strMatching "[a-z0-9-]+").check (lib.attrNames cfg.alsoJoins);

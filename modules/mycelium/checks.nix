@@ -114,8 +114,61 @@ let
     lib.any (
       check: !check.assertion && lib.hasInfix "jitsusama.mycelium.agents" check.message
     ) home.assertions;
+  # A machine in both realms, and one in the sending realm alone, keeping a
+  # flow from other into home; and flows naming no realm a machine joins.
+  flowing = {
+    from = "other";
+    to = "home";
+  };
+  bothFlowing = (linux (both // { flows = [ flowing ]; })).systemd.user.services;
+  sendingOnly =
+    toString
+      (linux {
+        realm = "other";
+        flows = [ flowing ];
+      }).systemd.user.services.mycelium.Service.ExecStart;
+  refusesFlows =
+    flows:
+    lib.any (check: !check.assertion && lib.hasInfix "jitsusama.mycelium.flows" check.message)
+      (linux (both // { inherit flows; })).assertions;
 in
 {
+  # A flow is kept by both realms' nodes, one way: the sending realm's node
+  # hands text into the other, and the receiving realm's takes it from the
+  # first, neither naming the reverse. A machine in the sending realm alone
+  # keeps it too, so what it sends waits for a link to carry it, and one
+  # naming no flow keeps every realm apart. A flow into its own realm, or
+  # between realms the machine joins neither of, is refused.
+  mycelium-flows-one-way =
+    holds "mycelium-flows-one-way"
+      "A realm flow isn't kept one way by both realms' nodes, a machine in the sending realm alone doesn't keep it, a node names a flow nobody declared, or a flow into its own realm or between two realms the machine doesn't join is taken."
+      (
+        lib.hasInfix "node ${lib.escapeShellArgs otherApart} --flow-to home --ssh two" (
+          toString bothFlowing.mycelium-other.Service.ExecStart
+        )
+        && lib.hasInfix "--realm home node --flow-from other --ssh one" (
+          toString bothFlowing.mycelium.Service.ExecStart
+        )
+        && !lib.hasInfix "--flow-from" (toString bothFlowing.mycelium-other.Service.ExecStart)
+        && !lib.hasInfix "--flow-to" (toString bothFlowing.mycelium.Service.ExecStart)
+        && lib.hasInfix "--realm other node --flow-to home --serves" sendingOnly
+        && !lib.hasInfix "--flow" (toString bothLinux.mycelium.Service.ExecStart)
+        && !lib.hasInfix "--flow" (toString bothLinux.mycelium-other.Service.ExecStart)
+        && !refusesFlows [ flowing ]
+        && refusesFlows [
+          {
+            from = "home";
+            to = "home";
+          }
+        ]
+        && refusesFlows [
+          {
+            from = "third";
+            to = "fourth";
+          }
+        ]
+      );
+
   # A workstation in a realm runs the node in it, dialling each machine it
   # names: a user service on Linux, an agent on a Mac. One that names none
   # runs it dialling nothing, since its node still holds its sessions and
