@@ -2309,10 +2309,47 @@ fn run_subtests_there_waits_for_the_vm_builders_room_too() {
     );
 }
 
-/// Two `there` runs started at once with `runs`' arguments, beside a VM
-/// builder at a room of 4, each build there lasting 2 seconds: how many
-/// it built at once as each began, and what both said.
+// A run of 4 goes only once nothing else is sent, so while it waited,
+// runs of 1 that fit beside the rest kept going ahead of it: waiting runs
+// go in the order they came.
+#[test]
+fn a_run_waiting_for_room_isnt_passed_by_one_that_came_after_it() {
+    let tests = |name: &str, count: usize| -> Vec<String> {
+        ["-L", "github:o/r/abc"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain((0..count).map(|test| format!("checks.x.vm-{name}{test}")))
+            .collect()
+    };
+    let (first, waits, later) = (tests("a", 3), tests("b", 4), tests("c", 1));
+    let (_, sent, said) = one_after_another(&[&first, &waits, &later]);
+    let order: Vec<&str> = sent
+        .iter()
+        .map(|build| {
+            ["vm-a0", "vm-b0", "vm-c0"]
+                .into_iter()
+                .find(|test| build.contains(*test))
+                .unwrap_or(build)
+        })
+        .collect();
+    assert_eq!(order, ["vm-a0", "vm-b0", "vm-c0"], "{said}");
+    assert_eq!(said.matches("so this waits for room").count(), 2, "{said}");
+}
+
+/// Two `there` runs with `runs`' arguments, the second started while the
+/// first builds: how many the VM builder built at once as each began, and
+/// what both said.
 fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
+    let (at_once, _, said) = one_after_another(&runs);
+    (at_once, said)
+}
+
+/// `there` runs with `runs`' arguments, each started once the one before
+/// it builds on the VM builder or waits for room there, beside a VM
+/// builder at a room of 4, each build there lasting 2 seconds: how many
+/// it built at once as each began, the VM builds it was sent in the order
+/// they were, and what every run said.
+fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
     let folder = tempfile::tempdir().unwrap();
     let bin = folder.path().join("bin");
     fs::create_dir(&bin).unwrap();
@@ -2326,7 +2363,7 @@ fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
     )
     .unwrap();
     fs::write(bin.join("holds-nix-offload-vm"), "2").unwrap();
-    let run = |args: &[String]| {
+    let run = |args: &[String], said: &Path| {
         Command::new(env!("CARGO_BIN_EXE_nix-offload"))
             .arg("there")
             .args(args)
@@ -2341,25 +2378,56 @@ fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(fs::File::create(said).unwrap())
             .spawn()
             .unwrap()
     };
-    let started = runs.map(run);
-    let ended: Vec<Output> = started
-        .into_iter()
-        .map(|run| run.wait_with_output().unwrap())
-        .collect();
-    for ran in &ended {
-        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let vm_builds = || -> Vec<String> {
+        fs::read_to_string(bin.join("ssh-sent"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| line.starts_with("nix-offload-vm ") && line.contains("nix build"))
+            .map(str::to_owned)
+            .collect()
+    };
+    let mut started = Vec::new();
+    for (index, args) in runs.iter().enumerate() {
+        // Its standard error goes to a file of its own, so its wait can be
+        // seen while it waits.
+        let said = folder.path().join(format!("said-{index}"));
+        let before = vm_builds().len();
+        let mut child = run(args, &said);
+        let began = std::time::Instant::now();
+        while vm_builds().len() == before
+            && !fs::read_to_string(&said)
+                .unwrap_or_default()
+                .contains("so this waits for room")
+        {
+            assert!(
+                began.elapsed() < std::time::Duration::from_secs(30),
+                "run {index} neither built nor waited"
+            );
+            if let Some(status) = child.try_wait().unwrap() {
+                panic!("run {index} ended first: {status}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        started.push(child);
+    }
+    let mut said = String::new();
+    for (index, mut child) in started.into_iter().enumerate() {
+        let status = child.wait().unwrap();
+        let told = fs::read_to_string(folder.path().join(format!("said-{index}"))).unwrap();
+        assert_eq!(status.code(), Some(0), "run {index}: {told}");
+        said.push_str(&told);
     }
     let at_once = fs::read_to_string(bin.join("at-once-nix-offload-vm")).unwrap();
-    let said = ended
-        .iter()
-        .map(|ran| String::from_utf8_lossy(&ran.stderr).into_owned())
-        .collect();
-    (at_once.lines().map(str::to_owned).collect(), said)
+    (
+        at_once.lines().map(str::to_owned).collect(),
+        vm_builds(),
+        said,
+    )
 }
 
 // The VM builder runs six VM tests at once, and the rest wait their turn
