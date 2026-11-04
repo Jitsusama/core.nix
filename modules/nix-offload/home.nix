@@ -79,6 +79,13 @@ let
       }
     );
   sendsElsewhere = cfg.nearby != [ ] || cfg.evaluators != [ ];
+  # Core's own VM tests, named so by its checks, and run-subtests' build of
+  # some of one's subtests, which went the lent way unnamed: up to 2505 s
+  # beside kernel builds on 3 November.
+  vmTestsOfCore = [
+    "checks.*.vm-*"
+    "legacyPackages.*.subtests"
+  ];
 in
 {
   options.jitsusama.nix-offload = {
@@ -152,10 +159,13 @@ in
             };
             patterns = lib.mkOption {
               type = lib.types.listOf lib.types.str;
-              default = [ "checks.*.vm-*" ];
+              default = [ ];
               description = ''
                 The attributes that are VM tests, as patterns where `*` stands
-                for any run of characters.
+                for any run of characters, beside core's own: its checks named
+                `vm-*` and run-subtests' `legacyPackages.*.subtests`. A VM
+                test given as its derivation is known by what it needs, kvm
+                or nixos-test, whatever its name.
               '';
             };
             environment = lib.mkOption {
@@ -414,7 +424,7 @@ in
     ];
 
     xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
-      text = lib.concatMapStrings (pattern: "${pattern}\n") cfg.vmTests.patterns;
+      text = lib.concatMapStrings (pattern: "${pattern}\n") (vmTestsOfCore ++ cfg.vmTests.patterns);
     };
 
     xdg.configFile."nix-offload/vm-builds" = lib.mkIf (cfg.vmTests.builds or null != null) {

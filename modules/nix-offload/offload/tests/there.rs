@@ -285,8 +285,20 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
 
 /// `there` given exactly `arguments`, with the stand-ins in `folder`.
 fn there_given(folder: &Path, offload: &Path, arguments: &[&str]) -> Output {
+    there_beside(
+        folder,
+        offload,
+        Path::new("/nonexistent/nix-offload-vm"),
+        arguments,
+    )
+}
+
+/// `there` given `arguments`, with `vm` as the VM builder's lender folder.
+fn there_beside(folder: &Path, offload: &Path, vm: &Path, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_nix-offload"))
         .arg("there")
+        .env("NIX_OFFLOAD_VM_DIR", vm)
+        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
         .args(arguments)
         .env(
             "PATH",
@@ -1474,6 +1486,248 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
             .iter()
             .any(|(to, command)| *to == "nix-offload-vm" && command.contains("#a")),
         "and nothing else does: {sent:?}"
+    );
+}
+
+/// A VM lender's folder in `folder` whose lender last ran as a pid that's
+/// gone, as while a switch restarts it, with VM tests named by the
+/// patterns file, and a lent builder beside it.
+fn vm_lender_restarting(folder: &Path) -> (PathBuf, PathBuf) {
+    let offload = folder.join("offload");
+    fs::create_dir_all(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let vm = folder.join("offload-vm");
+    fs::create_dir_all(&vm).unwrap();
+    fs::write(vm.join("lender"), gone_pid().to_string()).unwrap();
+    fs::create_dir_all(folder.join("nix-offload")).unwrap();
+    fs::write(
+        folder.join("nix-offload/vm-tests"),
+        "checks.*.vm-*\nlegacyPackages.*.subtests\n",
+    )
+    .unwrap();
+    (offload, vm)
+}
+
+/// A pid no process has: a child's, once it's been waited for.
+fn gone_pid() -> u32 {
+    let mut child = Command::new("true").spawn().unwrap();
+    let pid = child.id();
+    child.wait().unwrap();
+    pid
+}
+
+/// The VM lender standing again in `vm` a moment from now, its builder
+/// lent, as the lender a switch restarted does.
+fn vm_lender_back(vm: &Path) -> std::thread::JoinHandle<()> {
+    let vm = vm.to_owned();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        fs::write(
+            vm.join("store"),
+            STORE.replace("nix-offload", "nix-offload-vm"),
+        )
+        .unwrap();
+        fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    })
+}
+
+/// Where each `nix build` sent by ssh went, `host: command` a line.
+fn builds_sent(bin: &Path) -> Vec<String> {
+    let hosts = fs::read_to_string(bin.join("ssh-hosts")).unwrap_or_default();
+    let commands = fs::read_to_string(bin.join("ssh-commands")).unwrap_or_default();
+    hosts
+        .lines()
+        .zip(commands.lines())
+        .filter(|(_, command)| command.contains("nix build") || command.contains("changed-checks"))
+        .map(|(host, command)| format!("{host}: {command}"))
+        .collect()
+}
+
+#[test]
+fn a_vm_test_waits_for_its_own_builder_and_never_goes_the_lent_way() {
+    // While a switch restarted the VM lender, its VM tests went to the lent
+    // builder beside kernel builds, where good ones timed out.
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let (offload, vm) = vm_lender_restarting(folder.path());
+    let back = vm_lender_back(&vm);
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", "github:o/r/abc"])
+        .args(["checks.x.vm-a", "checks.x.a"])
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                folder.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("NIX_OFFLOAD_VM_DIR", &vm)
+        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    back.join().unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = builds_sent(folder.path());
+    assert!(
+        sent.iter()
+            .any(|build| build.starts_with("nix-offload-vm: ") && build.contains("#checks.x.vm-a")),
+        "the VM test went to its own builder once it stood: {sent:?}"
+    );
+    assert!(
+        !sent
+            .iter()
+            .any(|build| build.starts_with("nix-offload: ") && build.contains("vm-a")),
+        "and never to the lent one: {sent:?}"
+    );
+    assert!(
+        sent.iter()
+            .any(|build| build.starts_with("nix-offload: ") && build.contains("#checks.x.a'")),
+        "the rest went the lent way: {sent:?}"
+    );
+}
+
+#[test]
+fn a_vm_test_given_as_its_derivation_goes_to_its_own_builder() {
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let (offload, vm) = vm_lender_restarting(folder.path());
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+    fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        folder.path().join("derivations"),
+        r#"{"version": 4, "derivations": {
+            "aaaa-vm-test-run-x.drv": {"env": {"requiredSystemFeatures": "kvm nixos-test"}},
+            "bbbb-kernel.drv": {"env": {"requiredSystemFeatures": "big-parallel"}}}}"#,
+    )
+    .unwrap();
+    let ran = there_beside(
+        folder.path(),
+        &offload,
+        &vm,
+        &[
+            "-L",
+            "/nix/store/aaaa-vm-test-run-x.drv",
+            "/nix/store/bbbb-kernel.drv",
+        ],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = builds_sent(folder.path());
+    let built_on = |host: &str| -> Vec<&str> {
+        sent.iter()
+            .filter_map(|build| build.strip_prefix(&format!("{host}: ")))
+            .filter_map(|command| command.split("nix build").nth(1))
+            .collect()
+    };
+    let vm_built = built_on("nix-offload-vm");
+    let lent_built = built_on("nix-offload");
+    assert!(
+        vm_built.len() == 1 && vm_built[0].contains("aaaa-vm-test-run-x.drv^*"),
+        "the VM test went to its own builder alone: {sent:?}"
+    );
+    assert!(
+        lent_built.len() == 1
+            && lent_built[0].contains("bbbb-kernel.drv^*")
+            && !lent_built[0].contains("aaaa"),
+        "and the rest the lent way: {sent:?}"
+    );
+}
+
+#[test]
+fn changed_checks_send_their_vm_tests_apart_while_the_vm_lender_restarts() {
+    // Decided only while the VM lender ran, a run sent as a switch
+    // restarted it ran whole on the lent builder, VM tests and all.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let config = folder.path().join("gitconfig");
+    fs::write(
+        &config,
+        "[user]\nname = Tester\nemail = tester@example.com\n",
+    )
+    .unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    let git = |arguments: &[&str]| git(&tree, &config, arguments);
+    git(&["init", "-q", "-b", "main"]);
+    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+    fs::write(tree.join("flake.nix"), "{ }").unwrap();
+    git(&["add", "flake.nix"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    let head = git(&["rev-parse", "HEAD"]);
+    git(&["update-ref", "refs/remotes/origin/main", &head]);
+    let (offload, vm) = vm_lender_restarting(folder.path());
+    fs::write(bin.join("says"), "changed  a\nadded    vm-b\n").unwrap();
+    let run = |arguments: &[&str]| {
+        let _ = fs::remove_file(bin.join("ssh-hosts"));
+        let _ = fs::remove_file(bin.join("ssh-commands"));
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "--changed", "--build"])
+            .args(arguments)
+            .current_dir(&tree)
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_VM_DIR", &vm)
+            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .env("GIT_CONFIG_GLOBAL", &config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap()
+    };
+
+    // Given no system, it's this machine's.
+    let back = vm_lender_back(&vm);
+    let ran = run(&[]);
+    back.join().unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = builds_sent(&bin);
+    let system = format!("{}-linux", std::env::consts::ARCH);
+    assert!(
+        sent.iter().any(|build| build.starts_with("nix-offload: ")
+            && build.contains(&format!(
+                "changed-checks -- --build --system {system} --no-vm"
+            ))),
+        "the lent builder builds all but the VM tests: {sent:?}"
+    );
+    assert!(
+        sent.iter()
+            .any(|build| build.starts_with("nix-offload-vm: ")
+                && build.contains(&format!("checks.{system}.vm-b"))),
+        "the VM test waits for its own builder: {sent:?}"
+    );
+
+    // A commit's changed-checks from before --name-only builds all but its
+    // VM tests there, and says they weren't built.
+    fs::write(bin.join("refuses-name-only"), "").unwrap();
+    let ran = run(&["--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("VM tests weren't built"),
+        "{ran:?}"
+    );
+    let sent = builds_sent(&bin);
+    assert!(
+        sent.iter()
+            .filter(|build| build.contains("changed-checks -- --build"))
+            .all(|build| build.contains("--no-vm")),
+        "never with its VM tests: {sent:?}"
     );
 }
 
