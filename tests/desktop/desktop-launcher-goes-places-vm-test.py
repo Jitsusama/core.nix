@@ -215,13 +215,25 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         assert len(heard) >= writes // 3, f"only {len(heard)} changes heard, too few to tell"
         # Taken one by one, each change heard was a refresh of its own, some
         # a tenth of a second after the last (2026-10-30). Together, there's
-        # one at once and then at most four a second while they come, a
-        # quarter second apart, less what a refresh's own work moves its
-        # report by.
+        # one at once and then at most four a second while they come, each
+        # begun a quarter second after the last began. That's read from the
+        # shell's own clock as each begins: the journal hears a refresh's
+        # report as it ends, and on a loaded machine one slowed refresh put
+        # its report 0.06 s before the next one's (2026-11-03).
         most = 2 + int(sum(heard) * 4)
         assert len(refreshes) <= most, f"{len(heard)} changes, {len(refreshes)} refreshes"
-        closest = min(refreshes[1:], default=1.0)
-        assert closest >= 0.18, f"refreshes {closest:.2f} s apart: {refreshes}"  # noqa: PLR2004
+        began = [
+            int(line.split("report[refresh of jobs began ", 1)[1].removesuffix("]"))
+            for line in desktop.as_account(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)}"
+            ).splitlines()
+            if "report[refresh of jobs began " in line
+        ]
+        apart = [later - sooner for sooner, later in itertools.pairwise(began)]
+        assert len(began) >= len(refreshes), f"{len(began)} begun, {len(refreshes)} said"
+        # A coarse timer, Qt's own, may wake up to 5% early: 12 ms of 250.
+        assert min(apart, default=1000) >= 235, f"refreshes began {apart} ms apart"  # noqa: PLR2004
     finally:
         machine.send_key("esc")
         machine.wait_until_fails(
@@ -2668,7 +2680,10 @@ def test_the_first_search_after_the_shell_starts_finds_everything_made_ready(
     desktop.as_account("systemctl --user restart quickshell")
     since = desktop.mark()
     desktop.reported(
-        "spots made while closed", lambda rest: rest == "", since, dt.timedelta(seconds=60)
+        "spots made while closed ",
+        lambda rest: json.loads(rest)["kept"] == [],
+        since,
+        dt.timedelta(seconds=60),
     )
     # So are the texts every collection's search looks through, which its
     # first search of two letters made, 968 ms on one of Joel's keys.
@@ -2696,6 +2711,35 @@ def test_the_first_search_after_the_shell_starts_finds_everything_made_ready(
         if "report[texts made ready on a key " in line
     ]
     assert all(set(each) <= {"jobs", "agents"} for each in made), made
+
+
+def test_a_closing_makes_again_only_the_details_whose_source_changed(
+    desktop: Desktop,
+) -> None:
+    """A closing makes again only the details inside things whose source changed since."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # Every closing made each detail inside things again, though nothing it
+    # was made from had changed: Sound's 111 rows on each of Joel's closings,
+    # with no change to Sound at all. The first closing here makes what
+    # changed since the last subtest's; the second, with nothing done to
+    # Sound between them, keeps Sound's.
+    said: list[dict[str, list[str]]] = []
+
+    def heard(rest: str) -> bool:
+        said.append(json.loads(rest))
+        return True
+
+    for _ in range(2):
+        since = desktop.mark()
+        desktop.answer("rotation")
+        desktop.launcher_until(
+            lambda shown: any(thing["reads"].startswith("Rotation ") for thing in shown["things"])
+        )
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.reported("spots made while closed ", heard, since)
+    assert "computer/sound" in said[-1]["kept"], said[-1]
 
 
 @pytest.fixture
