@@ -52,7 +52,7 @@ def test_memory_probe(desktop: Desktop) -> None:
     """Read the shell's memory at rest, then after opening places a few times."""
     machine = desktop.machine
     read = (
-        "p=$(pgrep -f 'bin/.quickshell-wrapped' | head -1);"
+        "p=$(pgrep -x '.quickshell-wra' | head -1);"
         " echo PROBE $(grep -E 'VmRSS|RssAnon|Threads' /proc/$p/status | tr -s ' \\n' ' ')"
         " $(grep -E '^Pss_Anon' /proc/$p/smaps_rollup | tr -s ' ' ' ');"
         " echo PROBE MALLOC_CONF=$(tr '\\0' '\\n' < /proc/$p/environ | grep MALLOC_CONF)"
@@ -77,9 +77,8 @@ def test_memory_probe(desktop: Desktop) -> None:
         machine.succeed(
             desktop.in_session(
                 "ls -la $XDG_RUNTIME_DIR/heap*;"
-                " h=$(systemctl --user show -p ExecStart quickshell.service"
-                " | grep -o '/nix/store/[^ ]*-heaptrack-[^/]*' | head -1);"
-                " $h/bin/heaptrack_print -f $(ls $XDG_RUNTIME_DIR/heap* | head -1)"
+                " h=$(ls -d /nix/store/*-heaptrack-1*/bin | head -1);"
+                " $h/heaptrack_print -f $(ls $XDG_RUNTIME_DIR/heap* | head -1)"
                 " --print-leaks 1 --print-peaks 0 --print-allocators 0"
                 " --print-temporary 0"
                 " --peak-limit 40 --sub-peak-limit 4 | sed 's/^/HEAP /' | head -400"
