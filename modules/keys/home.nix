@@ -286,40 +286,41 @@ let
   ) order;
 in
 {
-  options.jitsusama.keys =
-    lib.mapAttrs (
-      _layer: description:
-      lib.mkOption {
-        type = lib.types.listOf bind;
-        default = [ ];
-        description = "The shortcuts of ${description}. Each module that takes keys adds its own.";
-      }
-    ) layers
-    // {
-      surfaces = lib.mkOption {
-        type = lib.types.attrsOf (lib.types.listOf (lib.types.enum (lib.attrNames language.kinds)));
-        default = { };
-        example = {
-          reader = [ "page" ];
-        };
-        description = ''
-          The kinds of surface each layer of ours is, as the key language
-          names them (language.toml), by its layer's name: a surface has
-          every act its kinds hold, by the language's keys.
-        '';
-      };
-      language = lib.mkOption {
-        type = lib.types.attrs;
-        readOnly = true;
-        default = language;
-        defaultText = lib.literalMD "language.toml, read in";
-        description = ''
-          The key language every surface of ours speaks, with the time a
-          waiting key waits, the which-key list's delay and the yank
-          flash's, for a program to read rather than say again.
-        '';
-      };
+  options.jitsusama.keys = lib.mapAttrs (
+    _layer: description:
+    lib.mkOption {
+      type = lib.types.listOf bind;
+      default = [ ];
+      description = "The shortcuts of ${description}. Each module that takes keys adds its own.";
+    }
+  ) layers;
+
+  # Beside the layers rather than among them, since everything that reads
+  # jitsusama.keys takes each of its attributes for a layer.
+  options.jitsusama.surfaces = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.listOf (lib.types.enum (lib.attrNames language.kinds)));
+    default = { };
+    example = {
+      reader = [ "page" ];
     };
+    description = ''
+      The kinds of surface each layer of ours is, as the key language
+      names them (language.toml), by its layer's name: a surface has
+      every act its kinds hold, by the language's keys.
+    '';
+  };
+
+  options.jitsusama.keyLanguage = lib.mkOption {
+    type = lib.types.attrs;
+    readOnly = true;
+    default = language;
+    defaultText = lib.literalMD "language.toml, read in";
+    description = ''
+      The key language every surface of ours speaks, with the time a
+      waiting key waits, the which-key list's delay and the yank
+      flash's, for a program to read rather than say again.
+    '';
+  };
 
   options.jitsusama.swipes = lib.mkOption {
     type = lib.types.listOf swipe;
@@ -332,7 +333,7 @@ in
       map (layer: {
         name = layer;
         description = layers.${layer};
-        kinds = cfg.surfaces.${layer} or [ ];
+        kinds = config.jitsusama.surfaces.${layer} or [ ];
         binds = map (b: {
           inherit (b)
             chord
@@ -348,9 +349,11 @@ in
 
     assertions = [
       {
-        assertion = lib.all (layer: layers ? ${layer}) (lib.attrNames cfg.surfaces);
-        message = "jitsusama.keys.surfaces names a layer the key map hasn't: ${
-          lib.concatStringsSep ", " (lib.filter (layer: !(layers ? ${layer})) (lib.attrNames cfg.surfaces))
+        assertion = lib.all (layer: layers ? ${layer}) (lib.attrNames config.jitsusama.surfaces);
+        message = "jitsusama.surfaces names a layer the key map hasn't: ${
+          lib.concatStringsSep ", " (
+            lib.filter (layer: !(layers ? ${layer})) (lib.attrNames config.jitsusama.surfaces)
+          )
         }";
       }
       {

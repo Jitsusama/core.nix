@@ -214,6 +214,6 @@ in
     # The launcher lists these over the reader's window, by the same words,
     # and the reader is a page, as the key language has it.
     jitsusama.keys.reader = keys;
-    jitsusama.keys.surfaces.reader = [ "page" ];
+    jitsusama.surfaces.reader = [ "page" ];
   };
 }
