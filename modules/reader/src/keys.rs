@@ -382,10 +382,14 @@ fn slots() -> impl Iterator<Item = (Act, Key)> {
     table().slots.iter().map(|&(key, slot, _)| (slot('a'), key))
 }
 
-/// The key list's groups, in the order it shows them.
+/// The key list's groups, in the order it shows them. The lines in view
+/// and the links and files are groups of their own, so that no group lists
+/// more rows than the launcher's thirteen, Neovim's longest.
 pub const GROUPS: &[&str] = &[
     "Moving",
+    "In View",
     "Jumping",
+    "Links and Files",
     "Searching",
     "Marks",
     "Selecting",
@@ -409,29 +413,29 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::ScreenUp => ("Moving", "Up a screen"),
         Act::ParagraphOn => ("Moving", "On a paragraph"),
         Act::ParagraphBack => ("Moving", "Back a paragraph"),
-        Act::ViewTop => ("Moving", "To the top line in view"),
-        Act::ViewMiddle => ("Moving", "To the middle line in view"),
-        Act::ViewBottom => ("Moving", "To the bottom line in view"),
-        Act::PlaceTop => ("Moving", "This line to the top"),
-        Act::PlaceMiddle => ("Moving", "This line to the middle"),
-        Act::PlaceBottom => ("Moving", "This line to the bottom"),
+        Act::ViewTop => ("In View", "To the top line in view"),
+        Act::ViewMiddle => ("In View", "To the middle line in view"),
+        Act::ViewBottom => ("In View", "To the bottom line in view"),
+        Act::PlaceTop => ("In View", "This line to the top"),
+        Act::PlaceMiddle => ("In View", "This line to the middle"),
+        Act::PlaceBottom => ("In View", "This line to the bottom"),
         Act::First => ("Jumping", "To the top, or a count's line"),
         Act::Last => ("Jumping", "To the end, or a count's line"),
         Act::HeadingOn => ("Jumping", "On to the next heading"),
         Act::HeadingBack => ("Jumping", "Back to the heading before"),
         Act::Outline => ("Jumping", "Go to a heading from a list of them"),
         Act::Bracket => ("Jumping", "To a bracket's other end, or a count's percent"),
-        Act::FollowLink => ("Jumping", "Follow the link here"),
-        Act::FollowFile => ("Jumping", "Open the file a link here names"),
-        Act::FileOn => ("Jumping", "On to the next markdown file here"),
-        Act::FileBack => ("Jumping", "Back to the markdown file before"),
+        Act::FollowLink => ("Links and Files", "Follow the link here"),
+        Act::FollowFile => ("Links and Files", "Open the file a link here names"),
+        Act::FileOn => ("Links and Files", "On to the next markdown file here"),
+        Act::FileBack => ("Links and Files", "Back to the markdown file before"),
         Act::SameWordOn => ("Searching", "Search down for the word here"),
         Act::SameWordBack => ("Searching", "Search up for the word here"),
         Act::Command => ("The Page", "A command: a line's number, q or noh"),
         Act::LastJump => ("Jumping", "Back to before the last jump"),
         Act::JumpBack => ("Jumping", "Back through the jumps"),
         Act::JumpForward => ("Jumping", "Forward through the jumps"),
-        Act::Links => ("Jumping", "Follow a link on screen, by its label"),
+        Act::Links => ("Links and Files", "Follow a link on screen, by its label"),
         Act::SearchForward => ("Searching", "Search down the page"),
         Act::SearchBackward => ("Searching", "Search up the page"),
         Act::Next => ("Searching", "On to the next match"),
@@ -590,6 +594,8 @@ pub fn chords() -> Vec<Listed> {
             let group = match group {
                 "Marks" => "jumping".to_string(),
                 "Moving" => "scrolling".to_string(),
+                "In View" => "view".to_string(),
+                "Links and Files" => "links".to_string(),
                 "Text Objects" => "objects".to_string(),
                 "The Page" => "page".to_string(),
                 other => other.to_lowercase(),
@@ -713,6 +719,12 @@ mod tests {
             "the arrow before its letter"
         );
         assert!(rows_of("Jumping").iter().any(|(ways, _)| ways == &["gg"]));
+        assert!(rows_of("In View").iter().any(|(ways, _)| ways == &["zz"]));
+        assert!(
+            rows_of("Links and Files")
+                .iter()
+                .any(|(ways, _)| ways == &["]b"])
+        );
         let page = rows_of("The Page");
         assert!(page.iter().any(|(ways, _)| ways == &["q", "ZZ", "Space w"]));
         assert!(

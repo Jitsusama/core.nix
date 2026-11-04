@@ -2984,9 +2984,19 @@
       "name": "Scrolling"
     },
     {
+      "id": "shortcuts:reader:view",
+      "in": "shortcuts",
+      "name": "In View"
+    },
+    {
       "id": "shortcuts:reader:jumping",
       "in": "shortcuts",
       "name": "Jumping"
+    },
+    {
+      "id": "shortcuts:reader:links",
+      "in": "shortcuts",
+      "name": "Links and Files"
     },
     {
       "id": "shortcuts:reader:searching",
