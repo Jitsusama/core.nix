@@ -54,8 +54,19 @@ pub fn listening(name: &str) -> Vec<TcpListener> {
         .unwrap_or_default()
 }
 
-/// A listener on `address` that another may bind beside (SO_REUSEPORT),
-/// which std's can't.
+/// How long a socket option or address of type `T` is, as the kernel is
+/// told it.
+fn length_of<T>() -> libc::socklen_t {
+    libc::socklen_t::try_from(size_of::<T>()).expect("a socket option or address fits")
+}
+
+/// An address family as a socket address names it.
+fn family_of(family: libc::c_int) -> libc::sa_family_t {
+    libc::sa_family_t::try_from(family).expect("an address family fits")
+}
+
+/// A listener on `address` that another may bind beside
+/// (`SO_REUSEPORT`), which std's can't.
 fn shared(address: SocketAddr) -> io::Result<TcpListener> {
     let failed = |result: libc::c_int| {
         if result < 0 {
@@ -82,7 +93,7 @@ fn shared(address: SocketAddr) -> io::Result<TcpListener> {
                 level,
                 option,
                 (&raw const on).cast(),
-                size_of::<libc::c_int>() as libc::socklen_t,
+                length_of::<libc::c_int>(),
             )
         })
     };
@@ -93,14 +104,14 @@ fn shared(address: SocketAddr) -> io::Result<TcpListener> {
     let bound = match address {
         SocketAddr::V4(v4) => {
             let mut raw: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-            raw.sin_family = libc::AF_INET as libc::sa_family_t;
+            raw.sin_family = family_of(libc::AF_INET);
             raw.sin_port = v4.port().to_be();
             raw.sin_addr.s_addr = u32::from(*v4.ip()).to_be();
             unsafe {
                 libc::bind(
                     fd,
                     (&raw const raw).cast(),
-                    size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    length_of::<libc::sockaddr_in>(),
                 )
             }
         }
@@ -108,7 +119,7 @@ fn shared(address: SocketAddr) -> io::Result<TcpListener> {
             // Its own family alone, so ::1 never takes 127.0.0.1's.
             set(libc::IPPROTO_IPV6, libc::IPV6_V6ONLY)?;
             let mut raw: libc::sockaddr_in6 = unsafe { std::mem::zeroed() };
-            raw.sin6_family = libc::AF_INET6 as libc::sa_family_t;
+            raw.sin6_family = family_of(libc::AF_INET6);
             raw.sin6_port = v6.port().to_be();
             raw.sin6_addr.s6_addr = v6.ip().octets();
             raw.sin6_scope_id = v6.scope_id();
@@ -116,7 +127,7 @@ fn shared(address: SocketAddr) -> io::Result<TcpListener> {
                 libc::bind(
                     fd,
                     (&raw const raw).cast(),
-                    size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                    length_of::<libc::sockaddr_in6>(),
                 )
             }
         }
@@ -331,10 +342,10 @@ mod tests {
     }
 
     fn relayed(far: &TcpListener, within: Duration) -> TcpStream {
+        static NEVER: AtomicBool = AtomicBool::new(false);
         let listeners = listening("127.0.0.1:0");
         let at = listeners[0].local_addr().expect("its address");
         let relay = relay_to(far, within);
-        static NEVER: AtomicBool = AtomicBool::new(false);
         thread::spawn(move || relay.serve_all(listeners, &NEVER));
         TcpStream::connect(at).expect("the relay")
     }

@@ -1320,23 +1320,15 @@ fn serve(settings: &Settings) -> bool {
         let unreturned = give_back_unreturned(settings, lent.as_ref(), &leaving);
         let mut reached = false;
         lent = match lent.take() {
-            None => match decide::lend(settings.hours, tick, not_before, unreturned) {
-                Some(seconds) => {
+            None => {
+                decide::lend(settings.hours, tick, not_before, unreturned).and_then(|seconds| {
                     let lent = lend(settings, &mut machines, tick.now, seconds);
                     if lent.is_none() {
-                        not_before = decide::next_after(
-                            Event::Failed,
-                            tick.wants,
-                            0,
-                            u64::MAX,
-                            false,
-                            now(),
-                        );
+                        not_before = after_failing(tick);
                     }
                     lent
-                }
-                None => None,
-            },
+                })
+            }
             Some(mut builder) => {
                 reached = in_use(Path::new("/proc"), &builder.host)
                     || outlives_on(settings, tick, &builder);
@@ -1352,33 +1344,15 @@ fn serve(settings: &Settings) -> bool {
                             decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
-                    None => match decide::hands_over(
-                        settings.hours,
+                    None => Some(handed_over(
+                        settings,
+                        &mut machines,
+                        builder,
                         tick,
-                        builder.ends,
                         reached,
-                        hand_over_after,
-                    ) {
-                        Some(seconds) => {
-                            let (kept, left) =
-                                hand_over(settings, &mut machines, builder, tick.now, seconds);
-                            match left {
-                                Some(left) => leaving.push(left),
-                                None => {
-                                    hand_over_after = decide::next_after(
-                                        Event::Failed,
-                                        tick.wants,
-                                        0,
-                                        u64::MAX,
-                                        false,
-                                        now(),
-                                    );
-                                }
-                            }
-                            Some(kept)
-                        }
-                        None => Some(builder),
-                    },
+                        &mut hand_over_after,
+                        &mut leaving,
+                    )),
                 }
             }
         };
@@ -1408,16 +1382,45 @@ fn serve(settings: &Settings) -> bool {
         end(&mut builder.helper);
         leave(settings, &builder.name, builder.since, builder.rate);
     }
-    for mut left in leaving {
-        end(&mut left.builder.helper);
-        leave(
-            settings,
-            &left.builder.name,
-            left.builder.since,
-            left.builder.rate,
-        );
+    for Leaving { mut builder, .. } in leaving {
+        end(&mut builder.helper);
+        leave(settings, &builder.name, builder.since, builder.rate);
     }
     restarts
+}
+
+/// The builder lent from this tick on: a successor once `builder`, given
+/// whether a build `reached` it this `tick`, hands over, or `builder`
+/// itself. The one handed over joins `leaving`.
+fn handed_over(
+    settings: &Settings,
+    machines: &mut Machines,
+    builder: Lent,
+    tick: Tick,
+    reached: bool,
+    hand_over_after: &mut u64,
+    leaving: &mut Vec<Leaving>,
+) -> Lent {
+    let Some(seconds) = decide::hands_over(
+        settings.hours,
+        tick,
+        builder.ends,
+        reached,
+        *hand_over_after,
+    ) else {
+        return builder;
+    };
+    let (kept, outgoing) = hand_over(settings, machines, builder, tick.now, seconds);
+    match outgoing {
+        Some(outgoing) => leaving.push(outgoing),
+        None => *hand_over_after = after_failing(tick),
+    }
+    kept
+}
+
+/// When to ask again for a builder that failed to stand.
+fn after_failing(tick: Tick) -> u64 {
+    decide::next_after(Event::Failed, tick.wants, 0, u64::MAX, false, now())
 }
 
 /// Whether a helper still runs.
