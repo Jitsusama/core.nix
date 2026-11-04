@@ -1030,6 +1030,11 @@ impl App {
     /// Space ?'s key list, centred, as his which-key, on whole pixels so its
     /// type is sharp; taller than the window, from its top down as far as
     /// it's scrolled.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "GL places in f32, and the list and the window are a few thousand pixels"
+    )]
     fn draw_keys(&mut self) {
         let screen = self.screen_px() as f32;
         let Some(gl) = self.gl.as_ref() else { return };
