@@ -201,15 +201,19 @@ local function stop_waiting(mode)
   swayimg.text.visible = waiting.visible
 end
 
--- What's waiting goes after a second with nothing more, as Joel's Neovim's
--- timeoutlen has it.
-local function wait(mode)
+-- What's waiting goes 300 ms on with nothing more, as Joel's Neovim's
+-- timeoutlen has it, doing what it does alone, if anything.
+local function wait(mode, timed_out)
   show_waiting(mode)
   waiting.turn = waiting.turn + 1
   local turn = waiting.turn
-  swayimg.defer(1, function()
+  swayimg.defer(0.3, function()
     if waiting.turn == turn then
+      local count = tonumber(waiting.count)
       stop_waiting(mode)
+      if timed_out then
+        timed_out(count)
+      end
     end
   end)
 end
@@ -510,6 +514,12 @@ local acts = {
   trash = trash,
   restore = restore,
   escape = escape,
+  turn_left = function()
+    swayimg.viewer.rotate(270)
+  end,
+  turn_right = function()
+    swayimg.viewer.rotate(90)
+  end,
   close = quit,
   keys = list,
 }
@@ -534,17 +544,24 @@ for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   end
 end
 
--- A key pressed: the second of a pair waiting finishes it, and any other
--- key stops it; a digit adds to the number, a pair's first key waits for
--- its second, and a key alone does its act, that many times. A key alone
--- that also starts a pair, as y does, acts at once.
+-- A key pressed: the second of a pair waiting finishes it; a digit adds to
+-- the number, a pair's first key waits for its second, and a key alone
+-- does its act, that many times.
 local function pressed(mode, key)
   local count = tonumber(waiting.count)
   if waiting.first then
-    local act = paired[mode][waiting.first][key]
+    local first = waiting.first
+    local act = paired[mode][first][key]
     stop_waiting(mode)
     if act then
       acts[act](mode, count)
+    else
+      -- As in Vim: the first does what it does alone, and this key is
+      -- heard on its own.
+      if alone[mode][first] then
+        acts[alone[mode][first]](mode, count)
+      end
+      pressed(mode, key)
     end
     return
   end
@@ -552,9 +569,13 @@ local function pressed(mode, key)
   if key:match('^%d$') and not act and (count or key ~= '0') then
     waiting.count = waiting.count .. key
     wait(mode)
-  elseif paired[mode][key] and not act then
+  elseif paired[mode][key] then
+    -- A key that starts a pair waits for its second, and alone, as y and
+    -- [ are too, does what it does once none comes.
     waiting.first = key
-    wait(mode)
+    wait(mode, act and function(times_over)
+      acts[act](mode, times_over)
+    end)
   elseif act == 'escape' and waiting.shown then
     stop_waiting(mode)
   else

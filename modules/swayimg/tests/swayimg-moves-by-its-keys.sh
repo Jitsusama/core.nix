@@ -75,9 +75,11 @@ typed() {
   wtype "$1"
   until_shown "$2" "$1"
 }
+# A number or a key before it goes in the same wtype, since what waits
+# goes 300 ms on, which a second wtype starting on a busy machine can miss.
 shifted() {
-  wtype -M shift "$1" -m shift
-  until_shown "$2" "Shift+$1"
+  wtype ${3:+"$3"} -M shift "$1" -m shift
+  until_shown "$2" "$3Shift+$1"
 }
 
 # The first frame waits on cage and swayimg starting, which on a machine
@@ -99,18 +101,20 @@ until_shown b.ppm "→"
 press Left a.ppm
 typed l b.ppm
 typed h a.ppm
+# ]b and [b, as Vim's go between buffers.
+typed ']b' b.ppm
+typed '[b' a.ppm
 
 # A number before a move makes it that many.
 typed 3l d.ppm
 typed 3h a.ppm
-# A number goes after a second with nothing more, and Escape stops one
-# rather than closing.
+# A number goes 300 ms on with nothing more, and Escape stops one rather
+# than closing.
 wtype 2
-sleep 1.5
+sleep 1
 typed l b.ppm
 typed h a.ppm
-wtype 3
-wtype -k Escape
+wtype 3 -k Escape
 typed l b.ppm
 typed h a.ppm
 
@@ -121,8 +125,7 @@ press End z-tall.pgm
 press Home a.ppm
 shifted g z-tall.pgm
 typed gg a.ppm
-wtype 4
-shifted g d.ppm
+shifted g d.ppm 4
 
 # dd and Delete move the picture to the trash, and u brings it back.
 trash=.local/share/Trash
@@ -170,9 +173,8 @@ press Up "$top"
 typed j "$down"
 typed k "$top"
 
-# f goes full screen, and Escape leaves it before it closes anything.
-typed f "full true"
-press Escape "full false"
+# Escape leaving full screen before it closes isn't pressed here: cage
+# never grants a window full screen, so swayimg never is.
 
 # In the gallery, h j k l choose as the arrows do, gg and G go to the
 # first and the last, a number before G to that picture, and a number
@@ -181,10 +183,11 @@ press Return "in gallery"
 typed gg a.ppm
 typed l b.ppm
 typed h a.ppm
+typed ']b' b.ppm
+typed '[b' a.ppm
 typed 3l d.ppm
 shifted g z-tall.pgm
-wtype 2
-shifted g b.ppm
+shifted g b.ppm 2
 typed gg a.ppm
 wtype -k Down
 until_not_shown a.ppm "Down in the gallery"

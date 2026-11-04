@@ -23,7 +23,9 @@
 # arrows, gg and G the first and last, a number before G that picture and
 # before a move that many, dd the trash and yy the copy. A number or a
 # key waiting for its second shows, muted, at the foot's right, as
-# Neovim's showcmd does, for a second at most. As a picture opens, a quiet line under it names the keys that
+# Neovim's showcmd does, for 300 ms at most, Joel's Neovim's timeoutlen;
+# [ and ] start ]b and [b, the next and previous picture, as Vim's go
+# between buffers, and turn the picture when no b follows. As a picture opens, a quiet line under it names the keys that
 # move on, for as long as its name shows, and ? lists them all until it's
 # pressed again.
 #
@@ -103,13 +105,16 @@ let
     }) chords;
   keys =
     grouped "moving" (
+      # [b and ]b, as Vim's go between buffers.
       twins places.viewer "Previous picture" "left" [
         "Left"
         "h"
+        "bracketleft b"
       ]
       ++ twins places.viewer "Next picture" "right" [
         "Right"
         "l"
+        "bracketright b"
       ]
       ++ twins places.viewer "Up a little, on a picture larger than the window" "up" [
         "Up"
@@ -156,6 +161,8 @@ let
         "Down"
         "j"
       ]
+      ++ twins places.gallery "Previous picture" "left" [ "bracketleft b" ]
+      ++ twins places.gallery "Next picture" "right" [ "bracketright b" ]
       ++ twins places.gallery "First picture" "first" [
         "Home"
         "g g"
@@ -193,15 +200,18 @@ let
         does = "Further";
         when = places.viewer;
       }
+      # A moment after them with no b, as Vim's timeout, they turn.
       {
         chord = "bracketleft";
         does = "Turn left";
         when = places.viewer;
+        act = "turn_left";
       }
       {
         chord = "bracketright";
         does = "Turn right";
         when = places.viewer;
+        act = "turn_right";
       }
       {
         chord = "f";
