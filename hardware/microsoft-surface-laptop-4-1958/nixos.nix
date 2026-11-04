@@ -9,6 +9,7 @@
     ../../modules/device-check/nixos.nix
     ../../modules/firmware-settings/nixos.nix
     ../../modules/gpu/nixos.nix
+    ../../modules/hibernate/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ./clock/clock.nix
@@ -158,6 +159,14 @@
     "tsc=unstable"
     "amd_pstate=guided"
   ];
+
+  # The first hibernation rolled back for want of memory: amdgpu copies the
+  # GPU's memory out a second time as it stops, after the image was sized,
+  # and 343,920 pages more needed saving than had been set aside, where
+  # only 117,000 were free. A reserve of 1 GiB holds the image to about
+  # 400,000 pages and leaves about a million free for the copy, which
+  # needs twice what the driver adds. docs/hardware.md has the arithmetic.
+  jitsusama.hibernate.reserve = 1024 * 1024 * 1024;
 
   # A panic drew its text but never restarted the laptop, which sat frozen
   # until the power button was held. The chipset's watchdog, which systemd

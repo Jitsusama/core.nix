@@ -1085,6 +1085,7 @@ the kernel's tree adds.
 | Wi-Fi    | the country the access points give, taken while connected                 |
 | Mics     | their gain capped 12 dB over their own level, so a voice carries          |
 | Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
+| Memory   | 1 GiB kept free for what the GPU's driver copies out as it hibernates     |
 | Firmware | Surface UEFI's updates through fwupd, from Microsoft's own package        |
 
 ### The Keyboard at the Disk Prompt
@@ -1234,6 +1235,37 @@ kernel leaves its wakeup off, so at each sleep the kernel dropped its
 connections and left it listening for nobody. The bluetooth module turns
 that wakeup on for every USB controller of Bluetooth's device class, and
 with it a key on that keyboard woke the laptop, lid shut.
+
+### Hibernation
+
+The first hibernation, on 7.3.1, rolled back for want of memory: "Normal
+pages needed: 1089703 + 1024, available pages: 863209", then "Error -12
+creating image". The kernel sizes the image before it stops the devices:
+it freed memory until 745,783 pages were left to save, the cap
+`image_size` sets at two fifths of memory, and set as many aside to copy
+them into. Then `amdgpu`, stopping, copied the GPU's memory out to the
+laptop's a second time, after the display had stopped, and readied its
+buffers for hibernation again, so 343,920 pages more needed saving. A copy
+needs a free page for each page it saves, and those pages came out of free
+memory too, so the 745,783 set aside and the 117,426 still free fell
+227,518 short.
+
+The kernel's own knob for this is `/sys/power/reserved_size`, the memory
+left for what drivers allocate as they stop, 1 MB unless set. It caps the
+image at half of memory less twice the reserve, and as much again is set
+aside for the copy, so about four times the reserve stays free. The
+copy needs twice what the driver adds, 687,840 pages here. The module sets
+1 GiB, 262,144 pages: the image is held to about 400,000 pages and about a
+million stay free, with room for the driver to add half as much again as
+it did. A reserve as large as memory leaves no room at all, and the
+kernel says "Image allocation is N pages short" instead.
+
+A hibernation that rolls back leaves the laptop on, and hibernate-unlock
+says why in a notice, from the kernel's log since it started: memory, the
+swap file gone or full, a driver or program by its name refusing to stop,
+the image not written, or a wakeup. With the lid shut, a failure for want
+of memory or swap would fail the same way again and then power off,
+losing what's open, so the laptop goes to sleep instead.
 
 ### The Watchdog
 

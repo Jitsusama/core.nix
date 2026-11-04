@@ -514,8 +514,11 @@
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
     firmware start for a resume through the disk prompt and a wake for none, counts a disk as
     asking only when every token asks for something typed (a recovery key among them) and names the
-    first that doesn't, and rescues a rolled-back hibernation:
-    said with the lid open, tried once more with it shut, then powered off
+    first that doesn't, reads why a hibernation rolled back from the kernel's own lines (memory,
+    the swap file gone or full, a driver or program by its name refusing, the writer failing, a
+    wakeup, or nothing said), and rescues it: said with the lid open, each notice word for word in
+    plain text, slept through with it shut when memory or swap ran short, otherwise tried once more
+    with it shut, then powered off
   '';
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
@@ -1801,6 +1804,10 @@
     fwupd, given the Surface Laptop 4's ESRT with its UEFI at 4.355.140 and its TPM at 7.2.2.0,
     offers the UEFI's capsule from the remote the module writes, at the version the capsule itself
     carries, as a trusted upgrade, and nothing for the TPM
+  '';
+  the-surface-reserves-memory-to-hibernate = ''
+    the Surface Laptop 4 writes a reserve of 1 GiB to /sys/power/reserved_size at every start, so
+    a hibernation leaves room for what amdgpu copies out as it stops
   '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run with an

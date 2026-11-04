@@ -5,7 +5,10 @@
 # variable HibernateLocation, and the initrd resumes from it once LUKS is
 # open, so nothing about the disk's layout is kept in Nix. The disk opens as
 # a laptop's does, with the TPM and a PIN typed at the initrd's prompt, so
-# coming back asks there once and the lock lets go by itself. The tests are
+# coming back asks there once and the lock lets go by itself. It keeps a
+# reserve for drivers as the Surface Laptop 4 does, and can be made to roll a
+# hibernation back, short of memory or with its swap file gone, so the
+# notice's reasons are seen end to end. The tests are
 # hibernate-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
@@ -69,11 +72,30 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         pkgs.btrfs-progs
         pkgs.cryptsetup
       ];
+      # An eighth of memory, about the share the Surface Laptop 4 keeps of
+      # its own, which the tests read back and hibernate a loaded machine
+      # with.
+      jitsusama.hibernate.reserve = 128 * 1024 * 1024;
       # The driver's backdoor is stopped before the image is made and
       # started again after, or the driver would talk to a shell that was
-      # frozen mid-word.
-      powerManagement.powerDownCommands = "systemctl --no-block stop backdoor.service";
-      powerManagement.resumeCommands = "systemctl --no-block restart backdoor.service";
+      # frozen mid-word. A hibernation the tests make roll back keeps it,
+      # since the shell only freezes and thaws with everything else, and a
+      # new one would leave the driver reading its greeting as an answer.
+      powerManagement.powerDownCommands = ''
+        [ -e /run/rolls-back ] || systemctl --no-block stop backdoor.service
+      '';
+      powerManagement.resumeCommands = ''
+        [ -e /run/rolls-back ] || systemctl --no-block restart backdoor.service
+      '';
+      # systemd-sleep tells the kernel where the swap file is before it runs
+      # the hooks, so taking the file away here leaves the kernel nowhere
+      # to write the image.
+      environment.etc."systemd/system-sleep/takes-the-swap-file-away".source =
+        pkgs.writeShellScript "takes-the-swap-file-away" ''
+          if [ "$1" = pre ] && [ -e /run/no-swap-file ]; then
+            ${pkgs.util-linux}/bin/swapoff /swap/swapfile
+          fi
+        '';
     };
 
   tests = ./hibernate-vm-test.py;

@@ -131,6 +131,20 @@
         && lib.elem "acpi_tad" boot.blacklistedKernelModules
       );
 
+  # The kernel leaves 1 GiB free for what amdgpu copies out as it stops for a
+  # hibernation, written at every start.
+  the-surface-reserves-memory-to-hibernate =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      rule = surface.config.systemd.tmpfiles.settings.hibernate."/sys/power/reserved_size" or { };
+    in
+    holds "the-surface-reserves-memory-to-hibernate"
+      "The Surface Laptop 4 doesn't have the kernel leave 1 GiB free for its drivers as a hibernation stops them."
+      ((rule.w.argument or null) == toString (1024 * 1024 * 1024));
+
   # A sleep stops the chipset's watchdog counting, so the hook stops
   # systemd's runtime watchdog before each sleep and starts it after, at the
   # timeout systemd ran with. Run against a stand-in of busctl, a sleep with

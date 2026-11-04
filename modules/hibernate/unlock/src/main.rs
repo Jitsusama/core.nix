@@ -5,15 +5,15 @@
 //!
 //! ```text
 //! hibernate-unlock pre|post <action> [<disk>...]
-//! hibernate-unlock rescue
+//! hibernate-unlock rescue [<why>...]
 //! ```
 //!
 //! systemd-sleep runs it before and after each sleep, naming the action
 //! (`suspend`, `hibernate`, `hybrid-sleep` or `suspend-then-hibernate`), and
 //! the disks are those the initrd opens. Before anything that writes an
 //! image it keeps the TPM's reset and restart counts in `/run`, which the
-//! image keeps too. After, it lets every session's lock go only when both
-//! hold:
+//! image keeps too, and the number of the kernel's last log record. After,
+//! it lets every session's lock go only when both hold:
 //!
 //! - A count went up, so the firmware started the machine: the image was
 //!   read back, through the initrd, rather than a hybrid sleep waking from
@@ -30,43 +30,329 @@
 //! tokens and `loginctl` to let the locks go, each from `PATH`. Anything it
 //! can't read keeps the lock, and it never fails the sleep.
 //!
-//! A hibernation can write its image and still roll back, when a device
-//! refuses to power off, and the kernel then tells systemd it worked. Its
-//! sign is a hibernation back with neither count moved. Ten seconds later,
-//! once the sleep is over, `rescue` runs on its own: with the lid shut
-//! nobody is looking, and a laptop left on in a bag runs flat and hot, so it
-//! hibernates once more, and powers off if that rolls back too. With the
-//! lid open, a notice tells whoever is signed in.
+//! A hibernation back with neither count moved rolled back: the kernel
+//! couldn't make the image, couldn't write it, or a device refused to power
+//! off once it was written, when the kernel tells systemd it worked. The
+//! kernel's log since the sleep began says which, and the rescue is told.
+//! Ten seconds later, once the sleep is over, `rescue` runs on its own.
+//! With the lid open, a notice tells whoever is signed in why, that nothing
+//! was lost, and what to do. With the lid shut nobody is looking, and a
+//! laptop left on in a bag runs flat and hot. Short of memory or swap, a
+//! second try fails the same way and then powers off, losing what's open,
+//! so the laptop goes to sleep instead, the notice waiting for the lid to
+//! open. Otherwise it hibernates once more, and powers off if that rolls
+//! back too.
 
 use serde_json::Value;
 use std::env;
 use std::fs;
+use std::io::{ErrorKind, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// Where the counts from before the image was written are kept.
 const KEPT: &str = "/run/hibernate-unlock";
 
+/// Where the number of the kernel's last log record before a hibernation is
+/// kept, so what it logged after can be read alone.
+const LOGGED: &str = "/run/hibernate-unlock-logged";
+
 /// Kept while a rolled-back hibernation is tried again, so a second
 /// rollback powers off rather than trying forever.
 const TRIED_AGAIN: &str = "/run/hibernate-unlock-tried-again";
+
+/// Why a hibernation rolled back, as the kernel's log says.
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum Why {
+    /// Memory was too full to make the image.
+    Memory,
+    /// The swap file the image goes to wasn't there.
+    SwapGone,
+    /// The swap file had no room left for the image.
+    SwapFull,
+    /// A device's driver, by its name, refused to stop.
+    Device(String),
+    /// A program, by its name, wouldn't pause.
+    Program(String),
+    /// Something refused to stop, and the kernel didn't say what.
+    Refused,
+    /// The image was made but couldn't be written.
+    Unwritten,
+    /// Something woke the laptop as it went down.
+    Woken,
+    /// The kernel didn't say.
+    Unsaid,
+}
+
+impl Why {
+    /// What the kernel's log records, in order, say went wrong. When several
+    /// things did, the one that stopped it comes first: a device refusing to
+    /// power off is logged as a wakeup too.
+    fn from_log(said: &[String]) -> Self {
+        let any = |of: &[&str]| {
+            said.iter()
+                .any(|line| of.iter().any(|it| line.contains(*it)))
+        };
+        let freezing = |ended: &str| {
+            said.iter()
+                .any(|line| line.starts_with("Freezing ") && line.contains(ended))
+        };
+        if any(&[
+            "PM: hibernation: Error -12 creating image",
+            "PM: hibernation: Image allocation is ",
+            "PM: hibernation: Cannot allocate",
+        ]) {
+            return Self::Memory;
+        }
+        if any(&["PM: Cannot find swap device", "PM: Swap header not found"]) {
+            return Self::SwapGone;
+        }
+        // Compressed, the image runs out of swap as it's written, which the
+        // writer says as ENOSPC's -28.
+        if any(&["PM: Not enough free swap", "PM: Image saving failed: -28"]) {
+            return Self::SwapFull;
+        }
+        if let Some(driver) = said.iter().find_map(|line| refusing_driver(line)) {
+            return Self::Device(driver);
+        }
+        if let Some(program) = refusing_program(said) {
+            return Self::Program(program);
+        }
+        if any(&["failed to power down"]) || freezing(" failed after ") {
+            return Self::Refused;
+        }
+        if said.iter().any(|line| unwritten(line)) {
+            return Self::Unwritten;
+        }
+        if any(&["Wakeup event detected during hibernation"]) || freezing(" aborted after ") {
+            return Self::Woken;
+        }
+        Self::Unsaid
+    }
+
+    /// As the rescue is told it, one word and a name where there is one.
+    fn args(&self) -> Vec<String> {
+        let (word, name) = match self {
+            Self::Memory => ("memory", None),
+            Self::SwapGone => ("swap-gone", None),
+            Self::SwapFull => ("swap-full", None),
+            Self::Device(driver) => ("device", Some(driver)),
+            Self::Program(program) => ("program", Some(program)),
+            Self::Refused => ("refused", None),
+            Self::Unwritten => ("unwritten", None),
+            Self::Woken => ("woken", None),
+            Self::Unsaid => ("unsaid", None),
+        };
+        std::iter::once(word.to_owned())
+            .chain(name.cloned())
+            .collect()
+    }
+
+    fn from_args(args: &[String]) -> Self {
+        match args {
+            [word] if word == "memory" => Self::Memory,
+            [word] if word == "swap-gone" => Self::SwapGone,
+            [word] if word == "swap-full" => Self::SwapFull,
+            [word, driver] if word == "device" => Self::Device(driver.clone()),
+            [word, program] if word == "program" => Self::Program(program.clone()),
+            [word] if word == "refused" => Self::Refused,
+            [word] if word == "unwritten" => Self::Unwritten,
+            [word] if word == "woken" => Self::Woken,
+            _ => Self::Unsaid,
+        }
+    }
+
+    /// Whether hibernating again would fail the same way.
+    fn fails_again(&self) -> bool {
+        matches!(self, Self::Memory | Self::SwapGone | Self::SwapFull)
+    }
+}
+
+/// The driver a device's refusal names: the kernel logs a device's line as
+/// its driver, its device and the message, and the device is a bus address
+/// nobody knows the laptop's parts by.
+fn refusing_driver(line: &str) -> Option<String> {
+    let (who, said) = line.split_once(": PM: ")?;
+    if !(said.starts_with("failed to ") || said.starts_with("dpm_run_callback(): ")) {
+        return None;
+    }
+    who.split_whitespace().next().map(str::to_owned)
+}
+
+/// The program that wouldn't pause: the kernel logs each task it couldn't
+/// freeze after saying it failed, as `task:<name> state:...`. A kernel
+/// thread is no program to close, so only user space's are named.
+fn refusing_program(said: &[String]) -> Option<String> {
+    let failed = said
+        .iter()
+        .position(|line| line.contains("Freezing user space processes failed after"))?;
+    said[failed + 1..].iter().find_map(|line| {
+        let task = line.split_once("task:")?.1;
+        let name = task.split_once(" state:")?.0.trim();
+        (!name.is_empty()).then(|| name.to_owned())
+    })
+}
+
+/// Whether a line is the swap writer's, or its compressor's, failing.
+fn unwritten(line: &str) -> bool {
+    let Some(said) = line.split_once("PM: ").map(|(_, said)| said) else {
+        return false;
+    };
+    [
+        "Image saving failed",
+        "Cannot get swap writer",
+        "Could not allocate comp",
+        "Cannot start compression threads",
+        "Cannot start CRC32 thread",
+        "Failed to allocate ",
+    ]
+    .iter()
+    .any(|start| said.starts_with(start))
+        || said.contains(" compression failed")
+        || said.contains(" compressed length")
+}
+
+/// One record of the kernel's log, as `/dev/kmsg` gives it:
+/// `<level>,<number>,<time>,<flags>;<message>`, then any of its fields on
+/// lines of their own.
+#[derive(Debug, PartialEq, Eq)]
+struct Record {
+    number: u64,
+    message: String,
+}
+
+impl Record {
+    fn parse(raw: &str) -> Option<Self> {
+        let (head, rest) = raw.split_once(';')?;
+        Some(Self {
+            number: head.split(',').nth(1)?.parse().ok()?,
+            message: rest.lines().next().unwrap_or_default().to_owned(),
+        })
+    }
+}
+
+/// Every record the kernel's log still holds, oldest first, or none if it
+/// can't be read. Read without blocking, it ends where the log does.
+fn kernel_log() -> Vec<Record> {
+    let Ok(mut log) = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open("/dev/kmsg")
+    else {
+        return Vec::new();
+    };
+    let mut records = Vec::new();
+    // The longest record the kernel gives a reader.
+    let mut buffer = vec![0_u8; 8192];
+    loop {
+        match log.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => records.extend(Record::parse(&String::from_utf8_lossy(&buffer[..read]))),
+            // A record written over before it was read; the next follows.
+            Err(error) if error.kind() == ErrorKind::BrokenPipe => {}
+            Err(_) => break,
+        }
+    }
+    records
+}
+
+/// What a notice says: who, why, then what to do.
+#[derive(Debug, PartialEq, Eq)]
+struct Notice {
+    title: String,
+    body: String,
+}
+
+/// The notice for a rollback, said with the laptop still on, or once it
+/// has gone to sleep instead.
+fn notice(why: &Why, slept: bool) -> Notice {
+    let kept = if slept {
+        "Nothing was lost: with the lid shut, it went to sleep instead."
+    } else {
+        "Nothing was lost; the laptop is still on."
+    };
+    let again = "Hibernate again in a moment; if it fails twice, put the laptop to sleep instead.";
+    let close = "Close something you don't need, then hibernate again.";
+    let (title, said, todo) = match why {
+        Why::Memory => (
+            "Not enough memory to hibernate".to_owned(),
+            "Memory was too full to copy before writing it to the swap file.".to_owned(),
+            close.to_owned(),
+        ),
+        Why::SwapGone => (
+            "No swap file to hibernate to".to_owned(),
+            "The swap file that memory is written to wasn't there.".to_owned(),
+            "Put it to sleep instead: hibernating again would fail the same way.".to_owned(),
+        ),
+        Why::SwapFull => (
+            "Not enough swap to hibernate".to_owned(),
+            "The swap file had no room left for memory.".to_owned(),
+            close.to_owned(),
+        ),
+        Why::Device(driver) => (
+            format!("{driver} wouldn't let it hibernate"),
+            format!("The driver {driver} refused to stop its device."),
+            again.to_owned(),
+        ),
+        Why::Program(program) => (
+            format!("{program} wouldn't let it hibernate"),
+            format!("{program} wouldn't pause."),
+            format!("Close {program}, then hibernate again."),
+        ),
+        Why::Refused => (
+            "A device wouldn't let it hibernate".to_owned(),
+            "Something refused to stop, and the kernel didn't say what.".to_owned(),
+            again.to_owned(),
+        ),
+        Why::Unwritten => (
+            "Hibernation couldn't write memory".to_owned(),
+            "Memory couldn't be written to the swap file.".to_owned(),
+            again.to_owned(),
+        ),
+        Why::Woken => (
+            "Woken while hibernating".to_owned(),
+            "Something woke the laptop as it went down: a key, the lid or a cable.".to_owned(),
+            "Hibernate again, and leave it be until it's off.".to_owned(),
+        ),
+        Why::Unsaid => (
+            "Hibernation didn't finish".to_owned(),
+            "The kernel didn't say why.".to_owned(),
+            again.to_owned(),
+        ),
+    };
+    Notice {
+        title,
+        body: format!("{said} {kept} {todo}"),
+    }
+}
 
 /// What a rescue does once a hibernation rolled back.
 #[derive(Debug, PartialEq, Eq)]
 enum Rescue {
     HibernateAgain,
     PowerOff,
+    Sleep,
     Say,
 }
 
-/// With the lid open someone is there to be told; with it shut, one more
-/// try, then off.
-fn rescue(lid_shut: bool, tried_again: bool) -> Rescue {
+/// With the lid open someone is there to be told. With it shut, sleep
+/// where a second try would fail the same way; otherwise one more try,
+/// then off.
+fn rescue(lid_shut: bool, tried_again: bool, why: &Why) -> Rescue {
     match (lid_shut, tried_again) {
         (false, _) => Rescue::Say,
+        (true, _) if why.fails_again() => Rescue::Sleep,
         (true, false) => Rescue::HibernateAgain,
         (true, true) => Rescue::PowerOff,
     }
+}
+
+/// What follows the rescue asking the laptop to sleep: nothing once it
+/// sleeps, and off when it couldn't, so a laptop with its lid shut is never
+/// left on in a bag.
+fn after_asking_to_sleep(slept: bool) -> Option<Rescue> {
+    (!slept).then_some(Rescue::PowerOff)
 }
 
 /// Whether a lid's `/proc/acpi/button/lid/*/state` says it's shut.
@@ -187,10 +473,12 @@ fn disk_unasked(disk: &str) -> Option<String> {
     }
 }
 
-/// Before an image is written, keep the TPM's counts. Before a sleep that
-/// writes none, forget any kept from a hibernate that never happened.
+/// Before an image is written, keep the TPM's counts and the kernel log's
+/// place. Before a sleep that writes none, forget any kept from a hibernate
+/// that never happened.
 fn before(action: &str) {
     let _ = fs::remove_file(KEPT);
+    let _ = fs::remove_file(LOGGED);
     if !writes_an_image(action) {
         return;
     }
@@ -202,11 +490,36 @@ fn before(action: &str) {
         }
         None => eprintln!("hibernate-unlock: couldn't read the TPM's counts; the lock stays"),
     }
+    match kernel_log().last() {
+        Some(last) => {
+            if let Err(error) = fs::write(LOGGED, last.number.to_string()) {
+                eprintln!("hibernate-unlock: couldn't keep the kernel log's place: {error}");
+            }
+        }
+        None => eprintln!("hibernate-unlock: couldn't read the kernel's log"),
+    }
+}
+
+/// What the kernel logged since `before` kept its place.
+fn logged_since_before() -> Vec<String> {
+    let Some(since) = fs::read_to_string(LOGGED)
+        .ok()
+        .and_then(|text| text.trim().parse::<u64>().ok())
+    else {
+        return Vec::new();
+    };
+    kernel_log()
+        .into_iter()
+        .filter(|record| record.number > since)
+        .map(|record| record.message)
+        .collect()
 }
 
 /// After the machine is back, let the locks go if it came back through the
 /// disk prompt, and rescue a hibernation that never went off.
 fn after(action: &str, disks: &[String]) {
+    let logged = logged_since_before();
+    let _ = fs::remove_file(LOGGED);
     let Some(then) = fs::read_to_string(KEPT)
         .ok()
         .and_then(|t| Starts::unkept(&t))
@@ -220,7 +533,7 @@ fn after(action: &str, disks: &[String]) {
     };
     if !then.started_since(now) {
         if action == "hibernate" {
-            rolled_back();
+            rolled_back(&Why::from_log(&logged));
         } else {
             eprintln!(
                 "hibernate-unlock: woke without a start, so through no prompt; the lock stays"
@@ -248,15 +561,17 @@ fn after(action: &str, disks: &[String]) {
 
 /// Asks systemd to run the rescue in ten seconds, once this sleep is over
 /// and the sessions are thawed, with the same programs on its `PATH`.
-fn rolled_back() {
-    eprintln!("hibernate-unlock: the hibernation rolled back, so the machine is still on");
+fn rolled_back(why: &Why) {
+    let words = why.args().join(" ");
+    eprintln!("hibernate-unlock: the hibernation rolled back, so the machine is still on: {words}");
     let Ok(me) = env::current_exe() else {
         eprintln!("hibernate-unlock: couldn't find itself to rescue the machine");
         return;
     };
     let path = format!("--setenv=PATH={}", env::var("PATH").unwrap_or_default());
     let me = me.to_string_lossy();
-    let args = [
+    let why = why.args();
+    let mut args = vec![
         "--on-active=10s",
         "--collect",
         "--quiet",
@@ -265,6 +580,7 @@ fn rolled_back() {
         &me,
         "rescue",
     ];
+    args.extend(why.iter().map(String::as_str));
     if said("systemd-run", &args).is_none() {
         eprintln!("hibernate-unlock: systemd-run couldn't start the rescue");
     }
@@ -287,7 +603,11 @@ fn on_path(program: &str) -> Option<PathBuf> {
 }
 
 /// Puts a notice in each seated user's session, through their own systemd.
-fn say_to_each_session() {
+fn say_to_each_session(notice: &Notice) {
+    eprintln!(
+        "hibernate-unlock: it says: {}: {}",
+        notice.title, notice.body
+    );
     let Some(notify) = on_path("notify-send") else {
         eprintln!("hibernate-unlock: no notify-send to say the hibernation didn't finish");
         return;
@@ -306,8 +626,8 @@ fn say_to_each_session() {
             &notify,
             "--urgency=critical",
             "--app-name=Hibernation",
-            "Hibernation didn't finish",
-            "The laptop is still on. Hibernate it again, or shut it down.",
+            &notice.title,
+            &notice.body,
         ];
         if said("systemd-run", &args).is_none() {
             eprintln!("hibernate-unlock: couldn't tell {user} the hibernation didn't finish");
@@ -316,9 +636,9 @@ fn say_to_each_session() {
 }
 
 /// What the rescue ten seconds after a rollback does.
-fn rescue_now() {
+fn rescue_now(why: &Why) {
     let tried_again = Path::new(TRIED_AGAIN).exists();
-    match rescue(lid_shut(), tried_again) {
+    match rescue(lid_shut(), tried_again, why) {
         Rescue::HibernateAgain => {
             eprintln!("hibernate-unlock: the lid is shut, so it hibernates again");
             let _ = fs::write(TRIED_AGAIN, "");
@@ -328,15 +648,34 @@ fn rescue_now() {
             eprintln!(
                 "hibernate-unlock: the lid is shut and it rolled back twice, so it powers off"
             );
+            power_off();
+        }
+        Rescue::Sleep => {
+            eprintln!(
+                "hibernate-unlock: the lid is shut and hibernating again would fail the same \
+                 way, so it sleeps"
+            );
             let _ = fs::remove_file(TRIED_AGAIN);
-            let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
+            say_to_each_session(&notice(why, true));
+            let slept = said("systemctl", &["suspend", "--check-inhibitors=no"]).is_some();
+            if after_asking_to_sleep(slept) == Some(Rescue::PowerOff) {
+                eprintln!(
+                    "hibernate-unlock: the lid is shut and it couldn't sleep, so it powers off"
+                );
+                power_off();
+            }
         }
         Rescue::Say => {
             eprintln!("hibernate-unlock: the lid is open, so it says so");
             let _ = fs::remove_file(TRIED_AGAIN);
-            say_to_each_session();
+            say_to_each_session(&notice(why, false));
         }
     }
+}
+
+fn power_off() {
+    let _ = fs::remove_file(TRIED_AGAIN);
+    let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
 }
 
 fn main() -> ExitCode {
@@ -344,9 +683,9 @@ fn main() -> ExitCode {
     match args.as_slice() {
         [when, action, ..] if when == "pre" => before(action),
         [when, action, disks @ ..] if when == "post" => after(action, disks),
-        [what] if what == "rescue" => rescue_now(),
+        [what, why @ ..] if what == "rescue" => rescue_now(&Why::from_args(why)),
         _ => {
-            eprintln!("usage: hibernate-unlock pre|post <action> [<disk>...] | rescue");
+            eprintln!("usage: hibernate-unlock pre|post <action> [<disk>...] | rescue [<why>...]");
             return ExitCode::from(2);
         }
     }
@@ -360,6 +699,284 @@ mod tests {
 
     const READCLOCK: &str = "time: 3354065\nclock_info:\n  clock: 1776610977\n  \
                              reset_count: 95\n  restart_count: 0\n  safe: yes\n";
+
+    fn lines(said: &[&str]) -> Vec<String> {
+        said.iter().map(|&line| line.to_owned()).collect()
+    }
+
+    /// Every case, with the kernel's own lines for it (7.3.1's
+    /// `kernel/power` and `drivers/base/power/main.c`), those around them
+    /// included.
+    fn cases() -> Vec<(Why, Vec<String>)> {
+        vec![
+            (
+                Why::Memory,
+                // The Surface Laptop 4's, on 4 November 2026.
+                lines(&[
+                    "PM: hibernation: Allocated 745783 pages for snapshot",
+                    "PM: hibernation: Normal pages needed: 1089703 + 1024, available pages: 863209",
+                    "PM: hibernation: Error -12 creating image",
+                ]),
+            ),
+            (
+                Why::Memory,
+                lines(&["PM: hibernation: Image allocation is 56721 pages short"]),
+            ),
+            (
+                Why::Memory,
+                lines(&["PM: hibernation: Cannot allocate copy bitmap"]),
+            ),
+            (
+                Why::SwapGone,
+                lines(&[
+                    "PM: Cannot find swap device, try swapon -a",
+                    "PM: Cannot get swap writer",
+                ]),
+            ),
+            (Why::SwapGone, lines(&["PM: Swap header not found!"])),
+            (Why::SwapFull, lines(&["PM: Not enough free swap"])),
+            (
+                Why::SwapFull,
+                lines(&[
+                    "PM: Compressing and saving image data (120034 pages)...",
+                    "PM: Image saving failed: -28",
+                ]),
+            ),
+            (
+                Why::Device("btintel_pcie".to_owned()),
+                // The XPS 14's Bluetooth refusing to power off, which the
+                // kernel then logs as a wakeup.
+                lines(&[
+                    "btintel_pcie 0000:00:14.7: PM: failed to hibernate async: error -16",
+                    "PM: hibernation: Wakeup event detected during hibernation, rolling back.",
+                ]),
+            ),
+            (
+                Why::Device("amdgpu".to_owned()),
+                lines(&[
+                    "amdgpu 0000:03:00.0: PM: dpm_run_callback(): pci_pm_freeze returns -16",
+                    "amdgpu 0000:03:00.0: PM: failed to freeze async: error -16",
+                ]),
+            ),
+            (
+                Why::Program("fuse-thing".to_owned()),
+                lines(&[
+                    "Freezing user space processes failed after 20.006 seconds (1 tasks \
+                     refusing to freeze, wq_busy=0):",
+                    "task:fuse-thing      state:D stack:0     pid:4242  tgid:4242  ppid:1",
+                ]),
+            ),
+            (
+                Why::Refused,
+                lines(&[
+                    "Freezing remaining freezable tasks failed after 20.004 seconds (1 tasks \
+                     refusing to freeze, wq_busy=0):",
+                    "task:kworker/2:1     state:D stack:0     pid:99    tgid:99    ppid:2",
+                ]),
+            ),
+            (
+                Why::Refused,
+                lines(&["PM: hibernation: Some devices failed to power down, aborting"]),
+            ),
+            (
+                Why::Unwritten,
+                lines(&["PM: lz4 compression failed", "PM: Image saving failed: -5"]),
+            ),
+            (
+                Why::Unwritten,
+                lines(&["PM: Cannot start compression threads"]),
+            ),
+            (
+                Why::Woken,
+                lines(&[
+                    "PM: hibernation: Wakeup event detected during hibernation, rolling back.",
+                ]),
+            ),
+            (
+                Why::Woken,
+                lines(&[
+                    "Freezing user space processes aborted after 0.012 seconds (3 tasks \
+                     refusing to freeze, wq_busy=0):",
+                ]),
+            ),
+            (
+                Why::Unsaid,
+                lines(&[
+                    "PM: hibernation: hibernation entry",
+                    "PM: hibernation: hibernation exit",
+                ]),
+            ),
+            (Why::Unsaid, Vec::new()),
+        ]
+    }
+
+    #[test]
+    fn the_kernels_log_says_why_a_hibernation_rolled_back() {
+        for (why, said) in cases() {
+            assert_eq!(Why::from_log(&said), why, "{said:?}");
+        }
+    }
+
+    #[test]
+    fn a_record_of_the_kernels_log_is_read_with_its_number() {
+        assert_eq!(
+            Record::parse(
+                "3,2813,4021375310,-;amdgpu 0000:03:00.0: PM: failed to freeze: error -16\n \
+                 SUBSYSTEM=pci\n DEVICE=+pci:0000:03:00.0\n"
+            ),
+            Some(Record {
+                number: 2813,
+                message: "amdgpu 0000:03:00.0: PM: failed to freeze: error -16".to_owned(),
+            })
+        );
+        assert_eq!(Record::parse("no record"), None);
+        assert_eq!(Record::parse("6,x,1,-;nothing"), None);
+    }
+
+    #[test]
+    fn the_rescue_is_told_why_as_it_was_found() {
+        for (why, _) in cases() {
+            assert_eq!(Why::from_args(&why.args()), why);
+        }
+        assert_eq!(Why::from_args(&[]), Why::Unsaid);
+    }
+
+    /// Every notice, word for word, with the laptop still on.
+    #[test]
+    fn each_notice_says_why_that_nothing_was_lost_and_what_to_do() {
+        let kept = "Nothing was lost; the laptop is still on.";
+        let again = "Hibernate again in a moment; if it fails twice, put the laptop to sleep \
+                     instead.";
+        let close = "Close something you don't need, then hibernate again.";
+        let said = [
+            (
+                Why::Memory,
+                "Not enough memory to hibernate",
+                format!(
+                    "Memory was too full to copy before writing it to the swap file. {kept} \
+                     {close}"
+                ),
+            ),
+            (
+                Why::SwapGone,
+                "No swap file to hibernate to",
+                format!(
+                    "The swap file that memory is written to wasn't there. {kept} Put it to \
+                     sleep instead: hibernating again would fail the same way."
+                ),
+            ),
+            (
+                Why::SwapFull,
+                "Not enough swap to hibernate",
+                format!("The swap file had no room left for memory. {kept} {close}"),
+            ),
+            (
+                Why::Device("amdgpu".to_owned()),
+                "amdgpu wouldn't let it hibernate",
+                format!("The driver amdgpu refused to stop its device. {kept} {again}"),
+            ),
+            (
+                Why::Program("fuse-thing".to_owned()),
+                "fuse-thing wouldn't let it hibernate",
+                format!(
+                    "fuse-thing wouldn't pause. {kept} Close fuse-thing, then hibernate again."
+                ),
+            ),
+            (
+                Why::Refused,
+                "A device wouldn't let it hibernate",
+                format!(
+                    "Something refused to stop, and the kernel didn't say what. {kept} {again}"
+                ),
+            ),
+            (
+                Why::Unwritten,
+                "Hibernation couldn't write memory",
+                format!("Memory couldn't be written to the swap file. {kept} {again}"),
+            ),
+            (
+                Why::Woken,
+                "Woken while hibernating",
+                format!(
+                    "Something woke the laptop as it went down: a key, the lid or a cable. \
+                     {kept} Hibernate again, and leave it be until it's off."
+                ),
+            ),
+            (
+                Why::Unsaid,
+                "Hibernation didn't finish",
+                format!("The kernel didn't say why. {kept} {again}"),
+            ),
+        ];
+        for (why, title, body) in said {
+            assert_eq!(
+                notice(&why, false),
+                Notice {
+                    title: title.to_owned(),
+                    body
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn a_notice_said_as_it_sleeps_says_it_slept() {
+        assert_eq!(
+            notice(&Why::Memory, true).body,
+            "Memory was too full to copy before writing it to the swap file. Nothing was \
+             lost: with the lid shut, it went to sleep instead. Close something you don't \
+             need, then hibernate again."
+        );
+    }
+
+    #[test]
+    fn with_no_swap_file_it_never_says_to_hibernate_again() {
+        let Notice { body, .. } = notice(&Why::SwapGone, false);
+        assert!(!body.contains("then hibernate again"), "{body}");
+    }
+
+    #[test]
+    fn every_notice_is_plain_text() {
+        for (why, _) in cases() {
+            for slept in [false, true] {
+                let Notice { title, body } = notice(&why, slept);
+                for text in [title, body] {
+                    assert!(text.is_ascii(), "{text}");
+                    assert!(!text.contains("--"), "{text}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_rollback_with_the_lid_open_is_said() {
+        for (why, _) in cases() {
+            assert_eq!(rescue(false, false, &why), Rescue::Say);
+            assert_eq!(rescue(false, true, &why), Rescue::Say);
+        }
+    }
+
+    #[test]
+    fn short_of_memory_or_swap_with_the_lid_shut_it_sleeps() {
+        for why in [Why::Memory, Why::SwapGone, Why::SwapFull] {
+            assert_eq!(rescue(true, false, &why), Rescue::Sleep, "{why:?}");
+            assert_eq!(rescue(true, true, &why), Rescue::Sleep, "{why:?}");
+        }
+    }
+
+    #[test]
+    fn a_laptop_that_cannot_sleep_powers_off() {
+        assert_eq!(after_asking_to_sleep(true), None);
+        assert_eq!(after_asking_to_sleep(false), Some(Rescue::PowerOff));
+    }
+
+    #[test]
+    fn otherwise_with_the_lid_shut_it_tries_once_then_powers_off() {
+        for (why, _) in cases().into_iter().filter(|(why, _)| !why.fails_again()) {
+            assert_eq!(rescue(true, false, &why), Rescue::HibernateAgain, "{why:?}");
+            assert_eq!(rescue(true, true, &why), Rescue::PowerOff, "{why:?}");
+        }
+    }
 
     #[test]
     fn the_counts_are_read_from_tpm2_readclock() {
@@ -411,18 +1028,6 @@ mod tests {
             assert!(writes_an_image(action), "{action}");
         }
         assert!(!writes_an_image("suspend"));
-    }
-
-    #[test]
-    fn a_rollback_with_the_lid_open_is_said() {
-        assert_eq!(rescue(false, false), Rescue::Say);
-        assert_eq!(rescue(false, true), Rescue::Say);
-    }
-
-    #[test]
-    fn a_rollback_with_the_lid_shut_tries_once_then_powers_off() {
-        assert_eq!(rescue(true, false), Rescue::HibernateAgain);
-        assert_eq!(rescue(true, true), Rescue::PowerOff);
     }
 
     #[test]
