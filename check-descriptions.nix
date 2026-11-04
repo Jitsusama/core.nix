@@ -22,7 +22,8 @@
     a file in the launcher's chooser of files says its size in SI units, one decimal under 10, and
     when it changed by how long ago, a folder its count; its plate says its kind with its numbers,
     its preview and its facts, each number kept to its unit, and only its facts before it's said;
-    every word is the launcher's words', and text past what's counted says it's over its count
+    every word is the launcher's words', and text past what's counted says it's over its count; a
+    folder's entries order by name, change or size, folders first, 2 before 10
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -1489,7 +1490,8 @@
     the program that asked; the files selected in one ask are previewed by one file-preview; where
     several may be opened, the lead counts and names what's marked, Return on it saying nothing
     until one is, and inside it each can be unmarked; a folder's Copy the Path comes last; in every
-    folder the field asks for one file, several, a folder or where to save, in the program's word
+    folder the field asks for one file, several, a folder or where to save, in the program's word;
+    its Order row lists it by name, change or size, made afresh, and a restart keeps the order
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

@@ -44,6 +44,9 @@ in
     # Where the folder a save last went to is kept, made as it's first
     # written.
     savedIn = "${config.xdg.stateHome}/open-with/saved-in";
+    # Where the order the folders list in is kept, made as it's first
+    # written.
+    orderIn = "${config.xdg.stateHome}/open-with/order";
   };
 
   home.packages = [ recent-files ];

@@ -1141,6 +1141,11 @@ in
     console = "~";
     means = "a choice a program offers about what it opens or saves";
   };
+  order = {
+    glyph = nerd "f04ba";
+    console = "=";
+    means = "the order a folder's files are listed in, and choosing it";
+  };
   marked = {
     glyph = nerd "f0e29";
     console = "+";

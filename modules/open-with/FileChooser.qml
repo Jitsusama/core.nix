@@ -15,7 +15,9 @@
 // mark while it's marked, and Open the Marked, leading every folder from
 // the start, counts them, names them and opens every file marked, wherever
 // each was, its right arrow stepping into Marked to unmark them (VKCF3Z,
-// 2026-11-03); asked for a folder, each folder leads with Open This
+// 2026-11-03); every folder lists by name, change or size, folders first,
+// as its Order row, last, sets for every ask after (VKCF3Z, 2026-11-04);
+// asked for a folder, each folder leads with Open This
 // Folder, one folder picked though the program could take several. Saving,
 // each folder leads with the name the program gave, and what's typed names
 // it instead; a name already there steps in to Replace It, the one ask.
@@ -134,6 +136,11 @@ Provider {
     // The folder here a save last went to, kept in a file (`savedIn`) so
     // a restart keeps it, or "" before any.
     property string savedLast: ""
+    // The order every folder lists in, one for every ask, kept in a file
+    // (`orderIn`) so a restart keeps it; it starts on name (VKCF3Z,
+    // 2026-11-04).
+    readonly property var orders: ["name", "changed", "size"]
+    property string order: "name"
     // Each kind of file by how it's named, and the kinds each is one of.
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
@@ -203,19 +210,20 @@ Provider {
         const held = heldKeys();
         const hidden = entry => entry.name.startsWith(".") && !held.includes(`folder:${entry.path}`)
             && !(start === entry.path || start.startsWith(`${entry.path}/`));
-        const shown = all.filter(entry => !hidden(entry));
+        const shown = FileFacts.ordered(all.filter(entry => !hidden(entry)), order, counts);
         const own = shown.filter(entry => entry.folder).map(entry => folderRow(entry.path))
             .concat(folders ? [] : shown.filter(entry => !entry.folder && passes(entry.name))
                 .map(entry => fileRow(entry.path)));
         // A file the name given is already, which it leads with, isn't
         // listed again below.
         const naming = saving && path !== "/" ? savingRow(path, request.name ?? "") : null;
-        // The filters and choices wait for the folder's read as its Copy
-        // the Path does (folderRow), to come after its files.
+        // The filters, choices and Order wait for the folder's read as its
+        // Copy the Path does (folderRow), to come after its files. What was
+        // opened lately keeps its own order, apart and on top.
         return apart([several ? [markedLead()] : [],
             (naming ? [naming] : []).concat(path === start ? recent(path) : []),
             own.filter(row => row.key !== naming?.key), path === Files.home ? places.slice() : [],
-            path in listed ? options() : []]);
+            path in listed ? options().concat([orderRow()]) : []]);
     }
 
     // Groups one after another, each set apart from the one before it by a
@@ -1221,6 +1229,21 @@ Provider {
         onLoaded: provider.savedLast = text().trim()
     }
 
+    // Read once as the shell starts; this is its only writer, written whole
+    // before it goes on, so a shell started just after reads the order.
+    FileView {
+        id: orderFile
+
+        path: provider.settings.orderIn ?? ""
+        blockWrites: true
+        printErrors: false
+        onLoaded: {
+            const kept = text().trim();
+            if (provider.orders.includes(kept))
+                provider.order = kept;
+        }
+    }
+
     FileView {
         path: provider.asking === null || !provider.settings.kinds ? ""
             : `${provider.settings.kinds}/globs2`
@@ -1287,6 +1310,56 @@ Provider {
         toCount = [];
         outstanding = null;
         previewer.running = false;
+    }
+
+    // The row that says the order in use and steps into the three, that
+    // one first, each its name; Return on one lists every folder so, kept
+    // for the next ask, and goes back to the folder on its first row, made
+    // afresh, since rows shown keep their places.
+    function orderRow() {
+        const said = Words.of("file-chooser:order").said ?? {};
+        const names = { name: "file-chooser:name", changed: "file-chooser:changed",
+            size: "file-chooser:size" };
+        const inside = () => [order].concat(orders.filter(each => each !== order))
+            .map(each => thing({
+                key: `file-chooser:order:${each}`,
+                name: Words.name(names[each]),
+                verb: Words.verb("file-chooser:order"),
+                glyph: Words.glyph("file-chooser:order"),
+                hue: "action",
+                side: each === provider.order ? "chosen" : "",
+                stays: true,
+                run: () => provider.orderBy(each)
+            }));
+        return thing({
+            key: "file-chooser:order",
+            name: Words.name("file-chooser:order"),
+            verb: "more",
+            glyph: Words.glyph("file-chooser:order"),
+            hue: "action",
+            side: said[order] ?? "",
+            stays: true,
+            now: false,
+            verbs: inside,
+            targets: inside
+        });
+    }
+
+    function orderBy(each) {
+        if (!orders.includes(each))
+            return;
+        if (each !== order) {
+            order = each;
+            if (settings.orderIn)
+                orderFile.setText(`${each}\n`);
+        }
+        const steps = launcher?.held ?? [];
+        if (steps.length < 3 || steps[steps.length - 1].row.key !== "file-chooser:order")
+            return;
+        const folder = steps[steps.length - 2].row;
+        launcher.back();
+        launcher.back();
+        launcher.enter(folder);
     }
 
     function withdrawn(reply) {

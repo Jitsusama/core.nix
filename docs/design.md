@@ -1370,6 +1370,16 @@ works the same way everywhere.
   the Paths (VKCF3Z, 2026-11-03). A folder's Copy the Path comes after
   its files and filters, held back until the folder's read so it never
   heads the list.
+- **A folder lists in the order he chose** (Joel, 2026-11-03: "no ...
+  ability to sort by anything"). The file picker's Order row, last, with
+  the filters and choices, says the order in use ("name", "changed,
+  newest first", "size, largest first"); the right arrow steps into the
+  three, that one first, and Return on one lists the folder so, back on
+  its first row, made afresh, since a list shown otherwise keeps its
+  rows where they are. Name is A to Z, case aside, 2 before 10; a folder
+  sizes by its items. Folders come first in every order and what was
+  opened lately stays apart on top. One order serves every ask and
+  outlasts a restart, starting on name (VKCF3Z, 2026-11-04).
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected
