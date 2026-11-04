@@ -444,8 +444,14 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
                 "systemd-run --user --collect --unit=choose-to-mark"
                 f" {desktop.values['choose_a_file']} open-several {folder}"
             )
+            # Open the Marked leads before the folder's read, so wait for the
+            # folder's files, which down_to goes to next.
             desktop.launcher_until(
-                lambda shown: shown["path"][-1:] == ["~/marking"] and shown["selected"] is not None,
+                lambda shown: (
+                    shown["path"][-1:] == ["~/marking"]
+                    and shown["selected"] is not None
+                    and {"a.md", "b.md", "more"} <= set(shown["rows"])
+                ),
                 timeout=timedelta(seconds=60),
             )
             desktop.down_to("Open the Marked")
