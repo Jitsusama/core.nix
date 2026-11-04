@@ -372,8 +372,20 @@ let
     };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
-    # once it has.
-    vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
+    # once it has. Each area is a machine of its own, so they run side by
+    # side (tests/wifi.nix).
+    vm-wifi-joins = import ./tests/wifi.nix {
+      inherit self pkgs;
+      area = "joins";
+    };
+    vm-wifi-holds-on = import ./tests/wifi.nix {
+      inherit self pkgs;
+      area = "holds-on";
+    };
+    vm-wifi-joins-when-asked = import ./tests/wifi.nix {
+      inherit self pkgs;
+      area = "joins-when-asked";
+    };
     vm-disk-guard-keeps-the-disk = import ./tests/disk-guard.nix { inherit self pkgs; };
     # Whether the kernel panics once a disk is gone, and only then, shows
     # only with a disk to take away.
@@ -926,7 +938,6 @@ gather (
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
             "tests/screens-vm-test.py 36"
             "tests/vm/guide/guide-install-vm-test.py 26"
-            "tests/wifi-vm-test.py 40"
           ];
           tests = lib.fileset.toSource {
             root = ./.;

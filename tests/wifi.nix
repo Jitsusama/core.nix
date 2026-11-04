@@ -21,9 +21,16 @@
 # awake while a charger is plugged in, and dozes once both are pulled.
 # The shell, as an account of the machine's and no other, is told all of
 # it over varlink as it changes, and can have wifid check again, trust a
-# network or forget one, though never one Nix declares. The tests are
-# wifi-vm-test.py, run in order through pytest.
-{ self, pkgs }:
+# network or forget one, though never one Nix declares. The tests are in
+# wifi/, an area to a file, each run in order through pytest on a machine
+# of its own, so the areas run side by side; wifid as they reach it is
+# wifi/wifi_session.py.
+{
+  self,
+  pkgs,
+  # Which area's tests run: joins, holds-on or joins-when-asked.
+  area,
+}:
 let
   inherit (pkgs) lib;
 
@@ -149,7 +156,15 @@ let
   '';
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
-  name = "wifi";
+  name = "wifi-${area}";
+  extraPythonPackages = python: [
+    (python.toPythonModule (
+      pkgs.runCommandLocal "wifi-session" { } ''
+        mkdir -p $out/${python.python.sitePackages}
+        cp ${./wifi/wifi_session.py} $out/${python.python.sitePackages}/wifi_session.py
+      ''
+    ))
+  ];
 
   nodes.machine =
     { pkgs, ... }:
@@ -343,5 +358,5 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       ];
     };
 
-  tests = ./wifi-vm-test.py;
+  tests = ./wifi/wifi-${area}-vm-test.py;
 }
