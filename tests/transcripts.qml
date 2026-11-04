@@ -32,8 +32,14 @@ QtObject {
             call: "call",
             writing: "being written down",
             on: "not written down",
+            yesterday: "yesterday",
+            under: "under a minute",
+            minutes: "{minutes} min",
+            hours: "{hours} h",
+            hoursMinutes: "{hours} h {minutes} min",
             length: "Length",
-            with: "With"
+            with: "With",
+            date: (date, format) => Qt.formatDate(date, format)
         };
         const minute = 60000;
         // Tuesday 3 November 2026, 15:00 local time, as the shell's clock.
@@ -62,18 +68,19 @@ QtObject {
 
         // Its note: [fields, said]
         const notes = [
-            [{}, "today 14:00 \u00b7 32 min"],
+            [{}, "14:00 \u00b7 32 min"],
+            [{ started: at(3, 16, 0), ended: at(3, 16, 5) }, "16:00 \u00b7 5 min"],
             [{ started: at(2, 9, 5), ended: at(2, 10, 10) }, "yesterday 09:05 \u00b7 1 h 5 min"],
             [{ started: new Date(2026, 9, 30, 9, 0).getTime(),
                 ended: new Date(2026, 9, 30, 10, 0).getTime() }, "Friday 09:00 \u00b7 1 h"],
             [{ started: new Date(2026, 9, 20, 9, 0).getTime(),
                 ended: new Date(2026, 9, 20, 9, 0).getTime() + 30000 },
-                "20 October 09:00 \u00b7 under a minute"],
+                "20 Oct 09:00 \u00b7 under a minute"],
             [{ started: new Date(2025, 11, 31, 9, 0).getTime(),
                 ended: new Date(2025, 11, 31, 9, 0).getTime() + 5 * minute },
-                "31 December 2025 09:00 \u00b7 5 min"],
+                "31 Dec 2025 09:00 \u00b7 5 min"],
             [{ ended: null, transcribing: true }, "being written down"],
-            [{ ended: null }, "today 14:00 \u00b7 not written down"]
+            [{ ended: null }, "14:00 \u00b7 not written down"]
         ];
         for (const [fields, expected] of notes)
             check(`the note of ${JSON.stringify(fields)}`, Transcripts.note(call(fields), now, said),
@@ -96,7 +103,7 @@ QtObject {
 
         // The drawer: the summary over how it opens, and who it was with.
         const summed = Transcripts.details(call({ summary: "- Ship it", opening: "**Joel**, 0:00: Hi" }),
-            "Planning", said, "");
+            { title: "Planning", who: "" }, said, now);
         check("a summed-up call's drawer", summed, {
             eyebrow: "Tuesday 3 November \u00b7 14:00",
             title: "Planning",
@@ -106,7 +113,8 @@ QtObject {
             sans: true
         });
         const opened = Transcripts.details(call({ event: null, person: "ada@example.com",
-            opening: "**Ada**, 0:00: Hi", ended: null, transcribing: true }), "Ada", said, "Ada Lovelace");
+            opening: "**Ada**, 0:00: Hi", ended: null, transcribing: true }),
+            { title: "Ada", who: "Ada Lovelace" }, said, now);
         check("a call being written's drawer", opened, {
             eyebrow: "Tuesday 3 November \u00b7 14:00",
             title: "Ada",
@@ -116,8 +124,13 @@ QtObject {
             sans: true
         });
         check("a call with someone People doesn't know",
-            Transcripts.details(call({ person: "ada@example.com" }), "Ada", said, "").facts[1],
+            Transcripts.details(call({ person: "ada@example.com" }), { title: "Ada", who: "" },
+                said, now).facts[1],
             { label: "With", value: "ada@example.com" });
+        check("a call of another year's eyebrow",
+            Transcripts.details(call({ started: new Date(2025, 11, 31, 9, 0).getTime() }),
+                { title: "Planning", who: "" }, said, now).eyebrow,
+            "Wednesday 31 December 2025 \u00b7 09:00");
 
         // Newest first, anything not a call left out; by someone; by a
         // meeting.

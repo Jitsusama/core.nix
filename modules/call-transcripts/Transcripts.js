@@ -9,9 +9,6 @@ const HOUR_MINUTES = 60;
 const DAY = 86_400_000;
 const WEEK_DAYS = 7;
 const DIGITS = 2;
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
-    "September", "October", "November", "December"];
 
 // Markdown's marks, as a summary or a transcript is written with them.
 const RETURNS = /\r/g;
@@ -56,61 +53,74 @@ function midnight(time) {
     return date.getTime();
 }
 
-// The day it was on, as its note says it before the time: "today",
-// "yesterday", the day of the week within the week, else the date, with
-// the year only when it isn't this one.
-function day(time, now) {
+function sameYear(time, now) {
+    return new Date(time).getFullYear() === new Date(now).getFullYear();
+}
+
+// The day it was on, as the launcher says one before a time (Y2YBTS's
+// one way to say when): nothing today, which is never said as a word,
+// "yesterday", the weekday within the last six days, else "28 Oct", with
+// the year only when it isn't this one. A moment ahead of now, from a
+// wrong clock, is today's. The names are the locale's, as `said.date`
+// gives them, Qt's `formatDate` in the shell.
+function day(time, now, said) {
     const days = Math.round((midnight(now) - midnight(time)) / DAY);
     const date = new Date(time);
     if (days <= 0) {
-        return "today";
+        return "";
     }
     if (days === 1) {
-        return "yesterday";
+        return said.yesterday;
     }
     if (days < WEEK_DAYS) {
-        return DAYS[date.getDay()];
+        return said.date(date, "dddd");
     }
-    const year = date.getFullYear() === new Date(now).getFullYear() ? ""
-        : ` ${date.getFullYear()}`;
-    return `${date.getDate()} ${MONTHS[date.getMonth()]}${year}`;
+    return said.date(date, sameYear(time, now) ? "d MMM" : "d MMM yyyy");
 }
 
-// How long it went on, from its start to its end: "under a minute",
-// "32 min", "1 h", "1 h 5 min".
-function length(started, ended) {
+function filled(words, hours, minutes) {
+    return String(words).replace("{hours}", hours).replace("{minutes}", minutes);
+}
+
+// How long it went on, from its start to its end, in `said`'s words:
+// "under a minute", "32 min", "1 h", "1 h 5 min".
+function length(started, ended, said) {
     const minutes = Math.floor(Math.max(0, ended - started) / MINUTE);
     if (minutes < 1) {
-        return "under a minute";
+        return said.under;
     }
     if (minutes < HOUR_MINUTES) {
-        return `${minutes} min`;
+        return filled(said.minutes, 0, minutes);
     }
-    const hours = `${Math.floor(minutes / HOUR_MINUTES)} h`;
-    return minutes % HOUR_MINUTES === 0 ? hours : `${hours} ${minutes % HOUR_MINUTES} min`;
+    const hours = Math.floor(minutes / HOUR_MINUTES);
+    const left = minutes % HOUR_MINUTES;
+    return filled(left === 0 ? said.hours : said.hoursMinutes, hours, left);
 }
 
 // Its note: when it was and how long, "yesterday 14:00 \u00b7 32 min",
 // or, while it's on, what `said` says of it: being written down, or on
-// still with nothing being written, "today 14:00 \u00b7 not written down".
+// still with nothing being written, "14:00 \u00b7 not written down".
 function note(record, now, said) {
     if (record.transcribing) {
         return said.writing;
     }
-    const when = `${day(record.started, now)} ${clock(record.started)}`;
+    const when = [day(record.started, now, said), clock(record.started)]
+        .filter(part => part !== "").join(" ");
     if (typeof record.ended !== "number") {
         return `${when} \u00b7 ${said.on}`;
     }
-    return `${when} \u00b7 ${length(record.started, record.ended)}`;
+    return `${when} \u00b7 ${length(record.started, record.ended, said)}`;
 }
 
 // The day and time it began, as the drawer says them over its title, as
-// a notice's are: "Tuesday 3 November \u00b7 14:00". How long it went on
-// is a fact of its own, so its end isn't said here too.
-function dated(record) {
+// a notice's are: "Tuesday 3 November \u00b7 14:00", with the year only
+// when it isn't this one. How long it went on is a fact of its own, so
+// its end isn't said here too.
+function dated(record, now, said) {
     const date = new Date(record.started);
-    return `${DAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} \u00b7 `
-        + clock(record.started);
+    const named = said.date(date, sameYear(record.started, now) ? "dddd d MMMM"
+        : "dddd d MMMM yyyy");
+    return `${named} \u00b7 ${clock(record.started)}`;
 }
 
 // Text made safe to show as styled text, so nothing a call said is read
@@ -179,20 +189,20 @@ function marked(line) {
 // Its drawer: when it was over its title, how long it went on and who it
 // was with, then its summary when one's written, else how its transcript
 // opens, both set as the markdown they are, in the plate's sans as a
-// notice's words are. Who it was with is `who`, their name as People
-// knows them, or else their address.
-function details(record, name, said, who) {
+// notice's words are. `names` holds its `title` and `who` it was with,
+// their name as People knows them, or else their address.
+function details(record, names, said, now) {
     const facts = [];
     if (typeof record.ended === "number") {
-        facts.push({ label: said.length, value: length(record.started, record.ended) });
+        facts.push({ label: said.length, value: length(record.started, record.ended, said) });
     }
     if (record.person) {
-        facts.push({ label: said.with, value: who || record.person });
+        facts.push({ label: said.with, value: names.who || record.person });
     }
     const words = record.summary || record.opening || "";
     return {
-        eyebrow: dated(record),
-        title: name,
+        eyebrow: dated(record, now, said),
+        title: names.title,
         facts,
         body: styled(words),
         styled: true,

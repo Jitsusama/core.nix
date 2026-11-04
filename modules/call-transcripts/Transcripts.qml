@@ -33,10 +33,12 @@ Singleton {
         : []
 
     // What a row says beside its name and below it, and its drawer's
-    // facts' names, the vocabulary's.
+    // facts' names, the vocabulary's, with the locale's names of days and
+    // months, as Qt gives them.
     readonly property var said: Object.assign({}, Words.of("transcript").said ?? {}, {
         length: Words.name("transcript:length"),
-        with: Words.name("transcript:with")
+        with: Words.name("transcript:with"),
+        date: (date, format) => Qt.formatDate(date, format)
     })
 
     // The newest call of a meeting, by its calendar event, or null.
@@ -49,14 +51,16 @@ Singleton {
         return calls.filter(call => Said.withThem(call, emails));
     }
 
-    // Its name: the call's title, a meeting's or who a Tuple call was
-    // with; for a call that had neither, who was on it, "Call With Sara
-    // Park", or failing that when it began, "Call at 14:00", since Joel
-    // remembers a call by who was on it.
+    // Its name: a meeting's title; for a call with someone and no meeting,
+    // who was on it, "Call With Sara Park", so it reads the same in their
+    // own Recent as anywhere; failing both, when it began, "Call at
+    // 14:00", since Joel remembers a call by who was on it.
     function titled(call, who) {
-        if (call.title !== "")
+        if (call.event && call.title !== "")
             return call.title;
-        const on = who || call.person;
+        // Who Tuple said was on it, "Ada Lovelace and 2 more", else as
+        // People knows them, else their address.
+        const on = call.event ? who : call.title || who || call.person;
         return on ? Words.name("transcript", "untitled", { who: on })
             : Words.name("transcript", "unknown", { time: Said.clock(call.started) });
     }
@@ -74,7 +78,7 @@ Singleton {
     // A call's row, made with the provider of the surface showing it, whose
     // `thing` and launcher it uses: its title, what it was at its right,
     // when it was and how long below, or that it's being written down,
-    // and its summary or how it opens in the drawer. Return opens its
+    // with its summary, or its first lines, in the drawer. Return opens its
     // transcript in the reader, closing the launcher; with none written
     // yet, Return steps in to what can be done. Its other words are who
     // it was with, so their name finds it as their address does.
@@ -89,7 +93,10 @@ Singleton {
         // was made.
         Object.defineProperty(made, "drawer", {
             enumerable: true,
-            get: () => Said.details(call, name, root.said, root.personName(call, provider))
+            get: () => Said.details(call, {
+                title: name,
+                who: root.personName(call, provider)
+            }, root.said, Date.now())
         });
         return made;
     }

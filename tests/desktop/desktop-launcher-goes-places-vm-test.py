@@ -4316,15 +4316,16 @@ def transcripts_listed(desktop: Desktop) -> None:
     desktop.step_in()
     desktop.type_in("transcripts", selecting="Transcripts")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Standup"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Call With Ada Lovelace", "Standup"])
     for name, side, length in [
-        ("Ada Lovelace", "call", "32 min"),
+        ("Call With Ada Lovelace", "call", "32 min"),
         ("Standup", "meeting", "15 min"),
     ]:
         desktop.down_to(name)
         selected = desktop.showing()["selected"]
         assert selected["side"] == side, selected
-        when = rf"(today|yesterday) \d\d:\d\d \u00b7 {length}"
+        # Today is never said as a word: the call's time, else yesterday's.
+        when = rf"(yesterday )?\d\d:\d\d \u00b7 {length}"
         assert re.fullmatch(when, selected["note"]), selected
     # Its drawer holds its summary, else how its transcript opens.
     drawer = desktop.showing()["selected"]["drawer"]
@@ -4334,7 +4335,7 @@ def transcripts_listed(desktop: Desktop) -> None:
     acts = ["Open the Transcript", "Open Its Folder", "Copy the Path"]
     desktop.launcher_until(lambda shown: shown["rows"] == acts)
     machine.send_key("left")
-    desktop.down_to("Ada Lovelace")
+    desktop.down_to("Call With Ada Lovelace")
     drawer = desktop.showing()["selected"]["drawer"]
     assert drawer["body"].startswith("<b>Joel</b>, 0:00: Shall we ship it?"), drawer
     assert drawer["facts"][-1] == {"label": "With", "value": "Ada Lovelace"}, drawer
@@ -4349,7 +4350,7 @@ def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
     desktop.step_in("ret")
     desktop.down_to("Recent")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: "Ada Lovelace" in shown["rows"])
+    desktop.launcher_until(lambda shown: "Call With Ada Lovelace" in shown["rows"])
     things = desktop.showing()["things"]
     assert any(thing["is"] == f"transcript:{ada}" for thing in things), things
     desktop.as_account("qs ipc call launcher toggle")
@@ -4395,6 +4396,10 @@ def test_the_transcripts_list_each_call_written_down_and_return_opens_it_in_the_
         machine.wait_until_fails(reading, timeout=dt.timedelta(seconds=10))
         found_with_ada_and_in_standup(desktop, ada)
     finally:
+        # The next test opens the launcher as a toggle, so it's left closed.
+        if desktop.showing()["open"]:
+            machine.send_key("esc")
+            desktop.launcher_until(lambda shown: not shown["open"])
         desktop.as_account("rm -rf ~/Documents/Calls/standup ~/Documents/Calls/ada")
         desktop.as_account("systemctl --user restart call-transcripts.service")
 

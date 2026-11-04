@@ -267,8 +267,8 @@ Singleton {
 
     // Open the Transcript, for a meeting whose call call-transcripts wrote
     // down: it opens the transcript in the reader, closing the launcher,
-    // as Return on the call's own row does, its summary or how it opens
-    // in the drawer beside it. It's asked of any provider holding `transcriptOf`
+    // as Return on the call's own row does, with its summary, or its
+    // first lines, in the drawer. It's asked of any provider holding `transcriptOf`
     // (call-transcripts' Transcribed.qml), so a machine without
     // call-transcripts offers none; nor does a call with nothing yet
     // written.

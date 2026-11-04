@@ -3906,7 +3906,12 @@
         "person": "call",
         "call": "call",
         "writing": "being written down",
-        "on": "not written down"
+        "on": "not written down",
+        "yesterday": "yesterday",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min"
       }
     },
     {

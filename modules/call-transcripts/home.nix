@@ -29,7 +29,8 @@
 # never from the folder (Transcripts.qml). Each call is a thing in the
 # launcher, in its Transcripts (Transcribed.qml): Return opens its
 # transcript in the reader, and inside it can be opened, its folder
-# opened or its path copied, its summary or how it opens in the drawer.
+# opened or its path copied, with its summary, or its first lines, in
+# the drawer.
 # It's in the Recent of whoever a Tuple call was with
 # (TranscriptSource.qml), and a meeting whose call was written down
 # offers Open the Transcript.
