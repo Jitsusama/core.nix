@@ -37,8 +37,8 @@
 # pages rather than scroll sideways, as Joel chose, so h and l twin
 # nothing. Space scrolls no more, since it leads, which a patch lets it.
 #
-# A key waiting for its second isn't shown, as Neovim's showcmd would: what
-# zathura waits on shows only in its bar, which it keeps hidden.
+# A key waiting for its second isn't shown, as Joel's Neovim has showcmd
+# off, and zathura's bar, which would show it, stays hidden.
 #
 # Comic book archives are left out: that plugin also claims folders and
 # zip, tar and 7z archives, which would open in zathura.
@@ -77,9 +77,9 @@ let
   # Every key worth knowing: the chord as niri spells it, what it
   # does, and, where it isn't zathura's own already, what zathura is told to
   # do on it (`run`), on its key as zathura spells one (`key`). The
-  # launcher lists them over zathura's window: those that go through the
-  # document as Turning pages, those that size the page as Fitting the
-  # page, those that go back to a place as Places, the searches as Finding
+  # launcher lists them over zathura's window: those that go page by page
+  # or to the document beside as Turning pages, those that move within a
+  # page as Scrolling, those that size the page as Fitting the page, those that go back to a place as Places, the searches as Finding
   # words, and the rest loose. Keys that do one thing say it in the same
   # words, the arrow first, so the launcher draws them as one row, the
   # letter beside the arrow it twins. keys-test.sh presses each.
@@ -135,6 +135,22 @@ let
         chord = "5 Shift+g";
         does = "That page";
       }
+      # As Vim's ]b and [b go between buffers, $DBUS the window, whose
+      # zathura says what it shows.
+      {
+        chord = "bracketright b";
+        key = "]b";
+        run = ''exec "${next-document} next $DBUS"'';
+        does = "The next document in its folder";
+      }
+      {
+        chord = "bracketleft b";
+        key = "[b";
+        run = ''exec "${next-document} previous $DBUS"'';
+        does = "The document before in its folder";
+      }
+    ]
+    ++ grouped "scrolling" [
       {
         chord = "Up";
         does = "Up a little";
@@ -241,20 +257,6 @@ let
       }
     ]
     ++ [
-      # As Vim's ]b and [b go between buffers, $DBUS the window, whose
-      # zathura says what it shows.
-      {
-        chord = "bracketright b";
-        key = "]b";
-        run = ''exec "${next-document} next $DBUS"'';
-        does = "The next document in its folder";
-      }
-      {
-        chord = "bracketleft b";
-        key = "[b";
-        run = ''exec "${next-document} previous $DBUS"'';
-        does = "The document before in its folder";
-      }
       {
         chord = "c";
         key = "c";

@@ -10,23 +10,8 @@
 -- a pair waits 300 ms, his Neovim's timeoutlen, for its second, and does
 -- what it does alone once none comes: Space pauses, [ and ] change the
 -- speed, and b smooths banding, as mpv has them; y alone does nothing, as
--- in Vim. What waits shows at the foot's right, muted, as Neovim's
--- showcmd.
-local options = { muted = '808080' }
-require('mp.options').read_options(options, 'vi-keys')
-
+-- in Vim. Nothing shows what waits, as his Neovim has showcmd off.
 local waiting = { count = '', first = nil, timer = nil }
-local shown = mp.create_osd_overlay('ass-events')
-
-local function show()
-  local typed = waiting.count .. (waiting.first or '')
-  if typed == '' then
-    shown:remove()
-    return
-  end
-  shown.data = '{\\an3}{\\1c&H' .. options.muted .. '&}' .. typed
-  shown:update()
-end
 
 local function stop()
   if waiting.timer then
@@ -34,7 +19,6 @@ local function stop()
     waiting.timer = nil
   end
   waiting.count, waiting.first = '', nil
-  show()
 end
 
 local function times(count, command)
@@ -128,7 +112,6 @@ local pressed
 
 -- Once nothing more comes, the key waiting does what it does alone.
 local function wait()
-  show()
   if waiting.timer then
     waiting.timer:kill()
   end
