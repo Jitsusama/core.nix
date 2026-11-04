@@ -398,3 +398,99 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
         desktop.as_account(f"rm -rf {folder}")
+
+
+def selected_is(shown: Json, name: str, side: str | None = None, told: str | None = None) -> bool:
+    """Say whether the row selected is the one named, saying the side and the keys given."""
+    row = shown["selected"]
+    return (
+        row is not None
+        and row["name"] == name
+        and (side is None or row["side"] == side)
+        and (told is None or told in row["told"])
+    )
+
+
+def marked_is_in_sight(shown: Json, scale: str) -> None:
+    """Hold Marked, b.md left in it, to its rows' order and its crumbs."""
+    rows = shown["rows"]
+    assert rows[-3:] == ["b.md", "Unmark All", "Copy the Paths"], rows
+    # Its crumb is the place, and the program's ask and the place are said
+    # whole, a folder's path giving way first where they don't fit.
+    assert shown["path"] == ["Open the Notes", "~/marking/more", "Marked"], shown["path"]
+    whole = shown["pathWhole"]
+    assert whole[0], f"at {scale} the program's ask is cut: {whole}"
+    assert whole[-1], f"at {scale} the place is cut: {whole}"
+
+
+def test_the_file_picker_says_whats_marked_and_what_return_does(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Marking in the file picker says what Return does, and Open the Marked counts and lists."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/marking"
+    chose = "/run/user/1000/portal-chose"
+    desktop.as_account(
+        f"mkdir -p {folder}/more && printf 'one\\n' > {folder}/a.md"
+        f" && printf 'two\\n' > {folder}/b.md"
+        f" && touch {folder}/c.md {folder}/more/d.md {folder}/more/e.md"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            said = scale.replace(".", "-")
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-to-mark"
+                f" {desktop.values['choose_a_file']} open-several {folder}"
+            )
+            # Open the Marked leads before the folder's read, so wait for the
+            # folder's files, which down_to goes to next.
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["path"][-1:] == ["~/marking"]
+                    and shown["selected"] is not None
+                    and {"a.md", "b.md", "more"} <= set(shown["rows"])
+                ),
+                timeout=timedelta(seconds=60),
+            )
+            desktop.down_to("Open the Marked")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="none"))
+            assert not [key for key in desktop.showing()["selected"]["told"] if "\u21b5" in key], (
+                "with none marked, Open the Marked says a Return"
+            )
+            desktop.down_to("a.md")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
+            desktop.photograph(f"file-picker-nothing-marked-at-{said}")
+            for name in ["a.md", "b.md"]:
+                desktop.down_to(name)
+                machine.send_key("ret")
+                desktop.launcher_until(partial(selected_is, name=name, told="\u21b5 unmark"))
+            desktop.down_to("Open the Marked")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
+            desktop.launcher_until(
+                lambda shown: (shown["drawer"] or {}).get("eyebrow") == "2\u00a0marked"
+            )
+            desktop.photograph(f"file-picker-two-marked-at-{said}")
+            desktop.down_to("more")
+            machine.send_key("right")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/marking/more"])
+            desktop.down_to("Open the Marked")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
+            desktop.photograph(f"file-picker-marked-elsewhere-at-{said}")
+            machine.send_key("right")
+            desktop.launcher_until(lambda shown: "Unmark All" in shown["rows"])
+            desktop.down_to("a.md")
+            machine.send_key("ret")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
+            marked_is_in_sight(desktop.showing(), scale)
+            desktop.photograph(f"file-picker-inside-marked-at-{said}")
+            machine.send_key("left")
+            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="1"))
+            desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
+            desktop.down_to("Copy the Path")
+            desktop.photograph(f"file-picker-copy-last-at-{said}")
+            machine.send_key("esc")
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")

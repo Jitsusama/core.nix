@@ -50,6 +50,42 @@ function slide(over, pace) {
 // (docs/design.md, Collapsing; VKCF3Z, 2026-11-02: "Open-Meteo didn't
 // a\u2026"). `width` measures a text in the face it's drawn in. Where not
 // even the first word fits, nothing is said, rather than a piece of one.
+// Room shared among the path's steps, each given its whole `wanted` width
+// where it fits, else an even share of what the shorter leave. The steps
+// `yielding`, a folder's path, give way first, each down to `least`, so
+// the program's ask and the place he's in are cut only once the paths can
+// give no more (VKCF3Z, 2026-11-04).
+function sharedSteps(wanted, yielding, room, least) {
+    const given = wanted.slice();
+    const soft = [];
+    const hard = [];
+    for (let index = 0; index < wanted.length; index += 1) {
+        (yielding[index] ? soft : hard).push(index);
+    }
+    const firm = hard.reduce((sum, index) => sum + wanted[index], 0);
+    const softLeast = soft.reduce((sum, index) => sum + Math.min(wanted[index], least), 0);
+    if (firm + softLeast <= room) {
+        shareAmong(given, soft, room - firm);
+    } else {
+        for (const index of soft) {
+            given[index] = Math.min(wanted[index], least);
+        }
+        shareAmong(given, hard, room - softLeast);
+    }
+    return given;
+}
+
+// Shares `room` out among the steps at `among`, in place in `given`: the
+// shortest first, each its whole or an even share of what's left.
+function shareAmong(given, among, room) {
+    let left = Math.max(0, room);
+    const order = among.slice().sort((one, other) => given[one] - given[other]);
+    order.forEach((index, done) => {
+        given[index] = Math.min(given[index], Math.floor(left / (order.length - done)));
+        left -= given[index];
+    });
+}
+
 function wholeWords(words, room, width) {
     if (width(words) <= room) {
         return words;

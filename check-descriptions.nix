@@ -31,7 +31,9 @@
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
     settling back to it in at most a fifth of a second at each end, never stepping back; and words
-    too long for the field's end give way at a whole word, no separator left before the ellipsis
+    too long for the field's end give way at a whole word, no separator left before the ellipsis;
+    and the field's path shares its room with a folder's path giving way first, down to its least,
+    before the other steps share what's left
   '';
   a-low-charge-is-said-once = ''
     a battery that reports only its charge runs low at its mark and critical at its own, only ever
@@ -1484,7 +1486,9 @@
     a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
     fetched before they're answered; saving there, its folders take the name, ask before replacing
     one, and answer the path the place stages it at once its folder is made, marked beside it with
-    the program that asked; the files selected in one ask are previewed by one file-preview
+    the program that asked; the files selected in one ask are previewed by one file-preview; where
+    several may be opened, the lead counts and names what's marked, Return on it saying nothing
+    until one is, and inside it each can be unmarked; a folder's Copy the Path comes last
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

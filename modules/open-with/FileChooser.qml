@@ -11,9 +11,11 @@
 // each drawn as every file and folder is (Files.qml); then the program's
 // filters and its choices, apart again. What's hidden shows once a "." is
 // typed. Opening, Return on a file picks it, by the program's own word for
-// it; where several may be opened, Return marks it instead, and Open the
-// Marked, leading every folder from the start, opens every file marked,
-// wherever each was; asked for a folder, each folder leads with Open This
+// it; where several may be opened, Return marks it instead, its glyph the
+// mark while it's marked, and Open the Marked, leading every folder from
+// the start, counts them, names them and opens every file marked, wherever
+// each was, its right arrow stepping into Marked to unmark them (VKCF3Z,
+// 2026-11-03); asked for a folder, each folder leads with Open This
 // Folder, one folder picked though the program could take several. Saving,
 // each folder leads with the name the program gave, and what's typed names
 // it instead; a name already there steps in to Replace It, the one ask.
@@ -200,10 +202,12 @@ Provider {
         // A file the name given is already, which it leads with, isn't
         // listed again below.
         const naming = saving && path !== "/" ? savingRow(path, request.name ?? "") : null;
+        // The filters and choices wait for the folder's read as its Copy
+        // the Path does (folderRow), to come after its files.
         return apart([several ? [markedLead()] : [],
             (naming ? [naming] : []).concat(path === start ? recent(path) : []),
             own.filter(row => row.key !== naming?.key), path === Files.home ? places.slice() : [],
-            options()]);
+            path in listed ? options() : []]);
     }
 
     // Groups one after another, each set apart from the one before it by a
@@ -254,6 +258,14 @@ Provider {
             empty: "Nothing here.",
             typed: letters => typedIn(path, letters)
         });
+        // Until the folder's read, it holds no Copy the Path: rows shown
+        // keep their place and those that come go below them, so a Copy
+        // shown before its files were read headed the list for good, where
+        // it goes last (VKCF3Z, 2026-11-03).
+        const whole = row.verbs;
+        const held = () => path in provider.listed ? whole()
+            : whole().filter(one => !String(one.key).startsWith("verb:path:folder:copy:"));
+        Object.assign(row, { verbs: held, targets: held });
         Object.defineProperty(row, "title", {
             get: () => provider.titled(Files.shown(path)),
             enumerable: true
@@ -609,35 +621,127 @@ Provider {
         });
         const row = made([marking, act("verb:path:file:open", path, [path])]);
         row.stays = true;
+        // Marked, its glyph is the mark, in an act's hue rather than a
+        // file's, the one colour on the row changing with it (VKCF3Z,
+        // 2026-11-03), never the accent, which stays where the keys go.
         Object.defineProperties(row, {
             verb: { enumerable: true, get: verb },
             glyph: {
                 enumerable: true,
                 get: () => Words.glyph(is() ? "file-chooser:marked" : "path:file")
-            }
+            },
+            hue: { enumerable: true, get: () => is() ? "action" : "program" }
         });
         return row;
     }
 
     // The lead where several may be opened, there from the start so nothing
-    // slides when the first is marked: it says how many are, and Return
-    // opens them, or, with none, opens nothing and says why.
+    // slides when the first is marked (VKCF3Z, 2026-11-03). Until one is,
+    // it says "none" and nothing more, and Return on it does nothing, the
+    // foot saying no Return; then it counts them, its note names them in
+    // the order marked, its plate lists them with their size together,
+    // Return opens them all, and the right arrow steps into Marked, which
+    // stays while he's in it though the last is unmarked.
     function markedLead() {
         const count = marked.length;
-        return thing({
+        const said = Words.of("verb:file-chooser:marked").said ?? {};
+        const name = accept !== "" ? `${accept} the Marked` : Words.name("verb:file-chooser:marked");
+        const row = {
             key: "file-chooser:marked",
-            name: accept !== "" ? `${accept} the Marked` : Words.name("verb:file-chooser:marked"),
+            name: name,
+            // Stepped into, its crumb is the place, not the act that
+            // leads to it (VKCF3Z, 2026-11-04).
+            title: Words.name("file-chooser:marked"),
             verb: word("verb:file-chooser:marked"),
             glyph: Words.glyph("verb:file-chooser:marked"),
             hue: "action",
-            side: count === 0 ? "none" : `${count}`,
-            note: count === 0 ? "Nothing is marked yet: Return on a file marks it." : fetchingSaid(),
+            side: count === 0 ? said.none ?? "" : `${count}`,
+            note: fetchingSaid() || marked.map(each => markedName(each)).join(" \u00b7 "),
+            still: count === 0,
             stays: count === 0 || marked.some(each => !each.startsWith("/")),
             run: () => {
                 if (provider.marked.length > 0)
                     provider.choose(provider.marked.slice());
             }
+        };
+        // The launcher draws a plate only for a thing, by its kind, or a
+        // row that says it's plated, as Now does at home; the lead is no
+        // thing, so it says so while it has the marked files to list.
+        if (count > 0)
+            Object.assign(row, { plated: true, drawer: () => provider.markedPlate(name) });
+        if (count > 0 || inMarked())
+            row.verbs = () => provider.insideMarked();
+        return thing(row);
+    }
+
+    // A file marked, by its name: its path's last part, or what the place
+    // it's kept in calls it.
+    function markedName(id) {
+        return id.startsWith("/") ? Files.named(id) : elsewhere[id]?.name ?? id;
+    }
+
+    function markedPlate(title) {
+        return FileFacts.markedPlate(title, marked.map(each => ({
+            name: markedName(each),
+            where: each.startsWith("/") ? Files.within(each) : "",
+            size: known[each]?.size
+        })), factWords);
+    }
+
+    // Whether Marked is the step shown now.
+    function inMarked() {
+        const steps = launcher?.held ?? [];
+        return steps.length > 0 && steps[steps.length - 1].row.key === "file-chooser:marked";
+    }
+
+    // The files Marked has shown since it was stepped into, in the order
+    // they were marked, kept apart from what's drawn so reading them never
+    // asks for the rows again.
+    readonly property var shownInMarked: ({ ids: [] })
+
+    // Inside Marked: the files marked, in the order they were, each with
+    // its folder as its note, Return flipping its mark as anywhere else, so
+    // one unmarked stays there, unmarked, until he leaves; then Unmark All,
+    // then Copy the Paths, both with nothing to do once none is marked.
+    function insideMarked() {
+        const was = inMarked() ? shownInMarked.ids : [];
+        shownInMarked.ids = was.concat(marked.filter(each => !was.includes(each)));
+        const none = marked.length === 0;
+        const paths = marked.filter(each => each.startsWith("/"));
+        const files = shownInMarked.ids.map(id => {
+            if (!id.startsWith("/"))
+                return markingRow(id, acts => Files.elsewhere("file", { key: id, name: markedName(id) },
+                    thing, acts));
+            const row = markingRow(id, acts => Files.file(id, thing, acts));
+            row.note = Files.within(id);
+            return described(row, id, false);
         });
+        return files.concat([thing({
+            key: "verb:file-chooser:unmark-all",
+            name: Words.name("verb:file-chooser:unmark-all"),
+            verb: Words.verb("verb:file-chooser:unmark-all"),
+            glyph: Words.glyph("verb:file-chooser:unmark-all"),
+            hue: "action",
+            still: none,
+            stays: true,
+            run: () => {
+                provider.marked = [];
+                provider.changed();
+            }
+        }), thing({
+            key: "verb:file-chooser:copy-marked",
+            name: Words.name("verb:file-chooser:copy-marked"),
+            verb: Words.verb("verb:file-chooser:copy-marked"),
+            glyph: Words.glyph("verb:file-chooser:copy-marked"),
+            hue: "action",
+            still: paths.length === 0,
+            stays: paths.length === 0,
+            copy: paths.join("\n"),
+            run: () => {
+                if (paths.length > 0)
+                    Quickshell.clipboardText = paths.join("\n");
+            }
+        })]);
     }
 
     // Each path is here, and any kept elsewhere is fetched first; a file

@@ -1768,10 +1768,14 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice);
-        const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
+        // One with nothing to do yet (`still`), as the file chooser's Open
+        // the Marked before anything is marked, says no Return at all
+        // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
+        const keys = choice.still ? []
+            : [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
         // One that keeps the launcher can be done and closed at once, the
         // font having no Ctrl key's mark, so it's spelled as chords are.
-        if (keepsOpen(choice))
+        if (!choice.still && keepsOpen(choice))
             keys.push(["Ctrl+\u21b5", "close"]);
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
@@ -3628,6 +3632,8 @@ Scope {
             completion: root.completion,
             held: root.held.map(step => step.row.chip ?? step.row.name),
             path: root.path,
+            // Whether each of the path's steps is said whole in the field.
+            pathWhole: prompt.chipsWhole,
             rows: root.matches.slice(0, 20).map(row => row.name),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
@@ -4160,7 +4166,8 @@ Scope {
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
-                        chips: root.path.map(step => ({ text: step }))
+                        // A folder's path gives way before any other step.
+                        chips: root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
