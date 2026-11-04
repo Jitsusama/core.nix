@@ -50,8 +50,8 @@ in
     IdleActionSec = "5min";
   };
   # A switch that changes them reloads logind, as the lid's own settings do
-  # (../lid/nixos.nix says why).
-  systemd.services.systemd-logind.reloadTriggers = [
+  # (../lid/nixos.nix says why this trigger does).
+  systemd.services.systemd-logind.restartTriggers = [
     config.environment.etc."systemd/logind.conf".source
   ];
 
