@@ -937,6 +937,8 @@ gather (
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
             "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
             "tests/screens-vm-test.py 36"
+            # One machine's story, kept whole since a split would replay it
+            # (docs/testing.md, Earning a Check).
             "tests/vm/guide/guide-install-vm-test.py 26"
           ];
           tests = lib.fileset.toSource {
