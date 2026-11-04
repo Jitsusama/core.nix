@@ -2643,6 +2643,7 @@ fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
         Keysym::Right => keys::Key::Right,
         Keysym::Page_Up => keys::Key::PageUp,
         Keysym::Page_Down => keys::Key::PageDown,
+        Keysym::F1 => keys::Key::F1,
         sym => {
             let typed = sym.key_char()?;
             if ctrl {
@@ -3162,7 +3163,14 @@ impl Drop for App {
 fn print_keys() {
     let keys: Vec<serde_json::Value> = keys::chords()
         .into_iter()
-        .map(|(group, chord, does)| serde_json::json!({"group": group, "chord": chord, "does": does}))
+        .map(|key| {
+            serde_json::json!({
+                "group": key.group,
+                "chord": key.chord,
+                "does": key.does,
+                "act": key.act,
+            })
+        })
         .collect();
     // A reader of the list that stops early, as head does, ends it quietly.
     let _ = writeln!(

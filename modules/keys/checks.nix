@@ -5,10 +5,128 @@
   bareNixos,
   holds,
   lib,
+  pkgs,
   self,
   ...
 }:
+let
+  # A chord of a made-up key map, for the controls below.
+  bind = chord: keys: act: {
+    inherit chord keys act;
+    does = "Something";
+    when = "";
+    run = [ ];
+  };
+  keyMap = name: layers: pkgs.writeText "${name}.json" (builtins.toJSON layers);
+
+  # Each way of straying the check has to catch, with what it says.
+  controls = [
+    {
+      layers = keyMap "another-acts-key" [
+        {
+          name = "reader";
+          kinds = [ "player" ];
+          binds = [
+            (bind "q" "q" "close")
+            (bind "Space ?" "space ?" "show-keys")
+            (bind "d d" "d d" "")
+          ];
+        }
+      ];
+      says = "reader: d d is its own (Something), but the language gives it to ending";
+    }
+    {
+      layers = keyMap "an-act-left-out" [
+        {
+          name = "reader";
+          kinds = [ "player" ];
+          binds = [ (bind "q" "q" "close") ];
+        }
+      ];
+      says = "reader: a player has show-keys, which it leaves out";
+    }
+    {
+      layers = keyMap "not-the-acts-key" [
+        {
+          name = "reader";
+          kinds = [ "player" ];
+          binds = [
+            (bind "q" "q" "close")
+            (bind "Space h" "space h" "show-keys")
+          ];
+        }
+      ];
+      says = "reader: Space h isn't one of show-keys's keys";
+    }
+    {
+      layers = keyMap "neovim-moves-a-key" [
+        {
+          name = "neovim";
+          binds = [ (bind "Space h" "space h" "show-keys") ];
+        }
+      ];
+      says = "neovim: Space h isn't one of show-keys's keys";
+    }
+    {
+      layers = keyMap "neovim-gives-a-key-away" [
+        {
+          name = "neovim";
+          binds = [ (bind "Space ?" "space ?" "") ];
+        }
+      ];
+      says = "neovim: Space ? is its own (Something), but the language gives it to show-keys";
+    }
+  ];
+in
 {
+  # Every surface of ours speaks the key language (language.toml), and
+  # Neovim's own keys are what the language is checked against: the key map
+  # every machine writes is read as the launcher reads it, and a chord the
+  # language gives to another act, an act a surface's kinds hold that it
+  # leaves out, or a chord bound to an act that isn't one of the act's keys
+  # fails (speaks-the-language.py). So the check can't pass by seeing
+  # nothing, each way of straying is shown to fail first, as is a language
+  # that gives one key to two acts and the reader leaving out a key it
+  # takes only while selecting.
+  keys-speak-the-language =
+    let
+      # A workstation with a desktop has every layer, Neovim's among them.
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+      ];
+      keys = (account machine).xdg.configFile."jitsusama/keys.json".source;
+      check = "${lib.getExe pkgs.python3} ${./speaks-the-language.py}";
+    in
+    pkgs.runCommandLocal "keys-speak-the-language" { } ''
+      # A language and a key map that stray, and what the check must say.
+      strays() {
+        if ${check} "$1" "$2" neovim > said; then
+          echo "The key language check passed on $2, which strays."
+          exit 1
+        fi
+        if ! grep -qF -- "$3" said; then
+          echo "On $2 the key language check didn't say: $3"
+          cat said
+          exit 1
+        fi
+      }
+      ${lib.concatMapStrings (control: ''
+        strays ${./language.toml} ${control.layers} ${lib.escapeShellArg control.says}
+      '') controls}
+      cat ${./language.toml} > twice.toml
+      printf '\n[acts.twice]\nkeys = ["j"]\nkinds = []\n' >> twice.toml
+      strays twice.toml ${keyMap "none" [ ]} \
+        "the language gives j to both down and twice in normal mode"
+      ${lib.getExe pkgs.jq} \
+        'map(if .name == "reader" then .binds |= map(select(.act != "word-on")) else . end)' \
+        ${keys} > unselecting.json
+      strays ${./language.toml} unselecting.json \
+        "reader: a page has word-on, which it leaves out"
+      ${check} ${./language.toml} ${keys} neovim
+      touch $out
+    '';
+
   # A chord two layers both claim never reaches the lower one, so a machine
   # with one doesn't build. The clashes here are spelt the way each program
   # spells its chords, so the map has to see through the spelling: kitty's

@@ -57,14 +57,19 @@ onLinux {
   reader-passes-clippy = passesClippy "reader-passes-clippy" (pkgs.callPackage ./package.nix { });
 
   # The keys the launcher lists over the reader's window are the reader's
-  # own: every chord its table takes, with what it does and its group, as
-  # reader --keys says them, and no other.
+  # own: every chord its table takes, with what it does, its group and the
+  # key language's act, as reader --keys says them, and no other.
   reader-says-the-keys-it-takes =
     let
       listed = builtins.toJSON (
         lib.sort (a: b: a.chord < b.chord) (
           map (key: {
-            inherit (key) chord does group;
+            inherit (key)
+              chord
+              does
+              group
+              act
+              ;
           }) home.jitsusama.reader.keys
         )
       );

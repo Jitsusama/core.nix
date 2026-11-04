@@ -27,6 +27,8 @@ serde_json = "1"
 smithay-client-toolkit = { version = "0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 tiny-skia = "0.12"
+# The key language its keys are read from (../keys/language.toml).
+toml = "0.8"
 # A face's family names, to find it by any its file gives, as Typst names
 # it by one.
 ttf-parser = "0.25"

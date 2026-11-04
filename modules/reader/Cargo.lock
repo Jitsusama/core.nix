@@ -2991,6 +2991,7 @@ dependencies = [
  "smithay-client-toolkit",
  "syntect",
  "tiny-skia",
+ "toml",
  "ttf-parser",
  "two-face 0.5.2+bat-0.26.1",
  "typst",

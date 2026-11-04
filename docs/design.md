@@ -1536,13 +1536,20 @@ modes, the launcher's field and the file picker's included.
   gives normal mode over its list, and i, a, I or A types again. A surface
   where nothing types, as the reader, the notices and the drawer, opens in
   normal.
-- **One key language.** Every app of ours reads its keys from one file in
-  Neovim's notation, naming each act once, with its keys and the kinds of
-  surface it belongs to. A check fails when an app binds a key against it,
-  or leaves out a key its kind must have. The language is held to
-  `modules/neovim`, so his Neovim stays the source. Until a surface reads
-  from it, its keys sit in one table of key and act, never scattered
-  through its code, so ? lists them.
+- **One key language.** Each act is named once, with its keys in Neovim's
+  notation, the modes it's pressed in (normal, insert, visual) and the
+  kinds of surface it belongs to (field, list, page, player), in
+  `modules/keys/language.toml`, beside how long a waiting key waits, the
+  which-key list's delay and the yank flash's, which Neovim reads from
+  there too. Each surface reads its keys from it by the acts' names; it
+  names its kinds in `jitsusama.surfaces` and each chord's act in its key
+  map, and `keys-speak-the-language` fails on a surface that leaves out an
+  act its kinds hold, gives a key of the language to another act, or binds
+  an act by a key not its own, and on a change to Neovim's keys the
+  language doesn't agree with. The language is held to `modules/neovim`,
+  so his Neovim stays the source. Until a surface reads from it, its keys
+  sit in one table of key and act, never scattered through its code, so ?
+  lists them.
 - **First, on every such surface:**
   - **Moving:** h, j, k and l, as the arrows; gg and G to the first and
     last; and, where there's more than a screen to move through, Ctrl+D

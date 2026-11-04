@@ -9,7 +9,8 @@ end
 
 which_key.setup({
   preset = 'modern',
-  delay = 200, -- in ms
+  -- In milliseconds, as the key language says it for every surface.
+  delay = require('timing')['which-key'],
   show_help = false,
   -- Only keys that say what they do.
   filter = function(mapping)
