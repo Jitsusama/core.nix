@@ -19,11 +19,20 @@ pub const STALLED_AT: f64 = 10.0;
 /// Whether memory stalls now, on the whole machine or in the group of
 /// work this process runs in, where what it starts adds its share. A
 /// reading that can't be had is no stall, as on a machine without PSI.
+/// `CHANGED_CHECKS_PRESSURE` names the one file read in their place, so
+/// a test stands apart from the machine it runs on: read there, a
+/// loaded machine's stall held a test's second evaluation past its ten
+/// seconds on 3 November.
 pub fn memory_stalled() -> bool {
-    readings(Path::new("/proc"), Path::new("/sys/fs/cgroup"))
-        .iter()
-        .any(|text| stalled(text))
+    let read = match std::env::var_os(PRESSURE) {
+        Some(file) => fs::read_to_string(file).into_iter().collect(),
+        None => readings(Path::new("/proc"), Path::new("/sys/fs/cgroup")),
+    };
+    read.iter().any(|text| stalled(text))
 }
+
+/// What names the pressure file read in place of the machine's.
+const PRESSURE: &str = "CHANGED_CHECKS_PRESSURE";
 
 /// The pressure files to read: the machine's, and the one of the parent of
 /// this process's own cgroup.
