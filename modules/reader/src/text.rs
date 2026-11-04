@@ -196,17 +196,27 @@ fn goes_on(lines: &[Line], from: usize) -> Option<usize> {
         })
 }
 
-/// Every match of `query` on the page, top to bottom. Case is ignored until
-/// the query holds a capital, as smartcase has it.
+/// Every match of `query` on the page, top to bottom. With `smartcase`,
+/// case is ignored until the query holds a capital, as a typed search has
+/// it; without, it's ignored whatever the query holds, as vi's * and #
+/// ignore it. A query between `\<` and `\>` matches only a whole word, as
+/// vi's does, which * and # search for.
 #[expect(
     clippy::float_cmp,
     reason = "a piece's baseline is its line's, copied, never computed"
 )]
-pub fn find(lines: &[Line], query: &str) -> Vec<Found> {
+pub fn find_as(lines: &[Line], query: &str, smartcase: bool) -> Vec<Found> {
+    let (query, word_starts) = query
+        .strip_prefix("\\<")
+        .map_or((query, false), |rest| (rest, true));
+    let (query, word_ends) = query
+        .strip_suffix("\\>")
+        .map_or((query, false), |rest| (rest, true));
     if query.is_empty() {
         return Vec::new();
     }
-    let ignore_case = !query.chars().any(char::is_uppercase);
+    let wordy = |c: &char| c.is_alphanumeric() || *c == '_';
+    let ignore_case = !smartcase || !query.chars().any(char::is_uppercase);
     let fold = |text: &str| -> Vec<char> {
         if ignore_case {
             text.chars().flat_map(char::to_lowercase).collect()
@@ -253,7 +263,10 @@ pub fn find(lines: &[Line], query: &str) -> Vec<Found> {
             continue;
         }
         for i in 0..=chars.len() - wanted.len() {
-            if chars[i..i + wanted.len()] != wanted[..] {
+            if chars[i..i + wanted.len()] != wanted[..]
+                || (word_starts && i > 0 && wordy(&chars[i - 1]))
+                || (word_ends && chars.get(i + wanted.len()).is_some_and(wordy))
+            {
                 continue;
             }
             let mut pieces: Vec<Piece> = Vec::new();
@@ -278,6 +291,11 @@ pub fn find(lines: &[Line], query: &str) -> Vec<Found> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A typed search, as / makes it.
+    fn find(lines: &[Line], query: &str) -> Vec<Found> {
+        find_as(lines, query, true)
+    }
 
     #[expect(
         clippy::cast_precision_loss,
@@ -401,5 +419,20 @@ mod tests {
         let lines = lines(vec![run(0.0, 10.0, "text")]);
         assert!(find(&lines, "").is_empty());
         assert!(find(&lines, "absent").is_empty());
+    }
+
+    #[test]
+    fn a_query_between_word_marks_finds_only_whole_words() {
+        let lines = lines(vec![run(0.0, 10.0, "page pages apage page_ page")]);
+        assert_eq!(find(&lines, "page").len(), 5);
+        assert_eq!(find(&lines, "\\<page\\>").len(), 2);
+        assert_eq!(find(&lines, "\\<page").len(), 4, "only its start a word's");
+        assert!(find(&lines, "\\<\\>").is_empty());
+        assert_eq!(find(&lines, "\\<Page\\>").len(), 0);
+        assert_eq!(
+            find_as(&lines, "\\<Page\\>", false).len(),
+            2,
+            "as * ignores case"
+        );
     }
 }

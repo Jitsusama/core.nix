@@ -1391,11 +1391,13 @@ in
   # ─── Steps through what's in order, [ before and ] after ────────────────
   {
     chord = "[ b";
+    act = "previous-file";
     does = "Go to the open file before";
     command = "bprevious";
   }
   {
     chord = "] b";
+    act = "next-file";
     does = "Go to the next open file";
     command = "bnext";
   }

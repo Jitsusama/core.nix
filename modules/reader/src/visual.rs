@@ -3,7 +3,8 @@
 //! take what's round it (select.rs), and y or Ctrl+C copies it as the
 //! file's markdown through wl-copy, flashing what it took as his Neovim's
 //! yank does. At rest the page has no cursor, so y y and y i p copy the
-//! first paragraph, item or line of code wholly in view, or its paragraph.
+//! first paragraph, item or line of code wholly in view, or its paragraph,
+//! and H, M, L and % flash the line they put the page's unseen one on.
 //! The selection's ground is drawn over the page's bands, as search's
 //! marks are, recolouring the page under it in one pass.
 
@@ -15,13 +16,16 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use crate::keys::Act;
 use crate::select::{Kind, Motion, Selection};
-use crate::{App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, gl, keys_logged, prompt, select};
+use crate::{
+    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, gl, keys_logged, prompt, select, text,
+};
 
 impl App {
     /// The view the cursor keeps to, its top and foot in points down the
     /// page: where the view is heading, above the prompt's row while the
-    /// prompt shows.
-    fn view_pt(&self) -> (f64, f64) {
+    /// prompt shows; the lines H, M and L pick from, and the page's cursor
+    /// stays among.
+    pub(crate) fn view_pt(&self) -> (f64, f64) {
         let px = self.px_per_pt();
         let top = self.heading() / px;
         let prompt = if self.prompt_shown {
@@ -210,25 +214,7 @@ impl App {
     /// Copies a selection as the file's markdown, on a thread, through
     /// wl-copy, and flashes what it took for a moment.
     fn copy(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
-        let pieces = layout.pieces(&taken);
-        if keys_logged() {
-            eprintln!("flash: {} lines for {} ms", pieces.len(), FLASH.as_millis());
-        }
-        self.flash = Some((pieces, Instant::now() + FLASH));
-        let flashed =
-            self.loop_handle
-                .insert_source(Timer::from_duration(FLASH), |_, (), app: &mut App| {
-                    if app.flash.take().is_some() && keys_logged() {
-                        eprintln!("flash: over");
-                    }
-                    if !app.frame_pending {
-                        app.draw();
-                    }
-                    TimeoutAction::Drop
-                });
-        if let Err(error) = flashed {
-            eprintln!("reader: can't time the copy's flash: {error}");
-        }
+        self.flash(layout.pieces(&taken));
         let layout = Arc::clone(layout);
         let copying = std::thread::Builder::new()
             .name("copy".into())
@@ -242,6 +228,58 @@ impl App {
             });
         if let Err(error) = copying {
             eprintln!("reader: can't copy: {error}");
+        }
+    }
+
+    /// Flashes pieces of the page on the selection's ground for a moment,
+    /// as his Neovim's yank does.
+    fn flash(&mut self, pieces: Vec<text::Piece>) {
+        if keys_logged() {
+            eprintln!("flash: {} lines for {} ms", pieces.len(), FLASH.as_millis());
+        }
+        self.flash = Some((pieces, Instant::now() + FLASH));
+        let flashed =
+            self.loop_handle
+                .insert_source(Timer::from_duration(FLASH), |_, (), app: &mut App| {
+                    // A flash after it ends its own time; only the last
+                    // one's ends what shows.
+                    let over = app
+                        .flash
+                        .as_ref()
+                        .is_some_and(|(_, until)| Instant::now() >= *until);
+                    if over {
+                        app.flash = None;
+                        if keys_logged() {
+                            eprintln!("flash: over");
+                        }
+                    }
+                    if !app.frame_pending {
+                        app.draw();
+                    }
+                    TimeoutAction::Drop
+                });
+        if let Err(error) = flashed {
+            eprintln!("reader: can't time the flash: {error}");
+        }
+    }
+
+    /// Flashes the cursor's line, the width of its words: at rest the page
+    /// draws no cursor, so H, M, L and % show this way where they put it.
+    pub(crate) fn flash_cursor(&mut self) {
+        let piece = self
+            .cursor()
+            .zip(self.words.as_deref())
+            .and_then(|(i, lines)| {
+                let line = &lines[i];
+                Some(text::Piece {
+                    baseline_pt: line.baseline_pt,
+                    size_pt: line.size_pt,
+                    from_pt: line.spans.first()?.0,
+                    to_pt: line.spans.last()?.1,
+                })
+            });
+        if let Some(piece) = piece {
+            self.flash(vec![piece]);
         }
     }
 

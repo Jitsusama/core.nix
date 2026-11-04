@@ -1,5 +1,6 @@
-//! What the reader sets apart from the page: the search prompt at the
-//! window's foot, as Neovim's command line, Space ?'s key list, as his
+//! What the reader sets apart from the page: the search prompt and the
+//! command line at the window's foot, as Neovim's command line, gO's
+//! outline above it, as his location list, Space ?'s key list, as his
 //! which-key, and g x's labels over links, as his flash. Each is set by Typst in the page's code face on a thread of
 //! their own, whose world is made once, so a key never waits on fonts or
 //! setting.
@@ -26,7 +27,13 @@ pub struct Ask {
     /// Labels for links rather than the prompt, each set apart: only
     /// `px_per_pt` then counts besides.
     pub labels: Vec<String>,
-    pub forward: bool,
+    /// gO's outline rather than the prompt: the rows shown, each a
+    /// heading's level and words and whether it's chosen. `width_pt`,
+    /// `px_per_pt` and `page` count besides.
+    pub outline: Vec<(u8, String, bool)>,
+    /// What the prompt opens with: / or ? for a search, : for a command,
+    /// and nothing for a message.
+    pub mark: &'static str,
     pub typed: String,
     /// Whether it's still being typed, so the cursor shows.
     pub cursor: bool,
@@ -46,6 +53,7 @@ pub struct Ask {
 pub struct Set {
     pub serial: u32,
     pub keys: bool,
+    pub outline: bool,
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
@@ -88,12 +96,14 @@ fn rendered(page: &typst_layout::Page, px_per_pt: f64) -> Label {
     }
 }
 
-/// Which of the three an ask is, so only the newest of each is set.
+/// Which of the four an ask is, so only the newest of each is set.
 fn slot(ask: &Ask) -> usize {
-    if ask.labels.is_empty() {
-        usize::from(ask.keys)
-    } else {
+    if !ask.labels.is_empty() {
         2
+    } else if !ask.outline.is_empty() {
+        3
+    } else {
+        usize::from(ask.keys)
     }
 }
 
@@ -114,7 +124,8 @@ impl Prompt {
                     serial: 0,
                     keys: false,
                     labels: Vec::new(),
-                    forward: true,
+                    outline: Vec::new(),
+                    mark: "/",
                     typed: String::new(),
                     cursor: true,
                     count: None,
@@ -125,7 +136,7 @@ impl Prompt {
                 let _ = typst::compile::<PagedDocument>(&world);
                 while let Ok(first) = waiting.recv() {
                     // Only the newest ask of each is worth setting.
-                    let mut newest: [Option<Ask>; 3] = [None, None, None];
+                    let mut newest: [Option<Ask>; 4] = [None, None, None, None];
                     let at = slot(&first);
                     newest[at] = Some(first);
                     while let Ok(newer) = waiting.try_recv() {
@@ -135,6 +146,8 @@ impl Prompt {
                     for ask in newest.into_iter().flatten() {
                         let text = if !ask.labels.is_empty() {
                             labels(&ask.labels)
+                        } else if !ask.outline.is_empty() {
+                            outline(&ask)
                         } else if ask.keys {
                             key_list(ask.width_pt)
                         } else {
@@ -165,6 +178,7 @@ impl Prompt {
                             Set {
                                 serial: ask.serial,
                                 keys: ask.keys,
+                                outline: !ask.outline.is_empty(),
                                 width: first.width,
                                 height: first.height,
                                 pixels: first.pixels,
@@ -174,6 +188,7 @@ impl Prompt {
                             Set {
                                 serial: ask.serial,
                                 keys: false,
+                                outline: false,
                                 width: 0,
                                 height: 0,
                                 pixels: Vec::new(),
@@ -199,7 +214,7 @@ impl Prompt {
 /// the page's text column starts, a cursor after them, and the count where
 /// the column ends.
 fn source(ask: &Ask) -> String {
-    let mark = if ask.forward { "/" } else { "?" };
+    let mark = ask.mark;
     let count = match ask.count {
         Some((_, 0)) if !ask.typed.is_empty() => "Nothing matches.".into(),
         None | Some((_, 0)) => String::new(),
@@ -211,9 +226,13 @@ fn source(ask: &Ask) -> String {
         ""
     };
     let width = ask.width_pt.max(290.0 + 72.0);
+    // What's typed is raw, which Typst sets a fifth smaller, so it's set
+    // back to the size the count, the outline and the key list are in, as
+    // his command line is in his lists' size.
     format!(
         r#"{ink}#set page(width: {width}pt, height: {row}pt, margin: (x: {side}pt, y: 0pt), fill: ink.sunken)
 #set text(font: face.code, size: 11.5pt, fill: ink.text, features: ("calt",))
+#show raw: set text(size: 11.5pt)
 #align(horizon, grid(columns: (1fr, auto),
   [#raw({typed}){cursor}],
   text(fill: ink.muted, {count})))
@@ -227,6 +246,55 @@ fn source(ask: &Ask) -> String {
         count = quoted(&count),
     )
 }
+
+/// gO's outline's Typst, as his location list stands below a window: on
+/// the sunken ground the prompt's row is on, the full width of the window,
+/// each heading's words where the page's measure starts, set in from it by
+/// two characters for each level below the outline's highest, as Neovim's
+/// gO sets them in; the row chosen on the selection's ground in the strong
+/// text, as the launcher's chosen row and his `CursorLine` in a list. Its rows stand on the key list's
+/// 18.75 pt, the page's 25 px rhythm, with Space's l above and below.
+fn outline(ask: &Ask) -> String {
+    let highest = ask
+        .outline
+        .iter()
+        .map(|(level, _, _)| *level)
+        .min()
+        .unwrap_or(1);
+    let rows: Vec<String> = ask
+        .outline
+        .iter()
+        .map(|(level, words, chosen)| {
+            let (fill, ink) = if *chosen {
+                ("ink.selection", "ink.strong")
+            } else {
+                ("none", "ink.text")
+            };
+            format!(
+                "block(width: 100%, height: 18.75pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), align(horizon, pad(left: {indent}em, text(fill: {ink}, {words}))))",
+                indent = f64::from(level - highest) * 1.2,
+                words = quoted(words),
+            )
+        })
+        .collect();
+    let width = ask.width_pt.max(290.0 + 72.0);
+    format!(
+        r#"{ink}#set page(width: {width}pt, height: auto, margin: (x: {side}pt, y: 12pt), fill: ink.sunken)
+#set text(font: face.code, size: 11.5pt, fill: ink.text, features: ("calt",))
+#stack({rows})
+"#,
+        ink = crate::theme::get().typst(),
+        // The words start where the page's measure does, the chosen row's
+        // ground reaching past them on either side.
+        side = (((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt - SPREAD_PT)
+            .max(0.0),
+        rows = rows.join(", "),
+    )
+}
+
+/// How far a chosen row's ground reaches past its words on either side:
+/// Space's s, so its fill sits close round its ink.
+const SPREAD_PT: f64 = 6.0;
 
 /// The key list's Typst, as his which-key draws it: on the sunken ground,
 /// keys in the accent and what they do in the text, each group under its
@@ -528,7 +596,8 @@ mod tests {
             serial: 1,
             keys: false,
             labels: Vec::new(),
-            forward: true,
+            outline: Vec::new(),
+            mark: "/",
             typed: typed.into(),
             cursor: true,
             count,

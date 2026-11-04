@@ -50,7 +50,10 @@ onLinux {
   # written when MiTeX is missing, counts and keys as Neovim takes them,
   # visual mode's motions and text objects over a page's lines, each line
   # the piece of the file it was written in, and what a selection copies,
-  # the file's own markdown, the motion's curve, and a worker let go only once its job in hand and its
+  # the file's own markdown, where vi's paragraph, heading, view, bracket
+  # and file moves land, a whole word searched for, a command line read as
+  # Neovim reads it, gO's outline chosen, moved and searched through, the
+  # motion's curve, and a worker let go only once its job in hand and its
   # thread have ended, the rest skipped.
   reader-sets-its-pages = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the reader, its tests included.
@@ -95,9 +98,14 @@ onLinux {
   # link at the page's end and its label follows it to the heading, a link
   # to another markdown file sets that file in the same window, which the
   # launcher's Recent is told and whose saves are heard, Ctrl+O comes back
-  # to the place left on the first and Ctrl+I goes on to the second again,
-  # and q closes it
-  # (tests/reader-takes-its-keys.sh). The page is on the theme's background,
+  # to the place left on the first and Ctrl+I goes on to the second again.
+  # Then [b and ]b go through the folder's markdown files, } and { by
+  # paragraphs, ]], 2]] and [[ by headings, H, M and L down the view, zt,
+  # zz and zb place it, 50% goes half way and % from a code block's { to
+  # its }, * and # search for the word here, :noh, :5 and E492 on the
+  # command line, Return a line, gO lists the headings and Return in it goes
+  # to one, a mark is kept with its file between openings, gf and Ctrl+]
+  # open the second file, and :q closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
     let
@@ -130,7 +138,19 @@ onLinux {
           echo 'echo one'
           echo 'echo two'
           echo '```'
+          echo
+          # A bracket's two ends, for %.
+          echo '```'
+          echo '{'
+          echo '  "pages": [1, 2]'
+          echo '}'
+          echo '```'
           for n in $(seq 120); do
+            # A section every 30 paragraphs, for ]], [[ and gO.
+            if [ $((n % 30)) = 1 ]; then
+              echo
+              echo "## Part $(((n + 29) / 30))"
+            fi
             echo
             echo "Paragraph $n says enough to take a line or two of the page, so that every key here has somewhere to go."
           done
@@ -138,7 +158,7 @@ onLinux {
           echo '[Back to the top](#every-key-neovim-has)'
         } > page.md
         printf '# The Second Page\n\nWhat the first page sends here.\n' > second.md
-        timeout 300 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
+        timeout 600 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
           '${srgb colours.strong}' > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran said 2> /dev/null; exit 1; fi
 

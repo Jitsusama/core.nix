@@ -100,17 +100,56 @@ keys = ["G"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
+# By paragraphs, blocks with no blank line between them being one, and by
+# headings, as Vim's } and ]] in markdown.
+[acts.paragraph-on]
+keys = ["}"]
+modes = ["normal", "visual"]
+kinds = ["page"]
+
+[acts.paragraph-back]
+keys = ["{"]
+modes = ["normal", "visual"]
+kinds = ["page"]
+
+[acts.heading-on]
+keys = ["]]"]
+kinds = ["page"]
+
+[acts.heading-back]
+keys = ["[["]
+kinds = ["page"]
+
+# A page keeps a cursor line it doesn't draw, for these and what acts on the
+# line here.
 [acts.view-top]
 keys = ["H"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.view-middle]
 keys = ["M"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.view-bottom]
 keys = ["L"]
-kinds = ["list"]
+kinds = ["list", "page"]
+
+[acts.place-top]
+keys = ["zt"]
+kinds = ["page"]
+
+[acts.place-middle]
+keys = ["zz"]
+kinds = ["page"]
+
+[acts.place-bottom]
+keys = ["zb"]
+kinds = ["page"]
+
+# To a bracket's other end, or with a count that percent of the way down.
+[acts.bracket]
+keys = ["%"]
+kinds = ["page"]
 
 # Jumping, marks and links.
 
@@ -147,6 +186,35 @@ keys = ["gx"]
 modes = ["normal", "visual"]
 kinds = ["page"]
 
+# The link on the line here, or the file it names, as Ctrl+] follows a tag
+# and gf opens the file under the cursor.
+[acts.follow-link]
+keys = ["<C-]>"]
+kinds = ["page"]
+
+[acts.follow-file]
+keys = ["gf"]
+kinds = ["page"]
+
+# The next file and the one before: his open files, or a page's folder's.
+[acts.next-file]
+keys = ["]b"]
+kinds = ["page"]
+
+[acts.previous-file]
+keys = ["[b"]
+kinds = ["page"]
+
+# The headings, as a list to go to one from.
+[acts.outline]
+keys = ["gO"]
+kinds = ["page"]
+
+# The command line, for a line's number, :q and :noh.
+[acts.command-line]
+keys = [":"]
+kinds = ["page"]
+
 # Searching, with case ignored until a capital is typed, as his smartcase.
 
 [acts.search-forward]
@@ -168,6 +236,15 @@ kinds = ["list", "page"]
 keys = ["N"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
+
+# The word here, whole, down or up, with case ignored.
+[acts.search-word-forward]
+keys = ["*"]
+kinds = ["page"]
+
+[acts.search-word-backward]
+keys = ["#"]
+kinds = ["page"]
 
 # Acting on rows.
 
@@ -221,8 +298,8 @@ keys = ["V"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
-# While selecting, the cursor on by words, to a line's ends, by paragraphs,
-# and to the selection's other end.
+# While selecting, the cursor on by words, to a line's ends, and to the
+# selection's other end; { and } above move it by paragraphs too.
 
 [acts.word-on]
 keys = ["w"]
@@ -246,16 +323,6 @@ kinds = ["page"]
 
 [acts.line-end]
 keys = ["$"]
-modes = ["visual"]
-kinds = ["page"]
-
-[acts.paragraph-back]
-keys = ["{"]
-modes = ["visual"]
-kinds = ["page"]
-
-[acts.paragraph-on]
-keys = ["}"]
 modes = ["visual"]
 kinds = ["page"]
 

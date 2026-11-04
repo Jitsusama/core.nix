@@ -199,6 +199,7 @@ impl Theme {
             ("strong", self.strong),
             ("muted", self.muted),
             ("rule", self.rule),
+            ("selection", self.selection),
             ("accent", self.accent),
             ("on_accent", self.on_accent),
             ("action", self.action),

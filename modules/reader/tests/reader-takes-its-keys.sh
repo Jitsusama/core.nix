@@ -288,6 +288,152 @@ logged '^opened: (.*/)?second.md, ' 2
 echo 'Written on since.' >> second.md
 logged '^saved: ' 1
 
+# How many lines the log holds matching `pattern`.
+seen() { grep -c -a -E "$1" said || true; }
+
+# Where the cursor was after the last key, in points.
+cursor() { grep -a -E '^cursor: ' said | tail -n 1 | sed -E 's/cursor: ([0-9.]+) pt/\1/'; }
+
+# Whether two places are a point apart at most.
+near() { awk "BEGIN { exit !($1 - $2 < 1 && $2 - $1 < 1) }"; }
+
+# [b goes back to the markdown file before this one in the folder, and ]b
+# on to the next, round its ends.
+press '[b'
+logged '^file: (.*/)?page.md' 1
+logged '^opened: (.*/)?page.md, ' 2
+press ']b'
+logged '^file: (.*/)?second.md' 1
+logged '^opened: (.*/)?second.md, ' 3
+press '[b'
+logged '^opened: (.*/)?page.md, ' 3
+
+# } and { by paragraphs, ]] and [[ by headings, from the top. A selection
+# took them already, so they're counted on from what it left.
+tops=$(seen '^key First None')
+ons=$(seen '^key ParagraphOn None')
+backs=$(seen '^key ParagraphBack None')
+press gg
+logged '^key First None' $((tops + 1))
+top=$(heading)
+press '}'
+logged '^key ParagraphOn None' $((ons + 1))
+paragraph=$(heading)
+awk "BEGIN { exit !($paragraph > $top) }" || fail "} stayed at $paragraph pt"
+press '{'
+logged '^key ParagraphBack None' $((backs + 1))
+awk "BEGIN { exit !($(heading) < $paragraph) }" || fail "{ stayed at $(heading) pt"
+press ']]'
+logged '^key HeadingOn None' 1
+part=$(heading)
+awk "BEGIN { exit !($part > $paragraph) }" || fail "]] went to $part pt"
+press '2]]'
+logged '^key HeadingOn Some\(2\)' 1
+awk "BEGIN { exit !($(heading) > $part) }" || fail "2]] went to $(heading) pt"
+press '[['
+logged '^key HeadingBack None' 1
+
+# H, M and L put the cursor on the view's top, middle and bottom lines,
+# and zt puts the bottom one at the top; zz and zb place it too. The page
+# draws no cursor, so each flashes the line it's on.
+flashes=$(seen '^flash: 1 lines for 200 ms')
+press H
+logged '^key ViewTop None' 1
+logged '^flash: 1 lines for 200 ms' $((flashes + 1))
+high=$(cursor)
+press M
+logged '^key ViewMiddle None' 1
+middle=$(cursor)
+press L
+logged '^key ViewBottom None' 1
+low=$(cursor)
+awk "BEGIN { exit !($high < $middle && $middle < $low) }" \
+  || fail "H, M and L put the cursor at $high, $middle and $low pt"
+press zt
+logged '^key PlaceTop None' 1
+near "$(heading)" "$low" || fail "zt put the view at $(heading) pt, not $low"
+press zz
+logged '^key PlaceMiddle None' 1
+press zb
+logged '^key PlaceBottom None' 1
+
+# 50% goes half way down, and % from the code block's { to its }: the
+# title and the line under it are one paragraph, so it's the third on.
+press 50%
+logged '^key Bracket Some\(50\)' 1
+press gg
+logged '^key First None' $((tops + 2))
+press '3}'
+logged '^key ParagraphOn Some\(3\)' 1
+open=$(cursor)
+press %
+logged '^key Bracket None' 1
+awk "BEGIN { exit !($(cursor) > $open) }" || fail "% left the cursor at $(cursor) pt"
+
+# * and # search for the cursor's line's first word, whole.
+press ']]}'
+logged '^key ParagraphOn None' $((ons + 2))
+press '*'
+logged '^search SameWordOn ' 1
+grep -a -q -F '"\\<Paragraph\\>", true' said || fail "* searched for something else"
+grep -a -q -E '^search SameWordOn .* 120 found' said || fail "* found other than 120"
+press '#'
+logged '^search SameWordBack ' 1
+
+# The command line: :noh, a line's number, and anything else is E492.
+press ':noh'
+press -k Return
+logged '^command: "noh" is NoHighlight' 1
+press ':5'
+press -k Return
+logged '^command: "5" is Line\(5\)' 1
+press ':foo'
+press -k Return
+logged '^said: E492: Not an editor command: foo' 1
+
+# gO lists the five headings, j chooses the next, Return goes to it.
+press gg
+logged '^key First None' $((tops + 3))
+press gO
+logged '^outline: 5 rows, chosen "Every Key Neovim Has"' 1
+press j
+logged '^outline: 5 rows, chosen "Part 1"' 1
+press -k Return
+logged '^outline went to "Part 1"' 1
+press gO
+logged '^outline: 5 rows, chosen "Part 1"' 2
 press q
+logged '^outline: closed' 2
+
+# A mark is kept with its file between openings.
+press ma
+logged '^key SetMark\(.a.\)' 1
+marked=$(heading)
+press ']b'
+logged '^opened: (.*/)?second.md, ' 4
+press '[b'
+logged '^opened: (.*/)?page.md, ' 4
+press gg
+logged '^key First None' $((tops + 4))
+press "'a"
+logged '^key GoToMark\(.a.\)' 1
+near "$(heading)" "$marked" || fail "'a went to $(heading) pt, not $marked"
+
+# gf opens the file the top's link names, and Ctrl+] follows it.
+press gg
+logged '^key First None' $((tops + 5))
+press gf
+logged '^file: (.*/)?second.md' 3
+logged '^opened: (.*/)?second.md, ' 5
+press -M ctrl o -m ctrl
+logged '^opened: (.*/)?page.md, ' 5
+press -M ctrl ']' -m ctrl
+logged '^link: second.md' 2
+logged '^opened: (.*/)?second.md, ' 6
+
+# :q closes it.
+press ':q'
+press -k Return
 wait "$reader" || true
+grep -a -q -E '^command: "q" is Quit' said || fail ":q didn't close it"
 touch passed
