@@ -682,7 +682,7 @@
   '';
   mpv-accepts-its-configuration = ''
     mpv plays a moment of video with the account's settings and its controller's without a
-    complaint, and video files open in it
+    complaint, its messages and statistics in the monospaced face, and video files open in it
   '';
   mpv-keys-go-where-they-say = ''
     mpv's h, l, j and k seek where Left, Right, Up and Down do, a number before a key does it that
@@ -1306,7 +1306,7 @@
   '';
   swayimg-accepts-its-configuration = ''
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
-    and pictures open in it
+    its words in the monospaced face, and pictures open in it
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
@@ -2433,8 +2433,8 @@
     Linux and Mac workstations both have the YubiKey's tools
   '';
   zathura-accepts-its-configuration = ''
-    zathura opens a page with the account's settings and stays open without a warning, and PDFs open
-    in it
+    zathura opens a page with the account's settings and stays open without a warning, its bar in
+    the monospaced face, and PDFs open in it
   '';
   zathura-keys-go-where-they-say = ''
     every key zathura lists lands where it says: Left, Right, J, K and the page keys turn the pages,

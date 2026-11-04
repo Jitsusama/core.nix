@@ -13,13 +13,16 @@ onLinux {
   # its own, and quits once it's drawn. A setting it can't take stops the
   # rest of its settings from being read, said only as it starts, so
   # anything it says fails this. It has the machine's fonts, since with
-  # none at all it would say it found no face. Pictures open in swayimg.
+  # none at all it would say it found no face. Its words over a picture
+  # are in the monospaced face, a file's name and its figures, as a
+  # launcher row's name is. Pictures open in swayimg.
   swayimg-accepts-its-configuration =
     let
       home = account graphical;
       files = home.xdg.configFile;
       opens = graphical.config.xdg.mime.defaultApplications."image/png" or "";
       fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      mono = home.jitsusama.theme.font.mono.family;
     in
     assert opens == "swayimg.desktop";
     pkgs.runCommandLocal "swayimg-accepts-its-configuration"
@@ -38,6 +41,10 @@ onLinux {
         cp ${files."swayimg/init.lua".source} config/swayimg/init.lua
         cp ${files."swayimg/nix.lua".source} config/swayimg/nix.lua
         printf 'P3\n1 1\n255\n0 0 0\n' > picture.ppm
+        # swayimg can't say what face it was given, so its settings do.
+        grep -qxF 'swayimg.text.font = nix.mono' config/swayimg/init.lua \
+          && grep -qE '(\["mono"\]|mono) = "${mono}"' config/swayimg/nix.lua \
+          || { echo "swayimg's words aren't in ${mono}:"; grep mono config/swayimg/*.lua; exit 1; }
         timeout 30 cage -- swayimg \
           --execute='swayimg.on_redrawn(function() swayimg.exit(0) end)' picture.ppm \
           > said 2>&1 || { cat said; exit 1; }

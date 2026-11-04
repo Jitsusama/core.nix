@@ -13,7 +13,9 @@ onLinux {
   # those of its controller, console, right-click menu and statistics,
   # saying nothing about any: mpv names an option it doesn't know and goes
   # on without it, and each script does the same for a key, so a setting a
-  # new release drops would vanish without a word. A video file opens in
+  # new release drops would vanish without a word. Its messages and its
+  # statistics are in the monospaced face, since they're names and
+  # figures, which Joel's never wants in a sans. A video file opens in
   # mpv.
   mpv-accepts-its-configuration =
     let
@@ -21,6 +23,7 @@ onLinux {
       mpv = lib.findFirst (package: lib.hasPrefix "mpv" (lib.getName package)) null home.home.packages;
       files = home.xdg.configFile;
       opens = graphical.config.xdg.mime.defaultApplications."video/mp4" or "";
+      mono = home.jitsusama.theme.font.mono.family;
       scripts = [
         "osc"
         "console"
@@ -36,6 +39,11 @@ onLinux {
       ${lib.concatMapStrings (script: ''
         cp ${files."mpv/script-opts/${script}.conf".source} mpv/script-opts/${script}.conf
       '') scripts}
+      # A string's length can lead it, as %21%, as mpv takes it.
+      grep -qE '^osd-font=(%[0-9]+%)?${mono}$' mpv/mpv.conf \
+        || { echo "mpv's messages aren't in ${mono}:"; grep font mpv/mpv.conf; exit 1; }
+      grep -qE '^font=(%[0-9]+%)?${mono}$' mpv/script-opts/stats.conf \
+        || { echo "mpv's statistics aren't in ${mono}:"; cat mpv/script-opts/stats.conf; exit 1; }
       # Kept open, mpv would hold the last frame and never finish.
       mpv --config-dir=$PWD/mpv --vo=null --ao=null --force-window=no --keep-open=no \
         --save-position-on-quit=no --frames=10 \

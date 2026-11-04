@@ -15,8 +15,9 @@
 #   be looked at rather than vanishing. Sound alone opens no window.
 #   Quitting remembers where a file was, and opening it again goes back.
 #
-# What mpv draws over the picture is in the theme: its messages and
-# subtitles in the proportional face, the controller's bar in the deepest
+# What mpv draws over the picture is in the theme: its messages, times
+# and statistics in the monospaced face, as names and figures are
+# everywhere, subtitles in the proportional face, the controller's bar in the deepest
 # colour with the text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
 # mpv's own: Space pauses, the arrows seek, f fills the screen and q quits,
@@ -305,7 +306,7 @@ in
       save-position-on-quit = true;
       title = "\${media-title}";
 
-      osd-font = font.sans.family;
+      osd-font = font.mono.family;
       osd-font-size = 24;
       osd-color = colours.strong;
       osd-border-color = colours.shadow;
@@ -350,10 +351,11 @@ in
       disabled_color = colours.muted;
       menu_outline_color = colours.edge;
     };
-    # What's playing and how, the page i and I open, in the sans
-    # face with figures in the monospaced one, its graphs in the accent.
+    # What's playing and how, the page i and I open, all in the
+    # monospaced face, since it's labels beside figures, its graphs in
+    # the accent.
     scriptOpts.stats = {
-      font = font.sans.family;
+      font = font.mono.family;
       font_mono = font.mono.family;
       font_color = bgr colours.text;
       border_color = bgr colours.shadow;
