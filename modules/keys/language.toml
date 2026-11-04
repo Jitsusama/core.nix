@@ -156,6 +156,7 @@ kinds = ["page"]
 [acts.set-mark]
 keys = ["m"]
 takes = "letter"
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.go-to-mark]

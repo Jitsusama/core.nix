@@ -985,6 +985,15 @@ mod tests {
     }
 
     #[test]
+    fn a_mark_is_made_while_selecting_as_vim_makes_it() {
+        let mut machine = Machine::default();
+        assert_eq!(
+            typed_in(&mut machine, "ma", true),
+            [(Act::SetMark('a'), None)]
+        );
+    }
+
+    #[test]
     fn the_jumps_go_back_and_forward() {
         let mut machine = Machine::default();
         assert_eq!(machine.press(Ctrl('o'), false), Some((Act::JumpBack, None)));
