@@ -146,12 +146,20 @@ Provider {
         empty: "Nothing here."
     })
 
+    // What the field asks in every folder of the ask, so he sees there
+    // whether one file is taken or several: "open which file?", "open
+    // which files?", "open which folder?", in the program's own word where
+    // it gives one, "attach which files?" (VKCF3Z, 2026-11-04).
     function question() {
+        const said = Words.of("file-chooser:question").said ?? {};
         if (mode === "save-files")
-            return "save them where?";
+            return said.them ?? "";
         if (saving)
-            return (request.name ?? "") === "" ? "save it where?" : `save ${request.name} where?`;
-        return folders ? "open which folder?" : "open which file?";
+            return (request.name ?? "") === "" ? said.save ?? ""
+                : (said.named ?? "").replace("{name}", request.name);
+        const form = folders ? "folder" : several ? "files" : "file";
+        return (said[form] ?? "").replace("{verb}",
+            word(folders ? "verb:file-chooser:folder" : "verb:path:file:open"));
     }
 
     // The folder to start in: the program's, else the one holding the file
@@ -266,9 +274,9 @@ Provider {
         const held = () => path in provider.listed ? whole()
             : whole().filter(one => !String(one.key).startsWith("verb:path:folder:copy:"));
         Object.assign(row, { verbs: held, targets: held });
-        Object.defineProperty(row, "title", {
-            get: () => provider.titled(Files.shown(path)),
-            enumerable: true
+        Object.defineProperties(row, {
+            title: { get: () => provider.titled(Files.shown(path)), enumerable: true },
+            ask: { get: () => provider.question(), enumerable: true }
         });
         return described(row, path, away === true);
     }
@@ -476,6 +484,7 @@ Provider {
         const row = Files.elsewhere("folder", fields, thing, [], inside);
         Object.defineProperties(row, {
             title: { get: () => provider.titled(fields.name), enumerable: true },
+            ask: { get: () => provider.question(), enumerable: true },
             empty: { get: () => fields.empty?.() || "Nothing here.", enumerable: true }
         });
         if (saves)

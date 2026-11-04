@@ -1488,7 +1488,8 @@
     one, and answer the path the place stages it at once its folder is made, marked beside it with
     the program that asked; the files selected in one ask are previewed by one file-preview; where
     several may be opened, the lead counts and names what's marked, Return on it saying nothing
-    until one is, and inside it each can be unmarked; a folder's Copy the Path comes last
+    until one is, and inside it each can be unmarked; a folder's Copy the Path comes last; in every
+    folder the field asks for one file, several, a folder or where to save, in the program's word
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

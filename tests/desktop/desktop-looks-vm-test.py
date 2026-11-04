@@ -423,6 +423,46 @@ def marked_is_in_sight(shown: Json, scale: str) -> None:
     assert whole[-1], f"at {scale} the place is cut: {whole}"
 
 
+def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A picker that takes one file asks for one, shows no mark, and says Return opens it."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/one"
+    chose = "/run/user/1000/portal-chose"
+    desktop.as_account(
+        f"mkdir -p {folder}/more && printf 'one\\n' > {folder}/a.md && touch {folder}/b.md"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            machine.succeed(f"rm -f {chose}")
+            desktop.as_account(
+                "systemd-run --user --collect --unit=choose-one"
+                f" {desktop.values['choose_a_file']} open {folder}"
+            )
+            # A fresh ask is shown before its folder's read, so wait for the
+            # file down_to goes to, not just a row selected.
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["path"][-1:] == ["~/one"]
+                    and shown["selected"] is not None
+                    and "a.md" in shown["rows"]
+                ),
+                timeout=timedelta(seconds=60),
+            )
+            shown = desktop.showing()
+            assert shown["hint"] == "open which file?", shown
+            assert "Open the Marked" not in shown["rows"], shown["rows"]
+            desktop.down_to("a.md")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
+            desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
+            machine.send_key("esc")
+            machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"rm -rf {folder}")
+
+
 def test_the_file_picker_says_whats_marked_and_what_return_does(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -454,6 +494,7 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
                 ),
                 timeout=timedelta(seconds=60),
             )
+            assert desktop.showing()["hint"] == "open which files?", desktop.showing()
             desktop.down_to("Open the Marked")
             desktop.launcher_until(partial(selected_is, name="Open the Marked", side="none"))
             assert not [key for key in desktop.showing()["selected"]["told"] if "\u21b5" in key], (
