@@ -2049,6 +2049,10 @@
     the desktop takes a screen, a window, a region, a recording and the camera's pictures by the
     keys, and its lock screen, polkit's prompt and the askpass answer and hold
   '';
+  vm-desktop-keeps-copies = ''
+    the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V
+    gives it back into the window it opened over, and the launcher forgets it all when asked
+  '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
     jobs.slice and build.slice as with that load frozen: half the keys, and nineteen in twenty
@@ -2119,8 +2123,13 @@
     lock, and What's on says each and answers the keys
   '';
   vm-desktop-opens-and-sets = ''
-    the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
-    power profile, displays and Wi-Fi from the launcher
+    the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,
+    sets the power profile, scales displays, joins Wi-Fi and names each connection's addresses
+  '';
+  vm-desktop-opens-files = ''
+    the desktop opens files: a screenshot found by typing, the portal's chooser and Google Drive
+    through it, a picture in swayimg, a document in zathura, markdown in the reader, and a folder
+    from kitty's Recent, while the launcher's home keeps its shape
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the

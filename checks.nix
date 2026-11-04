@@ -336,6 +336,14 @@ let
       inherit self pkgs;
       area = "launcher-finds-by-name";
     };
+    vm-desktop-keeps-copies = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "keeps-copies";
+    };
+    vm-desktop-opens-files = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "opens-files";
+    };
     vm-desktop-opens-and-sets = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "opens-and-sets";
@@ -935,7 +943,6 @@ gather (
         let
           over = [
             "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
-            "tests/desktop/desktop-opens-and-sets-vm-test.py 28"
             "tests/screens-vm-test.py 36"
             # One machine's story, kept whole since a split would replay it
             # (docs/testing.md, Earning a Check).
