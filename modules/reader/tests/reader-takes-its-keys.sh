@@ -67,11 +67,15 @@ act() {
 }
 
 # Whether the selection shows `words` as the page sets them, said as Rust
-# quotes them, by the log's last word on it, which comes before its key's.
+# quotes them, by the log's last word on it, which comes before its key's,
+# whichever kind of selection it is.
 shows() {
   local said
   said=$(grep -a -E '^selected: ' said | tail -n 1)
-  [ "$said" = "selected: $1" ] || fail "the selection is ${said#selected: }, not $1"
+  said=${said#selected: }
+  said=${said#Chars }
+  said=${said#Pieces }
+  [ "$said" = "$1" ] || fail "the selection is $said, not $1"
 }
 
 # Waits for the next copy, and whether it took `markdown`, said as Rust
@@ -120,23 +124,27 @@ done
 act 1 yip
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
 
-# v starts on the first word in view, the eyebrow, and } goes on by
-# paragraphs: the title's, then the next line of words. w goes on a word,
-# iw takes it, and y copies it as the file has it, its markup and all,
-# ending the selection.
-act 4 'v}}w'
+# v starts on the first of the file's words in view, the title's, past
+# the eyebrow over it, and } goes on by paragraphs, to the line of words
+# after the title's. w goes on a word, iw takes it, and y copies it as the
+# file has it, its markup and all, ending the selection.
+act 1 v
+shows '"E"'
+act 1 -k Escape
+shows 'nothing'
+act 3 'v}w'
 act 1 iw
 shows '"bold"'
 act 1 y
 copied '"**bold**"'
 shows 'nothing'
 # e takes the selection to a word's end, and Ctrl+C copies as y does.
-act 6 'v}}wiwe'
+act 5 'v}wiwe'
 shows '"bold start"'
 act 1 -M ctrl c -m ctrl
 copied '"**bold** start"'
 # $ goes to the line's end, b back by words, 0 to the line's start.
-act 5 'v}}$iw'
+act 4 'v}$iw'
 shows '"."'
 act 1 b
 shows '"sentence."'
@@ -148,32 +156,32 @@ act 1 y
 copied '"A **bold** start, then `code` in a line. A second sentence."'
 # o swaps the ends, so 0 moves the other; { goes back to the
 # paragraph's start; Escape ends the selection.
-act 7 'v}}wiwo0'
+act 6 'v}wiwo0'
 shows '"A bold"'
 act 1 -k Escape
 shows 'nothing'
-act 6 'v}}wiw{'
+act 5 'v}wiw{'
 shows '"A b"'
 act 1 -k Escape
 # A count goes with a motion; i` takes a code span's words.
-act 4 'v}}5w'
+act 3 'v}5w'
 act 1 'i`'
 shows '"code"'
 act 1 y
 copied '"`code`"'
 # is and as take a sentence, as without and with the space after it; aw
 # a word with its space.
-act 5 'v}}wis'
+act 4 'v}wis'
 shows '"A bold start, then code in a line."'
 act 1 as
 shows '"A bold start, then code in a line. "'
 act 1 y
 copied '"A **bold** start, then `code` in a line."'
-act 5 'v}}waw'
+act 4 'v}waw'
 shows '"bold "'
 act 1 -k Escape
 # The arrows extend as h, j, k and l do, the arrow first.
-act 5 'v}}wiw'
+act 4 'v}wiw'
 act 1 -k Right
 shows '"bold "'
 act 1 l
@@ -192,16 +200,16 @@ act 1 -k Escape
 # V takes whole blocks, here the title to the line of words, as the
 # file's lines; on the code, a line of it; ip the code's paragraph, its
 # fences with it, and ap the blank line after it too.
-act 3 'V}}'
+act 2 'V}'
 act 1 y
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n\nA **bold** start, then `code` in a line. A second sentence.\n"'
-act 6 'v}}}iwV'
+act 5 'v}}iwV'
 act 1 y
 copied '"echo one\n"'
-act 5 'V}}}ip'
+act 4 'V}}ip'
 act 1 y
 copied '"```sh\necho one\necho two\n```\n"'
-act 5 'v}}}ap'
+act 4 'v}}ap'
 act 1 y
 copied '"```sh\necho one\necho two\n```\n\n"'
 # v again ends it, and V makes it a selection of blocks.

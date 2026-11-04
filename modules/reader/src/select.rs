@@ -125,6 +125,15 @@ pub enum Motion {
     Last,
 }
 
+/// Whether the file's lines hold every word of a line of the page, in
+/// any case, since a table's head and a label are set in capitals.
+fn holds_its_words(written: &str, text: &str) -> bool {
+    let written = written.to_lowercase();
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .all(|word| written.contains(&word.to_lowercase()))
+}
+
 /// A text object: what iw, aw, is, as, ip, ap and `` i` `` select.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Object {
@@ -253,7 +262,7 @@ impl Layout {
         // and no block starts between the two: the line a block starts
         // with but no piece of it marks, an alert's kind or a picture's
         // caption, is no piece's.
-        let of_line: Vec<Option<usize>> = lines
+        let mut of_line: Vec<Option<usize>> = lines
             .iter()
             .map(|line| {
                 let below = line.baseline_pt + NEAR_PT;
@@ -266,13 +275,6 @@ impl Layout {
                 (units[unit].top_pt + NEAR_PT >= block).then_some(unit)
             })
             .collect();
-        let mut unit_lines: Vec<Option<(usize, usize)>> = vec![None; units.len()];
-        for (line, unit) in of_line.iter().enumerate() {
-            if let Some(unit) = *unit {
-                let span = unit_lines[unit].get_or_insert((line, line));
-                span.1 = line;
-            }
-        }
         let mut source_lines = Vec::new();
         let mut at = 0;
         for line in source.split('\n') {
@@ -290,6 +292,42 @@ impl Layout {
         for unit in &mut units {
             while unit.last > unit.first && blank(unit.last) {
                 unit.last -= 1;
+            }
+        }
+        // A label set beside a piece's line, as a block of code's language
+        // is beside its first, is the page's, not the piece's: a line on
+        // another of the piece's baselines whose words the piece's lines in
+        // the file don't hold, as a table's cells beside each other do.
+        let labels: Vec<usize> = (0..lines.len())
+            .filter(|&line| {
+                let Some(unit) = of_line[line] else {
+                    return false;
+                };
+                let beside = (0..lines.len()).any(|other| {
+                    other != line
+                        && of_line[other] == Some(unit)
+                        && (lines[other].baseline_pt - lines[line].baseline_pt).abs()
+                            < lines[line].size_pt * 0.5
+                });
+                let (first, last) = (units[unit].first, units[unit].last);
+                let written = source_lines
+                    .get(first.saturating_sub(1)..last.min(source_lines.len()))
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|range| &source[range.clone()])
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                beside && !holds_its_words(&written, &lines[line].text)
+            })
+            .collect();
+        for line in labels {
+            of_line[line] = None;
+        }
+        let mut unit_lines: Vec<Option<(usize, usize)>> = vec![None; units.len()];
+        for (line, unit) in of_line.iter().enumerate() {
+            if let Some(unit) = *unit {
+                let span = unit_lines[unit].get_or_insert((line, line));
+                span.1 = line;
             }
         }
         let mut paragraph = Vec::with_capacity(units.len());
@@ -385,16 +423,22 @@ impl Layout {
     /// starts: the first letter or digit of the first line wholly in it
     /// that has one, so never a list's bullet.
     pub fn first_in_view(&self, top_pt: f64, foot_pt: f64) -> Option<Pos> {
-        (0..self.lines.len()).find_map(|line| {
-            let (top, foot) = self.line_extent(line);
-            if top < top_pt || foot > foot_pt {
-                return None;
-            }
-            let ch = self.chars[line]
-                .iter()
-                .position(|c| class(*c) == Class::Word)?;
-            Some(Pos { line, ch })
-        })
+        // The file's own words first: the eyebrow over a title, an alert's
+        // kind and a caption are the page's, not the file's, so a copy from
+        // them would be no markdown.
+        let first = |written: bool| {
+            (0..self.lines.len()).find_map(|line| {
+                let (top, foot) = self.line_extent(line);
+                if top < top_pt || foot > foot_pt || (written && self.of_line[line].is_none()) {
+                    return None;
+                }
+                let ch = self.chars[line]
+                    .iter()
+                    .position(|c| class(*c) == Class::Word)?;
+                Some(Pos { line, ch })
+            })
+        };
+        first(true).or_else(|| first(false))
     }
 
     /// Keeps the cursor in a view from `top_pt` to `foot_pt`, when the view
@@ -1173,6 +1217,13 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_lines_words_are_the_files_in_any_case() {
+        assert!(holds_its_words("| Name | Size |", "NAME"));
+        assert!(holds_its_words("A **bold** start", "A bold start,"));
+        assert!(!holds_its_words("echo one", "SH"));
+    }
+
     fn unit(top_pt: f64, first: usize, last: usize) -> Unit {
         Unit {
             top_pt,
@@ -1493,8 +1544,31 @@ mod tests {
         assert_eq!(piece("One item"), Some(8));
         assert_eq!(piece("Two items"), Some(9));
         assert_eq!(piece("echo one"), Some(12));
+        assert_eq!(
+            piece("SH"),
+            None,
+            "the code's language, beside its first line, is no piece's"
+        );
+        let table = set("cells", "| Name | Size |\n|---|---|\n| one | 12 |\n");
+        let cell =
+            |words: &str| table.of_line[holding(&table, words)].map(|u| table.units[u].first);
+        assert_eq!(
+            cell("NAME"),
+            Some(1),
+            "a head's cells beside each other are its own"
+        );
+        assert_eq!(cell("SIZE"), Some(1));
+        assert_eq!(cell("12"), Some(3));
         assert_eq!(piece("echo two"), Some(13));
         assert_eq!(piece("The last"), Some(16));
+        assert_eq!(
+            page.first_in_view(0.0, 1000.0),
+            Some(Pos {
+                line: holding(&page, "A Title"),
+                ch: 0
+            }),
+            "v starts on the title, not the eyebrow over it"
+        );
         // Copying a line of words by its characters takes its markup whole.
         let noted = holding(&page, "Noted");
         let mut s = Selection::new(Kind::Chars, Pos { line: noted, ch: 0 });
