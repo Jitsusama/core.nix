@@ -401,6 +401,12 @@ class Camera:
         self.ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin"
         self.pictures = f"/home/{desktop.account}/Pictures/Camera"
         self.videos = f"/home/{desktop.account}/Videos/Camera"
+        conf = "$HOME/.config/mpv/mpv.conf"
+        desktop.as_account(
+            f'[ -L {conf} ] && cp --remove-destination "$(readlink -f {conf})" {conf};'
+            f" grep -q camera-mpv {conf} || printf '%s\\n' log-file=/run/user/1000/camera-mpv.log"
+            f" msg-level=all=v,cplayer=debug,input=debug >> {conf}; true"
+        )
 
     def viewfinder(self, opened_for: str) -> None:
         """Open the camera from Capture's row for it."""
@@ -411,9 +417,31 @@ class Camera:
 
     def gone(self) -> None:
         """Wait until the viewfinder has gone."""
-        self.machine.wait_until_fails(
-            self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
+        try:
+            self.machine.wait_until_fails(
+                self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
+            )
+        except Exception:
+            self.lost("gone")
+            raise
+
+    def lost(self, why: str) -> None:
+        """Print who has the keys and what mpv heard, for a key the viewfinder never did."""
+        look = (
+            "niri msg --json focused-window | head -c 300; echo;"
+            " niri msg --json layers | tr -d ' \\n' | head -c 1500; echo"
         )
+        print(f"PROBE {why} focus: {self.desktop.as_account(look)}")
+        threads = (
+            "for p in $(pgrep -x mpv); do ps -L -o tid,stat,wchan:32,comm -p $p;"
+            " grep -E 'State|SigBlk|SigPnd|ShdPnd' /proc/$p/status; done;"
+            " ls -l /run/user/1000/ | grep camera; true"
+        )
+        print(f"PROBE {why} threads: {self.machine.succeed(threads)}")
+        log = "grep -a -E 'input|script-binding|camera|ESC|ENTER|wayland|loadfile|end-file' "
+        mpv = self.machine.succeed(log + "/run/user/1000/camera-mpv.log | tail -250; true")
+        print(f"PROBE {why} mpv: {mpv}")
+        self.machine.screenshot(f"camera-lost-{why}")
 
     def probe(self, entries: str, files: str) -> str:
         """Give what ffprobe says of each file there, which it reads one at a time."""
@@ -454,23 +482,11 @@ class Camera:
 
         A run has gone a minute without it, so what the recording was doing then is printed.
         """
-        look = (
-            "niri msg --json focused-window | head -c 300; echo;"
-            " niri msg --json layers | tr -d ' \\n' | head -c 1500; echo"
-        )
-        print(f"PROBE before {key}: {self.desktop.as_account(look)}")
         try:
             with self.desktop.told("shows card Video saved", timeout=WAKING):
                 self.machine.send_key(key)
         except AssertionError:
-            print(f"PROBE after {key}: {self.desktop.as_account(look)}")
-            threads = (
-                "for p in $(pgrep -x mpv); do ps -L -o tid,stat,wchan:32,comm -p $p;"
-                " cat /proc/$p/status | grep -E 'State|SigBlk|SigPnd|ShdPnd'; done;"
-                " ls -l /run/user/1000/ | grep camera; true"
-            )
-            print(f"PROBE threads: {self.machine.succeed(threads)}")
-            self.machine.screenshot("camera-escape-lost")
+            self.lost(key)
             again = True
             try:
                 with self.desktop.told("shows card Video saved", timeout=timedelta(seconds=40)):
