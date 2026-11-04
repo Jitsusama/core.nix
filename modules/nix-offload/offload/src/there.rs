@@ -59,6 +59,11 @@
 //! same build runs here, saying so. It exits with the build's own status,
 //! or the first that failed, and journals where each part ran and what it
 //! sent, in `there.jsonl` beside the lender's journal.
+//!
+//! A check that passed at a commit isn't built again, wherever it would
+//! go, since no builder lent since may hold it: a pass is kept by its
+//! commit (`passed.rs`), and a check kept is journalled `already`, built
+//! nowhere.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -67,6 +72,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::held;
+use crate::passed;
 
 /// What a `there` was asked to build, and how.
 #[derive(Debug, PartialEq, Eq)]
@@ -190,6 +196,70 @@ fn derivation(word: &str) -> bool {
 }
 
 impl Asked {
+    /// Where the flake is when what's asked is checks whose passing is all
+    /// that comes of them, so one that passed there needn't be built again:
+    /// a GitHub flake at a whole commit, or a git tree here that's its
+    /// commit. Nothing applied, copied back or brought here, whose output
+    /// is wanted, and nothing but checks, which are built for their passing.
+    pub fn kept_at(&self) -> Option<passed::At> {
+        let checks = self
+            .attributes
+            .iter()
+            .all(|attribute| attribute.starts_with("checks."));
+        if self.derivations || self.apply.is_some() || self.out.is_some() || self.print || !checks {
+            return None;
+        }
+        self.at()
+    }
+
+    /// Where the flake is, and what's run as one line, when what's asked
+    /// is a VM test's subtests, as run-subtests sends them, with their
+    /// pictures copied back: run again at the same commit with the same
+    /// words, they pass again and take the same pictures.
+    pub fn subtests_at(&self) -> Option<(passed::At, String)> {
+        let ([attribute], Some(apply), Some(_)) =
+            (self.attributes.as_slice(), &self.apply, &self.out)
+        else {
+            return None;
+        };
+        let subtests = attribute.starts_with("legacyPackages.") && attribute.ends_with(".subtests");
+        if self.derivations || self.print || !subtests {
+            return None;
+        }
+        Some((self.at()?, format!("{attribute} {apply}")))
+    }
+
+    /// Where the flake is in its repository, when a commit names all it
+    /// reads: none for a `path:` flake, which reads what git doesn't.
+    fn at(&self) -> Option<passed::At> {
+        match folder_of(&self.flake) {
+            Some(_) if self.flake.starts_with("path:") => None,
+            Some(folder) => clean_at(&folder),
+            None => passed::At::of_github(&self.flake),
+        }
+    }
+
+    /// Where the one attribute's output is copied back to, if anywhere.
+    pub fn out(&self) -> Option<&Path> {
+        self.out.as_deref()
+    }
+
+    /// The attributes asked for.
+    pub fn attributes(&self) -> &[String] {
+        &self.attributes
+    }
+
+    /// The same build without `passed`, or none when nothing's left.
+    pub fn without(&self, passed: &[String]) -> Option<Self> {
+        let left: Vec<String> = self
+            .attributes
+            .iter()
+            .filter(|attribute| !passed.contains(attribute))
+            .cloned()
+            .collect();
+        (!left.is_empty()).then(|| self.with(&self.flake, left))
+    }
+
     /// The same build of other attributes, or of the same flake named
     /// otherwise.
     fn with(&self, flake: &str, attributes: Vec<String>) -> Self {
@@ -746,7 +816,7 @@ fn here(asked: &Asked, nix: &str) -> Ran {
 
 /// Copies a build's output into `out` as plain files the account owns,
 /// giving 0 once it has.
-fn copied(built: &Path, out: &Path) -> i32 {
+pub fn copied(built: &Path, out: &Path) -> i32 {
     let copied = fs::create_dir_all(out).is_ok()
         && Command::new("cp")
             .args(["-rL", "--no-preserve=mode,ownership"])
@@ -1289,6 +1359,30 @@ pub fn printed_on(
     scratch: &Path,
     ssh: &str,
 ) -> Result<(Ran, String), String> {
+    captured_on(lent, sending, scratch, ssh, false)
+}
+
+/// Runs a command on the lent builder as `on` does, bringing nothing back,
+/// passing on what it prints as it comes and giving it too.
+pub fn teed_on(
+    lent: &Builder,
+    sending: &Sending,
+    scratch: &Path,
+    ssh: &str,
+) -> Result<(Ran, String), String> {
+    captured_on(lent, sending, scratch, ssh, true)
+}
+
+/// What `printed_on` and `teed_on` share: what's printed is kept, and
+/// passed on a line at a time as it comes when `tee` says.
+fn captured_on(
+    lent: &Builder,
+    sending: &Sending,
+    scratch: &Path,
+    ssh: &str,
+    tee: bool,
+) -> Result<(Ran, String), String> {
+    use std::io::BufRead;
     let (mut command, known, said) = reach(lent, scratch, ssh)?;
     command
         .arg(&lent.host)
@@ -1298,9 +1392,26 @@ pub fn printed_on(
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
     }
-    let output = command
-        .spawn()
-        .and_then(std::process::Child::wait_with_output);
+    let output = command.spawn().and_then(|mut running| {
+        let mut printed = Vec::new();
+        if let Some(out) = running.stdout.take() {
+            let mut here = std::io::stdout();
+            let mut out = std::io::BufReader::new(out);
+            let mut line = Vec::new();
+            while out.read_until(b'\n', &mut line)? > 0 {
+                if tee {
+                    let _ = here.write_all(&line).and_then(|()| here.flush());
+                }
+                printed.append(&mut line);
+            }
+        }
+        let status = running.wait()?;
+        Ok(std::process::Output {
+            status,
+            stdout: printed,
+            stderr: Vec::new(),
+        })
+    });
     let sent = fs::read_to_string(&said).ok().and_then(|log| sent(&log));
     let _ = fs::remove_file(&known);
     let _ = fs::remove_file(&said);
@@ -2260,6 +2371,61 @@ pub fn note(journal: &Path, at: u64, seconds: u64, asked: &Asked, ran: &Ran) {
             "nix-offload: couldn't journal the build in {}: {error}",
             journal.display()
         );
+    }
+}
+
+/// Adds a line for checks `asked` names that weren't built, having passed
+/// at their commit already: built nowhere, they sent nothing.
+pub fn note_already(journal: &Path, at: u64, asked: &Asked, already: &[String]) {
+    let line = serde_json::json!({
+        "at": at,
+        "seconds": 0,
+        "flake": asked.flake,
+        "attributes": already,
+        "on": null,
+        "status": 0,
+        "sent": null,
+        "already": true,
+    });
+    let written = journal
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| {
+            fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(journal)
+        })
+        .and_then(|mut file| writeln!(file, "{line}"));
+    if let Err(error) = written {
+        eprintln!(
+            "nix-offload: couldn't journal the build in {}: {error}",
+            journal.display()
+        );
+    }
+}
+
+/// Where the flake in `folder` is when its git tree is its commit: none
+/// with any change to what git tracks, which no commit names yet.
+pub fn clean_at(folder: &Path) -> Option<passed::At> {
+    let folder = fs::canonicalize(folder).ok()?;
+    let top = PathBuf::from(git(&folder, &["rev-parse", "--show-toplevel"], None)?);
+    git(&top, &["diff", "--quiet", "HEAD"], None)?;
+    let head = git(&top, &["rev-parse", "HEAD"], None)?;
+    let dir = folder
+        .strip_prefix(&top)
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .filter(|dir| !dir.is_empty());
+    passed::At::new(&head, dir)
+}
+
+/// Where a source's flake is in its repository.
+pub fn at_of(source: &Source) -> Option<passed::At> {
+    match source {
+        Source::Pushed { commit, dir, .. } | Source::Bundled { commit, dir, .. } => {
+            passed::At::new(commit, dir.clone())
+        }
     }
 }
 

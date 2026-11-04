@@ -43,7 +43,12 @@
 //! it never sends itself on, a `--base` given as its merge base's commit.
 //! With `--here`, a base whose merge base origin's main doesn't hold,
 //! which the far side wouldn't have, edits not yet committed, which it
-//! would pass over, or nowhere to send it, it runs here. While nix-offload lends a builder, a build here is sent
+//! would pass over, or nowhere to send it, it runs here. nix-offload keeps
+//! what passed at each commit, since each builder it lends starts with an
+//! empty store, and tells the far side, as `CHANGED_CHECKS_PASSED`, which
+//! checks passed at its commit, so it builds none of them again; the same
+//! run again at a commit where it passed is answered by nix-offload
+//! alone. While nix-offload lends a builder, a build here is sent
 //! to it as a command naming a commit origin has, and the builder fetches
 //! that commit, evaluates the checks and builds them itself (`there.rs`
 //! says why).
@@ -80,6 +85,10 @@ const NOT_TAKEN: i32 = 75;
 
 /// Set on the far side's run, which runs there and never sends itself on.
 const HERE: &str = "CHANGED_CHECKS_HERE";
+
+/// Set on the far side's run to the checks that passed at its commit
+/// already, which it builds none of again (`passed_at` says how).
+const PASSED: &str = "CHANGED_CHECKS_PASSED";
 
 /// What a run was asked for.
 #[expect(
@@ -327,8 +336,9 @@ fn compare(
     // change, so they're kept by it as a base's are, and a run again on the
     // same commit, or one whose commit is a base kept already, evaluates
     // nothing.
-    let after = match clean_commit()? {
-        Some(commit) => checks::kept(&checks::keeping(&cache(), &commit, system), || {
+    let commit = clean_commit()?;
+    let after = match &commit {
+        Some(commit) => checks::kept(&checks::keeping(&cache(), commit, system), || {
             derivations(flake, system, "tree", noted)
         })?,
         None => derivations(flake, system, "tree", noted)?,
@@ -345,7 +355,22 @@ fn compare(
     if !comparison.broken.is_empty() {
         return Ok(ExitCode::FAILURE);
     }
-    let targets = comparison.to_build(options.vm);
+    let passed = passed_at(commit.as_deref());
+    let targets: Vec<&str> = comparison
+        .to_build(options.vm)
+        .into_iter()
+        .filter(|name| {
+            let already = passed.iter().any(|check| check.as_str() == *name);
+            if already && options.build {
+                let short = commit.as_deref().and_then(|commit| commit.get(..12));
+                eprintln!(
+                    "changed-checks: {name} passed at {} already, so it isn't built again",
+                    short.unwrap_or_default()
+                );
+            }
+            !already
+        })
+        .collect();
     if !options.build || targets.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
@@ -436,6 +461,20 @@ fn published() -> Result<String, String> {
     }
     let url = run("git", &["remote", "get-url", "origin"])?;
     Ok(there::fetched(&url, &commit))
+}
+
+/// Which checks, by name, `CHANGED_CHECKS_PASSED` says passed at `commit`,
+/// the working tree's when it's clean: its commit, then each name. A
+/// check that passed at a commit passes there again, so nix-offload, which
+/// keeps what passed wherever it was built, says so when it sends a run;
+/// told of another commit, or of a tree with changes, it names none.
+fn passed_at(commit: Option<&str>) -> Vec<String> {
+    let told = env::var(PASSED).unwrap_or_default();
+    let mut words = told.split_whitespace();
+    match (words.next(), commit) {
+        (Some(told), Some(commit)) if told == commit => words.map(str::to_owned).collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// The working tree's commit, when nothing in it differs from the commit

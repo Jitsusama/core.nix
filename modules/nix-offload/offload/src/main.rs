@@ -105,6 +105,7 @@ mod decide;
 mod held;
 mod journal;
 mod machines;
+mod passed;
 mod queue;
 mod relay;
 mod sleep;
@@ -372,6 +373,11 @@ fn there(arguments: &[String]) -> ExitCode {
         eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
         return ExitCode::from(64);
     };
+    let journal = state().join("nix-offload/there.jsonl");
+    let kept = Kept::of(&asked);
+    let Some(asked) = kept.unpassed(asked, &journal) else {
+        return ExitCode::SUCCESS;
+    };
     // A test names its own folder, as changed-checks lets one.
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let vm_dir =
@@ -383,7 +389,6 @@ fn there(arguments: &[String]) -> ExitCode {
         .map(|text| there::nearby(&text))
         .unwrap_or_default();
     let (near, mut left) = there::shared(&asked, &nearby, machines::answers);
-    let journal = state().join("nix-offload/there.jsonl");
     let mut status = 0;
     let mut timed = |part: &there::Asked, build: &dyn Fn() -> there::Ran| {
         let began = now();
@@ -438,6 +443,11 @@ fn there(arguments: &[String]) -> ExitCode {
         if status == 0 {
             status = ran.status;
         }
+    }
+    // Which of a build that failed passed isn't known, so only a whole
+    // that passed is kept.
+    if status == 0 {
+        kept.keep(&asked);
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
 }
@@ -546,6 +556,85 @@ fn sent(
     )
 }
 
+/// What a `there` keeps when it passes, where it may: a check that passed
+/// at a commit passes there again, wherever it went, and no store a
+/// builder lent since may hold it (`passed.rs`).
+struct Kept {
+    passed: passed::Passed,
+    /// Where checks asked for are kept, when they may be.
+    checks: Option<passed::At>,
+    /// Where subtests asked for are kept, and what's run, when they may be.
+    subtests: Option<(passed::At, String)>,
+}
+
+impl Kept {
+    fn of(asked: &there::Asked) -> Self {
+        Self {
+            passed: passed::Passed::under(&state()),
+            checks: asked.kept_at(),
+            subtests: asked.subtests_at(),
+        }
+    }
+
+    /// What's asked, without what passed already, each saying so and
+    /// journalled; none when nothing's left to build.
+    fn unpassed(&self, asked: there::Asked, journal: &Path) -> Option<there::Asked> {
+        if let (Some((at, run)), Some(out)) = (&self.subtests, asked.out())
+            && let Some(before) = self.passed.subtests(at, run)
+        {
+            let same = fs::canonicalize(&before).ok() == fs::canonicalize(out).ok();
+            if same || there::copied(&before, out) == 0 {
+                eprintln!(
+                    "nix-offload: these subtests passed at {} already, so they aren't run again; \
+                     their pictures are copied from {}, and removing {} has them run again",
+                    at.short(),
+                    before.display(),
+                    self.passed.file(at).display()
+                );
+                there::note_already(journal, now(), &asked, asked.attributes());
+                return None;
+            }
+        }
+        let Some(at) = &self.checks else {
+            return Some(asked);
+        };
+        let before = self.passed.checks(at);
+        let already: Vec<String> = asked
+            .attributes()
+            .iter()
+            .filter(|attribute| before.contains(attribute))
+            .cloned()
+            .collect();
+        if already.is_empty() {
+            return Some(asked);
+        }
+        for check in &already {
+            eprintln!(
+                "nix-offload: {check} passed at {} already, so it isn't built again",
+                at.short()
+            );
+        }
+        eprintln!(
+            "nix-offload: removing {} has it built again",
+            self.passed.file(at).display()
+        );
+        there::note_already(journal, now(), &asked, &already);
+        asked.without(&already)
+    }
+
+    /// Keep that what was asked passed.
+    fn keep(&self, asked: &there::Asked) {
+        if let Some(at) = &self.checks {
+            self.passed.keep_checks(at, asked.attributes());
+        }
+        if let (Some((at, run)), Some(out)) = (&self.subtests, asked.out()) {
+            // Kept whole, since the next may run in another folder.
+            let out = fs::canonicalize(out).unwrap_or_else(|_| out.to_owned());
+            self.passed.keep_subtests(at, run, &out);
+        }
+    }
+}
+
 /// The lender's folder a build goes to: `more`, the second's, while the
 /// first's builder is full, as `there::to_second` decides, else `first`. A build waits for the first
 /// while none stands, as it always has.
@@ -629,129 +718,211 @@ fn changed_there(arguments: &[String]) -> ExitCode {
         there::Source::Bundled { bundle, .. } => Some(bundle.clone()),
         there::Source::Pushed { .. } => None,
     };
+    let forget = || {
+        if let Some(bundle) = &bundle {
+            let _ = fs::remove_file(bundle);
+        }
+    };
+    // Given no system, the far side would name its own, and the VM tests
+    // sent apart need one, so it's this machine's. It's named before the
+    // run is looked for, so a run kept is found either way.
+    let mut arguments = arguments.to_vec();
+    if changed::wanted(&arguments).system.is_none() {
+        arguments.extend(["--system".to_owned(), this_system()]);
+    }
+    let arguments = arguments.as_slice();
+    // The same run at a commit where it passed passes again, so it's said
+    // again rather than evaluated and built anew (`passed.rs`).
+    let passed = passed::Passed::under(&state());
+    let at = there::at_of(&source);
+    if let Some(at) = &at
+        && let Some(printed) = passed.run(at, arguments)
+    {
+        forget();
+        print!("{printed}");
+        eprintln!(
+            "nix-offload: changed-checks {} passed at {} already, so nothing is evaluated \
+             or built again; removing {} has it run again",
+            arguments.join(" "),
+            at.short(),
+            passed.file(at).display()
+        );
+        return ExitCode::SUCCESS;
+    }
+    let wanted = changed::wanted(arguments);
+    let checks_of = |system: &str| format!("checks.{system}.");
+    let told: Vec<String> = match (&at, &wanted.system) {
+        (Some(at), Some(system)) => passed
+            .checks(at)
+            .iter()
+            .filter_map(|check| check.strip_prefix(&checks_of(system)).map(str::to_owned))
+            .collect(),
+        _ => Vec::new(),
+    };
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     // Decided only while the VM lender ran, a run sent as a switch
     // restarted it ran whole on the lent builder, VM tests and all.
     let vm_apart = vm_apart(&vm_patterns(), &vm_dir);
-    // Given no system, the far side would name its own, and the VM tests
-    // sent apart need one, so it's this machine's.
-    let mut arguments = arguments.to_vec();
-    if changed::wanted(&arguments).system.is_none() {
-        arguments.extend(["--system".to_owned(), this_system()]);
+    let sent = Sent {
+        source: &source,
+        told: &told,
+        folder: &folder,
+        scratch: &scratch,
+    };
+    let finished = sent.somewhere(arguments, &dir, vm_apart);
+    forget();
+    let Some(finished) = finished else {
+        return not_taken("no builder or evaluator answered");
+    };
+    if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
+        passed.keep_run(at, arguments, printed);
+        if let (true, Some(system)) = (wanted.build, &wanted.system) {
+            let built: Vec<String> = changed::to_build(printed, wanted.vm)
+                .iter()
+                .map(|name| format!("{}{name}", checks_of(system)))
+                .collect();
+            passed.keep_checks(at, &built);
+        }
     }
-    let code = changed_somewhere(&arguments, &dir, &scratch, &folder, &source, vm_apart);
-    if let Some(bundle) = bundle {
-        let _ = fs::remove_file(bundle);
-    }
-    code.unwrap_or_else(|| not_taken("no builder or evaluator answered"))
+    ExitCode::from(u8::try_from(finished.status).unwrap_or(1))
 }
 
-/// Where `there --changed` runs, in its order, or none when nowhere did.
-/// With `vm_apart`, VM tests go to a builder of their own, as any `there`
-/// sends them.
-fn changed_somewhere(
-    arguments: &[String],
-    dir: &Path,
-    scratch: &Path,
-    folder: &Path,
-    source: &there::Source,
-    vm_apart: bool,
-) -> Option<ExitCode> {
-    let exited = |status: i32| ExitCode::from(u8::try_from(status).unwrap_or(1));
-    let wanted = changed::wanted(arguments);
-    let on_builder = |store: Option<String>| {
-        let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
-        if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
-            let apart = Apart {
-                lent: &lent,
-                source,
-                folder,
-                scratch,
-                system,
-            };
-            return apart.changed(arguments);
-        }
-        let sending = changed::sending(source.clone(), arguments);
-        match there::on(&lent, &sending, there::Bring::Nothing, scratch, "ssh") {
-            Ok(ran) if ran.status != there::UNREACHED => Some(exited(ran.status)),
-            _ => {
-                eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
-                None
-            }
-        }
-    };
-    let store = fs::read_to_string(dir.join("store"))
-        .ok()
-        .filter(|store| !store.trim().is_empty());
-    if let Some(code) = on_builder(store) {
-        return Some(code);
+/// How a `there --changed` run ended: its status, and what changed-checks
+/// printed, where it was read.
+struct Finished {
+    status: i32,
+    printed: Option<String>,
+}
+
+impl Finished {
+    fn of(status: i32, printed: Option<String>) -> Self {
+        Self { status, printed }
     }
-    // An evaluator only names; what it names is built as any `there` build
-    // is, since a machine that evaluates well may build slowly.
-    let mut evaluating: Vec<String> = arguments
-        .iter()
-        .filter(|word| *word != "--build" && *word != "--name-only")
-        .cloned()
-        .collect();
-    evaluating.push("--name-only".to_owned());
-    // A changed-checks from before --name-only refuses it, as usage, and
-    // without --build it only names anyway.
-    let older = &evaluating[..evaluating.len() - 1];
-    let evaluators = fs::read_to_string(config().join("nix-offload/evaluators"))
-        .map(|text| changed::evaluators(&text))
-        .unwrap_or_default();
-    let github = match source {
-        there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
-    };
-    for evaluator in evaluators
-        .iter()
-        .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
-    {
-        eprintln!("nix-offload: evaluating on {}", evaluator.host);
-        let ask = |words: &[String]| {
-            let sending = changed::sending(source.clone(), words);
-            changed::evaluated("ssh", &evaluator.host, &sending, scratch)
-        };
-        let asked = match ask(&evaluating) {
-            Ok((USAGE, _)) => ask(older),
-            asked => asked,
-        };
-        let (status, printed) = match asked {
-            Ok((status, _)) if status == there::UNREACHED => continue,
-            Ok(evaluated) => evaluated,
-            Err(why) => {
-                eprintln!("nix-offload: {why}");
-                continue;
+}
+
+/// What a `there --changed` run sends wherever it goes: the tree's
+/// source, the checks `told` passed at its commit already, the tree's
+/// folder here, and the scratch folder its files go in meanwhile.
+struct Sent<'a> {
+    source: &'a there::Source,
+    told: &'a [String],
+    folder: &'a Path,
+    scratch: &'a Path,
+}
+
+impl Sent<'_> {
+    /// The command changed-checks is sent as with `arguments`.
+    fn sending(&self, arguments: &[String]) -> there::Sending {
+        changed::sending(self.source.clone(), arguments, self.told)
+    }
+
+    /// Where `there --changed` runs, in its order, or none when nowhere
+    /// did. With `vm_apart`, VM tests go to a builder of their own, as any
+    /// `there` sends them.
+    fn somewhere(&self, arguments: &[String], dir: &Path, vm_apart: bool) -> Option<Finished> {
+        let Self {
+            source,
+            folder,
+            scratch,
+            ..
+        } = *self;
+        let wanted = changed::wanted(arguments);
+        let on_builder = |store: Option<String>| {
+            let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
+            if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
+                let apart = Apart {
+                    lent: &lent,
+                    sent: self,
+                    system,
+                };
+                return apart.changed(arguments);
             }
-        };
-        let targets = changed::to_build(&printed, wanted.vm);
-        if status != 0 || !wanted.build || targets.is_empty() {
-            return Some(exited(status));
-        }
-        let Some(system) = &wanted.system else {
-            eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
-            return Some(ExitCode::from(64));
-        };
-        let built = changed::building(folder, system, &targets).status();
-        return Some(built.map_or(ExitCode::FAILURE, |built| {
-            match built.code() {
-                // Never `NOT_TAKEN`, which would have changed-checks do it
-                // all here, the build it was just refused included.
-                Some(there::UNSENT) => {
-                    eprintln!(
-                        "nix-offload: {} checks were named, but no builder took their build, \
-                         so nothing was built",
-                        targets.len()
-                    );
-                    ExitCode::from(changed::UNBUILT)
+            // What it names is read as it's passed on, so a run that passed
+            // is kept with it.
+            let sending = self.sending(arguments);
+            match there::teed_on(&lent, &sending, scratch, "ssh") {
+                Ok((ran, printed)) if ran.status != there::UNREACHED => {
+                    Some(Finished::of(ran.status, Some(printed)))
                 }
-                code => exited(code.unwrap_or(1)),
+                _ => {
+                    eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
+                    None
+                }
             }
-        }));
+        };
+        let store = fs::read_to_string(dir.join("store"))
+            .ok()
+            .filter(|store| !store.trim().is_empty());
+        if let Some(finished) = on_builder(store) {
+            return Some(finished);
+        }
+        // An evaluator only names; what it names is built as any `there`
+        // build is, since a machine that evaluates well may build slowly.
+        let mut evaluating: Vec<String> = arguments
+            .iter()
+            .filter(|word| *word != "--build" && *word != "--name-only")
+            .cloned()
+            .collect();
+        evaluating.push("--name-only".to_owned());
+        // A changed-checks from before --name-only refuses it, as usage,
+        // and without --build it only names anyway.
+        let older = &evaluating[..evaluating.len() - 1];
+        let evaluators = fs::read_to_string(config().join("nix-offload/evaluators"))
+            .map(|text| changed::evaluators(&text))
+            .unwrap_or_default();
+        let github = match source {
+            there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
+        };
+        for evaluator in evaluators
+            .iter()
+            .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
+        {
+            eprintln!("nix-offload: evaluating on {}", evaluator.host);
+            let ask = |words: &[String]| {
+                changed::evaluated("ssh", &evaluator.host, &self.sending(words), scratch)
+            };
+            let asked = match ask(&evaluating) {
+                Ok((USAGE, _)) => ask(older),
+                asked => asked,
+            };
+            let (status, printed) = match asked {
+                Ok((status, _)) if status == there::UNREACHED => continue,
+                Ok(evaluated) => evaluated,
+                Err(why) => {
+                    eprintln!("nix-offload: {why}");
+                    continue;
+                }
+            };
+            let targets = changed::to_build(&printed, wanted.vm);
+            if status != 0 || !wanted.build || targets.is_empty() {
+                return Some(Finished::of(status, Some(printed)));
+            }
+            let Some(system) = &wanted.system else {
+                eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
+                return Some(Finished::of(USAGE, None));
+            };
+            let built = changed::building(folder, system, &targets).status();
+            let status = built.map_or(1, |built| {
+                match built.code() {
+                    // Never `NOT_TAKEN`, which would have changed-checks do
+                    // it all here, the build it was just refused included.
+                    Some(there::UNSENT) => {
+                        eprintln!(
+                            "nix-offload: {} checks were named, but no builder took their \
+                             build, so nothing was built",
+                            targets.len()
+                        );
+                        i32::from(changed::UNBUILT)
+                    }
+                    code => code.unwrap_or(1),
+                }
+            });
+            return Some(Finished::of(status, Some(printed)));
+        }
+        // Asked for and waited on, as any `there` waits, while a lender runs.
+        on_builder(there::waited(dir, there::WAITING))
     }
-    // Asked for and waited on, as any `there` waits, while a lender runs.
-    on_builder(there::waited(dir, there::WAITING))
 }
 
 /// A changed-checks run on the lent builder whose VM tests build apart. Run
@@ -759,9 +930,7 @@ fn changed_somewhere(
 /// its 32 cores on 2 November, with a builder for VM tests standing apart.
 struct Apart<'a> {
     lent: &'a there::Builder,
-    source: &'a there::Source,
-    folder: &'a Path,
-    scratch: &'a Path,
+    sent: &'a Sent<'a>,
     system: &'a str,
 }
 
@@ -770,16 +939,16 @@ impl Apart<'_> {
     /// evaluating nothing again, since changed-checks keeps a commit's
     /// derivations; meanwhile the VM tests it named go as any `there`
     /// build goes, to their own builder. None when ssh couldn't reach it.
-    fn changed(&self, arguments: &[String]) -> Option<ExitCode> {
-        let exited = |status: i32| ExitCode::from(u8::try_from(status).unwrap_or(1));
+    fn changed(&self, arguments: &[String]) -> Option<Finished> {
         let mut naming: Vec<String> = arguments
             .iter()
             .filter(|word| *word != "--build")
             .cloned()
             .collect();
         naming.push("--name-only".to_owned());
-        let sending = changed::sending(self.source.clone(), &naming);
-        let (named, printed) = match there::printed_on(self.lent, &sending, self.scratch, "ssh") {
+        let sending = self.sent.sending(&naming);
+        let scratch = self.sent.scratch;
+        let (named, printed) = match there::printed_on(self.lent, &sending, scratch, "ssh") {
             Ok((named, printed)) if named.status != there::UNREACHED => (named, printed),
             _ => {
                 eprintln!("nix-offload: ssh couldn't reach {}", self.lent.host);
@@ -797,17 +966,17 @@ impl Apart<'_> {
                 rest.push("--no-vm".to_owned());
                 let built = self.run(&rest);
                 if built != 0 {
-                    return Some(exited(built));
+                    return Some(Finished::of(built, None));
                 }
                 eprintln!(
                     "nix-offload: this commit's changed-checks can't name its checks alone, so \
                      its VM tests weren't built; build them with nix-offload there"
                 );
-                return Some(ExitCode::from(changed::UNBUILT));
+                return Some(Finished::of(i32::from(changed::UNBUILT), None));
             }
             status => {
                 print!("{printed}");
-                return Some(exited(status));
+                return Some(Finished::of(status, Some(printed)));
             }
         }
         let vm: Vec<String> = changed::to_build(&printed, true)
@@ -817,11 +986,11 @@ impl Apart<'_> {
         let testing = if vm.is_empty() {
             None
         } else {
-            match changed::building(self.folder, self.system, &vm).spawn() {
+            match changed::building(self.sent.folder, self.system, &vm).spawn() {
                 Ok(testing) => Some(testing),
                 Err(error) => {
                     eprintln!("nix-offload: couldn't send the VM tests on: {error}");
-                    return Some(ExitCode::FAILURE);
+                    return Some(Finished::of(1, None));
                 }
             }
         };
@@ -830,18 +999,19 @@ impl Apart<'_> {
         let built = self.run(&rest);
         let tested = testing.map(|testing| tested(testing, vm.len()));
         // The first that failed says how the whole did.
-        Some(exited(if built == 0 {
+        let status = if built == 0 {
             tested.unwrap_or(0)
         } else {
             built
-        }))
+        };
+        Some(Finished::of(status, Some(printed)))
     }
 
     /// changed-checks run on the lent builder with `arguments`, its status.
     fn run(&self, arguments: &[String]) -> i32 {
-        let sending = changed::sending(self.source.clone(), arguments);
+        let sending = self.sent.sending(arguments);
         let bring = there::Bring::Nothing;
-        match there::on(self.lent, &sending, bring, self.scratch, "ssh") {
+        match there::on(self.lent, &sending, bring, self.sent.scratch, "ssh") {
             Ok(ran) => ran.status,
             Err(why) => {
                 eprintln!("nix-offload: {why}");
