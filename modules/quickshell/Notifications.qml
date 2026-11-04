@@ -155,7 +155,8 @@ Scope {
     property var order: []
     readonly property var shown: Stack.shown(order,
         server.trackedNotifications.values.map(notification => notification.id)
-            .filter(id => !(id in Notices.resting)))
+            .filter(id => !(id in Notices.resting)
+                && !root.forgotten.some(set => set.includes(id))))
     // How many may rest at once before the oldest is closed, so no program
     // is asked to hold its notices for ever.
     readonly property int rests: 30
@@ -211,6 +212,70 @@ Scope {
     readonly property bool away: idle.isIdle
     property bool stepped: false
     property int chosen: 0
+    // A search: whether it's being typed, which way it goes, what it
+    // looks for, and the stack's order as it began, which cancelling it
+    // goes back to. What's found stays washed until the stack lets go.
+    property bool typing: false
+    property bool forward: true
+    property string pattern: ""
+    property var before: []
+    // Whole cards selected, as vi's V selects lines: from where it began
+    // to the front, in the order the stack stood in then.
+    property bool selecting: false
+    property var selectOrder: []
+    property int selectFrom: 0
+    property int selectAt: 0
+    readonly property var selected: selecting
+        ? selectOrder.slice(Math.min(selectFrom, selectAt), Math.max(selectFrom, selectAt) + 1)
+        : []
+    onSelectedChanged: if (selecting) Report.say(`notice selects ${selected.length}`)
+    // What's been forgotten while the stack holds the keys, each
+    // forgetting's cards together and the last last, for u to bring back;
+    // they're let go for good as the keys go back.
+    property var forgotten: []
+    // Whether Space ? lists the keys in the front card's acts' place, and
+    // the first it shows: they're more than its acts' room holds, so they
+    // scroll there, as Neovim's help does, rather than the card growing.
+    property bool listing: false
+    property int listTop: 0
+    readonly property var listShown: keyList.slice(listTop, listTop + verbs.length)
+    onListingChanged: {
+        listTop = 0;
+        Report.say(listing ? "notice lists keys" : "notice hides keys");
+    }
+    onListTopChanged: if (listing) Report.say(`notice lists keys from ${listTop + 1}`)
+    // The typing bar's blink, as Joel's guicursor has it in insert: on
+    // 700 ms before it starts, then on 400 and off 250.
+    property bool blinkOn: true
+    onTypingChanged: root.wakes()
+    onPatternChanged: if (typing) root.wakes()
+    // Typing shows the bar steady, then it blinks again.
+    function wakes() {
+        blinkOn = true;
+        blink.interval = 700;
+        blink.restart();
+    }
+    Timer {
+        id: blink
+        running: root.typing
+        onTriggered: {
+            root.blinkOn = !root.blinkOn;
+            interval = root.blinkOn ? 400 : 250;
+            restart();
+        }
+    }
+    readonly property var keyList: NoticeKeys.keyList()
+    // A match's ink and ground, as Joel's Neovim draws a search's
+    // (modules/neovim/colors/jitsusama.lua, Search).
+    readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
+    // How many of the cards hold what's searched for, and which of them,
+    // counted from the newest, is at the front: 0 when it isn't one.
+    readonly property var finds: shown.filter(id => root.holds(id))
+    readonly property int foundAt: {
+        const ages = finds.slice()
+            .sort((a, b) => (root.arrived[b] ?? 0) - (root.arrived[a] ?? 0));
+        return ages.indexOf(shown[0]) + 1;
+    }
     onShownChanged: {
         stepped = false;
         if (shown.length === 0)
@@ -218,6 +283,14 @@ Scope {
     }
     onHoldingChanged: {
         stepped = false;
+        typing = false;
+        selecting = false;
+        listing = false;
+        pattern = "";
+        // Later, since forgetting the last card is what lets the keys
+        // go, and the stack can't change while it's being worked out.
+        if (!holding)
+            Qt.callLater(root.letGo);
         standing = NoticeKeys.rest();
         stood = 0;
         Qt.callLater(stands);
@@ -316,7 +389,7 @@ Scope {
                 // typed one after the other.
                 chord: [{ text: "d" }, { text: "d", after: true }],
                 stays: true,
-                run: () => notification.dismiss()
+                run: () => root.forgetting([notification.id])
             });
         case "forgetAll":
             return Object.assign(named("verb:notices:forget"), {
@@ -335,26 +408,80 @@ Scope {
             // Copying what it said, always last.
             return Object.assign(named("verb:notice:copy"), {
                 chord: [{ text: "y" }, { text: "y", after: true }],
-                run: done(() => root.copy(notification))
+                run: done(() => root.copy([notification]))
             });
         }
     }
 
-    // What a notice said onto the clipboard, which its signature says a
-    // moment in its time's place, again when it's copied again.
-    function copy(notification) {
-        Quickshell.clipboardText = root.said(notification);
+    // What a notice said onto the clipboard, or several, a blank line
+    // apart, which the front one's signature says a moment in its time's
+    // place, again when it's copied again.
+    function copy(notifications) {
+        if (notifications.length === 0)
+            return;
+        Quickshell.clipboardText = notifications.map(one => root.said(one)).join("\n\n");
         root.copied = -1;
-        root.copied = notification.id;
+        root.copied = front ? front.id : notifications[0].id;
         copiedFor.restart();
     }
 
     // What a notice said, as plain text: its summary, and its body without
     // the markup it may carry.
     function said(notification) {
-        const body = notification.body.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        const body = root.plain(notification.body);
         return body === "" ? notification.summary : `${notification.summary}\n${body}`;
+    }
+
+    function plain(body) {
+        return body.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    }
+
+    // The live notice an id names, or null.
+    function notice(id) {
+        return server.trackedNotifications.values.find(one => one.id === id) ?? null;
+    }
+
+    // Whether what a card says, or the name it's signed with, holds what's
+    // searched for.
+    function holds(id) {
+        const notification = root.notice(id);
+        return notification !== null && pattern !== "" && NoticeKeys.found(pattern,
+            `${root.said(notification)}\n${Notices.sender(notification.appName).name}`).length > 0;
+    }
+
+    // Turns to the next card holding what's searched for, either way, as
+    // many times as asked, as vi's n and N.
+    function seek(ahead, count) {
+        for (let step = 0; step < count; step++) {
+            const at = NoticeKeys.next(shown.map(id => root.holds(id)), ahead);
+            if (at > 0)
+                order = Stack.turnedTo(shown, shown[at]);
+        }
+        Report.say(`notice finds ${pattern} in ${finds.length}`);
+    }
+
+    // A key typed into the search, which turns to the first card holding
+    // it from where the search began, as Joel's incsearch does; cancelled,
+    // the stack is back as it was.
+    function search(key) {
+        // Shift pressed on its own, for a capital, types nothing yet.
+        if (key === "")
+            return;
+        const typed = NoticeKeys.searching(pattern, key);
+        if (typed.ends === "cancelled") {
+            typing = false;
+            pattern = "";
+            order = before;
+            return;
+        }
+        if (typed.ends === "found") {
+            typing = false;
+            return;
+        }
+        pattern = typed.pattern;
+        order = before;
+        root.seek(forward, 1);
     }
 
     // What a notice's sender does when it's chosen, or null.
@@ -421,24 +548,72 @@ Scope {
     // steps back, and Return does it, or the front one; gg and G turn to
     // the newest and the oldest, or choose the first and last verb; dd or
     // Delete lets the front one go, and dG or Shift+Delete all of them; yy
-    // copies what the front one said, leaving the stack held; a
+    // copies what the front one said, leaving the stack held; u brings
+    // back what was forgotten last; / and ? search what the cards say, and
+    // n and N again; V selects cards for d or y; Space ? lists these; a
     // count goes before any of them; q gives the keys back, and Escape
     // cancels what's begun, then steps back, then gives the keys back. The
     // chord that opened the stack hands on to the history (niri's, to
     // `take` below). Tab does nothing, being only for completing.
     function pressed(event) {
-        const read = NoticeKeys.read(standing, named(event));
+        if (typing) {
+            event.accepted = true;
+            root.search(named(event));
+            return;
+        }
+        const read = NoticeKeys.read(standing, named(event), selecting ? "visual" : "normal");
         standing = read.standing;
         if (!read.ours)
             return;
         event.accepted = true;
         const by = Math.max(read.count, 1);
+        if (selecting) {
+            root.chose(read.act, by);
+            return;
+        }
+        // Listed, the keys that move move through the list.
+        const last = Math.max(keyList.length - verbs.length, 0);
+        const scrolls = { next: listTop + by, previous: listTop - by, newest: 0, oldest: last };
+        if (listing && read.act in scrolls) {
+            listTop = Math.max(0, Math.min(scrolls[read.act], last));
+            return;
+        }
         switch (read.act) {
         case "run":
-            run();
+            if (!listing)
+                run();
+            break;
+        case "searchForward":
+        case "searchBack":
+            forward = read.act === "searchForward";
+            before = shown.slice();
+            pattern = "";
+            stepped = false;
+            listing = false;
+            typing = true;
+            break;
+        case "again":
+        case "againBack":
+            if (pattern !== "")
+                root.seek(read.act === "again" ? forward : !forward, by);
+            break;
+        case "select":
+            selectOrder = shown.slice();
+            selectFrom = 0;
+            selectAt = 0;
+            stepped = false;
+            listing = false;
+            selecting = true;
+            break;
+        case "undo":
+            root.undo();
+            break;
+        case "keys":
+            stepped = false;
+            listing = !listing;
             break;
         case "into":
-            if (!stepped && verbs.length > 0) {
+            if (!stepped && !listing && verbs.length > 0) {
                 chosen = 0;
                 stepped = true;
                 Report.say(`notice verb ${verbs[0].name}`);
@@ -474,17 +649,49 @@ Scope {
             putAway();
             break;
         case "copy":
-            if (front)
-                copy(front);
+            root.copy(shown.slice(0, by).map(id => root.notice(id)).filter(one => one !== null));
             break;
         case "close":
             holding = false;
             break;
         case "back":
-            if (stepped)
+            if (listing)
+                listing = false;
+            else if (stepped)
                 stepped = false;
             else
                 holding = false;
+            break;
+        }
+    }
+
+    // A key while cards are selected: j and k carry the selection on
+    // through the stack as it stood, without going round, gg and G to its
+    // ends; d forgets them all and y copies them, ending it, as V again
+    // and Escape do.
+    function chose(act, by) {
+        switch (act) {
+        case "next":
+        case "previous":
+        case "newest":
+        case "oldest": {
+            const last = selectOrder.length - 1;
+            const moves = { next: selectAt + by, previous: selectAt - by, newest: 0, oldest: last };
+            selectAt = Math.max(0, Math.min(moves[act], last));
+            order = Stack.turnedTo(shown, selectOrder[selectAt]);
+            break;
+        }
+        case "forget":
+            root.forgetting(selected);
+            selecting = false;
+            break;
+        case "copy":
+            root.copy(selected.map(id => root.notice(id)).filter(one => one !== null));
+            selecting = false;
+            break;
+        case "select":
+        case "back":
+            selecting = false;
             break;
         }
     }
@@ -497,6 +704,7 @@ Scope {
         [Qt.Key_Delete]: "Delete",
         [Qt.Key_Backspace]: "Backspace",
         [Qt.Key_Escape]: "Escape",
+        [Qt.Key_Space]: "Space",
         [Qt.Key_Left]: "Left",
         [Qt.Key_Up]: "Up",
         [Qt.Key_Right]: "Right",
@@ -516,16 +724,46 @@ Scope {
     // Lets the front one go, or as many from the front as a count says, as
     // vi's 3dd deletes three lines.
     function forget(count) {
-        const going = shown.slice(0, count);
-        for (const notification of server.trackedNotifications.values
-            .filter(notification => going.includes(notification.id)))
-            notification.dismiss();
+        root.forgetting(shown.slice(0, count));
     }
 
     function putAway() {
+        root.forgetting(shown.slice());
+    }
+
+    // Forgets these cards: while the stack holds the keys, off it and kept
+    // for u, since vi's deletes can be undone; otherwise let go at once.
+    function forgetting(ids) {
+        if (holding)
+            forgotten = forgotten.concat([ids]);
+        else
+            root.dismiss(ids);
+    }
+
+    function dismiss(ids) {
         for (const notification of server.trackedNotifications.values
-            .filter(notification => root.shown.includes(notification.id)))
+            .filter(notification => ids.includes(notification.id)))
             notification.dismiss();
+    }
+
+    // What was forgotten last back where it stood, its first at the front.
+    function undo() {
+        if (forgotten.length === 0)
+            return;
+        const back = forgotten[forgotten.length - 1];
+        forgotten = forgotten.slice(0, -1);
+        const first = back.find(id => root.notice(id) !== null);
+        if (first !== undefined) {
+            order = Stack.turnedTo(shown, first);
+            Report.say(`notice brought back ${root.notice(first).summary}`);
+        }
+    }
+
+    // The forgotten let go for good, as the keys go back.
+    function letGo() {
+        const going = forgotten.reduce((all, ids) => all.concat(ids), []);
+        root.dismiss(going);
+        forgotten = [];
     }
 
     // One whose time is up leaves the screen but stays open, resting, so
@@ -991,6 +1229,12 @@ Scope {
                     // chosen, such as opening the conversation it's about,
                     // or null for one that offers nothing.
                     readonly property var opens: root.opens(card.modelData)
+                    // Whether its words hold what's searched for, which
+                    // they then show washed.
+                    readonly property bool washed: front && root.finds.includes(modelData.id)
+                    // Whether its foot says the mode the keys are in, or
+                    // the search being typed, in its signature's place.
+                    readonly property bool moded: keys && (root.typing || root.selecting)
 
                     // A click anywhere on the front card opens what it's
                     // about, or puts it away when it's about nothing to
@@ -1022,6 +1266,20 @@ Scope {
                     // every side, to the capital's top and the
                     // signature's baseline (Joel, 2026-11-03: "feeling
                     // quite cluttered").
+                    // Selected, its words take the selection's ground, as
+                    // selected lines do in Joel's Neovim, while its foot,
+                    // saying the mode, stays on the card's own, as his
+                    // status line sits outside the buffer: the accent
+                    // can't be read on the selection.
+                    Rectangle {
+                        visible: card.front && root.selected.includes(card.modelData.id)
+                        width: parent.width
+                        height: words.y + signature.y
+                        topLeftRadius: Theme.radius - Theme.border
+                        topRightRadius: Theme.radius - Theme.border
+                        color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                    }
+
                     Column {
                         id: words
                         visible: card.front
@@ -1036,10 +1294,13 @@ Scope {
                         Text {
                             id: who
                             width: parent.width
-                            text: card.modelData.summary
+                            text: card.washed
+                                ? NoticeKeys.washed(card.modelData.summary, root.pattern, root.wash)
+                                : card.modelData.summary
                             // Plain, as the spec has a summary: only the
-                            // body carries markup.
-                            textFormat: Text.PlainText
+                            // body carries markup. Washed, it's rich text,
+                            // which alone draws a ground behind words.
+                            textFormat: card.washed ? Text.RichText : Text.PlainText
                             color: Theme.strong
                             wrapMode: Text.Wrap
                             lineHeight: root.pitch
@@ -1051,15 +1312,18 @@ Scope {
 
                         Text {
                             width: parent.width
-                            text: card.modelData.body
-                            visible: text !== ""
+                            text: card.washed
+                                ? NoticeKeys.washed(root.plain(card.modelData.body), root.pattern,
+                                    root.wash)
+                                : card.modelData.body
+                            visible: card.modelData.body !== ""
                             // A line that belongs with the one above.
                             topPadding: Theme.space.xs
                             color: Theme.text
                             wrapMode: Text.Wrap
                             maximumLineCount: 6
                             elide: Text.ElideRight
-                            textFormat: Text.StyledText
+                            textFormat: card.washed ? Text.RichText : Text.StyledText
                             lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
                             font.family: Theme.sans.family
@@ -1081,6 +1345,7 @@ Scope {
 
                             Text {
                                 id: mark
+                                visible: !card.moded
                                 y: Theme.space.m
                                 lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
@@ -1090,19 +1355,46 @@ Scope {
                                 font.pointSize: Theme.mono.large
                             }
 
+                            // Its sender's name, or the search being typed,
+                            // as vi's command line shows it, or the mode
+                            // word while cards are selected, in the accent
+                            // and lowercase as Joel's status line says it,
+                            // each at the foot's left.
                             Text {
                                 id: sent
-                                x: Theme.space.xxl
+                                x: card.moded ? 0 : Theme.space.xxl
                                 y: Theme.space.m
                                 width: time.x - x - Theme.space.l
                                 lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
-                                text: card.from.name
+                                text: !card.moded ? card.from.name
+                                    : root.typing ? `${root.forward ? "/" : "?"}${root.pattern}`
+                                    : "visual line"
                                 textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: Theme.muted
+                                // A long search loses its start, so what's
+                                // being typed stays in sight.
+                                elide: card.moded ? Text.ElideLeft : Text.ElideRight
+                                color: !card.moded ? Theme.muted
+                                    : root.typing ? Theme.strong : Theme.accent
                                 font.family: Theme.mono.family
                                 font.pointSize: Theme.mono.large
+                            }
+
+                            // The bar that types, a quarter of a letter
+                            // wide, after what's typed, as Joel's insert
+                            // cursor is.
+                            Rectangle {
+                                visible: card.moded && root.typing && root.blinkOn
+                                x: sent.x + Math.min(sent.contentWidth, sent.width)
+                                y: sent.y + sent.baselineOffset - caret.ascent
+                                width: Math.max(1, Math.round(caret.averageCharacterWidth / 4))
+                                height: caret.ascent + caret.descent
+                                color: Theme.strong
+
+                                FontMetrics {
+                                    id: caret
+                                    font: sent.font
+                                }
                             }
 
                             Text {
@@ -1118,7 +1410,21 @@ Scope {
                                 // launcher says a copy as it closes: done,
                                 // in the colour of what went well.
                                 readonly property bool copied: root.copied === card.modelData.id
-                                text: (more > 0 ? `${more} more \u00b7 ` : "")
+                                // Searching, which find it is of how many;
+                                // selecting, how many are.
+                                // Listing the keys, where in the list; once
+                                // a search is done, it says only while the
+                                // front card is a match.
+                                readonly property string counted: root.listing
+                                    ? NoticeKeys.ruler(root.listTop, root.verbs.length,
+                                        root.keyList.length)
+                                    : root.selecting ? `${root.selected.length} selected`
+                                    : root.pattern === "" ? ""
+                                    : root.typing && root.finds.length === 0 ? "no match"
+                                    : root.typing || root.foundAt > 0
+                                    ? `${root.foundAt}/${root.finds.length}` : ""
+                                text: card.keys && counted !== "" ? counted
+                                    : (more > 0 ? `${more} more \u00b7 ` : "")
                                     + (copied
                                         ? `<font color="${Theme.success}">${Theme.glyph.done}`
                                             + " copied</font>"
@@ -1163,7 +1469,8 @@ Scope {
                             }
 
                             Repeater {
-                                model: card.keys ? root.verbs : []
+                                // Or, as Space ? asks, every key here.
+                                model: !card.keys ? [] : root.listing ? root.listShown : root.verbs
 
                                 Item {
                                     id: verb
@@ -1239,6 +1546,7 @@ Scope {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        enabled: !root.listing
                                         onClicked: {
                                             root.stepped = true;
                                             root.chosen = verb.index;
