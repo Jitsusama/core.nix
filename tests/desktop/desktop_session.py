@@ -1070,21 +1070,7 @@ def drawn_held_still(desktop: Desktop) -> int:
     return frames() - began
 
 
-# What the launcher's answers areas share: how an answer is copied, and the stand-in battery's
-# charge.
-
-
-def copied(desktop: Desktop, typed: str, expected: str) -> None:
-    """Ask the launcher, take its answer with Return, and check that it copied this."""
-    desktop.answer(typed)
-    # It says so as it closes.
-    with desktop.told("parted copied"):
-        desktop.machine.send_key("ret")
-    closed = desktop.in_session(LAUNCHER_OPEN)
-    desktop.machine.wait_until_fails(closed, timeout=timedelta(seconds=10))
-    assert desktop.as_account("wl-paste --no-newline") == expected
-
-
+# What the launcher's answers areas share: the stand-in battery's charge.
 def charged(desktop: Desktop) -> str:
     """Give the stand-in battery's charge, as the kernel's stand-in has it."""
     return desktop.machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()

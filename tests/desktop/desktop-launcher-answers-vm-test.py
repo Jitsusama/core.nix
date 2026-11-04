@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import KEY_PACE, LAUNCHER_OPEN, charged, copied
+from desktop_session import KEY_PACE, LAUNCHER_OPEN, charged
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -44,6 +44,17 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
 # The keyboard's stand-in light, and the levels its answer lists.
 KBD_LIGHT = "/sys/class/leds/stand-in::kbd_backlight/brightness"
 KBD_LEVELS = ["Light Off", "Light to 1 of 2", "Light to 2 of 2"]
+
+
+def copied(desktop: Desktop, typed: str, expected: str) -> None:
+    """Ask the launcher, take its answer with Return, and check that it copied this."""
+    desktop.answer(typed)
+    # It says so as it closes.
+    with desktop.told("parted copied"):
+        desktop.machine.send_key("ret")
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    assert desktop.as_account("wl-paste --no-newline") == expected
 
 
 def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(

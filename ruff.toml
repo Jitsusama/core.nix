@@ -36,3 +36,5 @@ ignore = [
 # The desktop its areas drive asserts what a test needs, as pytest reports what each side
 # held, and hands the driver's retry a test taking a positional bool, as the driver calls it.
 "tests/desktop/desktop_session.py" = ["FBT001", "S101"]
+# The shell on a nested niri asserts what a test needs, as the desktop does.
+"tests/launcher_on_niri.py" = ["S101"]

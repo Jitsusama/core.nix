@@ -89,18 +89,21 @@ let
       } qs/greeter.qml
     '';
 
-  # The account's notices on its real niri, with its own configuration,
+  # The account's shell on its real niri, with its own configuration,
   # nested in a headless sway in the sandbox rather than in a machine
-  # (tests/nested-niri.sh): a script run against them, given the shell's
-  # folder, the logs and what more it's given. The account says what its
-  # shell does, as the desktop test's does, and counts as away after so
-  # many seconds of nothing typed or moved.
-  noticesOnNiri =
+  # (tests/nested-niri.sh): a command run against it, which starts the
+  # shell from the folder its root is in, as quickshell, and logs to logs.
+  # The account says what its shell does, as the desktop test's does, and
+  # counts as away after so many seconds of nothing typed or moved.
+  shellOnNiri =
     {
       name,
       away,
-      script,
-      given ? [ ],
+      command,
+      # The shell's root file, or null for the account's whole shell.
+      root ? null,
+      # What more the command runs, besides niri, the shell and a bus.
+      inputs ? [ ],
     }:
     let
       home = account (bareNixos [
@@ -112,13 +115,16 @@ let
           };
         }
       ]);
-      shell = lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) home.xdg.configFile;
-      niri = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) home.xdg.configFile;
-      copied =
-        files:
-        lib.concatLines (
-          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
-        );
+      # The shell, niri's configuration, and the theme the shell reads its
+      # colours from.
+      given = lib.filterAttrs (
+        name: _:
+        lib.any (folder: lib.hasPrefix folder name) [
+          "quickshell/"
+          "niri/"
+          "jitsusama/"
+        ]
+      ) home.xdg.configFile;
       inherit (pkgs) mesa;
     in
     pkgs.runCommandLocal name
@@ -127,9 +133,9 @@ let
           graphical.config.programs.niri.package
           graphical.pkgs.quickshell
           pkgs.dbus
-          pkgs.libnotify
           pkgs.sway-unwrapped
-        ];
+        ]
+        ++ inputs;
         LANG = "C.UTF-8";
         FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
         # niri and Qt draw in software, as the desktop's machine does.
@@ -142,13 +148,65 @@ let
       }
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_STATE_HOME=$PWD/state
-        ${copied shell}
-        ${copied niri}
-        install -m 644 ${../../tests/notices.qml} quickshell/shell.qml
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
-          ${lib.getExe pkgs.bash} ${script} quickshell logs ${lib.escapeShellArgs given}
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") given
+        )}
+        ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs ${command}
         touch $out
       '';
+
+  # The account's notices alone on niri (tests/notices.qml): a script run
+  # against them, given the shell's folder, the logs and what more it's
+  # given.
+  noticesOnNiri =
+    {
+      name,
+      away,
+      script,
+      given ? [ ],
+    }:
+    shellOnNiri {
+      inherit name away;
+      root = ../../tests/notices.qml;
+      inputs = [ pkgs.libnotify ];
+      command = "${lib.getExe pkgs.bash} ${script} quickshell logs ${lib.escapeShellArgs given}";
+    };
+
+  # The account's whole shell on niri, its launcher typed into through
+  # wtype, with a file of tests run through pytest against it
+  # (tests/launcher_on_niri.py starts the shell and types).
+  launcherOnNiri =
+    { name, tests }:
+    let
+      python = pkgs.python3.withPackages (python: [ python.pytest ]);
+      checked = pkgs.runCommandLocal "${name}-tests" { } ''
+        install -D -m 644 ${../../tests/launcher_on_niri.py} $out/launcher_on_niri.py
+        install -D -m 644 ${tests} $out/${baseNameOf tests}
+      '';
+    in
+    shellOnNiri {
+      inherit name;
+      # Away only after an hour, since nobody types here but the check.
+      away = 3600;
+      inputs = [
+        pkgs.wl-clipboard
+        pkgs.wtype
+      ];
+      command = lib.escapeShellArgs [
+        "env"
+        "SHELL_FOLDER=quickshell"
+        "LOGS=logs"
+        "PYTHONPATH=${checked}"
+        (lib.getExe python)
+        "-m"
+        "pytest"
+        "-p"
+        "no:cacheprovider"
+        "-v"
+        "${checked}/${baseNameOf tests}"
+      ];
+    };
 in
 # The shell runs only on Linux, so a Mac has none of its checks: most build
 # Quickshell or a program only Linux has, and the rest read a Linux machine,
@@ -183,6 +241,14 @@ onLinux {
     name = "the-notices-wait-while-joel-is-away";
     away = 1;
     script = ../../tests/notices-wait-while-away.sh;
+  };
+
+  # The launcher answers what's typed into it, on the account's whole shell
+  # on niri, in seconds rather than a machine's minutes
+  # (tests/launcher-on-niri-test.py).
+  the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
+    name = "the-launcher-answers-whats-typed-on-niri";
+    tests = ../../tests/launcher-on-niri-test.py;
   };
 
   # A switch restarts Quickshell when any file it reads changes, so the shell

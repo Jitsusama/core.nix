@@ -1,7 +1,9 @@
 """The desktop test's launcher finds by name area.
 
 Here the launcher finds what Joel types: each thing once, by every name it had, emoji in
-their place, a step by its words, the field's keys, and answers needing no machine.
+their place, a category and a step by their words, and the field's keys. What it answers with
+no machine is tests/launcher-on-niri-test.py's, on a nested niri in seconds; only its photographs
+are here.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -17,7 +19,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING, charged, copied
+from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING, charged
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -223,165 +225,6 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
     machine.send_key("esc")
 
 
-def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(desktop: Desktop) -> None:
-    """The date is copied, the power acts ask first, and a bind's words find its action."""
-    machine = desktop.machine
-    # The date in full, as the machine's clock has it; the day may
-    # turn while it's asked, so either will do.
-    before = machine.succeed("date '+%A %-d %B %Y'").strip()
-    desktop.answer("date")
-    desktop.photograph("launcher-date")
-    machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    after = machine.succeed("date '+%A %-d %B %Y'").strip()
-    assert desktop.as_account("wl-paste --no-newline") in [before, after]
-    # The power actions answer to their names, and only those; Escape,
-    # never Return, since Return would do them.
-    for typed, action, verb in [
-        ("power off", "Power Off", "Power Off"),
-        ("reboot", "Reboot", "Reboot"),
-        ("log out", "Log Out", "Log Out"),
-    ]:
-        desktop.answer(typed)
-        # Each wait ends before the loop moves on, so it reads this pass's action.
-        desktop.launcher_until(
-            lambda shown: (
-                (shown["selected"] or {}).get("name") == action  # noqa: B023
-                and shown["kind"] == "session"
-            )
-        )
-        # Return asks rather than doing it: it holds the action, its
-        # one verb saying what a second Return would do and what it
-        # closes.
-        machine.send_key("ret")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["held"] == [action]  # noqa: B023
-                and re.fullmatch(
-                    f"{verb} Now(, Closing (the Window|\\d+ Windows))?",  # noqa: B023
-                    (shown["selected"] or {}).get("name", ""),
-                )
-                is not None
-            )
-        )
-        machine.send_key("esc")
-        machine.wait_until_fails(
-            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
-        )
-    # Asked to be sure, the foot says Log Out's verb whole, its first
-    # word alone saying nothing.
-    desktop.answer("log out")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Log Out")
-    machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: "\u21b5 log out" in (shown["selected"] or {}).get("told", [])
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # A key's action, by the other words its bind lists.
-    desktop.answer("fullscreen")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name")
-            == "Fill the screen with the window, or put it back"
-            and shown["kind"] == "shortcut"
-        )
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-
-
-def test_units_zones_colours_and_whats_offline_are_answered(desktop: Desktop) -> None:
-    """Units, zones and colours are answered, and what needs a network says it couldn't."""
-    machine = desktop.machine
-    desktop.answer("350 f in c")
-    answer_is_whole(desktop, "176.667 \u00b0C")
-    desktop.photograph("launcher-units")
-    machine.send_key("esc")
-    # The zones come from the list built from tzdata, so this proves it's
-    # there. The minute may turn while it's asked, so either will do.
-    before = machine.succeed("date -u +%H:%M").strip()
-    desktop.answer("time in utc")
-    desktop.photograph("launcher-time")
-    machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    after = machine.succeed("date -u +%H:%M").strip()
-    assert desktop.as_account("wl-paste --no-newline") in [before, after]
-    # A theme's colour is found by its name, as the theme exports it.
-    theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
-    copied(desktop, "colour accent", theme["colours"]["accent"].lower())
-    # Slack takes its theme only by hand, so the launcher copies it,
-    # in the theme's own colours.
-    slack = ["accent", "selection", "success", "warning"]
-    copied(desktop, "slack theme", ",".join(theme["colours"][colour] for colour in slack))
-    desktop.answer("#f53")
-    desktop.photograph("launcher-colour")
-    machine.send_key("esc")
-    desktop.answer("10.0.0.0/22")
-    desktop.photograph("launcher-answer")
-    machine.send_key("esc")
-    # With no network, what has to ask one says it couldn't, and nothing
-    # breaks. Each waits for its answer to settle, failed; asked again
-    # while that failure stands, it says so at once. When a failure is
-    # asked again is the launcher's answers check's to say.
-    for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "address"]:
-        desktop.answer(typed)
-        machine.send_key("esc")
-    desktop.answer("weather tokyo")
-    # Come to nothing, it says why once, as its one row, quietly: the
-    # field finishes nothing and its end adds nothing (VKCF3Z, 2026-11-02:
-    # "= no forecast" beside "Open-Meteo didn't a..." said it twice).
-    desktop.launcher_until(
-        lambda shown: (
-            shown["rows"] == ["Open-Meteo didn't answer."]
-            and shown["completion"] == ""
-            and shown["footer"] == ""
-            and shown["kind"] == ""
-        )
-    )
-    desktop.photograph("launcher-offline")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # The rain is the weather's to answer: here asks where here is, since
-    # the VM has no time zone, and a place's rain asks the same forecast.
-    # Built as a check, the VM has no network and says Open-Meteo didn't
-    # answer; run by hand it may reach Open-Meteo itself, and then says the
-    # next rain. That the next rain is said from the hours is the
-    # launcher's rain check's to show.
-    desktop.answer("rain")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    desktop.answer("rain in tokyo")
-    rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
-    desktop.launcher_until(
-        lambda shown: (
-            (
-                (shown["selected"] or {}).get("name") == "Open-Meteo didn't answer."
-                and shown["footer"] == ""
-            )
-            or (
-                re.fullmatch(rained, (shown["selected"] or {}).get("name", "")) is not None
-                and shown["footer"] == "Tokyo, Japan \u00b7 Open-Meteo"
-            )
-        )
-    )
-    machine.send_key("esc")
-
-
-def answer_is_whole(desktop: Desktop, answer: str) -> None:
-    """Wait for the answer to come, and check it's drawn whole in the row it held.
-
-    The row says "Ask" until the answer comes, and is kept as it does, so what it then says
-    must not be cut to the room "Ask" took, as the gallery's launcher-units once showed it.
-    """
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == [answer])
-    assert desktop.held_still(), "the launcher never came to rest"
-    words = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"][0]["words"]
-    name = next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == answer)
-    assert not name["cut"], words
-
-
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
     """The launcher finds emoji in their own place, and only there."""
     machine = desktop.machine
@@ -497,44 +340,6 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ip ")
     desktop.type_in("10.0.0.0/22")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-
-
-def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(
-    desktop: Desktop,
-) -> None:
-    """The power acts are found by their names, and by the names they had."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
-    # Short names, each found by the start Joel types; Escape, never
-    # Return, since Return would do them.
-    for typed, name, verb in [
-        ("sle", "Sleep", "sleep"),
-        ("keep", "Keep Awake", "start"),
-        ("reb", "Reboot", "reboot"),
-        ("do not", "Do Not Disturb", "start"),
-    ]:
-        desktop.answer(typed)
-        # The wait ends before the loop moves on, so it reads this pass's name.
-        desktop.launcher_until(
-            lambda shown: (
-                (shown["selected"] or {}).get("name") == name  # noqa: B023
-                and shown["selected"]["verb"] == verb  # noqa: B023
-            )
-        )
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # A rename loses nothing: the old name still finds Sleep, never shown,
-    # and says once what it's called now.
-    desktop.answer("suspend")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Sleep"
-            and shown["footer"] == "Once called Suspend."
-            and "Suspend" not in shown["rows"]
-        )
-    )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
@@ -753,34 +558,6 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_an_answer_asked_for_holds_its_row_from_the_keystroke(desktop: Desktop) -> None:
-    """An answer asked for holds its row from the keystroke."""
-    machine = desktop.machine
-    typed = "weather lima"
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    since = desktop.mark()
-    machine.send_chars(typed)
-    seen: list[Json] = []
-
-    def settled(said: str) -> bool:
-        shown = json.loads(said)
-        if shown["typed"] != typed:
-            return False
-        seen.append(shown)
-        return bool((shown["selected"] or {}).get("settled"))
-
-    desktop.reported("showing ", settled, since)
-    # Each time it's shown whole, still asking or answered, the answer is
-    # the first row and the rows below it are the same.
-    firsts = [shown["things"][0]["is"] if shown["things"] else "" for shown in seen]
-    assert set(firsts) == {"answer"}, f"the answer's row came and went: {firsts}"
-    below = {tuple(shown["rows"][1:]) for shown in seen}
-    assert len(below) == 1, f"the rows below the answer moved: {below}"
-    machine.send_key("esc")
-    desktop.launcher_until(lambda shown: not shown["open"])
-
-
 def test_a_question_is_asked_on_return_and_answered_where_it_was_typed(desktop: Desktop) -> None:
     """A question is asked on Return and answered where it was typed."""
     machine = desktop.machine
@@ -825,6 +602,30 @@ def test_a_question_is_asked_on_return_and_answered_where_it_was_typed(desktop: 
         lambda shown: selected(shown).get("name") == "the model's provider refused"
     )
     close()
+
+
+def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
+    """The launcher's answers are photographed for the gallery, and only there.
+
+    What they answer is tests/launcher-on-niri-test.py's to prove, in seconds on a nested niri; a
+    person still looks at how each is drawn on the laptop's screen, so the gallery keeps them.
+    """
+    if not desktop.values["photographs"]:
+        return
+    machine = desktop.machine
+    for typed, picture in [
+        ("date", "launcher-date"),
+        ("350 f in c", "launcher-units"),
+        ("time in utc", "launcher-time"),
+        ("#f53", "launcher-colour"),
+        ("10.0.0.0/22", "launcher-answer"),
+        ("weather tokyo", "launcher-offline"),
+    ]:
+        desktop.answer(typed)
+        desktop.launcher_until(lambda shown: bool(shown["rows"]))
+        desktop.photograph(picture)
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:

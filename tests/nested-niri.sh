@@ -3,9 +3,9 @@
 # software, inside the build sandbox: the desktop's compositor without a
 # machine to boot. The command finds niri through WAYLAND_DISPLAY and
 # NIRI_SOCKET, as the account's programs do, and its session bus through
-# DBUS_SESSION_BUS_ADDRESS. No keyboard types into niri here: wtype's keys,
-# on either display, never reached niri's binds, so a check runs what a
-# bind runs rather than pressing it. Each compositor's log goes in the
+# DBUS_SESSION_BUS_ADDRESS. wtype's keys reach the surface holding niri's
+# keyboard, as the launcher, but on either display they never reached
+# niri's binds, so a check runs what a bind runs rather than pressing it. Each compositor's log goes in the
 # folder given, which is printed when the command fails, and both end when
 # it does; what the command starts, it ends itself.
 # usage: nested-niri.sh <niri config> <logs> <command>...
