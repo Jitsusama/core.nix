@@ -83,6 +83,12 @@
 //! runs, so VM tests never share a builder with big builds. A changed-checks
 //! run sent to the lent builder (`there --changed`) names what changed
 //! there first meanwhile, and sends the VM tests it names the same way.
+//! Another such lender, in /run/nix-offload-vm-more, lends a second VM
+//! builder, which takes the VM tests past the first's room: as many as
+//! `nix-offload/vm-builds` says it runs at once (as both VM lenders'
+//! helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs still
+//! going have sent it, each saying so in its folder's `sending`. A run's
+//! parts go at once, each to its own builder.
 //!
 //! Builders always there, such as other machines at home, are named in
 //! the file `--standing` gives, and join the machines file while they
@@ -147,6 +153,10 @@ const VM_DIR: &str = "/run/nix-offload-vm";
 /// The folder of the lender whose builder takes what the first can't,
 /// when one runs, as `serve --dir` it with `--only-there`.
 const MORE_DIR: &str = "/run/nix-offload-more";
+/// The folder of the lender whose builder takes the VM tests past the
+/// first VM builder's room, when one runs, as `serve --dir` it with
+/// `--only-there`.
+const VM_MORE_DIR: &str = "/run/nix-offload-vm-more";
 /// Where the machine queue reads the builder being made, to hold the
 /// builds it could take until Nix can see it.
 const LENDING: &str = "/run/nix-offload/lending";
@@ -405,6 +415,9 @@ fn there(arguments: &[String]) -> ExitCode {
         }
         left => (None, left),
     };
+    let vm_more_dir = env::var_os("NIX_OFFLOAD_VM_MORE_DIR")
+        .map_or_else(|| PathBuf::from(VM_MORE_DIR), PathBuf::from);
+    let (vm, vm_more) = overflowed(vm, &vm_dir, &vm_more_dir);
     // The rest goes to a second builder while the first is full, when a
     // lender runs to make one.
     let more_dir =
@@ -414,29 +427,110 @@ fn there(arguments: &[String]) -> ExitCode {
         Some(_) if there::lends(&more_dir) => more_than(&first_dir, &more_dir, &scratch),
         _ => first_dir.clone(),
     };
-    for (dir, part) in [(&vm_dir, vm), (&left_dir, left)] {
-        let Some(part) = &part else { continue };
-        // Asked for and waited on, rather than built here, while a lender
-        // runs: a builder stands about 70 s after it's asked for. One
-        // asked for beside the first that doesn't come leaves the build
-        // to the first.
-        let (dir, store) = match standing(dir).or_else(|| there::waited(dir, there::WAITING)) {
-            None if *dir == more_dir => (&first_dir, standing(&first_dir)),
-            store => (dir, store),
-        };
-        let again = |since| there::stood_again(dir, there::WAITING, since);
-        timed(part, &|| {
-            there::run(
-                part,
-                store.as_deref(),
-                &again,
-                there::WAITING,
-                &scratch,
-                ["ssh", "nix"],
-            )
-        });
+    let parts = [(&vm_dir, vm), (&vm_more_dir, vm_more), (&left_dir, left)];
+    let fallbacks = [(&more_dir, &first_dir), (&vm_more_dir, &vm_dir)];
+    let ran = at_once(&parts, [&vm_dir, &vm_more_dir], &fallbacks, &scratch);
+    for (part, began, ended, ran) in &ran {
+        there::note(&journal, *ended, ended.saturating_sub(*began), part, ran);
+        // The first that failed says how the whole did.
+        if status == 0 {
+            status = ran.status;
+        }
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
+}
+
+/// The VM tests `vm` split between the VM builder and a second, those
+/// past the first's room going to the second while a lender runs in
+/// `vm_more_dir` to make one, counting what other runs still going have
+/// sent each. With no lender or no room said, all go to the first.
+fn overflowed(
+    vm: Option<there::Asked>,
+    vm_dir: &Path,
+    vm_more_dir: &Path,
+) -> (Option<there::Asked>, Option<there::Asked>) {
+    let builds = fs::read_to_string(config().join("nix-offload/vm-builds"))
+        .ok()
+        .and_then(|text| text.trim().parse::<usize>().ok());
+    let (Some(part), Some(builds)) = (&vm, builds) else {
+        return (vm, None);
+    };
+    if !there::lends(vm_more_dir) {
+        return (vm, None);
+    }
+    let busy = [there::claimed(vm_dir), there::claimed(vm_more_dir)];
+    let (first, second) = there::overflow(part, busy, builds);
+    if let Some(second) = &second {
+        eprintln!(
+            "nix-offload: the VM builder has {} VM tests of runs here and runs {builds} at \
+             once, so {} go to a second VM builder",
+            busy[0],
+            there::count(second)
+        );
+    }
+    (first, second)
+}
+
+/// Sends each of `parts` to its builder at once, on a thread of its own
+/// with scratch of its own, since each goes to a builder of its own: one
+/// after another, the second VM builder's tests waited out the first's.
+/// Those sent to one of `vm_dirs` are claimed there while they go. Says
+/// how each ran, with when it began and ended, in the order given.
+fn at_once<'a>(
+    parts: &'a [(&PathBuf, Option<there::Asked>)],
+    vm_dirs: [&PathBuf; 2],
+    fallbacks: &[(&PathBuf, &PathBuf)],
+    scratch: &Path,
+) -> Vec<(&'a there::Asked, u64, u64, there::Ran)> {
+    thread::scope(|scope| {
+        let sending: Vec<_> = parts
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (dir, part))| Some((index, *dir, part.as_ref()?)))
+            .map(|(index, dir, part)| {
+                let scratch = scratch.join(index.to_string());
+                let vm = vm_dirs.contains(&dir);
+                scope.spawn(move || {
+                    let began = now();
+                    let _claim = vm.then(|| there::claim(dir, there::count(part)));
+                    let ran = sent(part, dir, fallbacks, &scratch);
+                    (part, began, now(), ran)
+                })
+            })
+            .collect();
+        sending
+            .into_iter()
+            .map(|sending| sending.join().expect("a part's thread panicked"))
+            .collect()
+    })
+}
+
+/// Builds `part` on the builder `dir`'s lender lends, asked for and waited
+/// on rather than built here while a lender runs: a builder stands about
+/// 70 s after it's asked for. One asked for beside another, as `fallbacks`
+/// pairs them, that doesn't come leaves the build to the other.
+fn sent(
+    part: &there::Asked,
+    dir: &Path,
+    fallbacks: &[(&PathBuf, &PathBuf)],
+    scratch: &Path,
+) -> there::Ran {
+    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, there::WAITING)) {
+        None => match fallbacks.iter().find(|(beside, _)| beside.as_path() == dir) {
+            Some((_, other)) => (other.as_path(), standing(other)),
+            None => (dir, None),
+        },
+        store => (dir, store),
+    };
+    let again = |since| there::stood_again(dir, there::WAITING, since);
+    there::run(
+        part,
+        store.as_deref(),
+        &again,
+        there::WAITING,
+        scratch,
+        ["ssh", "nix"],
+    )
 }
 
 /// The lender's folder a build goes to: `more`, the second's, while the
