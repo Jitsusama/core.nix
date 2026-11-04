@@ -91,6 +91,8 @@ pub trait World: Sync {
     fn merges(&self, base: &str, head: &str) -> Result<Vec<String>, String>;
     /// A commit's subject line.
     fn subject(&self, commit: &str) -> String;
+    /// A commit's first parent: main as it was before the merge.
+    fn parent(&self, commit: &str) -> Result<String, String>;
     /// What changed-checks names between `base` and `head`.
     fn changed(&self, base: &str, head: &str) -> Result<Changed, String>;
     /// Whether `commit` has the check at all.
@@ -236,8 +238,9 @@ pub fn attempt_all(
 
 /// Find the merge among `merges` (oldest first, the last failing `check`)
 /// that broke it, the commit before the first being where it passed. A
-/// commit without the check counts as passing it. None when a run wasn't
-/// taken, so it can't be told.
+/// commit without the check counts as passing it, so what it finds is
+/// checked by `before` before it's blamed. None when a run wasn't taken, so it
+/// can't be told.
 pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) -> Option<String> {
     // `good` is how many of the merges are known to pass, `bad` the index
     // of the first known to fail.
@@ -267,6 +270,34 @@ pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) 
         }
     }
     merges.get(bad).cloned()
+}
+
+/// How a test did just before the merge a bisect found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Before {
+    Passed,
+    Failed,
+    /// The check didn't exist before it.
+    Absent,
+    Unsent,
+}
+
+/// How `check` did at the first parent of `commit`, the merge a bisect
+/// found, before it's blamed: the bisect counts its start as passing
+/// without a run there, and a commit without the check as passing it, so
+/// a test failing since before the start, or a split that only moved a
+/// failing case under a new name, would otherwise be blamed on a good
+/// merge.
+fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result<Before, String> {
+    let parent = world.parent(commit)?;
+    if !world.has_check(&parent, check)? {
+        return Ok(Before::Absent);
+    }
+    Ok(match attempt(world, state, &parent, check) {
+        Outcome::Passed | Outcome::Flaky => Before::Passed,
+        Outcome::Failed => Before::Failed,
+        Outcome::Unsent => Before::Unsent,
+    })
 }
 
 /// The PR a merge commit's subject names, as GitHub writes it.
@@ -439,6 +470,35 @@ fn broke(
     };
     let failing = bad.clone().unwrap_or_else(|| head.to_owned());
     let log = state.log(&failing, test, 2).display().to_string();
+    let bad = match bad {
+        Some(commit) => match before(world, state, &commit, test)? {
+            Before::Passed => Some(commit),
+            Before::Unsent => None,
+            not_broken_here => {
+                let (kind, why) = match not_broken_here {
+                    Before::Absent => (
+                        "failed-at-birth",
+                        "the first merge to have it, so it may only have moved a case already \
+                         failing, as a split does",
+                    ),
+                    _ => (
+                        "failed-before",
+                        "and before it too, so no merge since broke it",
+                    ),
+                };
+                state.find(&json!({
+                    "kind": kind, "test": test, "commit": commit,
+                    "owner_pr": pr_of(&world.subject(&commit)), "log": log, "at": now(),
+                }))?;
+                state.say(&format!(
+                    "{test} fails at {}, {why}: nothing is reverted or held",
+                    short(&commit)
+                ));
+                return Ok(());
+            }
+        },
+        None => None,
+    };
     let Some(commit) = bad else {
         state.set_hold(&json!({
             "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
@@ -537,6 +597,14 @@ mod tests {
         }
         fn subject(&self, commit: &str) -> String {
             format!("Merge pull request #{} from someone/branch", commit.len())
+        }
+        /// The merge before in `merges`, or the start every test round
+        /// here begins at, `s`, before the first.
+        fn parent(&self, commit: &str) -> Result<String, String> {
+            let at = self.merges.iter().position(|merge| merge == commit);
+            Ok(at
+                .and_then(|at| at.checked_sub(1))
+                .map_or_else(|| "s".to_owned(), |before| self.merges[before].clone()))
         }
         fn changed(&self, _: &str, _: &str) -> Result<Changed, String> {
             Ok(self.changed.clone())
@@ -772,7 +840,7 @@ mod tests {
             head: "m5".into(),
             merges: names("m1 m2 m3 m4 m5"),
             changed: changed("vm-a"),
-            missing: vec![("m1".into(), "vm-a".into())],
+            missing: vec![("s".into(), "vm-a".into())],
             ..Stand::default()
         }
         .exits("m2", "vm-a", &[1])
@@ -785,9 +853,56 @@ mod tests {
         );
         assert_eq!(*world.reverted.lock().unwrap(), names("m2"));
         assert!(
-            !world.built().contains(&("m1".into(), "vm-a".into())),
-            "m1 hasn't the test"
+            world.built().contains(&("m1".into(), "vm-a".into())),
+            "m1, before m2, passes"
         );
+    }
+
+    #[test]
+    fn a_test_born_failing_blames_no_merge() {
+        let state = state("born");
+        let world = Stand {
+            head: "m3".into(),
+            merges: names("m1 m2 m3"),
+            changed: changed("vm-a"),
+            missing: vec![("s".into(), "vm-a".into()), ("m1".into(), "vm-a".into())],
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1])
+        .exits("m3", "vm-a", &[1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m3".into())
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a split may only have moved a failing case"
+        );
+        assert!(state.hold().is_none());
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "failed-at-birth");
+        assert_eq!(found[0]["commit"], "m2");
+    }
+
+    #[test]
+    fn a_test_failing_before_the_start_blames_no_merge() {
+        let state = state("before");
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("s", "vm-a", &[1])
+        .exits("m1", "vm-a", &[1])
+        .exits("m2", "vm-a", &[1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m2".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(state.hold().is_none());
+        assert_eq!(findings(&state)[0]["kind"], "failed-before");
     }
 
     #[test]

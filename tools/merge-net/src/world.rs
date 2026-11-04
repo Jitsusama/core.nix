@@ -267,6 +267,10 @@ impl World for Real {
             .unwrap_or_default()
     }
 
+    fn parent(&self, commit: &str) -> Result<String, String> {
+        self.git(&["rev-parse", &format!("{commit}^1")])
+    }
+
     fn changed(&self, base: &str, head: &str) -> Result<Changed, String> {
         // What two commits' checks differ in never changes, so it's kept.
         let kept = self
