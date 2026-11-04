@@ -13,12 +13,15 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
-from screens_session import EVERY_SURFACE
-
 if TYPE_CHECKING:
     from screens_session import Apart, Screens
 
+# The fixtures are a plugin's, never imported here, so pytest loads the module once and checks
+# its asserts as it does a test's.
 pytest_plugins = ["screens_session"]
+
+# Every surface the shell keeps up while a notice, Keep Awake and dictation are on.
+EVERY_SURFACE = ("wallpaper", "launcher", "notifications", "margin", "dictation")
 
 
 def test_a_critical_notice_is_up_before_the_screen_goes(noticed: Screens) -> None:

@@ -14,14 +14,40 @@ import datetime as dt
 import json
 import re
 import time
-from typing import TYPE_CHECKING
-
-from screens_session import DRAWN, IDLE_AFTER, MONITOR, TYPED_FOR, WTYPE_FAILED, kept_on
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from screens_session import Screens
 
+# The fixtures are a plugin's, never imported here, so pytest loads the module once and checks
+# its asserts as it does a test's.
 pytest_plugins = ["screens_session"]
+
+# The monitor beside the laptop's own panel, as screens.nix names it.
+MONITOR = "Virtual-1"
+
+# More colours than a screen nothing drew on shows, one or the console's few, and far fewer
+# than the wallpaper's.
+DRAWN = 64
+
+# How long, in whole seconds as swayidle takes them, the session sits untouched before a
+# watcher's swayidle says it's idle, and how many times that keys go on being typed through
+# the virtual keyboard, as dictation types its words.
+IDLE_AFTER = 5
+
+TYPED_FOR = 3
+
+# What the typing says when wtype itself fails, apart from the session going idle.
+WTYPE_FAILED = 2
+
+
+def kept_on(output: str, workspace: int, column: int) -> dict[str, Any]:
+    """Give a place kept on a screen by its connector.
+
+    The VM's two cards describe themselves alike, so each place names its connector, as one kept
+    before screens were named by what they are does.
+    """
+    return {"output": output, "workspace": workspace, "column": column, "tile": 1}
 
 
 def test_a_lid_shut_as_niri_starts_keeps_the_laptops_screen_dark(shut_at_start: Screens) -> None:

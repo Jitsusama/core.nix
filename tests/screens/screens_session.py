@@ -42,31 +42,12 @@ STEPPING = dt.timedelta(seconds=30)
 # Each screen's card, by the id screens.nix gives it, so QEMU can say what that card shows.
 CARDS = {"Virtual-1": "first", "Virtual-2": "second"}
 
-# The screen that stands in for the laptop's own panel, which its stand-in lid shuts, and the
-# monitor beside it, as screens.nix names them.
+# The screen that stands in for the laptop's own panel, which its stand-in lid shuts, as
+# screens.nix names it.
 LAPTOP = "Virtual-2"
-
-MONITOR = "Virtual-1"
-
-# More colours than a screen nothing drew on shows, one or the console's few, and far fewer
-# than the wallpaper's.
-DRAWN = 64
 
 # What the account's password is, as screens.nix sets it, which lets the lock go after a sleep.
 PASSWORD = "correct-horse"  # noqa: S105 (a test machine's, said in screens.nix)
-
-# Every surface the shell keeps up while a notice, Keep Awake and dictation are on.
-EVERY_SURFACE = ("wallpaper", "launcher", "notifications", "margin", "dictation")
-
-# How long, in whole seconds as swayidle takes them, the session sits untouched before a
-# watcher's swayidle says it's idle, and how many times that keys go on being typed through
-# the virtual keyboard, as dictation types its words.
-IDLE_AFTER = 5
-
-TYPED_FOR = 3
-
-# What the typing says when wtype itself fails, apart from the session going idle.
-WTYPE_FAILED = 2
 
 
 class Screens:
@@ -376,7 +357,7 @@ class Screens:
             timeout=dt.timedelta(seconds=60),
         )
         folder = self.machine.succeed(self.in_niri("echo ~/.local/state/quickshell/by-shell/*"))
-        self.machine.succeed(self.in_niri("zsh -lic true"), timeout=300)
+        self.machine.succeed(self.in_niri("zsh -lic true"), timeout=dt.timedelta(seconds=300))
         self.machine.succeed(self.in_niri("touch $XDG_RUNTIME_DIR/pi-stays"))
         sessions = [{"id": one, "cwd": f"/home/{self.account}"} for one in where]
         self.keep(
@@ -426,15 +407,6 @@ class Screens:
             for window in windows
             if window["title"].startswith(f"pi --session {prefix}")
         }
-
-
-def kept_on(output: str, workspace: int, column: int) -> dict[str, Any]:
-    """Give a place kept on a screen by its connector.
-
-    The VM's two cards describe themselves alike, so each place names its connector, as one kept
-    before screens were named by what they are does.
-    """
-    return {"output": output, "workspace": workspace, "column": column, "tile": 1}
 
 
 @dataclass(frozen=True)
