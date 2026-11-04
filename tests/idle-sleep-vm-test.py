@@ -30,10 +30,12 @@ SETTLED = (
 # The stand-in sleep leaves this file, under systemd's word for it.
 ASLEEP = "test -e /run/suspended"
 # A program holding logind's lock against idling, as mycelium does while it holds work. logind
-# counts anyone's lock alike, so root's stands in for the account's.
+# counts anyone's lock alike, so root's stands in for the account's. systemd-run finds the program
+# it's given itself, but the unit runs with systemd's own PATH, which on NixOS holds no sleep, so
+# the program the lock is held around is named in full.
 HOLD = (
     "systemd-run --unit=hold systemd-inhibit --what=idle --who=hold --why=Working"
-    " --mode=block sleep infinity"
+    ' --mode=block "$(command -v sleep)" infinity'
 )
 HELD = "systemd-inhibit --list --no-legend --no-pager | grep -q Working"
 # How long logind may take to sleep once nothing keeps it awake: its five seconds of idling,
