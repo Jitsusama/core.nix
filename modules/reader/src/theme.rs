@@ -1,6 +1,6 @@
 //! The theme's look, by role, which every surface the reader draws takes
-//! from: its colours for the page, its code, its diagrams, the prompt and
-//! the marks search lays over the page, its faces for the text, the
+//! from: its colours for the page, its code, its diagrams, the prompt, the
+//! marks search lays over the page and a selection and its cursor, its faces for the text, the
 //! headings and code, and the size its words are set at. The module writes them as a file under the
 //! configuration home, reader/theme.json, so a theme the account picks
 //! reaches the reader as it reaches everything else; `READER_THEME` names
@@ -78,6 +78,12 @@ pub struct Theme {
     pub machine: Colour,
     pub person: Colour,
     pub voice: Colour,
+    /// Behind what's selected, as everywhere on the desktop.
+    pub selection: Colour,
+    /// The terminal's cursor and the text under it, which visual mode's
+    /// cursor wears, as kitty and Neovim draw it.
+    pub cursor: Colour,
+    pub cursor_text: Colour,
     pub faces: Faces,
     pub sizes: Sizes,
     /// How far apart an eyebrow's capitals are set, in ems: the line above
@@ -107,6 +113,9 @@ impl Theme {
             machine: grey(0),
             person: grey(0),
             voice: grey(0),
+            selection: grey(204),
+            cursor: grey(0),
+            cursor_text: grey(255),
             faces: Faces {
                 text: TYPSTS_OWN.into(),
                 code: TYPSTS_OWN.into(),
@@ -141,6 +150,9 @@ impl Theme {
             ("machine", &mut theme.machine),
             ("person", &mut theme.person),
             ("voice", &mut theme.voice),
+            ("selection", &mut theme.selection),
+            ("cursor", &mut theme.cursor),
+            ("cursor_text", &mut theme.cursor_text),
         ] {
             if let Some(colour) = named(name).and_then(Colour::parse) {
                 *slot = colour;

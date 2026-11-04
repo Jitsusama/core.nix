@@ -161,6 +161,7 @@ pub fn program(
         titled: false,
         after_box: false,
         caption: None,
+        source: markdown.lines().collect(),
     };
     walker.children(&dom.document);
     let (titled, blocks) = (walker.titled, walker.blocks);
@@ -249,6 +250,27 @@ struct Walker<'a> {
     /// The alt text of the last picture set, for its caption; none when
     /// it stood as a box saying it.
     caption: Option<String>,
+    /// The file's lines, to tell a fenced block of code from an indented
+    /// one.
+    source: Vec<&'a str>,
+}
+
+/// The lines of the file an element was written on, from 1, as comrak
+/// says them.
+fn written_on(node: &Handle) -> Option<(usize, usize)> {
+    let place = attr(node, "data-sourcepos")?;
+    let (from, to) = place.split_once('-')?;
+    let line = |at: &str| at.split_once(':')?.0.parse::<usize>().ok();
+    Some((line(from)?, line(to)?))
+}
+
+/// Marks where a piece of the file that's selected whole starts on the
+/// page, with the lines it was written on: a paragraph, a heading, a
+/// list's item, a table's row or a line of code, which V and y y take as a
+/// whole and copy as its lines (select.rs reads them back). A block's own
+/// number is an integer; this is a string, so the two are never mistaken.
+fn unit(out: &mut String, (first, last): (usize, usize)) {
+    let _ = write!(out, "#metadata(\"s {first}-{last}\")");
 }
 
 fn attr(node: &Handle, name: &str) -> Option<String> {
@@ -458,6 +480,16 @@ impl Walker<'_> {
         self.out.push_str(close);
     }
 
+    /// Wraps a piece of the file that's selected whole, marked as one.
+    fn wrap_unit(&mut self, open: &str, node: &Handle, close: &str) {
+        self.out.push_str(open);
+        if let Some(lines) = written_on(node) {
+            unit(self.out, lines);
+        }
+        self.children(node);
+        self.out.push_str(close);
+    }
+
     fn node(&mut self, node: &Handle) {
         match &node.data {
             NodeData::Document => self.children(node),
@@ -520,12 +552,12 @@ impl Walker<'_> {
             "p" if attr(node, "class")
                 .is_some_and(|class| class.starts_with("markdown-alert-title")) => {}
             "p" if lone_picture(node) => self.alone(node),
-            "p" if lede => self.wrap("#lede[", node, "]\n"),
-            "p" => self.wrap("#par[", node, "]\n"),
+            "p" if lede => self.wrap_unit("#lede[", node, "]\n"),
+            "p" => self.wrap_unit("#par[", node, "]\n"),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = &name[1..];
                 let end = if opening { "] <title>\n" } else { "]\n" };
-                self.wrap(&format!("#heading(level: {level})["), node, end);
+                self.wrap_unit(&format!("#heading(level: {level})["), node, end);
             }
             "em" | "i" => self.wrap("#emph[", node, "]"),
             "strong" | "b" => self.wrap("#strong[", node, "]"),
@@ -607,6 +639,21 @@ impl Walker<'_> {
         for child in node.children.borrow().iter() {
             if tag(child).as_deref() == Some("li") {
                 self.out.push('[');
+                // An item of words is one piece, down to the first block in
+                // it, a list of its own or code; an item of paragraphs is
+                // its paragraphs, each marked as one.
+                let children = child.children.borrow();
+                let paragraphs = children.iter().any(|it| tag(it).as_deref() == Some("p"));
+                if !paragraphs && let Some((first, last)) = written_on(child) {
+                    let inner = children
+                        .iter()
+                        .filter(|it| tag(it).is_some_and(|name| BLOCKS.contains(&name.as_str())))
+                        .find_map(written_on);
+                    let last =
+                        inner.map_or(last, |(starts, _)| starts.saturating_sub(1).max(first));
+                    unit(self.out, (first, last));
+                }
+                drop(children);
                 // A task's words go inside it, so a done one's are muted.
                 let task = task_of(child);
                 if let Some(done) = task {
@@ -640,7 +687,8 @@ impl Walker<'_> {
     }
 
     fn table(&mut self, node: &Handle) {
-        fn collect(n: &Handle, rows: &mut Vec<(bool, Vec<Handle>)>) {
+        type Row = (bool, Vec<Handle>, Option<(usize, usize)>);
+        fn collect(n: &Handle, rows: &mut Vec<Row>) {
             for c in n.children.borrow().iter() {
                 match tag(c).as_deref() {
                     Some("tr") => {
@@ -654,14 +702,14 @@ impl Walker<'_> {
                         let head = cells
                             .first()
                             .is_some_and(|x| tag(x).as_deref() == Some("th"));
-                        rows.push((head, cells));
+                        rows.push((head, cells, written_on(c)));
                     }
                     Some(_) => collect(c, rows),
                     None => {}
                 }
             }
         }
-        let mut rows: Vec<(bool, Vec<Handle>)> = Vec::new();
+        let mut rows: Vec<Row> = Vec::new();
         collect(node, &mut rows);
         let columns = rows.iter().map(|r| r.1.len()).max().unwrap_or(1);
         // What the page's sheet needs to lay the table out: each column's
@@ -670,7 +718,7 @@ impl Walker<'_> {
         let mut words: Vec<Vec<(String, bool)>> = vec![Vec::new(); columns];
         let mut figures = vec![true; columns];
         let mut filled = vec![false; columns];
-        for (head, cells) in &rows {
+        for (head, cells, _) in &rows {
             for (i, cell) in cells.iter().enumerate() {
                 cell_words(cell, false, &mut words[i]);
                 let text = text_of(cell);
@@ -709,26 +757,32 @@ impl Walker<'_> {
         }
         self.out.push_str("), ");
         let mut rows = rows.into_iter().peekable();
-        if rows.peek().is_some_and(|(head, _)| *head)
-            && let Some((_, cells)) = rows.next()
+        if rows.peek().is_some_and(|(head, _, _)| *head)
+            && let Some((_, cells, lines)) = rows.next()
         {
             self.out.push_str("head: (");
-            self.cells(&cells, columns);
+            self.cells(&cells, columns, lines);
             self.out.push_str("), ");
         }
         self.out.push_str("rows: (");
-        for (_, cells) in rows {
+        for (_, cells, lines) in rows {
             self.out.push('(');
-            self.cells(&cells, columns);
+            self.cells(&cells, columns, lines);
             self.out.push_str("), ");
         }
         self.out.push_str("))\n");
     }
 
-    /// A row's cells as Typst content, one for every column.
-    fn cells(&mut self, cells: &[Handle], columns: usize) {
+    /// A row's cells as Typst content, one for every column, the first
+    /// marking the row as a piece selected whole.
+    fn cells(&mut self, cells: &[Handle], columns: usize, lines: Option<(usize, usize)>) {
         for i in 0..columns {
             self.out.push('[');
+            if i == 0
+                && let Some(lines) = lines
+            {
+                unit(self.out, lines);
+            }
             if let Some(cell) = cells.get(i) {
                 self.children(cell);
             }
@@ -745,16 +799,30 @@ impl Walker<'_> {
             .iter()
             .find_map(|c| attr(c, "data-math-style"))
             .is_some();
+        let lines = written_on(node);
         if code_math || lang == "math" {
+            if let Some(lines) = lines {
+                unit(self.out, lines);
+            }
             self.equation(&code, true);
         } else if lang == "mermaid" {
             self.diagram(&code);
         } else {
-            self.code(&code, &lang);
+            // A fenced block's code starts on the line after its fence.
+            let first = lines.map(|(first, _)| {
+                let opens = self.source.get(first.wrapping_sub(1)).is_some_and(|line| {
+                    let line = line.trim_start();
+                    line.starts_with("```") || line.starts_with("~~~")
+                });
+                first + usize::from(opens)
+            });
+            self.code(&code, &lang, first);
         }
     }
 
-    fn code(&mut self, code: &str, lang: &str) {
+    /// A block of code, each of its lines marked as a piece selected whole,
+    /// written on the file's lines from `written`.
+    fn code(&mut self, code: &str, lang: &str, written: Option<usize>) {
         let t = Instant::now();
         let syntax = self
             .pieces
@@ -777,7 +845,14 @@ impl Walker<'_> {
             "#codeblock(lang: {}, first: {first}, longest: {longest})[",
             literal(lang)
         );
-        for line in syntect::util::LinesWithEndings::from(code) {
+        for (at, line) in syntect::util::LinesWithEndings::from(code).enumerate() {
+            // In an empty box, so the mark stands at its line's start: one
+            // alone after a line break is set at the end of the line before.
+            if let Some(written) = written {
+                self.out.push_str("#box[");
+                unit(self.out, (written + at, written + at));
+                self.out.push(']');
+            }
             match h.highlight_line(line, &self.pieces.syntaxes) {
                 Ok(runs) => {
                     for (style, text) in runs {
@@ -1008,9 +1083,15 @@ mod tests {
             "{titled}"
         );
         assert!(titled.contains("] <title>"), "{titled}");
-        assert!(titled.contains("#lede[#\"The lede.\"]"), "{titled}");
+        assert!(
+            titled.contains("#lede[#metadata(\"s 3-3\")#\"The lede.\"]"),
+            "{titled}"
+        );
         // The last words carry the page's end mark.
-        assert!(titled.contains("#par[#\"The words.\""), "{titled}");
+        assert!(
+            titled.contains("#par[#metadata(\"s 5-5\")#\"The words.\""),
+            "{titled}"
+        );
         let untitled = walk("The words.\n\n# Later\n\nMore.\n");
         assert!(untitled.contains("#about(titled: false)"), "{untitled}");
         assert!(
@@ -1018,8 +1099,48 @@ mod tests {
             "a later title isn't the page's: {untitled}"
         );
         assert!(
-            untitled.contains("#par[#\"More.\""),
+            untitled.contains("#par[#metadata(\"s 5-5\")#\"More.\""),
             "only the page's title has a lede: {untitled}"
+        );
+    }
+
+    #[test]
+    fn each_piece_selected_whole_is_marked_with_the_lines_it_was_written_on() {
+        let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+        let typst = program(
+            "- One item\n- Two\n  - Inside\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```sh\necho one\necho two\n```\n\n    indented\n",
+            "notes",
+            None,
+            &Pieces::new(),
+            &world,
+            crate::page::Width::WHOLE,
+            &mut Costs::default(),
+        );
+        assert!(
+            typst.contains("[#metadata(\"s 1-1\")#\"One item\""),
+            "{typst}"
+        );
+        assert!(
+            typst.contains("[#metadata(\"s 2-2\")#\"Two \"#list("),
+            "an item is its own words, down to the list in it: {typst}"
+        );
+        assert!(
+            typst.contains("[#metadata(\"s 3-3\")#\"Inside\""),
+            "{typst}"
+        );
+        assert!(typst.contains("head: ([#metadata(\"s 5-5\")"), "{typst}");
+        assert!(typst.contains("rows: (([#metadata(\"s 7-7\")"), "{typst}");
+        assert!(
+            typst.contains("#box[#metadata(\"s 10-10\")]#text("),
+            "a fenced block's code starts after its fence: {typst}"
+        );
+        assert!(
+            typst.contains("#box[#metadata(\"s 11-11\")]#text("),
+            "{typst}"
+        );
+        assert!(
+            typst.contains("#box[#metadata(\"s 14-14\")]#text("),
+            "an indented block's starts on its own first line: {typst}"
         );
     }
 
@@ -1053,11 +1174,11 @@ mod tests {
             &mut Costs::default(),
         );
         assert!(
-            typst.contains("#quote(block: true)[#par[#\"Quoted words.\"]"),
+            typst.contains("#quote(block: true)[#par[#metadata(\"s 1-1\")#\"Quoted words.\"]"),
             "{typst}"
         );
         assert!(
-            typst.contains("#alert(\"note\")[#par[#\"Noted words.\"]"),
+            typst.contains("#alert(\"note\")[#par[#metadata(\"s 4-4\")#\"Noted words.\"]"),
             "the alert's kind is its eyebrow, not a paragraph too: {typst}"
         );
         assert!(

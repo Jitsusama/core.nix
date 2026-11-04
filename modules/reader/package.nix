@@ -1,6 +1,7 @@
 # The reader, built from this directory, its tests run as it builds, with
-# MiTeX for its equations and a fonts folder of the faces its page sets and
-# no more, since scanning every face a family ships costs a cold start.
+# MiTeX for its equations, a fonts folder of the faces its page sets and
+# no more, since scanning every face a family ships costs a cold start, and
+# wl-copy, which its copies go to the clipboard through.
 {
   copyDesktopItems,
   fetchzip,
@@ -16,6 +17,7 @@
   runCommand,
   rustPlatform,
   wayland,
+  wl-clipboard,
 }:
 let
   # MiTeX, LaTeX's maths for Typst, as Typst's own package index gives it.
@@ -85,7 +87,8 @@ rustPlatform.buildRustPackage {
   postInstall = ''
     wrapProgram $out/bin/reader \
       --set READER_MITEX ${mitex} \
-      --set READER_FONTS ${lib.concatStringsSep ":" fonts}
+      --set READER_FONTS ${lib.concatStringsSep ":" fonts} \
+      --set READER_COPY ${lib.getExe' wl-clipboard "wl-copy"}
   '';
   passthru = { inherit fonts mitex; };
   meta = {
