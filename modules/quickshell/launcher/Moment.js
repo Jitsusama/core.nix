@@ -59,6 +59,20 @@ function eyebrow(at) {
     return Qt.formatDate(at, "dddd d MMMM");
 }
 
+// A day as a row says one past the week around it: "28 Oct", with its year
+// only when it's another than `now`'s.
+function dayOf(ms, now) {
+    const at = new Date(ms);
+    return Qt.formatDate(at, at.getFullYear() === new Date(now).getFullYear() ? "d MMM"
+        : "d MMM yyyy");
+}
+
+// A day with the time the clock reads then: "14 Mar 2027 03:00". The middle
+// dot is kept for a time and how far off it is, never a day and its time.
+function dayAndClock(ms, now) {
+    return `${dayOf(ms, now)} ${clock(new Date(ms))}`;
+}
+
 // A moment's time of day in UTC, to the second, "19:04:07", from
 // milliseconds.
 function utcClock(ms) {

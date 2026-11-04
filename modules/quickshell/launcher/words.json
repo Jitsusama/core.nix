@@ -2012,7 +2012,7 @@
       "in": "time",
       "name": "Zone",
       "said": {
-        "never": "not before 2046",
+        "never": "none before 2046",
         "iana": "the IANA time zone database"
       }
     },
@@ -2035,6 +2035,11 @@
       "id": "time:zone:database",
       "in": "time:zone",
       "name": "Zone Database"
+    },
+    {
+      "id": "time:zone:plate",
+      "in": "time:zone",
+      "name": "Time Zone"
     },
     {
       "id": "time:synchronised",

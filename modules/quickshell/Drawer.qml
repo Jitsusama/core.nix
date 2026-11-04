@@ -611,9 +611,29 @@ Floating {
                                 && modelData.value !== undefined
                             // Its first baseline, down from its top.
                             readonly property real base: drawer.pitch / 2 + drawer.dropped
+                            // A value that won't sit beside its name in two
+                            // lines takes the plate's whole width on the
+                            // line under it, so it never reads a word a line
+                            // (VKCF3Z, 2026-11-04).
+                            readonly property bool under: beside.lineCount > 2
+                            readonly property real valueFrom: under ? 0
+                                : drawer.labelsWide + drawer.labelsGap
 
                             width: parent.width
-                            height: Math.max(1, label.lineCount, value.lineCount) * drawer.pitch
+                            height: (under ? label.lineCount + value.lineCount
+                                : Math.max(1, label.lineCount, value.lineCount)) * drawer.pitch
+
+                            // The value as it would wrap beside its name,
+                            // measured and never drawn.
+                            Text {
+                                id: beside
+                                visible: false
+                                width: fact.width - drawer.labelsWide - drawer.labelsGap
+                                text: value.text
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font: value.font
+                            }
 
                             Text {
                                 id: label
@@ -634,9 +654,10 @@ Floating {
                             // at, a long one breaking onto the pitch.
                             Text {
                                 id: value
-                                x: drawer.labelsWide + drawer.labelsGap
+                                x: fact.valueFrom
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
+                                    + (fact.under ? label.lineCount * drawer.pitch : 0)
                                 text: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 textFormat: Text.PlainText
                                 wrapMode: Text.Wrap

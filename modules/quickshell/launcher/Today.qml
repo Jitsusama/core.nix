@@ -35,16 +35,15 @@ Provider {
         return words;
     }
 
-    // A day as the launcher says one: "21 Dec", with its year only when
-    // it's another than this one.
-    function dayOf(ms, now) {
-        const at = new Date(ms);
-        return Qt.formatDate(at, at.getFullYear() === new Date(now).getFullYear() ? "d MMM"
-            : "d MMM yyyy");
-    }
-
     function grouped(number) {
         return Numbers.format(number, 0, settings.group ?? ",", settings.point ?? ".");
+    }
+
+    // A day's number, grouped to read and copied whole, as a figure to
+    // paste is (Y2YBTS's review, 2026-11-04).
+    function dayNumber(id, number, note) {
+        return copyRow({ name: Words.name(`today:${id}`), side: grouped(number),
+            copy: String(number), note: note, glyph: "" });
     }
 
     // A thing of the date's, as the season and the moon are: its figures a
@@ -80,8 +79,8 @@ Provider {
         const name = said("today:season", season.season);
         return partThing("season", name, said("today:season", "left",
             { days: String(Math.ceil((season.ends - now) / 86400000)) }), [
-            { id: "began", side: dayOf(season.began, now) },
-            { id: "ends", side: dayOf(season.ends, now) },
+            { id: "began", side: Moment.dayOf(season.began, now) },
+            { id: "ends", side: Moment.dayOf(season.ends, now) },
             { id: "day", side: said("today:season", "of", { day: String(into),
                 days: String(length) }) },
             { id: "hemisphere", side: said("today:season", typeof latitude !== "number"
@@ -96,8 +95,8 @@ Provider {
             said("today:moon", "lit", { percent: percent }), [
             { id: "lit", side: percent },
             { id: "age", side: said("today:moon", "days", { days: moon.age.toFixed(1) }) },
-            { id: "full", side: dayOf(moon.full, now) },
-            { id: "new", side: dayOf(moon.new, now) }
+            { id: "full", side: Moment.dayOf(moon.full, now) },
+            { id: "new", side: Moment.dayOf(moon.new, now) }
         ]);
     }
 
@@ -111,6 +110,9 @@ Provider {
         const quarter = Moment.quarter(at);
         return {
             headline: Moment.day(at),
+            // Its place's glyph, as Now's rows each wear theirs, rather
+            // than its first row's.
+            glyph: Theme.glyph.date,
             rows: [
                 row("iso", Moment.iso(at)),
                 row("week", Moment.isoWeekDate(at), said("today:week", "week",
@@ -120,9 +122,9 @@ Provider {
                         days: String(days) })),
                 row("quarter", `Q${quarter.quarter}`, said("today:quarter", "day",
                     { day: String(quarter.day), days: String(quarter.days) })),
-                row("unix-day", grouped(Moment.unixDay(at)), said("today:unix-day", "since")),
-                row("julian", grouped(Moment.dayNumber(at)), said("today:julian", "noon")),
-                row("mjd", grouped(Moment.modified(at)), said("today:mjd", "since")),
+                dayNumber("unix-day", Moment.unixDay(at), said("today:unix-day", "since")),
+                dayNumber("julian", Moment.dayNumber(at), said("today:julian", "noon")),
+                dayNumber("mjd", Moment.modified(at), said("today:mjd", "since")),
                 seasonThing(now),
                 moonThing(now)
             ],

@@ -134,6 +134,9 @@ Provider {
         return {
             headline: told.headline,
             copy: told.copy,
+            // Its place's glyph, as Now's rows each wear theirs, rather
+            // than its first row's.
+            glyph: Theme.glyph.clock,
             rows: back.concat(parts, ours ? keeping() : []),
             note: moved ? Location.movedSaid : note,
             // The time here counts, so it's asked again each second while
@@ -155,18 +158,12 @@ Provider {
         const minutes = -new Date(now).getTimezoneOffset();
         const standing = zone ? Zones.standing(zone, Math.floor(now / 1000)) : [minutes, ""];
         const next = zone ? Zones.nextChange(zone, Math.floor(now / 1000)) : null;
-        // When it changes, as the launcher says a day, the year only when
-        // it's another, and the time the clock will read then.
-        const changes = when => {
-            const at = new Date(when);
-            const year = at.getFullYear() === new Date(now).getFullYear() ? "" : " yyyy";
-            return `${Qt.formatDate(at, `d MMM${year}`)} \u00b7 ${Moment.clock(at)}`;
-        };
         const abbreviation = /^[A-Za-z]/.test(standing[1]) ? standing[1] : "";
         const parts = [
             { id: "offset", side: Zones.offset(standing[0]), note: "" },
             { id: "abbreviation", side: abbreviation, note: "" },
-            { id: "next", side: next ? changes(next.when) : timeWord("time:zone", "never"),
+            { id: "next", side: next ? Moment.dayAndClock(next.when, now)
+                : timeWord("time:zone", "never"),
                 note: next ? [/^[A-Za-z]/.test(next.abbreviation) ? next.abbreviation : "",
                     Zones.offset(next.minutes)].filter(one => one !== "").join(", ") : "" },
             { id: "database", side: settings.tzdata ?? "", note: timeWord("time:zone", "iana") }
@@ -180,6 +177,7 @@ Provider {
             glyph: Theme.glyph.zone,
             thing: true,
             drawer: () => ({
+                eyebrow: Words.name("time:zone:plate"),
                 title: name,
                 facts: parts.map(part => ({ label: Words.name(`time:zone:${part.id}`),
                     value: part.side }))
