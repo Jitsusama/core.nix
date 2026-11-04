@@ -4,8 +4,9 @@
 # is on over its D-Bus service, and one that scrolls by what the screen
 # shows, each beside the arrow it twins. Run inside cage with a session
 # bus, as `keys-test.sh <document of six empty pages, with "find" on the
-# fourth and the sixth>`, and a stand-in launcher-say on the path that
-# writes what it was asked to ./asked. It leaves ./passed once every key
+# fourth and the sixth, named b.pdf in a folder beside a.pdf and c.pdf>`,
+# and a stand-in launcher-say on the path that writes what it was asked to
+# ./asked. It leaves ./passed once every key
 # went where the launcher says it goes, since cage ends 0 whatever the
 # script inside it does.
 set -eu
@@ -88,8 +89,8 @@ held i 5
 press Tab 0
 press Tab 5
 
-# Left turns back a page and Right on again, as K and J do, and Page Up
-# and Page Down.
+# Left turns back a page and Right on again, as K and J do, and Page Up and
+# Page Down.
 press Left 4
 press Right 5
 typed K 4
@@ -192,21 +193,45 @@ shows "h back to the left" alike left
 wtype d
 wtype a
 
-# / finds words, from the page it's on, n goes on to the next and N back to
-# the one before, and Space finds as / does.
+# / finds words on from the page it's on and ? back from it, n goes on to
+# the next and N back to the one before. Each search ends on Ctrl+J,
+# zathura's Return in its command line: GTK hears Return there through a
+# keymap it read before wtype sent another, so it misses it here, where
+# Ctrl+J is read afresh.
+found() {
+  wtype "$1" -M ctrl -k j -m ctrl
+  until_true "$1 to page $2" on "$2"
+}
 typed gg 0
-wtype /find
-press Return 3
+found /find 3
 typed n 5
 typed N 3
-typed gg 0
-wtype -k space find
-press Return 3
+press End 5
+press Left 4
+found '?find' 3
 
-# ? asks the launcher for the keys, where it lists the viewer's first.
-wtype '?'
+# Space ? asks the launcher for the keys, where it lists the viewer's
+# first.
+wtype -k space '?'
 asked() { [ "$(cat asked 2>/dev/null)" = "collection shortcuts" ]; }
-until_true "? to ask the launcher for its keys" asked
+until_true "Space ? to ask the launcher for its keys" asked
+
+# ]b opens the next document in its folder, by name, and [b the one before,
+# with a count that many, coming round at either end, and passing over
+# what zathura doesn't open.
+has_open() {
+  gdbus call --session --dest "$bus" --object-path /org/pwmt/zathura \
+    --method org.freedesktop.DBus.Properties.Get org.pwmt.zathura filename |
+    grep -q "/$1'"
+}
+opened() {
+  wtype "$1"
+  until_true "$1 to open $2" has_open "$2"
+}
+opened ']b' c.pdf
+opened '[b' b.pdf
+opened '2]b' a.pdf
+opened '2[b' b.pdf
 
 # q closes it.
 wtype q

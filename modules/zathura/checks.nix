@@ -5,10 +5,16 @@
   graphical,
   lib,
   onLinux,
+  passesClippy,
   pkgs,
   ...
 }:
 onLinux {
+  # clippy finds nothing in ]b and [b's helper, its tests included.
+  zathura-next-document-passes-clippy = passesClippy "zathura-next-document-passes-clippy" (
+    pkgs.callPackage ./next-document/package.nix { }
+  );
+
   # zathura opens a page with the account's settings. It names a setting
   # or a colour it can't take and goes on without it, and stays open until
   # it's closed, so it's given a few seconds to say so. Documents open in
@@ -46,7 +52,8 @@ onLinux {
 
   # Every key the launcher lists for zathura goes where it says, the page
   # each lands on read back from zathura itself over its bus and each
-  # scroll from its screen, in a compositor of its own (keys-test.sh). The
+  # scroll from its screen, and the document ]b and [b open from what it
+  # says it has open, in a compositor of its own (keys-test.sh). The
   # account's settings are read as they are, but for the word zathura
   # draws on a page not drawn yet, which would tell a page being drawn
   # from one that's done.
@@ -65,6 +72,8 @@ onLinux {
           "find"
         ];
       };
+      # Two documents beside it in its folder, for ]b and [b to go between.
+      page = import ../../tests/page.nix { inherit lib pkgs; };
       # The launcher, which only has to say it was asked.
       launcher = pkgs.writeShellScriptBin "launcher-say" ''echo "$*" > asked'';
     in
@@ -85,13 +94,17 @@ onLinux {
         export XDG_RUNTIME_DIR=$PWD/run GDK_BACKEND=wayland
         export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
         export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
-        mkdir -p config/zathura data run
+        mkdir -p config/zathura data run documents
         chmod 700 run
+        cp ${pages} documents/b.pdf
+        cp ${page} documents/a.pdf
+        cp ${page} documents/c.pdf
+        echo 'Not a document.' > documents/notes.txt
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
         chmod u+w config/zathura/zathurarc
         echo 'set render-loading false' >> config/zathura/zathurarc
         dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
-          cage -- $BASH ${./keys-test.sh} ${pages} > ran 2>&1 || true
+          cage -- $BASH ${./keys-test.sh} $PWD/documents/b.pdf > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
         touch $out
       '';

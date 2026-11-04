@@ -2364,8 +2364,12 @@
     every key zathura lists lands where it says: Left, Right, J, K and the page keys turn the pages,
     Home, End, gg, G and a count before G go to that page, j, k, h, l, Ctrl+D, Ctrl+U, Ctrl+F and
     Ctrl+B scroll as their arrows do, Tab, Ctrl+O and Ctrl+I go through the jumps, m and ' mark
-    and go back, / n N and Space find, the question mark key asks the launcher for the keys, and q
-    closes it
+    and go back, / and the question mark key find on and back and n and N again, Space and the
+    question mark key ask the launcher for the keys, ]b and [b open the next document in its folder
+    and the one before, with a count that many and coming round, and q closes it
+  '';
+  zathura-next-document-passes-clippy = ''
+    clippy finds nothing in zathura's ]b and [b, which open the document beside, or its tests
   '';
   zathura-says-the-document-it-has-open = ''
     zathura says the document it has open, read by its Recent's command as its process and whole
