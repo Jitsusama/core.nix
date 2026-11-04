@@ -747,7 +747,9 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("testqd", selecting="A Builder Under the Owner")
-        row = next(row for row in orchestration_drawn(desktop) if "TESTQD" in row["reads"])
+        # Found from the top, it reads as the thing it is, its window, beside its kind.
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        row = next(row for row in laid["rows"] if row["selected"])
         assert row["depth"] == 0, row
         note = desktop.showing()["selected"]["note"]
         assert note.startswith("under TESTQC"), note
