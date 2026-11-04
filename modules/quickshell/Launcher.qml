@@ -3985,6 +3985,9 @@ Scope {
     }
 
     function remake() {
+        // Said for the screens test, which waits on the shell having heard
+        // the screens change before it looks at what that did.
+        Report.say(`launcher heard ${Quickshell.screens.length} screens, remade`);
         open = false;
         screenHere = focusedScreen;
         surface.visible = false;

@@ -1091,6 +1091,36 @@ def test_the_first_screen_goes_with_the_launcher_open_on_it(first_gone: Screens)
     first_gone.launcher_works_on("Virtual-2")
 
 
+def test_a_screen_coming_back_leaves_the_launcher_open_on_the_other(first_gone: Screens) -> None:
+    """A screen coming back leaves the launcher open where it is, on the other.
+
+    A screen plugged in beside the one the launcher is on takes nothing from it, so the launcher
+    stays open under Joel's keys. Remade instead, a Super+Space pressed just before a loaded
+    shell heard the screen come back opened the launcher and closed it again at once.
+    """
+    screens = first_gone
+    # How often the shell has said it heard two screens, which it says once it's heard them
+    # change and done what that asks of the launcher.
+    heard = screens.in_niri(
+        "journalctl --user -u quickshell -o cat"
+        " | grep -c -F 'report[launcher heard 2 screens' || true"
+    )
+    before = int(screens.machine.succeed(heard))
+    screens.super_space_on("Virtual-2")
+    try:
+        screens.come_back("Virtual-1")
+        screens.machine.wait_until_succeeds(
+            f"test $({heard}) -gt {before}", timeout=dt.timedelta(seconds=30)
+        )
+        shown = screens.launcher_shows()
+        assert shown["open"], f"a screen coming back closed the launcher: {shown}"
+        assert shown["keys"], f"a screen coming back took the launcher's keys: {shown}"
+        assert screens.held_on("launcher") == {"Virtual-2"}, screens.held_on("launcher")
+    finally:
+        screens.machine.send_key("esc")
+        screens.launcher_until(lambda shown: not shown["open"], "closed at Escape")
+
+
 def test_the_first_screen_comes_back_and_the_launcher_works_on_both(first_back: Screens) -> None:
     """The first screen comes back, and the launcher works on both."""
     first_back.launcher_works_on_both()
