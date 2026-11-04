@@ -78,11 +78,14 @@
 //! a folder of its own, such as /run/nix-offload-vm, whose files nothing
 //! but `there` reads, and its lock and journal are named for that folder;
 //! `--only-there` has it lend only while a `there` build waits on it. A
-//! `there` build sends the attributes the patterns in XDG's config folder,
-//! `nix-offload/vm-tests`, describe to that lender's builder while it
-//! runs, so VM tests never share a builder with big builds. A changed-checks
-//! run sent to the lent builder (`there --changed`) names what changed
-//! there first meanwhile, and sends the VM tests it names the same way.
+//! `there` build sends its VM tests to that lender's builder alone, so they
+//! never share one with big builds: the attributes the patterns in XDG's
+//! config folder, `nix-offload/vm-tests`, describe, and the derivations
+//! whose features ask for kvm or nixos-test. Once that lender has run, a
+//! VM test waits for its builder, through a switch's restart of it too,
+//! and is never sent the lent way. A changed-checks run sent to the lent
+//! builder (`there --changed`) names what changed there first meanwhile,
+//! builds all but the VM tests there, and sends those the same way.
 //! Another such lender, in /run/nix-offload-vm-more, lends a second VM
 //! builder, which takes the VM tests past the first's room: as many as
 //! `nix-offload/vm-builds` says it runs at once (as both VM lenders'
@@ -403,15 +406,14 @@ fn there(arguments: &[String]) -> ExitCode {
             there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"])
         });
     }
-    // VM tests go to a builder of their own while its lender runs, so they
-    // never share one with big builds: beside a kernel build on 2 November
-    // they ran past their timeouts. With none, they go the lent way.
-    let patterns = fs::read_to_string(config().join("nix-offload/vm-tests"))
-        .map(|text| there::patterns(&text))
-        .unwrap_or_default();
+    // VM tests go to a builder of their own, so they never share one with
+    // big builds: beside a kernel build on 2 November they ran past their
+    // timeouts. Only where a lender for them has ever run here; with none,
+    // they go the lent way.
+    let patterns = vm_patterns();
     let (vm, left) = match left {
-        Some(part) if !patterns.is_empty() && there::lends(&vm_dir) => {
-            there::vm_tests(&part, &patterns)
+        Some(part) if vm_apart(&patterns, &vm_dir) => {
+            there::vm_tests(&part, &patterns, &there::featured(&part, "nix"))
         }
         left => (None, left),
     };
@@ -493,7 +495,7 @@ fn at_once<'a>(
                 scope.spawn(move || {
                     let began = now();
                     let _claim = vm.then(|| there::claim(dir, there::count(part)));
-                    let ran = sent(part, dir, fallbacks, &scratch);
+                    let ran = sent(part, dir, vm, fallbacks, &scratch);
                     (part, began, now(), ran)
                 })
             })
@@ -508,10 +510,12 @@ fn at_once<'a>(
 /// Builds `part` on the builder `dir`'s lender lends, asked for and waited
 /// on rather than built here while a lender runs: a builder stands about
 /// 70 s after it's asked for. One asked for beside another, as `fallbacks`
-/// pairs them, that doesn't come leaves the build to the other.
+/// pairs them, that doesn't come leaves the build to the other. VM tests,
+/// as `vm` says these are, wait through their lender's restart.
 fn sent(
     part: &there::Asked,
     dir: &Path,
+    vm: bool,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
 ) -> there::Ran {
@@ -521,6 +525,15 @@ fn sent(
             None => (dir, None),
         },
         store => (dir, store),
+    };
+    // A VM test waits through its lender's restart, as a switch does it,
+    // rather than going anywhere else: sent the lent way meanwhile, good
+    // ones timed out beside kernel builds.
+    let store = match store {
+        None if vm && !there::lends(dir) => {
+            there::stood_again(dir, there::WAITING, std::time::Instant::now())
+        }
+        store => store,
     };
     let again = |since| there::stood_again(dir, there::WAITING, since);
     there::run(
@@ -560,6 +573,31 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
     }
 }
 
+/// The patterns of VM tests' attributes, from XDG's config folder; none
+/// where the machine names no builder for them.
+fn vm_patterns() -> Vec<String> {
+    fs::read_to_string(config().join("nix-offload/vm-tests"))
+        .map(|text| there::patterns(&text))
+        .unwrap_or_default()
+}
+
+/// Whether VM tests go to a builder of their own: while the machine names
+/// some and a lender for them has run since it started, as its `lender`
+/// file says, whether or not it runs this moment, since a switch restarts
+/// it.
+fn vm_apart(patterns: &[String], vm_dir: &Path) -> bool {
+    !patterns.is_empty() && vm_dir.join("lender").exists()
+}
+
+/// The system this machine builds for, as Nix names it.
+fn this_system() -> String {
+    let os = match env::consts::OS {
+        "macos" => "darwin",
+        os => os,
+    };
+    format!("{}-{os}", env::consts::ARCH)
+}
+
 /// The store a lender's folder names while its builder stands.
 fn standing(dir: &Path) -> Option<String> {
     fs::read_to_string(dir.join("store"))
@@ -593,10 +631,16 @@ fn changed_there(arguments: &[String]) -> ExitCode {
     };
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
-    let vm_apart = there::lends(&vm_dir)
-        && fs::read_to_string(config().join("nix-offload/vm-tests"))
-            .is_ok_and(|text| !there::patterns(&text).is_empty());
-    let code = changed_somewhere(arguments, &dir, &scratch, &folder, &source, vm_apart);
+    // Decided only while the VM lender ran, a run sent as a switch
+    // restarted it ran whole on the lent builder, VM tests and all.
+    let vm_apart = vm_apart(&vm_patterns(), &vm_dir);
+    // Given no system, the far side would name its own, and the VM tests
+    // sent apart need one, so it's this machine's.
+    let mut arguments = arguments.to_vec();
+    if changed::wanted(&arguments).system.is_none() {
+        arguments.extend(["--system".to_owned(), this_system()]);
+    }
+    let code = changed_somewhere(&arguments, &dir, &scratch, &folder, &source, vm_apart);
     if let Some(bundle) = bundle {
         let _ = fs::remove_file(bundle);
     }
@@ -745,8 +789,22 @@ impl Apart<'_> {
         match named.status {
             0 => {}
             // A commit's changed-checks from before --name-only refuses it,
-            // and runs whole, VM tests and all, as it always did.
-            USAGE => return Some(exited(self.run(arguments))),
+            // so it can't say which are VM tests: it builds all but those
+            // there, and fails for want of them, rather than build them
+            // beside big builds.
+            USAGE => {
+                let mut rest = arguments.to_vec();
+                rest.push("--no-vm".to_owned());
+                let built = self.run(&rest);
+                if built != 0 {
+                    return Some(exited(built));
+                }
+                eprintln!(
+                    "nix-offload: this commit's changed-checks can't name its checks alone, so \
+                     its VM tests weren't built; build them with nix-offload there"
+                );
+                return Some(ExitCode::from(changed::UNBUILT));
+            }
             status => {
                 print!("{printed}");
                 return Some(exited(status));

@@ -42,6 +42,10 @@
 //! this machine already holds, and no cache has, goes up built, as a
 //! kernel built here does, rather than being built again.
 //!
+//! A VM test, an attribute a pattern names or a derivation whose features
+//! ask for kvm or nixos-test, goes to a builder of its own where the
+//! machine lends one, and nowhere else (main.rs says how).
+//!
 //! An attribute for a system a machine nearby takes, named by its second
 //! word as in `checks.aarch64-darwin.x`, goes to that machine instead
 //! while it answers, since this one can't build it at all. A flake that's
@@ -56,6 +60,7 @@
 //! or the first that failed, and journals where each part ran and what it
 //! sent, in `there.jsonl` beside the lender's journal.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1250,7 +1255,10 @@ pub fn on_with(
     wrap: fn(&str) -> String,
 ) -> Result<Ran, String> {
     let (mut command, known, said) = reach(lent, scratch, ssh)?;
-    eprintln!("nix-offload: building on the lent builder");
+    // Named by its host, since the VM tests' builder is lent too: said
+    // alike, a VM test timed out on its own builder read as one sent the
+    // lent way.
+    eprintln!("nix-offload: building on the lent builder {}", lent.host);
     command.arg(&lent.host).arg(wrap(&sending.command));
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
@@ -1752,22 +1760,25 @@ pub fn shared<'a>(
     (parts, left)
 }
 
-/// What was asked, split: the attributes a pattern in `patterns` describes,
-/// VM tests for a builder of their own so they never share one with big
-/// builds, and the rest. Derivations, an applied function and an output
-/// copied back aren't split, as `shared` doesn't share them.
-pub fn vm_tests(asked: &Asked, patterns: &[String]) -> (Option<Asked>, Option<Asked>) {
-    if asked.apply.is_some() || asked.out.is_some() || asked.derivations {
-        return (
-            None,
-            Some(asked.with(&asked.flake, asked.attributes.clone())),
-        );
-    }
-    let (vm, rest): (Vec<String>, Vec<String>) = asked
-        .attributes
-        .iter()
-        .cloned()
-        .partition(|attribute| patterns.iter().any(|pattern| matches(pattern, attribute)));
+/// What was asked, split: the VM tests, for a builder of their own so they
+/// never share one with big builds, and the rest. An attribute is one when
+/// a pattern in `patterns` describes it, an applied function's or an
+/// output copied back's one attribute too, as run-subtests and
+/// shots-changed build a VM test; a derivation when it's among
+/// `featured`, those [`needing_vm`] found, whatever its name.
+pub fn vm_tests(
+    asked: &Asked,
+    patterns: &[String],
+    featured: &BTreeSet<String>,
+) -> (Option<Asked>, Option<Asked>) {
+    let (vm, rest): (Vec<String>, Vec<String>) =
+        asked.attributes.iter().cloned().partition(|attribute| {
+            if asked.derivations {
+                featured.contains(attribute.split('^').next().unwrap_or(attribute))
+            } else {
+                patterns.iter().any(|pattern| matches(pattern, attribute))
+            }
+        });
     let part = |attributes: Vec<String>| {
         (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes))
     };
@@ -1862,6 +1873,76 @@ pub fn claimed(dir: &Path) -> usize {
         }
     }
     sent
+}
+
+/// What a VM test needs of the machine that builds it, as its derivation's
+/// `requiredSystemFeatures` says: the lent lines offer neither, so Nix
+/// never sends one there, but a derivation sent there whole is built
+/// there whatever it needs.
+const VM_FEATURES: [&str; 2] = ["kvm", "nixos-test"];
+
+/// Of the derivations `nix derivation show` printed, by their paths, those
+/// that need a VM test's features. Its format has changed: now they're
+/// under `derivations` and named without the store's folder; and their
+/// features are a string of words in `env`, or a list in `structuredAttrs`
+/// or, before that, in `env`'s `__json`.
+pub fn needing_vm(shown: &serde_json::Value) -> BTreeSet<String> {
+    let all = shown.get("derivations").unwrap_or(shown);
+    let features = |derivation: &serde_json::Value| -> Vec<String> {
+        let env = derivation.get("env");
+        if let Some(words) = env
+            .and_then(|env| env.get("requiredSystemFeatures"))
+            .and_then(serde_json::Value::as_str)
+        {
+            return words.split_whitespace().map(str::to_owned).collect();
+        }
+        let structured = derivation.get("structuredAttrs").cloned().or_else(|| {
+            env.and_then(|env| env.get("__json"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|json| serde_json::from_str(json).ok())
+        });
+        structured
+            .as_ref()
+            .and_then(|attrs| attrs.get("requiredSystemFeatures"))
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    };
+    all.as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, derivation)| {
+            features(derivation)
+                .iter()
+                .any(|feature| VM_FEATURES.contains(&feature.as_str()))
+        })
+        .map(|(path, _)| {
+            if path.starts_with('/') {
+                path.clone()
+            } else {
+                format!("/nix/store/{path}")
+            }
+        })
+        .collect()
+}
+
+/// The derivations asked for that need a VM test's features, as this
+/// machine's store shows them, which needs no evaluation; none when what
+/// was asked are attributes, or the store can't show them.
+pub fn featured(asked: &Asked, nix: &str) -> BTreeSet<String> {
+    if !asked.derivations {
+        return BTreeSet::new();
+    }
+    let paths = asked
+        .attributes
+        .iter()
+        .map(|path| path.split('^').next().unwrap_or(path));
+    needing_vm(&json_of(
+        Command::new(nix).args(["derivation", "show"]).args(paths),
+    ))
 }
 
 /// Whether a lender runs for `dir`, as its `lender` file says.
@@ -2963,7 +3044,7 @@ mod tests {
              usb-boots checks.x86_64-linux.vm-greeter",
         ))
         .unwrap();
-        let (vm, rest) = vm_tests(&asked, &patterns);
+        let (vm, rest) = vm_tests(&asked, &patterns, &BTreeSet::new());
         let vm = vm.unwrap();
         assert_eq!(
             vm.command(),
@@ -2980,25 +3061,86 @@ mod tests {
     fn with_no_vm_test_asked_everything_stays_as_it_was() {
         let patterns = words("checks.*.vm-*");
         let asked = asked(&words("path:/z checks.x86_64-linux.formatting")).unwrap();
-        let (vm, rest) = vm_tests(&asked, &patterns);
+        let (vm, rest) = vm_tests(&asked, &patterns, &BTreeSet::new());
         assert_eq!(vm, None);
         assert_eq!(
             rest.map(|rest| rest.attributes),
             Some(words("checks.x86_64-linux.formatting"))
         );
         let only = super::asked(&words("path:/z checks.x86_64-linux.vm-a")).unwrap();
-        assert_eq!(vm_tests(&only, &patterns).1, None);
+        assert_eq!(vm_tests(&only, &patterns, &BTreeSet::new()).1, None);
     }
 
     #[test]
-    fn derivations_and_applied_builds_are_never_split() {
-        let patterns = words("*");
-        let drv = asked(&words("/nix/store/aaaa-vm-test-run-x.drv")).unwrap();
-        let (vm, rest) = vm_tests(&drv, &patterns);
-        assert_eq!(vm, None);
-        assert!(rest.is_some());
-        let applied = asked(&words("--apply f path:/z checks.x86_64-linux.vm-a")).unwrap();
-        assert_eq!(vm_tests(&applied, &patterns).0, None);
+    fn derivations_are_split_by_what_they_need_of_a_builder() {
+        // A VM test given as its derivation went the lent way, whatever its
+        // name: on 3 November one built 2407 s on the third builder.
+        let patterns = words("checks.*.vm-*");
+        let featured = BTreeSet::from(["/nix/store/aaaa-vm-test-run-x.drv".to_owned()]);
+        let drvs = asked(&words(
+            "-L /nix/store/bbbb-kernel.drv /nix/store/aaaa-vm-test-run-x.drv^out",
+        ))
+        .unwrap();
+        let (vm, rest) = vm_tests(&drvs, &patterns, &featured);
+        assert_eq!(
+            vm.unwrap().command(),
+            "nix build --no-link -L '/nix/store/aaaa-vm-test-run-x.drv^out'"
+        );
+        assert_eq!(
+            rest.unwrap().command(),
+            "nix build --no-link -L '/nix/store/bbbb-kernel.drv^*'"
+        );
+        // Named like one, a derivation that needs no VM isn't one.
+        let named = asked(&words("/nix/store/cccc-vm-test-run-y.drv")).unwrap();
+        assert_eq!(vm_tests(&named, &patterns, &featured).0, None);
+    }
+
+    #[test]
+    fn an_applied_or_copied_build_of_a_vm_test_goes_whole_to_its_builder() {
+        // run-subtests and shots-changed build one VM test so, and theirs
+        // went the lent way, up to 2505 s on 3 November.
+        let patterns = words("checks.*.vm-* legacyPackages.*.subtests");
+        let none = BTreeSet::new();
+        for words_given in [
+            "--apply f --out /o path:/z legacyPackages.x86_64-linux.subtests",
+            "--out /o path:/z checks.x86_64-linux.vm-a",
+        ] {
+            let applied = asked(&words(words_given)).unwrap();
+            let (vm, rest) = vm_tests(&applied, &patterns, &none);
+            assert_eq!(
+                vm,
+                Some(applied.with(&applied.flake, applied.attributes.clone()))
+            );
+            assert_eq!(rest, None, "{words_given}");
+        }
+        let other = asked(&words("--apply f path:/z packages.x86_64-linux.a")).unwrap();
+        assert_eq!(vm_tests(&other, &patterns, &none).0, None);
+    }
+
+    #[test]
+    fn a_derivation_needs_a_vm_when_its_features_ask_for_kvm_or_nixos_test() {
+        let shown = serde_json::json!({"version": 4, "derivations": {
+            "aaaa-vm-test-run-x.drv": {"env": {"requiredSystemFeatures": "kvm nixos-test"}},
+            "bbbb-kernel.drv": {"env": {"requiredSystemFeatures": "big-parallel"}},
+            "cccc-plain.drv": {"env": {}},
+            "dddd-structured.drv": {"structuredAttrs": {"requiredSystemFeatures": ["kvm"]}},
+            "eeee-json.drv": {"env": {"__json": "{\"requiredSystemFeatures\":[\"nixos-test\"]}"}}
+        }});
+        assert_eq!(
+            needing_vm(&shown),
+            BTreeSet::from([
+                "/nix/store/aaaa-vm-test-run-x.drv".to_owned(),
+                "/nix/store/dddd-structured.drv".to_owned(),
+                "/nix/store/eeee-json.drv".to_owned(),
+            ])
+        );
+        let before = serde_json::json!({
+            "/nix/store/aaaa-x.drv": {"env": {"requiredSystemFeatures": "nixos-test"}}
+        });
+        assert_eq!(
+            needing_vm(&before),
+            BTreeSet::from(["/nix/store/aaaa-x.drv".to_owned()])
+        );
     }
 
     #[test]
