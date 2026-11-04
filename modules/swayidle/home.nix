@@ -15,6 +15,12 @@
 # disk's prompt has already asked for the password, the lock lets go without
 # asking again.
 #
+# As the screens go off, swayidle tells logind the session is idle, which on
+# battery lets idle sleep have the laptop (../idle-sleep/nixos.nix); any key
+# or touch, an unlock or a wake says it isn't. While anything holds logind's
+# lock against going idle, swayidle neither locks, turns the screens off nor
+# says the session is idle, as Keep Awake wants.
+#
 # The screens go off and on through the system's niri, the one with core's patches,
 # so the machine doesn't carry a second niri just to ask.
 {
@@ -43,6 +49,8 @@ let
     text = builtins.readFile ./lock-for-sleep.sh;
   };
   screensOn = "${lib.getExe niri} msg action power-on-monitors";
+  # Seconds from the last key or touch to the screens going off.
+  screensOff = 600;
 in
 {
   home.packages = [
@@ -52,6 +60,13 @@ in
 
   services.swayidle = {
     enable = true;
+    # -w holds each sleep until its lock is drawn, as Home Manager's own
+    # default does.
+    extraArgs = [
+      "-w"
+      "idlehint"
+      (toString screensOff)
+    ];
     events = {
       before-sleep = lib.getExe lockForSleep;
       after-resume = screensOn;
@@ -64,7 +79,7 @@ in
         command = lib.getExe lock;
       }
       {
-        timeout = 600;
+        timeout = screensOff;
         command = "${lib.getExe niri} msg action power-off-monitors";
       }
     ];

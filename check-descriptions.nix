@@ -1769,6 +1769,9 @@
     the serif upright's cut answers to its own name and draws as Fraunces does at the axes the theme
     gives it, and not as the variable font's default
   '';
+  the-session-goes-idle-as-the-screens-go-off = ''
+    swayidle tells logind the session is idle at the same moment it turns the screens off
+  '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
@@ -2287,6 +2290,11 @@
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
     comes back from an lz4 image through systemd's initrd as it was, once the TPM and a PIN typed
     at its prompt open the disk, lets the lock go for that one prompt, and boots anew after
+  '';
+  vm-idle-sleep-comes-only-on-battery = ''
+    a machine left idle on the charger stays awake, and sleeps once the charger is unplugged; on
+    battery a session still in use keeps it awake, and an idle one stays awake while a program
+    holds logind's lock against idling and sleeps once it lets go
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
