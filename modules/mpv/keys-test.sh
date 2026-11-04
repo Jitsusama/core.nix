@@ -8,8 +8,8 @@
 # keyboard does.
 # usage: keys-test.sh <config folder> <a clip of 200 seconds, a keyframe a
 # second> <two subtitle files>, with a wl-copy on the config's path that
-# writes what it's given to ./copied, and a stand-in stats script that
-# writes ./listed when it's asked to list the keys. It leaves ./passed once
+# writes what it's given to ./copied, and a stand-in launcher-say on the
+# path that writes what it's asked to $ASKED. It leaves ./passed once
 # every key did what it should.
 set -euo pipefail
 
@@ -157,20 +157,19 @@ keys y
 sleep 1
 if [ -e copied ]; then never "y alone to copy nothing"; fi
 
-# ? lists the keys, and Space ? as well, without pausing or playing on.
-keys '?'
-for _ in $(seq 600); do
-  if [ -e listed ]; then break; fi
-  sleep 0.1
-done
-[ -e listed ] || never "? to list the keys"
-rm listed
-keys SPACE '?'
-for _ in $(seq 600); do
-  if [ -e listed ]; then break; fi
-  sleep 0.1
-done
-[ -e listed ] || never "Space ? to list the keys"
+# ? asks the launcher for the keys, and Space ? as well, without pausing
+# or playing on.
+asks() {
+  rm -f "$ASKED"
+  keys "$@"
+  for _ in $(seq 600); do
+    if grep -qx 'collection shortcuts' "$ASKED" 2> /dev/null; then return; fi
+    sleep 0.1
+  done
+  never "$* to ask the launcher for the keys"
+}
+asks '?'
+asks SPACE '?'
 sleep 1
 reads pause true "Space ? to leave it paused"
 

@@ -2,15 +2,16 @@
 -- seconds, j on a minute and k back, as j goes on through a file; 0 goes
 -- to the start and $ to the end; gg plays the first in the list, G the
 -- last, and a number before either that one; ]b and [b the next and the
--- one before, as Vim's go between buffers; yy copies the frame; Space ?
--- lists the keys, as ? does; and a number before any of them does it that
--- many times. The arrows stay mpv's own. mpv has no numbers before keys,
--- and does a key the moment it's pressed even when another binding starts
--- with it, so these are bound here, ahead of mpv's own. A key that starts
--- a pair waits 300 ms, his Neovim's timeoutlen, for its second, and does
--- what it does alone once none comes: Space pauses, [ and ] change the
--- speed, and b smooths banding, as mpv has them; y alone does nothing, as
--- in Vim. Nothing shows what waits, as his Neovim has showcmd off.
+-- one before, as Vim's go between buffers; yy copies the frame; ? and
+-- Space ? open the launcher's Shortcuts at the player's keys; and a
+-- number before any of them does it that many times. The arrows stay
+-- mpv's own. mpv has no numbers before keys, and does a key the moment
+-- it's pressed even when another binding starts with it, so these are
+-- bound here, ahead of mpv's own. A key that starts a pair waits 300 ms,
+-- his Neovim's timeoutlen, for its second, and does what it does alone
+-- once none comes: Space pauses, [ and ] change the speed, and b smooths
+-- banding, as mpv has them; y alone does nothing, as in Vim. Nothing
+-- shows what waits, as his Neovim has showcmd off.
 local waiting = { count = '', first = nil, timer = nil }
 
 local function stop()
@@ -81,9 +82,11 @@ local alone = {
   b = function()
     mp.command('cycle deband')
   end,
-  -- mpv's own, bound here since Space ? ends on it.
+  -- The launcher's Shortcuts, at the player's keys, as the picture and
+  -- document viewers' ? opens it, rather than mpv's own page of every
+  -- binding, in mpv's words, which runs off the window.
   ['?'] = function()
-    mp.command('script-binding stats/display-page-4-toggle')
+    mp.commandv('run', 'launcher-say', 'collection', 'shortcuts')
   end,
 }
 

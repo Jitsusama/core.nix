@@ -19,20 +19,20 @@
 # subtitles in the proportional face, the controller's bar in the deepest
 # colour with the text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
-# mpv's own: Space pauses, the arrows seek, f fills the screen, q quits and
-# ? lists every key, on the statistics' page of them. Vim's keys are
+# mpv's own: Space pauses, the arrows seek, f fills the screen and q quits,
+# but ? opens the launcher's Shortcuts at the player's keys. Vim's keys are
 # there too, as Joel's Vim has them (vi-keys.lua): h and l seek as Left
 # and Right do, j on a minute as Up does and k back as Down, as j goes on
 # through a file, 0 to the start and $ to the end, where the last frame
 # stays, gg and G play the first and the last in the list, ]b and [b the
 # next and the one before, a number before a key does it that many times
 # and before G plays that one, yy copies the frame as a picture
-# (copy-frame.lua), and Space ? lists the keys, as in his Neovim, so Space
-# pauses a moment after it's pressed, once no ? follows. j and l were
-# mpv's subtitles and A-B loop,
-# which go to J, where mpv cycles subtitles already, and L; the digits
-# no longer change the picture's contrast, brightness, gamma and
-# saturation, nor the loudness, as mpv has them. The launcher lists the
+# (copy-frame.lua), and Space ? opens Shortcuts too, as in his Neovim, so
+# Space pauses a moment after it's pressed, once no ? follows. j and l
+# were mpv's subtitles and A-B loop, which go to J, where mpv cycles
+# subtitles already, and L; the digits no longer change the picture's
+# contrast, brightness, gamma and saturation, nor the loudness, as mpv
+# has them. The launcher lists the
 # ones worth knowing over its window, in their own words. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it,
 # and says each file it plays to the desktop's list of files opened lately
@@ -350,7 +350,7 @@ in
       disabled_color = colours.muted;
       menu_outline_color = colours.edge;
     };
-    # What's playing and how, and the page of keys ? opens, in the sans
+    # What's playing and how, the page i and I open, in the sans
     # face with figures in the monospaced one, its graphs in the accent.
     scriptOpts.stats = {
       font = font.sans.family;

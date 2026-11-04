@@ -60,31 +60,27 @@ onLinux {
       # The wl-copy copy-frame's options name, for the stand-in to take its
       # place.
       wl-copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
-      # mpv's statistics, which list the keys, standing in to say they did.
-      stats = pkgs.writeText "stats.lua" ''
-        mp.add_key_binding(nil, 'display-page-4-toggle', function()
-          io.open('listed', 'w'):close()
-        end)
-      '';
+      # The launcher, which only has to say what it was asked.
+      launcher = pkgs.writeShellScriptBin "launcher-say" ''echo "$*" >> "$ASKED"'';
     in
     pkgs.runCommandLocal "mpv-keys-go-where-they-say"
       {
         nativeBuildInputs = [
           mpv
           pkgs.ffmpeg-headless
+          launcher
           pkgs.jq
           pkgs.socat
         ];
       }
       ''
-        export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
+        export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run ASKED=$PWD/asked
         export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
         mkdir -p mpv/scripts mpv/script-opts run
         cp ${files."mpv/mpv.conf".source} mpv/mpv.conf
         cp ${files."mpv/input.conf".source} mpv/input.conf
         cp ${files."mpv/scripts/copy-frame.lua".source} mpv/scripts/copy-frame.lua
         cp ${files."mpv/scripts/vi-keys.lua".source} mpv/scripts/vi-keys.lua
-        cp ${stats} mpv/scripts/stats.lua
         printf '#!%s\ncat > %s/copied\n' "$BASH" "$PWD" > wl-copy
         chmod +x wl-copy
         sed 's|${wl-copy}|'"$PWD"'/wl-copy|' ${files."mpv/script-opts/copy-frame.conf".source} \
