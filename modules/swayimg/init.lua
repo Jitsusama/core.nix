@@ -526,7 +526,13 @@ local acts = {
 
 -- Each key with an act, by the key that starts it, where it works: alone,
 -- or as the first of a pair and the key after it. swayimg spells a held
--- key with a dash, Shift-slash, and hears ? as the key it's shifted from.
+-- key with a dash, and a letter by its own name, Shift-g, but a symbol by
+-- what Shift makes of it: ? comes as Shift-question, never as the slash the
+-- table names it by.
+local shifted = { ['Shift+slash'] = 'Shift+question' }
+local function heard(chord)
+  return ((shifted[chord] or chord):gsub('%+', '-'))
+end
 local alone, paired = {}, {}
 for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   alone[mode], paired[mode] = {}, {}
@@ -534,11 +540,11 @@ for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
     if key.act and works(key, mode) then
       local first, second = key.chord:match('^(%S+) (%S+)$')
       if first then
-        first, second = first:gsub('%+', '-'), second:gsub('%+', '-')
+        first, second = heard(first), heard(second)
         paired[mode][first] = paired[mode][first] or {}
         paired[mode][first][second] = key.act
       else
-        alone[mode][(key.chord:gsub('%+', '-'))] = key.act
+        alone[mode][heard(key.chord)] = key.act
       end
     end
   end

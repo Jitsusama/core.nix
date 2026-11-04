@@ -167,21 +167,24 @@ if [ -e copied ]; then
   exit 1
 fi
 
-# Space ? lists the keys over the picture, as ? does, and again puts them
-# away. The list is only drawn, so it's seen on the screen, once the words
-# a picture opens with have gone, two seconds on.
-sleep 3
-until_still
-grim -t ppm bare.ppm
-wtype -k space -M shift -k slash -m shift
-listed=0
-for _ in $(seq 100); do
+# ? lists the keys over the picture, and Space ? as well, and each again
+# puts them away. A keyboard sends ? as question with Shift held, not as
+# the slash it's printed beside. The list is only drawn, so it's seen on
+# the screen, once the words a picture opens with have gone, two seconds
+# on. A key swayimg doesn't know is drawn too, as a status line that goes
+# two seconds on, so the list is looked for once that would have gone.
+lists() {
+  sleep 3
+  until_still
+  grim -t ppm bare.ppm
+  wtype "$@" -M shift -k question -m shift
+  sleep 3
   grim -t ppm now.ppm
-  if ! cmp -s bare.ppm now.ppm; then listed=1 && break; fi
-  sleep 0.1
-done
-[ "$listed" = 1 ] || { echo "Space ? listed no keys"; exit 1; }
-wtype -k space -M shift -k slash -m shift
+  ! cmp -s bare.ppm now.ppm || { echo "${*:+Space }? listed no keys"; exit 1; }
+  wtype "$@" -M shift -k question -m shift
+}
+lists
+lists -k space
 
 # On a picture larger than the window, Down moves it and Up back, and j and
 # k as far.
