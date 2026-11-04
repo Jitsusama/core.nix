@@ -67,15 +67,16 @@ Item {
     property string cleared: ""
     // Says how far an aside may run, so a long one never crowds what's typed
     // or where Joel is: the path's steps and room to type come first, and
-    // the aside has what they leave, up to two fifths of the line. With the
-    // aside first, a step into a thing whose rows have long notes cut every
-    // step of the path to a letter (Joel, 2026-10-25: "the breadcrumb
-    // quickly goes single letter per entry").
+    // the aside has all they leave. With the aside first, a step into a
+    // thing whose rows have long notes cut every step of the path to a
+    // letter (Joel, 2026-10-25: "the breadcrumb quickly goes single letter
+    // per entry"). Held to two fifths of the line besides, it gave way with
+    // room to spare beside a short hint (Joel, 2026-11-04).
     // What's typed with its completion comes before the aside too, so
     // "weather tokyo" keeps "= no forecast" whole and the aside says less.
-    property real asideMost: Math.max(0, Math.min(width * 0.4, width - 2 * Theme.space.l
+    property real asideMost: Math.max(0, width - 2 * Theme.space.l
         - glyphWidth - Theme.space.m - pathWanted - Math.max(typingRoom, typedWidest)
-        - Theme.space.xl - keysRoom))
+        - Theme.space.xl - keysRoom)
     // The widest what's typed has been with its completion since forget(),
     // so the aside gives way once as it grows, not back and forth with
     // each letter.
@@ -123,6 +124,14 @@ Item {
     // moves as they come and go with each letter. They're set at the right
     // edge, past the aside, so neither moves as the aside changes.
     readonly property bool keyed: leftClears
+    // Whether their place is kept: only while one of them could be said,
+    // something typed or something the left arrow took to put back. With
+    // neither, no key shows until a letter is typed, so the aside ends at
+    // the line's end, where the rows' sides end, rather than short of an
+    // empty place (Joel, 2026-11-04: "the text in being inset left from the
+    // right edge of the launcher, it looks like shit"). The first letter
+    // changes what the aside says anyway, so it moves over then, once.
+    readonly property bool keysHeld: keyed && (typed || (input.text === "" && cleared !== ""))
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
     // what's typed with its completion, and the aside, each whole. Where
@@ -132,7 +141,7 @@ Item {
     // so they go at most once rather than coming and going with letters.
     readonly property var keysWorded: [chipFace.advanceWidth("\u21e5 complete"),
         Math.max(chipFace.advanceWidth("\u2190 clear"), chipFace.advanceWidth("\u2192 restore"))]
-    readonly property real asideWanted: Math.min(asideWhole, width * 0.4)
+    readonly property real asideWanted: asideWhole
     readonly property bool wordsFit: width - 2 * Theme.space.l - glyphWidth - Theme.space.m
         - pathWanted - Math.max(typingRoom, typedWanted)
         - Theme.space.xl - (asideWanted > 0 ? asideWanted + Theme.space.xl : 0)
@@ -140,14 +149,14 @@ Item {
     // Set as the words stop fitting, and let go by forget(), as a step ends.
     property bool crowded: false
     onWordsFitChanged: {
-        if (!wordsFit && keyed)
+        if (!wordsFit && keysHeld)
             crowded = true;
     }
     readonly property bool worded: wordsFit && !crowded
-    readonly property var keyPlaces: !keyed ? [] : worded ? keysWorded
+    readonly property var keyPlaces: !keysHeld ? [] : worded ? keysWorded
         : [chipFace.advanceWidth("\u21e5"),
             Math.max(chipFace.advanceWidth("\u2190"), chipFace.advanceWidth("\u2192"))]
-    readonly property real keysRoom: keyed
+    readonly property real keysRoom: keysHeld
         ? keyPlaces[0] + fieldKeys.spacing + keyPlaces[1] + Theme.space.xl : 0
     readonly property bool typed: input.text !== "" && !secret
 
@@ -199,7 +208,7 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
-        visible: prompt.keyed
+        visible: prompt.keysHeld
         widths: prompt.keyPlaces
         endsRight: true
         keys: [prompt.typed && prompt.ghost !== "" ? ["\u21e5", prompt.keyWord("complete")]
@@ -211,8 +220,8 @@ Item {
 
     Text {
         id: asideText
-        anchors.right: prompt.keyed ? fieldKeys.left : parent.right
-        anchors.rightMargin: prompt.keyed ? Theme.space.xl : Theme.space.l
+        anchors.right: prompt.keysHeld ? fieldKeys.left : parent.right
+        anchors.rightMargin: prompt.keysHeld ? Theme.space.xl : Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but

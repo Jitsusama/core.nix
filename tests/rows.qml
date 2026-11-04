@@ -6,7 +6,9 @@
 // within the row and apart, however long either is, and a field's ghost or
 // hint stops at the field's end. A field's path keeps its steps whole
 // beside a long note, and a short note keeps to the field's right end
-// however wide a room it holds. Words that fit are left whole. Selected,
+// however wide a room it holds. The launcher's note, with nothing typed,
+// ends where a row's value ends and says all it has room for; typed, it
+// stands before the field's keys. Words that fit are left whole. Selected,
 // a row with both its name and what it is cut reads each on in turn, the
 // name first, never both moving at once, and its name at rest ends in its
 // ellipsis rather than cut through a letter. What the shell says in its voice,
@@ -25,11 +27,13 @@ ShellRoot {
     readonly property string voice: "Nothing needs you."
     readonly property string sentence: "$4,199 billed in the last 7 days against an allowance"
         + " of $15,000, which resets on Monday at midnight"
+    readonly property string asked: "Say which issue sources to read"
+    readonly property string day: "Wednesday 4 November 2026"
 
     FloatingWindow {
         visible: true
         implicitWidth: root.panel
-        implicitHeight: 400
+        implicitHeight: 700
         color: "black"
 
         Column {
@@ -112,6 +116,33 @@ ShellRoot {
                 steady: true
                 asideWidest: root.panel / 3
                 aside: "just now"
+            }
+            // The launcher's field as it opens a step, nothing typed, its
+            // note wider than two fifths of the line but well within what
+            // the path and the hint leave it, above a row saying its value
+            // (Joel, 2026-11-04: the note "inset left from the right edge
+            // of the launcher, it looks like shit").
+            Prompt {
+                id: opened
+                width: root.panel
+                steady: true
+                voiced: true
+                leftClears: true
+                glyphWidth: Theme.space.xxl
+                chips: [{ text: "Now" }]
+                hint: "which?"
+            }
+            Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
+            // The same with letters typed, so the field says its keys.
+            Prompt {
+                id: typing
+                width: root.panel
+                steady: true
+                voiced: true
+                leftClears: true
+                glyphWidth: Theme.space.xxl
+                chips: [{ text: "Now" }]
+                hint: "which?"
             }
         }
     }
@@ -242,10 +273,35 @@ ShellRoot {
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
                 && Math.abs(note.to - right) <= 1, `${said(drawn(steadied, []))}, end ${right}`);
+            const asked = drawn(opened, []).find(t => t.text.startsWith("Say"));
+            const value = drawn(valued, []).find(t => t.text === root.day);
+            expect("the launcher's note, nothing typed, ends where a row's value ends",
+                asked !== undefined && value !== undefined && Math.abs(asked.to - value.to) <= 1,
+                `${said(drawn(opened, []))} over ${said(drawn(valued, []))}`);
+            expect("the launcher's note says all it has room for before it gives way",
+                asked.text === root.asked && !asked.truncated, said(drawn(opened, [])));
+            texts = drawn(typing, []).sort((a, b) => a.from - b.from);
+            const counted = texts.findIndex(t => t.text === "1 of 2");
+            expect("typed, the launcher's note stands before the field's keys",
+                counted >= 0 && counted < texts.length - 1
+                    && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
             Qt.callLater(() => Qt.exit(1));
+        }
+    }
+
+    // What the launcher's fields say comes once they're made, as the
+    // launcher's does as Joel opens a step and types.
+    Timer {
+        interval: 100
+        running: true
+        onTriggered: {
+            opened.aside = root.asked;
+            typing.text = "ne";
+            typing.ghost = "eds You";
+            typing.aside = "1 of 2";
         }
     }
 

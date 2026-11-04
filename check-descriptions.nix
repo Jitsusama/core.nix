@@ -913,7 +913,8 @@
   '';
   palette-rows-keep-their-words-apart = ''
     a palette's row and field keep their words apart and inside them, however long, ending what
-    doesn't fit in an ellipsis
+    doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
+    ends and says all it has room for
   '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five
