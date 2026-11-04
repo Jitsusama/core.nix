@@ -2849,7 +2849,9 @@ mod tests {
         answered: std::time::Duration::from_millis(300),
         restarting: std::time::Duration::from_secs(1),
         longest: std::time::Duration::from_secs(5),
-        worked: std::time::Duration::from_millis(200),
+        // Wide of what a stand-in ssh takes to fail at once on a loaded
+        // machine, past 200 ms at load 55 on 4 November.
+        worked: std::time::Duration::from_secs(1),
     };
 
     #[test]
@@ -2861,7 +2863,7 @@ mod tests {
         let ssh = folder.path().join("ssh");
         fs::write(
             folder.path().join("tries"),
-            "sleep 0.3; exit 255\nsleep 0.3; exit 255\nexit 255\nexit 0\n",
+            "sleep 1.5; exit 255\nsleep 1.5; exit 255\nexit 255\nexit 0\n",
         )
         .unwrap();
         let draft = folder.path().join("ssh.draft");

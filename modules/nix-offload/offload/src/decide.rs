@@ -13,6 +13,15 @@ pub const AFTER_FAILING: u64 = 30 * 60;
 /// deleted at 23:55:43, and counted lost, which lent none for 30 minutes.
 pub const NEAR_ITS_END: u64 = 10 * 60;
 
+/// How long before its end a builder still used or wanted hands over to a
+/// successor, finishing what it has while every new build goes to the
+/// next: its end cut 11 `there` runs at once at 17:18 on 3 November, 17
+/// to 55 minutes in. Of 804 VM test runs on lent builders that passed, 95%
+/// took under 37 minutes and 99% under 75, so an hour lets nearly every
+/// run finish, and costs a second builder only while the first's last
+/// runs do.
+pub const HANDS_OVER: u64 = 60 * 60;
+
 /// The day's hours, in seconds into the local day: lends start from
 /// `first` and before `last`, and every builder is gone by `deadline`,
 /// unless each lives `longest` from its asking instead.
@@ -62,6 +71,34 @@ pub fn lend(hours: Hours, tick: Tick, not_before: u64, unreturned: usize) -> Opt
     let within = (hours.first..hours.last).contains(&tick.into_day);
     (tick.wants && within && tick.now >= not_before && unreturned == 0)
         .then(|| u64::from(hours.longest.unwrap_or(hours.deadline - tick.into_day)))
+}
+
+/// With one lent asked to live until `ends`, and `reached` by a build
+/// now: the seconds a successor asked for now should live, if one should
+/// be, since its time is nearly up while a build uses or wants it. Only
+/// a builder that lives `longest` from its asking hands over: one asked
+/// to live to the deadline would hand over to one ending with it. None is
+/// asked while waiting out a successor that failed, until `not_before`.
+pub fn hands_over(
+    hours: Hours,
+    tick: Tick,
+    ends: u64,
+    reached: bool,
+    not_before: u64,
+) -> Option<u64> {
+    let longest = hours.longest?;
+    let within = (hours.first..hours.last).contains(&tick.into_day);
+    let near_its_end = tick.now < ends && tick.now + HANDS_OVER >= ends;
+    (near_its_end && within && (reached || tick.wants) && tick.now >= not_before)
+        .then_some(u64::from(longest))
+}
+
+/// With one handed over and asked to live until `ends`: whether it's given
+/// back now, once its helper is `gone`, which it is once nothing reaches
+/// it, or once its time is up. One holding a run that outlives its caller
+/// stays until then, since nothing here reaches that run to say it ended.
+pub fn leaves(now: u64, ends: u64, gone: bool, outliving: bool) -> bool {
+    now >= ends || (gone && !outliving)
 }
 
 /// With one lent and last used at `used`, asked to live until `ends`: why
@@ -130,6 +167,55 @@ pub fn restarts(superseded: bool, wants: bool, in_use: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_builder_near_its_end_hands_over_while_a_build_uses_or_wants_it() {
+        let tick = at(12 * 3600, false);
+        let ends = tick.now + HANDS_OVER;
+        assert_eq!(hands_over(ANY_HOUR, tick, ends, true, 0), Some(12 * 3600));
+        let wanted = at(12 * 3600, true);
+        assert_eq!(
+            hands_over(ANY_HOUR, wanted, ends, false, 0),
+            Some(12 * 3600)
+        );
+        assert_eq!(
+            hands_over(ANY_HOUR, tick, ends, false, 0),
+            None,
+            "nothing uses or wants it"
+        );
+        assert_eq!(
+            hands_over(ANY_HOUR, tick, ends + 1, true, 0),
+            None,
+            "it has more than an hour left"
+        );
+        assert_eq!(
+            hands_over(ANY_HOUR, tick, tick.now, true, 0),
+            None,
+            "its time is up"
+        );
+    }
+
+    #[test]
+    fn no_successor_is_asked_for_to_the_deadline_outside_the_hours_or_after_one_failed() {
+        let tick = at(12 * 3600, true);
+        let ends = tick.now + 60;
+        assert_eq!(hands_over(HOURS, tick, ends, true, 0), None);
+        assert_eq!(hands_over(ANY_HOUR, tick, ends, true, tick.now + 1), None);
+        let late = at(23 * 3600 + 59 * 60 + 30, true);
+        assert_eq!(hands_over(ANY_HOUR, late, late.now + 60, true, 0), None);
+    }
+
+    #[test]
+    fn one_handed_over_is_given_back_once_nothing_reaches_it_or_its_time_is_up() {
+        assert!(!leaves(100, 200, false, false));
+        assert!(leaves(100, 200, true, false));
+        assert!(
+            !leaves(100, 200, true, true),
+            "a run outliving its caller holds it"
+        );
+        assert!(leaves(200, 200, true, true));
+        assert!(leaves(200, 200, false, false));
+    }
 
     #[test]
     fn a_superseded_lender_ends_only_once_nothing_uses_or_wants_its_builder() {
