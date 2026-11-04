@@ -705,6 +705,16 @@ gather (
         pkgs.callPackage ./tools/changed-checks/package.nix { }
       );
 
+      # merge-net decides what to run, revert, quarantine and hold from what
+      # each run gave, so its tests drive a round against a stand-in for git,
+      # nix and GitHub, and run as it builds (tools/merge-net).
+      merge-net-catches-a-broken-merge = pkgs.callPackage ./tools/merge-net/package.nix { };
+
+      # clippy finds nothing in merge-net, its tests included.
+      merge-net-passes-clippy = passesClippy "merge-net-passes-clippy" (
+        pkgs.callPackage ./tools/merge-net/package.nix { }
+      );
+
       # run-subtests keeps a test script's boot and helpers and only the subtests
       # named, and runs a pytest one whole with its tests picked, so what it runs
       # is what was asked for (tools/run-subtests/run-subtests-test.py, against
