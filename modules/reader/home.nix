@@ -7,11 +7,12 @@
 # sets the page again as the file is saved, keeping the same words where
 # they were, and opens a file where it was last closed, marks and all.
 #
-# Its keys are Neovim's own, from one table in the reader (src/keys.rs): j
+# Its keys are Neovim's own, from the key language every surface of ours
+# speaks (../keys/language.toml), which the reader reads as it builds: j
 # and k a line, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen,
 # gg and G, counts, / and ? to search with n and N, marks, '' and Ctrl+O and
 # Ctrl+I through the jumps, g x to follow a link by its label, q, ZZ or
-# Space w to close, and Space ? for every key. v and V select, from the
+# Space w to close, and Space ? or F1 for every key. v and V select, from the
 # first word in view, with the terminal's cursor, moved by the arrows and
 # h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap and i` for text
 # objects and o for the other end; y or Ctrl+C copies the selection as the
@@ -96,10 +97,19 @@ let
   };
 
   # Every key, as the reader's own list gives it (reader --keys), in the
-  # launcher's groups: a mark's keys sit with the jumps, since two keys
-  # make no group of their own, and moving is Scrolling there, since
-  # Moving is the picture viewer's. An arrow comes before its letter.
-  key = group: chord: does: { inherit group chord does; };
+  # launcher's groups, each with the key language's act it does: a mark's
+  # keys sit with the jumps, since two keys make no group of their own, and
+  # moving is Scrolling there, since Moving is the picture viewer's. An
+  # arrow comes before its letter. Zoom is the reader's own, as Vim has
+  # none.
+  key = group: act: chord: does: {
+    inherit
+      group
+      act
+      chord
+      does
+      ;
+  };
   moving = key "scrolling";
   jumping = key "jumping";
   searching = key "searching";
@@ -108,64 +118,66 @@ let
   copying = key "copying";
   page = key "page";
   keys = [
-    (moving "Down" "Down a line")
-    (moving "j" "Down a line")
-    (moving "Ctrl+E" "Down a line")
-    (moving "Up" "Up a line")
-    (moving "k" "Up a line")
-    (moving "Ctrl+Y" "Up a line")
-    (moving "Ctrl+D" "Down half a screen")
-    (moving "Ctrl+U" "Up half a screen")
-    (moving "Ctrl+F" "Down a screen")
-    (moving "Page Down" "Down a screen")
-    (moving "Ctrl+B" "Up a screen")
-    (moving "Page Up" "Up a screen")
-    (jumping "g g" "To the top, or a count's line")
-    (jumping "G" "To the end, or a count's line")
-    (jumping "' '" "Back to before the last jump")
-    (jumping "` `" "Back to before the last jump")
-    (jumping "Ctrl+O" "Back through the jumps")
-    (jumping "Ctrl+I" "Forward through the jumps")
-    (jumping "g x" "Follow a link on screen, by its label")
-    (jumping "m" "Mark this place with a letter")
-    (jumping "'" "Go to a letter's mark")
-    (searching "/" "Search down the page")
-    (searching "?" "Search up the page")
-    (searching "n" "On to the next match")
-    (searching "N" "Back to the match before")
-    (selecting "v" "Select from the first word in view")
-    (selecting "V" "Select whole paragraphs, items and lines")
-    (selecting "Left" "A character left")
-    (selecting "h" "A character left")
-    (selecting "Right" "A character right")
-    (selecting "l" "A character right")
-    (selecting "w" "On to the next word")
-    (selecting "b" "Back to a word's start")
-    (selecting "e" "On to a word's end")
-    (selecting "0" "To the line's start")
-    (selecting "$" "To the line's end")
-    (selecting "{" "Back a paragraph")
-    (selecting "}" "On a paragraph")
-    (selecting "o" "To the selection's other end")
-    (objects "i w" "A word")
-    (objects "a w" "A word and the space after it")
-    (objects "i s" "A sentence")
-    (objects "a s" "A sentence and the space after it")
-    (objects "i p" "A paragraph")
-    (objects "a p" "A paragraph and the blank line after it")
-    (objects "i `" "The code between backticks")
-    (copying "y" "Copy the selection as markdown")
-    (copying "Ctrl+C" "Copy the selection as markdown")
-    (copying "y y" "Copy the first block in view")
-    (copying "y i p" "Copy the paragraph in view")
-    (page "Ctrl+Equal" "Larger")
-    (page "Ctrl+Plus" "Larger")
-    (page "Ctrl+Minus" "Smaller")
-    (page "Ctrl+0" "Back to its own size")
-    (page "Space ?" "Show every key here")
-    (page "q" "Close the page")
-    (page "Z Z" "Close the page")
-    (page "Space w" "Close the page")
+    (moving "down" "Down" "Down a line")
+    (moving "down" "j" "Down a line")
+    (moving "scroll-down" "Ctrl+E" "Down a line")
+    (moving "up" "Up" "Up a line")
+    (moving "up" "k" "Up a line")
+    (moving "scroll-up" "Ctrl+Y" "Up a line")
+    (moving "half-down" "Ctrl+D" "Down half a screen")
+    (moving "half-up" "Ctrl+U" "Up half a screen")
+    (moving "screen-down" "Ctrl+F" "Down a screen")
+    (moving "screen-down" "Page_Down" "Down a screen")
+    (moving "screen-up" "Ctrl+B" "Up a screen")
+    (moving "screen-up" "Page_Up" "Up a screen")
+    (jumping "first" "g g" "To the top, or a count's line")
+    (jumping "last" "G" "To the end, or a count's line")
+    (jumping "last-jump" "' '" "Back to before the last jump")
+    (jumping "last-jump" "` `" "Back to before the last jump")
+    (jumping "jump-back" "Ctrl+O" "Back through the jumps")
+    (jumping "jump-forward" "Ctrl+I" "Forward through the jumps")
+    (jumping "links" "g x" "Follow a link on screen, by its label")
+    (jumping "set-mark" "m" "Mark this place with a letter")
+    (jumping "go-to-mark" "'" "Go to a letter's mark")
+    (jumping "go-to-mark" "`" "Go to a letter's mark")
+    (searching "search-forward" "/" "Search down the page")
+    (searching "search-backward" "?" "Search up the page")
+    (searching "next" "n" "On to the next match")
+    (searching "previous" "N" "Back to the match before")
+    (selecting "select" "v" "Select from the first word in view")
+    (selecting "select-lines" "V" "Select whole paragraphs, items and lines")
+    (selecting "left" "Left" "A character left")
+    (selecting "left" "h" "A character left")
+    (selecting "right" "Right" "A character right")
+    (selecting "right" "l" "A character right")
+    (selecting "word-on" "w" "On to the next word")
+    (selecting "word-back" "b" "Back to a word's start")
+    (selecting "word-end" "e" "On to a word's end")
+    (selecting "line-start" "0" "To the line's start")
+    (selecting "line-end" "$" "To the line's end")
+    (selecting "paragraph-back" "{" "Back a paragraph")
+    (selecting "paragraph-on" "}" "On a paragraph")
+    (selecting "other-end" "o" "To the selection's other end")
+    (objects "in-word" "i w" "A word")
+    (objects "a-word" "a w" "A word and the space after it")
+    (objects "in-sentence" "i s" "A sentence")
+    (objects "a-sentence" "a s" "A sentence and the space after it")
+    (objects "in-paragraph" "i p" "A paragraph")
+    (objects "a-paragraph" "a p" "A paragraph and the blank line after it")
+    (objects "in-code" "i `" "The code between backticks")
+    (copying "copy-selection" "y" "Copy the selection as markdown")
+    (copying "copy-selection" "Ctrl+C" "Copy the selection as markdown")
+    (copying "copy" "y y" "Copy the first block in view")
+    (copying "copy-paragraph" "y i p" "Copy the paragraph in view")
+    (page "" "Ctrl+Equal" "Larger")
+    (page "" "Ctrl+Plus" "Larger")
+    (page "" "Ctrl+Minus" "Smaller")
+    (page "" "Ctrl+0" "Back to its own size")
+    (page "show-keys" "Space ?" "Show every key here")
+    (page "show-keys" "F1" "Show every key here")
+    (page "close" "q" "Close the page")
+    (page "close" "Z Z" "Close the page")
+    (page "close" "Space w" "Close the page")
   ];
 in
 {
@@ -199,7 +211,9 @@ in
       }
     ];
 
-    # The launcher lists these over the reader's window, by the same words.
+    # The launcher lists these over the reader's window, by the same words,
+    # and the reader is a page, as the key language has it.
     jitsusama.keys.reader = keys;
+    jitsusama.keys.surfaces.reader = [ "page" ];
   };
 }

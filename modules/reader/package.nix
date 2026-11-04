@@ -46,14 +46,17 @@ in
 rustPlatform.buildRustPackage {
   pname = "reader";
   version = "0.1.0";
+  # The key language beside it, which its keys are read from as it builds.
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ../keys/language.toml
     ];
   };
+  sourceRoot = "source/reader";
   cargoLock.lockFile = ./Cargo.lock;
   nativeBuildInputs = [
     copyDesktopItems

@@ -1,8 +1,11 @@
-//! The reader's keys: Neovim's own normal-mode and visual-mode keys, as
-//! design.md's Vi's Keys gives them, read from one table so the desktop's
-//! key system can replace it whole. A machine in front of the table keeps
-//! what vi keeps between presses: a count, and a key waiting for its
-//! second.
+//! The reader's keys: Neovim's own normal-mode and visual-mode keys, read
+//! from the one key language every surface of ours speaks
+//! (modules/keys/language.toml), by the names of the acts a page holds
+//! there, with the modes each works in, and the reader's own keys for what
+//! Vim has nothing for, as zoom. A machine in front of the table keeps what
+//! vi keeps between presses: a count, and a key waiting for its second.
+
+use std::sync::OnceLock;
 
 use crate::select::Object;
 
@@ -21,6 +24,7 @@ pub enum Key {
     Right,
     PageUp,
     PageDown,
+    F1,
 }
 
 /// What a key asks of the reader.
@@ -109,6 +113,17 @@ pub enum In {
 }
 
 impl In {
+    /// Where an act works, from the modes the language gives it: normal
+    /// mode is a page at rest, and visual mode while selecting.
+    fn of(modes: &[&str]) -> Option<In> {
+        match (modes.contains(&"normal"), modes.contains(&"visual")) {
+            (true, true) => Some(In::Both),
+            (true, false) => Some(In::Rest),
+            (false, true) => Some(In::Selecting),
+            (false, false) => None,
+        }
+    }
+
     fn holds(self, selecting: bool) -> bool {
         match self {
             In::Both => true,
@@ -120,100 +135,190 @@ impl In {
 
 use Key::{Char, Ctrl};
 
-/// Every sequence, where it works and what it does. A sequence whose last
-/// key is a letter slot (m, ' and the backtick) takes its letter in
-/// `Machine`, not here. An arrow comes before the letter it shares a row
-/// with, since it's the one Joel presses.
-pub const TABLE: &[(&[Key], Act, In)] = &[
-    (&[Key::Down], Act::Down, In::Both),
-    (&[Char('j')], Act::Down, In::Both),
-    (&[Key::Up], Act::Up, In::Both),
-    (&[Char('k')], Act::Up, In::Both),
-    (&[Key::Left], Act::Left, In::Both),
-    (&[Char('h')], Act::Left, In::Both),
-    (&[Key::Right], Act::Right, In::Both),
-    (&[Char('l')], Act::Right, In::Both),
-    (&[Ctrl('e')], Act::ScrollDown, In::Both),
-    (&[Ctrl('y')], Act::ScrollUp, In::Both),
-    (&[Ctrl('d')], Act::HalfDown, In::Both),
-    (&[Ctrl('u')], Act::HalfUp, In::Both),
-    (&[Ctrl('f')], Act::ScreenDown, In::Both),
-    (&[Key::PageDown], Act::ScreenDown, In::Both),
-    (&[Ctrl('b')], Act::ScreenUp, In::Both),
-    (&[Key::PageUp], Act::ScreenUp, In::Both),
-    (&[Char('g'), Char('g')], Act::First, In::Both),
-    (&[Char('G')], Act::Last, In::Both),
-    (&[Char('/')], Act::SearchForward, In::Both),
-    (&[Char('?')], Act::SearchBackward, In::Both),
-    (&[Char('n')], Act::Next, In::Both),
-    (&[Char('N')], Act::Previous, In::Both),
-    (&[Char('\''), Char('\'')], Act::LastJump, In::Both),
-    (&[Char('`'), Char('`')], Act::LastJump, In::Both),
-    (&[Ctrl('o')], Act::JumpBack, In::Both),
-    (&[Ctrl('i')], Act::JumpForward, In::Both),
-    (&[Char('g'), Char('x')], Act::Links, In::Both),
-    (&[Char('v')], Act::Select, In::Both),
-    (&[Char('V')], Act::SelectPieces, In::Both),
-    (&[Char('w')], Act::WordOn, In::Selecting),
-    (&[Char('b')], Act::WordBack, In::Selecting),
-    (&[Char('e')], Act::WordEnd, In::Selecting),
-    (&[Char('0')], Act::LineStart, In::Selecting),
-    (&[Char('$')], Act::LineEnd, In::Selecting),
-    (&[Char('{')], Act::ParagraphBack, In::Selecting),
-    (&[Char('}')], Act::ParagraphOn, In::Selecting),
-    (&[Char('o')], Act::OtherEnd, In::Selecting),
-    (
-        &[Char('i'), Char('w')],
-        Act::Object(Object::InWord),
-        In::Selecting,
-    ),
-    (
-        &[Char('a'), Char('w')],
-        Act::Object(Object::AWord),
-        In::Selecting,
-    ),
-    (
-        &[Char('i'), Char('s')],
-        Act::Object(Object::InSentence),
-        In::Selecting,
-    ),
-    (
-        &[Char('a'), Char('s')],
-        Act::Object(Object::ASentence),
-        In::Selecting,
-    ),
-    (
-        &[Char('i'), Char('p')],
-        Act::Object(Object::InParagraph),
-        In::Selecting,
-    ),
-    (
-        &[Char('a'), Char('p')],
-        Act::Object(Object::AParagraph),
-        In::Selecting,
-    ),
-    (
-        &[Char('i'), Char('`')],
-        Act::Object(Object::InCode),
-        In::Selecting,
-    ),
-    (&[Char('y')], Act::Copy, In::Selecting),
-    (&[Ctrl('c')], Act::Copy, In::Selecting),
-    (&[Char('y'), Char('y')], Act::CopyPiece, In::Rest),
-    (
-        &[Char('y'), Char('i'), Char('p')],
-        Act::CopyParagraph,
-        In::Rest,
-    ),
-    (&[Char('q')], Act::Close, In::Both),
-    (&[Char('Z'), Char('Z')], Act::Close, In::Both),
-    (&[Char(' '), Char('w')], Act::Close, In::Both),
-    (&[Char(' '), Char('?')], Act::ShowKeys, In::Both),
-    (&[Ctrl('=')], Act::ZoomIn, In::Both),
-    (&[Ctrl('+')], Act::ZoomIn, In::Both),
-    (&[Ctrl('-')], Act::ZoomOut, In::Both),
-    (&[Ctrl('0')], Act::ZoomBack, In::Both),
+/// The key language, as the reader is built with it.
+const LANGUAGE: &str = include_str!("../../keys/language.toml");
+
+/// The acts the reader takes from the language, by their names there, in
+/// the order its key list shows them.
+const SPOKEN: &[(&str, Act)] = &[
+    ("down", Act::Down),
+    ("up", Act::Up),
+    ("left", Act::Left),
+    ("right", Act::Right),
+    ("scroll-down", Act::ScrollDown),
+    ("scroll-up", Act::ScrollUp),
+    ("half-down", Act::HalfDown),
+    ("half-up", Act::HalfUp),
+    ("screen-down", Act::ScreenDown),
+    ("screen-up", Act::ScreenUp),
+    ("first", Act::First),
+    ("last", Act::Last),
+    ("search-forward", Act::SearchForward),
+    ("search-backward", Act::SearchBackward),
+    ("next", Act::Next),
+    ("previous", Act::Previous),
+    ("last-jump", Act::LastJump),
+    ("jump-back", Act::JumpBack),
+    ("jump-forward", Act::JumpForward),
+    ("links", Act::Links),
+    ("select", Act::Select),
+    ("select-lines", Act::SelectPieces),
+    ("word-on", Act::WordOn),
+    ("word-back", Act::WordBack),
+    ("word-end", Act::WordEnd),
+    ("line-start", Act::LineStart),
+    ("line-end", Act::LineEnd),
+    ("paragraph-back", Act::ParagraphBack),
+    ("paragraph-on", Act::ParagraphOn),
+    ("other-end", Act::OtherEnd),
+    ("in-word", Act::Object(Object::InWord)),
+    ("a-word", Act::Object(Object::AWord)),
+    ("in-sentence", Act::Object(Object::InSentence)),
+    ("a-sentence", Act::Object(Object::ASentence)),
+    ("in-paragraph", Act::Object(Object::InParagraph)),
+    ("a-paragraph", Act::Object(Object::AParagraph)),
+    ("in-code", Act::Object(Object::InCode)),
+    ("copy-selection", Act::Copy),
+    ("copy", Act::CopyPiece),
+    ("copy-paragraph", Act::CopyParagraph),
+    ("close", Act::Close),
+    ("show-keys", Act::ShowKeys),
 ];
+
+/// The acts whose key takes the letter typed after it, as a mark's name.
+const SLOTS: &[(&str, fn(char) -> Act)] =
+    &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
+
+/// The reader's own keys, for what Vim has nothing for: a browser's zoom,
+/// at rest and while selecting.
+const OWN: &[(&[Key], Act)] = &[
+    (&[Ctrl('=')], Act::ZoomIn),
+    (&[Ctrl('+')], Act::ZoomIn),
+    (&[Ctrl('-')], Act::ZoomOut),
+    (&[Ctrl('0')], Act::ZoomBack),
+];
+
+/// A sequence of keys, where it works and what it does.
+pub type Sequence = (Vec<Key>, Act, In);
+
+/// Every key the reader takes: each sequence, and each key that takes a
+/// letter after it, with where each works.
+pub struct Table {
+    pub sequences: Vec<Sequence>,
+    slots: Vec<(Key, fn(char) -> Act, In)>,
+}
+
+/// The keys, read from the language once.
+pub fn table() -> &'static Table {
+    static TABLE: OnceLock<Table> = OnceLock::new();
+    TABLE.get_or_init(|| read(LANGUAGE))
+}
+
+/// The reader's table from a language. An act the reader takes that the
+/// language doesn't name, a key of it the reader can't be given, or an act
+/// in neither normal nor visual mode, is a fault of the build, which the
+/// tests find before it ships.
+fn read(language: &str) -> Table {
+    let language: toml::Table = language.parse().expect("the key language is TOML");
+    let keys = |name: &str| -> (Vec<Vec<Key>>, In) {
+        let act = &language["acts"][name];
+        let keys = act["keys"]
+            .as_array()
+            .unwrap_or_else(|| panic!("the key language has no act {name}"))
+            .iter()
+            .map(|notation| {
+                let notation = notation.as_str().expect("a key is a string");
+                parse(notation)
+                    .unwrap_or_else(|| panic!("the reader can't be given {notation}, for {name}"))
+            })
+            .collect();
+        // An act is pressed in normal mode unless the language says.
+        let modes: Vec<&str> = act.get("modes").and_then(|modes| modes.as_array()).map_or_else(
+            || vec!["normal"],
+            |modes| modes.iter().filter_map(|mode| mode.as_str()).collect(),
+        );
+        let held = In::of(&modes)
+            .unwrap_or_else(|| panic!("{name} is in neither normal nor visual mode"));
+        (keys, held)
+    };
+    let mut sequences: Vec<Sequence> = SPOKEN
+        .iter()
+        .flat_map(|&(name, act)| {
+            let (keys, held) = keys(name);
+            keys.into_iter().map(move |keys| (keys, act, held))
+        })
+        .collect();
+    sequences.extend(OWN.iter().map(|(keys, act)| (keys.to_vec(), *act, In::Both)));
+    let slots = SLOTS
+        .iter()
+        .flat_map(|&(name, slot)| {
+            let (keys, held) = keys(name);
+            keys.into_iter().map(move |keys| match keys[..] {
+                [key] => (key, slot, held),
+                _ => panic!("{name} takes its letter after one key"),
+            })
+        })
+        .collect();
+    Table { sequences, slots }
+}
+
+/// Keys written in Neovim's notation, as j, gg, <C-d> and <Space>?, or
+/// nothing for one the reader is never given.
+fn parse(notation: &str) -> Option<Vec<Key>> {
+    let mut keys = Vec::new();
+    let mut rest = notation;
+    while let Some(c) = rest.chars().next() {
+        let named = rest
+            .strip_prefix('<')
+            .and_then(|after| after.split_once('>'));
+        if let Some((name, after)) = named.filter(|(name, _)| !name.is_empty()) {
+            keys.push(match name {
+                "Space" => Char(' '),
+                "lt" => Char('<'),
+                "CR" => Key::Return,
+                "Esc" => Key::Escape,
+                "BS" => Key::Backspace,
+                "Up" => Key::Up,
+                "Down" => Key::Down,
+                "Left" => Key::Left,
+                "Right" => Key::Right,
+                "PageUp" => Key::PageUp,
+                "PageDown" => Key::PageDown,
+                "F1" => Key::F1,
+                held => {
+                    let mut letters = held.strip_prefix("C-")?.chars();
+                    match (letters.next(), letters.next()) {
+                        (Some(letter), None) => Ctrl(letter.to_ascii_lowercase()),
+                        _ => return None,
+                    }
+                }
+            });
+            rest = after;
+        } else {
+            keys.push(Char(c));
+            rest = &rest[c.len_utf8()..];
+        }
+    }
+    Some(keys)
+}
+
+/// An act's name in the language, or nothing for one of the reader's own.
+fn spoken(act: Act) -> &'static str {
+    match act {
+        Act::SetMark(_) => "set-mark",
+        Act::GoToMark(_) => "go-to-mark",
+        act => SPOKEN
+            .iter()
+            .find(|&&(_, spoken)| spoken == act)
+            .map_or("", |&(name, _)| name),
+    }
+}
+
+/// The letter slots as the key list and the key map show them: the act it
+/// starts, and the key.
+fn slots() -> impl Iterator<Item = (Act, Key)> {
+    table().slots.iter().map(|&(key, slot, _)| (slot('a'), key))
+}
 
 /// The key list's groups, in the order it shows them.
 pub const GROUPS: &[&str] = &[
@@ -304,6 +409,18 @@ fn shown(key: Key) -> String {
         Key::Right => "Right".into(),
         Key::PageUp => "Page Up".into(),
         Key::PageDown => "Page Down".into(),
+        Key::F1 => "F1".into(),
+    }
+}
+
+/// A key as the desktop's key map spells it, which names a key of two
+/// words in one, as Page_Down, since a space there parts the keys of a
+/// sequence.
+fn spelled(key: Key) -> String {
+    match key {
+        Key::PageUp => "Page_Up".into(),
+        Key::PageDown => "Page_Down".into(),
+        key => shown(key),
     }
 }
 
@@ -331,12 +448,12 @@ pub type Row = (Vec<String>, &'static str);
 /// Every row of the key list, by group in the list's order.
 pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
     let mut rows: Vec<(&'static str, Vec<String>, &'static str)> = Vec::new();
-    let slots = [
-        (Act::SetMark('a'), "m and a letter"),
-        (Act::GoToMark('a'), "' and a letter"),
-    ];
-    let typed = TABLE.iter().map(|(keys, act, _)| (*act, shown_all(keys)));
-    for (act, keys) in typed.chain(slots.iter().map(|(act, keys)| (*act, (*keys).to_string()))) {
+    let typed = table()
+        .sequences
+        .iter()
+        .map(|(keys, act, _)| (*act, shown_all(keys)));
+    let slots = slots().map(|(act, key)| (act, format!("{} and a letter", shown(key))));
+    for (act, keys) in typed.chain(slots) {
         let Some((group, does)) = named(act) else {
             continue;
         };
@@ -357,24 +474,35 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
         .collect()
 }
 
+/// A chord as the desktop's key map lists it.
+pub struct Chord {
+    /// The launcher's group for it.
+    pub group: String,
+    /// The keys, as the key map spells them.
+    pub chord: String,
+    pub does: &'static str,
+    /// The act's name in the key language, or nothing for the reader's own.
+    pub act: &'static str,
+}
+
 /// Every chord, as the desktop's key map spells one, with the launcher's
-/// group for it and what it does: a sequence's keys apart (g g), and a
-/// mark's keys by the key before its letter. The launcher lists a mark's
-/// keys with the jumps, since two keys make no group of their own.
-pub fn chords() -> Vec<(String, String, &'static str)> {
-    let slots = [(Act::SetMark('a'), "m"), (Act::GoToMark('a'), "'")];
-    TABLE
+/// group for it, what it does and its act: a sequence's keys apart (g g),
+/// and a mark's keys by the key before its letter. The launcher lists a
+/// mark's keys with the jumps, since two keys make no group of their own.
+pub fn chords() -> Vec<Chord> {
+    table()
+        .sequences
         .iter()
         .map(|(keys, act, _)| {
             (
                 *act,
                 keys.iter()
-                    .map(|&key| shown(key))
+                    .map(|&key| spelled(key))
                     .collect::<Vec<_>>()
                     .join(" "),
             )
         })
-        .chain(slots.iter().map(|(act, key)| (*act, (*key).to_string())))
+        .chain(slots().map(|(act, key)| (act, spelled(key))))
         .filter_map(|(act, chord)| {
             let (group, does) = named(act)?;
             // Moving is the picture viewer's group in the launcher, so the
@@ -386,18 +514,24 @@ pub fn chords() -> Vec<(String, String, &'static str)> {
                 "The Page" => "page".to_string(),
                 other => other.to_lowercase(),
             };
-            Some((group, chord, does))
+            Some(Chord {
+                group,
+                chord,
+                does,
+                act: spoken(act),
+            })
         })
         .collect()
 }
 
-/// A letter slot: these keys take the next letter typed as a mark's name.
-fn takes_a_letter(key: Key) -> Option<fn(char) -> Act> {
-    match key {
-        Char('m') => Some(Act::SetMark),
-        Char('\'' | '`') => Some(Act::GoToMark),
-        _ => None,
-    }
+/// A letter slot: these keys take the next letter typed as a mark's name,
+/// where they work.
+fn takes_a_letter(key: Key, selecting: bool) -> Option<fn(char) -> Act> {
+    table()
+        .slots
+        .iter()
+        .find(|&&(slot, _, held)| slot == key && held.holds(selecting))
+        .map(|&(_, act, _)| act)
 }
 
 /// What vi keeps between presses.
@@ -434,18 +568,23 @@ impl Machine {
             }
         }
         if let [first] = self.pending[..]
-            && let (Some(slot), Char(letter)) = (takes_a_letter(first), key)
+            && let (Some(slot), Char(letter)) = (takes_a_letter(first, selecting), key)
             && letter.is_ascii_alphabetic()
         {
             return Some(self.finish(slot(letter)));
         }
         self.pending.push(key);
-        let here = || TABLE.iter().filter(|(_, _, held)| held.holds(selecting));
+        let here = || {
+            table()
+                .sequences
+                .iter()
+                .filter(|(_, _, held)| held.holds(selecting))
+        };
         if let Some(&(_, act, _)) = here().find(|(keys, _, _)| *keys == self.pending.as_slice()) {
             return Some(self.finish(act));
         }
         let waits = here().any(|(keys, _, _)| keys.starts_with(&self.pending))
-            || (self.pending.len() == 1 && takes_a_letter(key).is_some());
+            || (self.pending.len() == 1 && takes_a_letter(key, selecting).is_some());
         if !waits {
             self.reset();
         }
@@ -520,9 +659,56 @@ mod tests {
     }
 
     #[test]
+    fn every_act_the_reader_speaks_is_the_languages_and_every_key_of_it_is_taken() {
+        // Reading the language panics on an act it doesn't name or a key the
+        // reader can't be given.
+        let table = read(LANGUAGE);
+        for &(name, act) in SPOKEN {
+            assert!(
+                table.sequences.iter().any(|&(_, taken, _)| taken == act),
+                "{name} has no keys"
+            );
+        }
+        assert_eq!(table.slots.len(), 3, "m, ' and the backtick take a letter");
+    }
+
+    #[test]
+    fn keys_are_read_in_neovims_notation() {
+        assert_eq!(parse("gg"), Some(vec![Char('g'), Char('g')]));
+        assert_eq!(parse("<C-d>"), Some(vec![Ctrl('d')]));
+        assert_eq!(parse("<Space>?"), Some(vec![Char(' '), Char('?')]));
+        assert_eq!(parse("<PageDown>"), Some(vec![Key::PageDown]));
+        assert_eq!(parse("<lt>"), Some(vec![Char('<')]));
+        assert_eq!(parse("<"), Some(vec![Char('<')]));
+        assert_eq!(parse("<S-Tab>"), None);
+    }
+
+    #[test]
+    fn the_key_map_spells_a_key_of_two_words_as_one() {
+        let chords = chords();
+        let screen = |chord: &str| {
+            chords
+                .iter()
+                .any(|c| c.chord == chord && c.act == "screen-down")
+        };
+        assert!(screen("Page_Down") && screen("Ctrl+F"));
+        assert!(chords.iter().any(|c| c.chord == "g g" && c.act == "first"));
+        assert!(
+            chords
+                .iter()
+                .any(|c| c.chord == "`" && c.act == "go-to-mark")
+        );
+        assert!(
+            chords
+                .iter()
+                .any(|c| c.chord == "Ctrl+Equal" && c.act.is_empty())
+        );
+    }
+
+    #[test]
     fn every_listed_act_has_a_group_and_no_two_groups_share_a_name() {
         let mut seen: Vec<(&str, &str)> = Vec::new();
-        for &(_, act, _) in TABLE {
+        for &(_, act, _) in &table().sequences {
             if let Some((group, name)) = named(act) {
                 assert!(
                     GROUPS.contains(&group),
@@ -702,10 +888,11 @@ mod tests {
     #[test]
     fn every_sequence_in_the_table_is_reachable_and_none_twice() {
         for selecting in [false, true] {
-            let here: Vec<&[Key]> = TABLE
+            let here: Vec<&[Key]> = table()
+                .sequences
                 .iter()
                 .filter(|(_, _, held)| held.holds(selecting))
-                .map(|(keys, _, _)| *keys)
+                .map(|(keys, _, _)| keys.as_slice())
                 .collect();
             for (i, keys) in here.iter().enumerate() {
                 assert!(!here[..i].contains(keys), "{keys:?} is in the table twice");
