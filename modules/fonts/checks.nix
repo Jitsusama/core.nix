@@ -117,6 +117,7 @@ onLinux {
           "$(differ set.png default.png)"
         [ "$(differ set.png cut.png)" -le 20 ] || { echo "the cut isn't the axes set"; exit 1; }
         [ "$(differ set.png default.png)" -ge 500 ] || { echo "the axes set changed nothing"; exit 1; }
+        touch $out
       '';
 
   # Asked for a letter of Hebrew, Arabic or CJK in any of the theme's faces,
