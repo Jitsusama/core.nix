@@ -61,6 +61,10 @@ in
     # launcher-say, not qs ipc, so the launcher has the keys before the
     # first letter typed after the chord (Quickshell's home.nix).
     action = ''spawn "launcher-say" "toggle";'';
+    # niri repeats a chord held past the keyboard's delay, and a busy
+    # machine lets one go late: a repeat closed the launcher the press had
+    # opened (2026-11-04). So no chord that opens the launcher repeats.
+    flags.repeat = "false";
   }
   # What the margin's glyphs are, in words, in the launcher: Keep Awake or do
   # not disturb or the mic muted, and what can be done about each. O is a
@@ -70,6 +74,7 @@ in
     does = "Show what's on";
     also = "margin status glyphs";
     action = ''spawn "launcher-say" "collection" "on";'';
+    flags.repeat = "false";
   }
   # The launcher's largest collections, each opened straight. Tab is the one
   # used last: every other window, that one first, so Super+Tab and Return
@@ -79,18 +84,21 @@ in
     does = "Find a window";
     also = "switch alt tab windows";
     action = ''spawn "launcher-say" "collection" "windows";'';
+    flags.repeat = "false";
   }
   {
     chord = "Super+V";
     does = "Find something copied earlier";
     also = "clipboard paste history copies";
     action = ''spawn "launcher-say" "collection" "clipboard";'';
+    flags.repeat = "false";
   }
   {
     chord = "Super+E";
     does = "Find an emoji";
     also = "smiley emoticon symbol character";
     action = ''spawn "launcher-say" "collection" "emoji";'';
+    flags.repeat = "false";
   }
   # What's said, typed where the focus is (modules/dictation). D for
   # dictate: a tap starts it and the next stops it, and held, it listens
@@ -128,6 +136,7 @@ in
     does = "Find what AI use cost";
     also = "spend money tokens usage bill claude pi";
     action = ''spawn "launcher-say" "collection" "spend";'';
+    flags.repeat = "false";
   }
   # The cards on screen put away, as a click on each would: each stays
   # unread where Super+N finds it.
@@ -150,6 +159,7 @@ in
     # The launcher's collection of every layer's shortcuts, searchable, in
     # place of niri's own overlay of only its own.
     action = ''spawn "launcher-say" "collection" "shortcuts";'';
+    flags.repeat = "false";
   }
   # The displays, as Windows' Win+P opens its projection menu. The XPS 14's
   # projection key sends Super with the P key, which keyd's Colemak makes a
@@ -159,6 +169,7 @@ in
     does = "Find the displays";
     also = "monitors screens project projector external mirror extend duplicate";
     action = ''spawn "launcher-say" "collection" "displays";'';
+    flags.repeat = "false";
   }
   # The keyboard's layout, for a glance while typing, where a keyboard's
   # module describes one. K for keyboard.
@@ -637,11 +648,13 @@ in
     chord = "Super+P";
     does = "Capture the screen, a window, a region or the camera";
     action = ''spawn "launcher-say" "collection" "capture";'';
+    flags.repeat = "false";
   }
   {
     chord = "Print";
     does = "Capture the screen, a window, a region or the camera";
     action = ''spawn "launcher-say" "collection" "capture";'';
+    flags.repeat = "false";
   }
   {
     chord = "Shift+Print";
