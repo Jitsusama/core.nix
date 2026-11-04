@@ -1522,16 +1522,18 @@ def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
 
 
 def test_a_session_opens_in_the_agents_slice(desktop: Desktop) -> None:
-    """A session's kitty, and the session in it, run in agents.slice beside Joel's programs."""
+    """A session's kitty, and the session in it, run in agents.slice, and the kitty stays.
+
+    kitty's instance quit as its last window closed, and a session asked of it meanwhile was
+    lost: on a loaded builder, Reopen Them All asked for its first session 0.07 s before the
+    instance left by the subtest before it quit, and that session never opened (2026-11-04).
+    So the kitty outlives its last session's window, and the next session opens in it.
+    """
     machine = desktop.machine
     holder = "instance-group pi-session[s]"
-    # Started afresh here, so the sessions' kitty is one the shell started.
-    desktop.as_account(f"pkill -f '{holder}'; true")
-    machine.wait_until_succeeds(
-        desktop.in_session(f"! pgrep -f '{holder}'"), timeout=dt.timedelta(seconds=30)
-    )
+    sessions = 'niri msg --json windows | grep -o \'"app_id":"pi-s\' | wc -l'
     handed = {"sessions": [{"id": "01cb-sliced", "cwd": "/home/jitsusama/sliced"}]}
-    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/sliced")
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/sliced ~/next")
     try:
         desktop.as_account(f"qs ipc call sessions reopen {shlex.quote(json.dumps(handed))}")
         machine.wait_until_succeeds(
@@ -1545,9 +1547,30 @@ def test_a_session_opens_in_the_agents_slice(desktop: Desktop) -> None:
         assert all("/agents.slice/" in line for line in kitty), kitty
         assert session, session
         assert all("/agents.slice/" in line for line in session), session
+        # Every session's window closed, this one's the last.
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"[ $({sessions}) = 0 ]"), timeout=dt.timedelta(seconds=60)
+        )
+        # It quit within a tenth of a second of its last window when it did.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            status, _ = machine.execute(desktop.in_session(f"pgrep -f '{holder}'"))
+            assert status == 0, "the sessions' kitty quit with its last window"
+            time.sleep(0.5)
+        desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays")
+        handed = {"sessions": [{"id": "01cb-next", "cwd": "/home/jitsusama/next"}]}
+        desktop.as_account(f"qs ipc call sessions reopen {shlex.quote(json.dumps(handed))}")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json windows | grep -q 'pi --session 01cb-next'"),
+            timeout=dt.timedelta(seconds=60),
+        )
+        # What keeps it is no window niri lists.
+        listed = desktop.as_account(sessions).strip()
+        assert listed == "1", f"{listed} session windows listed for one session"
     finally:
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
-        desktop.as_account("rm -rf ~/sliced")
+        desktop.as_account("rm -rf ~/sliced ~/next")
 
 
 def three_as_kept(back: dict[str, tuple[int, int]]) -> bool:
