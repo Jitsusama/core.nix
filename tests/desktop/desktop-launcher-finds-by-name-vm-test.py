@@ -635,6 +635,36 @@ def walk_the_rows_unsearched(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+def walk_the_rows_washed(desktop: Desktop) -> None:
+    """Type a find and see the letters it matched washed in the rows drawn, the selected one's too.
+
+    As his Neovim's hlsearch washes a match (Search), and in normal as in the find line, since a
+    find stays until it's changed. A row found by another word than its name washes nothing.
+    """
+    desktop.answer("s")
+    desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+
+    def washed() -> list[Json]:
+        return cast(
+            "list[Json]", json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"]
+        )
+
+    for mode in ["insert", "normal"]:
+        if mode == "normal":
+            desktop.normal()
+        rows = washed()
+        runs = [run for row in rows for run in row["washed"]]
+        assert runs, f'in {mode} no row drawn for "s" washed a letter: {rows}'
+        assert all(run.lower() == "s" for run in runs), f"in {mode} washed {runs}, not s"
+        unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
+        assert not unwashed, f"in {mode} rows found by name washed nothing: {unwashed}"
+        selected = next(row for row in rows if row["selected"])
+        name = selected["reads"].split(" \u00b7 ")[0]
+        if any(word.lower().startswith("s") for word in re.split(r"\W+", name)):
+            assert selected["washed"], f"in {mode} the selected {name!r} washed nothing"
+    desktop.close_launcher()
+
+
 def walk_the_rows_keys(desktop: Desktop) -> None:
     """Press normal's Tab, Space ?, F1 and Space w on a search's rows, through niri.
 
@@ -687,6 +717,7 @@ def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Des
     walk_the_rows_moves(desktop)
     walk_the_rows_acts(desktop)
     walk_the_rows_unsearched(desktop)
+    walk_the_rows_washed(desktop)
     walk_the_rows_keys(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so

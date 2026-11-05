@@ -266,9 +266,6 @@ Scope {
         }
     }
     readonly property var keyList: NoticeKeys.keyList()
-    // A match's ink and ground, as Joel's Neovim draws a search's
-    // (modules/neovim/colors/jitsusama.lua, Search).
-    readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
     // How many of the cards hold what's searched for, and which of them,
     // counted from the newest, is at the front: 0 when it isn't one.
     readonly property var finds: shown.filter(id => root.holds(id))
@@ -1330,7 +1327,7 @@ Scope {
                             id: who
                             width: parent.width
                             text: card.washed
-                                ? Search.washed(card.modelData.summary, root.pattern, root.wash)
+                                ? Search.washed(card.modelData.summary, root.pattern, Theme.wash)
                                 : card.modelData.summary
                             // Plain, as the spec has a summary: only the
                             // body carries markup. Washed, it's rich text,
@@ -1349,7 +1346,7 @@ Scope {
                             width: parent.width
                             text: card.washed
                                 ? Search.washed(root.plain(card.modelData.body), root.pattern,
-                                    root.wash)
+                                    Theme.wash)
                                 : card.modelData.body
                             visible: card.modelData.body !== ""
                             // A line that belongs with the one above.
