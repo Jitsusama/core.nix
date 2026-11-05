@@ -2624,6 +2624,8 @@
     },
     {
       "id": "sound:mute",
+      "command": "set",
+      "argument": "mute!",
       "in": "sound",
       "name": "Muted",
       "verb": "mute",
@@ -4774,6 +4776,7 @@
     },
     {
       "id": "session:recording",
+      "command": "halt",
       "name": "Stop Recording",
       "verb": "stop",
       "glyph": "recording"
@@ -4810,12 +4813,14 @@
     },
     {
       "id": "session:Lock",
+      "command": "lockscreen",
       "name": "Lock",
       "verb": "lock",
       "glyph": "locked"
     },
     {
       "id": "session:Suspend",
+      "command": "suspend",
       "once": ["Suspend"],
       "name": "Sleep",
       "term": "Machine/sleep",
@@ -4824,6 +4829,7 @@
     },
     {
       "id": "session:Log Out",
+      "command": "logout",
       "once": ["Sign out"],
       "name": "Log Out",
       "term": "Machine/log out",
@@ -4833,6 +4839,7 @@
     },
     {
       "id": "session:Reboot",
+      "command": "reboot",
       "once": ["Restart"],
       "name": "Reboot",
       "term": "Machine/reboot",
@@ -4842,6 +4849,7 @@
     },
     {
       "id": "session:Power Off",
+      "command": "poweroff",
       "once": ["Shut down"],
       "name": "Power Off",
       "term": "Machine/power off",
@@ -4851,6 +4859,8 @@
     },
     {
       "id": "wifi:radio",
+      "command": "set",
+      "argument": "wifi!",
       "in": "wifi",
       "name": "Wi-Fi Off",
       "verb": "off",
@@ -5096,6 +5106,8 @@
     },
     {
       "id": "bluetooth:radio",
+      "command": "set",
+      "argument": "bluetooth!",
       "in": "bluetooth",
       "name": "Bluetooth Off",
       "verb": "off",
@@ -5381,6 +5393,7 @@
     },
     {
       "id": "calendar:meeting",
+      "command": "meet",
       "of": "program:google-calendar",
       "name": "Meeting",
       "glyph": "meeting",
@@ -6500,6 +6513,7 @@
     },
     {
       "id": "tuple:join",
+      "command": "meet",
       "name": "Join the Call in the Clipboard",
       "verb": "join",
       "by": "tuple"

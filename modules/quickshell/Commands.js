@@ -59,16 +59,18 @@ function commandOf(act) {
 // An act's words for the line (words.json's command, argument, bang and
 // range), by its key, `of` reading words.json's entry for an id: a verb's
 // id, or one made from it for each of several, as verb:sound-port-2 or
-// verb:on:waiting:go:<id>, which reads the verb's own. Only a verb names a
-// command; any other key has none.
+// verb:on:waiting:go:<id>, which reads the verb's own; or a row that's an
+// act itself, as session:Lock names :lockscreen, the step it asks first,
+// as session:Power Off:sure, reading its row's. Where no words name one,
+// the act is named by its verb (commandOf).
 function wordsFor(key, of) {
     let id = String(key ?? "");
-    while (id.startsWith("verb:")) {
+    while (id !== "") {
         const words = of(id);
         if (words.command !== undefined) {
             return words;
         }
-        id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-")));
+        id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-"), 0));
     }
     return {};
 }
