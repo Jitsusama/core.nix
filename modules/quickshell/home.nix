@@ -1812,11 +1812,15 @@ in
               }
               // A search's find, its ink and ground, as Joel's Neovim draws one
               // (modules/neovim/colors/jitsusama.lua, Search): the notices' /
-              // and the launcher's wash what they find with it.
+              // and the launcher's wash what they find with it. On the
+              // selection, which lies a shade past raised, its ground is the
+              // shade past the selection, rule's, so a selected row's find
+              // still shows, and never in the accent.
               readonly property var wash: ${
                 object {
                   ink = colours.strong;
                   ground = colours.raised;
+                  selected = colours.rule;
                 }
               }
               readonly property var motion: ${

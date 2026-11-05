@@ -1776,8 +1776,9 @@ one table, `QueryKeys.js`.
   the selection staying where it was, as Neovim says them. As his
   hlsearch marks a buffer, each place a row says what's sought takes
   the search wash, `Theme.wash`, Neovim's Search: its ink on the
-  theme's raised ground, the selected row's too, never the accent, and
-  in a cut row only the letters before its ellipsis. While it's washed,
+  theme's raised ground, and on the selected row, where raised would
+  sink into the selection, on rule's, the shade past it; never the
+  accent, and in a cut row only the letters before its ellipsis. While it's washed,
   the field's note says which of the rows holding it the selection is,
   "3 of 12", as his status line counts a search's matches. The wash
   goes as the launcher steps to another place or closes. The notices'

@@ -31,6 +31,8 @@ Item {
     // read, without the markup styled words carry, to find it in.
     property string washing: ""
     property string plain: text
+    // Whether the words lie on the selection, whose wash is a shade past it.
+    property bool washedSelected: false
     // Where it's washed in the words, each place's start and width.
     readonly property var washed: wash.laid
     // Said each time the words are back at their start, so a row with two
@@ -82,6 +84,7 @@ Item {
             pattern: room.washing
             font: words.font
             cut: words.truncated
+            selected: room.washedSelected
         }
     }
 

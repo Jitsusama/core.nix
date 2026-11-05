@@ -159,6 +159,7 @@ Rectangle {
         text: row.name
         plain: row.plainName
         washing: row.washing
+        washedSelected: row.selected
         format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
         color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
         weight: row.selected ? Font.Medium : Font.Normal
@@ -212,6 +213,7 @@ Rectangle {
             pattern: row.washing
             font: countText.font
             cut: countText.truncated
+            selected: row.selected
         }
     }
 
@@ -303,6 +305,7 @@ Rectangle {
             format: row.washing !== "" ? Text.StyledText : Text.PlainText
             plain: right.said
             washing: row.washing
+            washedSelected: row.selected
             color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
             figure: figureFace.advanceWidth
             reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)

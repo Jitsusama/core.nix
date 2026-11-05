@@ -19,6 +19,9 @@ Item {
     // Whether the words end in an ellipsis, cut to their room, which is
     // the width they're drawn in: a place past the cut isn't washed.
     property bool cut: false
+    // Whether the words lie on the selection, which takes the wash's
+    // ground a shade past it.
+    property bool selected: false
     // A binding doesn't see what a call reads, so each one measuring the
     // words reads the face itself, to be measured again when the words'
     // face arrives, rather than keep the default face's widths.
@@ -56,7 +59,7 @@ Item {
             x: modelData[0]
             width: modelData[1]
             height: wash.height
-            color: Theme.wash.ground
+            color: wash.selected ? Theme.wash.selected : Theme.wash.ground
         }
     }
 }
