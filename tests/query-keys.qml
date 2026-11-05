@@ -183,12 +183,21 @@ QtObject {
             sides.push(`firefox \u00b7 ${at % 9} \u00b7 window`);
         }
         const folded = names.map(name => name.toLowerCase());
-        const tries = 200;
+        // Each is timed as the fastest of twenty batches of fifty, since a
+        // check shares its machine: a slower batch is the machine's other
+        // work or the collector, not the search's own cost. Fifty a batch
+        // keeps Date.now's whole milliseconds a fiftieth of one each.
+        const batches = 20;
+        const tries = 50;
         const timed = work => {
-            const began = Date.now();
-            for (let at = 0; at < tries; at++)
-                work();
-            return (Date.now() - began) / tries;
+            let fastest = Infinity;
+            for (let batch = 0; batch < batches; batch++) {
+                const began = Date.now();
+                for (let at = 0; at < tries; at++)
+                    work();
+                fastest = Math.min(fastest, (Date.now() - began) / tries);
+            }
+            return fastest;
         };
         const make = () => Search.searchable(names.map((name, at) => `${name}\n${sides[at]}`),
             folded.map((name, at) => `${name}\n${sides[at].toLowerCase()}`));
