@@ -447,7 +447,8 @@ def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: 
     view follows; n goes on to the next, N back to the one before, and a count as many; ? with
     nothing typed seeks the last back; a capital asks for one, and the search goes round past
     the last line to the title. Escape lets one being typed go, the keys staying in the drawer,
-    as Backspace does with nothing left. Its pictures at both of Joel's scales show the matches
+    as Backspace does with nothing left; Ctrl+W takes the word before and Ctrl+C lets it go,
+    as on Vim's command line. Its pictures at both of Joel's scales show the matches
     washed, for a person to judge the wash by.
     """
     page = InTheDrawer(desktop)
@@ -487,6 +488,10 @@ def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: 
     line = page.drawer()["cursor"]["line"]
     page.until("esc j", lambda drawer: drawer["cursor"]["line"] == line + 1)
     page.until("? backspace j", lambda drawer: drawer["cursor"]["line"] == line + 2)
+    # Its line edits as Vim's does: Ctrl+W takes the word before, and Ctrl+C lets it go.
+    page.press("/ l i n e spc z z ctrl-w")
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "line ")
+    page.until("ctrl-c j", lambda drawer: drawer["cursor"]["line"] == line + 3)
 
     # The cursor stands on the title's own Deploy, so the first line's deploy comes next,
     # without going round: where a narrow drawer breaks that line, it's on a line of its own.

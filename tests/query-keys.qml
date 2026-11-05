@@ -1,8 +1,8 @@
 // The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-query-field-takes-vi-modes` check copies
-// modules/quickshell/QueryKeys.js, Editing.js, ListedKeys.js and
-// DrawerPage.js beside this file and runs `qml -platform offscreen query-keys.qml`.
+// modules/quickshell/QueryKeys.js, Editing.js, ListedKeys.js, DrawerPage.js,
+// Search.js and LineEditing.js beside this file and runs `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
@@ -263,6 +263,18 @@ QtObject {
                 ["next"], []],
             ["and so does Backspace with nothing left", ["/", "Backspace", "j"], ["next"],
                 []],
+            // Vim's command line, as the find line and the command line edit
+            // theirs (LineEditing.js).
+            ["and so does Ctrl+C, as Vim's cancels", ["/", "a", "Ctrl+c", "j"], ["next"],
+                []],
+            ["Ctrl+W takes the word before",
+                ["/", "a", "Space", "b", "c", "Ctrl+w", "d", "Return"], ["seek"],
+                [{ pattern: "a d", forward: true }]],
+            ["Ctrl+U takes all of it", ["/", "a", "b", "Ctrl+u", "c", "Return"], ["seek"],
+                [{ pattern: "c", forward: true }]],
+            ["Ctrl+H takes the last letter", ["/", "a", "b", "Ctrl+h", "Return"], ["seek"],
+                [{ pattern: "a", forward: true }]],
+            ["and lets it go with nothing left", ["/", "Ctrl+h", "j"], ["next"], []],
             ["n and N go on to the next match, either way", ["n", "N"],
                 ["seekNext", "seekPrevious"], []]
         ];
