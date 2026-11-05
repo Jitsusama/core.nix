@@ -558,6 +558,11 @@ QtObject {
             ["Greenwich sidereal time", Moment.sidereal(evening, 0), "00:56:37"],
             ["a date this year, without its year", Moment.day(day, evening),
                 "Wednesday 4 November"],
+            ["an eyebrow this year, without its year", Moment.eyebrow(day, evening),
+                "Wednesday 4 November"],
+            // A seven-day forecast from 28 December reaches into next year.
+            ["an eyebrow of another year, with its year",
+                Moment.eyebrow(new Date(2027, 0, 1), evening), "Friday 1 January 2027"],
             ["a date of another year, with its year", Moment.day(new Date(2027, 0, 1), evening),
                 "Friday 1 January 2027"],
             ["ISO date", Moment.iso(day), "2026-11-04"],
