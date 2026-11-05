@@ -138,7 +138,9 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc ?", "Z Z", "g g", "g v", "ctrl-w l", "ctrl-w h", "ctrl-w w"})
+WAITING = frozenset(
+    {"spc right", "spc left", "spc ?", "Z Z", "g g", "g v", "ctrl-w l", "ctrl-w h", "ctrl-w w"}
+)
 TRIES = 3
 TRIED = timedelta(seconds=10)
 
@@ -343,7 +345,8 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
 ) -> None:
     """Ctrl+W l takes the keys into the drawer, and Ctrl+W h gives them back, as in Vim.
 
-    Ctrl+W w goes either way, ZZ and :q come back too, and Space and the arrows do nothing.
+    Ctrl+W w goes either way, ZZ and :q come back too, and his Neovim's Space and an arrow
+    overlay them; a bare arrow does nothing.
 
     Its frame takes the accent the card's gives up, and the cursor stands on the title's first
     letter with nothing scrolled, its line marked by a rule in the margin left of the letters.
@@ -403,17 +406,21 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "" and shown["mode"] == "page")
-    # Escape at rest and q alone leave the keys where they are, and so do Space with an arrow
-    # and the arrows, which do nothing in the drawer (Joel, 2026-11-05: "remove them and rely
-    # only on vi right feeling things"): j still moves the cursor, one line.
+    # Escape at rest and q alone leave the keys where they are, and so do the bare arrows,
+    # which do nothing in the drawer (Joel, 2026-11-05: "remove them and rely only on vi right
+    # feeling things"): j still moves the cursor, one line.
     line, letter = page.drawer()["cursor"]["line"], page.drawer()["cursor"]["letter"]
-    came = page.until(
-        "esc q spc left down left j", lambda drawer: drawer["cursor"]["line"] == line + 1
-    )
+    came = page.until("esc q down left j", lambda drawer: drawer["cursor"]["line"] == line + 1)
     assert came["cursor"]["letter"] == min(letter, len(came["cursor"]["says"]) - 1), came
     page.back("Z Z")
-    # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way.
-    for into, back in (("ctrl-w l", ": q ret"), ("ctrl-w l", "ctrl-w h"), ("ctrl-w w", "ctrl-w w")):
+    # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way, and
+    # his Neovim's Space and an arrow over them (Joel: "leader stuff can overlay default stuff").
+    for into, back in (
+        ("ctrl-w l", ": q ret"),
+        ("ctrl-w l", "ctrl-w h"),
+        ("ctrl-w w", "ctrl-w w"),
+        ("spc right", "spc left"),
+    ):
         page.into(into)
         page.back(back)
     desktop.close_launcher()
