@@ -718,6 +718,20 @@ QtObject {
             [{ ask: "some" }, { ask: "some" }]);
         holds("where none has it, it says so and asks nothing",
             asking("disc", 0, 3, false), { ask: "", none: true });
+        // A row's :set runs its own act, as Return on it does, and asks
+        // nothing, as a typed :set never asks (2V74KO, 2026-11-05): a
+        // display's Warmth, by :set warmth, with no undo of its own.
+        const warmth = Commands.listed({ acts: [{ key: "displays:warmth", name: "Warmth" }],
+            table: commands, said, called: () => ({ command: "set", argument: "warmth" }),
+            row: 1 });
+        holds("a row's :set asks nothing, on one or many, and its line isn't banged",
+            [CommandBinding.asking(warmth[0], acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(warmth[0], acts(2), { all: 2, bang: false }, commands),
+                warmth[0].bang],
+            [{ ask: "" }, { ask: "" }, false]);
+        holds("though where only some have it, it asks once all the same",
+            CommandBinding.asking(warmth[0], acts(1), { all: 2, bang: false }, commands),
+            { ask: "some" });
     }
 
     // Earlier lines, as Vim's :his lists them: each line Return ran
