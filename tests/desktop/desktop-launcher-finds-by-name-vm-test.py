@@ -47,6 +47,17 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+def placed(foot: list[Json]) -> set[tuple[str, int]]:
+    """Give each of the foot's words with where it starts, the clock by its place alone.
+
+    A minute may turn between two reads of the foot, so the clock's words are never compared.
+    """
+    return {
+        ("clock" if re.fullmatch(r"\d{1,2}:\d{2}", word["text"]) else word["text"], word["x"])
+        for word in foot
+    }
+
+
 def the_modes_look_as_vims(desktop: Desktop) -> None:
     """See the line on the find, then in normal by Escape, then on the find again by A.
 
@@ -61,7 +72,7 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     field = laid["field"]
     assert not any(word["text"] in ("insert", "find") for word in laid["foot"]), laid["foot"]
-    rest = {(word["text"], word["x"]) for word in laid["foot"]}
+    rest = placed(laid["foot"])
     # The line holds only the find and how far it narrows: Ctrl+Y's completing is said in
     # the foot, by its key and lowercase word, with every other hint, and no key is on the
     # line.
@@ -83,7 +94,7 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # The / stays, muted, since normal's keys are on the rows.
     assert (shown["sigil"], shown["sigilHue"]) == ("/", "muted"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-    held = {(word["text"], word["x"]) for word in laid["foot"]}
+    held = placed(laid["foot"])
     # The status facts hold their places; the keys are normal's own, drawn with their marks.
     facts = {(text, x) for text, x in rest if "<font" not in text}
     assert facts <= held, (facts, laid["foot"])
