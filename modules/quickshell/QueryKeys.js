@@ -72,23 +72,19 @@ const table = [
     // rows name only the doubled keys, for saying them.
     { act: "ending", mode: "normal", keys: [["d", "d"]] },
     { act: "copy", mode: "normal", keys: [["y", "y"]] },
-    // Visual line, Vim's V, the language's select-lines: the rows from
-    // where it began to the cursor, which normal's moves extend (inMode,
-    // below), and which d, y and Return take at once, as Vim's visual
-    // operators wait for no motion. V again ends it, and Escape, after a
-    // count begun; a colon hands the command line the selection. On rows v
-    // is V, a row having no letters to choose among, and x is d, as in Vim.
+    // Visual line, Vim's V: the rows from where it began to the cursor,
+    // extended by normal's moves (inMode) and taken at once by d, y and
+    // Return; a colon hands them to the command line. On rows v is V, a row
+    // having no letters, and x is d, o the other end and gv the last, as Vim's.
     { act: "selectLines", mode: "normal", keys: ["V", "v"] },
     { act: "selectLines", mode: "visual", keys: ["V", "v"] },
     { act: "ending", mode: "visual", keys: ["d", "x"] },
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
-    // o goes to the other end and gv brings the last back, as Vim's do.
     { act: "otherEnd", mode: "visual", keys: ["o"] },
     { act: "reselect", mode: "normal", keys: [["g", "v"]] },
-    // A paragraph of rows, a run of one kind or one sender's notices that a
-    // gap ends (VKCF3Z; Operators.runAt): } and { go by runs, and ip and ap,
-    // the same rows on a list, select one, as d's and y's text objects too.
+    // A paragraph of rows is a run of one kind or sender that a gap ends
+    // (Operators.runAt): } and { go by them, ip and ap take one, as in Vim.
     { act: "paragraphOn", mode: "normal", keys: ["}"] },
     { act: "paragraphBack", mode: "normal", keys: ["{"] },
     { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
