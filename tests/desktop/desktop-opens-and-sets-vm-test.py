@@ -761,10 +761,11 @@ def commands_a_network(desktop: Desktop) -> None:
 
 
 def binds_a_range(desktop: Desktop) -> None:
-    """Over every network, say E481 for :%q and how many can for :%disc, then :g/Lant/disc.
+    """Over every network, say E481 for :%q, ask how many can for :%disc, then :g/Lant/disc.
 
-    Lantern alone can disconnect, so :%disc runs on none until the ask lands; :g finds Lantern
-    by name and disconnects it by its own act.
+    Lantern alone can disconnect, so :%disc asks once, naming how many can, and n leaves every
+    network as it was; :g finds Lantern by name and disconnects it by its own act, unasked, as
+    it can be undone.
     """
     machine = desktop.machine
 
@@ -782,7 +783,15 @@ def binds_a_range(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: len(shown["rows"]) > 1 and "Lantern" in shown["rows"])
     desktop.normal()
     says(":%q\n", "E481: No range allowed")
-    says(":%disc\n", "can disconnect")
+    machine.send_chars(":%disc\n")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["question"].endswith("can disconnect; disconnect them? (y/n)")
+            and shown["takesAnswer"]
+        )
+    )
+    machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["question"] == "")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     machine.send_chars(":g/Lant/disc\n")
     machine.wait_until_succeeds(
