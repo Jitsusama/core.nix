@@ -2956,10 +2956,12 @@ onLinux {
       touch $out
     '';
 
-  # The notices' stack takes vi's keys beside the arrows, from one table,
-  # as tests/notice-keys.qml holds NoticeKeys.js to: sequences, counts, and
-  # an Escape that cancels what's begun before it steps out; and Search.js,
-  # which their / searches through, to what it finds and washes.
+  # The held notices take Vim's keys in each mode from one table, as
+  # tests/notice-keys.qml holds NoticeKeys.js to: motions, operators and
+  # objects with their counts, visual's operator taken with a second press,
+  # fresh presses only for what acts, the lines typed on, a prompt's
+  # editing, Space ?'s list and the foot's hints; and Search.js, which
+  # their / shares with the launcher's, to what it finds.
   the-notices-take-vi-keys =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2967,6 +2969,7 @@ onLinux {
     pkgs.runCommandLocal "the-notices-take-vi-keys" { } ''
       cp ${../../tests/notice-keys.qml} notice-keys.qml
       cp ${./NoticeKeys.js} NoticeKeys.js
+      cp ${./LineEditing.js} LineEditing.js
       cp ${./Search.js} Search.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -2990,6 +2993,24 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml command-line.qml
+      touch $out
+    '';
+
+  # The held notices are Vim's quickfix list, as tests/notice-list.qml
+  # holds NoticeList.js to: the newest first, where each motion lands, what
+  # an operator takes, the view kept around the cursor, the gutter's
+  # numbers, what u and Ctrl+R move between, and the command line's menu.
+  the-notices-are-a-quickfix-list =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
+      cp ${../../tests/notice-list.qml} notice-list.qml
+      cp ${./NoticeList.js} NoticeList.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-list.qml
       touch $out
     '';
 

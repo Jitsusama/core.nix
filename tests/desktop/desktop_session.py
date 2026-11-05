@@ -526,6 +526,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_chars("A")
         self.launcher_until(lambda shown: shown["mode"] == "insert")
 
+    def notices_history(self) -> None:
+        """From the held notices, open every notice in the launcher, as :e Notices does."""
+        self.machine.send_chars(":e Notices\n", delay=KEY_PACE)
+        self.launcher_ready()
+
     def close_launcher(self) -> None:
         """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
 
