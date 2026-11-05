@@ -124,10 +124,13 @@ function listed(from) {
 
 // An act's line. It's named by the command its words give it, with the
 // argument telling it from another of that name, or else by its verb. What
-// asks first is what changes and can't be undone, the language leaving
-// undoable out wherever nothing changes, and a command it doesn't name asks
-// nothing; an act takes a ! only where it would ask, its ! saying don't. A
-// guarded one asks nothing on one thing, only once on more, so takes ! too.
+// asks first is what d asks before (Operators.asks): what the language says
+// changes, unless the act says how it's put back (its undo), and a command
+// it doesn't name asks nothing; an act takes a ! only where it would ask,
+// its ! saying don't. A guarded one asks nothing on one thing, only once on
+// more, so takes ! too. A bare close, its words naming no command, only
+// closes the launcher, as a row with nothing to copy does: it's :quit, the
+// launcher's close, and stands for the :q every surface has.
 // One its words give a bang of its own is banged: the bang is its line's,
 // as :skip! goes back. One its words give every row is the line's with %,
 // as :%forg, which forgets them all. An act takes a range where the
@@ -135,8 +138,13 @@ function listed(from) {
 function actLine(act, first, from) {
     const words = filled(from.called?.(act) ?? {}, act, from.thing);
     const command = words.command ?? commandOf(act);
+    if (words.command === undefined && command === "close") {
+        return { command: "quit", short: from.table?.quit?.short ?? "quit",
+            title: String(act.name ?? ""), key: keyOf(act, first), kind: "quit",
+            bang: true, takes: false, undoable: true };
+    }
     const flags = from.table?.[command] ?? {};
-    const undoable = !(flags.changes === true && flags.undoable !== true);
+    const undoable = flags.changes !== true || typeof act.undo === "function";
     const banged = words.bang === true;
     return { command, argument: String(words.argument ?? ""), short: flags.short ?? command,
         title: String(act.name ?? ""), key: keyOf(act, first), kind: "act", act,

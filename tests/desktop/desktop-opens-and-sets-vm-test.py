@@ -775,8 +775,8 @@ def binds_a_range(desktop: Desktop) -> None:
     """Over every network, say E481 for :%q, ask how many can for :%disc, then :g/Lant/disc.
 
     Lantern alone can disconnect, so :%disc asks once, naming how many can, and n leaves every
-    network as it was; :g finds Lantern by name and disconnects it by its own act, unasked, as
-    it can be undone.
+    network as it was; :g finds Lantern by name and asks once in d's words, as d would, since
+    nothing in the launcher puts a network back, and y disconnects it by its own act.
     """
     machine = desktop.machine
 
@@ -805,6 +805,10 @@ def binds_a_range(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["question"] == "")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     machine.send_chars(":g/Lant/disc\n")
+    desktop.launcher_until(
+        lambda shown: shown["question"] == "Disconnect Lantern? (y/n)" and shown["takesAnswer"]
+    )
+    machine.send_chars("y")
     machine.wait_until_succeeds(
         "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
     )
