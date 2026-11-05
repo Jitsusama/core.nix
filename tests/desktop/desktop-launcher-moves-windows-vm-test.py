@@ -345,9 +345,10 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.type_in("this window", selecting="This Window")
     desktop.step_in("ret")
     desktop.type_in("size", selecting="Size")
-    # Its sizes are a step in, and the foot says Return steps there.
+    # Its sizes are a step in, and the foot says Return opens them, on the
+    # find as in normal.
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u21b5" in told, told
+    assert told[:1] == ["\u21b5 open"], told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
     desktop.land()
