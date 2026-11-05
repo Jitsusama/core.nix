@@ -279,8 +279,120 @@ function ran(typed, menu) {
     return { entry, bang: read.bang, arg: read.arg };
 }
 
-// What :set's words ask (:help :set), read against `options`, each option's
-// kind: { changes: [{ option, how, value }] }, or { error }.
+// :set's words, split at spaces as Vim splits them, a backslash keeping
+// the letter after it, so :set wifi=Home\ 5G names one network.
+function setWords(arg) {
+    const said = [];
+    let word = "";
+    let escaped = false;
+    for (const letter of arg) {
+        if (escaped) {
+            word += letter;
+            escaped = false;
+        } else if (letter === "\\") {
+            escaped = true;
+        } else if (space.test(letter)) {
+            if (word !== "") {
+                said.push(word);
+            }
+            word = "";
+        } else {
+            word += letter;
+        }
+    }
+    return word === "" ? said : said.concat([word]);
+}
+
+const setWord = /^(no|inv)?([a-z]+)(!|\?|\+=|-=|=)?([\s\S]*)$/;
+
+// One of :set's words, against the option it names: a change, or Vim's
+// error for it.
+function setOne(word, options) {
+    const found = word.match(setWord);
+    if (!found) {
+        return { error: `E518: Unknown option: ${word}` };
+    }
+    // An option whose own name starts with no or inv is that option.
+    const [, said = "", named, how = "", value = ""] = found;
+    const whole = said !== "" && options[said + named] !== undefined;
+    const prefix = whole ? "" : said;
+    const name = whole ? said + named : named;
+    const option = options[name];
+    if (!option) {
+        return { error: `E518: Unknown option: ${word}` };
+    }
+    const invalid = { error: `E474: Invalid argument: ${word}` };
+    const switches = option.kind === "switch";
+    const numbered = option.kind === "number";
+    const given = how === "=" || how === "+=" || how === "-=";
+    if (!given && value !== "") {
+        return { error: `E518: Unknown option: ${word}` };
+    }
+    if ((prefix !== "" || how === "!") && (!switches || (how !== "" && how !== "!"))) {
+        return invalid;
+    }
+    if (prefix === "no") {
+        return { option: name, how: how === "!" ? "toggle" : "off", value: "" };
+    }
+    if (prefix === "inv" || how === "!") {
+        return { option: name, how: "toggle", value: "" };
+    }
+    if (how === "?" || (how === "" && !switches)) {
+        return { option: name, how: "show", value: "" };
+    }
+    if (how === "") {
+        return { option: name, how: "on", value: "" };
+    }
+    if ((how !== "=" && !numbered) || (switches && !option.takes)) {
+        return invalid;
+    }
+    if (!numbered) {
+        const choices = option.values ?? null;
+        return choices !== null && !choices.includes(value) ? invalid
+            : { option: name, how: "set", value };
+    }
+    if (!number.test(value)) {
+        return { error: `E521: Number required after =: ${word}` };
+    }
+    const by = Number(value);
+    if (how === "=" && (by < (option.least ?? 0) || by > (option.most ?? by))) {
+        return invalid;
+    }
+    const moved = { "=": "set", "+=": "add", "-=": "subtract" };
+    return { option: name, how: moved[how], value: by };
+}
+
+// What :set's words ask (:help :set), read against `options`, each an
+// option's kind: a switch (on, off, or with `takes` a value, as
+// :set wifi=Home-5G joins a network), a number between its least and
+// most, or a choice among its values. Each word is on, off, toggle, set,
+// add, subtract or show; all, or nothing after :set, shows every one.
+// { changes: [{ option, how, value }] }, or { error } in Vim's words for
+// the first word it can't take, so none of them changes.
 function setting(arg, options) {
-    return { changes: [] };
+    const words = setWords(arg);
+    if (words.length === 0) {
+        return { changes: [{ option: "all", how: "show", value: "" }] };
+    }
+    const changes = [];
+    for (const word of words) {
+        const change = word === "all" ? { option: "all", how: "show", value: "" }
+            : setOne(word, options);
+        if (change.error !== undefined) {
+            return change;
+        }
+        changes.push(change);
+    }
+    return { changes };
+}
+
+// What a change sets the option to, from where it stands now: { to }, or
+// { error } for one that can't be set.
+function toward(change, now, option) {
+    return { to: now };
+}
+
+// One option as Vim's :set volume? says it.
+function shown(name, now, option) {
+    return "";
 }
