@@ -78,7 +78,9 @@ QtObject {
             ["a key on its way as it's asked does nothing", "y", 120, ""]
         ];
         for (const [what, key, waited, want] of answers)
-            holds(what, Editing.onceAnswered(key, waited, 300), want);
+            holds(what, Editing.onceAnswered(key, waited, 300, false), want);
+        holds("a y held from before it repeats into nothing, however long after",
+            Editing.onceAnswered("y", 900, 300, true), "");
         // [what, the keys typed from the opening, the acts done]
         const doing = [
             ["w b e move by words", ["Escape", "w", "b", "e"],

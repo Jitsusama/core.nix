@@ -427,7 +427,8 @@ Item {
         woken();
         if (asking !== "") {
             event.accepted = true;
-            const said = Editing.onceAnswered(key, Date.now() - askedAt, wait);
+            const said = Editing.onceAnswered(key, Date.now() - askedAt, wait,
+                event.isAutoRepeat);
             if (said !== "")
                 prompt.answeredOnce(said === "yes");
             return;

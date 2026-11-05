@@ -106,9 +106,11 @@ function edited(act, text, at, count) {
 // What a key says to a question asked once, "Replace notes.md? (y/n)":
 // "yes" for y alone, "no" for n, Escape or Ctrl+C, and "" for any other
 // key, or any key pressed within `least` of its asking, `since` ago, so
-// a key already on its way when it was asked never answers it.
-function onceAnswered(key, since, least) {
-    if (since < least) {
+// a key already on its way when it was asked never answers it; nor does
+// a key `repeated` as it's held, since a y held from before the question
+// would otherwise repeat into a yes once the moment passed.
+function onceAnswered(key, since, least, repeated) {
+    if (repeated === true || since < least) {
         return "";
     }
     if (key === "y") {
