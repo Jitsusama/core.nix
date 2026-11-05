@@ -296,6 +296,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
     machine.send_key("ret")
     answered("0", f"file://{notes}/plan.md")
+    takes_a_selection(desktop, choose, answered, notes)
 
     choose("save", "saved.md")
     name_line(desktop, held)
@@ -337,6 +338,76 @@ def saved_by_commands(
     choose("open")
     ran(desktop, "q", closes=True)
     answered("1")
+
+
+def takes_a_selection(
+    desktop: Desktop,
+    choose: Callable[..., None],
+    answered: Callable[..., None],
+    notes: str,
+) -> None:
+    """Take files by V and Return, and gather them across folders by :arga and :'<,'>arga.
+
+    Each key waits on what the launcher says after it, so one the picker didn't take fails
+    there: V's rows tinted, :arga's count in the mode word's room, and the portal's answer.
+    """
+    machine = desktop.machine
+    beside = f"{notes}-beside"
+    desktop.as_account(f"touch {beside}/far.md {beside}/near.md")
+
+    def chosen(name: str, rows: int) -> None:
+        """Wait until visual takes these many rows, the cursor on this one."""
+        desktop.launcher_until(
+            lambda shown: (
+                shown["mode"] == "visual"
+                and len(shown["tinted"]) == rows
+                and (shown["selected"] or {}).get("name") == name
+            )
+        )
+
+    # Return over a V selection answers with every file in it.
+    choose("open-several")
+    desktop.normal()
+    desktop.down_to("list.md")
+    machine.send_chars("V")
+    chosen("list.md", 1)
+    machine.send_chars("j")
+    chosen("look.png", 2)
+    machine.send_key("ret")
+    answered("0", f"file://{notes}/list.md", f"file://{notes}/look.png")
+
+    # :arga gathers the cursor row; in the folder beside, :'<,'>arga gathers
+    # a V selection, leaving visual as Vim's : does; Return then answers with
+    # all that's gathered, in order.
+    choose("open-several")
+    desktop.normal()
+    desktop.down_to("plan.md")
+    ran(desktop, "arga")
+    desktop.launcher_until(lambda shown: shown["placeSays"] == "1 gathered")
+    machine.send_chars("]b")
+    desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/chosen-notes-beside"])
+    desktop.down_to("far.md")
+    machine.send_chars("Vj")
+    taken = 2
+    chosen("near.md", taken)
+    machine.send_chars(":")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("things") == taken)
+    machine.send_chars("arga")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["placeSays"] == "3 gathered"
+            and shown["command"] is None
+            and shown["mode"] == "normal"
+        )
+    )
+    machine.send_key("ret")
+    answered(
+        "0",
+        f"file://{notes}/plan.md",
+        f"file://{beside}/far.md",
+        f"file://{beside}/near.md",
+    )
 
 
 def ran(desktop: Desktop, line: str, *, closes: bool = False) -> None:
