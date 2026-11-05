@@ -415,6 +415,14 @@ pub struct Table {
     lines: Vec<LineSlot>,
 }
 
+/// Each arrow and the letter it still stands for here.
+const ARROWS: [(&str, &str); 4] = [
+    ("<Down>", "j"),
+    ("<Up>", "k"),
+    ("<Left>", "h"),
+    ("<Right>", "l"),
+];
+
 /// The keys, read from the language once.
 pub fn table() -> &'static Table {
     static TABLE: OnceLock<Table> = OnceLock::new();
@@ -427,14 +435,15 @@ pub fn table() -> &'static Table {
 /// tests find before it ships.
 fn read(language: &str) -> Table {
     let language: toml::Table = language.parse().expect("the key language is TOML");
-    // In normal and visual mode an arrow is its letter, so an act with the
-    // letter takes the arrow too, listed before it.
-    let arrows: Vec<(Vec<Key>, Vec<Key>)> = language["arrows"]
-        .as_table()
-        .expect("the key language's arrows are a table")
+    // The reader still takes an arrow as its letter in normal and visual
+    // mode, so an act with the letter takes the arrow too, listed before
+    // it. The key language no longer says so, since no arrow does anything
+    // in normal (Joel, 2026-11-05); the reader keeps them until its own
+    // piece takes them out, and is on the language check's STILL_ARROWED
+    // until then.
+    let arrows: Vec<(Vec<Key>, Vec<Key>)> = ARROWS
         .iter()
         .map(|(arrow, letter)| {
-            let letter = letter.as_str().expect("an arrow's letter is a string");
             (
                 parse(letter).expect("an arrow's letter is a key"),
                 parse(arrow).expect("an arrow is a key"),
