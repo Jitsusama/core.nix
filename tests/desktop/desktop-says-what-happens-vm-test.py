@@ -863,35 +863,69 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
     """A notice is signed by the name Joel knows what sent it by, never its program's.
 
     Its pictures at both of Joel's scales, alone and held with its acts listed as commands, are
-    look 3's notice (2026-11-03), for a person to measure its room by.
+    look 3's notice (2026-11-03), for a person to measure its room by. So are three notices as
+    one stack, the front card whole and two edges beneath it, each starting on the hairline of
+    the card before it, and what's playing the frames rung above them (docs/design.md, The
+    Ladder).
     """
     machine = desktop.machine
-    for scale in JOELS_SCALES:
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-        with desktop.told("shows card Tokens Run Out in About an Hour"):
-            desktop.as_account(
-                "notify-send --app-name=tokens --expire-time=60000"
-                " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
-                " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
-                " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
-                " < /dev/null &"
-            )
-        signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
-        assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
-        # Named without the point, which the driver would take for where
-        # the name ends and its kind begins.
-        named = scale.replace(".", "-")
-        desktop.photograph(f"notice-at-{named}")
-        with desktop.told("keys notices"), desktop.told("notice offers :pause"):
-            machine.send_key("meta_l-n")
-        desktop.photograph(f"notice-held-at-{named}")
-        with desktop.told("lets notices go"):
-            machine.send_key("esc")
+    try:
+        for scale in JOELS_SCALES:
+            signed_and_stacked_at(desktop, scale)
+    finally:
+        desktop.as_account("systemctl --user stop player || true")
         desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.as_account("qs ipc call notices seen")
     desktop.as_account("niri msg output winit scale 1")
+
+
+def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
+    """Sign one notice and photograph it, held, as a stack of three, and under what's playing."""
+    machine = desktop.machine
+    desktop.as_account(f"niri msg output winit scale {scale}")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    with desktop.told("shows card Tokens Run Out in About an Hour"):
+        desktop.as_account(
+            "notify-send --app-name=tokens --expire-time=60000"
+            " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
+            " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
+            " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
+            " < /dev/null &"
+        )
+    signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
+    assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
+    # Named without the point, which the driver would take for where the
+    # name ends and its kind begins.
+    named = scale.replace(".", "-")
+    desktop.photograph(f"notice-at-{named}")
+    with desktop.told("keys notices"), desktop.told("notice offers :pause"):
+        machine.send_key("meta_l-n")
+    desktop.photograph(f"notice-held-at-{named}")
+    with desktop.told("lets notices go"):
+        machine.send_key("esc")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    for summary, body in [
+        ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
+        ("Backup Finished", ""),
+        ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used."),
+    ]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(
+                f"notify-send --expire-time=60000 {shlex.quote(summary)} {shlex.quote(body)}"
+            )
+    desktop.photograph(f"notices-stacked-at-{named}")
+    # Collected once it ends, since a stopped player exits failed and would
+    # keep the unit's name from the next scale's.
+    with desktop.told("drawn notifications"):
+        desktop.as_account(
+            "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
+            f" --loop {desktop.values['track']}"
+        )
+    desktop.photograph(f"notices-playing-at-{named}")
+    desktop.as_account("systemctl --user stop player")
+    desktop.as_account("qs ipc call notices putAway")
 
 
 def test_a_notice_from_calls_is_signed_as_a_call_and_wears_a_calls_glyph(desktop: Desktop) -> None:
@@ -1058,8 +1092,8 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.tokened()
 
 
-def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -> None:
-    """The notices sit a step inside the window under them."""
+def test_the_notices_sit_the_frames_rung_inside_the_window_under_them(desktop: Desktop) -> None:
+    """The notices sit the frames rung inside the window under them, the screen rung at least."""
     machine = desktop.machine
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
@@ -1102,7 +1136,7 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     retry(settled, timeout=timedelta(seconds=15))
     with desktop.told("shows card Inside the window"):
         desktop.as_account(
-            "notify-send --expire-time=60000 'Inside the window' 'a step from its edges'"
+            "notify-send --expire-time=60000 'Inside the window' 'a frame on a frame'"
         )
     desktop.photograph("notice-inside")
     # The nearest window wholly on screen, as the shell picks it.
@@ -1114,17 +1148,18 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     ]
     whole = [(p, s) for p, s in tiles if p[0] >= 0 and p[0] + s[0] <= screen]
     (left, top), (width, _) = min(whole, key=lambda t: (-(t[0][0] + t[1][0]), t[0][1]))
-    step = space["s"]
+    step, edge = space["rung"]["frames"], space["rung"]["screen"]
+    right = int(max(screen - (left + width) + step, edge) + 0.5)
     wanted_at = [
-        int(screen - (left + width) + step + 0.5),
-        int(max(top, 0) + step + 0.5),
-        min(440, int(width - 2 * step)),
+        right,
+        int(max(top + step, edge) + 0.5),
+        min(440, int(screen - right - (left + step))),
     ]
     notices_at = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
     ).split()[-3:]
-    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't a step inside the window"
+    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't inside the window"
     desktop.as_account("qs ipc call notices putAway")
     desktop.as_account(f"niri msg action close-window --id {under['id']}")
     machine.wait_until_fails(

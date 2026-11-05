@@ -124,9 +124,17 @@ impl App {
                         }
                     }
                     None => {
-                        self.selection = layout
-                            .first_in_view(here - 0.5, foot)
-                            .map(|at| Selection::new(kind, at));
+                        let first = layout.first_in_view(here - 0.5, foot);
+                        // On the line a search left the cursor on, v starts at
+                        // the match, as Neovim's starts at the cursor's
+                        // character, which the search put there.
+                        let matched = self
+                            .current
+                            .and_then(|i| self.found.get(i))
+                            .and_then(|found| found.pieces.first())
+                            .and_then(|piece| layout.place_of(piece.baseline_pt, piece.from_pt))
+                            .filter(|at| first.is_some_and(|first| first.line == at.line));
+                        self.selection = matched.or(first).map(|at| Selection::new(kind, at));
                     }
                 }
                 return true;

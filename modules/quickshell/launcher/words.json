@@ -1331,7 +1331,7 @@
     {
       "id": "verb:warmer",
       "command": "set",
-      "argument": "deskwarmth+=500",
+      "argument": "deskwarmth-=500",
       "in": "light:desk:warmth",
       "name": "Warmer",
       "verb": "warmer"
@@ -1339,7 +1339,7 @@
     {
       "id": "verb:cooler",
       "command": "set",
-      "argument": "deskwarmth-=500",
+      "argument": "deskwarmth+=500",
       "in": "light:desk:warmth",
       "name": "Cooler",
       "verb": "cooler"
@@ -2824,7 +2824,8 @@
       "verb": "use",
       "states": {
         "input": {
-          "name": "Listen Through It"
+          "name": "Listen Through It",
+          "argument": "input={name}"
         }
       }
     },
@@ -6766,6 +6767,7 @@
         "otherEnd": "Its other end",
         "copy": "Copy as markdown",
         "back": "Back to the rows",
+        "numbers": "Relative or absolute numbers",
         "keys": "These keys",
         "close": "Close"
       }

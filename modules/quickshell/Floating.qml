@@ -22,6 +22,11 @@ Item {
     // its sides on the card's and its foot across the card's rows, where a
     // rounded corner would leave a notch the card shows through.
     property bool squareFoot: false
+    // Whether its top is square, as an edge in a stack of notices is: it
+    // starts under the bottom hairline of the card in front, so its sides run
+    // straight down from there, as a whole card's would, rather than curving
+    // in where they show.
+    property bool flatTop: false
     default property alias content: body.data
 
     // How far its shadows reach beyond it, which its window leaves room for.
@@ -29,6 +34,8 @@ Item {
     // Its bottom corners' radius: the whole thing's, or square at a
     // square foot.
     readonly property int footRadius: squareFoot ? 0 : Theme.radius
+    // Its top corners' radius: the whole thing's, or square at a flat top.
+    readonly property int topRadius: flatTop ? 0 : Theme.radius
     readonly property Region area: Region {
         item: panel
         radius: Theme.radius
@@ -74,6 +81,8 @@ Item {
         radius: Theme.radius
         bottomLeftRadius: floating.footRadius
         bottomRightRadius: floating.footRadius
+        topLeftRadius: floating.topRadius
+        topRightRadius: floating.topRadius
         border.width: Theme.border
         border.color: floating.urgent ? Theme.alert : floating.keys ? Theme.accent : Theme.edge
 

@@ -52,12 +52,16 @@ Scope {
     // reading face at the launcher's size on a line, inside its room on
     // each side: a short message in one or two lines.
     readonly property int width: 440
-    // The launcher's line, which every line of a card keeps at its size:
-    // six units.
-    readonly property int pitch: Theme.space.xl
     // How far the ink of every card stands from its frame on every side,
-    // inside the hairline: an inset and a step, as the launcher's card.
-    readonly property int room: Theme.inset + Theme.space.l
+    // from the frame's inside edge: the inset rung, as every frame's
+    // (docs/design.md, The Ladder).
+    readonly property int room: Theme.space.rung.inset
+    // How far the signature's capitals clear the message above them: a
+    // beat more than Note's pitch from the message's last baseline, less
+    // the capitals' own height, so the signature reads as a group of its
+    // own, never as the message's last line.
+    readonly property real signed: Theme.level.note.pitch + Theme.space.beat
+        - noteCapital.tightBoundingRect.height
 
     // A capital in the face that says who a notice is from, so the room
     // above is measured to its top rather than to its line's.
@@ -67,6 +71,21 @@ Scope {
         font.pointSize: Theme.level.name.pointSize
         font.weight: Theme.level.name.weight
         text: "H"
+    }
+
+    // The signature's face, to measure its ink by: a capital's, and where a
+    // mark's, a name's and a time's ink starts and ends, since a
+    // signature's gaps are measured to the ink.
+    TextMetrics {
+        id: noteCapital
+        font: noteFace.font
+        text: "H"
+    }
+    FontMetrics {
+        id: noteFace
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+        font.weight: Theme.level.note.weight
     }
 
     // Whether what's playing is called for. The card's own visibility can't
@@ -80,21 +99,23 @@ Scope {
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
 
-    // Where the notices sit: a step inside the window nearest the top
-    // right corner of all those wholly on screen, the rightmost and then
-    // the highest, their right edge and top each a step within its own, so
-    // a notice lies on one window and never across a border, and no wider
-    // than fits in it. With no window wholly on screen, or the nearest too
-    // narrow to hold a notice, they sit in the corner, a step inside where
-    // a window's would be. niri says where a window will come to rest
-    // (modules/niri/tiled-positions.patch), so they move once a scroll
-    // settles, not with every frame.
+    // Where the notices sit: inside the window nearest the top right
+    // corner of all those wholly on screen, the rightmost and then the
+    // highest, their right edge and top each the frames rung within its
+    // own, a frame on a frame, so a notice lies on one window and never
+    // across a border, and no wider than fits in it; but never nearer the
+    // screen's edge than the screen rung (docs/design.md, The Ladder).
+    // With no window wholly on screen, or the nearest too narrow to hold a
+    // notice, they sit the screen rung from the corner. niri says where a
+    // window will come to rest (modules/niri/tiled-positions.patch), so
+    // they move once a scroll settles, not with every frame.
     property int settled: 0
     readonly property var inside: {
         settled;
         Niri.revision;
-        const step = Theme.space.s;
-        const corner = { right: Theme.gap + step, top: Theme.gap + step, width: root.width };
+        const step = Theme.space.rung.frames;
+        const edge = Theme.space.rung.screen;
+        const corner = { right: edge, top: edge, width: root.width };
         const screen = window.screen;
         if (!screen)
             return corner;
@@ -113,12 +134,13 @@ Scope {
             .sort((a, b) => (b.left + b.width) - (a.left + a.width) || a.top - b.top)[0];
         if (!under)
             return corner;
-        const room = under.width - 2 * step;
+        const right = Math.round(Math.max(screen.width - (under.left + under.width) + step, edge));
+        const room = screen.width - right - (under.left + step);
         if (room < 2 * root.width / 3)
             return corner;
         return {
-            right: Math.round(screen.width - (under.left + under.width) + step),
-            top: Math.round(Math.max(under.top, 0) + step),
+            right,
+            top: Math.round(Math.max(under.top + step, edge)),
             width: Math.min(root.width, Math.floor(room))
         };
     }
@@ -149,10 +171,11 @@ Scope {
         return server.trackedNotifications.values.find(notification => notification.id === id)
             ?? null;
     }
-    // How many behind the front show their edge, a step lower and a step
-    // narrower each, and how far.
+    // How many behind the front show their edge, lower and narrower each
+    // on both sides, and by how much: eight hairlines, a stroke that
+    // draws the stack rather than a gap between inks.
     readonly property int behind: 3
-    readonly property int peek: Theme.space.s
+    readonly property int peek: 8 * Theme.border
     // Whether the stack glides as it moves and its edges as they follow a
     // new front card, rather than jumping: the one line to turn them off.
     readonly property bool glides: true
@@ -502,7 +525,7 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            y: Math.max(root.inside.top, Theme.gap + Theme.space.s)
+            y: root.inside.top
             onHeightChanged: reported.changed()
             // Where the pointer reaches and what niri blurs follow a card
             // only as it moves within the column, so they're gathered again
@@ -519,7 +542,8 @@ Scope {
                 }
             }
             width: root.inside.width
-            spacing: Theme.space.m
+            // Cards are floating frames that belong together.
+            spacing: Theme.space.rung.frames
 
             Floating {
                 id: track
@@ -532,16 +556,23 @@ Scope {
                 // A notice's three groups and room, as its neighbours'
                 // are: the track, who plays it, and the player and where
                 // in the track.
-                Column {
+                Item {
                     id: said
                     x: root.room
                     width: parent.width - 2 * x
-                    topPadding: root.room - title.baselineOffset - capital.tightBoundingRect.y
-                    bottomPadding: root.room - playedBy.height + playedBy.inkBottom
+                    implicitHeight: playedBy.y + playedBy.height + root.room
 
                     Item {
+                        id: song
+                        // The message's last baseline, or the cover's
+                        // foot when it reaches lower, which the signature
+                        // clears.
+                        readonly property real ends: Math.max(y + cover.y + cover.height,
+                            y + lines.lastBaseline)
+
+                        y: root.room - title.baselineOffset - capital.tightBoundingRect.y
                         width: parent.width
-                        height: Math.max(cover.y + cover.height, lines.implicitHeight)
+                        height: Math.max(cover.y + cover.height, lines.height)
 
                         // Two lines tall from the title's capital, its
                         // corners the theme's inner radius, and the raised
@@ -549,7 +580,7 @@ Scope {
                         Rectangle {
                             id: cover
                             y: title.baselineOffset + capital.tightBoundingRect.y
-                            width: 2 * root.pitch
+                            width: 2 * Theme.level.name.pitch
                             height: width
                             radius: Theme.inner
                             color: Theme.raised
@@ -578,11 +609,20 @@ Scope {
                             }
                         }
 
-                        Column {
+                        // The title and who plays it, lines of one saying,
+                        // each a pitch below the last, the cover a run
+                        // apart from them.
+                        Item {
                             id: lines
+                            readonly property real lastBaseline: artist.visible
+                                ? artist.y + artist.baselineOffset
+                                : title.baselineOffset
+                                    + (title.lineCount - 1) * Theme.level.name.pitch
+
                             anchors.left: cover.visible ? cover.right : parent.left
-                            anchors.leftMargin: cover.visible ? Theme.space.m : 0
+                            anchors.leftMargin: cover.visible ? Theme.space.rung.apart : 0
                             anchors.right: parent.right
+                            height: artist.visible ? artist.y + artist.height : title.height
 
                             Text {
                                 id: title
@@ -592,7 +632,7 @@ Scope {
                                 wrapMode: Text.Wrap
                                 maximumLineCount: 2
                                 elide: Text.ElideRight
-                                lineHeight: root.pitch
+                                lineHeight: Theme.level.name.pitch
                                 lineHeightMode: Text.FixedHeight
                                 font.family: Theme.level.name.family
                                 font.pointSize: Theme.level.name.pointSize
@@ -600,13 +640,16 @@ Scope {
                             }
 
                             Text {
+                                id: artist
+                                y: title.baselineOffset
+                                    + (title.lineCount - 1) * Theme.level.name.pitch
+                                    + Theme.level.words.pitch - baselineOffset
                                 width: parent.width
                                 text: root.song.artist
                                 visible: text !== ""
-                                topPadding: Theme.space.xs
                                 color: Theme.text
                                 elide: Text.ElideRight
-                                lineHeight: root.pitch
+                                lineHeight: Theme.level.words.pitch
                                 lineHeightMode: Text.FixedHeight
                                 font.family: Theme.level.words.family
                                 font.pointSize: Theme.level.words.pointSize
@@ -616,52 +659,16 @@ Scope {
                         }
                     }
 
-                    // The player in a column of its own and where in the
-                    // track, a step below, as a notice's signature.
-                    Item {
+                    // The player and where in the track, as a notice's
+                    // signature.
+                    Signature {
                         id: playedBy
-                        readonly property real inkBottom: player.y + player.baselineOffset
+                        y: song.ends + root.signed
                         width: parent.width
-                        height: Theme.space.m + root.pitch
-
-                        Text {
-                            y: Theme.space.m
-                            lineHeight: root.pitch
-                            lineHeightMode: Text.FixedHeight
-                            text: root.song.mark
-                            color: Theme.program
-                            font.family: Theme.level.note.family
-                            font.pointSize: Theme.level.note.pointSize
-                            font.weight: Theme.level.note.weight
-                        }
-
-                        Text {
-                            id: player
-                            x: Theme.space.xxl
-                            y: Theme.space.m
-                            width: place.x - x - Theme.space.l
-                            lineHeight: root.pitch
-                            lineHeightMode: Text.FixedHeight
-                            text: root.song.from
-                            elide: Text.ElideRight
-                            color: Theme.level.note.colour
-                            font.family: Theme.level.note.family
-                            font.pointSize: Theme.level.note.pointSize
-                            font.weight: Theme.level.note.weight
-                        }
-
-                        Text {
-                            id: place
-                            anchors.right: parent.right
-                            y: Theme.space.m
-                            lineHeight: root.pitch
-                            lineHeightMode: Text.FixedHeight
-                            text: root.song.where
-                            color: Theme.level.note.colour
-                            font.family: Theme.level.note.family
-                            font.pointSize: Theme.level.note.pointSize
-                            font.weight: Theme.level.note.weight
-                        }
+                        mark: root.song.mark
+                        hue: Theme.program
+                        name: root.song.from
+                        side: root.song.where
                     }
                 }
 
@@ -686,10 +693,12 @@ Scope {
             }
 
             // The notices, one stack: the front one whole, and behind it
-            // the next few as edges, each a step lower and a step narrower,
-            // at the front one's height with nothing drawn in them, so its
-            // cloudy surface shows only their frames beneath. It reaches the
-            // lower of the front card and the last edge as they glide.
+            // the next few as edges, each a peek lower and a peek narrower
+            // on both sides, with nothing drawn in them. Each edge starts
+            // on the bottom hairline of the card before it, so only what
+            // shows beneath is drawn and no edge's frame shows through the
+            // cloudy card in front of it. It reaches the lower of the front
+            // card and the last edge as they glide.
             Item {
                 id: pile
 
@@ -715,10 +724,12 @@ Scope {
 
                     visible: rank >= 0 && rank <= root.behind
                     z: -rank
-                    x: Math.max(rank, 0) * Theme.space.s
-                    y: Math.max(rank, 0) * root.peek
+                    x: Math.max(rank, 0) * root.peek
+                    y: front ? 0 : (Math.max(rank, 1) - 1) * root.peek + root.edgeHeight
+                        - Theme.border
                     width: stack.width - 2 * x
-                    height: front ? implicitHeight : root.edgeHeight
+                    height: front ? implicitHeight : root.peek + Theme.border
+                    flatTop: !front
                     urgent: modelData.urgency === NotificationUrgency.Critical
 
                     onFrontChanged: if (front) root.frontHeight = implicitHeight
@@ -761,27 +772,34 @@ Scope {
 
                     // Three groups, as Joel reads a notice: who or what
                     // it's about, what it says, and the signature of what
-                    // sent it with when, each at its level and every line
-                    // on the one pitch, so the sizes rank rather than
-                    // jostle: who and what at the launcher's size, the
-                    // signature a step smaller (Joel, 2026-10-24: "the
-                    // differing font sizes, and too much information on
-                    // lines really felt gross and unrefined"; 2026-11-04:
-                    // "we are not levraging different weights and sizes
-                    // enough"). The frame stands as far from the ink on
-                    // every side, to the capital's top and the
-                    // signature's baseline (Joel, 2026-11-03: "feeling
-                    // quite cluttered").
-                    Column {
+                    // sent it with when, each at its level, so the sizes
+                    // rank rather than jostle: who and what at the
+                    // launcher's size, lines of one saying a pitch apart,
+                    // and the signature a step smaller, a group of its own
+                    // (Joel, 2026-10-24: "the differing font sizes, and too
+                    // much information on lines really felt gross and
+                    // unrefined"; 2026-11-04: "we are not levraging
+                    // different weights and sizes enough"). The frame
+                    // stands as far from the ink on every side, to the
+                    // capital's top and the signature's baseline (Joel,
+                    // 2026-11-03: "feeling quite cluttered").
+                    Item {
                         id: words
+                        // The message's last baseline, who's or what's.
+                        readonly property real ends: body.visible
+                            ? body.y + body.baselineOffset
+                                + (body.lineCount - 1) * Theme.level.words.pitch
+                            : who.y + who.baselineOffset
+                                + (who.lineCount - 1) * Theme.level.name.pitch
+
                         visible: card.front
                         x: root.room
                         width: parent.width - 2 * x
-                        topPadding: root.room - who.baselineOffset - capital.tightBoundingRect.y
-                        bottomPadding: root.room - signature.height + signature.inkBottom
+                        implicitHeight: signature.y + signature.height + root.room
 
                         Text {
                             id: who
+                            y: root.room - baselineOffset - capital.tightBoundingRect.y
                             width: parent.width
                             text: card.modelData.summary
                             // Plain, as the spec has a summary: only the
@@ -789,25 +807,29 @@ Scope {
                             textFormat: Text.PlainText
                             color: Theme.strong
                             wrapMode: Text.Wrap
-                            lineHeight: root.pitch
+                            lineHeight: Theme.level.name.pitch
                             lineHeightMode: Text.FixedHeight
                             font.family: Theme.level.name.family
                             font.pointSize: Theme.level.name.pointSize
                             font.weight: Theme.level.name.weight
                         }
 
+                        // What it says, its first line a pitch below who's
+                        // last, as lines of one saying.
                         Text {
+                            id: body
+                            y: who.y + who.baselineOffset
+                                + (who.lineCount - 1) * Theme.level.name.pitch
+                                + Theme.level.words.pitch - baselineOffset
                             width: parent.width
                             text: card.modelData.body
                             visible: card.modelData.body !== ""
-                            // A line that belongs with the one above.
-                            topPadding: Theme.space.xs
                             color: Theme.text
                             wrapMode: Text.Wrap
                             maximumLineCount: 6
                             elide: Text.ElideRight
                             textFormat: Text.StyledText
-                            lineHeight: root.pitch
+                            lineHeight: Theme.level.words.pitch
                             lineHeightMode: Text.FixedHeight
                             font.family: Theme.level.words.family
                             font.pointSize: Theme.level.words.pointSize
@@ -815,62 +837,21 @@ Scope {
                             font.variableAxes: Theme.level.words.variableAxes
                         }
 
-                        // What sent it, a step below: its mark in a column
-                        // of its own and the name Joel knows it by, never
-                        // its program's; on the right when it came.
-                        Item {
+                        // What sent it, a group below: its mark and the name
+                        // Joel knows it by, never its program's; on the
+                        // right how many wait behind it and when it came.
+                        Signature {
                             id: signature
-                            // Where its line's baseline falls, which ends
-                            // the card.
-                            readonly property real inkBottom: sent.y + sent.baselineOffset
+                            readonly property real now: clock.date.getTime()
+                            readonly property int more: root.shown.length - 1
+
+                            y: words.ends + root.signed
                             width: parent.width
-                            height: Theme.space.m + root.pitch
-
-                            Text {
-                                id: mark
-                                y: Theme.space.m
-                                lineHeight: root.pitch
-                                lineHeightMode: Text.FixedHeight
-                                text: String.fromCodePoint(card.from.glyph)
-                                color: Theme[card.from.hue]
-                                font.family: Theme.level.note.family
-                                font.pointSize: Theme.level.note.pointSize
-                                font.weight: Theme.level.note.weight
-                            }
-
-                            Text {
-                                id: sent
-                                x: Theme.space.xxl
-                                y: Theme.space.m
-                                width: time.x - x - Theme.space.l
-                                lineHeight: root.pitch
-                                lineHeightMode: Text.FixedHeight
-                                text: card.from.name
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: Theme.level.note.colour
-                                font.family: Theme.level.note.family
-                                font.pointSize: Theme.level.note.pointSize
-                                font.weight: Theme.level.note.weight
-                            }
-
-                            Text {
-                                id: time
-                                anchors.right: parent.right
-                                y: Theme.space.m
-                                lineHeight: root.pitch
-                                lineHeightMode: Text.FixedHeight
-                                readonly property real now: clock.date.getTime()
-                                // How many wait behind it, before when it came.
-                                readonly property int more: root.shown.length - 1
-                                text: (more > 0 ? `${more} more \u00b7 ` : "")
-                                    + root.since(root.arrived[card.modelData.id] ?? now, now)
-                                textFormat: Text.PlainText
-                                color: Theme.level.note.colour
-                                font.family: Theme.level.note.family
-                                font.pointSize: Theme.level.note.pointSize
-                                font.weight: Theme.level.note.weight
-                            }
+                            mark: String.fromCodePoint(card.from.glyph)
+                            hue: Theme[card.from.hue]
+                            name: card.from.name
+                            side: (more > 0 ? `${more} more \u00b7 ` : "")
+                                + root.since(root.arrived[card.modelData.id] ?? now, now)
                         }
                     }
 

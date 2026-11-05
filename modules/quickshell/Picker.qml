@@ -39,7 +39,9 @@ Singleton {
     readonly property bool lettered: typed !== "" || first !== null
     // Set once the box is taken, so the next frame is drawn empty.
     property bool leaving: false
-    readonly property int step: Theme.space.l
+    // How far an arrow moves the box, in logical pixels. It's a move, not
+    // a space between two things drawn, so no rung of the ladder names it.
+    readonly property int step: 16
 
     function pick(title: string, glyph: string, done: var, back: var): void {
         typed = "";
@@ -274,8 +276,10 @@ Singleton {
 
                     x: Math.round((column + 0.5) * window.cells.width - width / 2)
                     y: Math.round((row + 0.5) * window.cells.height - height / 2)
-                    width: labelText.implicitWidth + 2 * Theme.space.s
-                    height: labelText.implicitHeight + 2 * Theme.space.xs
+                    // A mark's room across its letters, a tie's above and
+                    // below its line.
+                    width: labelText.implicitWidth + 2 * Theme.space.rung.mark
+                    height: labelText.implicitHeight + 2 * Theme.space.rung.tie
                     radius: Theme.inner
                     color: Qt.alpha(Theme.raised, Theme.floating.opacity)
                     opacity: leads ? 1 : root.typed === "" ? 0.7 : 0.3
@@ -295,13 +299,15 @@ Singleton {
             Floating {
                 id: panel
 
-                // The launcher's width, or the hints' if they ever need more,
-                // so nothing spills past the panel.
-                readonly property real size: Math.max(680, hints.implicitWidth
-                    + 2 * Theme.space.l)
+                // The launcher's width, or the keys' if they ever need more,
+                // with the frame's inset to the ink each side of them, so
+                // nothing spills past the panel.
+                readonly property real size: Math.max(680, foot.wanted)
+                readonly property int inset: Theme.space.rung.inset
 
                 x: Math.round((window.width - size) / 2)
-                y: window.height - height - Theme.space.huge
+                // A floating frame's distance from the screen's edge.
+                y: window.height - height - Theme.space.rung.screen
                 width: size
                 keys: true
 
@@ -311,14 +317,29 @@ Singleton {
                     // What's being picked for, as a launcher place's head
                     // names it, at Title in text; the letters typed, as
                     // the query is, at Figure, or the voice's hint before
-                    // any are; and the box's size, a figure too.
+                    // any are; and the box's size, a figure too. All sit on
+                    // the Title's baseline, its capitals the frame's inset
+                    // under its top, and the rule under it what a row leaves
+                    // under a row's capitals (docs/design.md, Space, The
+                    // Ladder).
                     Item {
                         width: parent.width
-                        height: Theme.space.xxxl + 2 * Theme.inset
+                        readonly property real capitals: titleFace.tightBoundingRect("H").height
+                        // Whole device pixels tall, counted from the frame's
+                        // outer edge, so the rule under it falls clean.
+                        height: rule.whole(panel.inset + capitals
+                            + (4 * Theme.space.beat - capitals) / 2 + Theme.border) - Theme.border
+
+                        FontMetrics {
+                            id: titleFace
+                            font.family: Theme.level.title.family
+                            font.pointSize: Theme.level.title.pointSize
+                            font.variableAxes: Theme.level.title.variableAxes
+                        }
 
                         Text {
                             id: glyph
-                            x: Theme.inset + Theme.space.l
+                            x: panel.inset
                             anchors.baseline: title.baseline
                             text: root.asked ? root.asked.glyph : ""
                             color: Theme.action
@@ -329,8 +350,9 @@ Singleton {
 
                         Text {
                             id: title
-                            x: Theme.inset + Theme.space.l + Theme.space.xxl
-                            anchors.verticalCenter: parent.verticalCenter
+                            // A glyph's column on from the glyph.
+                            x: panel.inset + Theme.level.name.pitch + Theme.space.rung.mark
+                            y: panel.inset + parent.capitals - baselineOffset
                             text: root.asked ? root.asked.title : ""
                             color: Theme.text
                             font.family: Theme.level.title.family
@@ -342,7 +364,8 @@ Singleton {
 
                         Text {
                             id: letters
-                            x: title.x + title.width + Theme.space.l
+                            // Apart from the title, as a title's hint stands.
+                            x: title.x + title.width + Theme.space.rung.apart
                             anchors.baseline: title.baseline
                             readonly property string corner: root.first === null ? "" : "\u2192 "
                             text: `${corner}${root.typed}`
@@ -369,7 +392,7 @@ Singleton {
 
                         Text {
                             anchors.right: parent.right
-                            anchors.rightMargin: Theme.inset + Theme.space.l
+                            anchors.rightMargin: panel.inset
                             anchors.baseline: title.baseline
                             readonly property var measured: window.shown ?? root.box
                             text: `${measured.width}<font color="${Theme.muted}"> \u00d7 </font>`
@@ -383,29 +406,21 @@ Singleton {
                         }
                     }
 
-                    Rectangle {
+                    Hairline {
+                        id: rule
                         width: parent.width
-                        height: Theme.border
-                        color: Theme.edge
                     }
 
-                    // What the keys do here, as the launcher's footer says.
-                    Item {
+                    // What the keys do here, as a prompt's foot says it.
+                    PromptFoot {
+                        id: foot
                         width: parent.width
-                        height: Theme.space.xxl + 2 * Theme.inset
-
-                        KeyHints {
-                            id: hints
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.inset + Theme.space.l
-                            anchors.verticalCenter: parent.verticalCenter
-                            keys: root.lettered
-                                ? [["\u21b5", "take"], ["a\u2013z", "row, then column"],
-                                    ["\u232b", "undo"], ["Esc", "clear"]]
-                                : [["\u21b5", "take"], ["a\u2013z", "cells"],
-                                    ["\u2190 \u2192 \u2191 \u2193", "move"],
-                                    ["\u21e7", "size"], ["Esc", "back"]]
-                        }
+                        keys: root.lettered
+                            ? [["\u21b5", "take"], ["a\u2013z", "row, then column"],
+                                ["\u232b", "undo"], ["Esc", "clear"]]
+                            : [["\u21b5", "take"], ["a\u2013z", "cells"],
+                                ["\u2190 \u2192 \u2191 \u2193", "move"],
+                                ["\u21e7", "size"], ["Esc", "back"]]
                     }
                 }
             }

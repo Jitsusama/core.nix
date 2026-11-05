@@ -41,6 +41,9 @@ Item {
     // Room between the glyph and what's typed: the launcher lines what's
     // typed up with its results' column, and a secret sits close by its lock.
     property int glyphWidth: glyphText.implicitWidth + Theme.space.m
+    // Where its mark stands from its left, so a frame holding it sets the
+    // mark on its own column by this rather than by a number of its own.
+    readonly property real markAt: glyphText.x
     // A glyph after the first, leading the path: a held thing's, where the
     // find's / leads the line.
     property string lead
@@ -59,6 +62,12 @@ Item {
     property string hint
     // Said in muted type at the right end of the line.
     property string aside
+    // How far a find narrows the rows, as "3 of 12", said after what's
+    // typed in normal, so a list narrowed always says so; nothing on the
+    // find, where the rows narrow as it's typed (the vi-paradigm spec).
+    property string narrowed
+    readonly property bool narrowSaid: modal && mode === "normal" && narrowed !== ""
+        && input.text !== ""
     readonly property bool capitals: secret && Lights.caps
     readonly property string said: capitals ? "caps lock" : aside
     // How wide an aside is at Note, a pixel to spare, so what's measured to
@@ -795,14 +804,20 @@ Item {
 
     implicitWidth: 480
     implicitHeight: Theme.space.xxxl
-    // The line's baseline, the typed letters', which the field's keys and
-    // aside sit on and the launcher's drawer sets its eyebrow on.
-    baselineOffset: input.y + input.baselineOffset
+    // The line's baseline, which the typed letters, the hint, the aside,
+    // the glyph and a place's name all sit on, and the launcher's drawer
+    // sets its eyebrow on. It's the largest level's, the place's name at
+    // Title, set by centring its capitals on the field (docs/design.md, One
+    // Baseline a Line), and it's there out of a place too, where no name
+    // shows, so nothing on the line moves as one opens (Joel, 2026-11-05:
+    // "which? &etc. need to be baselined with the text to their left").
+    readonly property real lineBaseline: (height + titleCapitals) / 2
+    baselineOffset: lineBaseline
 
     Text {
         id: glyphText
         x: Theme.space.l
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         text: prompt.glyph
         color: prompt.hue
         font.family: Theme.level.figure.family
@@ -812,7 +827,7 @@ Item {
     Text {
         id: leadText
         x: Theme.space.l + prompt.glyphWidth
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         visible: prompt.lead !== ""
         text: prompt.lead
         color: prompt.leadHue
@@ -976,9 +991,10 @@ Item {
 
     // Where Joel is, the place's name at Title in the text colour, with no
     // chip, since its size says it's where he is; the marks between a
-    // path's steps muted. Its capitals are centred on the field, as an
-    // eyebrow's are, and its line box may run past the field's rather than
-    // growing it, so the card is one height in a place and out of it.
+    // path's steps muted. Its capitals are centred on the field, setting
+    // the line's baseline (lineBaseline), and its line box may run past the
+    // field's rather than growing it, so the card is one height in a place
+    // and out of it.
     Item {
         id: held
         x: Theme.space.l + prompt.ledWidth
@@ -988,7 +1004,7 @@ Item {
 
         Row {
             id: path
-            y: (prompt.height + prompt.titleCapitals) / 2 - titleFace.ascent
+            y: prompt.lineBaseline - titleFace.ascent
 
             Repeater {
                 id: stepsShown
@@ -1046,7 +1062,7 @@ Item {
         id: askedText
         x: input.x
         width: input.width
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         visible: prompt.asking !== ""
         text: prompt.asking
         textFormat: Text.PlainText
@@ -1060,7 +1076,7 @@ Item {
         x: Theme.space.l + prompt.ledWidth
             + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
         width: prompt.end - x
-        anchors.verticalCenter: parent.verticalCenter
+        y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
         // A question asked draws in its place, and the field keeps the
@@ -1202,7 +1218,11 @@ Item {
             id: hintText
             readonly property bool voiced: input.text === "" && prompt.cleared === ""
             readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
-            x: input.text === "" ? 0 : input.contentWidth
+            // With nothing typed, past the caret where one is drawn, a mark
+            // after it, so the caret never covers the hint's first letter
+            // (VKCF3Z's space audit of the picker, fault 11).
+            x: input.text !== "" ? input.contentWidth
+                : prompt.caretShown ? prompt.caretWidth + Theme.space.rung.mark : 0
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
@@ -1210,11 +1230,27 @@ Item {
             text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
                 : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
+                && !(input.text !== "" && prompt.narrowSaid)
             color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted
             font.family: hintText.level.family
             font.italic: hintText.level.italic
             font.pointSize: hintText.level.pointSize
             font.variableAxes: hintText.level.variableAxes
+        }
+
+        // The narrowed find's count, at Note, apart from what's typed, as
+        // the ladder sets typed text and its count (docs/design.md).
+        Text {
+            x: input.contentWidth + Theme.space.rung.apart
+            width: Math.max(0, input.width - x)
+            elide: Text.ElideRight
+            anchors.baseline: parent.baseline
+            visible: prompt.narrowSaid
+            text: `\u00b7 ${prompt.narrowed}`
+            color: Theme.muted
+            font.family: Theme.level.note.family
+            font.pointSize: Theme.level.note.pointSize
+            font.features: { "tnum": 1 }
         }
     }
 }

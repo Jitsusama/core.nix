@@ -188,7 +188,8 @@ constrain".
   purpose: normal acts on what the cursor is on, / finds, : names a command
   from a menu of all of them, insert only writes words handed over. Return
   from the find line never changes anything, an arrow is its letter with no
-  act of its own, Escape cancels and closes what floats, and q does
+  act of its own, Escape cancels and leaves a mode but never closes
+  anything ("fuck escape quitting", 2026-11-05), and q does
   nothing: "make esc work like vi, q should do nothing by itself. :q to
   quit". A Vim user is at home with no training.
 - **A sans-serif without class.** Of Mona Sans on the launcher's rows: "I

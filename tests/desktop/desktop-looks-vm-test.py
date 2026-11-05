@@ -242,6 +242,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         assert words_on_their_names(card, scale, serif) > 0, (
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
+        # Normal numbers the rows in its gutter, the cursor row's absolute, and says the find's
+        # count after it, whole.
+        shown = desktop.showing()
+        assert shown["gutter"]["shown"], f"at {scale} normal's gutter: {shown['gutter']}"
+        assert shown["gutter"]["cursor"] == str(shown["current"] + 1), shown["gutter"]
+        field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+        narrowing = [word for word in field if word["text"].startswith("\u00b7 ")]
+        assert narrowing, f"at {scale} the narrowed find says no count: {field}"
+        assert not narrowing[0]["cut"], f"at {scale} the narrowed count is cut: {narrowing}"
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
         says_until_the_next_key(desktop, scale)
         # A count typed stands where insert's word was until its move, as showcmd shows it.
@@ -1569,3 +1578,77 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.close_launcher()
     finally:
         unorchestrated(desktop)
+
+
+def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Photograph dictation, a meter above it, and a meter alone at its least and most.
+
+    Both are one frame at the bottom centre, the frame's inset from the ink on every side
+    (docs/design.md, The Ladder). A meter that shows while dictation listens stands the space
+    between frames above it rather than over it, and a shorter figure keeps its room after it,
+    so the bar's gap to it never grows. Each is kept for a person to measure.
+    """
+    machine = desktop.machine
+    dictation = desktop.in_session("niri msg layers | grep -q dictation")
+    volume = desktop.in_session("niri msg layers | grep -q 'Namespace: \"volume\"'")
+    was = desktop.as_account("wpctl get-volume @DEFAULT_AUDIO_SINK@").split()[1]
+    # A change is heard only once the shell has bound the speaker, which it says.
+    desktop.reported("hears volume ", bool, "", timeout=timedelta(seconds=60))
+
+    # Where on the screen, in fractions of its height, dictation's frame and
+    # a meter above it fall at both scales, the middle half across.
+    under, over = (0.87, 0.94), (0.78, 0.84)
+
+    def band(rows: tuple[float, float]) -> bytes:
+        """Give the screen's middle half across between two fractions of its height."""
+        screen = desktop.screen_now()
+        width, height = screen.size
+        box = (width // 4, int(height * rows[0]), 3 * width // 4, int(height * rows[1]))
+        return screen.crop(box).tobytes()
+
+    def shot_once_in(name: str, rows: tuple[float, float], before: bytes) -> None:
+        """Photograph once the band shows something it didn't, or after three seconds.
+
+        While dictation listens, its clock and wave move, so the screen never holds still,
+        and a meter goes again in a second and a half; and niri can show dictation's first
+        frame a while after it's drawn. So the picture is taken once what it's of is on the
+        screen. One that never comes, as a meter hidden under dictation, is kept as it is.
+        """
+        deadline = time.monotonic() + 3
+        while band(rows) == before and time.monotonic() < deadline:
+            pass
+        if desktop.values["photographs"]:
+            machine.screenshot(name)
+
+    def metered(level: str, name: str) -> None:
+        machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
+        with desktop.told("drawn volume"):
+            desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {level}")
+        desktop.photograph(name)
+
+    try:
+        for scale in at_each_scale:
+            named = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            machine.wait_until_fails(dictation, timeout=timedelta(seconds=15))
+            since = desktop.mark()
+            before = band(under)
+            with desktop.told("drawn dictation"):
+                desktop.as_account("dictation toggle")
+            desktop.reported("says dictation listening", lambda rest: rest == "", since)
+            shot_once_in(f"dictation-listening-at-{named}", under, before)
+            machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
+            before = band(over)
+            with desktop.told("drawn volume"):
+                desktop.as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.5")
+            shot_once_in(f"meter-over-dictation-at-{named}", over, before)
+            # Stopped, the stand-in types a moment and says it heard nothing.
+            desktop.as_account("dictation toggle")
+            desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
+            machine.wait_until_fails(dictation, timeout=timedelta(seconds=10))
+            metered("0.05", f"meter-least-at-{named}")
+            metered("1", f"meter-most-at-{named}")
+    finally:
+        desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {was}")

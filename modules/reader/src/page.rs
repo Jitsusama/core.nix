@@ -129,7 +129,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // Typst's raw takes 0.8 em of its own, so the size is said whole.
 #show raw: it => context text(..level.code.text, fill: text.fill, it)
 // Headings, set by lines: more room above a heading than below it, so it
-// belongs to what follows. A gap is baseline to baseline, rounded to the
+// belongs to what follows. A section sits a line over its first block, as
+// a group's heading sits a pitch above its first thing, nearer it than one
+// paragraph is to the next. A gap is baseline to baseline, rounded to the
 // half line so every baseline stays on the grid. A block's top edge is its
 // capitals (`caps` of an em in the words' face, the same at both sets of
 // axes, and `code-caps` in the mono), so a gap takes the cap height of what
@@ -150,7 +152,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #show heading.where(level: 1): set block(above: lines(3, caps * title-size), below: 1.5 * pitch - cap)
 #show heading.where(level: 2): set text(..level.section.text, top-edge: caps * section-size)
 #show heading.where(level: 2): set par(leading: pitch - caps * section-size)
-#show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: 1.5 * pitch - cap)
+#show heading.where(level: 2): set block(above: lines(3, caps * section-size), below: pitch - cap)
 #show heading.where(level: 3): set text(..level.part.text, top-edge: cap)
 #show heading.where(level: 3): set block(above: lines(2.5, cap), below: pitch - cap)
 #show heading.where(level: 4): it => block(above: lines(2, code-caps * label-size), below: pitch - cap, eyebrow(it.body))
@@ -174,12 +176,16 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   set block(width: high)
   it
 })
-// What the file is and when it changed, over the title and one line above
-// it, or over the words when there's no title.
+// What the file is and when it changed, two lines over the title's
+// baseline (four of the page's beats), or over the words when there's no
+// title.
 #show <title>: set block(above: 0pt)
-#let about(titled: false, body) = block(above: 0pt, below: if titled { lines(1, caps * title-size) } else { 1.5 * pitch - cap }, eyebrow(body))
-// The paragraph after the title, in the voice.
-#let lede(body) = par(text(..level.voice.text, top-edge: cap, body))
+#let about(titled: false, body) = block(above: 0pt, below: if titled { 4 * beat - caps * title-size } else { 1.5 * pitch - cap }, eyebrow(body))
+// The paragraph after the title, in the voice, two lines over the words:
+// the head widens outward, eyebrow to title, title to lede, lede to the
+// words, and the last is wider than one paragraph is from the next, so
+// the head reads as a group of its own.
+#let lede(body) = block(above: 0pt, below: 2 * pitch - cap, par(text(..level.voice.text, top-edge: cap, body)))
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
@@ -1054,10 +1060,22 @@ mod tests {
             steps.iter().all(|s| s % 50 == 0),
             "every baseline lands on the half line: {steps:?}"
         );
+        // The head widens outward: eyebrow to title, title to lede, lede
+        // to the words, each wider than the last, the lede's widest of
+        // all, past the paragraphs' one and a half.
         assert_eq!(
-            steps[..2],
-            [200, 150],
-            "the title two lines under the eyebrow, the lede one and a half under the title"
+            steps[..3],
+            [200, 150, 200],
+            "the title two lines under the eyebrow, the lede one and a half under the title, \
+             the words two under the lede: {steps:?}"
+        );
+        // A heading sits a line over its first block, nearer it than one
+        // paragraph is to the next, and further from what's before it.
+        assert_eq!(
+            steps[steps.len() - 6..],
+            [300, 100, 250, 100, 200, 100],
+            "a section three lines under the words and one over its own, a part two and a \
+             half and one, a fourth two and one: {steps:?}"
         );
     }
 

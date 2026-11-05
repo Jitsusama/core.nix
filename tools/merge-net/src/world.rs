@@ -38,15 +38,23 @@ const TAKEN: &str = "nix-offload: building on ";
 /// When a run sent to a builder has been there too long, or too quiet.
 struct Clock {
     taken: Option<Instant>,
+    /// Where this run's part of the log begins. A run the net's restart
+    /// cut short records nothing, so the next one has its name and writes
+    /// after it, and the builder that took the run cut short hasn't taken
+    /// this one.
+    from: usize,
     written: u64,
     heard: Instant,
 }
 
 impl Clock {
-    fn new(now: Instant) -> Self {
+    /// A clock for a run about to write to `log`, after what it holds.
+    fn new(log: &Path, now: Instant) -> Self {
+        let written = fs::metadata(log).map_or(0, |meta| meta.len());
         Self {
             taken: None,
-            written: 0,
+            from: usize::try_from(written).unwrap_or(usize::MAX),
+            written,
             heard: now,
         }
     }
@@ -58,7 +66,12 @@ impl Clock {
             self.written = written;
             self.heard = now;
             if self.taken.is_none()
-                && fs::read_to_string(log).is_ok_and(|text| text.contains(TAKEN))
+                && fs::read(log).is_ok_and(|text| {
+                    text.get(self.from..).is_some_and(|ours| {
+                        ours.windows(TAKEN.len())
+                            .any(|seen| seen == TAKEN.as_bytes())
+                    })
+                })
             {
                 self.taken = Some(now);
             }
@@ -366,6 +379,7 @@ impl World for Real {
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
         let attribute = format!("checks.{}.{check}", self.system);
         let output = file(log).ok()?;
+        let mut clock = Clock::new(log, Instant::now());
         let mut child = Command::new("nix-offload")
             .args(["there", "-L", &self.flake(commit), &attribute])
             .stdin(Stdio::null())
@@ -373,7 +387,6 @@ impl World for Real {
             .stderr(output)
             .spawn()
             .ok()?;
-        let mut clock = Clock::new(Instant::now());
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => return status.code(),
@@ -711,8 +724,9 @@ mod tests {
     #[test]
     fn a_run_waiting_its_turn_is_never_overdue() {
         let log = std::env::temp_dir().join(format!("merge-net-queue-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
         let start = Instant::now();
-        let mut clock = Clock::new(start);
+        let mut clock = Clock::new(&log, start);
         fs::write(
             &log,
             "nix-offload: the VM builder has 4 VM tests, so this waits for room\n",
@@ -739,10 +753,37 @@ mod tests {
     }
 
     #[test]
+    fn a_run_cut_short_before_it_leaves_this_one_waiting_its_turn() {
+        let log = std::env::temp_dir().join(format!("merge-net-after-{}.log", std::process::id()));
+        fs::write(
+            &log,
+            "nix-offload: building on the lent builder b\nhalfway\n",
+        )
+        .unwrap();
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = fs::read_to_string(&log).unwrap();
+        text.push_str("nix-offload: 15 runs wait ahead of this, so this waits for room\n");
+        fs::write(&log, &text).unwrap();
+        assert!(!clock.overdue(&log, start));
+        assert!(
+            !clock.overdue(&log, start + SILENT * 2),
+            "queued, though the run before it was taken"
+        );
+        let taken = start + SILENT * 2;
+        text.push_str("nix-offload: building on the lent builder b\n");
+        fs::write(&log, &text).unwrap();
+        assert!(!clock.overdue(&log, taken));
+        assert!(clock.overdue(&log, taken + SILENT + Duration::from_secs(1)));
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
     fn a_run_on_a_builder_too_long_is_overdue() {
         let log = std::env::temp_dir().join(format!("merge-net-long-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
         let start = Instant::now();
-        let mut clock = Clock::new(start);
+        let mut clock = Clock::new(&log, start);
         let mut text = String::from("nix-offload: building on b, flake\n");
         let mut now = start;
         while now <= start + LONGEST {

@@ -2722,6 +2722,7 @@ onLinux {
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Gutter.qml} Gutter.qml
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
@@ -3372,9 +3373,10 @@ onLinux {
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's
-  # radius the theme derives from it, or a floating surface's foot, which is
-  # the theme's radius or square where it stands on another (Floating.qml's
-  # footRadius), and every border is the theme's.
+  # radius the theme derives from it, or a floating surface's foot or top,
+  # which is the theme's radius or square where it meets another
+  # (Floating.qml's footRadius and topRadius), and every border is the
+  # theme's.
   quickshell-takes-its-shape-from-the-theme =
     let
       dir = ../.;
@@ -3384,6 +3386,7 @@ onLinux {
           "Theme.radius"
           "Theme.inner"
           "floating.footRadius"
+          "floating.topRadius"
         ];
         width = [ "Theme.border" ];
       };
