@@ -18,10 +18,10 @@ Item {
     property string text
     property int format: Text.PlainText
     property color color: Theme.text
-    property int weight: Font.Normal
-    // Whether the words are the shell's voice, in the serif's italic, as
-    // the launcher's words to Joel are, rather than a name in the mono.
-    property bool voiced: false
+    // The type's level they're set at (Theme.level): a row's name, what it
+    // is at its right, or the shell's voice, as the launcher's words to
+    // Joel are.
+    property var level: Theme.level.name
     // Whether the words may read on now: their row is selected, and it's
     // their turn when the row has more than one cut.
     property bool reading: false
@@ -61,12 +61,12 @@ Item {
         textFormat: room.format
         elide: room.moving ? Text.ElideNone : Text.ElideRight
         color: room.color
-        font.family: room.voiced ? Theme.serif.family : Theme.mono.family
-        font.italic: room.voiced && Theme.serif.italic
-        font.pointSize: room.voiced ? Theme.serif.large : Theme.mono.large
-        // The serif's weight is one of its axes.
-        font.weight: room.voiced ? Font.Normal : room.weight
-        font.variableAxes: room.voiced ? Theme.serif.axes : ({})
+        font.family: room.level.family
+        font.italic: room.level.italic
+        font.pointSize: room.level.pointSize
+        font.weight: room.level.weight
+        font.variableAxes: room.level.variableAxes
+        font.features: room.level.features
     }
 
     // Animators, which move the words on the render thread, so the slide

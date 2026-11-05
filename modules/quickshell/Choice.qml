@@ -2,6 +2,11 @@
 // in a column of its own, its name, and on the right its chord or what it
 // is, muted (docs/design.md, Shape and Kinds).
 //
+// Its type ranks it (docs/design.md, Type): the name at Name, its words at
+// Words, and what it is or its chord at Note, a step smaller, all on the
+// name's baseline. Selection changes only colour and fill, never weight,
+// so a weight means only a level.
+//
 // A row that's a thing, a noun, says what kind of thing at its right edge
 // (kind: "program", "window"), and what more it has to say muted after its
 // name, so every row says what it is. A row that's an act or a set says so
@@ -110,8 +115,8 @@ Rectangle {
         visible: row.sort !== "figure" || row.swatch
         text: row.glyph
         color: row.sort === "holds" && !row.swatch ? Theme.edge : row.hue
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
     // Selected, a name too long for its room reads on (ReadsOn.qml), and
@@ -143,11 +148,10 @@ Rectangle {
         // On the mono's line, so the voice sits where the mono's name
         // would, the faces' line boxes differing.
         anchors.baseline: monoLine.baseline
-        voiced: row.voiced
+        level: row.voiced ? Theme.level.voice : Theme.level.name
         text: row.name
         format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
         color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
-        weight: row.selected ? Font.Medium : Font.Normal
         figure: figureFace.advanceWidth
         reading: row.reads && !(row.sideCut && row.sidesTurn)
         onThrough: {
@@ -164,8 +168,8 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         visible: false
         text: "0"
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
     }
 
     // What the row holds, or its note, in the serif upright at the name's
@@ -184,9 +188,9 @@ Rectangle {
         visible: row.detail !== ""
         text: row.detail
         color: row.selected ? Theme.text : Theme.muted
-        font.family: Theme.serif.family
-        font.pointSize: Theme.serif.large
-        font.variableAxes: Theme.serif.upright.large
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.variableAxes: Theme.level.words.variableAxes
     }
 
     Graph {
@@ -197,27 +201,40 @@ Rectangle {
         selected: row.selected
     }
 
-    // The face what the row is in, to fit a side of items to its room.
+    // The face what the row is in, at Note, to fit a side of items to its
+    // room.
     FontMetrics {
         id: sideFace
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+        font.weight: Theme.level.note.weight
     }
 
     // A figure's character, to measure the graphs' column by.
     TextMetrics {
         id: figureFace
         text: "0"
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
-    // The chord, or what the row is.
+    // A figure's character at Note, what the row says at its right, to
+    // measure that column by.
+    TextMetrics {
+        id: noteFace
+        text: "0"
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+    }
+
+    // The chord, or what the row is, a step smaller than the name and on
+    // its baseline, so the row reads as one line.
     Item {
         id: right
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
-        anchors.verticalCenter: parent.verticalCenter
+        y: monoLine.y + monoLine.baselineOffset
+            - (right.chorded ? keys.baselineOffset : sideText.baselineOffset)
         readonly property bool chorded: row.kind === "" && row.chord.length > 0
         readonly property string said: row.kind !== "" ? row.kind
             : itemised ? Reading.wholeItems(row.sideItems, room,
@@ -251,9 +268,9 @@ Rectangle {
         // without one, as wide as the widest said here in this step, within
         // its share.
         readonly property real column: row.graphed
-            ? Math.min(row.figures * figureFace.advanceWidth, row.width * 0.45)
+            ? Math.min(row.figures * noteFace.advanceWidth, row.width * 0.45)
             : right.sided && (!right.itemised || right.squeezed)
-                ? Math.min(row.sides * figureFace.advanceWidth, right.share) : 0
+                ? Math.min(row.sides * noteFace.advanceWidth, right.share) : 0
 
         width: Math.max(column, chorded ? keys.width : sided ? sideText.width : 0)
         height: chorded ? keys.height : sideText.height
@@ -263,6 +280,7 @@ Rectangle {
             anchors.right: parent.right
             visible: right.chorded
             keys: row.chord
+            colour: row.selected ? Theme.text : Theme.muted
         }
 
         // What the row is, cut to its share, reads on as the name does,
@@ -273,8 +291,11 @@ Rectangle {
             visible: right.sided
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
             text: right.said
-            color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
-            figure: figureFace.advanceWidth
+            level: Theme.level.note
+            // Muted reads under the Lc 60 any text needs on the selection.
+            color: row.warns && row.kind === "" ? Theme.warning
+                : row.selected ? Theme.text : Theme.muted
+            figure: noteFace.advanceWidth
             reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)
             onThrough: {
                 if (row.nameCut)

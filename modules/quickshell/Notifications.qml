@@ -1585,7 +1585,7 @@ Scope {
                                         anchors.verticalCenter: parent.verticalCenter
                                         keys: verb.chosen ? [{ text: "\u21b5" }]
                                             : verb.modelData.chord
-                                        size: Theme.level.note.pointSize
+                                        level: Theme.level.note
                                     }
 
                                     MouseArea {

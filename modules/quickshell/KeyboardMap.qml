@@ -85,8 +85,8 @@ PanelWindow {
                             ? `${modelData.name} locked` : modelData.name
                         color: !here ? Theme.muted : KeyboardLayout.marked < 0 ? Theme.accent
                             : Theme.strong
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.body
+                        font.family: Theme.level.note.family
+                        font.pointSize: Theme.level.note.pointSize
                     }
                 }
             }
@@ -130,8 +130,8 @@ PanelWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: key.cap
                                 color: !key.own ? Theme.muted : key.marked ? Theme.strong : Theme.text
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                             }
 
                             Text {
@@ -139,8 +139,8 @@ PanelWindow {
                                 visible: key.holds !== ""
                                 text: key.holds
                                 color: Theme.muted
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.small
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                             }
                         }
                     }

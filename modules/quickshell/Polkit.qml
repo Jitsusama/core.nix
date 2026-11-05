@@ -177,7 +177,6 @@ Scope {
                     height: Theme.space.xxl + 2 * Theme.inset
 
                     KeyHints {
-                        size: Theme.level.note.pointSize
                         anchors.right: parent.right
                         anchors.rightMargin: Theme.inset + Theme.space.l
                         anchors.verticalCenter: parent.verticalCenter

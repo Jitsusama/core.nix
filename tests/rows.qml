@@ -12,7 +12,7 @@
 // a row with both its name and what it is cut reads each on in turn, the
 // name first, never both moving at once, and its name at rest ends in its
 // ellipsis rather than cut through a letter. What the shell says in its voice,
-// a quiet row's words and the launcher's hint, is drawn in the serif face
+// a quiet row's words and a field's hint, is drawn in the serif face
 // on the baseline the mono's would take. The launcher's modal field says
 // Ctrl+Y in insert and the left arrow in normal, its caret a bar a quarter
 // of a letter wide in insert and a block a letter wide in normal, resting on
@@ -87,7 +87,7 @@ ShellRoot {
             Choice { id: plainSaid; quiet: true; glyph: "$"; name: root.voice }
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
-            Prompt { id: voicedField; width: root.panel; voiced: true; hint: root.voice }
+            Prompt { id: voicedField; width: root.panel; hint: root.voice }
             Prompt {
                 id: ghosted
                 width: root.panel
@@ -131,7 +131,6 @@ ShellRoot {
                 id: opened
                 width: root.panel
                 steady: true
-                voiced: true
                 leftClears: true
                 modal: true
                 keyWords: root.keyWords
@@ -154,7 +153,6 @@ ShellRoot {
                 id: typing
                 width: root.panel
                 steady: true
-                voiced: true
                 leftClears: true
                 modal: true
                 keyWords: root.keyWords

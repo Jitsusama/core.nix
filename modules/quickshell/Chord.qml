@@ -1,7 +1,8 @@
 // A chord, key by key as the desktop draws them (home.nix, keyFaces): a
 // key's own glyph where one exists, its name where none does, joined by +.
 // In a sequence a key pressed after the one before stands a space apart,
-// with no +. Muted, since a chord says how and the row says what.
+// with no +. At Note and muted, since a chord says how and the row says
+// what.
 pragma ComponentBehavior: Bound
 import QtQuick
 
@@ -10,7 +11,18 @@ Flow {
 
     // Each key: { text, wide, after }.
     property var keys: []
-    property real size: Theme.mono.large
+    // The type's level it's set at (Theme.level).
+    property var level: Theme.level.note
+    property color colour: Theme.muted
+
+    // On its keys' baseline, so a row can set it on its name's.
+    baselineOffset: face.ascent
+
+    FontMetrics {
+        id: face
+        font.family: chord.level.family
+        font.pointSize: chord.level.pointSize
+    }
 
     Repeater {
         model: chord.keys
@@ -24,9 +36,10 @@ Flow {
             leftPadding: index === 0 ? 0 : plus.width
             rightPadding: modelData.wide ? Theme.space.xs : 0
             text: modelData.text
-            color: Theme.muted
-            font.family: Theme.mono.family
-            font.pointSize: chord.size
+            color: chord.colour
+            font.family: chord.level.family
+            font.pointSize: chord.level.pointSize
+            font.weight: chord.level.weight
 
             Text {
                 id: plus
@@ -35,7 +48,7 @@ Flow {
                     : implicitWidth + 2 * Theme.space.s
                 horizontalAlignment: Text.AlignHCenter
                 text: parent.modelData.after === true ? "" : "+"
-                color: Theme.muted
+                color: chord.colour
                 font: parent.font
             }
         }

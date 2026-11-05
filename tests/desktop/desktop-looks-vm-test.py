@@ -207,8 +207,8 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         assert abs(lines["eyebrowMiddle"] - card["field"]) <= NEAR, (
             f"at {scale} the eyebrow is off the field's centre: {drawer}"
         )
-        # One empty line below the title.
-        assert abs(lines["words"] - (lines["title"] + 2 * PITCH)) <= NEAR, drawer
+        # One empty line below the title's last line.
+        assert abs(lines["words"] - (lines["titleLast"] + 2 * PITCH)) <= NEAR, drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
@@ -257,7 +257,9 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
                 )
             )
             drawer = plate_shown(desktop, scale)
-            title, facts = drawer["lines"]["title"], drawer["lines"]["facts"]
+            # The title, at Title, may take two lines of the plate's width, each two of the
+            # pitch; the facts start one empty line below its last.
+            title, facts = drawer["lines"]["titleLast"], drawer["lines"]["facts"]
             assert abs(facts[0] - (title + 2 * PITCH)) <= NEAR, drawer
             assert all(
                 later > earlier and on_the_pitch(later, earlier)
