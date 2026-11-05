@@ -725,9 +725,8 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.photograph(f"file-picker-two-gathered-at-{said}")
             ran(desktop, "args")
             desktop.launcher_until(lambda shown: "Forget Them" in shown["rows"])
-            desktop.launcher_until(
-                lambda shown: (shown["drawer"] or {}).get("eyebrow") == "2\u00a0gathered"
-            )
+            # The cursor stands on the first gathered, and Return still answers both.
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
             machine.send_key("left")
