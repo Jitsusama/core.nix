@@ -91,9 +91,14 @@ QtObject {
         // flags where the language names it.
         const language = commands();
         // A row's command, from its words (`command` here) or else as
-        // Commands.js's commandOf reads one from its verb: its first word.
-        const named = row => Catalogue.named(row.command,
-            (String(row.verb ?? "").trim().toLowerCase().match(/^[a-z]+/) ?? [""])[0], language);
+        // Commands.js's commandOf reads one: its verb's first word, or its
+        // name's where it has no verb.
+        const verbal = row => {
+            const verb = String(row.verb ?? "").trim().toLowerCase();
+            const said = verb === "" ? String(row.name ?? "").trim().toLowerCase() : verb;
+            return (said.match(/^[a-z]+/) ?? [""])[0];
+        };
+        const named = row => Catalogue.named(row.command, verbal(row), language);
         const changes = row => Catalogue.changesState(row, named(row));
         const changing = [
             ["an ending action", { verb: "forget", act: "ending", ends: "forgets", run: does }],
@@ -103,13 +108,18 @@ QtObject {
             ["one asked to be sure of", { verb: "reboot", confirm: true, run: does }],
             ["a setting's act, closing", { verb: "hold", changes: true, run: does }],
             ["a session's pause", { verb: "pause", run: does }],
-            // The verbs the language names no command for yet keep the
-            // guess from how the row is made.
+            // A command the language doesn't name yet keeps the guess from
+            // how the row is made, whatever its verb or name says, since a
+            // row's command is read from its name where it has no verb.
             ["a lock, guessed", { verb: "lock", run: does }],
             ["a turning off, guessed", { verb: "turn off", stays: true, run: does }],
             ["a network's join, guessed", { verb: "connect", stays: true, run: does,
                 verbs: opens }],
-            ["Wi-Fi Off, guessed", { verb: "off", stays: true, run: does }]
+            ["Wi-Fi Off, guessed", { verb: "off", stays: true, run: does }],
+            ["Do Not Disturb ended, guessed", { verb: "end", stays: true, run: does }],
+            ["a track skipped, guessed", { verb: "next", stays: true, run: does }],
+            ["a brightness set, guessed from its name", { name: "Brightness to 40%",
+                stays: true, run: does }]
         ];
         for (const [what, row] of changing)
             expect(`${what} changes how things stand`, changes(row), true);
@@ -123,7 +133,7 @@ QtObject {
             ["a copy", { verb: "copy", command: "yank", stays: true, run: does }],
             ["a See It", { verb: "see", stays: true, run: does }],
             ["a verb the language names nothing for and the guess doesn't hold",
-                { verb: "say", stays: true, run: does }],
+                { verb: "say", run: does }],
             ["a place", { category: {}, verbs: opens }],
             // A figure only says a value, so Return copies it, or closes
             // the launcher where it has nothing to copy yet, which isn't
@@ -148,17 +158,13 @@ QtObject {
         ];
         for (const [what, row] of quietly)
             expect(`${what} changes nothing`, changes(row), false);
-        // The guess stands in for the verbs the language names no command
-        // for, and only those, so it can only shrink: a verb joining it
-        // fails here, and so does one the language has come to name, whose
-        // rows the table decides.
-        expect("the verbs that take the guess", Catalogue.guessed, ["brighten", "brighter",
-            "choose", "connect", "dim", "dimmer", "expect", "flash", "gather", "hold", "join",
-            "leave", "lock", "log", "mute", "off", "on", "record", "share", "sign", "sleep",
-            "start", "stop", "take", "thaw", "tile", "turn", "unmute", "unread", "unstar",
-            "use"]);
+        // The verbs the guess holds quiet, the language naming no command
+        // for them yet, can only shrink: one joining fails here, and so does
+        // one the language has come to name, whose rows the table decides.
+        expect("the verbs the guess holds quiet", Catalogue.quiet,
+            ["copy", "find", "go", "more", "see", "show"]);
         expect("none of which the language names as a command",
-            Catalogue.guessed.filter(verb => language[verb] !== undefined), []);
+            Catalogue.quiet.filter(verb => language[verb] !== undefined), []);
         // The first row inside a thing never changes anything.
         const seen = { name: "See It", verb: "see", run: does };
         const cut = { name: "Disconnect It", verb: "disconnect", ends: "disconnects",
