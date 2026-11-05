@@ -94,6 +94,10 @@ Item {
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
+    // Which of the keys taken began what stands now, as a count's first
+    // digit or an operator's key, so an operator can be told from the keys
+    // straight after something it answers (Launcher.qml's ask).
+    property int begunAt: 0
     // How long a sequence begun waits for its next key before it's let go,
     // as his Neovim's timeoutlen (modules/keys/language.toml).
     property int wait: 300
@@ -281,6 +285,10 @@ Item {
     // takes, drawerUp and drawerDown, and n and N's searchNext and
     // searchPrevious.
     signal stepped(string act, int count)
+    // An operator done: "ending" for d and "copy" for y, with the count
+    // typed before it, 0 for none, and the motion it took, { act, count },
+    // or null for dd and yy (QueryKeys.spanned takes them).
+    signal operated(string act, int count, var motion)
     // A search, as it's typed: "begun" as / or ? opens it, "typing" as
     // what it seeks changes, and "found" or "cancelled" as Return or
     // Escape ends it. Forward is /'s way, and the count is the one typed
@@ -384,6 +392,8 @@ Item {
             return;
         }
         keysTaken++;
+        if (!QueryKeys.pending(standing) && QueryKeys.pending(read.standing))
+            begunAt = keysTaken;
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
             cleared = "";
@@ -460,6 +470,10 @@ Item {
             break;
         case "back":
             prompt.cancelled();
+            break;
+        case "ending":
+        case "copy":
+            prompt.operated(read.act, read.count, read.motion);
             break;
         case "":
             break;
