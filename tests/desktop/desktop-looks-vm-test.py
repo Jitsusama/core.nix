@@ -1600,9 +1600,11 @@ def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
             at_scale(desktop, scale)
             machine.wait_until_fails(dictation, timeout=timedelta(seconds=15))
             since = desktop.mark()
-            desktop.as_account("dictation toggle")
+            # Once it's drawn, not once niri lists it: the first time, its
+            # layer is up a while before its card is on it.
+            with desktop.told("drawn dictation"):
+                desktop.as_account("dictation toggle")
             desktop.reported("says dictation listening", lambda rest: rest == "", since)
-            desktop.wait_for_surface("dictation")
             desktop.photograph(f"dictation-listening-at-{named}")
             metered("0.5", f"meter-over-dictation-at-{named}")
             # Stopped, the stand-in types a moment and says it heard nothing.
