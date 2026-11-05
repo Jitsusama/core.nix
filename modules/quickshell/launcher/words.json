@@ -6646,6 +6646,7 @@
     "listed": {
       "eyebrow": "Keys",
       "title": "The Launcher's Keys",
+      "drawerTitle": "The Drawer's Keys",
       "modes": {
         "normal": "Normal",
         "insert": "Insert",

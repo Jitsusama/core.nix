@@ -2362,13 +2362,37 @@ Scope {
 
     // Every key here, as normal's Space ? lists them in the drawer, in
     // place of what the selected row has, until Space ? again or Escape.
+    // Pressed in the drawer, it lists the drawer's own keys there, the
+    // keys staying in it, until Space ? again or the way back to the rows
+    // (VKCF3Z), which puts that list away as :pclose puts a window away.
     property bool listing: false
+    property bool listedInDrawer: false
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
-        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "", keys: true,
-            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {}) };
+        const only = listedInDrawer ? ["page", "pageVisual"] : null;
+        return { eyebrow: words.eyebrow ?? "",
+            title: (listedInDrawer ? words.drawerTitle : words.title) ?? "", keys: true,
+            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {},
+                only) };
     }
     onListingChanged: drawerSettled()
+    // The whole list, listed from the rows before going in, gives way to
+    // the drawer's rather than going.
+    function listInDrawer() {
+        const shown = listing && listedInDrawer;
+        listedInDrawer = !shown;
+        listing = !shown;
+        drawerCard.anew();
+    }
+    Connections {
+        target: prompt
+        function onModeChanged() {
+            if (!QueryKeys.paged(prompt.mode) && root.listedInDrawer) {
+                root.listing = false;
+                root.listedInDrawer = false;
+            }
+        }
+    }
 
     // The command line, the : line (CommandLine.qml), while it's open:
     // { from, range, things, go, menu, options }, the mode : was pressed
@@ -4832,6 +4856,7 @@ Scope {
             homeDepth = 0;
             lastPlace = null;
             listing = false;
+            listedInDrawer = false;
             prompt.forget();
             often = picks.counts();
             spotsLater.stop();
@@ -5313,6 +5338,8 @@ Scope {
                                     drawerCard.reselect();
                                 else if (act === "copy" || act === "copyLines")
                                     Quickshell.clipboardText = drawerCard.copy(act === "copyLines");
+                                else if (act === "keys")
+                                    root.listInDrawer();
                                 else
                                     drawerCard.go(act, count);
                                 return;

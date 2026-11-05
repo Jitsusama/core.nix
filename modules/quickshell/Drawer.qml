@@ -519,6 +519,15 @@ Floating {
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
         cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
     }
+    // Another page shown while it holds the keys, as its list of keys is:
+    // read from its top once Qt has laid it out, as a window opened on it.
+    function anew() {
+        if (keys)
+            Qt.callLater(() => {
+                view.contentY = 0;
+                enter();
+            });
+    }
     // Laid out anew while it holds the keys, as a fact's value comes or the
     // row refreshes: the lines read again once Qt has laid them out, the
     // cursor kept on its line and letter where they still are.
