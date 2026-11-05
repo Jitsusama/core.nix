@@ -104,9 +104,10 @@ let
   # Every key, as the reader's own list gives it (reader --keys), in the
   # launcher's groups, each with the key language's act it does: a mark's
   # keys sit with the jumps, since two keys make no group of their own, and
-  # moving is Scrolling there, since Moving is the picture viewer's. An
-  # arrow comes before its letter. Zoom is the reader's own, as Vim has
-  # none.
+  # moving is Scrolling there, since Moving is the picture viewer's. The
+  # lines in view, and the links and files, are groups of their own, so
+  # none lists more than the launcher's thirteen rows. An arrow comes before
+  # its letter. Zoom is the reader's own, as Vim has none.
   key = group: act: chord: does: {
     inherit
       group
@@ -116,7 +117,9 @@ let
       ;
   };
   moving = key "scrolling";
+  view = key "view";
   jumping = key "jumping";
+  links = key "links";
   searching = key "searching";
   selecting = key "selecting";
   objects = key "objects";
@@ -135,35 +138,35 @@ let
     (moving "screen-down" "Page_Down" "Down a screen")
     (moving "screen-up" "Ctrl+B" "Up a screen")
     (moving "screen-up" "Page_Up" "Up a screen")
-    (jumping "first" "g g" "To the top, or a count's line")
-    (jumping "last" "G" "To the end, or a count's line")
     (moving "paragraph-on" "}" "On a paragraph")
     (moving "paragraph-back" "{" "Back a paragraph")
+    (view "view-top" "H" "To the top line in view")
+    (view "view-middle" "M" "To the middle line in view")
+    (view "view-bottom" "L" "To the bottom line in view")
+    (view "place-top" "z t" "This line to the top")
+    (view "place-middle" "z z" "This line to the middle")
+    (view "place-bottom" "z b" "This line to the bottom")
+    (jumping "first" "g g" "To the top, or a count's line")
+    (jumping "last" "G" "To the end, or a count's line")
     (jumping "heading-on" "] ]" "On to the next heading")
     (jumping "heading-back" "[ [" "Back to the heading before")
-    (moving "view-top" "H" "To the top line in view")
-    (moving "view-middle" "M" "To the middle line in view")
-    (moving "view-bottom" "L" "To the bottom line in view")
-    (moving "place-top" "z t" "This line to the top")
-    (moving "place-middle" "z z" "This line to the middle")
-    (moving "place-bottom" "z b" "This line to the bottom")
     (jumping "bracket" "%" "To a bracket's other end, or a count's percent")
-    (searching "search-word-forward" "*" "Search down for the word here")
-    (searching "search-word-backward" "#" "Search up for the word here")
-    (jumping "next-file" "] b" "On to the next markdown file here")
-    (jumping "previous-file" "[ b" "Back to the markdown file before")
-    (jumping "follow-file" "g f" "Open the file a link here names")
-    (jumping "follow-link" "Ctrl+]" "Follow the link here")
     (jumping "outline" "g O" "Go to a heading from a list of them")
     (page "command-line" ":" "A command: a line's number, q or noh")
     (jumping "last-jump" "' '" "Back to before the last jump")
     (jumping "last-jump" "` `" "Back to before the last jump")
     (jumping "jump-back" "Ctrl+O" "Back through the jumps")
     (jumping "jump-forward" "Ctrl+I" "Forward through the jumps")
-    (jumping "links" "g x" "Follow a link on screen, by its label")
     (jumping "set-mark" "m" "Mark this place with a letter")
     (jumping "go-to-mark" "'" "Go to a letter's mark")
     (jumping "go-to-mark" "`" "Go to a letter's mark")
+    (links "links" "g x" "Follow a link on screen, by its label")
+    (links "follow-link" "Ctrl+]" "Follow the link here")
+    (links "follow-file" "g f" "Open the file a link here names")
+    (links "next-file" "] b" "On to the next markdown file here")
+    (links "previous-file" "[ b" "Back to the markdown file before")
+    (searching "search-word-forward" "*" "Search down for the word here")
+    (searching "search-word-backward" "#" "Search up for the word here")
     (searching "search-forward" "/" "Search down the page")
     (searching "search-backward" "?" "Search up the page")
     (searching "next" "n" "On to the next match")
