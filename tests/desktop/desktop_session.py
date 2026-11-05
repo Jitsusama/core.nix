@@ -608,11 +608,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
 
         Rows are counted by name, since what leads a step (Return's own act) moves the rest,
         and from the row selected, which a step in from a match keeps rather than the first.
+        A selection above the rows, an answer's headline or a save's name on the line, is -1.
         """
         shown = self.showing()
         rows = shown["rows"]
         selected = (shown["selected"] or {}).get("name")
-        steps = rows.index(name) - (rows.index(selected) if selected in rows else 0)
+        above = -1 if shown["current"] == -1 else 0
+        steps = rows.index(name) - (rows.index(selected) if selected in rows else above)
         for _ in range(abs(steps)):
             self.machine.send_key("down" if steps > 0 else "up")
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
