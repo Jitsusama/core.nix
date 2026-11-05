@@ -685,11 +685,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
 def commands_a_network(desktop: Desktop) -> None:
-    """Press every key the command line takes on Lantern's row, then disconnect it by :g.
-
-    A range on what takes none says E481; :%disc, which only Lantern can, says so and does
-    nothing, as the ask that would offer it hasn't landed; :g/Lant/disc finds Lantern by name
-    and disconnects it by its own act.
+    """Press every key the command line takes on Lantern's row, then bind a range.
 
     : in normal opens it with Lantern's acts, Return's first; typing narrows it; Tab, Shift+Tab,
     the arrows, Ctrl+N and Ctrl+P choose a line and write it in, round to what was typed, the
@@ -761,6 +757,16 @@ def commands_a_network(desktop: Desktop) -> None:
         desktop.launcher_until(
             lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
         )
+    binds_a_range(desktop)
+
+
+def binds_a_range(desktop: Desktop) -> None:
+    """Over every network, say E481 for :%q and how many can for :%disc, then :g/Lant/disc.
+
+    Lantern alone can disconnect, so :%disc runs on none until the ask lands; :g finds Lantern
+    by name and disconnects it by its own act.
+    """
+    machine = desktop.machine
 
     def says(typed: str, said: str) -> None:
         machine.send_chars(typed)
@@ -768,6 +774,13 @@ def commands_a_network(desktop: Desktop) -> None:
             lambda shown: shown["command"] is None and said in (shown["commandSaid"] or "")
         )
 
+    # Every network listed, not Lantern alone as "lant" found it, so % is them all.
+    if desktop.showing()["open"]:
+        desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: len(shown["rows"]) > 1 and "Lantern" in shown["rows"])
+    desktop.normal()
     says(":%q\n", "E481: No range allowed")
     says(":%disc\n", "can disconnect")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
