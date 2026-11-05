@@ -75,8 +75,7 @@ QtObject {
     }
 
     function lines(entries) {
-        return entries.map(entry => [Commands.notation(entry.command, entry.short), entry.title,
-            entry.key]);
+        return entries.map(entry => [Commands.called(entry), entry.title, entry.key]);
     }
 
     function run() {
@@ -374,6 +373,48 @@ QtObject {
                 Commands.narrowed(menu, "set nomute v", argued)).line, "set nomute volume");
         holds("a command that takes none shows its own line alone",
             listedAs("disc ").map(line => line[0]), ["disconnect"]);
+
+        // An act is named by the command its words give it, and two on a
+        // row that share one differ by argument, as :new and :new . do.
+        const words = {
+            "apps:new": { command: "new" },
+            "folder:new": { command: "new", argument: "." },
+            "window:third": { command: "resize", argument: "third" },
+            "bluetooth:connect": { command: "set", argument: "bluetooth+=" }
+        };
+        const calledMenu = acts => Commands.listed({ acts, table: commands, said,
+            called: act => words[act.key] ?? {}, row: 1 });
+        const windows = calledMenu([{ key: "apps:new", name: "New Window", verb: "start" },
+            { key: "folder:new", name: "New Window Here", verb: "start" }]);
+        holds("an act is named by its words' command, its verb where they give none",
+            lines(windows).slice(0, 2).concat(lines(menuOf([{ name: "See It", verb: "see" }]))
+                .slice(0, 1)),
+            [["new", "New Window", "\u21b5"], ["new .", "New Window Here", ""],
+                ["see", "See It", "\u21b5"]]);
+        const titled = (typed, menu) => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? read.entry.title;
+        };
+        holds("a command alone runs its act with no argument, with one the act holding it",
+            [titled("new", windows), titled("new .", windows), titled("new  . ", windows)],
+            ["New Window", "New Window Here", "New Window Here"]);
+        holds("an argument no act holds is trailing", titled("new x", windows),
+            "E488: Trailing characters: x");
+        holds("an act that needs its argument says so without it",
+            titled("resize", calledMenu([{ key: "window:third", name: "A Third" }])),
+            "E471: Argument required");
+        holds("choosing writes an act's argument in",
+            Commands.chosen(Commands.typing("new"), 2, Commands.narrowed(windows, "new")).line,
+            "new .");
+        holds("a space after it narrows them by their arguments",
+            lines(Commands.narrowed(windows, "new .", argued)).map(line => line[0]),
+            ["new ."]);
+        const paired = calledMenu([{ key: "bluetooth:connect", name: "Connect It" }]);
+        holds("a row's own act on :set runs ahead of :set, which runs the rest",
+            [titled("set bluetooth+=", paired), Commands.ran("set nowifi", paired).entry?.kind],
+            ["Connect It", "set"]);
+        holds("and :set still lists its options after a space",
+            Commands.narrowed(paired, "set w", argued).map(line => line.command), ["wifi"]);
 
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",

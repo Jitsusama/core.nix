@@ -7,6 +7,13 @@
 // then the surface's commands, then what every surface has.
 .pragma library
 
+// A line's command as the menu writes it: its notation, then the argument
+// that tells an act apart from another of its name, as :new . from :new.
+function called(entry) {
+    const name = notation(entry.command, entry.short);
+    return (entry.argument ?? "") === "" ? name : `${name} ${entry.argument}`;
+}
+
 // Vim's help notation: the shortest form a command takes outside the
 // brackets, the rest of its name inside, as :help writes disc[onnect].
 function notation(command, short) {
