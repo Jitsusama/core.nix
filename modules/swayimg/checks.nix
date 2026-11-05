@@ -63,7 +63,9 @@ onLinux {
   # many, dd and Delete move a picture to the trash and u brings it back,
   # yy copies it, through wl-copy, stood in here, and ? and Space ? ask the
   # launcher for the keys, stood in too, on a picture and in the gallery.
-  # q and Escape close nothing, and ZZ and Space w close it.
+  # q and Escape close nothing, and ZZ and Space w close it. What the
+  # launcher's command line asks, as swayimg-command carries it, does what
+  # it says: a number, :d, :rotate, :y, :open and :q.
   # The picture it opened with, and only that one, is said to the desktop's
   # list of files opened lately, through recent-files, stood in as well.
   swayimg-moves-by-its-keys =
@@ -76,6 +78,10 @@ onLinux {
       launcher = pkgs.writeShellScriptBin "launcher-say" ''echo "$*" >> "$ASKED"'';
       # The wl-copy nix.lua names, for the stand-in to take its place.
       wl-copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
+      # niri, which only has to say what it was asked to open, and a
+      # program for :open to name.
+      niri = pkgs.writeShellScriptBin "niri" ''echo "$*" >> "$SPAWNED"'';
+      other-editor = pkgs.writeShellScriptBin "other-editor" "true";
     in
     pkgs.runCommandLocal "swayimg-moves-by-its-keys"
       {
@@ -87,12 +93,15 @@ onLinux {
           pkgs.inotify-tools
           pkgs.wtype
           launcher
+          niri
+          other-editor
           recent-files
+          (pkgs.callPackage ./command.nix { })
         ];
       }
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run SAID=$PWD/said-files
-        export ASKED=$PWD/asked
+        export ASKED=$PWD/asked SPAWNED=$PWD/spawned
         export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
         export WLR_LIBINPUT_NO_DEVICES=1
         mkdir -p config/swayimg run pictures

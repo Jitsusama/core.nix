@@ -86,8 +86,6 @@ QtObject {
         holds("a new change forgets what was taken back",
             List.changed(undone.history, { ids: [4], kind: "done" }).undone, []);
 
-        holds("Vim's help notation", List.notation("forget", "forg"), "forg[et]");
-        holds("a command with no shorter form", List.notation("open", "open"), "open");
 
         const entries = [
             { command: "open", short: "ope", name: "Open", key: "\u21b5" },

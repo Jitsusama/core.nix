@@ -210,17 +210,25 @@ QtObject {
             || one.keys.length > 14).map(one => one.does), []);
         holds(":help dd opens at d", listed[Keys.helpAt(listed, "done")].act, "done");
 
-        holds("normal's hints, Space ? last", Keys.hints("normal", {}, { done: "read" })
-            .map(one => `${one.key} ${one.word}`),
-            ["\u21b5 open", "d read", ": commands", "space ? keys"]);
+        // As the launcher's foot: Return at the right end, Space ? just before it.
+        const said = (mode, has, words) => Keys.hints(mode, has, words ?? {})
+            .map(one => `${one.key} ${one.word}`);
+        holds("normal's hints, Space ? then Return last", said("normal", {}, { done: "read" }),
+            ["d read", ": commands", "Space ? keys", "\u21b5 go to"]);
         holds("a card that opens nothing hints no Return",
             Keys.hints("normal", { open: false }, {}).map(one => one.act),
             ["done", "command", "keys"]);
-        holds("visual's hints", Keys.hints("visual", {}, { done: "forget" })
-            .map(one => `${one.key} ${one.word}`),
-            ["d forget", "y copy", ": commands", "space ? keys"]);
-        holds("the find's hints", Keys.hints("find", {}, {}).map(one => `${one.key} ${one.word}`),
-            ["\u21b5 open", "esc normal"]);
+        holds("visual's hints", said("visual", {}, { done: "forget" }),
+            ["d forget", "y copy", ": commands", "Space ? keys"]);
+        holds("the find's hints", said("find", {}), ["Esc normal", "\u21b5 go to"]);
+        holds("insert ends with Return's", said("insert", {}), ["Esc normal", "\u21b5 send"]);
+        holds("the key list says how to leave it", said("listing", {}),
+            ["j k scroll", "Esc back"]);
+        holds("keys are spelt as the launcher's foot spells them",
+            [Keys.spoken(["Space", "?"]), Keys.spoken("Escape"), Keys.spoken("Ctrl+R")],
+            ["Space ?", "Esc", "Ctrl+R"]);
+        holds("a count's motion says it", listed.find(one => one.act === "first").does,
+            "newest, or {n}th");
 
         holds("a list that fits is All", Keys.ruler(0, 5, 5), "All");
         holds("at its start, Top", Keys.ruler(0, 5, 13), "Top");

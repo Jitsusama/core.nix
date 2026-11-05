@@ -255,18 +255,19 @@ end
 -- Editing is GIMP's, and a drawing's Inkscape's, each opened by niri so
 -- it's the desktop's and stays when the viewer closes, which it does, since
 -- the look is over.
-local function edit(mode)
+-- Another program is named by its command, as :open gimp names it.
+local function edit(mode, editor)
   local image = current(mode)
   if not image then
     return
   end
-  local editor = image.path:lower():match('%.svgz?$') and nix.inkscape or nix.gimp
-  local found = os.execute('command -v ' .. editor.command .. ' >/dev/null')
+  editor = editor or (image.path:lower():match('%.svgz?$') and nix.inkscape or nix.gimp)
+  local found = os.execute('command -v ' .. quoted(editor.command) .. ' >/dev/null')
   if found ~= 0 and found ~= true then
     swayimg.text.status = editor.name .. " isn't here to edit it"
     return
   end
-  os.execute('niri msg action spawn -- ' .. editor.command .. ' ' .. quoted(image.path))
+  os.execute('niri msg action spawn -- ' .. quoted(editor.command) .. ' ' .. quoted(image.path))
   quit()
 end
 
@@ -440,7 +441,7 @@ end
 
 -- q closes nothing, as in all his programs, and says what does.
 local function inert()
-  swayimg.text.status = 'q does nothing · ZZ closes'
+  swayimg.text.status = 'q does nothing · :q closes'
 end
 
 -- What each key with an act does. The arrows go that way, to the previous
@@ -462,21 +463,79 @@ local acts = {
   end, 'down'),
   first = end_or_nth('first'),
   last = end_or_nth('last'),
-  edit = edit,
+  edit = function(mode)
+    edit(mode)
+  end,
   copy = copy,
   trash = trash,
   restore = restore,
   escape = escape,
-  turn_left = function()
-    swayimg.viewer.rotate(270)
-  end,
-  turn_right = function()
-    swayimg.viewer.rotate(90)
+  -- The launcher's command line, over the picture, given this swayimg's
+  -- process for swayimg-command to carry what's chosen back to it, and
+  -- the picture's name, for the line to say what its commands act on.
+  command_line = function(mode)
+    local image = current(mode)
+    local name = image and image.path:match('[^/]*$') or ''
+    if pid then
+      os.execute(
+        'launcher-say command-line swayimg ' .. pid .. ' ' .. quoted(name) .. ' >/dev/null 2>&1 &'
+      )
+    end
   end,
   close = quit,
   inert = inert,
   keys = list,
 }
+
+-- What the launcher's command line asks of the picture, by the command's
+-- whole name, whichever short form was typed, and the rest of what was
+-- typed: :d, :y, :open and a program, :rotate and its degrees, a number
+-- for that picture, and :q.
+local commands = {
+  delete = trash,
+  yank = copy,
+  open = function(mode, rest)
+    edit(mode, rest ~= '' and { name = rest, command = rest } or nil)
+  end,
+  rotate = function(_, rest)
+    swayimg.viewer.rotate(tonumber(rest) or 90)
+  end,
+  ['goto'] = function(mode, rest)
+    if rest == '$' then
+      end_or_nth('last')(mode)
+    elseif tonumber(rest) then
+      nth(mode, tonumber(rest))
+    end
+  end,
+  quit = quit,
+}
+
+-- swayimg has no socket to be told things over, so swayimg-command
+-- (command.sh) leaves the command in a file named for this swayimg's
+-- process, a line of its name and the rest after a tab, and sends USR1.
+local told = pid and (os.getenv('XDG_RUNTIME_DIR') .. '/swayimg/' .. pid)
+
+local function asked(mode)
+  local file = told and io.open(told)
+  if not file then
+    return
+  end
+  local said = file:read('*l') or ''
+  file:close()
+  os.remove(told)
+  local name, rest = said:match('^([^\t]*)\t?(.*)$')
+  if commands[name] then
+    commands[name](mode, rest)
+  else
+    swayimg.text.status = 'No command ' .. name
+  end
+end
+
+for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
+  mode.on_signal('USR1', function()
+    asked(mode)
+  end)
+end
 
 -- Each key with an act, by the key that starts it, where it works: alone,
 -- or as the first of a pair and the key after it. swayimg spells a held

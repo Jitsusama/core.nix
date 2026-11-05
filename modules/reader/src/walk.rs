@@ -57,7 +57,7 @@ impl Pieces {
             "theme": "base",
             "htmlLabels": false,
             "flowchart": { "htmlLabels": false },
-            "fontFamily": ink.faces.text,
+            "fontFamily": ink.levels.words.family,
             "themeVariables": {
                 "background": ink.background.hex(),
                 "primaryColor": ink.raised.hex(),

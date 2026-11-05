@@ -175,12 +175,6 @@ function redo(history, count) {
     };
 }
 
-// A command as the menu writes it, in Vim's help notation: its short form
-// outside the brackets, as forg[et].
-function notation(command, short) {
-    return command.length > short.length ? `${short}[${command.slice(short.length)}]` : command;
-}
-
 const ranged = /^(%|[.$0-9'<>,;+-]*)/;
 
 // The menu for what's typed on the command line: a range typed first is

@@ -7,12 +7,16 @@ naming each, on:
   level (Theme.level.name.pointSize, or a property holding a level, such as
   row.level.pointSize), outside the files listed as not yet moved;
 - a listed file that no longer sets any of them other than from a level, or
-  that isn't there, so the list only ever shrinks.
+  that isn't there, so the list only ever shrinks;
+- in each Typst template given after them, as the reader's page holds its
+  own in Rust, a text's size, weight, tracking, strong's delta or a weight
+  or optical size axis said as a number, or a size named with one, where
+  every run of text should name a level (`..level.words.text`).
 
 A setting mixing a level with a step, a font constant, a number or an object
 of its own is set by neither, and fails as well.
 
-Usage: type-is-set-by-level.py MODULES UNMOVED
+Usage: type-is-set-by-level.py MODULES UNMOVED [TEMPLATE...]
 """
 
 import re
@@ -38,6 +42,14 @@ RAW = re.compile(r"\bTheme\.(?:mono|serif|sans|eyebrow)\b|\bFont\.\w+|(?<![\w.])
 # A line ending on one of these, or the next starting on one, carries the
 # same expression on.
 CARRIED_ON = ("?", ":", "+", "-", "*", "/", "&&", "||", "(", ",")
+
+
+# A Typst argument that sets type, and a size, weight or tracking given a
+# name, as a template says them; a number among what either is said as is
+# one of its own.
+TYPST_SETTING = re.compile(r"\b(size|weight|tracking|delta|wght|opsz)\s*:\s*([^,)]*)")
+TYPST_NAMED = re.compile(r"#let\s+([\w-]*(?:size|weight|tracking|delta))\s*=\s*(.*)")
+NUMBER = re.compile(r"(?<![\w.{])\d+(?:\.\d+)?")
 
 
 def code(line: str) -> str:
@@ -72,13 +84,40 @@ def raw_settings(modules: Path, name: str) -> list[str]:
     return found
 
 
+def raw_in_template(template: Path) -> list[str]:
+    """Find each run of text a Rust file's Typst sets by number, saying where.
+
+    Its tests, from the test module on, set nothing the reader shows, so
+    they're left out; an item only for tests before it is read as any other,
+    so it can't hide what follows.
+    """
+    found: list[str] = []
+    before = ""
+    for number, line in enumerate(template.read_text(encoding="utf-8").splitlines()):
+        if before == "#[cfg(test)]" and line.lstrip().startswith("mod "):
+            break
+        if line.strip():
+            before = line.strip()
+        said = code(line)
+        # A comment, Rust's or Typst's, says why rather than setting anything.
+        if said.startswith("//"):
+            continue
+        settings = [*TYPST_SETTING.finditer(said), *TYPST_NAMED.finditer(said)]
+        found.extend(
+            f"{template.name}:{number + 1}: {match.group(1)} is {match.group(2).strip()}"
+            for match in settings
+            if NUMBER.search(match.group(2))
+        )
+    return found
+
+
 def listed(unmoved: Path) -> set[str]:
     """Read the files the list names, by their path under the modules folder."""
     names = (line.split("#")[0].strip() for line in unmoved.read_text().splitlines())
     return {name for name in names if name}
 
 
-def main(modules: Path, unmoved: Path) -> int:
+def main(modules: Path, unmoved: Path, templates: list[Path]) -> int:
     """Check every file, printing what strays, and answer 1 if any does."""
     allowed = listed(unmoved)
     raw: list[str] = []
@@ -110,8 +149,16 @@ def main(modules: Path, unmoved: Path) -> int:
         )
     for line in stale:
         print(line)
-    return 1 if raw or stale else 0
+    typst = [line for template in templates for line in raw_in_template(template)]
+    for line in typst:
+        print(line)
+    if typst:
+        print(
+            "The lines above set the reader's type by number; name a level, as "
+            "..level.words.text (modules/reader/home.nix)."
+        )
+    return 1 if raw or stale or typst else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2])))
+    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2]), [Path(p) for p in sys.argv[3:]]))
