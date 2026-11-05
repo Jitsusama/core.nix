@@ -4768,7 +4768,9 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        glyph: secret ? Theme.glyph.secret
+                        // An ask leads with nothing, since the line isn't a
+                        // find while it stands, its words where the find's are.
+                        glyph: root.asked !== null ? "" : secret ? Theme.glyph.secret
                             : thing ? thing.lead ?? thing.glyph : Theme.glyph.launcher
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
@@ -5352,8 +5354,7 @@ Scope {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
                                     flashed: root.flashing[entry.index] === true
-                                    tinted: root.asked !== null
-                                        && root.askedOver.includes(entry.index)
+                                    tinted: covered
                                     // Seen until the closing card has faded.
                                     shown: card.opacity > 0
                                     fills: false
@@ -5378,12 +5379,18 @@ Scope {
                                     // letters take no wash.
                                     readonly property var matched: quiet ? []
                                         : root.matchedIn(entry.modelData)
+                                    // A row the ask covers wears the tint
+                                    // alone, the find's wash giving way, as
+                                    // it gives way to the flash (VKCF3Z).
+                                    readonly property bool covered: root.asked !== null
+                                        && root.askedOver.includes(entry.index)
                                     // A flashed row's name is plain in the
                                     // flash's ink, as a selected one is.
-                                    name: selected || quiet || flashed ? entry.modelData.name
+                                    name: selected || quiet || flashed || covered
+                                        ? entry.modelData.name
                                         : root.marked(entry.modelData, matched)
                                     plainName: entry.modelData.name
-                                    finds: Fuzzy.runs(matched)
+                                    finds: covered ? [] : Fuzzy.runs(matched)
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []
