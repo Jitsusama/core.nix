@@ -52,11 +52,10 @@ const table = [
     { act: "viewAtTop", keys: [["z", "t"]], modes: scrolling, does: "line to the top" },
     { act: "viewAtBottom", keys: [["z", "b"]], modes: scrolling, does: "line to the foot" },
 
-    // Into the cursor card's acts and out, as his oil's l and h; Backspace
-    // and - are h, as in Vim.
-    { act: "into", keys: ["l"], does: "into its acts" },
-    { act: "out", keys: ["h", "Backspace", "-"], does: "out of its acts" },
-    // Return goes to whoever sent it, or does the act it stands on.
+    // Return goes to whoever sent it, as the quickfix list's goes to the
+    // line's file. A card's other acts are commands, : and Return, never a
+    // row stepped into, so h, l, Backspace and - mean nothing here (Joel,
+    // 2026-11-05: "where in vi does that step into shit?").
     { act: "open", keys: ["Return", "Enter"], hint: "go to", does: "go to its sender" },
 
     // Operators: d is done, marked read where the sender offers Read and
