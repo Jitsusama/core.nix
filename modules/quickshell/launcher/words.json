@@ -4521,6 +4521,7 @@
       "id": "verb:wifi-leave",
       "in": "wifi",
       "name": "Disconnect It",
+      "act": "ending",
       "ends": "disconnect"
     },
     {
@@ -4552,7 +4553,6 @@
       "id": "verb:wifi-forget",
       "in": "wifi",
       "name": "Forget It",
-      "act": "ending",
       "ends": "forget"
     },
     {
@@ -4932,6 +4932,7 @@
       "id": "verb:bluetooth-disconnect",
       "in": "bluetooth",
       "name": "Disconnect It",
+      "act": "ending",
       "ends": "disconnect"
     },
     {
@@ -4943,7 +4944,6 @@
       "id": "verb:bluetooth-forget",
       "in": "bluetooth",
       "name": "Forget It",
-      "act": "ending",
       "ends": "forget"
     },
     {
