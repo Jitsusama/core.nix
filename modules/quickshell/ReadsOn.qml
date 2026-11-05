@@ -81,6 +81,15 @@ Item {
         return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)) + 1);
     }
 
+    // Whether the words end at the room's right edge, as what a row says at
+    // its right does: cut short at a whole word, they rest that much in from
+    // the left, so their ellipsis falls at the edge every side ends at
+    // (VKCF3Z, 2026-11-05), and they slide out and back from there.
+    property bool endsRight: false
+    readonly property real restAt: endsRight ? Math.max(0, width - restWidth) : 0
+    onRestAtChanged: if (!room.moving && !slideOut.running && !slideBack.running)
+        words.x = room.restAt
+
     // The words' face, to find where they give way.
     FontMetrics {
         id: face
@@ -89,6 +98,7 @@ Item {
 
     Text {
         id: words
+        x: room.restAt
         width: room.moving ? implicitWidth : room.restWidth
         text: room.text
         textFormat: room.format
@@ -140,7 +150,7 @@ Item {
         resting.stop();
         slideOut.stop();
         slideBack.stop();
-        words.x = 0;
+        words.x = room.restAt;
         room.moving = false;
     }
 
@@ -155,7 +165,7 @@ Item {
     XAnimator {
         id: slideOut
         target: words
-        from: 0
+        from: room.restAt
         to: -room.over
         duration: Math.round(1000 * Theme.motion.slowdown * room.slide.seconds)
         easing.type: Easing.BezierSpline
@@ -171,7 +181,7 @@ Item {
     XAnimator {
         id: slideBack
         target: words
-        to: 0
+        to: room.restAt
         duration: Theme.motion.medium
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Theme.motion.curve
