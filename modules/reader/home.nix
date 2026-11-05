@@ -272,6 +272,17 @@ let
   copying = key "copying";
   page = key "page";
   commands = key "commands";
+  # The lines' keys work only while one is typed, where some of them mean
+  # something else on the page, as Ctrl+E scrolls it.
+  on =
+    where: act: chord: does:
+    commands act chord does
+    // {
+      when = where;
+    };
+  onLines = on "on the find line or the command line";
+  onCommand = on "on the command line";
+  onFind = on "on the find line";
   keys = [
     (moving "down" "Down" "Down a line")
     (moving "down" "j" "Down a line")
@@ -360,21 +371,21 @@ let
     (page "close" "Z Z" "Close the page")
     (page "close" "Space w" "Close the page")
     (commands "back" "Escape" "Cancel the line, a selection or a count")
-    (commands "leave" "Ctrl+C" "Cancel the line")
-    (commands "delete-letter" "Backspace" "Delete a letter, or leave an empty line")
-    (commands "delete-letter" "Ctrl+H" "Delete a letter, or leave an empty line")
-    (commands "delete-word" "Ctrl+W" "Delete the word before")
-    (commands "delete-to-start" "Ctrl+U" "Delete everything typed")
-    (commands "run" "Return" "Run the command typed")
-    (commands "open" "Return" "Search for what's typed")
-    (commands "next-row" "Down" "Choose the next command in the menu")
-    (commands "next-row" "Tab" "Choose the next command in the menu")
-    (commands "next-row" "Ctrl+N" "Choose the next command in the menu")
-    (commands "previous-row" "Up" "Choose the command before in the menu")
-    (commands "previous-row" "Shift+Tab" "Choose the command before in the menu")
-    (commands "previous-row" "Ctrl+P" "Choose the command before in the menu")
-    (commands "take-name" "Ctrl+Y" "Take the command chosen")
-    (commands "menu-away" "Ctrl+E" "Put the menu away")
+    (onLines "leave" "Ctrl+C" "Cancel the line")
+    (onLines "delete-letter" "Backspace" "Delete a letter, or leave an empty line")
+    (onLines "delete-letter" "Ctrl+H" "Delete a letter, or leave an empty line")
+    (onLines "delete-word" "Ctrl+W" "Delete the word before")
+    (onLines "delete-to-start" "Ctrl+U" "Delete everything typed")
+    (onCommand "run" "Return" "Run the command typed")
+    (onFind "open" "Return" "Search for what's typed")
+    (onCommand "next-row" "Down" "Choose the next command in the menu")
+    (onCommand "next-row" "Tab" "Choose the next command in the menu")
+    (onCommand "next-row" "Ctrl+N" "Choose the next command in the menu")
+    (onCommand "previous-row" "Up" "Choose the command before in the menu")
+    (onCommand "previous-row" "Shift+Tab" "Choose the command before in the menu")
+    (onCommand "previous-row" "Ctrl+P" "Choose the command before in the menu")
+    (onCommand "take-name" "Ctrl+Y" "Take the command chosen")
+    (onCommand "menu-away" "Ctrl+E" "Put the menu away")
   ];
 in
 {
