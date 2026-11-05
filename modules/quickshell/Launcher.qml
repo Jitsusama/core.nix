@@ -4566,6 +4566,9 @@ Scope {
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
+                        // An answer's headline, which y copies, is said in
+                        // its ghost, so that flashes in its row's place.
+                        ghostFlashed: root.flashing[-1] === true
                         // What the selection has to say, since the foot
                         // always says how things stand; else where the
                         // selection is, once there's more than fits. The

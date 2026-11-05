@@ -43,6 +43,9 @@ Item {
     property bool secret: false
     // How what's typed could end, drawn after it in muted type.
     property string ghost
+    // Just copied by y, as an answer's ghost is, for the key timing's
+    // yank-flash.
+    property bool ghostFlashed: false
     // Said in the voice while nothing's typed, as the desktop speaking:
     // the launcher's question, or the lock's "try again".
     property string hint
@@ -944,6 +947,18 @@ Item {
         // and sat on the typed letters' baseline, since the two faces' line
         // boxes differ; the cleared words and the ghost are letters typed,
         // in the field's own face (look 3's piece 1).
+        // y over an answer copies what the ghost says, so the ghost flashes
+        // as a row y copies does (Choice.qml's flashed): the accent's ground
+        // under its own ink, fill and colour only.
+        Rectangle {
+            visible: prompt.ghostFlashed && hintText.visible
+            x: hintText.x
+            y: hintText.y
+            width: Math.min(hintText.width, hintText.contentWidth)
+            height: hintText.height
+            color: Theme.accent
+        }
+
         Text {
             id: hintText
             readonly property bool voiced: input.text === "" && prompt.cleared === ""
@@ -956,7 +971,7 @@ Item {
             text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
                 : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
-            color: Theme.muted
+            color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted
             font.family: hintText.level.family
             font.italic: hintText.level.italic
             font.pointSize: hintText.level.pointSize
