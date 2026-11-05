@@ -455,15 +455,16 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
     machine.succeed(f"rm {looked}")
 
 
-def test_a_document_opens_in_zathura_beside_the_rest_and_q_closes_it(desktop: Desktop) -> None:
-    """A document opens in zathura, beside the rest, and q closes it."""
+def test_a_document_opens_in_zathura_beside_the_rest_and_zz_closes_it(desktop: Desktop) -> None:
+    """A document opens in zathura, beside the rest, and ZZ closes it, as q no longer does."""
     machine = desktop.machine
     desktop.opens_in(desktop.values["page"], "application/pdf", "org.pwmt.zathura")
     windows = json.loads(desktop.as_account("niri msg --json windows"))
     zathura = next(window for window in windows if window["app_id"] == "org.pwmt.zathura")
     assert not zathura["is_floating"], zathura
     desktop.photograph("zathura")
-    machine.send_key("q")
+    machine.send_key("shift-z")
+    machine.send_key("shift-z")
     machine.wait_until_fails(
         f"pgrep -u {desktop.account} -f '[z]athura'", timeout=timedelta(seconds=10)
     )

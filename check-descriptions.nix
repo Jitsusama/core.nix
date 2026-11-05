@@ -699,12 +699,13 @@
     upright's cut, and video files open in it
   '';
   mpv-keys-go-where-they-say = ''
-    mpv's h, l, j and k seek where Left, Right, Up and Down do, a number before a key does it that
-    many times and alone chooses nothing, Escape stops one, 0 and $ go to the start and the end, [ and
-    ] alone change the speed, J and L do what j and l did, yy copies the frame as a PNG and y alone
-    nothing, ? and Space ? ask the launcher for the keys, ]b and [b, gg, G and a number before G go
-    through the list, f and Escape go in and out of full screen, Space pauses and q closes it, and
-    a program running mpv with its own forced Escape always gets it
+    mpv's Left, Right, Down and Up seek where h, l, j and k do, a number before a key does it that
+    many times and alone chooses nothing, Escape stops one, 0 and $ go to the start and the end,
+    [ and ] alone change the speed, Z alone delays the subtitles, J and L do what j and l did, yy
+    copies the frame as a PNG and y alone nothing, ? and F1 ask the launcher for the keys, ]b and
+    [b, gg, G and a number before G go through the list, f and Escape go in and out of full
+    screen, Space pauses at once, even before a ?, q, Q, Escape and Space w close nothing, ZZ
+    closes it, and a program running mpv with its own forced Escape always gets it
   '';
   mpv-says-the-file-it-plays-now = ''
     mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
@@ -1342,14 +1343,13 @@
     End, Home, G and gg to the last and first, l and h as → and ←, ]b and [b as well,
     a number before G to that picture and before a move that many, j and k move a large picture
     as ↓ and ↑ do, dd and Delete trash it and u brings it back, yy copies it,
-    ? and Space ? ask the launcher for the keys, Escape stops a number or a pair waiting and then
-    closes it, the gallery answers
-    the same keys, and the picture it opened with, and none after, is said to the desktop's list of
-    files opened lately
+    ? and Space ? ask the launcher for the keys, Escape stops a number or a pair waiting, Escape and
+    q close nothing and ZZ and Space w close it, the gallery answers the same keys, and the picture it
+    opened with, and none after, is said to the desktop's list of files opened lately
   '';
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
-    and nothing once q closes it, clearing what a killed one left
+    and nothing once ZZ closes it, clearing what a killed one left
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -2528,19 +2528,20 @@
     the monospaced face, and PDFs open in it
   '';
   zathura-keys-go-where-they-say = ''
-    every key zathura lists lands where it says: Left, Right, J, K and the page keys turn the pages,
-    Home, End, gg, G and a count before G go to that page, j, k, h, l, Ctrl+D, Ctrl+U, Ctrl+F and
-    Ctrl+B scroll as their arrows do, Tab, Ctrl+O and Ctrl+I go through the jumps, m and ' mark
+    every key zathura lists lands where it says: J, K and the page keys turn the pages, Home, End,
+    gg, G and a count before G go to that page, the arrows scroll as j, k, h and l do, Ctrl+D,
+    Ctrl+U, Ctrl+F and Ctrl+B scroll, Tab, Ctrl+O and Ctrl+I go through the jumps, m and ' mark
     and go back, / and the question mark key find on and back and n and N again, Space and the
     question mark key ask the launcher for the keys, ]b and [b open the next document in its folder
-    and the one before, with a count that many and coming round, and q closes it
+    and the one before, with a count that many and coming round, q closes nothing, and ZZ and
+    Space w close it
   '';
   zathura-next-document-passes-clippy = ''
     clippy finds nothing in zathura's ]b and [b, which open the document beside, or its tests
   '';
   zathura-says-the-document-it-has-open = ''
     zathura says the document it has open, read by its Recent's command as its process and whole
-    path, and nothing once q closes it
+    path, and nothing once ZZ closes it
   '';
   zathura-says-the-files-it-opens = ''
     zathura says each document it's started with to the desktop's list of files opened lately, then

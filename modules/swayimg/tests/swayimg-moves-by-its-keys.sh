@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # Runs inside cage: opens pictures in swayimg with the account's settings,
-# presses every key it lists that moves, trashes or copies as a keyboard
-# would, Neovim's beside the arrows they twin, and fails unless each press
-# does what it should. swayimg writes to `shown` after every frame the
+# presses every key it lists that moves, trashes, copies or closes as a
+# keyboard would, Neovim's beside the arrows that do as they do, and the
+# keys that close nothing, and fails unless each press does what it should. swayimg writes to `shown` after every frame the
 # picture it has drawn or chosen, the mode it's in, where the picture is
 # and whether it's full screen. cage doesn't pass on how this ended, so it
 # leaves `moved` once every press has.
@@ -21,7 +21,8 @@ set -euo pipefail
 echo "not a picture" > pictures/0-first.txt
 : > shown
 
-swayimg --execute='swayimg.on_redrawn(function()
+# What each frame drawn writes to `shown`.
+watched='swayimg.on_redrawn(function()
   local mode = swayimg.mode
   local image, at = nil, { x = 0, y = 0 }
   if mode == "gallery" then
@@ -36,7 +37,8 @@ swayimg --execute='swayimg.on_redrawn(function()
   file:write(image and image.path:match("[^/]+$") or "", "\n", "in ", mode, "\n",
     "at ", at.x, " ", at.y, "\n", "full ", tostring(swayimg.fullscreen), "\n")
   file:close()
-end)' pictures/a.ppm pictures/b.ppm pictures/c.ppm > said 2>&1 &
+end)'
+swayimg --execute="$watched" pictures/a.ppm pictures/b.ppm pictures/c.ppm > said 2>&1 &
 viewer=$!
 
 # Until swayimg has drawn what's wanted, a line of `shown`, or so many
@@ -196,8 +198,8 @@ press Up "$top"
 typed j "$down"
 typed k "$top"
 
-# Escape leaving full screen before it closes isn't pressed here: cage
-# never grants a window full screen, so swayimg never is.
+# Escape leaving full screen isn't pressed here: cage never grants a
+# window full screen, so swayimg never is.
 
 # In the gallery, h j k l choose as the arrows do, gg and G go to the
 # first and the last, a number before G to that picture, and a number
@@ -227,9 +229,32 @@ done
 cmp -s copied pictures/a.ppm || { echo "yy in the gallery didn't copy the file"; exit 1; }
 asks
 
-# Escape at rest closes it.
-wtype -k Escape
-wait "$viewer"
+# Escape at rest and q close nothing, in the gallery and on a picture: a
+# second on, swayimg is still there. ZZ closes it.
+stays_open() {
+  if [ "$1" = q ]; then wtype q; else wtype -k "$1"; fi
+  sleep 1
+  if ! kill -0 "$viewer" 2> /dev/null; then
+    echo "$1 closed swayimg $2"
+    exit 1
+  fi
+}
+stays_open Escape "in the gallery"
+stays_open q "in the gallery"
+press Return "in viewer"
+stays_open Escape "on a picture"
+stays_open q "on a picture"
+# Up to ten seconds for swayimg to close.
+closes() {
+  for _ in $(seq 100); do
+    if ! kill -0 "$viewer" 2> /dev/null; then return 0; fi
+    sleep 0.1
+  done
+  echo "$1 didn't close swayimg"
+  exit 1
+}
+wtype -M shift zz -m shift
+closes ZZ
 
 # The picture it opened with was said to the desktop's list of files opened
 # lately, once, and none it was moved to after.
@@ -238,4 +263,20 @@ if [ "$told" != "add swayimg $PWD/pictures/a.ppm " ]; then
   echo "swayimg said: $told"
   exit 1
 fi
+
+# Space w closes one opened afresh, once it has the keyboard, which l
+# moving it on shows.
+swayimg --execute="$watched" pictures/a.ppm pictures/b.ppm > said 2>&1 &
+viewer=$!
+until_shown a.ppm "opening again" 60
+for _ in 1 2 3 4 5; do
+  wtype l
+  inotifywait -q -q -t 3 -e close_write shown || true
+  if grep -q -x b.ppm shown; then
+    break
+  fi
+done
+until_shown b.ppm "l, opened again"
+wtype -k space w
+closes "Space w"
 touch moved

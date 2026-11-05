@@ -118,17 +118,18 @@ local function face(chord)
   return chord
 end
 
--- The few keys that move on, which a quiet line names as a picture opens.
+-- The few keys that move on, which a quiet line names as a picture opens,
+-- by their letters, as every hint of Joel's names them.
 local hint = {
-  [swayimg.viewer] = face('Left')
+  [swayimg.viewer] = face('h')
     .. ' '
-    .. face('Right')
+    .. face('l')
     .. '  pictures     '
     .. face('Return')
     .. '  all     '
-    .. face('Shift+slash')
+    .. face('space Shift+slash')
     .. '  keys',
-  [swayimg.gallery] = face('Return') .. '  open     ' .. face('Shift+slash') .. '  keys',
+  [swayimg.gallery] = face('Return') .. '  open     ' .. face('space Shift+slash') .. '  keys',
 }
 
 -- A number, or the first of a pair of keys, waiting for what comes after
@@ -428,13 +429,18 @@ local function end_or_nth(dir)
   end
 end
 
--- Escape leaves full screen first, and then closes.
+-- Escape leaves full screen, and at rest does nothing: a look is put away
+-- by ZZ or Space w, as every window of Joel's is, never by a key pressed
+-- in passing.
 local function escape()
   if swayimg.fullscreen then
     swayimg.fullscreen = false
-  else
-    quit()
   end
+end
+
+-- q closes nothing, as in all his programs, and says what does.
+local function inert()
+  swayimg.text.status = 'q does nothing · ZZ closes'
 end
 
 -- What each key with an act does. The arrows go that way, to the previous
@@ -468,6 +474,7 @@ local acts = {
     swayimg.viewer.rotate(90)
   end,
   close = quit,
+  inert = inert,
   keys = list,
 }
 
@@ -495,7 +502,17 @@ for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
       end
     end
   end
+  -- Unlisted, since it does nothing, but bound, to say so.
+  alone[mode].q = 'inert'
 end
+
+-- The slideshow, swayimg's own, which s starts, closed on Escape as the
+-- viewer did; there Escape goes back to the picture, as s does, and q
+-- says what closes.
+swayimg.slideshow.on_key('Escape', function()
+  swayimg.mode = 'viewer'
+end)
+swayimg.slideshow.on_key('q', inert)
 
 -- A key pressed: the second of a pair waiting finishes it; a digit adds to
 -- the number, a pair's first key waits for its second, and a key alone
