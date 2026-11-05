@@ -323,6 +323,87 @@ QtObject {
         holds("and its letter is where it wants to be", far.want, 0);
     }
 
+    // Visual in the drawer, as on a page (VKCF3Z's spec v2): v chooses
+    // letters from the cursor's and V whole lines, each again ending it and
+    // the other changing its kind; the page's moves extend it, o goes to its
+    // other end, y copies it and Escape lets it go, each back on the page;
+    // and gv on the page brings the last back.
+    function drawerVisual(holds) {
+        const into = ["Escape", "Space", "Right"];
+        // [what, the keys typed from going in, the acts done, the mode left in]
+        const doing = [
+            ["v chooses letters", ["v"], ["select"], "pageVisual"],
+            ["V chooses lines", ["V"], ["selectLines"], "pageVisualLine"],
+            ["v again ends it", ["v", "v"], ["select", "select"], "page"],
+            ["V again ends it", ["V", "V"], ["selectLines", "selectLines"], "page"],
+            ["V in letters takes lines", ["v", "V"], ["select", "selectLines"],
+                "pageVisualLine"],
+            ["v in lines takes letters", ["V", "v"], ["selectLines", "select"], "pageVisual"],
+            ["the page's moves extend it", ["v", "j", "l", "G", "g", "g", "Ctrl+d", "n"],
+                ["select", "next", "right", "last", "first", "halfDown", "seekNext"],
+                "pageVisual"],
+            ["and the lines'", ["V", "k", "Ctrl+e", "N"],
+                ["selectLines", "previous", "scrollDown", "seekPrevious"], "pageVisualLine"],
+            ["o goes to its other end", ["v", "o"], ["select", "otherEnd"], "pageVisual"],
+            ["y copies it and goes back to the page", ["v", "y"], ["select", "copy"], "page"],
+            ["and Y", ["V", "Y"], ["selectLines", "copy"], "page"],
+            ["Escape lets it go", ["V", "Escape"], ["selectLines", "back"], "page"],
+            ["and Ctrl+C", ["v", "Ctrl+c"], ["select", "back"], "page"],
+            ["Escape lets a count go first", ["v", "3", "Escape"], ["select"], "pageVisual"],
+            ["and on the page after does nothing", ["v", "Escape", "Escape", "j"],
+                ["select", "back", "next"], "page"],
+            ["its search lands in it", ["v", "/", "a", "Return"], ["select", "seek"],
+                "pageVisual"],
+            ["d, x, c, p and q do nothing yet", ["v", "d", "x", "c", "p", "q", "j"],
+                ["select", "next"], "pageVisual"],
+            ["and no way back to the rows is in it, the arrow only a move",
+                ["v", "Z", "Z", "Space", "Left"], ["select", "left"], "pageVisual"],
+            ["gv on the page brings the last back", ["v", "Escape", "g", "v"],
+                ["select", "back", "reselect"], "page"]
+        ];
+        for (const [what, keys, acts, mode] of doing) {
+            const done = typed(into.concat(keys));
+            holds(`the drawer's visual: ${what}`, done.acts, ["normal", "drawer"].concat(acts));
+            holds(`the drawer's visual: ${what}, in its mode`, done.mode, mode);
+        }
+        holds("the drawer's visual: a count goes before a move in it",
+            typed(into.concat(["v", "3", "j"])).counted, ["normal", "drawer", "select", "3 next"]);
+        holds("the drawer's visual: a key that does nothing in it is its own",
+            typed(into.concat(["v", "d"])).ours, true);
+        holds("the drawer's visual: : in it opens the command line, whose :q goes back",
+            typed(into.concat(["V", ":"])).acts, ["normal", "drawer", "selectLines", "command"]);
+        for (const act of ["select", "selectLines", "otherEnd", "copy", "reselect", "back"])
+            holds(`the drawer's visual: ${act} is once a press`, Keys.repeats(act), false);
+        holds("the drawer's visual: v on the rows chooses nothing here",
+            typed(["Escape", "v"]).mode, "normal");
+        for (const mode of ["pageVisual", "pageVisualLine"])
+            holds(`the drawer's visual: ${mode} is the drawer's`, Keys.paged(mode), true);
+        holds("the drawer's visual: the page is the drawer's", Keys.paged("page"), true);
+        holds("the drawer's visual: normal isn't", Keys.paged("normal"), false);
+
+        // What visual takes (DrawerPage.chosen), from where it began to the
+        // cursor, either way round, on lines ten letters long but the 3rd,
+        // empty: [what, began, cursor, kind, each line's [line, from, to]],
+        // `to` past the last letter taken, since the cursor's own is.
+        const lengths = [10, 10, 0, 10, 10].map(length => ({ length }));
+        const chose = [
+            ["letters along one line", [1, 2], [1, 5], "letters", [[1, 2, 6]]],
+            ["and back along it", [1, 5], [1, 2], "letters", [[1, 2, 6]]],
+            ["one letter, where it began", [1, 4], [1, 4], "letters", [[1, 4, 5]]],
+            ["letters down three lines, the empty one whole", [1, 3], [3, 1], "letters",
+                [[1, 3, 10], [2, 0, 0], [3, 0, 2]]],
+            ["and up them", [3, 1], [1, 3], "letters", [[1, 3, 10], [2, 0, 0], [3, 0, 2]]],
+            ["whole lines, from either end", [3, 4], [1, 7], "lines",
+                [[1, 0, 10], [2, 0, 0], [3, 0, 10]]],
+            ["one whole line", [4, 9], [4, 0], "lines", [[4, 0, 10]]]
+        ];
+        for (const [what, began, at, kind, want] of chose) {
+            const got = Page.chosen({ line: began[0], letter: began[1] },
+                { line: at[0], letter: at[1] }, kind, lengths);
+            holds(`visual takes ${what}`, got.map(one => [one.line, one.from, one.to]), want);
+        }
+    }
+
     // Where the drawer's keys take its cursor and its view (DrawerPage.js),
     // on a page of twenty lines of the pitch, 24 px, set as a plate sets
     // them: a title's two, an empty line, three facts', another, and its
@@ -555,8 +636,10 @@ QtObject {
             lastPlace: "last", keys: "keys", close: "close", ends: "ends",
             nextRow: "next row", caret: "caret", word: "word", intoDrawer: "into the drawer",
             lines: "lines", along: "along", scroll: "scroll", back: "back",
-            seek: "seek", seekOn: "seek on" };
-        const modes = { normal: "Normal", insert: "Insert", page: "Drawer" };
+            seek: "seek", seekOn: "seek on", select: "select", reselect: "reselect",
+            otherEnd: "other end", copy: "copy" };
+        const modes = { normal: "Normal", insert: "Insert", page: "Drawer",
+            pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
         holds("the list's rows, the arrows after Vim's", keyed("rows"),
@@ -582,6 +665,12 @@ QtObject {
             "Space \u2190  :q");
         holds("the drawer's search, either way", keyed("seek"), "/  ?");
         holds("and on to its next match, either way", keyed("seek on"), "n  N");
+        holds("the drawer's visual, by letters and lines", keyed("select"), "v  V");
+        holds("and the last brought back", keyed("reselect"), "gv");
+        holds("choosing, its other end", keyed("other end"), "o");
+        holds("and copying it", keyed("copy"), "y  Y");
+        holds("choosing has a section of its own",
+            list.some(line => line.heading === "Choosing"), true);
         // Each mode's section, by its heading: the keys each line names, as
         // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
         const sections = {};
@@ -596,7 +685,7 @@ QtObject {
         });
         holds("the list's sections, normal's where it's opened first",
             list.filter(line => line.heading !== undefined).map(line => line.heading),
-            ["Normal", "Insert", "Drawer"]);
+            ["Normal", "Insert", "Drawer", "Choosing"]);
         holds("the drawer's moves, as normal's on the rows",
             ["gg  G", "H  M  L", "Ctrl+D  Ctrl+U", "Ctrl+F  Ctrl+B", "3j  12G"]
                 .filter(keys => !sections.Drawer.includes(keys.split("  ")[0])), []);
@@ -722,6 +811,7 @@ QtObject {
         drawerKeys(holds);
         drawerPage(holds);
         drawerSearch(holds);
+        drawerVisual(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
