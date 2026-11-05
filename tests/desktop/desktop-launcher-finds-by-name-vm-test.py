@@ -1038,26 +1038,38 @@ def escape_at_rest_stays(desktop: Desktop) -> None:
 def walk_the_rows_follows(desktop: Desktop) -> None:
     """Press Ctrl+] on a row found from home, and Ctrl+T, Ctrl+O and Tab over it, through niri.
 
-    Ctrl+] goes to the place the row lives, the cursor on it there, as Vim follows a tag, and
-    Ctrl+T comes back, as Vim's pops its tag stack, saying Vim's E73 with nothing to pop. The
-    place it went to is on the jump list too. In the row's own place Ctrl+] means nothing.
+    Keep Awake holds no parts, so Ctrl+] goes to the place it lives, the cursor on it there, as
+    Vim follows a tag, and Ctrl+T comes back, as Vim's pops its tag stack, saying Vim's E73
+    with nothing to pop. The place it went to is on the jump list too. In the row's own place
+    Ctrl+] means nothing.
     """
     machine = desktop.machine
-    desktop.answer("emoji")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    desktop.answer("keep awake")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "session:awake")
     desktop.normal()
+    # Where it lives is read from the first follow and held to after, so the walk says the
+    # place is the same each time without naming the catalogue's crumbs.
+    lives: list[object] = []
 
     def followed() -> None:
-        desktop.launcher_until(
-            lambda shown: (
-                (shown["held"], shown["typed"], (shown["selected"] or {}).get("name"))
-                == (["desktop"], "", "Emoji")
-            )
-        )
+        def there(shown: Json) -> bool:
+            """Say whether the launcher holds Keep Awake's own place, onto it, nothing typed."""
+            onto = (shown["selected"] or {}).get("is") == "session:awake"
+            held = shown["held"]
+            if not (onto and shown["typed"] == "" and held != []):
+                return False
+            if not lives:
+                lives.append(held)
+            return bool(held == lives[0])
+
+        desktop.launcher_until(there)
 
     def came_back() -> None:
         desktop.launcher_until(
-            lambda shown: (shown["held"], shown["typed"], shown["rows"]) == ([], "emoji", ["Emoji"])
+            lambda shown: (
+                (shown["held"], shown["typed"], (shown["selected"] or {}).get("is"))
+                == ([], "keep awake", "session:awake")
+            )
         )
 
     for key, then in [
