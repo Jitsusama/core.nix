@@ -134,6 +134,22 @@ onLinux {
       touch $out
     '';
 
+  # A window alone on its workspace sits in the middle of the screen, for
+  # every program, rather than against the left edge: niri's layout block
+  # says always-center-single-column, and nothing comments it out.
+  niri-centres-a-window-alone =
+    let
+      text = (account graphical).xdg.configFile."niri/config.kdl".text;
+      after = lib.splitString "\nlayout {\n" text;
+      layout = lib.head (lib.splitString "\n}\n" (lib.last after));
+    in
+    holds "niri-centres-a-window-alone"
+      "niri's layout block in config.kdl no longer says always-center-single-column, so a window alone sits against the screen's left edge."
+      (
+        lib.length after == 2
+        && lib.elem "    always-center-single-column" (lib.splitString "\n" layout)
+      );
+
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
   niri-accepts-its-configuration =
