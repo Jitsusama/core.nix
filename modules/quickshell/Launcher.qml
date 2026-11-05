@@ -2776,7 +2776,27 @@ Scope {
         const shown = matches.filter(row => !row.endedBy);
         const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        return Steady.kept(shown, found.concat(renamed), steadyId);
+        if (!holdingRows) {
+            waitingRows = 0;
+            return Steady.kept(shown, found.concat(renamed), steadyId);
+        }
+        const still = Steady.held(shown, found.concat(renamed), steadyId);
+        waitingRows = still.waiting;
+        return still.rows;
+    }
+
+    // While visual, a pending operator or the command line acts on the
+    // rows, they hold still: what arrives waits, counted in the foot as
+    // "2 new", and comes in at the end once it ends, as a refresh adds it
+    // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05).
+    readonly property bool holdingRows: open && (visual || pendingSaid !== ""
+        || commanding !== null)
+    property int waitingRows: 0
+    readonly property string waitingSaid: waitingRows === 0 ? ""
+        : (Words.field.waiting ?? "").replace("{count}", String(waitingRows))
+    onHoldingRowsChanged: {
+        if (!holdingRows && waitingRows > 0)
+            reshow(held.length);
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -3108,7 +3128,8 @@ Scope {
     function foundMore(fresh) {
         if (!open || asking || typed.trim() === "")
             return;
-        if (fresh)
+        // Rows held still take what was found in their order, waiting.
+        if (fresh && !holdingRows)
             search(typed);
         else
             reshow(held.length);
@@ -4528,6 +4549,8 @@ Scope {
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
+            // How many rows wait behind rows held still (holdingRows).
+            waiting: root.waitingRows,
             begun: prompt.standing.typed.join(""),
             // The command line, while it's open: what it holds, the line
             // chosen, and each line its menu shows, as its command and
@@ -6135,13 +6158,21 @@ Scope {
                                     root.factsWidest[`${fact.entry.name}:${fact.way}`] ?? 0);
                             }
 
+                            // What waits behind rows held still, "2 new":
+                            // the last fact, beside the mode holding them,
+                            // which never gives way, so the rest fit what
+                            // it leaves (VKCF3Z, 2026-11-05).
+                            readonly property var waiting: root.waitingSaid === "" ? []
+                                : [{ entry: { name: "waiting" }, way: "", said: root.waitingSaid }]
                             readonly property var fit: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
-                                return Standing.fittedFrom(facts, told => wide(told) <= foot.room,
+                                const left = foot.room - (waiting.length === 0 ? 0
+                                    : place(waiting[0]) + spacing);
+                                return Standing.fittedFrom(facts, told => wide(told) <= left,
                                     root.footStage);
                             }
-                            readonly property var kept: fit.told
+                            readonly property var kept: fit.told.concat(waiting)
 
                             // Noted once the binding has settled, since `fit`
                             // reads what this writes.

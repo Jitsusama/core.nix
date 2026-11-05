@@ -48,6 +48,15 @@ function kept(shown, now, id) {
     return out;
 }
 
+// The rows shown, held still as kept holds them, with no new one among
+// them: while visual, a pending operator or the command line holds the
+// rows, what arrives waits, counted, and comes in at the end once it ends
+// (VKCF3Z's spec). { rows, waiting }.
+function held(shown, now, id) {
+    const out = kept(shown, now, id);
+    return { rows: out.slice(0, shown.length), waiting: out.length - shown.length };
+}
+
 // The rows without those that left since they were shown, as a key makes
 // the list afresh; a row its source draws dimmed stays where it stands.
 function forgotten(rows) {
