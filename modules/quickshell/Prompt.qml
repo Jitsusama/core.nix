@@ -1078,14 +1078,27 @@ Item {
         // in the field's own face (look 3's piece 1).
         // y over an answer copies what the ghost says, so the ghost flashes
         // as a row y copies does (Choice.qml's flashed): the accent's ground
-        // under its own ink, fill and colour only.
+        // under its own ink, fill and colour only. Like a find's wash
+        // (Wash.qml) it lies under the letters alone, from the first to the
+        // last, so the space that sets "= 84" off what's typed stays bare.
         Rectangle {
-            visible: prompt.ghostFlashed && hintText.visible
-            x: hintText.x
+            readonly property string inked: hintText.text.trim()
+            readonly property real before: {
+                void ghostFace.font;
+                const text = hintText.text;
+                return ghostFace.advanceWidth(text.slice(0, text.length - text.trimStart().length));
+            }
+            visible: prompt.ghostFlashed && hintText.visible && inked !== ""
+            x: hintText.x + before
             y: hintText.y
-            width: Math.min(hintText.width, hintText.contentWidth)
+            width: Math.max(0, Math.min(hintText.width - before, ghostFace.advanceWidth(inked)))
             height: hintText.height
             color: Theme.accent
+
+            FontMetrics {
+                id: ghostFace
+                font: hintText.font
+            }
         }
 
         Text {
