@@ -140,11 +140,14 @@ ShellRoot {
     }
 
     // A reading of the stood-in day whose sunset is at this moment, or
-    // asked from nowhere, or with no sunset at all.
-    function evening(reading, sunset) {
+    // asked from nowhere, or with no sunset at all; the day before's sunset
+    // a day before now unless it's said, or none from nowhere.
+    function evening(reading, sunset, eve) {
         const asked = sunset === undefined ? null
             : { sunset: sunset, calendars: sunset === null ? [] : reading.evening.calendars };
-        return Object.assign({}, reading, { evening: asked });
+        const before = sunset === undefined ? null
+            : { sunset: eve ?? Date.now() - 86400000, calendars: reading.eve.calendars };
+        return Object.assign({}, reading, { evening: asked, eve: before });
     }
 
     // The Hebrew and Islamic days begin at sunset where Date is seen from:
@@ -153,10 +156,12 @@ ShellRoot {
     // day begun then; with nowhere to see it from, "at sunset", and on a day
     // with none, "no sunset today", each in the face words are read in
     // with the civil day kept. The other calendars' days begin at midnight.
+    // Where the day before's sunset comes after midnight, far north in
+    // summer, the day before's days are now's until it comes.
     function asTheDayEnds(stoodIn) {
         const said = Words.of("today:calendars").said ?? {};
-        const dayEnds = sunset => {
-            Calendars.reading = evening(stoodIn, sunset);
+        const dayEnds = (sunset, eve) => {
+            Calendars.reading = evening(stoodIn, sunset, eve);
             const held = today.answer("date").rows
                 .find(row => row.name === Words.name("today:calendars"));
             return held.verbs().map(each => {
@@ -198,6 +203,15 @@ ShellRoot {
         expect("and says the day began at sunset",
             after[3].fact === `${Words.name("today:calendars:dayBegan")} ${clock(earlier)}`,
             after[3].fact);
+        const soon = Date.now() + 1800000;
+        const unended = dayEnds(Date.now() + 86400000, soon);
+        expect("before the day before's sunset after midnight, its days are still now's",
+            sides(unended) === "Chinese 27 Ninth Month, Japanese Reiwa 8, Hebrew 24 Heshvan "
+                + "5787, Islamic 24 Jumada I 1448 AH", sides(unended));
+        expect("and they say they begin at that sunset",
+            unended[2].fact === `${Words.name("today:calendars:dayBegins")} ${clock(soon)}`
+                && unended[2].title === "\u05db\u05f4\u05d3 \u05d1\u05d7\u05e9\u05d5\u05d5\u05df "
+                    + "\u05d4\u05f3\u05ea\u05e9\u05e4\u05f4\u05d6", JSON.stringify(unended[2]));
         const nowhere = dayEnds(undefined);
         expect("seen from nowhere, the day begins at sunset, the civil day kept",
             nowhere[2].side === "Hebrew 25 Heshvan 5787" && nowhere[3].fact
