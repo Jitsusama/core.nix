@@ -329,6 +329,7 @@ Rectangle {
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
             text: right.said
             wholeWords: true
+            endsRight: true
             level: Theme.level.note
             // Muted reads under the Lc 60 any text needs on the selection.
             color: row.flashed ? row.flashInk

@@ -73,13 +73,27 @@ Item {
     // long for the room has nowhere else to give way, so it's cut through.
     // Qt elides what doesn't fit with a pixel to spare, so it's given one,
     // far less than the space or mark after the word.
-    readonly property real restWidth: {
+    readonly property real restWidth: Math.min(width, restInk + (restInk < width ? 1 : 0))
+    // How wide the words' ink is at rest, cut at a whole word: as wide as
+    // their room where they're whole or cut through.
+    readonly property real restInk: {
         if (!wholeWords || format !== Text.PlainText || over <= 0)
             return width;
         void face.font;
         const cut = Reading.wholeWords(text, width, said => face.advanceWidth(said));
-        return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)) + 1);
+        return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)));
     }
+
+    // Whether the words end at the room's right edge, as what a row says at
+    // its right does: cut short at a whole word, they rest that much in from
+    // the left, so their ellipsis falls at the edge every side ends at
+    // (VKCF3Z, 2026-11-05), and they slide out and back from there.
+    property bool endsRight: false
+    // Rested on the ink, not the spare pixel, so the ellipsis ends at the
+    // edge.
+    readonly property real restAt: endsRight ? Math.max(0, width - restInk) : 0
+    onRestAtChanged: if (!room.moving && !slideOut.running && !slideBack.running)
+        words.x = room.restAt
 
     // The words' face, to find where they give way.
     FontMetrics {
@@ -89,6 +103,7 @@ Item {
 
     Text {
         id: words
+        x: room.restAt
         width: room.moving ? implicitWidth : room.restWidth
         text: room.text
         textFormat: room.format
@@ -140,7 +155,7 @@ Item {
         resting.stop();
         slideOut.stop();
         slideBack.stop();
-        words.x = 0;
+        words.x = room.restAt;
         room.moving = false;
     }
 
@@ -155,7 +170,7 @@ Item {
     XAnimator {
         id: slideOut
         target: words
-        from: 0
+        from: room.restAt
         to: -room.over
         duration: Math.round(1000 * Theme.motion.slowdown * room.slide.seconds)
         easing.type: Easing.BezierSpline
@@ -171,7 +186,7 @@ Item {
     XAnimator {
         id: slideBack
         target: words
-        to: 0
+        to: room.restAt
         duration: Theme.motion.medium
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Theme.motion.curve
