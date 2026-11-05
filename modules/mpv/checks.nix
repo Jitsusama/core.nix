@@ -65,9 +65,9 @@ onLinux {
   # wl-copy, ? and F1 ask the launcher for the keys, both stood in here,
   # Space plays on at once, even before a ?, and ZZ closes it where q, Q,
   # Escape and Space w leave it open. : asks the launcher for its command
-  # line, and what mpv-command carries back does what it says. A program that runs mpv with
-  # Escape of its own, forced, as the camera's viewfinder does, always
-  # gets it.
+  # line, and what mpv-command carries back does what it says. A program
+  # that runs mpv with Escape of its own, forced, as the camera's
+  # viewfinder does, always gets it.
   mpv-keys-go-where-they-say =
     let
       home = account graphical;

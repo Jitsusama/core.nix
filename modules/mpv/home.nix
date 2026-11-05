@@ -235,6 +235,10 @@ let
         chord = "s";
         does = "Save the frame as a picture";
       }
+      {
+        chord = "Shift+s";
+        does = "Save the frame without its subtitles";
+      }
     ]
     ++ [
       {

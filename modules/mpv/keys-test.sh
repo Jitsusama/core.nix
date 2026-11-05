@@ -60,9 +60,15 @@ reads() {
   done
   never "$3 to leave $1 at $2, not $(property "$1")"
 }
+# A seek sent while mpv is still opening the file is dropped, as the
+# opening puts it back at the start, so it's sent again until it lands.
 from() {
-  at "$1"
-  reads time-pos "${1}000" "a seek to $1 seconds"
+  for _ in $(seq 600); do
+    at "$1"
+    if [ "$(property time-pos)" = "${1}000" ]; then return 0; fi
+    sleep 0.1
+  done
+  never "a seek to $1 seconds to leave time-pos at ${1}000, not $(property time-pos)"
 }
 
 for _ in $(seq 600); do
