@@ -486,7 +486,10 @@ Floating {
                         id: titleText
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                        text: drawer.title
+                        // A name with no space, as a server's or a path,
+                        // may break after a dot or a slash rather than
+                        // mid-word, where it's as wide as the Title allows.
+                        text: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         lineHeightMode: Text.FixedHeight
