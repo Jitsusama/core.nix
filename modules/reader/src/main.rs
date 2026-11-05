@@ -1593,15 +1593,22 @@ impl App {
             eprintln!("link: {}", link.href);
         }
         match links::target(&link.href, &self.file) {
-            // A link to the page itself, with no heading, goes to its top.
-            links::Target::Here(anchor) if anchor.is_empty() => self.leap(0.0),
+            // A link to the page itself, with no heading, goes to its top,
+            // and one to a heading puts the cursor on it, as gg and ]] do.
+            links::Target::Here(anchor) if anchor.is_empty() => {
+                self.leap(0.0);
+                self.aim = None;
+            }
             links::Target::Here(anchor) => {
                 let heading = self
                     .words
                     .as_ref()
                     .and_then(|lines| links::heading_at(lines, &anchor));
                 match heading {
-                    Some(pt) => self.leap(pt.max(0.0) * self.px_per_pt()),
+                    Some(pt) => {
+                        self.remember(self.heading() / self.px_per_pt());
+                        self.land(pt.max(0.0));
+                    }
                     None => eprintln!("reader: no heading here is #{anchor}"),
                 }
             }

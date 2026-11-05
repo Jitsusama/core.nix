@@ -362,6 +362,7 @@ downs=$(how_many '^key Down None')
 press j
 logged '^key Down None' $((downs + 1))
 awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt, not the top"
+awk "BEGIN { exit !($(cursor) < 100) }" || fail "the link left the cursor at $(cursor) pt"
 
 # The link near the top to another markdown file sets it in this window,
 # and Ctrl+O comes back to the place it left on the first, Ctrl+I goes on
