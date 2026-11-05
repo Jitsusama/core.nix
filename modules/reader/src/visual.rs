@@ -346,19 +346,19 @@ impl App {
         }
     }
 
-    /// The cursor's line, its top and foot in points: the selection's
-    /// cursor's while selecting, and else the page's.
+    /// The cursor's line, its cell's top and foot in points: the
+    /// selection's cursor's while selecting, and else the page's.
     pub(crate) fn cursor_line(&self) -> Option<(f64, f64)> {
         if let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref()) {
-            return Some(layout.line_extent(selection.cursor.line));
+            return layout.lines.get(selection.cursor.line).map(moves::rule_of);
         }
         let (i, lines) = self.cursor().zip(self.words.as_deref())?;
-        Some((moves::top_of(&lines[i]), moves::foot_of(&lines[i])))
+        Some(moves::rule_of(&lines[i]))
     }
 
     /// The cursor's line, marked as his `cursorlineopt=number` marks only
     /// the number: a thin rule in the accent in the page's left margin,
-    /// as tall as the line's words, clear of the marks a list hangs there.
+    /// as tall as the line's cell, clear of the marks a list hangs there.
     /// A window too narrow for that sets it half way into the room left of
     /// the words, and one with no room there draws none.
     #[expect(
@@ -431,8 +431,10 @@ impl App {
         if let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref())
             && let Some(at) = layout.cursor(selection)
         {
-            let top = at.baseline_pt - at.size_pt * 0.92;
-            mark(cursor, (top, top + at.size_pt * 1.2, at.from_pt, at.to_pt));
+            // The block stands its line's cell, as the ground under it does,
+            // so it fills the selection's height rather than its letters'.
+            let (top, foot) = select::line_cell(at.baseline_pt, at.cap_pt, at.size_pt);
+            mark(cursor, (top, foot, at.from_pt, at.to_pt));
         }
     }
 
