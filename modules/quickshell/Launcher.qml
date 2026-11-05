@@ -2336,10 +2336,11 @@ Scope {
         };
     }
 
-    // The viewer the command line is open over, while it is, by the
-    // opening : gives it again: no rows are drawn behind it, since there's
-    // nothing in the launcher its commands act on, and leaving it closes
-    // the launcher, back to the viewer. Null over the launcher's own rows.
+    // The command line's opening while the launcher is open over a viewer,
+    // so : there opens it again after something went wrong. No rows are
+    // drawn behind it, since nothing in the launcher is what its commands
+    // act on, and leaving it closes the launcher, back to the viewer. Null
+    // while the launcher is over its own rows.
     property var over: null
 
     // The command line opened over a viewer, as : in swayimg or mpv opens
@@ -2392,7 +2393,8 @@ Scope {
     }
 
     // The line let go, the keys back to the find line in the mode it was
-    // in, or in normal.
+    // in, or in normal; over a viewer, the launcher closed, but for what
+    // went wrong ("said"), which stays to be read.
     function commandLeft(to) {
         commanding = null;
         if (over !== null && to !== "said") {
