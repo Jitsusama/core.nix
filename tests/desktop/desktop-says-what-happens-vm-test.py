@@ -328,6 +328,9 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         desktop.close_launcher()
         desktop.as_account(f"niri msg output winit scale {scale}")
         page.open()
+        # The card stays inside the screen however small, its rows fewer (VKCF3Z, 2026-11-05).
+        card = desktop.showing()["card"]
+        assert card["top"] > 0 and card["foot"] < card["screen"], f"at {scale} it's off: {card}"
         rows = page.drawer()
         assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
         assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
@@ -339,6 +342,10 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
             assert inside["shown"], f"at {scale} the drawer isn't shown inside: {inside}"
             assert inside["at"] == inside["cardAt"], f"at {scale} it's off the card: {inside}"
             assert inside["width"] == inside["cardWidth"], f"at {scale} it's narrower: {inside}"
+            # The card's foot stays in sight under it, saying how to come back.
+            assert inside["height"] < inside["cardHeight"], (
+                f"at {scale} it hides the foot: {inside}"
+            )
         named = scale.replace(".", "-")
         desktop.photograph(f"launcher-drawer-keys-at-{named}")
 
