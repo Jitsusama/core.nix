@@ -1981,17 +1981,18 @@ Scope {
     function normalKeys(choice, stepping, more) {
         const hints = Words.field.hints ?? {};
         const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
+        // A row that opens on Return but holds parts says Ctrl+] goes into
+        // them, drawn first, furthest from Return, so it is the first to give
+        // way, and Space ? stays just before Return (VKCF3Z, 2026-11-05:
+        // "Ctrl+] in \u00b7 Space ? keys \u00b7 \u21b5 open").
+        if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
+            keys.push([hintKey("follow"), hints.in ?? ""]);
         if (held.length > 0)
             keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
         keys.push([hintKey("keys"), hints.keys ?? ""]);
-        // A row that opens on Return but holds parts says Ctrl+] goes into
-        // them, furthest from Return, so it gives way first when room runs
-        // short (VKCF3Z, 2026-11-05).
-        if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
-            keys.push([hintKey("follow"), hints.in ?? ""]);
         return keys;
     }
 
