@@ -743,7 +743,7 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         found_chosen_and_undone(desktop, scale)
     desktop.as_account("niri msg output winit scale 1")
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
@@ -903,7 +903,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
         machine.send_key("meta_l-n")
     desktop.photograph(f"notice-held-at-{named}")
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     for summary, body in [
@@ -1195,12 +1195,13 @@ def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
         machine.send_key("meta_l-n")
     # Lines: Bravo two, Bravo one, Alpha two, Alpha one. Chat's run is the first two.
     pressed_and_told(desktop, EVERY_HELD_KEY)
-    # Every way to let go: ZZ, Space w, Super+N, Escape at rest and :q.
-    letting_go: list[str | tuple[str, ...]] = ["ZZ", " w", ("meta_l-n",), ("esc",), ":q\n"]
+    # Every way to let go: ZZ, Space w, Super+N and :q, never Escape (Joel, 2026-11-05: "fuck
+    # escape quitting").
+    letting_go: list[str | tuple[str, ...]] = ["ZZ", " w", ("meta_l-n",), ":q\n"]
     for keys in letting_go:
         pressed_and_told(desktop, [(keys, "lets notices go"), (("meta_l-n",), "keys notices")])
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     # Twelve, more than the eight lines held notices show, scroll as Vim's lines do (Joel,
@@ -1218,7 +1219,7 @@ def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
     with desktop.told("notice view from 2"):
         desktop.wheel(0.85, 0.15, -1)
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 
@@ -1308,6 +1309,9 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     (("f1",), "notice lists keys"),
     ("j", "notice lists keys from 2"),
     (("esc",), "notice hides keys"),
+    # At rest Escape does nothing, as Vim's, and never lets them go: the notices are still
+    # held for the key after it.
+    (("esc", "right"), "notice says not here"),
 ]
 
 
@@ -1359,7 +1363,7 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
         timeout=timedelta(seconds=10),
     )
     with desktop.told("lets notices go"):
-        machine.send_key("esc")
+        machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 

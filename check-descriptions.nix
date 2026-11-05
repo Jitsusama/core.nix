@@ -185,8 +185,8 @@
     a switch never removes the generation the machine booted
   '';
   btop-backs-out-on-escape = ''
-    btop's Escape backs out a step, off a process chosen and then out of btop, rather than opening its
-    menu
+    btop's Escape backs out a step, off a process chosen, and never ends btop, which q does, rather
+    than opening its menu
   '';
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
@@ -616,8 +616,9 @@
     that the language gives no key or command name to two acts, names no command Neovim names
     otherwise, gives no surface's act an arrow the leader doesn't begin in normal or visual mode,
     lets the find line reach no change and Return no act that ends or starts something, gives
-    h, l and Backspace nothing on a list and guards no act that would never ask; that a modal
-    layer of ours binds an arrow in normal only alone, as its letter's motion; each way of
+    h, l and Backspace nothing on a list, Escape nothing but stepping back, and guards no act
+    that would never ask; that a modal layer of ours binds an arrow in normal only alone, as its
+    letter's motion, and no layer of ours closes or quits by Escape; each way of
     straying shown to fail first, a leader's arrow and an arrow bound as its letter shown to
     pass, the reader leaving out a key it takes only while selecting among them
   '';
