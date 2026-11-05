@@ -1195,15 +1195,28 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         assert "Servers" not in desktop.showing()["rows"], desktop.showing()["rows"]
         desktop.down_to("Clock")
         assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
-        # Once chronyd answers again, the Clock that said nothing keeps the time
-        # is the one that says how it's kept, in its place: Time stepped into
-        # before chronyd answers never shows Clock twice.
-        desktop.machine.succeed("systemctl start chronyd")
-        desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
-        assert desktop.showing()["rows"].count("Clock") == 1, desktop.showing()["rows"]
         desktop.close_launcher()
     finally:
         desktop.machine.succeed("systemctl start chronyd")
+    keeps_one_clock(desktop)
+
+
+def keeps_one_clock(desktop: Desktop) -> None:
+    """Step into Time before its reader answers, and see one Clock once it does.
+
+    Time waits on a Clock, and the Clock the answer brings takes its place, never beside it.
+    The reader is held back until the step is in, and Time asks it again each second.
+    """
+    try:
+        desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Clock" in shown["rows"])
+    finally:
+        desktop.as_account("systemctl --user start timekeeping.socket")
+    desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
+    assert desktop.showing()["rows"].count("Clock") == 1, desktop.showing()["rows"]
+    desktop.close_launcher()
 
 
 def firmware_reads(shown: Json) -> str:
