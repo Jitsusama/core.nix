@@ -440,8 +440,8 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert told[-1:] == ["Ctrl+] in"], shown["selected"]
-    assert not any(key.startswith("Ctrl") for key in told[:-1]), shown["selected"]
+    assert told[1:2] == ["Ctrl+] in"], shown["selected"]
+    assert not any(key.startswith("Ctrl") for key in told[2:]), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()
     # A switch restarts the shell: the first foot it draws has every mark,

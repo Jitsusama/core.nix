@@ -480,7 +480,7 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
     # saying so furthest from Return.
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
-    assert told[-1:] == ["Ctrl+] in"], told
+    assert told[1:2] == ["Ctrl+] in"], told
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (

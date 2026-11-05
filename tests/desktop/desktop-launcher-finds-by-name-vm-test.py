@@ -98,9 +98,11 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # The status facts hold their places; the keys are normal's own, drawn with their marks.
     facts = {(text, x) for text, x in rest if "<font" not in text}
     assert facts <= held, (facts, laid["foot"])
-    # The answer copies on Return and holds more, so Ctrl+] in comes last, first to give way.
+    # The answer copies on Return and holds more, so Ctrl+] in comes first, furthest from
+    # Return, and the key list's stays just before Return.
     told = desktop.showing()["selected"]["told"]
-    assert told[-3:] == [": commands", "Space ? keys", "Ctrl+] in"], told
+    assert told[1:2] == ["Ctrl+] in"], told
+    assert told[-2:] == [": commands", "Space ? keys"], told
     assert not any("\u2192" in text for text in told), told
     assert not any(word["text"].endswith(" clear") for word in laid["field"]), laid["field"]
     machine.send_chars("A")
@@ -720,21 +722,22 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.normal()
     said = {"l": ["l not here", "\u21b5 open"], "h": ["h not here", "- up"]}
-    # Each saying waited on differs from the one before it, so none is read stale.
-    for held, chars, key, saying in [
-        ([], "l", "", said["l"]),
-        ([], "h", "", said["h"]),
-        ([], "-", "", ["- not here"]),
-        (["emoji"], "", "ret", []),
-        (["emoji"], "h", "", said["h"]),
-        (["emoji"], "l", "", said["l"]),
-        (["emoji"], "", "backspace", said["h"]),
-        ([], "-", "", []),
+    # Each saying waited on differs from the one before it, so none is read stale. A step in
+    # starts its own find, and - comes back to the one it left, as oil's does.
+    for held, typed, chars, key, saying in [
+        ([], "emoji", "l", "", said["l"]),
+        ([], "emoji", "h", "", said["h"]),
+        ([], "emoji", "-", "", ["- not here"]),
+        (["emoji"], "", "", "ret", []),
+        (["emoji"], "", "h", "", said["h"]),
+        (["emoji"], "", "l", "", said["l"]),
+        (["emoji"], "", "", "backspace", said["h"]),
+        ([], "emoji", "-", "", []),
     ]:
         machine.send_chars(chars)
         if key:
             machine.send_key(key)
-        wanted = (held, "emoji", "normal", saying)
+        wanted = (held, typed, "normal", saying)
 
         def stands(shown: Json, wanted: tuple[object, ...] = wanted) -> bool:
             """Say whether the launcher holds, finds, waits and says what this press wants."""
@@ -882,8 +885,9 @@ def every_hint_changes(desktop: Desktop, depth: int) -> None:
 
     told = opened()
     assert told[0].startswith("\u21b5"), told
-    # Ctrl+] in comes last, on a row Return opens that holds parts, as an emoji.
-    assert told[-1] == ("Ctrl+] in" if depth else "Space ? keys"), told
+    # Ctrl+] in comes first after Return, on a row Return opens that holds parts, as an emoji.
+    assert ("Ctrl+] in" in told[1:2]) == bool(depth), told
+    assert told[-1] == "Space ? keys", told
     for at, hint in enumerate(told):
         mark = hint.rsplit(" ", 1)[0]
         keys, chars = HINT_PRESSES.get(mark, ([], mark))

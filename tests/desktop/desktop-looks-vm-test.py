@@ -302,7 +302,7 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     machine = desktop.machine
     at = scale.replace(".", "-")
     told = desktop.showing()["selected"]["told"]
-    assert told[-1:] == ["Ctrl+] in"], f"at {scale} kitty's foot: {told}"
+    assert told[1:2] == ["Ctrl+] in"], f"at {scale} kitty's foot: {told}"
     for chars, said, shot in [
         ("z", ["z not here"], "not-here"),
         ("l", ["l not here", "\u21b5 open"], "l-not-here"),
