@@ -90,29 +90,44 @@ const guessed = ["brighten", "brighter", "choose", "connect", "dim", "dimmer", "
     "share", "sign", "sleep", "start", "stop", "take", "thaw", "tile", "turn", "unmute",
     "unread", "unstar", "use"];
 
+// The command a row is named by, as the command line names its act
+// (Commands.js's actLine): the one its words give it (`said`), or else its
+// verb's (`verbal`, Commands.js's commandOf); and the key language's flags
+// for it from `table`, where the language names it. A row whose verb alone
+// says close, as an answer with nothing to copy or a bind with nothing to
+// run, only closes the launcher, which the language calls :quit; a
+// window's Close It has its words' :close.
+function named(said, verbal, table) {
+    const command = said ?? (verbal === "close" ? "quit" : verbal);
+    return { command, flags: table[command] };
+}
+
 // Whether doing it changes how things stand (the vi-paradigm spec's Return),
-// as the key language flags the command the row is named by (`named`, its
-// command and the language's flags for it, as Commands.js's actLine finds
-// them), so Return and d agree on every row. Return from the find line
+// as the key language flags the command the row is named by (`command`,
+// its command and the language's flags for it, as named gives them), so
+// Return and d agree on every row. Return from the find line
 // lands on such a row rather than doing it, so typing a name and Return
 // can only ever show it. A row may say so itself, whatever its command.
 // Where the language names no command for one of the guessed verbs, it's
 // guessed: it ends something or can't be taken back, or it's done and
 // keeps the launcher, as a network's join is; any other command it names
 // nothing for changes nothing.
-function changesState(row, named = {}) {
+function changesState(row, command = {}) {
     // A row that says it changes nothing, whatever its verb, as Ask's
-    // question or a file picker's mark, which only picks.
-    if (!row || row.gone || row.changes === false) {
+    // question or a file picker's mark, which only picks; and a figure,
+    // which only says a value, its Return copying it or, with nothing to
+    // copy yet, closing the launcher, never the :close of a window its
+    // verb would name.
+    if (!row || row.gone || row.changes === false || row.figure === true) {
         return false;
     }
     if (row.changes === true) {
         return true;
     }
-    if (named.flags !== undefined) {
-        return named.flags.changes === true;
+    if (command.flags !== undefined) {
+        return command.flags.changes === true;
     }
-    if (!guessed.includes(named.command ?? "")) {
+    if (!guessed.includes(command.command ?? "")) {
         return false;
     }
     return ends(row) || disruptive(row) || (row.stays === true && typeof row.run === "function"
@@ -123,9 +138,9 @@ function changesState(row, named = {}) {
 // something: the first row inside a thing never changes state (See It,
 // Copy, a part), so a Return that steps in and a second Return after it
 // only ever show. Where every row changes something, they keep their order.
-// Each row's command is `named` as changesState takes it.
-function quietFirst(inside, named) {
-    const changes = one => changesState(one, named(one));
+// `naming` gives each row's command as changesState takes it (named).
+function quietFirst(inside, naming) {
+    const changes = one => changesState(one, naming(one));
     if (inside.length < 2 || !changes(inside[0])) {
         return inside;
     }

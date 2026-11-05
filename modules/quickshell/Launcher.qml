@@ -1832,12 +1832,12 @@ Scope {
         return !!choice && Catalogue.changesState(choice, commandNamed(choice));
     }
 
-    // The command a row is named by, as the command line names its act
-    // (Commands.js's actLine): the one its words give it, or else its verb;
-    // and the key language's flags for it, where the language names it.
+    // The command a row is named by (Catalogue.js's named), from its words
+    // or its verb, as the command line names its act, and the key
+    // language's flags for it.
     function commandNamed(row) {
-        const command = commandWords(row.key ?? "").command ?? Commands.commandOf(row);
-        return { command, flags: Options.commands[command] };
+        return Catalogue.named(commandWords(row.key ?? "").command, Commands.commandOf(row),
+            Options.commands);
     }
 
     // Whether Return steps into a thing whose own act changes something, as
