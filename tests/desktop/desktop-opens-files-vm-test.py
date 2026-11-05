@@ -20,7 +20,7 @@ import pytest
 from desktop_session import STARTING, drawn_at, retry
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop
     from test_driver.machine import BaseMachine
@@ -243,6 +243,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     inner = f"{notes}/inner"
     desktop.as_account(
         f"mkdir -p {notes} {beside} {inner} && touch {notes}/plan.md {notes}/list.md"
+        f" {notes}/.kept.md"
         " && echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
         "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         f" | base64 -d > {notes}/look.png"
@@ -289,6 +290,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     desktop.photograph("file-chooser")
     go_beside(desktop, held)
     open_own(desktop, chose)
+    commands_open(desktop, held)
     desktop.insert()
     machine.send_chars("plan")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
@@ -303,9 +305,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     replace_once(desktop, chose, "plan.md")
     answered("0", f"file://{notes}/plan.md")
 
-    choose("open")
-    desktop.close_launcher()
-    answered("1")
+    saved_by_commands(desktop, choose, answered, notes)
     desktop.as_account(f"rm -r {notes} {beside}")
     # Three asks later, the shell watches no more than it did before them.
     try:
@@ -317,6 +317,61 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         after = desktop.as_account(watchers).strip()
         kept = f"the shell holds {after} inotify handles after three asks, {watching} before"
         raise AssertionError(kept) from None
+
+
+def saved_by_commands(
+    desktop: Desktop,
+    choose: Callable[..., None],
+    answered: Callable[..., None],
+    notes: str,
+) -> None:
+    """Save by :w! over a name there, without asking, and by ZZ, as :x; answer none by :q."""
+    choose("save", "list.md")
+    ran(desktop, "w!")
+    answered("0", f"file://{notes}/list.md")
+    choose("save", "zz.md")
+    desktop.normal()
+    desktop.machine.send_chars("ZZ")
+    answered("0", f"file://{notes}/zz.md")
+    # :q answers nothing, as Escape at the folder asked in does.
+    choose("open")
+    ran(desktop, "q", closes=True)
+    answered("1")
+
+
+def ran(desktop: Desktop, line: str, *, closes: bool = False) -> None:
+    """Type a command on the launcher's line from normal, and wait until it's run."""
+    desktop.normal()
+    desktop.machine.send_chars(f":{line}")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == line)
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            (not shown["open"])
+            if closes
+            else (shown["command"] is None and shown["commandSaid"] == "")
+        )
+    )
+
+
+def commands_open(desktop: Desktop, held: int) -> None:
+    """Run the picker's commands on an Open ask: :set hidden, :mkdir, :cd and :e."""
+    ran(desktop, "set hidden")
+    desktop.launcher_until(lambda shown: ".kept.md" in shown["rows"])
+    ran(desktop, "set nohidden")
+    desktop.launcher_until(lambda shown: ".kept.md" not in shown["rows"])
+    ran(desktop, "mkdir made")
+    desktop.launcher_until(lambda shown: "made" in shown["rows"], timeout=timedelta(seconds=30))
+    ran(desktop, "cd made")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"][-1:] == ["~/chosen-notes/made"] and len(shown["held"]) == held + 1
+        )
+    )
+    ran(desktop, "e ~/chosen-notes/")
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
+    )
 
 
 def go_beside(desktop: Desktop, held: int) -> None:

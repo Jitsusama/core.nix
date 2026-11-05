@@ -185,7 +185,8 @@ Item {
     // A modal line says no key for putting back what was cleared, since
     // normal's u is vi's own way back.
     // A question asked once takes no key of the field's, so none is said.
-    readonly property bool keysHeld: keyed && asking === "" && (typed
+    // Nor do a prompt's words, which nothing clears or brings back.
+    readonly property bool keysHeld: keyed && asking === "" && !words && (typed
         || (!modal && input.text === "" && cleared !== ""))
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
@@ -553,7 +554,9 @@ Item {
         case "":
             break;
         default:
-            prompt.stepped(read.act, read.count);
+            // ZZ is Vim's :x, writing what there is to write as it closes,
+            // where Space w and q only close (modules/keys/language.toml).
+            prompt.stepped(read.act === "close" && key === "Z" ? "xit" : read.act, read.count);
         }
     }
 

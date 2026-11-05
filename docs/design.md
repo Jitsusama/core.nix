@@ -1443,33 +1443,32 @@ works the same way everywhere.
   word where it gives one: "open which file?", "open which files?",
   "open which folder?", "attach which files?", or "save it where?".
   Taking one, Return on a file picks it and closes, as the foot says
-  ("↵ open"), with no mark and no Open the Marked: opening is undone
-  by opening another, so nothing asks first (VKCF3Z, 2026-11-04).
-- **What's marked is in sight** (Joel, 2026-11-03: "it is hard when
+  ("\u21b5 open"), with no mark: opening is undone by opening another, so
+  nothing asks first (VKCF3Z, 2026-11-04).
+- **What's gathered is in sight** (Joel, 2026-11-03: "it is hard when
   marking files to know what to do once mmarked"). Where a program takes
-  several files, Return on one marks it and the foot says "↵ mark" or
-  "↵ unmark"; a marked row's glyph is the mark, in an act's hue, the one
-  colour on its row. Open the Marked leads every folder from the start,
-  so nothing slides when the first is marked: until then it says "none"
-  and nothing more, and the foot gives it no Return; after, its side
-  counts them, its note names them in the order marked, its plate lists
-  each with its folder and their Size together, and the right arrow
-  steps into Marked, its crumb the place's name, Marked, rather than the
-  act's: the files, each with its folder, where Return
-  unmarks one and it stays until he leaves, then Unmark All, then Copy
-  the Paths (VKCF3Z, 2026-11-03). A folder's Copy the Path comes after
-  its files and filters, held back until the folder's read so it never
-  heads the list.
+  several files, Return takes the cursor row's file and answers, and
+  :arga gathers the cursor row's file, or a range's, across folders, as
+  Vim's argument list does (VKCF3Z's vi-paradigm spec, The File
+  Picker). A gathered row's glyph is the mark, in an act's hue, the one
+  colour on its row, and Return then answers what's gathered, the foot
+  saying how many ("\u21b5 open 2"). :args steps into Gathered: the files,
+  each with its folder, then Forget Them, then Copy the Paths, its plate
+  counting them with their Size together. A folder's Copy the Path comes
+  after its files and filters, held back until the folder's read so it
+  never heads the list.
 - **A folder lists in the order he chose** (Joel, 2026-11-03: "no ...
-  ability to sort by anything"). The file picker's Order row, last, with
-  the filters and choices, says the order in use ("name", "changed,
-  newest first", "size, largest first"); the right arrow steps into the
-  three, that one first, and Return on one lists the folder so, back on
-  its first row, made afresh, since a list shown otherwise keeps its
-  rows where they are. Name is A to Z, case aside, 2 before 10; a folder
-  sizes by its items. Folders come first in every order and what was
-  opened lately stays apart on top. One order serves every ask and
-  outlasts a restart, starting on name (VKCF3Z, 2026-11-04).
+  ability to sort by anything"). :sort name (A to Z), :sort changed
+  (newest first) and :sort size (largest first) list every folder so,
+  :sort! turning it round, the folder shown made afresh on its first row,
+  since a list shown otherwise keeps its rows where they are. Name is A
+  to Z, case aside, 2 before 10; a folder sizes by its items. Folders
+  come first in every order and what was opened lately stays apart on
+  top. One order serves every ask and outlasts a restart, starting on
+  name (VKCF3Z, 2026-11-04). :set hidden lists the hidden files and :set
+  nohidden leaves them out; :e and :cd go to a folder, their paths
+  completed from folders already read, as if the ask opened there; :e
+  a file opens it; :mkdir makes a folder; :q answers nothing.
 - **A save is named on the line** (VKCF3Z's vi-paradigm spec, The File
   Picker). Asked to save, the line holds the name the program gave, a
   prompt's words in insert rather than a find, the caret before its
@@ -1481,7 +1480,8 @@ works the same way everywhere.
   and Return on the name saves there. A name already there asks once in the line's place, "Replace
   notes.md? (y/n)", as Vim's :w says E13: y saves over it, n, Escape or
   Ctrl+C let it go, and any other key, or one in its first 300 ms, does
-  nothing.
+  nothing. :w [name] and :x save from anywhere, asking the same, and :w!
+  saves over a name already there without asking.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected
