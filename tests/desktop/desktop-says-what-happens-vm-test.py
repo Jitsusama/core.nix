@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import FROM_THE_CORNER, LAUNCHER_OPEN, NOTICES, retry
+from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
@@ -186,25 +186,24 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # card's words piled at its top.
     log = desktop.shell_said("polish() loop")
     assert "polish() loop" not in log, "a notice's layout never settles"
-    # Super+N takes the stack, which waits while it holds the keys.
-    # Tab does nothing, being only for completing. The newer notice
-    # waits behind the older; letting the older go keeps the keys and
-    # brings the newer to the front, the right arrow steps into its
-    # verbs, forgetting it first, since Return forgets one with nothing to
-    # open, then what it offers, as a launcher row's are
-    # (launcher/Notice.js), Down chooses the next and Left steps
-    # back, and Return does the one
+    # Super+N takes the stack as its lines, which wait while it holds the
+    # keys, the cursor on the card in front, the older; the newer is line
+    # 1. Tab is no key of normal's, and says so, and Backspace is h, out
+    # of nothing. :forg lets the older go unread, the cursor going on to
+    # the newer, and the right arrow, as l, steps into its acts,
+    # forgetting it first, since it opens nothing, then
+    # what it offers, as a launcher row's are (launcher/Notice.js); Down
+    # chooses the next and Left steps back, and Return does the one
     # chosen, with a token to come forward, and gives the keys back.
     desktop.listen()
-    with desktop.told("keys notices"):
+    with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
-    machine.send_key("tab")
+    with desktop.told("notice says not here"):
+        machine.send_key("tab")
     machine.send_key("backspace")
-    # Held, the card is as tall as its verbs need from the start, so
-    # stepping in, through and out of them moves nothing.
-    desktop.held_still()
-    since = desktop.mark()
+    with desktop.told("notice forgets 1"), desktop.told("notice cursor Recording saved"):
+        machine.send_chars(":forg\n", delay=KEY_PACE)
     with desktop.told("notice verb Forget It"):
         machine.send_key("right")
     with desktop.told("notice verb Play it"):
@@ -216,11 +215,6 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
         machine.send_key("right")
     with desktop.told("notice verb Play it"):
         machine.send_key("down")
-    moved = desktop.as_account(
-        "journalctl --user --unit=quickshell --no-pager --output=cat"
-        f" --after-cursor={shlex.quote(since)} | grep -F 'notice stands'; true"
-    )
-    assert moved.strip() == "", f"the held card changed its height: {moved}"
     with desktop.told("lets notices go"):
         machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
@@ -239,7 +233,7 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
 
 
 def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
-    """Copying what a notice said from its card says so, and the clipboard holds it."""
+    """Copying what a notice said from its acts or by yy says so, and the clipboard holds it."""
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     with desktop.told("shows card Build log"):
@@ -247,75 +241,100 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     # It offers nothing and opens nothing, so forgetting it leads its
-    # verbs, as Return does, then whether it's read, the stack's own, and
-    # copying what it said last (launcher/Notice.js).
+    # acts, then whether it's read, the stack's own, and copying what it
+    # said last (launcher/Notice.js), which keeps the keys.
     with desktop.told("notice verb Forget It"):
-        machine.send_key("right")
+        machine.send_key("l")
     for verb in ["Read", "Forget Them All", "All the Notices", "Copy What It Said"]:
         with desktop.told(f"notice verb {verb}"):
-            machine.send_key("down")
+            machine.send_key("j")
     with desktop.told("copied card Build log"):
         machine.send_key("ret")
-    desktop.photograph("notice-copied")
     assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
-    # yy copies it too, as vi yanks a line, and the stack stays held.
+    # yy copies it too, as Vim yanks a line.
     desktop.as_account("wl-copy nothing")
-    with desktop.told("shows card Deploy log"):
-        desktop.as_account("notify-send --expire-time=60000 'Deploy log' 'all out'")
-    with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
     with desktop.told("copied card Build log"):
-        machine.send_key("y")
-        machine.send_key("y")
+        machine.send_chars("yy")
     assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
+    # Two more arrive while it's held, newer, so they're lines 1 and 2.
+    for summary, said in [("Test log", "all run"), ("Deploy log", "all out")]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(f"notify-send --expire-time=60000 '{summary}' '{said}'")
     for scale in JOELS_SCALES:
-        searched_selected_and_undone(desktop, scale)
+        found_chosen_and_undone(desktop, scale)
     desktop.as_account("niri msg output winit scale 1")
     with desktop.told("lets notices go"):
-        machine.send_key("q")
+        machine.send_key("esc")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
     )
 
 
-def searched_selected_and_undone(desktop: Desktop, scale: str) -> None:
-    """Search the held Build log and Deploy log cards, select and copy both, forget and undo.
+def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
+    """Find among three held notices, choose all three, copy them, be done and undo.
 
-    At one of Joel's scales, for a person to look at the search wash and the selection by: /
-    turns to the first card holding what's typed as it's typed, V selects the front card, j
-    carries it on to the next, y copies both, dd forgets one, u brings it back, and Space ?
-    lists every key in the acts' place until Escape puts them away.
+    At one of Joel's scales, for a person to look at the lines, the find, visual over three,
+    the mode word, the foot and the : menu by: / narrows the lines as it's typed, Escape keeps
+    what was found and a fresh / with nothing clears it; V k k chooses three and y copies
+    them; V j j then dd is done with all three, and u brings the cards back; : opens the menu,
+    which Tab chooses in; and Space ? lists every key, by mode, until Escape puts them away.
     """
     machine = desktop.machine
     desktop.as_account(f"niri msg output winit scale {scale}")
     named = scale.replace(".", "-")
-    with desktop.told("notice front Deploy log"), desktop.told("notice finds Deploy in 1"):
-        machine.send_key("slash")
-        machine.send_chars("Deploy")
-    desktop.photograph(f"notice-search-at-{named}")
-    machine.send_key("ret")
+    # The cursor on the oldest, Build log, line 3, by way of the newest, so it moves.
+    with desktop.told("notice cursor Build log"):
+        machine.send_chars("ggG", delay=KEY_PACE)
+    desktop.photograph(f"notice-lines-at-{named}")
+    with desktop.told("notice finds Deploy in 1"), desktop.told("notice cursor Deploy log"):
+        machine.send_chars("/Deploy", delay=KEY_PACE)
+    desktop.photograph(f"notice-find-at-{named}")
+    with desktop.told("notice mode normal"):
+        machine.send_key("esc")
+    desktop.photograph(f"notice-found-at-{named}")
+    # A fresh find, left empty, lists them all again, the cursor where it stood.
+    with desktop.told("notice mode normal"), desktop.told("notice cursor Build log"):
+        machine.send_chars("/")
+        machine.send_key("esc")
     with desktop.told("notice selects 1"):
-        machine.send_key("shift-v")
-    with desktop.told("notice selects 2"):
-        machine.send_key("j")
+        machine.send_chars("V")
+    with desktop.told("notice selects 3"):
+        machine.send_chars("kk", delay=KEY_PACE)
     desktop.photograph(f"notice-visual-at-{named}")
-    with desktop.told("copied card Build log"):
-        machine.send_key("y")
+    with desktop.told("copied card Deploy log"):
+        machine.send_chars("y")
     copied = desktop.as_account("wl-paste --no-newline")
-    assert copied == "Deploy log\nall out\n\nBuild log\nall green", copied
-    with desktop.told("notice front Deploy log"):
-        machine.send_key("d")
-        machine.send_key("d")
-    with desktop.told("notice brought back Build log"):
+    assert copied == "Deploy log\nall out\n\nTest log\nall run\n\nBuild log\nall green", copied
+    # Joel's line: V j j then dd marks three read and takes them away. y left the cursor on
+    # the first copied, line 1.
+    with desktop.told("notice selects 3"):
+        machine.send_chars("Vjj", delay=KEY_PACE)
+    with desktop.told("notice done 3"):
+        machine.send_chars("dd", delay=KEY_PACE)
+    desktop.photograph(f"notice-done-at-{named}")
+    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+    for summary in ["Build log", "Test log", "Deploy log"]:
+        machine.wait_until_succeeds(
+            desktop.in_session(kept + f' | grep -q \'"summary":"{summary}"[^}}]*"read":true\''),
+            timeout=timedelta(seconds=10),
+        )
+    with desktop.told("notice brought back 3"):
         machine.send_key("u")
+    with desktop.told("notice pending d"):
+        machine.send_chars("d")
+    desktop.photograph(f"notice-pending-at-{named}")
+    with desktop.told("notice mode command"):
+        machine.send_key("esc")
+        machine.send_chars(":")
+    desktop.photograph(f"notice-menu-at-{named}")
+    with desktop.told("notice menu chose delete"):
+        machine.send_key("tab")
+    with desktop.told("notice mode normal"):
+        machine.send_key("esc")
     with desktop.told("notice lists keys"):
-        machine.send_key("spc")
-        machine.send_key("shift-slash")
+        machine.send_chars(" ?", delay=KEY_PACE)
     desktop.photograph(f"notice-keys-at-{named}")
-    # Thirteen lines scroll in the room of the card's five acts, so G shows the last five.
-    with desktop.told("notice lists keys from 9"):
-        machine.send_key("shift-g")
     with desktop.told("notice hides keys"):
         machine.send_key("esc")
 
@@ -429,11 +448,10 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
             "notify-send --expire-time=60000 --action=default=Open 'Thread with Sam' 'see it'"
             " > /tmp/answer 2>&1 < /dev/null &"
         )
-    # Super+N takes the stack, and again hands on to the history.
+    # Super+N takes the stack, and :e Notices hands on to the history.
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    machine.send_key("meta_l-n")
-    desktop.launcher_ready()
+    desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Sam")
     )
@@ -462,11 +480,10 @@ def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_lau
         machine.send_key("down")
     with desktop.told("notice back"):
         machine.send_key("left")
-    # Super+N again hands on to the history, which opens on its first row,
+    # :e Notices hands on to the history, which opens on its first row,
     # the newest notice, as every place opens on its first; the right arrow
     # steps into its acts from normal mode, and they hold the same.
-    machine.send_key("meta_l-n")
-    desktop.launcher_ready()
+    desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
     )
@@ -630,6 +647,160 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
 
 
 # Super+Shift+N puts the cards away, and each is still there unread.
+
+
+def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
+    """Every key the held notices take does what Vim's does, each told by what the list says.
+
+    Four notices from two senders, the newest on line 1, pressed as EVERY_HELD_KEY lists: the
+    motions, the sender's run as a paragraph, d with a motion and an object, ., u and Ctrl+R,
+    y, visual's o, gv and x, q, keys with no meaning here, Space u l, the : line's ranges, :g
+    and its errors, the find, the menu, the key list, and every way to let go.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    for sender, summary in [
+        ("Mail", "Alpha one"),
+        ("Mail", "Alpha two"),
+        ("Chat", "Bravo one"),
+        ("Chat", "Bravo two"),
+    ]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(
+                f"notify-send --app-name={sender} --expire-time=60000 '{summary}' 'words'"
+            )
+    with desktop.told("keys notices"), desktop.told("notice cursor Alpha one"):
+        machine.send_key("meta_l-n")
+    # Lines: Bravo two, Bravo one, Alpha two, Alpha one. Chat's run is the first two.
+    pressed_and_told(desktop, EVERY_HELD_KEY)
+    # Every way to let go: ZZ, Space w, Super+N, Escape at rest and :q.
+    letting_go: list[str | tuple[str, ...]] = ["ZZ", " w", ("meta_l-n",), ("esc",), ":q\n"]
+    for keys in letting_go:
+        pressed_and_told(desktop, [(keys, "lets notices go"), (("meta_l-n",), "keys notices")])
+    with desktop.told("lets notices go"):
+        machine.send_key("esc")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+
+
+# Keys pressed on the held notices of test_every_held_key_does_what_vims_does, each with what
+# the list says it did: typed as letters, or pressed by QEMU's names where they're a tuple.
+EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
+    # The motions, the sender's run a paragraph.
+    ("k", "notice cursor Alpha two"),
+    ("2k", "notice cursor Bravo two"),
+    ("j", "notice cursor Bravo one"),
+    ("G", "notice cursor Alpha one"),
+    ("gg", "notice cursor Bravo two"),
+    ("3G", "notice cursor Alpha two"),
+    ("H", "notice cursor Bravo two"),
+    ("L", "notice cursor Alpha one"),
+    ("M", "notice cursor Bravo one"),
+    ("}", "notice cursor Alpha two"),
+    ("{", "notice cursor Bravo two"),
+    (("ctrl-d",), "notice cursor Alpha one"),
+    (("ctrl-u",), "notice cursor Bravo two"),
+    (("ctrl-f",), "notice cursor Alpha one"),
+    (("ctrl-b",), "notice cursor Bravo two"),
+    # dip is done with Chat's run; u brings it back, Ctrl+R takes it again, u once more, and
+    # . does dip again.
+    ("dip", "notice done 2"),
+    ("u", "notice brought back 2"),
+    (("ctrl-r",), "notice says 2 taken again"),
+    ("u", "notice brought back 2"),
+    (".", "notice done 2"),
+    ("u", "notice brought back 2"),
+    ("yj", "copied card Bravo two"),
+    ("q", "notice says q does nothing \u00b7 :q closes"),
+    ("n", "notice says not here"),
+    ("c", "notice says not here"),
+    (" ul", "notice numbers absolute"),
+    (" ul", "notice numbers relative"),
+    # Visual: o goes to its other end, Escape ends it, gv brings it back, x is done with it.
+    ("Vj", "notice selects 2"),
+    ("o", "notice cursor Bravo two"),
+    (("esc",), "notice mode normal"),
+    ("gv", "notice mode visual"),
+    ("x", "notice done 2"),
+    ("u", "notice brought back 2"),
+    # The command line: :g, a range, a line number, and Vim's own errors.
+    (":g/Bravo/d\n", "notice done 2"),
+    ("u", "notice brought back 2"),
+    (":3\n", "notice cursor Alpha two"),
+    (":1,2forg\n", "notice forgets 2"),
+    ("u", "notice brought back 2"),
+    (":wifi\n", "notice says E492: Not an editor command: wifi"),
+    (":2reply\n", "notice says E481: No range allowed"),
+    (":set rnu?\n", "notice says   relativenumber"),
+    # The find: i opens it, it narrows as it's typed, Down chooses, and Backspace past its
+    # start leaves it.
+    ("iAlpha", "notice finds Alpha in 2"),
+    (("down",), "notice cursor Alpha one"),
+    (("backspace",) * 6, "notice mode normal"),
+    # The menu: Tab chooses its lines, Ctrl+E puts it away, Escape drops the line.
+    (":", "notice mode command"),
+    (("tab",), "notice menu chose delete"),
+    (("ctrl-e", "esc"), "notice mode normal"),
+    # F1 lists the keys, j scrolls them, and Escape puts them away.
+    (("f1",), "notice lists keys"),
+    ("j", "notice lists keys from 2"),
+    (("esc",), "notice hides keys"),
+]
+
+
+def pressed_and_told(desktop: Desktop, steps: list[tuple[str | tuple[str, ...], str]]) -> None:
+    """Press each step's keys, typed as letters or by QEMU's names, and wait for what it says."""
+    for keys, said in steps:
+        with desktop.told(said):
+            if isinstance(keys, tuple):
+                for key in keys:
+                    desktop.machine.send_key(key)
+            else:
+                desktop.machine.send_chars(keys, delay=KEY_PACE)
+
+
+def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
+    """A notice whose sender takes a reply typed here is answered from :reply's prompt.
+
+    :reply opens a prompt on the card in insert; Escape gives normal over its words, where b
+    and cw change one, and Return sends what's written, which the sender hears.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.as_account(
+        "gdbus monitor --session --dest org.freedesktop.Notifications"
+        " > /tmp/replied 2>&1 < /dev/null &"
+    )
+    with desktop.told("shows card Thread with Bo"):
+        desktop.as_account(
+            "gdbus call --session --dest org.freedesktop.Notifications"
+            " --object-path /org/freedesktop/Notifications"
+            " --method org.freedesktop.Notifications.Notify Chat 0 '' 'Thread with Bo'"
+            " 'lunch?' \"['inline-reply', 'Reply']\" '{}' 60000"
+        )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    with desktop.told("notice mode insert"):
+        machine.send_chars(":reply\n", delay=KEY_PACE)
+    machine.send_chars("on my way", delay=KEY_PACE)
+    for scale in JOELS_SCALES:
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.photograph(f"notice-reply-at-{scale.replace('.', '-')}")
+    desktop.as_account("niri msg output winit scale 1")
+    with desktop.told("notice mode prompt"):
+        machine.send_key("esc")
+    with desktop.told("notice mode insert"):
+        machine.send_chars("bcw", delay=KEY_PACE)
+    with desktop.told("notice replied Thread with Bo"):
+        machine.send_chars("road\n", delay=KEY_PACE)
+    machine.wait_until_succeeds(
+        "grep -q NotificationReplied /tmp/replied && grep -q 'on my road' /tmp/replied",
+        timeout=timedelta(seconds=10),
+    )
+    with desktop.told("lets notices go"):
+        machine.send_key("esc")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 
 
 def test_super_shift_n_puts_the_notices_away(desktop: Desktop) -> None:

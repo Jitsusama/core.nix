@@ -1674,6 +1674,11 @@
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';
+  the-notices-are-a-quickfix-list = ''
+    the held notices are Vim's quickfix list: the newest first, each motion's landing, what an
+    operator takes, the view kept around the cursor, the gutter's numbers, u and Ctrl+R, and the
+    command line's menu
+  '';
   the-notices-keep-their-order = ''
     the notices' stack puts a critical one in front and the rest in the order they came, one unheard
     at the back, and turns and brings one forward as the keys and a click ask
@@ -1685,8 +1690,9 @@
     x-answers hint, while its failure is missed
   '';
   the-notices-take-vi-keys = ''
-    the notices' stack reads vi's keys beside the arrows from one table: dd and gg as sequences,
-    counts before a motion, and an Escape that cancels what's begun before it steps out
+    the held notices read Vim's keys in each mode from one table: motions, operators and objects
+    with counts, visual's operator taken with a second press, fresh presses only for what acts, the
+    find and command lines, a reply's editing, Space ?'s list and the foot's hints
   '';
   the-notices-wait-while-joel-is-away = ''
     a notice that comes while nothing has been typed or moved stays on niri past the time its sender

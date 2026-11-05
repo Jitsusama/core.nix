@@ -1,7 +1,8 @@
-// The notices' stack's keys, read from their one table in Qt's own
-// JavaScript engine, the one the shell runs it in. The
-// `the-notices-take-vi-keys` check copies modules/quickshell/NoticeKeys.js,
-// and Search.js, which finds what the cards say, beside this file and runs
+// The held notices' keys, read from their one table in Qt's own JavaScript
+// engine, the one the shell runs it in. The `the-notices-take-vi-keys`
+// check copies modules/quickshell/NoticeKeys.js, LineEditing.js, which
+// edits the lines typed on, and Search.js, which finds what the cards say,
+// beside this file and runs
 // `qml -platform offscreen notice-keys.qml`.
 import QtQuick
 import "NoticeKeys.js" as Keys
@@ -18,19 +19,23 @@ QtObject {
         }
     }
 
-    // What the keys do, typed one after another from rest: each act done,
-    // with its count when one was typed, and whether the last key was the
-    // stack's.
-    function typed(keys, mode) {
+    // What the keys do, typed one after another from rest, each [key, at]
+    // or a key pressed at 0: each act done, as its count, its operator and
+    // its motion where it has them, and how the keys stand after.
+    function typed(keys, mode, repeated) {
         let standing = Keys.rest();
         const acts = [];
         let ours = false;
-        for (const key of keys) {
-            const read = Keys.read(standing, key, mode);
+        for (const pressed of keys) {
+            const [key, at] = Array.isArray(pressed) ? pressed : [pressed, 0];
+            const read = Keys.read(standing, key, mode, { repeated: repeated ?? false, now: at });
             standing = read.standing;
             ours = read.ours;
-            if (read.act !== "")
-                acts.push(read.count > 0 ? `${read.count}${read.act}` : read.act);
+            if (read.act !== "") {
+                const done = read.act === "operate" ? `${read.operator}:${read.motion}`
+                    : read.act === "pending" ? `pending:${read.operator}` : read.act;
+                acts.push(read.count > 0 ? `${read.count}${done}` : done);
+            }
         }
         return { acts, ours, standing };
     }
@@ -42,110 +47,189 @@ QtObject {
                 failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
         }
 
-        // [what, the keys typed, the acts done]
-        const doing = [
-            ["j and Down turn to the next", ["j", "Down"], ["next", "next"]],
-            ["k and Up turn back", ["k", "Up"], ["previous", "previous"]],
-            ["l steps in and h out, as the arrows", ["l", "h", "Right", "Left"],
-                ["into", "out", "into", "out"]],
-            ["Return runs, as Enter", ["Return", "Enter"], ["run", "run"]],
-            ["dd forgets, as Delete and Backspace", ["d", "d", "Delete", "Backspace"],
-                ["forget", "forget", "forget"]],
-            ["dG forgets all, as Shift+Delete", ["d", "G", "Shift+Delete"],
-                ["forgetAll", "forgetAll"]],
-            ["DD is no key of vi's", ["D", "D"], []],
-            ["yy copies", ["y", "y"], ["copy"]],
-            ["gg goes to the newest and G the oldest", ["g", "g", "G"], ["newest", "oldest"]],
-            ["q closes", ["q"], ["close"]],
-            ["a count goes before a motion", ["5", "j", "1", "2", "k"], ["5next", "12previous"]],
-            ["a count goes before G", ["3", "G"], ["3oldest"]],
-            ["a lone 0 counts nothing", ["0", "j"], ["next"]],
-            ["a key that ends nothing lets a sequence go", ["d", "j", "d"], []],
-            ["Escape at rest steps out", ["Escape"], ["back"]],
-            ["Escape cancels a count, then steps out", ["4", "Escape", "j", "Escape"],
-                ["next", "back"]],
+        // [what, the keys typed in normal, the acts done]
+        const normal = [
+            ["j and k move, and the arrows are their letters", ["j", "Down", "k", "Up"],
+                ["down", "down", "up", "up"]],
+            ["l steps in and h, Backspace and - out", ["l", "Right", "h", "Backspace", "-"],
+                ["into", "into", "out", "out", "out"]],
+            ["Left is h", ["Left"], ["out"]],
+            ["Return opens, as Enter", ["Return", "Enter"], ["open", "open"]],
+            ["gg and G go to the newest and the oldest", ["g", "g", "G"], ["first", "last"]],
+            ["a count goes before a motion", ["5", "j", "1", "2", "k"], ["5down", "12up"]],
+            ["a count goes before G", ["3", "G"], ["3last"]],
+            ["a lone 0 counts nothing", ["0", "j"], ["notHere", "down"]],
+            ["H M L, { } and the views", ["H", "M", "L", "{", "}", "Ctrl+D", "Ctrl+U",
+                "Ctrl+F", "Ctrl+B"], ["viewTop", "viewMiddle", "viewBottom", "runBack", "runOn",
+                "halfDown", "halfUp", "viewDown", "viewUp"]],
+            ["d waits for what it takes", ["d"], ["pending:done"]],
+            ["dd is done with the cursor card", ["d", "d"], ["pending:done", "done:line"]],
+            ["3dd, with three", ["3", "d", "d"], ["pending:done", "3done:line"]],
+            ["dj takes a motion", ["d", "j"], ["pending:done", "done:down"]],
+            ["2d3j takes six", ["2", "d", "3", "j"], ["pending:done", "6done:down"]],
+            ["dG to the oldest", ["d", "G"], ["pending:done", "done:last"]],
+            ["dip takes a sender's run, as dap", ["d", "i", "p", "d", "a", "p"],
+                ["pending:done", "done:inRun", "pending:done", "done:inRun"]],
+            ["yy copies, yj two", ["y", "y", "y", "j"],
+                ["pending:copy", "copy:line", "pending:copy", "copy:down"]],
+            ["d then a key that's no motion says so", ["d", "u"], ["pending:done", "notHere"]],
+            ["dy takes nothing", ["d", "y"], ["pending:done", "notHere"]],
+            ["Escape cancels a waiting d", ["d", "Escape", "j"], ["pending:done", "down"]],
+            [". u Ctrl+R", [".", "u", "Ctrl+R"], ["repeat", "undo", "redo"]],
+            ["V and v choose, gv again", ["V", "v", "g", "v"], ["select", "select", "reselect"]],
+            ["/ and ? find, i a I A again", ["/", "?", "i", "a", "I", "A"],
+                ["find", "find", "findStart", "findEnd", "findStart", "findEnd"]],
+            [": is the command line", [":"], ["command"]],
+            ["ZZ and Space w let go", ["Z", "Z", "Space", "w"], ["close", "close"]],
+            ["q does nothing, and says so", ["q"], ["quiet"]],
+            ["Escape at rest lets go", ["Escape"], ["back"]],
+            ["Escape cancels a count first", ["4", "Escape", "j"], ["down"]],
             ["Escape cancels a key waiting for its second", ["g", "Escape", "g"], []],
-            // Shift pressed for dG's G is a key of its own, with no name.
+            ["Space ? and F1 list the keys", ["Space", "?", "F1"], ["keys", "keys"]],
+            ["Space u l turns the numbers", ["Space", "u", "l"], ["numbers"]],
+            ["n N c x p and Delete say not here", ["n", "N", "c", "x", "p", "Delete"],
+                ["notHere", "notHere", "notHere", "notHere", "notHere", "notHere"]],
+            ["Shift+Delete forgets nothing", ["Shift+Delete"], ["notHere"]],
             ["a key with no name changes nothing", ["d", "", "G", "3", "", "j"],
-                ["forgetAll", "3next"]],
-            ["a count goes before dd and yy", ["3", "d", "d", "2", "y", "y"],
-                ["3forget", "2copy"]],
-            ["u brings back", ["u"], ["undo"]],
-            ["/ and ? search, n and N again", ["/", "?", "n", "N", "3", "n"],
-                ["searchForward", "searchBack", "again", "againBack", "3again"]],
-            ["V selects", ["V"], ["select"]],
-            ["Space ? lists the keys", ["Space", "?"], ["keys"]]
+                ["pending:done", "done:last", "3down"]]
         ];
-        for (const [what, keys, want] of doing)
+        for (const [what, keys, want] of normal)
             holds(what, typed(keys).acts, want);
 
-        // [what, the keys typed while cards are selected, the acts done]
-        const selecting = [
-            ["d forgets them at once, as x and Delete", ["d", "x", "Delete"],
-                ["forget", "forget", "forget"]],
-            ["y copies them at once", ["y"], ["copy"]],
-            ["j and k carry it on, with a count", ["2", "j", "k"], ["2next", "previous"]],
-            ["gg and G go to its ends", ["g", "g", "G"], ["newest", "oldest"]],
+        const visual = [
+            ["d and x are done with the selection", ["d", "x"],
+                ["done:selection", "done:selection"]],
+            ["y copies it", ["y"], ["copy:selection"]],
+            ["moves carry it, with a count", ["2", "j", "k", "G", "g", "g"],
+                ["2down", "up", "last", "first"]],
+            ["o goes to its other end", ["o"], ["otherEnd"]],
+            ["ip takes the sender's run", ["i", "p"], ["inRun"]],
             ["V and Escape end it", ["V", "Escape"], ["select", "back"]],
-            ["l, u and / are no keys of a selection", ["l", "u", "/"], []]
+            [": gives its commands", [":"], ["command"]],
+            ["u and / are no keys of a selection", ["u", "/"], ["notHere", "notHere"]]
         ];
-        for (const [what, keys, want] of selecting)
+        for (const [what, keys, want] of visual)
             holds(what, typed(keys, "visual").acts, want);
-        holds("Space waits for its second", typed(["Space"]).ours, true);
 
-        // A search typed key by key, from nothing.
-        function searched(keys) {
-            let typing = { pattern: "", ends: "" };
-            for (const key of keys)
-                typing = Keys.searching(typing.pattern, key);
-            return typing;
+        // V j j d d: the second d, within the wait, joins the first.
+        let standing = Keys.rest();
+        standing = Keys.read(standing, "d", "visual", { now: 1000 }).standing;
+        const joined = Keys.read(standing, "d", "normal", { now: 1200 });
+        holds("a second d within the wait is taken with visual's", [joined.act, joined.ours],
+            ["", true]);
+        holds("and leaves nothing waiting", joined.standing, Keys.rest());
+        const late = Keys.read(standing, "d", "normal", { now: 1400 });
+        holds("one after it starts afresh", late.act, "pending");
+        holds("another key goes on as ever", Keys.read(standing, "j", "normal", { now: 1100 }).act,
+            "down");
+
+        holds("a held j moves", typed(["j"], "normal", true).acts, ["down"]);
+        for (const key of ["d", "u", ".", "Ctrl+R", "Return", "V"])
+            holds(`a held ${key} does nothing`, typed([key], "normal", true).acts, []);
+        const waiting = Keys.read(Keys.rest(), "d", "normal").standing;
+        holds("a held j after d takes nothing",
+            Keys.read(waiting, "j", "normal", { repeated: true }).act, "");
+
+        // A line typed key by key, in a mode, from what it held.
+        function line(keys, mode, from) {
+            let typing = { act: "", line: Keys.line(from ?? "") };
+            const acts = [];
+            for (const key of keys) {
+                typing = Keys.typing(typing.line, key, mode, false);
+                if (typing.act !== "")
+                    acts.push(typing.act);
+            }
+            return { text: typing.line.text, caret: typing.line.caret, acts };
         }
-        holds("letters type and Space a space", searched(["B", "u", "Space", "l"]),
-            { pattern: "Bu l", ends: "" });
-        holds("Backspace takes the last back", searched(["a", "b", "Backspace"]),
-            { pattern: "a", ends: "" });
-        holds("Backspace with nothing left cancels", searched(["a", "Backspace", "Backspace"]),
-            { pattern: "", ends: "cancelled" });
-        holds("Return keeps it", searched(["a", "Return"]), { pattern: "a", ends: "found" });
-        holds("Escape cancels it", searched(["a", "Escape"]).ends, "cancelled");
-        holds("a named key types nothing", searched(["a", "Down"]).pattern, "a");
+        holds("letters type and Space a space", line(["B", "u", "Space", "l"], "find"),
+            { text: "Bu l", caret: 4, acts: [] });
+        holds("Backspace takes the one before the caret",
+            line(["a", "b", "c", "Left", "Backspace"], "find"),
+            { text: "ac", caret: 1, acts: [] });
+        holds("Home, End and typing at the caret", line(["b", "Home", "a", "End", "c"], "find"),
+            { text: "abc", caret: 3, acts: [] });
+        holds("Ctrl+W takes a word, Ctrl+U the rest before",
+            line(["Ctrl+W"], "find", "go to slack"), { text: "go to ", caret: 6, acts: [] });
+        holds("Ctrl+U", line(["Left", "Ctrl+U"], "find", "slack"), { text: "k", caret: 0, acts: [] });
+        holds("Backspace on nothing leaves", line(["a", "Backspace", "Backspace"], "find").acts,
+            ["leave"]);
+        holds("a held Backspace stops at empty",
+            Keys.typing(Keys.line(""), "Backspace", "find", true).act, "");
+        holds("a colon first is the command line", line([":"], "find").acts, ["command"]);
+        holds("a colon later types", line(["a", ":"], "find").text, "a:");
+        holds("the find's own keys", line(["Return", "Down", "Tab", "Ctrl+N", "Up",
+            "Shift+Tab", "Ctrl+P", "Ctrl+Y", "Escape", "Ctrl+C"], "find").acts,
+            ["open", "choose", "choose", "choose", "chooseBack", "chooseBack", "chooseBack",
+                "take", "normal", "normal"]);
+        holds("the command line's own keys", line(["Return", "Tab", "Ctrl+E", "Escape"],
+            "command").acts, ["run", "choose", "away", "drop"]);
+        holds("Ctrl+R + puts the clipboard", line(["Ctrl+R", "+"], "command").acts, ["paste"]);
+        holds("insert's own keys", line(["Return", "Escape"], "insert").acts, ["send", "normal"]);
+        holds("in insert, letters type", line(["o", "k"], "insert").text, "ok");
 
-        holds("lowercase finds either case", Search.found("build", "Build log, build"),
-            [[0, 5], [11, 16]]);
-        holds("a capital finds only itself", Search.found("Build", "build Build"), [[6, 11]]);
-        holds("nothing sought finds nothing", Search.found("", "build"), []);
-        holds("a match is washed, the rest escaped",
-            Search.washed("a<b\nb", "b", { ink: "#fff", ground: "#000" }),
-            "a&lt;<span style=\"color:#fff;background-color:#000\">b</span><br>"
-                + "<span style=\"color:#fff;background-color:#000\">b</span>");
+        // A prompt's words in normal, key by key from a caret.
+        function prompt(keys, text, caret) {
+            let standing = Keys.rest();
+            let typing = { act: "", line: Keys.line(text, caret) };
+            const acts = [];
+            for (const key of keys) {
+                typing = Keys.prompting(standing, typing.line, key);
+                standing = typing.standing;
+                if (typing.act !== "")
+                    acts.push(typing.act);
+            }
+            return { text: typing.line.text, caret: typing.line.caret, acts };
+        }
+        holds("0 and $ go to its ends", prompt(["0"], "on my way", 4).caret, 0);
+        holds("$ to the last letter", prompt(["$"], "on my way", 0).caret, 8);
+        holds("w to the next word", prompt(["w"], "on my way", 0).caret, 3);
+        holds("b to the word before", prompt(["b"], "on my way", 6).caret, 3);
+        holds("e to the word's end", prompt(["e"], "on my way", 3).caret, 4);
+        holds("x cuts a letter", prompt(["x"], "on my way", 0).text, "n my way");
+        holds("dw cuts a word", prompt(["d", "w"], "on my way", 3),
+            { text: "on way", caret: 3, acts: [] });
+        holds("cw changes one, into insert", prompt(["c", "w"], "on my way", 3),
+            { text: "on  way", caret: 3, acts: ["insert"] });
+        holds("a inserts after", prompt(["a"], "ok", 0), { text: "ok", caret: 1, acts: ["insert"] });
+        holds("A at the end", prompt(["A"], "ok", 0).caret, 2);
+        holds("Return sends, : commands, u undoes", prompt(["Return", ":", "u"], "ok", 0).acts,
+            ["send", "command", "undo"]);
+        holds("q says not here", prompt(["q"], "ok", 0).acts, ["notHere"]);
 
-        holds("a search goes to the next card holding it", Keys.next([true, false, true], true), 2);
-        holds("back, to the one before", Keys.next([false, true, false], false), 1);
-        holds("round to the front when only it holds it", Keys.next([true, false], true), 0);
-        holds("none when no card holds it", Keys.next([false, false], true), -1);
+        // Space ?'s list: a heading each mode, then each act's keys.
+        const listed = Keys.keyList();
+        holds("it opens on normal", listed[0].heading, "Normal: moving and acting");
+        holds("a move lists its letter and its arrow", listed[1],
+            { heading: "", keys: "j Down", does: "down a card", act: "down" });
+        holds("a sequence is listed as typed", listed.find(one => one.act === "first").keys, "gg");
+        holds("each mode has its heading", listed.filter(one => one.heading !== "")
+            .map(one => one.heading), ["Normal: moving and acting", "The find: the / line",
+            "Commands: the : line", "Visual: choosing several", "Insert: writing words"]);
+        holds("an act is listed once a mode", listed.filter(one => one.act === "done").length, 2);
+        holds("every line fits at 2", listed.filter(one => one.does.length > 18
+            || one.keys.length > 14).map(one => one.does), []);
+        holds(":help dd opens at d", listed[Keys.helpAt(listed, "done")].act, "done");
+
+        holds("normal's hints, Space ? last", Keys.hints("normal", {}, { done: "read" })
+            .map(one => `${one.key} ${one.word}`),
+            ["\u21b5 open", "d read", ": commands", "space ? keys"]);
+        holds("a card that opens nothing hints no Return",
+            Keys.hints("normal", { open: false }, {}).map(one => one.act),
+            ["done", "command", "keys"]);
+        holds("visual's hints", Keys.hints("visual", {}, { done: "forget" })
+            .map(one => `${one.key} ${one.word}`),
+            ["d forget", "y copy", ": commands", "space ? keys"]);
+        holds("the find's hints", Keys.hints("find", {}, {}).map(one => `${one.key} ${one.word}`),
+            ["\u21b5 open", "esc normal"]);
 
         holds("a list that fits is All", Keys.ruler(0, 5, 5), "All");
         holds("at its start, Top", Keys.ruler(0, 5, 13), "Top");
         holds("at its end, Bot", Keys.ruler(8, 5, 13), "Bot");
         holds("between, how far through", Keys.ruler(2, 5, 13), "25%");
 
-        const listed = Keys.keyList();
-        holds("the keys list each line's first keys", listed[0], {
-            name: "Turn the cards",
-            chord: [{ text: "j", after: false }, { text: "k", after: true }]
-        });
-        holds("a sequence is listed as typed", listed.find(line => line.name === "Forget it").chord,
-            [{ text: "d", after: false }, { text: "d", after: true }]);
-        holds("Return is listed by its mark", listed.find(line => line.name === "Do it").chord,
-            [{ text: "\u21b5", after: false }]);
-
-        holds("a key begun is the stack's", typed(["d"]).ours, true);
-        holds("a key it doesn't know isn't", typed(["x"]).ours, false);
-        holds("Return with Ctrl isn't, since q closes", typed(["Ctrl+Return"]).ours, false);
-        holds("a key with no name isn't", typed(["d", ""]).ours, false);
-        holds("a key ending a begun sequence badly is still the stack's", typed(["g", "x"]).ours,
-            true);
-        holds("nothing begun is left after an act", typed(["5", "j"]).standing, Keys.rest());
+        holds("lowercase finds either case", Search.found("build", "Build log, build"),
+            [[0, 5], [11, 16]]);
+        holds("a capital finds only itself", Search.found("Build", "build Build"), [[6, 11]]);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
