@@ -601,13 +601,15 @@ def walk_the_gutter(desktop: Desktop) -> None:
     count = desktop.showing()["count"]
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
     assert any(word["text"] == f"\u00b7 1 of {count}" for word in field), field
-    # On the find it empties, its room kept, and normal numbers it again.
+    # On the find it empties and makes no number, its room kept, and normal numbers it again.
     room = desktop.showing()["gutter"]["room"]
+    assert room > 0, desktop.showing()["gutter"]
     machine.send_chars("A")
     desktop.launcher_until(
         lambda shown: (
             shown["mode"] == "find"
-            and (shown["gutter"]["shown"], shown["gutter"]["made"]) == (False, 0)
+            and (shown["gutter"]["shown"], shown["gutter"]["numbers"]) == (False, [])
+            and shown["gutter"]["made"] == 0
             and shown["gutter"]["room"] == room
         )
     )
@@ -625,10 +627,6 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     machine = desktop.machine
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
-    # On the find the gutter keeps its room and makes no number.
-    gutter = desktop.showing()["gutter"]
-    assert (gutter["shown"], gutter["numbers"], gutter["made"]) == (False, [], 0), gutter
-    assert gutter["room"] > 0, gutter
     desktop.normal()
     last = desktop.showing()["count"] - 1
 
