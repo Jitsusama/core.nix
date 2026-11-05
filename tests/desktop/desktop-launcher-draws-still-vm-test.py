@@ -660,7 +660,13 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
         desktop.launcher_until(heard)
         after = laid_out(desktop)
         desktop.photograph(f"launcher-still-{step:02}-{key}")
-        shifts += [f"after {key!r} ({typed!r}) {shift}" for shift in moved(before, after)]
+        # What the foot read before and after, so a move says what took
+        # its room as well as what gave it.
+        read = [" ".join(word["text"] for word in laid["foot"]) for laid in (before, after)]
+        shifts += [
+            f"after {key!r} ({typed!r}) {shift}, the foot reading {read[0]!r} then {read[1]!r}"
+            for shift in moved(before, after)
+        ]
         before = after
     desktop.close_launcher()
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
