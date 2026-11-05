@@ -105,9 +105,17 @@ local alone = {
   ['?'] = shortcuts,
   F1 = shortcuts,
   -- The launcher's command line over the video, given the socket
-  -- mpv-command reaches this mpv over.
+  -- mpv-command reaches this mpv over, and the video's name, for the line
+  -- to say what its commands act on.
   [':'] = function()
-    mp.commandv('run', 'launcher-say', 'command-line', 'mpv', mp.get_property('input-ipc-server'))
+    mp.commandv(
+      'run',
+      'launcher-say',
+      'command-line',
+      'mpv',
+      mp.get_property('input-ipc-server'),
+      mp.get_property('filename', '')
+    )
   end,
   -- Nothing closes by a key pressed in passing; what does is said, over
   -- the picture, until it goes.

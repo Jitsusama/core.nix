@@ -28,6 +28,9 @@ Item {
     property int chosen: -1
     // How many lines show at most, as his pumheight.
     property int most: 10
+    // Whether rows lie behind it for its hairline to split it from; over a
+    // viewer none do, and the field's own hairline already sits above it.
+    property bool split: true
     // A line's pitch: a Note line and the room the space scale gives it.
     readonly property real pitch: Theme.space.xl
     readonly property int showing: Math.min(lines.length, most)
@@ -55,6 +58,7 @@ Item {
     readonly property real titlesAt: commandsAt + Math.ceil(commandsWide) + Theme.space.xl
 
     Rectangle {
+        visible: menu.split
         width: parent.width
         height: Theme.border
         color: Theme.edge
