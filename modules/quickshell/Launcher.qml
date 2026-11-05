@@ -4850,6 +4850,7 @@ Scope {
                             }
 
                             sourceComponent: CommandMenu {
+                                split: root.over === null
                                 all: root.commanding?.menu ?? []
                                 lines: commandLoader.item?.shown ?? []
                                 chosen: commandLoader.item?.choosing.at ?? -1
