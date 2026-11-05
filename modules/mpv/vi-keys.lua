@@ -104,13 +104,18 @@ local alone = {
   end,
   ['?'] = shortcuts,
   F1 = shortcuts,
+  -- The launcher's command line over the video, given the socket
+  -- mpv-command reaches this mpv over.
+  [':'] = function()
+    mp.commandv('run', 'launcher-say', 'command-line', 'mpv', mp.get_property('input-ipc-server'))
+  end,
   -- Nothing closes by a key pressed in passing; what does is said, over
   -- the picture, until it goes.
   q = function()
-    mp.osd_message('q does nothing · ZZ closes')
+    mp.osd_message('q does nothing · :q closes')
   end,
   Q = function()
-    mp.osd_message('Q does nothing · ZZ closes')
+    mp.osd_message('Q does nothing · :q closes')
   end,
 }
 
@@ -228,8 +233,13 @@ end
 local function seconds(time)
   local n = '[%d.]+'
   local whole = '^' .. n .. '$'
-  if not (time:match(whole) or time:match('^' .. n .. ':' .. n .. '$')
-    or time:match('^' .. n .. ':' .. n .. ':' .. n .. '$')) then
+  if
+    not (
+      time:match(whole)
+      or time:match('^' .. n .. ':' .. n .. '$')
+      or time:match('^' .. n .. ':' .. n .. ':' .. n .. '$')
+    )
+  then
     return nil
   end
   local total = 0
@@ -264,7 +274,9 @@ local commands = {
   set = set,
   ['goto'] = function(rest)
     local at = seconds(rest)
-    if at then
+    if rest == '$' then
+      mp.command('seek 100 absolute-percent')
+    elseif at then
       mp.commandv('seek', tostring(at), 'absolute')
     else
       mp.osd_message('No time ' .. rest)

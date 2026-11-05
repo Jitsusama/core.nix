@@ -182,6 +182,17 @@ reads pause false "Space before ? to play on"
 keys SPACE
 reads pause true "Space to pause again"
 
+# : asks the launcher for its command line over this mpv, by the socket
+# mpv-command carries what's chosen back over.
+rm -f "$ASKED"
+keys :
+for _ in $(seq 600); do
+  if grep -qxF "command-line mpv $PWD/mpv.sock" "$ASKED" 2> /dev/null; then break; fi
+  sleep 0.1
+done
+grep -qxF "command-line mpv $PWD/mpv.sock" "$ASKED" 2> /dev/null \
+  || never ": to ask the launcher for its command line"
+
 # Z alone, a moment on, delays the subtitles, as mpv has it.
 reads sub-delay 0 "the subtitles undelayed"
 keys Z

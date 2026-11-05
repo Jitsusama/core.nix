@@ -63,8 +63,9 @@ onLinux {
   # go to the start and the end, gg, G and ]b and [b go through the list,
   # J and L do what j and l did, yy copies the frame as a PNG, through
   # wl-copy, ? and F1 ask the launcher for the keys, both stood in here,
-  # Space plays on at once, even before a ?, and ZZ and Space w close it
-  # where q, Q and Escape leave it open. A program that runs mpv with
+  # Space plays on at once, even before a ?, and ZZ closes it where q, Q,
+  # Escape and Space w leave it open. : asks the launcher for its command
+  # line, and what mpv-command carries back does what it says. A program that runs mpv with
   # Escape of its own, forced, as the camera's viewfinder does, always
   # gets it.
   mpv-keys-go-where-they-say =
