@@ -27,7 +27,7 @@
 # and Escape leaves it, and ? and F1 open the launcher's Shortcuts at the
 # player's keys. h and l seek back and on 5 seconds, j on a minute and k
 # back, as j goes on through a file, and each arrow does what its letter
-# does; 0 goes to the start and $ to the end, where the last frame stays,
+# does, though no list names one; 0 goes to the start and $ to the end, where the last frame stays,
 # gg and G play the first and the last in the list, ]b and [b the next and
 # the one before, a number before a key does it that many times and before
 # G plays that one, and yy copies the frame as a picture (copy-frame.lua).
@@ -82,32 +82,16 @@ let
   keys =
     grouped "seeking" [
       {
-        chord = "Left";
-        does = "Back 5 seconds";
-      }
-      {
         chord = "h";
         does = "Back 5 seconds";
-      }
-      {
-        chord = "Right";
-        does = "On 5 seconds";
       }
       {
         chord = "l";
         does = "On 5 seconds";
       }
       {
-        chord = "Down";
-        does = "On a minute";
-      }
-      {
         chord = "j";
         does = "On a minute";
-      }
-      {
-        chord = "Up";
-        does = "Back a minute";
       }
       {
         chord = "k";

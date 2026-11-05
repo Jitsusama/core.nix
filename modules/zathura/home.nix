@@ -23,7 +23,7 @@
 # Return goes to.
 #
 # Its keys are Vim's, which are zathura's own, as his Vim has them, each
-# with one meaning, and each arrow does what its letter does: j and k
+# with one meaning, and each arrow does what its letter does, unlisted: j and k
 # scroll down and up, h and l sideways, J and K turn the pages as Page Down
 # and Page Up do, gg and G go to the first and the last as Home and End do,
 # a count before G to that page, Ctrl+D and Ctrl+U half a screen, Ctrl+F
@@ -82,8 +82,8 @@ let
   # or to the document beside as Turning pages, those that move within a
   # page as Scrolling, those that size the page as Fitting the page, those that go back to a place as Places, the searches as Finding
   # words, and the rest loose. Keys that do one thing say it in the same
-  # words, the arrow first, so the launcher draws them as one row, the
-  # letter beside the arrow it twins. keys-test.sh presses each.
+  # words, so the launcher draws them as one row. An arrow does what its
+  # letter does but is never listed. keys-test.sh presses each.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "turning" [
@@ -141,32 +141,16 @@ let
     ]
     ++ grouped "scrolling" [
       {
-        chord = "Up";
-        does = "Up a little";
-      }
-      {
         chord = "k";
         does = "Up a little";
-      }
-      {
-        chord = "Down";
-        does = "Down a little";
       }
       {
         chord = "j";
         does = "Down a little";
       }
       {
-        chord = "Left";
-        does = "Left a little";
-      }
-      {
         chord = "h";
         does = "Left a little";
-      }
-      {
-        chord = "Right";
-        does = "Right a little";
       }
       {
         chord = "l";

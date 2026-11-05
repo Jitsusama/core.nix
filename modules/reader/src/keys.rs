@@ -847,6 +847,7 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
     let typed = table()
         .sequences
         .iter()
+        .filter(|(keys, _, _)| !an_arrow(keys))
         .map(|(keys, act, _)| (*act, shown_all(keys)));
     let slots = slots().map(|(act, key)| (act, format!("{} and a letter", shown(key))));
     let operators = operators().map(|(act, key)| (act, shown(key)));
@@ -859,7 +860,7 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
             None => rows.push((group, vec![keys], does)),
         }
     }
-    for (key, does, _) in line_keys() {
+    for (key, does, _) in line_keys().filter(|(key, _, _)| !an_arrow(&[*key])) {
         match rows
             .iter_mut()
             .find(|(g, _, d)| *g == "Command Line" && *d == does)
@@ -878,6 +879,13 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
             (group, mine.collect())
         })
         .collect()
+}
+
+/// Whether keys are an arrow alone. An arrow moves as its letter does, and
+/// on a line as a line's arrows do, but no list names one, as Joel asked:
+/// the letters are what's shown.
+fn an_arrow(keys: &[Key]) -> bool {
+    matches!(keys, [Key::Up | Key::Down | Key::Left | Key::Right])
 }
 
 /// A chord as the desktop's key map lists it.
@@ -899,6 +907,7 @@ pub fn chords() -> Vec<Listed> {
     table()
         .sequences
         .iter()
+        .filter(|(keys, _, _)| !an_arrow(keys))
         .map(|(keys, act, _)| {
             (
                 *act,
@@ -931,12 +940,16 @@ pub fn chords() -> Vec<Listed> {
                 act: spoken(act),
             })
         })
-        .chain(line_keys().map(|(key, does, act)| Listed {
-            group: "commands".to_string(),
-            chord: spelled(key),
-            does,
-            act,
-        }))
+        .chain(
+            line_keys()
+                .filter(|(key, _, _)| !an_arrow(&[*key]))
+                .map(|(key, does, act)| Listed {
+                    group: "commands".to_string(),
+                    chord: spelled(key),
+                    does,
+                    act,
+                }),
+        )
         .collect()
 }
 
