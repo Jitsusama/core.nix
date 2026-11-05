@@ -423,10 +423,12 @@ E21 = "E21: Cannot make changes"
 def refused_in_the_drawer(desktop: Desktop) -> None:
     """In the drawer, d c p x say Vim's E21 and q says how to close, the keys staying there.
 
-    A page can't be changed (VKCF3Z's spec v2, the Reader): x, p and S say it at once, d and c
-    once their motion comes, and visual's d and x as its choice ends, each where the line was
-    and none as "not here", the cursor unmoved. q says what it says on the rows. Escape, a key
-    that says nothing, is pressed between, so each word is seen to come of its own key.
+    A page can't be changed (VKCF3Z's spec v2, the Reader): x, p and S say it at once, and every
+    other key Vim's nv_edit refuses there, i a o and their capitals entering no insert; d and c
+    once their motion comes, r once its letter does, and visual's change keys as its choice
+    ends, each where the line was and none as "not here", the cursor unmoved. q says what it
+    says on the rows. Escape, a key that says nothing, is pressed between, so each word is seen
+    to come of its own key.
     """
     page = InTheDrawer(desktop)
     page.into()
@@ -437,7 +439,10 @@ def refused_in_the_drawer(desktop: Desktop) -> None:
             shown["commandSaid"] == E21 and shown["mode"] == "page" and shown["saying"] == []
         )
 
-    for keys in ("x", "p", "S", "d j", "c c", "v d", "V x"):
+    at_once = ("x", "p", "S", "D", "C", "X", "P", "s", "J", "~", "i", "a", "I", "A", "o", "O")
+    waiting = ("d j", "c c", "r x", "r 5")
+    chosen = tuple(f"{v} {key}" for v, key in zip("vVvVvVvVvV", "dxcpDCXPsS", strict=True))
+    for keys in (*at_once, *waiting, *chosen, "v J", "V ~"):
         page.pressed_until(keys, said)
         assert page.drawer()["cursor"]["line"] == line, (keys, page.drawer())
         page.pressed_until("esc", lambda shown: shown["commandSaid"] == "")

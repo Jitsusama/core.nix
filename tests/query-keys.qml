@@ -701,7 +701,7 @@ QtObject {
             [": opens the command line, whose :q comes back to the rows", into.concat([":"]),
                 ["normal", "drawer", "command"]],
             ["the rows' keys that aren't a page's do nothing in it",
-                into.concat(["Tab", "-", "Backspace", "i", "a", "u", "]", "b"]),
+                into.concat(["Tab", "-", "Backspace", "u", "]", "b"]),
                 ["normal", "drawer"]],
             ["Ctrl+W l does nothing more in it, nor Space and the right arrow",
                 into.concat(["Ctrl+w", "l", "Space", "Right"]), ["normal", "drawer"]],
@@ -869,15 +869,25 @@ QtObject {
     // What would change the drawer, which a page can't be: Vim's E21, as
     // his Neovim says it on a buffer that can't be modified (VKCF3Z's spec
     // v2, The Reader: "d c p x say E21: Cannot make changes"). x, p and S
-    // say it at once; d and c wait for their motion first, as Vim's do, a
-    // count, a text object's i or a and a g going before it; Escape or
-    // Ctrl+C lets them go unsaid. q says how to close, as on the rows.
+    // say it at once, and so does every other key Vim's nv_edit refuses on
+    // such a buffer, i a I A o O among them, entering no insert (Y2YBTS);
+    // d and c wait for their motion first, as Vim's do, a count, a text
+    // object's i or a and a g going before it, and r for its letter, any
+    // digit being one; Escape or Ctrl+C lets them go unsaid. q says how to
+    // close, as on the rows.
     function drawerRefusals(holds) {
         const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done]
         const doing = [
             ["x says E21", ["x"], ["cannotChange"]],
             ["and p and S", ["p", "S"], ["cannotChange", "cannotChange"]],
+            ["and Vim's other change keys, none going into insert",
+                ["D", "C", "X", "P", "s", "J", "~", "i", "a", "I", "A", "o", "O"],
+                Array(13).fill("cannotChange")],
+            ["r waits for its letter", ["r"], []],
+            ["and says E21 once it comes, a digit too", ["r", "x", "r", "5"],
+                ["cannotChange", "cannotChange"]],
+            ["Escape lets r go unsaid", ["r", "Escape", "j"], ["next"]],
             ["d waits for its motion", ["d"], []],
             ["and says E21 once it comes", ["d", "j"], ["cannotChange"]],
             ["as dd and cc do", ["d", "d", "c", "c"], ["cannotChange", "cannotChange"]],
@@ -947,6 +957,11 @@ QtObject {
             ["and so do x, c and p", ["V", "x", "v", "c", "v", "p"],
                 ["selectLines", "cannotChange", "select", "cannotChange", "select",
                     "cannotChange"], "page"],
+            ["and Vim's other change keys",
+                ["D", "C", "X", "P", "s", "S", "J", "~"].reduce((keys, key) =>
+                    keys.concat(["v", key]), []),
+                Array(8).fill(["select", "cannotChange"]).reduce((acts, two) =>
+                    acts.concat(two), []), "page"],
             ["q says how to close, choosing on", ["v", "q", "j"],
                 ["select", "quitSaid", "next"], "pageVisual"],
             ["and no way back to the rows is in it, Space nothing and the arrow a move",
