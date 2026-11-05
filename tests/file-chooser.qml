@@ -333,10 +333,11 @@ ShellRoot {
                 ask(4, { mode: "open", title: "Open", folder: notes });
             } else if (stage === 7 && chooser.shown.endsWith("/4.sock")) {
                 stage = 8;
-                launcher.open = false;
+                command(notes, "quit").run(called(""));
             } else if (stage === 8 && answers.length === 4) {
                 stage = 9;
-                expect("closing the launcher answers nothing", answers[3] === "", answers[3]);
+                expect(":q closes the launcher, answering nothing", answers[3] === ""
+                    && !launcher.open, answers[3]);
                 ask(5, "not a request");
             } else if (stage === 9 && answers.length === 5) {
                 stage = 10;
