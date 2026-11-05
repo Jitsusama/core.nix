@@ -101,8 +101,10 @@ for judging before it's been judged here first.
   edge by its column, each baseline by its pitch, each run by its level, each
   ink by its colour role. A design review judges type, space, alignment and
   colour together on those shots and answers within half an hour, and the
-  change merges only on its pass (Joel, 2026-11-05: "you are not
-  considering enough design elements when changing things"). A change that
+  change merges on its pass (Joel, 2026-11-05: "you are not considering
+  enough design elements when changing things"). If no answer comes within
+  half an hour of the shots, it merges on its owner's checks and is judged
+  after, a miss fixed forward, so nothing waits on the review. A change that
   draws nothing differently says so and needs none.
 - **Said, where it's unfinished.** Whatever hasn't met all of this is called
   unfinished when it's shown, never done.
@@ -449,9 +451,9 @@ shows and further apart as they grow:
 | m    | 3     | 12     | the apart rung, the beat, niri's gap between tiles |
 | l    | 4     | 16     | the items rung                                     |
 | xl   | 6     | 24     | the inset rung, the large pitch                    |
-| xxl  | 8     | 32     | the frames rung, a glyph's column in a list        |
+| xxl  | 8     | 32     | the frames rung                                    |
 | xxxl | 12    | 48     | the screen rung, a row of the launcher or a prompt |
-| huge | 16    | 64     | the screen rung where the room allows              |
+| huge | 16    | 64     | the bound past which empty room needs a reason     |
 
 Whitespace groups things before borders or boxes do. Start with too much space
 and take it away. Density follows the moment: dense and scannable where Joel is
@@ -480,7 +482,7 @@ the theme refuses a ladder that doesn't widen outward.
 | groups | 20 | groups on one line (the facts, the state, the hints), and column and column |
 | inset | 24 (xl) | a frame and its text, on every side, to the ink |
 | frames | 32 (xxl) | floating frames that belong together: the launcher and its drawer, notices in a stack |
-| screen | 48 (xxxl) at least | a floating frame and the screen's edge; huge where the room allows |
+| screen | 48 (xxxl) | a floating frame and the screen's edge, every frame alike |
 
 Groups take 20, the one rung off the scale, since the ladder needs one between
 things on a line and a frame's own room: no gap inside a frame passes the room
@@ -510,6 +512,20 @@ Title 32; Display 56.
 - **A frame's bottom is set**, never what whole lines happen to leave.
 
 The rest follows from the ladder:
+
+- **The frame's edges keep the inset; its bands meet as rows do.** The inset
+  is measured from the frame's inside edge, its border left out, to the ink:
+  the first cap's top, the side's first and last ink, and the last baseline
+  above the bottom edge. Inside, a band meets the next across a hairline with
+  what a row leaves round its centred capitals, so a foot comes out a little
+  taller than a row, and the room round the whole frame stays equal.
+- **A glyph's column is its cell and a mark.** A mark sits in a square cell
+  one line pitch wide, its text the mark rung after it, so a list's names
+  start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
+  an indent is the same again, and the column follows the type.
+- **A stroke isn't a space.** A meter's bar, a wave's bars and the room in a
+  texture are counted in hairlines, `4 * Theme.border`, never named by a rung,
+  and each says in a comment that it's a stroke or a texture.
 
 - **One baseline a line.** A line's pieces share one baseline, found by
   centring its largest level's capitals in the line; a smaller level takes that

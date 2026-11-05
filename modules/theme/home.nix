@@ -366,7 +366,7 @@ let
     {
       name = "screen";
       units = 12;
-      between = "a floating frame and the screen's edge, at the least";
+      between = "a floating frame and the screen's edge";
     }
   ];
 
