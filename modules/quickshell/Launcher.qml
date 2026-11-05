@@ -2025,6 +2025,11 @@ Scope {
     property int rowsDrawn: 0
 
     onMatchesChanged: {
+        // The selection's start keeps to the row it began on, as the
+        // cursor does (compose's Rank.pinned), so rows arriving above it
+        // never move what d would take from what's tinted.
+        if (visualFrom >= 0)
+            visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
         rowsMade += 1;
         noteKeys();
         noteFigures();
@@ -3795,6 +3800,10 @@ Scope {
     readonly property int visualTop: visualSpan.from
     readonly property int visualBottom: visualSpan.to
     onVisualChanged: visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current
+    // What the row it began on is, to find it again as the rows change.
+    property string visualId: ""
+    onVisualFromChanged: visualId = visualFrom >= 0 && matches[visualFrom]
+        ? Rank.identity(matches[visualFrom]) : ""
 
     // The rows the selection takes.
     function visualRows() {

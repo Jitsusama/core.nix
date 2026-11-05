@@ -252,6 +252,17 @@ function selection(from, at) {
     return { from: Math.min(from, at), to: Math.max(from, at) };
 }
 
+// Where visual line's start goes as the rows change under it: onto the
+// row it began on, found by what it is (`id`, as `identity` reads a row),
+// else where it was, within the rows; -1, none begun, stays.
+function heldFrom(rows, id, from, identity) {
+    if (from < 0) {
+        return from;
+    }
+    const found = id === "" ? -1 : rows.findIndex(row => identity(row) === id);
+    return found >= 0 ? found : Math.max(0, Math.min(from, rows.length - 1));
+}
+
 // What the foot says Return does over a selection: open its rows, by
 // their count, as "open 3".
 // Visual's mode word, counting the rows chosen (`span`, as selection gives

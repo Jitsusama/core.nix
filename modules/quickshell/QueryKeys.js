@@ -81,7 +81,7 @@ const table = [
     { act: "selectLines", mode: "visual", keys: ["V"] },
     { act: "ending", mode: "visual", keys: ["d"] },
     { act: "copy", mode: "visual", keys: ["y"] },
-    { act: "normal", mode: "visual", keys: ["Escape"] },
+    { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
     { act: "insert", mode: "normal", keys: ["i"] },
