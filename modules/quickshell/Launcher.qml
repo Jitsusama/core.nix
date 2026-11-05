@@ -2024,9 +2024,12 @@ Scope {
     // d and y where the row has an ending or a copy that its Return isn't,
     // d by the ending's own verb, as docs/design.md's foot says "d
     // disconnect", each by the operator's key (Operators.operators). Only
-    // the one row's actions are read, as pendingSaid reads them.
+    // the one row's actions are read, as pendingSaid reads them, and only
+    // once it's selected (selectedActions), never in the foot's binding.
     function operatorKeys(choice) {
-        const actions = actionsOf(choice);
+        if (choice !== selectedActions.row)
+            return [];
+        const actions = selectedActions.actions;
         const ending = Operators.endingOf(choice, actions);
         const copy = Operators.copyOf(choice, actions,
             one => verbOf(one) === "copy" && !!one.run);
@@ -4026,6 +4029,13 @@ Scope {
     // a key has; else its actions as the right arrow lists them, each a
     // row made searchable: nine such rows a row, as a window has, took
     // 18 ms over 400 rows when timed alone (2026-11-05).
+    // The selected row's actions, read as it's selected rather than in the
+    // foot's binding: a row's verbs() may ask its source, as Time's watch
+    // chrony, and a binding that read them would loop on what they set.
+    property var selectedActions: ({ row: null, actions: [] })
+    onSelectedChanged: selectedActions = { row: selected,
+        actions: selected ? actionsOf(selected) : [] }
+
     function actionsOf(row) {
         if (typeof row.operands === "function")
             return row.operands();
