@@ -449,24 +449,17 @@ Item {
         [Qt.Key_Space]: "Space",
         [Qt.Key_F1]: "F1"
     })
+    // A key as the table names it (QueryKeys.js's nameOf).
     function named(event: KeyEvent): string {
-        const control = (event.modifiers & Qt.ControlModifier) !== 0;
-        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-        const alt = (event.modifiers & Qt.AltModifier) !== 0;
-        const bare = !control && /^[!-~]$/.test(event.text);
-        // With Ctrl a letter types a control character, so it goes by its
-        // key, which is the layout's letter.
-        const letter = bare ? event.text
-            : control && event.key >= Qt.Key_A && event.key <= Qt.Key_Z
-                ? String.fromCharCode(event.key + 32) : "";
-        const name = letter || (keyNames[event.key] ?? "");
-        if (name === "")
-            return "";
-        // Alt is named beside a key that types nothing, so Alt+Return is
-        // never Return; a letter it shifts on the layout goes by what it
-        // typed.
-        return (control ? "Ctrl+" : "") + (alt && !letter ? "Alt+" : "")
-            + (shift && !bare ? "Shift+" : "") + name;
+        return QueryKeys.nameOf({
+            control: (event.modifiers & Qt.ControlModifier) !== 0,
+            shift: (event.modifiers & Qt.ShiftModifier) !== 0,
+            alt: (event.modifiers & Qt.AltModifier) !== 0,
+            text: event.text,
+            letter: event.key >= Qt.Key_A && event.key <= Qt.Key_Z
+                ? String.fromCharCode(event.key + 32) : "",
+            named: keyNames[event.key] ?? ""
+        });
     }
 
     // A secret's keys, as Vim's inputsecret() takes them: Ctrl+C gives it
