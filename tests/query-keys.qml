@@ -1118,6 +1118,10 @@ QtObject {
                 ["normal", "keys", "keys"]],
             ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
                 ["normal", "close"]],
+            // Space u l switches the gutter's numbers between relative and
+            // absolute, as his u l toggles relativenumber.
+            ["Space u l switches the numbers", ["Escape", "Space", "u", "l"],
+                ["normal", "numbers"]],
             ["Space alone begins, and a key it doesn't lead lets it go",
                 ["Escape", "Space", "j", "j"], ["normal", "next"]],
             ["Escape cancels a Space waiting, then closes",
@@ -1250,10 +1254,11 @@ QtObject {
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
             lastPlace: "last", jumps: "jumps", find: "find", keys: "keys", close: "close",
-            ends: "ends", nextRow: "next row", caret: "caret", word: "word",
-            intoDrawer: "into the drawer", lines: "lines", along: "along", scroll: "scroll",
-            back: "back", ending: "ending", seek: "seek", seekOn: "seek on", select: "select",
-            reselect: "reselect", otherEnd: "other end", copy: "copy", copyRow: "copy row" };
+            numbers: "numbers", ends: "ends", nextRow: "next row", caret: "caret",
+            word: "word", intoDrawer: "into the drawer", lines: "lines", along: "along",
+            scroll: "scroll", back: "back", ending: "ending", seek: "seek", seekOn: "seek on",
+            select: "select", reselect: "reselect", otherEnd: "other end", copy: "copy",
+            copyRow: "copy row" };
         const modes = { normal: "Normal", find: "Find", page: "Drawer",
             pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
@@ -1281,6 +1286,7 @@ QtObject {
         holds("a sequence of letters, one run",
             (list.find(line => line.value === "ends") ?? {}).keys, [["gg"], ["G"]]);
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
+        holds("the list's numbers", keyed("numbers"), "Space u l");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
         holds("and y", keyed("copy row"), "yy  yG");
@@ -1380,7 +1386,7 @@ QtObject {
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         for (const act of ["run", "into", "out", "dismiss", "close", "quitSaid", "lastPlace",
-            "jumpBack", "jumpForward", "freshFind", "keys", "insert", "change", ""])
+            "jumpBack", "jumpForward", "freshFind", "keys", "numbers", "insert", "change", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,

@@ -34,6 +34,7 @@ const normal = [
     // line sits whole at Joel's scale.
     { name: "intoDrawer", acts: ["drawer"], firsts: true },
     { name: "keys", acts: ["keys"] },
+    { name: "numbers", acts: ["numbers"] },
     // q isn't listed, since it does nothing by itself but say how to
     // close (Joel, 2026-11-05).
     { name: "close", acts: ["close"], also: [":q"] }

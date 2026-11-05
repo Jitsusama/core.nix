@@ -19,7 +19,11 @@
 // and a modal caret fades and then, with no key, holds steady. The letters
 // a find matched in a row's name are washed beneath them, run by run, a
 // selected row's on the ground a shade past the selection, and a cut name's
-// only before its ellipsis. It exits 0 once every case holds,
+// only before its ellipsis. A list's gutter in normal numbers the rows in
+// view, relative to the cursor row's absolute one in text, or all absolute,
+// right-aligned on each row's baseline, from a handful of numbers however
+// many rows there are, and none at all off normal. It exits 0 once every
+// case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -196,6 +200,16 @@ ShellRoot {
                 fade: 100
                 stopsAfter: 600
             }
+            // A list's gutter beside three rows in view, the cursor on the
+            // second, as normal draws it, with a slot to spare.
+            Gutter {
+                id: gutter
+                height: 60
+                rows: [{ at: 0, base: 12 }, { at: 1, base: 30 }, { at: 2, base: 48 }]
+                slots: 4
+                current: 1
+                shown: true
+            }
             Prompt {
                 id: typing
                 width: root.panel
@@ -313,6 +327,42 @@ ShellRoot {
             throw new Error(`${what}: ${shown}`);
     }
 
+    // The gutter, as his Neovim's number, relativenumber and
+    // cursorlineopt=number draw it, then absolute, then hidden.
+    function gutterHolds() {
+        const texts = () => gutter.said().map(number => number.text);
+        expect("the gutter counts from the cursor row, which says its own number",
+            JSON.stringify(texts()) === JSON.stringify(["1", "2", "1"]), texts());
+        const inks = gutter.said().map(number => number.ink);
+        expect("the cursor row's number is in text and the rest muted",
+            JSON.stringify(inks) === JSON.stringify(["muted", "text", "muted"]), inks);
+        const said = gutter.said();
+        expect("each number is on its row's baseline",
+            said.every((number, at) => Math.abs(number.base - gutter.rows[at].base) <= 0.5),
+            JSON.stringify(said));
+        expect("the numbers end together, right-aligned",
+            said.every(number => Math.abs(number.ends - said[0].ends) <= 0.5),
+            JSON.stringify(said));
+        expect("three digits fit its room", gutter.widest("999") <= said[0].ends,
+            `${gutter.widest("999")} past ${said[0].ends}`);
+        // The numbers stand a mark from the text they number, as a key
+        // does from its word (docs/design.md, The Ladder).
+        expect("the numbers end a mark before the rows",
+            Math.abs(gutter.width - said[0].ends - Theme.space.rung.mark) <= 0.5,
+            `${gutter.width - said[0].ends} before the rows`);
+        expect("it makes a number a slot, not a row", gutter.made === gutter.slots,
+            `${gutter.made} for ${gutter.slots} slots`);
+        gutter.relative = false;
+        expect("absolute, each row says its own number",
+            JSON.stringify(texts()) === JSON.stringify(["1", "2", "3"]), texts());
+        const room = gutter.width;
+        gutter.shown = false;
+        expect("off normal it draws no number and makes none",
+            texts().length === 0 && gutter.made === 0, `${texts()}, ${gutter.made} made`);
+        expect("and keeps its room, so no row moves", gutter.width === room && room > 0,
+            `${gutter.width}, was ${room}`);
+    }
+
     function check() {
         try {
             const cut = texts => texts.filter(t => t.truncated).map(t => t.text);
@@ -407,6 +457,16 @@ ShellRoot {
             const hint = root.setting(voicedField, root.voice);
             expect("the launcher's hint in the voice, on the typed words' baseline",
                 root.voicedLike(typed, hint), `${JSON.stringify(typed)} against ${JSON.stringify(hint)}`);
+            // Where a caret is drawn, the hint starts a caret and an s past
+            // where letters would, so the caret never cuts its first letter
+            // (VKCF3Z's space audit, the picker's fault 11: "open which
+            // file?" read with its o cut).
+            const line = [...voicedField.children].find(child => child.cursorPosition !== undefined);
+            const letters = line.mapToItem(null, 0, 0).x;
+            const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
+            expect("a hint starts past the caret", hinting !== undefined
+                && hinting.from >= letters + voicedField.caretWidth + Theme.space.rung.mark - 0.5,
+                `hint at ${hinting?.from}, letters at ${letters}`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
@@ -471,7 +531,27 @@ ShellRoot {
             expect("typed in normal, the launcher's field names no key",
                 texts.length > 0 && !texts.some(t => t.text.includes("\u2190")
                     || t.text.includes("Ctrl+Y")), said(texts));
+            // A find narrowing the rows says so in normal, its count at
+            // Note after what's typed, as "/ne · 3 of 12"; on the find the
+            // rows themselves narrow as it's typed, so it says nothing.
+            typing.narrowed = "3 of 12";
+            texts = drawn(typing, []).sort((a, b) => a.from - b.from);
+            // What's typed is the line's own input, so the count is held to
+            // standing past the path and its letters, well before the aside.
+            const path = texts.find(t => t.text === "Now");
+            const narrowing = texts.find(t => t.text === "\u00b7 3 of 12");
+            const aside = texts.find(t => t.text === "1 of 2");
+            expect("a narrowed find says its count after what's typed, in normal",
+                path !== undefined && narrowing !== undefined && aside !== undefined
+                    && narrowing.from >= path.to + typing.letterWidth * 2
+                    && narrowing.to < aside.from,
+                said(texts));
             typing.mode = "find";
+            texts = drawn(typing, []);
+            expect("and nothing of it on the find",
+                !texts.some(t => t.text.includes("3 of 12")), said(texts));
+            typing.narrowed = "";
+            root.gutterHolds();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
