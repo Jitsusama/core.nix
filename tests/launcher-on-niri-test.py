@@ -183,6 +183,12 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
             and shown["kind"] == "shortcut"
         )
     )
+    # Escape at rest lets the key list go, as it lets go what's begun, and closes nothing.
+    shell.normal()
+    shell.send_chars(" ?")
+    shell.launcher_until(lambda shown: shown["listing"] is True)
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["open"] and shown["listing"] is False)
     shell.close_launcher()
 
 
