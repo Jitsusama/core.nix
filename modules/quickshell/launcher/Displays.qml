@@ -56,8 +56,9 @@ Provider {
     property var outputs: ({})
 
     // :set brightness=60 sets the screen as its Brightness row does, on a
-    // machine with a backlight.
-    setOptions: backlights.count === 0 ? ({}) : ({
+    // machine with a backlight, and :set nowarmth gives it its own white as
+    // its Warmth row does, where the backlight daemon warms it.
+    setOptions: Object.assign(backlights.count === 0 ? {} : {
         brightness: {
             kind: "number",
             least: 0,
@@ -65,6 +66,15 @@ Provider {
             now: () => provider.backlight()?.share ?? 0,
             set: to => {
                 provider.brighten(to);
+                return "";
+            }
+        }
+    }, warmth === null ? {} : {
+        warmth: {
+            kind: "switch",
+            now: () => provider.warmth?.followsTheRoom ?? false,
+            set: to => {
+                provider.followTheRoom(to);
                 return "";
             }
         }

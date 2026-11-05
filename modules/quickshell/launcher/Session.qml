@@ -47,7 +47,20 @@ Provider {
     // it sleep; awake=open keeps it so only while the lid is open and
     // awake=shut with the lid shut too, where a shut lid would sleep it.
     // :set power=saver, balanced or performance chooses the power profile.
+    // :set norecording stops what records, as Stop Recording does, and
+    // recording records the whole screen, as Capture's first row does.
     setOptions: Object.assign({
+        recording: {
+            kind: "switch",
+            now: () => Recorder.recording,
+            set: to => {
+                if (to && !Recorder.recording)
+                    Recorder.screen();
+                else if (!to && Recorder.recording)
+                    Recorder.stop();
+                return "";
+            }
+        },
         dnd: {
             kind: "switch",
             takes: "number",

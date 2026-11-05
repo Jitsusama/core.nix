@@ -73,11 +73,15 @@ function setValue(word, read) {
 }
 
 // A number given with =, += or -=, as volume=40 or dnd+=60: a change, or
-// Vim's error where it's no number or = sets it past its ends.
+// Vim's error where it's no number, = sets it past its ends, or it's only
+// stepped (`stepsOnly`), as a board's lights that take no level.
 function setNumber(word, read, invalid) {
     const { name, how, value, option } = read;
     if (!number.test(value)) {
         return { error: `E521: Number required after =: ${word}` };
+    }
+    if (how === "=" && option.stepsOnly) {
+        return invalid;
     }
     const by = Number(value);
     if (how === "=" && (by < (option.least ?? 0) || by > (option.most ?? by))) {
@@ -159,11 +163,16 @@ function toward(change, now, option) {
     }
 }
 
-// A number moved by += or -=, held within its least and most. A switch
-// whose value is a number, on with none, as dnd held until it's ended,
-// stays so, and off, += gives it that many, as dnd+=60 holds an hour.
+// A number moved by += or -=, held within its least and most, or still
+// null where it can't be read, the option's set stepping it by the change.
+// A switch whose value is a number, on with none, as dnd held until it's
+// ended, stays so, and off, += gives it that many, as dnd+=60 holds an
+// hour.
 function moved(change, now, option) {
     const adds = change.how === "add";
+    if (now === null) {
+        return null;
+    }
     if (typeof now === "boolean") {
         return adds && !now ? change.value : now;
     }
@@ -172,8 +181,12 @@ function moved(change, now, option) {
 }
 
 // One option as Vim's :set volume? says it: a switch its name or its no,
-// or its value where it holds one, as the network it's joined.
+// or its value where it holds one, as the network it's joined; null for
+// one that can't be read, for the launcher to say so.
 function shown(name, now, option) {
+    if (now === null) {
+        return null;
+    }
     if (option.kind !== "switch") {
         return `${name}=${now}`;
     }
@@ -194,7 +207,10 @@ function setArguments(arg, options) {
     const equals = word.indexOf("=");
     if (equals < 0) {
         return Object.keys(options).sort().filter(each => each.startsWith(word))
-            .map(each => ({ value: each, note: shown(each, options[each].now(), options[each]) }));
+            .map(each => ({
+                value: each,
+                note: shown(each, options[each].now(), options[each]) ?? ""
+            }));
     }
     const name = word.slice(0, equals);
     const option = options[name];

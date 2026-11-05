@@ -2724,9 +2724,12 @@ Scope {
     }
 
     // :set's words, each set as its option's row would, or said as Vim's
-    // :set volume? says it; :set all says every one, in name order. The
-    // first word it can't take says Vim's error and none of them changes.
+    // :set volume? says it; :set all says every one, in name order, and one
+    // that can't be read says so. Each set is given the change too, so a
+    // level only stepped, as a board's lights, steps by it. The first word
+    // it can't take says Vim's error and none of them changes.
     function commandSet(arg) {
+        const unread = (Words.field.command ?? {}).unread ?? "";
         const options = setOptions;
         const read = SetWords.setting(arg, options);
         if (read.error !== undefined) {
@@ -2744,13 +2747,14 @@ Scope {
         const said = [];
         for (const { change, to } of steps) {
             if (to !== undefined) {
-                said.push(options[change.option].set(to.to));
+                said.push(options[change.option].set(to.to, change));
                 continue;
             }
             const names = change.option === "all" ? Object.keys(options).sort()
                 : [change.option];
             for (const name of names)
-                said.push(SetWords.shown(name, options[name].now(), options[name]));
+                said.push(SetWords.shown(name, options[name].now(), options[name])
+                    ?? unread.replace("{option}", name));
         }
         commandSay(said.filter(words => words !== "").join("  "), false);
     }

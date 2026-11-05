@@ -6732,6 +6732,7 @@
       "none": "none of {all} can {command}",
       "some": "{some} of {all} can {command}; {command} them? (y/n)",
       "asksPassword": "{network} asks its password: find it to join",
+      "unread": "{option} can't be read here",
       "run": "run",
       "choose": "choose"
     },

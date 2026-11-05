@@ -73,7 +73,12 @@ Singleton {
         Niri.spawn(["ergodox", "layer", String(layer)]);
     }
 
+    // Whether the board's lights were last lit, from here, since the board
+    // can't be asked; lit until then, as it starts.
+    property bool lit: true
+
     function lights(on: bool): void {
+        lit = on;
         Niri.spawn(["ergodox", "lights", on ? "on" : "off"]);
     }
 
