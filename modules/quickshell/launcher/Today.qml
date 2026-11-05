@@ -109,7 +109,10 @@ Provider {
         const day = Moment.ordinal(at);
         const quarter = Moment.quarter(at);
         return {
-            headline: Moment.day(at),
+            headline: Moment.day(at, now),
+            // Copied, it's pasted somewhere this year isn't plain, so it
+            // keeps its year.
+            copy: Moment.fullDay(at),
             // Its place's glyph, as Now's rows each wear theirs, rather
             // than its first row's.
             glyph: Theme.glyph.date,

@@ -48,8 +48,15 @@ function clock(at) {
     return Qt.formatTime(at, "HH:mm");
 }
 
-// The date as Date says it, "Wednesday 4 November 2026".
-function day(at) {
+// The date as Date says it, "Wednesday 4 November", with its year only
+// when it's another than `now`'s, as a full date is said everywhere.
+function day(at, now) {
+    return Qt.formatDate(at, at.getFullYear() === new Date(now).getFullYear() ? "dddd d MMMM"
+        : "dddd d MMMM yyyy");
+}
+
+// The date to paste, "Wednesday 4 November 2026", whole wherever it lands.
+function fullDay(at) {
     return Qt.formatDate(at, "dddd d MMMM yyyy");
 }
 

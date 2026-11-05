@@ -409,7 +409,8 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     assert kinds[at + 2] == "on:location", things
     notices = next(n for n, thing in enumerate(things) if thing["reads"].startswith("Notices"))
     assert at < notices, things
-    date = machine.succeed("date '+%A %-d %B %Y'").strip()
+    # This year's date, which says no year; ISO Date inside says it.
+    date = machine.succeed("date '+%A %-d %B'").strip()
     assert time["is"] == "answer:time", time
     assert re.match(r"Time \u00b7 \d\d:\d\d", time["reads"]), time
     assert today["is"] == "answer:today", today
