@@ -238,6 +238,16 @@ def changed_at_the_top(before: Image.Image, after: Image.Image) -> tuple[float, 
     return (min(xs) + max(xs)) / 2 / width, (min(ys) + max(ys)) / 2 / height
 
 
+def keyed(name: str, *, down: bool) -> Json:
+    """Give QEMU's input event for a key going down or up, by its name or its number."""
+    key = (
+        {"type": "number", "data": int(name, 16)}
+        if name.startswith("0x")
+        else {"type": "qcode", "data": name}
+    )
+    return {"type": "key", "data": {"down": down, "key": key}}
+
+
 def started(machine: BaseMachine, values: Values) -> Desktop:
     """Give the desktop on a test's machine, started, with every wait paced to the host.
 
@@ -916,8 +926,28 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         assert card, "the shell says no card is in front"
         return (card["left"] + card["right"]) / 2, (card["top"] + card["bottom"]) / 2
 
+    def press_at_once(self, keys: str) -> None:
+        """Press each key named, a letter by its character and any other by QEMU's name.
+
+        Every key goes down and up in one batch of QEMU's input events, so the guest reads them
+        all at once, as two keys pressed closer together than a person can are. Sent one
+        sendkey at a time, a loaded builder let niri draw the first key's frame before it read
+        the second, and a waiting key's 300 ms ran out between them.
+        """
+        events: list[Json] = []
+        for key in keys.split():
+            *held, pressed = test_driver.machine.CHAR_TO_KEY.get(key, key).split("-")
+            chord = [*held, pressed]
+            events += [keyed(name, down=True) for name in chord]
+            events += [keyed(name, down=False) for name in reversed(chord)]
+        self.input_events(*events)
+
     def tablet(self, *events: Json) -> None:
-        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767.
+        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767."""
+        self.input_events(*events)
+
+    def input_events(self, *events: Json) -> None:
+        """Send QEMU these input events, a key's or the tablet's, as one batch.
 
         The driver says a command's arguments are strings, so the events go through JSON to
         reach it as they are.

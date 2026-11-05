@@ -1160,14 +1160,17 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     says_how_wi_fi_is_set(desktop)
     # Turning Wi-Fi off is an action like any, found by name from the top,
     # where Return lands on it, saying a second Return turns it off, and
-    # only that second Return does.
+    # only that second Return does. Two Returns closer together than Joel
+    # presses two, as a key bounced, are the landing's one press doubled,
+    # so they only land too.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("wifi off", selecting="Wi-Fi Off")
-    machine.send_key("ret")
+    desktop.press_at_once("ret ret")
     desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "off"))
     desktop.held_still(timedelta(seconds=2))
     machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
+    assert desktop.showing()["returned"]["act"] == "", desktop.showing()["returned"]
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
