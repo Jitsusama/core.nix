@@ -1081,23 +1081,28 @@ Item {
         // under its own ink, fill and colour only. Like a find's wash
         // (Wash.qml) it lies under the letters alone, from the first to the
         // last, so the space that sets "= 84" off what's typed stays bare.
+        // The letters are measured as a Text set exactly as the ghost's is,
+        // its axes too, which a FontMetrics given the ghost's font left out,
+        // measuring them narrow; the ghost ends in its letters, so the
+        // ground ends where it does.
         Rectangle {
-            readonly property string inked: hintText.text.trim()
-            readonly property real before: {
-                void ghostFace.font;
-                const text = hintText.text;
-                return ghostFace.advanceWidth(text.slice(0, text.length - text.trimStart().length));
-            }
-            visible: prompt.ghostFlashed && hintText.visible && inked !== ""
+            readonly property real before: Math.max(0, hintText.implicitWidth - inked.implicitWidth)
+            visible: prompt.ghostFlashed && hintText.visible && inked.text !== ""
             x: hintText.x + before
             y: hintText.y
-            width: Math.max(0, Math.min(hintText.width - before, ghostFace.advanceWidth(inked)))
+            width: Math.max(0, Math.min(hintText.width, hintText.implicitWidth) - before)
             height: hintText.height
             color: Theme.accent
 
-            FontMetrics {
-                id: ghostFace
-                font: hintText.font
+            Text {
+                id: inked
+                visible: false
+                textFormat: Text.PlainText
+                text: hintText.text.trim()
+                font.family: hintText.level.family
+                font.italic: hintText.level.italic
+                font.pointSize: hintText.level.pointSize
+                font.variableAxes: hintText.level.variableAxes
             }
         }
 
