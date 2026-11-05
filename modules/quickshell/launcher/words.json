@@ -3942,8 +3942,7 @@
       "verb": "forget",
       "glyph": "dismiss",
       "act": "ending",
-      "ends": "forget",
-      "command": "forget"
+      "ends": "forget"
     },
     {
       "id": "verb:notices:forget",
@@ -4758,8 +4757,7 @@
       "command": "disconnect",
       "in": "wifi",
       "name": "Disconnect It",
-      "ends": "disconnect",
-      "command": "disconnect"
+      "ends": "disconnect"
     },
     {
       "id": "verb:wifi-join",
@@ -4799,8 +4797,7 @@
       "in": "wifi",
       "name": "Forget It",
       "act": "ending",
-      "ends": "forget",
-      "command": "forget"
+      "ends": "forget"
     },
     {
       "id": "verb:wifi-sign-in",
@@ -5203,8 +5200,7 @@
       "command": "disconnect",
       "in": "bluetooth",
       "name": "Disconnect It",
-      "ends": "disconnect",
-      "command": "disconnect"
+      "ends": "disconnect"
     },
     {
       "id": "verb:bluetooth-passkey",
@@ -5218,8 +5214,7 @@
       "in": "bluetooth",
       "name": "Forget It",
       "act": "ending",
-      "ends": "forget",
-      "command": "forget"
+      "ends": "forget"
     },
     {
       "id": "verb:copy:paste",
@@ -5702,8 +5697,7 @@
       "glyph": "close",
       "sure": "Quit Now",
       "act": "ending",
-      "ends": "quit",
-      "command": "halt"
+      "ends": "quit"
     },
     {
       "id": "program:media",
@@ -5865,8 +5859,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "close",
-      "command": "close"
+      "ends": "close"
     },
     {
       "id": "verb:recent:site:link",
@@ -5923,8 +5916,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "close",
-      "command": "close"
+      "ends": "close"
     },
     {
       "id": "verb:path:folder:window",
@@ -6217,8 +6209,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "close",
-      "command": "close"
+      "ends": "close"
     },
     {
       "id": "verb:agent:switch",
