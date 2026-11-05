@@ -162,6 +162,7 @@ let
     "Power.qml"
     "Brightness.qml"
     "Meter.qml"
+    "Meters.qml"
     "Facts.qml"
     "Wallpaper.qml"
     "Lifted.qml"
