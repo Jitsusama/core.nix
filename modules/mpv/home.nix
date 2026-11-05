@@ -175,7 +175,7 @@ let
       }
       {
         chord = "Escape";
-        does = "Out of full screen";
+        does = "The video out of full screen";
       }
       # Where j and l were.
       {

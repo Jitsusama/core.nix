@@ -69,19 +69,23 @@ end
 
 -- A w pressed this soon after Space closes the player, as Space w closes
 -- every surface of Joel's; Space has paused or played on by then, which a
--- player closing makes no matter. Only then is w ours: alone it stays
--- mpv's own.
-local space_w = { timer = nil }
+-- player closing makes no matter. Alone, w does what mpv's own w does.
+-- w is always bound, and asks when Space came, rather than being bound
+-- only after Space, since a binding made then may land after the w.
+local space_at = nil
 
 local function after_space()
-  if space_w.timer then
-    space_w.timer:kill()
+  space_at = mp.get_time()
+end
+
+local function w(count)
+  local after = space_at and mp.get_time() - space_at < 0.3
+  space_at = nil
+  if after then
+    close()
+  else
+    times(count, 'add panscan -0.1')
   end
-  mp.add_key_binding('w', 'vi-space-w', close)
-  space_w.timer = mp.add_timeout(0.3, function()
-    space_w.timer = nil
-    mp.remove_key_binding('vi-space-w')
-  end)
 end
 
 -- What each key does, given the number before it, if any.
@@ -119,6 +123,7 @@ local alone = {
   Z = function(count)
     times(count, 'add sub-delay +0.1')
   end,
+  w = w,
   ['?'] = shortcuts,
   F1 = shortcuts,
   -- Nothing closes by a key pressed in passing; what does is said, over

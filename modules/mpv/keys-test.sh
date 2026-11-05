@@ -28,8 +28,10 @@ never() {
   exit 1
 }
 
+# Before a fresh mpv makes its socket, socat goes without reading what
+# printf writes, which is no matter.
 asked() {
-  printf '{"command":%s}\n' "$1" | socat -t 2 - "UNIX-CONNECT:$PWD/mpv.sock" 2> /dev/null
+  { printf '{"command":%s}\n' "$1"; } 2> /dev/null | socat -t 2 - "UNIX-CONNECT:$PWD/mpv.sock" 2> /dev/null
 }
 # A property mpv has, a time in whole milliseconds, and any other number as
 # jq writes it once it's reckoned with, 1.1 rather than mpv's 1.100000.
