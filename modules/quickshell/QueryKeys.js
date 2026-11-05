@@ -383,7 +383,8 @@ function read(standing, key, mode, words = false) {
     // Normal's and visual's counts and operators, which keep an operator's
     // count apart from its motion's.
     const before = mode === "normal" || mode === "visual"
-        ? Operators.beforeTable(standing, key, mode, words, matching, rest()) : null;
+        ? Operators.beforeTable(standing, key, { mode, words }, { matching, rested: rest() })
+        : null;
     if (before !== null) {
         return before;
     }

@@ -77,7 +77,7 @@ const digit = /^[0-9]$/;
 // normal begins it, with the count before it, but on a prompt's words
 // (`words`), where d and c are the words' own, as dw and cw; visual's
 // take no motion. `matching` and `rested` are as operated's.
-function beforeTable(standing, key, mode, words, matching, rested) {
+function beforeTable(standing, key, { mode, words }, { matching, rested }) {
     const atRest = standing.typed.length === 0;
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,
