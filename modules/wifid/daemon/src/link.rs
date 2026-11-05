@@ -21,7 +21,26 @@ pub struct Link {
     pub portal: Option<String>,
 }
 
+/// What a check of how far a network reaches is a check of: the network,
+/// the DNS servers it handed out and the sign-in API it advertises. A
+/// verdict holds only while the card's standing is the one checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Standing {
+    ssid: Option<String>,
+    dns: Vec<IpAddr>,
+    portal: Option<String>,
+}
+
 impl Link {
+    /// The card's standing, while it can reach beyond its network at all.
+    pub fn standing(&self) -> Option<Standing> {
+        self.routable.then(|| Standing {
+            ssid: self.ssid.clone(),
+            dns: self.dns.clone(),
+            portal: self.portal.clone(),
+        })
+    }
+
     /// Reads one link's description, passing over any that isn't a Wi-Fi
     /// card joining networks.
     pub fn described(link: &Value) -> Option<Link> {
@@ -170,6 +189,24 @@ mod tests {
                 portal: Some("https://front-desk.inn/api".to_string()),
             })
         );
+    }
+
+    #[test]
+    fn a_card_moved_to_another_network_stands_elsewhere() {
+        let inn = Link::described(&card()).unwrap();
+        let mut lantern = inn.clone();
+        lantern.ssid = Some("Lantern".to_string());
+
+        assert_ne!(inn.standing(), lantern.standing());
+        assert_eq!(inn.standing(), inn.clone().standing());
+    }
+
+    #[test]
+    fn a_card_reaching_no_further_than_its_network_has_no_standing() {
+        let mut link = Link::described(&card()).unwrap();
+        link.routable = false;
+
+        assert_eq!(link.standing(), None);
     }
 
     #[test]
