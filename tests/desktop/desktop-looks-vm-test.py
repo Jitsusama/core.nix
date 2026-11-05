@@ -302,12 +302,17 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         # The ask stands alone in the keys' place, ending where Return
         # ends, wider than Return's word, so it reaches into the room the
         # other keys left, and how things stand gives way around it as
-        # the foot's facts give way to any keys: each fact whole or gone,
-        # never cut, and all of them back once the ask goes.
+        # the foot's facts give way to any keys: a fact's figure before
+        # its glyph, the last first, never a word cut, and all of them
+        # whole once the ask goes.
         shown = desktop.showing()
         facts = before["glance"].split("  ")
         kept = shown["glance"].split("  ")
-        assert kept == facts[: len(kept)], f"at {scale} the ask cut a fact: {kept} of {facts}"
+        assert len(kept) <= len(facts), f"at {scale} the ask added a fact: {kept} of {facts}"
+        for said, fact in zip(kept, facts, strict=False):
+            assert said == fact or fact.startswith(f"{said} "), (
+                f"at {scale} the ask cut a fact: {kept} of {facts}"
+            )
         assert shown["operated"] == "dd Close Notes for Tuesday? (y/n)", shown
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
