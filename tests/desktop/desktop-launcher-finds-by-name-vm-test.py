@@ -756,6 +756,13 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
+    # A colon as the find's first letter opens the command line, where :q closes.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars(":q")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["ex"]) == ("normal", "q"))
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
 
 
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:

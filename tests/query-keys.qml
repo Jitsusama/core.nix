@@ -1101,7 +1101,8 @@ QtObject {
             ["a Z with anything but Z after it lets go", ["Escape", "Z", "j", "Z", "Z"],
                 ["normal", "close"]],
             [": in normal opens the command line", ["Escape", ":"], ["normal", "command"]],
-            ["a colon on the find is the field's to type", [":", "q", "Return"], ["run"]],
+            ["a colon after letters on the find is the field's to type", ["s", ":", "Return"],
+                ["run"]],
             ["normal's rows keep the arrows", ["Escape", "Down", "Up"],
                 ["normal", "next", "previous"]],
             ["Space Tab goes to the place used last", ["Escape", "Space", "Tab"],
@@ -1225,6 +1226,12 @@ QtObject {
         // The rows have no search of their own: the find line is the list's
         // one way to find (VKCF3Z's vi-paradigm spec, The Find Line).
         holds("/ goes to the find", typed(["Escape", "/"]).mode, "find");
+        // A colon as the find's first letter opens the command line, as
+        // Vim's does from anywhere; after letters it's one of the find's.
+        holds("a colon on an empty find opens the command line",
+            Keys.opensCommands(":", "find", ""), true);
+        holds("but not after letters", Keys.opensCommands(":", "find", "sl"), false);
+        holds("nor in a prompt's words", Keys.opensCommands(":", "insert", ""), false);
         holds("n and N search nothing in normal", typed(["Escape", "n", "N"]).acts, ["normal"]);
         // A key with no meaning here says so, never silent (the vi-paradigm
         // spec, Normal); a count or a sequence begun means something.
