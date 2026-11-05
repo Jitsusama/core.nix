@@ -30,11 +30,23 @@ function spanned(count, motion, place) {
 // close alone isn't one, since an answer's Return that only closes the
 // launcher says close too.
 function endingOf(row, actions) {
-    const ends = one => one.act === "ending" && !!one.run;
+    const ends = one => one.act === "ending" && doing(one) !== null;
     if (ends(row)) {
         return row;
     }
     return actions.find(ends) ?? null;
+}
+
+// What d runs for an ending action: its own run, or, for one that runs
+// nothing itself and steps in to the row that does, as a program's Quit
+// asks once that way, that row's, since d's own ask stands for it. Null
+// for one with nothing to run.
+function doing(action) {
+    if (typeof action.run === "function") {
+        return action.run;
+    }
+    const inside = typeof action.targets === "function" ? action.targets() : [];
+    return inside.find(one => typeof one.run === "function")?.run ?? null;
 }
 
 // A row's copy: the row itself, where Return copies it, as an answer's
@@ -104,4 +116,16 @@ function asks(actions) {
 // about does; anything else lets the ask go.
 function answers(ask, act, span) {
     return ask !== null && ask.act === act && ask.from === span.from && ask.to === span.to;
+}
+
+// The keys an operator was typed by, as the ask says them: its count
+// before it doubled, as 3dd, or its motion's after it, as d6j, where 2d3j
+// is said as Vim counts it.
+function typedAs(act, count, motion) {
+    const key = Keys.keyOf(act, "normal");
+    if (motion === null) {
+        return (count > 0 ? String(count) : "") + key;
+    }
+    const times = motion.count > 0 ? String(motion.count) : "";
+    return key.slice(0, 1) + times + Keys.lettersOf(motion.act, "normal");
 }
