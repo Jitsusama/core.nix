@@ -311,8 +311,21 @@ def there(options: Options) -> int | None:
     if not options.words and listed.exists():
         print(listed.read_text(), end="")
     else:
-        print(f"pictures: {out}", file=sys.stderr)
+        say_pictures(out, options.check)
     return status
+
+
+def say_pictures(out: Path, check: str) -> None:
+    """Say where the run's pictures are, or that it took none.
+
+    A check photographs only as its gallery: on 5 November a passing run of
+    vm-desktop-looks brought back an empty folder, read as pictures lost.
+    """
+    if any(entry.name != "subtests" for entry in out.iterdir()):
+        print(f"pictures: {out}", file=sys.stderr)
+        return
+    gallery = "" if check.endswith(".gallery") else f"; {check}.gallery takes them, if it has one"
+    print(f"no pictures: the subtests run took none{gallery}", file=sys.stderr)
 
 
 def main(argv: Sequence[str]) -> int:
@@ -342,7 +355,7 @@ def main(argv: Sequence[str]) -> int:
     out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
     out.mkdir(parents=True, exist_ok=True)
     status = run(driver, cut(script, options.words), out, options)
-    print(f"pictures: {out}", file=sys.stderr)
+    say_pictures(out, options.check)
     return status
 
 

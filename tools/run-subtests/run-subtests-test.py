@@ -70,13 +70,14 @@ sys.exit(int(os.environ.get("STAND_IN_STATUS", "0")))
 
 
 # A stand-in for nix-offload: it notes what it was asked, puts a picture in
-# the folder it was given, and answers as told.
+# the folder it was given unless told the run took none, and answers as told.
 NIX_OFFLOAD = """
 import json, os, sys
 with open(os.environ["STAND_IN_ASKED"], "w") as asked:
     json.dump(sys.argv[1:], asked)
 out = sys.argv[sys.argv.index("--out") + 1]
-open(os.path.join(out, "desktop.png"), "w").close()
+if not os.environ.get("STAND_IN_NO_PICTURES"):
+    open(os.path.join(out, "desktop.png"), "w").close()
 sys.exit(int(os.environ.get("STAND_IN_OFFLOAD_STATUS", "0")))
 """
 
@@ -292,6 +293,37 @@ def test_there_has_the_subtests_built_elsewhere_and_runs_nothing_here(
     ]
     assert (out / "desktop.png").exists()
     assert stand_in.ran() is None
+
+
+@pytest.mark.usefixtures("stand_in")
+def test_a_run_that_brought_back_no_pictures_says_so_and_where_a_gallery_takes_them(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
+
+    said = capsys.readouterr().err
+    assert not any(line.startswith("pictures:") for line in said.splitlines())
+    assert "no pictures: the subtests run took none" in said
+    assert "vm-desktop-x.gallery" in said
+
+
+@pytest.mark.usefixtures("stand_in")
+def test_a_gallerys_run_with_no_pictures_names_no_other_gallery(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+
+    assert tool.main(["--there", "vm-desktop-x.gallery", "launcher"]) == 0
+
+    said = capsys.readouterr().err
+    assert "no pictures: the subtests run took none" in said
+    assert ".gallery.gallery" not in said
 
 
 def test_there_gives_the_builds_status(
