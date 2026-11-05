@@ -59,17 +59,34 @@ pub struct Tick {
     pub into_day: u32,
     /// Whether the queue holds back work a builder could take.
     pub wants: bool,
+    /// Whether a `there` run waits for a builder, which it asks for only
+    /// to build on it at once.
+    pub asked: bool,
     /// Whether the machine woke from sleep in the last few minutes, long
     /// enough for a helper to notice a builder that went while it slept.
     pub woke: bool,
 }
 
+/// Until when no builder is asked for, as [`next_after`] says.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Hold {
+    /// Seconds since the epoch.
+    pub until: u64,
+    /// Whether it holds because the last builder sat unused while work
+    /// wanted it, which a `there` run asking for one lifts.
+    pub unused: bool,
+}
+
 /// With nothing lent: the seconds a builder asked for now should live, if
 /// one should be. None is asked for while one this asked for earlier isn't
-/// yet seen gone, so there's never a second beside it.
-pub fn lend(hours: Hours, tick: Tick, not_before: u64, unreturned: usize) -> Option<u64> {
+/// yet seen gone, so there's never a second beside it, nor while `hold`
+/// holds, unless a `there` run asks for one after one sat unused: one sat
+/// unused at 23:16 on 4 November when its tunnel stopped answering, and
+/// for half an hour after every `there` run gave up asking.
+pub fn lend(hours: Hours, tick: Tick, hold: Hold, unreturned: usize) -> Option<u64> {
     let within = (hours.first..hours.last).contains(&tick.into_day);
-    (tick.wants && within && tick.now >= not_before && unreturned == 0)
+    let waits = tick.now < hold.until && !(hold.unused && tick.asked);
+    (tick.wants && within && !waits && unreturned == 0)
         .then(|| u64::from(hours.longest.unwrap_or(hours.deadline - tick.into_day)))
 }
 
@@ -137,14 +154,15 @@ pub fn asks_outliving(hours: Hours, tick: Tick, used: u64, ends: u64) -> bool {
 /// one given back in use at the deadline, or whose time ran out at `ends`
 /// while it slept unused with the machine, doesn't; nor does one that sat
 /// unused only because the machine slept, just before it `woke`.
-pub fn next_after(event: Event, wants: bool, used: u64, ends: u64, woke: bool, now: u64) -> u64 {
-    match event {
-        Event::Lost | Event::Failed => now + AFTER_FAILING,
+pub fn next_after(event: Event, wants: bool, used: u64, ends: u64, woke: bool, now: u64) -> Hold {
+    let (until, unused) = match event {
+        Event::Lost | Event::Failed => (now + AFTER_FAILING, false),
         Event::Stopped if wants && !woke && now < ends && now.saturating_sub(used) >= IDLE => {
-            now + AFTER_FAILING
+            (now + AFTER_FAILING, true)
         }
-        _ => now,
-    }
+        _ => (now, false),
+    };
+    Hold { until, unused }
 }
 
 /// Whether a builder is wanted now: while a `there` build waits for one,
@@ -251,7 +269,7 @@ mod tests {
     #[test]
     fn lent_for_a_span_it_lives_that_long_whatever_the_hour() {
         let late = 23 * 3600 + 50 * 60;
-        assert_eq!(lend(ANY_HOUR, at(late, true), 0, 0), Some(12 * 3600));
+        assert_eq!(lend(ANY_HOUR, at(late, true), FREE, 0), Some(12 * 3600));
         // Past the deadline it's still in use, so it isn't given back.
         let past = at(23 * 3600 + 59 * 60 + 30, false);
         assert_eq!(give_back(ANY_HOUR, past, past.now, LATER, false), None);
@@ -286,59 +304,96 @@ mod tests {
             now: 1_000_000,
             into_day,
             wants,
+            asked: false,
             woke: false,
         }
     }
 
+    /// No hold at all.
+    const FREE: Hold = Hold {
+        until: 0,
+        unused: false,
+    };
+
     #[test]
     fn a_builder_is_lent_while_work_waits_within_the_days_hours() {
-        assert_eq!(lend(HOURS, at(12 * 3600, true), 0, 0), Some(8 * 3600));
-        assert_eq!(lend(HOURS, at(12 * 3600, false), 0, 0), None);
+        assert_eq!(lend(HOURS, at(12 * 3600, true), FREE, 0), Some(8 * 3600));
+        assert_eq!(lend(HOURS, at(12 * 3600, false), FREE, 0), None);
     }
 
     #[test]
     fn it_lives_to_the_deadline_to_the_second() {
         let late = 19 * 3600 + 29 * 60 + 15;
-        assert_eq!(lend(HOURS, at(late, true), 0, 0), Some(45 + 30 * 60));
+        assert_eq!(lend(HOURS, at(late, true), FREE, 0), Some(45 + 30 * 60));
     }
 
     #[test]
     fn none_is_lent_before_the_first_start_or_from_the_last() {
-        assert_eq!(lend(HOURS, at(60, true), 0, 0), None);
-        assert_eq!(lend(HOURS, at(8 * 3600 - 1, true), 0, 0), None);
-        assert_eq!(lend(HOURS, at(19 * 3600 + 30 * 60, true), 0, 0), None);
-        assert_eq!(lend(HOURS, at(23 * 3600, true), 0, 0), None);
+        assert_eq!(lend(HOURS, at(60, true), FREE, 0), None);
+        assert_eq!(lend(HOURS, at(8 * 3600 - 1, true), FREE, 0), None);
+        assert_eq!(lend(HOURS, at(19 * 3600 + 30 * 60, true), FREE, 0), None);
+        assert_eq!(lend(HOURS, at(23 * 3600, true), FREE, 0), None);
     }
 
     #[test]
     fn none_is_lent_beside_one_not_yet_seen_gone() {
-        assert_eq!(lend(HOURS, at(12 * 3600, true), 0, 1), None);
+        assert_eq!(lend(HOURS, at(12 * 3600, true), FREE, 1), None);
     }
 
     #[test]
     fn none_is_lent_while_waiting_out_a_failure() {
-        assert_eq!(lend(HOURS, at(12 * 3600, true), 1_000_001, 0), None);
+        let failed = next_after(Event::Failed, false, 5, LATER, false, 5);
+        assert_eq!(failed.until, 5 + AFTER_FAILING);
         assert_eq!(
-            next_after(Event::Failed, false, 5, LATER, false, 5),
+            next_after(Event::Lost, false, 5, LATER, false, 5).until,
             5 + AFTER_FAILING
         );
         assert_eq!(
-            next_after(Event::Lost, false, 5, LATER, false, 5),
-            5 + AFTER_FAILING
-        );
-        assert_eq!(
-            next_after(Event::Stopped, false, 0, LATER, false, IDLE),
+            next_after(Event::Stopped, false, 0, LATER, false, IDLE).until,
             IDLE
         );
+        let failing = Hold {
+            until: 1_000_001,
+            ..failed
+        };
+        assert_eq!(lend(HOURS, at(12 * 3600, true), failing, 0), None);
+        // A `there` run asking doesn't lift it: the next would fail too.
+        let asked = Tick {
+            asked: true,
+            ..at(12 * 3600, true)
+        };
+        assert_eq!(lend(HOURS, asked, failing, 0), None);
     }
 
     #[test]
     fn one_given_back_unused_while_work_waits_is_not_asked_for_again_at_once() {
         let now = 100_000;
         assert_eq!(
-            next_after(Event::Stopped, true, now - IDLE, LATER, false, now),
+            next_after(Event::Stopped, true, now - IDLE, LATER, false, now).until,
             now + AFTER_FAILING
         );
+    }
+
+    #[test]
+    fn a_there_run_asking_lifts_the_hold_after_one_sat_unused() {
+        // At 23:16 on 4 November a builder whose tunnel stopped answering
+        // sat unused and was given back, and for half an hour every `there`
+        // run gave up asking for one.
+        let noon = at(12 * 3600, true);
+        let unused = next_after(
+            Event::Stopped,
+            true,
+            noon.now - IDLE,
+            LATER,
+            false,
+            noon.now,
+        );
+        assert_eq!(lend(HOURS, noon, unused, 0), None);
+        let asked = Tick {
+            asked: true,
+            ..noon
+        };
+        assert_eq!(lend(HOURS, asked, unused, 0), Some(8 * 3600));
     }
 
     #[test]
@@ -347,7 +402,7 @@ mod tests {
         // half an hour of the day after as if no work could use it.
         let now = 100_000;
         assert_eq!(
-            next_after(Event::Stopped, true, now - 60, LATER, false, now),
+            next_after(Event::Stopped, true, now - 60, LATER, false, now).until,
             now
         );
     }
@@ -362,6 +417,7 @@ mod tests {
             now: ends + 10 * 3600,
             into_day: 9 * 3600 + 36 * 60,
             wants: true,
+            asked: false,
             woke: false,
         };
         assert_eq!(
@@ -369,7 +425,7 @@ mod tests {
             Some(Event::Stopped)
         );
         assert_eq!(
-            next_after(Event::Stopped, true, ends - 1800, ends, false, morning.now),
+            next_after(Event::Stopped, true, ends - 1800, ends, false, morning.now).until,
             morning.now
         );
     }
@@ -388,7 +444,7 @@ mod tests {
             Some(Event::Stopped)
         );
         assert_eq!(
-            next_after(Event::Stopped, true, used, LATER, true, woken.now),
+            next_after(Event::Stopped, true, used, LATER, true, woken.now).until,
             woken.now
         );
     }
