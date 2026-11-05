@@ -75,16 +75,16 @@ QtObject {
         });
     }
 
+    function holds(what, got, want) {
+        if (JSON.stringify(got) !== JSON.stringify(want))
+            failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
+    }
+
     function lines(entries) {
         return entries.map(entry => [Commands.called(entry), entry.title, entry.key]);
     }
 
     function run() {
-        function holds(what, got, want) {
-            if (JSON.stringify(got) !== JSON.stringify(want))
-                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
-        }
-
         // Vim's help notation: the shortest form outside the brackets.
         holds("a short form leads its name", Commands.notation("disconnect", "disc"),
             "disc[onnect]");
@@ -443,10 +443,14 @@ QtObject {
         holds("choosing writes its bang in",
             Commands.chosen(Commands.typing("ski"), 2, Commands.narrowed(tracks, "ski")).line,
             "skip!");
-        holds("an act on every row waits for ranges",
-            lines(filledMenu([{ key: "notice:forget", name: "Forget It" },
-                { key: "notices:forget", name: "Forget Them All" }])).map(line => line[1])
-                .filter(title => title.startsWith("Forget")), ["Forget It"]);
+        const forgetting = filledMenu([{ key: "notice:forget", name: "Forget It" },
+            { key: "notices:forget", name: "Forget Them All" }]);
+        holds("an act on every row is written with its range",
+            lines(forgetting).slice(0, 2).map(line => line[0]), ["forg[et]", "%forg[et]"]);
+        holds("and runs only with every row typed",
+            [titled("forg", forgetting), titled("%forg", forgetting),
+                titled("%forget", forgetting)], ["Forget It", "Forget Them All",
+                "Forget Them All"]);
         const joining = filledMenu([{ key: "wifi:join", name: "Connect" }],
             { name: "Home 5G" });
         holds("what's in braces is filled from the row, a space escaped as Vim's",
@@ -470,8 +474,55 @@ QtObject {
                 SetWords.shown("background", "dark", options.background)],
             ["volume=40", "background=dark"]);
 
+        holdRanges();
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // A range before a command, read as Vim's (Ex.js): Return says what it
+    // names for the launcher to bind to things, narrowing and choosing keep
+    // it, and a command that takes no rows says E481; :g and :v name a
+    // pattern and the command run on each row it finds, or doesn't.
+    function holdRanges() {
+        const menu = menuOf();
+        const ran = typed => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? [read.entry.command, JSON.stringify(read.range ?? null)];
+        };
+        const from = (one, two) => JSON.stringify({ from: one, to: two ?? one });
+        holds("a range is read off before the command",
+            [ran("3,5disc"), ran("%forg"), ran("'<,'>disc"), ran(".,+2 disc")],
+            [["disconnect", from({ at: 3, offset: 0 }, { at: 5, offset: 0 })],
+                ["forget", JSON.stringify("%")],
+                ["disconnect", from({ at: "'<", offset: 0 }, { at: "'>", offset: 0 })],
+                ["disconnect", from({ at: ".", offset: 0 }, { at: ".", offset: 2 })]]);
+        holds("no range is none, :{n} still goes to its row",
+            [ran("disc"), Commands.ran("12", menu).go], [["disconnect", "null"], 12]);
+        holds("a command that takes no rows says so given a range",
+            [ran("3,5see"), ran("%q"), ran("%set nowifi")],
+            ["E481: No range allowed", "E481: No range allowed", "E481: No range allowed"]);
+        holds("narrowing reads past the range",
+            Commands.narrowed(menu, "3,5dis").map(entry => entry.command), ["disconnect"]);
+        holds("choosing keeps it",
+            Commands.chosen(Commands.typing("3,5dis"), 1, Commands.narrowed(menu, "3,5dis"))
+                .line, "3,5disconnect");
+
+        const global = typed => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? [read.global.pattern, read.global.invert, read.entry.command,
+                JSON.stringify(read.range)];
+        };
+        holds(":g runs a command on each row it finds, every row with no range",
+            [global("g/Slack/disc"), global("3,5g/Slack/disc")],
+            [["Slack", false, "disconnect", JSON.stringify("%")],
+                ["Slack", false, "disconnect", from({ at: 3, offset: 0 }, { at: 5, offset: 0 })]]);
+        holds(":v and :g! run it on each it doesn't",
+            [global("v/Slack/forg")[1], global("g!/Slack/forg")[1]], [true, true]);
+        holds("and say Vim's errors for what they can't take",
+            [global("g/Slack/wat"), global("g/a/g/b/disc"), global("g")],
+            ["E492: Not an editor command: wat", "E147: Cannot do :global recursive",
+                "E35: No previous regular expression"]);
     }
 }
