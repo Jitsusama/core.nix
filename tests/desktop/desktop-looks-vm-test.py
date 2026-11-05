@@ -586,16 +586,25 @@ def selected_is(shown: Json, name: str, side: str | None = None, told: str | Non
     )
 
 
-def marked_is_in_sight(shown: Json, scale: str) -> None:
-    """Hold Marked, b.md left in it, to its rows' order and its crumbs."""
+def gathered_is_in_sight(shown: Json, scale: str) -> None:
+    """Hold Gathered, a.md and d.md in it, to its rows' order and its crumbs."""
     rows = shown["rows"]
-    assert rows[-3:] == ["b.md", "Unmark All", "Copy the Paths"], rows
+    assert rows == ["a.md", "d.md", "Forget Them", "Copy the Paths"], rows
     # Its crumb is the place, and the program's ask and the place are said
     # whole, a folder's path giving way first where they don't fit.
-    assert shown["path"] == ["Open the Notes", "~/marking/more", "Marked"], shown["path"]
+    assert shown["path"][-1:] == ["Gathered"], shown["path"]
     whole = shown["pathWhole"]
     assert whole[0], f"at {scale} the program's ask is cut: {whole}"
     assert whole[-1], f"at {scale} the place is cut: {whole}"
+
+
+def ran(desktop: Desktop, line: str) -> None:
+    """Type a command on the launcher's line from normal, and wait until it's run."""
+    desktop.normal()
+    desktop.machine.send_chars(f":{line}")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == line)
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["command"] is None and shown["commandSaid"] == "")
 
 
 def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
@@ -619,7 +628,7 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             asked_in(desktop, "~/one", {"a.md"})
             shown = desktop.showing()
             assert shown["hint"] == "open which file?", shown
-            assert "Open the Marked" not in shown["rows"], shown["rows"]
+            assert "Open the Gathered" not in shown["rows"], shown["rows"]
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
@@ -676,17 +685,16 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
         desktop.as_account(f"rm -rf {folder}")
 
 
-def test_the_file_picker_says_whats_marked_and_what_return_does(
+def test_the_file_picker_gathers_files_and_says_what_return_opens(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Marking in the file picker says what Return does, and Open the Marked counts and lists."""
+    """:arga gathers files across folders, the foot and mode word say how many, :args lists."""
     machine = desktop.machine
-    folder = f"/home/{desktop.account}/marking"
+    folder = f"/home/{desktop.account}/gathering"
     chose = "/run/user/1000/portal-chose"
     desktop.as_account(
         f"mkdir -p {folder}/more && printf 'one\\n' > {folder}/a.md"
-        f" && printf 'two\\n' > {folder}/b.md"
-        f" && touch {folder}/c.md {folder}/more/d.md {folder}/more/e.md"
+        f" && printf 'two\\n' > {folder}/b.md && touch {folder}/more/d.md"
     )
     try:
         for scale in at_each_scale:
@@ -694,45 +702,35 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             said = scale.replace(".", "-")
             machine.succeed(f"rm -f {chose}")
             desktop.as_account(
-                "systemd-run --user --collect --unit=choose-to-mark"
+                "systemd-run --user --collect --unit=choose-to-gather"
                 f" {desktop.values['choose_a_file']} open-several {folder}"
             )
-            asked_in(desktop, "~/marking", {"a.md", "b.md", "more"})
+            asked_in(desktop, "~/gathering", {"a.md", "b.md", "more"})
             assert desktop.showing()["hint"] == "open which files?", desktop.showing()
-            desktop.down_to("Open the Marked")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="none"))
-            assert not [key for key in desktop.showing()["selected"]["told"] if "\u21b5" in key], (
-                "with none marked, Open the Marked says a Return"
-            )
             desktop.down_to("a.md")
-            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
-            desktop.photograph(f"file-picker-nothing-marked-at-{said}")
-            for name in ["a.md", "b.md"]:
-                desktop.down_to(name)
-                machine.send_key("ret")
-                desktop.launcher_until(partial(selected_is, name=name, told="\u21b5 unmark"))
-            desktop.down_to("Open the Marked")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
-            desktop.launcher_until(
-                lambda shown: (shown["drawer"] or {}).get("eyebrow") == "2\u00a0marked"
-            )
-            desktop.photograph(f"file-picker-two-marked-at-{said}")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
+            desktop.photograph(f"file-picker-nothing-gathered-at-{said}")
+            ran(desktop, "arga")
             desktop.down_to("more")
-            # The right arrow steps in from normal, where the walk stays from here.
             desktop.step_in()
-            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/marking/more"])
-            desktop.down_to("Open the Marked")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
-            desktop.photograph(f"file-picker-marked-elsewhere-at-{said}")
-            desktop.step_in()
-            desktop.launcher_until(lambda shown: "Unmark All" in shown["rows"])
-            desktop.down_to("a.md")
-            machine.send_key("ret")
-            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
-            marked_is_in_sight(desktop.showing(), scale)
-            desktop.photograph(f"file-picker-inside-marked-at-{said}")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/gathering/more"])
+            desktop.down_to("d.md")
+            ran(desktop, "arga")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["placeSays"] == "2 gathered"
+                    and selected_is(shown, name="d.md", told="\u21b5 open 2")
+                )
+            )
+            desktop.photograph(f"file-picker-two-gathered-at-{said}")
+            ran(desktop, "args")
+            desktop.launcher_until(lambda shown: "Forget Them" in shown["rows"])
+            desktop.launcher_until(
+                lambda shown: (shown["drawer"] or {}).get("eyebrow") == "2\u00a0gathered"
+            )
+            gathered_is_in_sight(desktop.showing(), scale)
+            desktop.photograph(f"file-picker-inside-gathered-at-{said}")
             machine.send_key("left")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="1"))
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
@@ -743,13 +741,14 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
         desktop.as_account(f"rm -rf {folder}")
 
 
-# Each order the file picker lists in, what its Order row says of it, and
-# the files it lists so: a.md is the smallest and changed between, b.md the
-# largest and oldest, c.md between and newest, and the folder first in each.
+# Each :sort the file picker takes and the files it lists so: a.md is the
+# smallest and changed between, b.md the largest and oldest, c.md between
+# and newest, and the folder first in each, :sort! turning the files round.
 ORDERS = {
-    "Name": ("name", ["more", "a.md", "b.md", "c.md"]),
-    "Size": ("size, largest first", ["more", "b.md", "c.md", "a.md"]),
-    "Changed": ("changed, newest first", ["more", "c.md", "a.md", "b.md"]),
+    "sort size": ["more", "b.md", "c.md", "a.md"],
+    "sort!": ["more", "a.md", "c.md", "b.md"],
+    "sort changed": ["more", "c.md", "a.md", "b.md"],
+    "sort name": ["more", "a.md", "b.md", "c.md"],
 }
 
 
@@ -766,7 +765,7 @@ def listed_from_the_top(shown: Json, listed: list[str]) -> bool:
 def test_the_file_picker_lists_a_folder_in_the_order_chosen(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Order steps into Name, Changed and Size, and each lists the folder so, folders first."""
+    """:sort name, changed and size list the folder so, :sort! turned round, folders first."""
     machine = desktop.machine
     folder = f"/home/{desktop.account}/ordered"
     chose = "/run/user/1000/portal-chose"
@@ -784,26 +783,21 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
                 "systemd-run --user --collect --unit=choose-in-order"
                 f" {desktop.values['choose_a_file']} open {folder}"
             )
-            asked_in(desktop, "~/ordered", {"Order"})
-            for name in ["Size", "Changed", "Name"]:
-                side, listed = ORDERS[name]
-                desktop.down_to("Order")
-                # The right arrow steps in from normal, where the walk stays after the first.
-                desktop.step_in()
-                desktop.launcher_until(
-                    lambda shown: sorted(shown["rows"]) == ["Changed", "Name", "Size"]
-                )
-                if name == "Size":
-                    assert desktop.showing()["rows"] == ["Name", "Changed", "Size"], (
-                        "Order doesn't start on Name, the one in use first"
-                    )
-                    desktop.photograph(f"file-picker-inside-order-at-{said}")
-                desktop.down_to(name)
-                machine.send_key("ret")
+            asked_in(desktop, "~/ordered", {"a.md", "b.md", "c.md"})
+            assert "Order" not in desktop.showing()["rows"], desktop.showing()["rows"]
+            desktop.normal()
+            machine.send_chars(":sort ")
+            desktop.launcher_until(
+                lambda shown: (shown["command"] or {}).get("line") == "sort "
+            )
+            desktop.photograph(f"file-picker-sort-menu-at-{said}")
+            machine.send_key("ctrl-u")
+            machine.send_key("esc")
+            desktop.launcher_until(lambda shown: shown["command"] is None)
+            for line, listed in ORDERS.items():
+                ran(desktop, line)
                 desktop.launcher_until(partial(listed_from_the_top, listed=listed))
-                desktop.down_to("Order")
-                desktop.launcher_until(partial(selected_is, name="Order", side=side))
-                desktop.photograph(f"file-picker-by-{name.lower()}-at-{said}")
+                desktop.photograph(f"file-picker-{line.replace(' ', '-').replace('!', '-turned')}-at-{said}")
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:

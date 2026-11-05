@@ -6581,6 +6581,10 @@
     },
     "asked": {
       "replace": "Replace {name}? (y/n)"
+    },
+    "footKeys": {
+      "normal": "normal",
+      "keys": "keys"
     }
   },
   "meant": [

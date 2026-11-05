@@ -291,6 +291,7 @@ Provider {
             typed: letters => typedIn(path, letters),
             beside: by => provider.beside(path, by),
             commands: () => provider.commandsIn(path),
+            standing: () => provider.gatheredSaid(),
             takes: rows => provider.takes(rows)
         }, saving ? naming(() => rowsOf(readIn(path))) : {});
         // Until the folder's read, it holds no Copy the Path: rows shown
@@ -681,6 +682,15 @@ Provider {
     // Gathers the files of the rows given, as :arga adds them to Vim's
     // argument list, in the order given, each once; a row that isn't a
     // file is passed over.
+    // How many are gathered, "2 gathered", or "" with none, as the mode
+    // word's room says it (VKCF3Z's vi-paradigm spec, The File Picker).
+    function gatheredSaid() {
+        if (marked.length === 0)
+            return "";
+        const said = Words.of("verb:file-chooser:marked").said?.marked ?? "";
+        return said.replace("{count}", `${marked.length}`);
+    }
+
     // What :arga runs on: the files among the rows the line acts on, or,
     // where none of them is one, as when the line stands for the folder,
     // the cursor row's.

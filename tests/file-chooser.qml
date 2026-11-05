@@ -701,6 +701,8 @@ ShellRoot {
                 `${home}/elsewhere/old.md`]), JSON.stringify(chooser.marked));
         launcher.selected = a;
         arga.run(Object.assign(called(""), { things: [launcher.held[launcher.held.length - 1].row] }));
+        expect("the folder says how many are gathered, for the mode word's room",
+            chooser.folderRow(notes).standing() === "2 gathered", chooser.folderRow(notes).standing());
         expect("with no range, the line standing for the folder, the cursor row's, each once",
             chooser.marked.length === 2,
             JSON.stringify(chooser.marked));

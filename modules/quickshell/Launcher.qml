@@ -1802,8 +1802,10 @@ Scope {
         // move the caret, so naming them there named keys that did nothing
         // of what was said (Joel, 2026-11-04). A secret's line has no
         // modes and its arrows only move the caret, as inputsecret()'s.
-        const into = prompt.modal && QueryKeys.binds("into", "Right", prompt.mode);
-        const out = prompt.modal && QueryKeys.binds("out", "Left", prompt.mode);
+        // On a prompt's words, as a save's name, they move its caret.
+        const arrows = prompt.modal && !prompt.editsWords;
+        const into = arrows && QueryKeys.binds("into", "Right", prompt.mode);
+        const out = arrows && QueryKeys.binds("out", "Left", prompt.mode);
         // One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
@@ -1815,6 +1817,15 @@ Scope {
             keys.push(["\u2192", ""]);
         if (out && typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
+        // Where the line holds a prompt's words, it says how to get to
+        // normal's keys and to the list of them, just before Return
+        // (VKCF3Z, 2026-11-05).
+        if (holdsWords) {
+            const said = Words.field.footKeys ?? {};
+            if (prompt.mode === "insert")
+                keys.push(["Esc", said.normal ?? ""]);
+            keys.push(["Space ?", said.keys ?? ""]);
+        }
         // The drawer's keys, only while it holds more than fits, keeping
         // their word, since Shift and the arrows aren't the arrows alone.
         if (choice === selected && drawerOut && drawerCard.more)
@@ -2344,7 +2355,10 @@ Scope {
             marks: things.length > 1 ? { "<": matches.indexOf(things[0]),
                 ">": matches.indexOf(things[things.length - 1]) } : {},
             go: opening?.go ?? null,
-            menu: Commands.listed({ acts, surface: opening?.surface ?? [],
+            // Given no surface, the place stood in lists its own, as the
+            // file picker's folders give :sort and :cd (V3's interface).
+            menu: Commands.listed({ acts, surface: opening?.surface
+                ?? held[held.length - 1]?.row.commands?.() ?? [],
                 table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
                 called: act => commandWords(act.key ?? ""), thing: one,
@@ -3169,6 +3183,26 @@ Scope {
 
     // Whether the step held holds its words in the line rather than a
     // find: then normal edits them, and its rows aren't narrowed by them.
+    // ZZ: the place stood in writes what it has to write, by its own :x, as
+    // a save dialog saves; with none, the launcher closes.
+    function xit() {
+        const own = held.length > 0 ? held[held.length - 1].row.commands?.() ?? [] : [];
+        const writes = own.find(one => one.command === "xit");
+        if (!writes) {
+            open = false;
+            return;
+        }
+        writes.run({ name: "xit", bang: false, arg: "", things: [], count: 0 });
+    }
+
+    // How the place stood in says it stands, in the mode word's room in
+    // normal, as the file picker's "2 gathered": read again as its rows
+    // are, since a place says it changed by asking for them again.
+    readonly property string placeSays: {
+        void matches;
+        return held.length > 0 ? held[held.length - 1].row.standing?.() ?? "" : "";
+    }
+
     readonly property bool holdsWords: held.length > 0
         && typeof held[held.length - 1].row.words === "function"
 
@@ -4192,6 +4226,7 @@ Scope {
             question: prompt.asking,
             takesAnswer: prompt.asking !== "" && Date.now() - prompt.askedAt >= prompt.wait,
             questionWhole: prompt.askedWhole,
+            placeSays: root.placeSays,
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -4939,6 +4974,9 @@ Scope {
                         onStepped: (act, count) => {
                             root.searchNow();
                             switch (act) {
+                            case "xit":
+                                root.xit();
+                                return;
                             case "close":
                                 root.open = false;
                                 return;
@@ -5623,9 +5661,12 @@ Scope {
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
-                            // viewer's : opens it from insert; VKCF3Z).
+                            // viewer's : opens it from insert; VKCF3Z). In
+                            // normal, which names none, the place stood in says
+                            // how it stands, as the file picker's "2 gathered".
                             readonly property string said: counted !== "" ? counted
                                 : !prompt.modal || root.commanding !== null ? ""
+                                : prompt.mode === "normal" && root.placeSays !== "" ? root.placeSays
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see
@@ -5636,7 +5677,10 @@ Scope {
                             readonly property real room: {
                                 void measure.font;
                                 const words = Object.values(Words.field.modes ?? {});
-                                let widest = 0;
+                                // What the place says widens it while it says
+                                // it, so it's read whole.
+                                let widest = root.placeSays === "" ? 0
+                                    : measure.advanceWidth(root.placeSays);
                                 for (const word of words)
                                     widest = Math.max(widest, measure.advanceWidth(word));
                                 return words.length === 0 ? 0
@@ -5649,8 +5693,10 @@ Scope {
                             text: said
                             textFormat: Text.PlainText
                             // A mode's word is never cut; a count or an ex
-                            // line longer than the room keeps its last letters.
-                            elide: counted !== "" ? Text.ElideLeft : Text.ElideNone
+                            // line longer than the room keeps its last letters,
+                            // and what the place says its first.
+                            elide: counted !== "" ? Text.ElideLeft
+                                : said === root.placeSays ? Text.ElideRight : Text.ElideNone
                             color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
                         }
