@@ -770,6 +770,18 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(window), timeout=timedelta(seconds=60))
     machine.succeed(f'{described} | grep -qF \'"reach":"online"\'')
+    # Its name typed and Return, in insert, never disconnects it: Return
+    # steps in, to what can be done to it, and it stays connected (Joel,
+    # 2026-11-04: "it is quite dangerous").
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["open"] and "Disconnect It" in shown["rows"])
+    desktop.held_still(timedelta(seconds=3))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    desktop.close_launcher()
     # The Office asks for an account: met for the first time, it asks
     # the account's name, its server's domain and its password in
     # turn, and joins.
