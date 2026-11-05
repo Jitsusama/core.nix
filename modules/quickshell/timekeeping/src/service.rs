@@ -23,7 +23,7 @@ use zlink::introspect::CustomType;
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
-use crate::calendar::{self, Calendar, Calendars, Evening, Figure, Reckoning};
+use crate::calendar::{self, Calendar, Calendars, Eve, Evening, Figure, Reckoning};
 use crate::chrony::{self, Chrony, Names, Unanswered};
 
 /// How long apart a watch's readings are.
@@ -274,7 +274,7 @@ fn unkept(why: &Unanswered) -> Unkept {
 #[service(
     interface = "io.jitsusama.Timekeeping",
     types = [
-        Activity, Calendar, Calendars, Chosen, Clock, Evening, Exchange, Figure, HardwareClock,
+        Activity, Calendar, Calendars, Chosen, Clock, Eve, Evening, Exchange, Figure, HardwareClock,
         Keeping, Kind, Leaping, Reckoning, Samples, Server, Standing, Why
     ],
     vendor = "jitsusama",
