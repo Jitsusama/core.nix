@@ -2,8 +2,10 @@
 # Runs inside cage: opens pictures in swayimg with the account's settings,
 # presses every key it lists that moves, trashes, copies or closes as a
 # keyboard would, Neovim's beside the arrows that do as they do, and the
-# keys that close nothing, and fails unless each press does what it should. swayimg writes to `shown` after every frame the
-# picture it has drawn or chosen, the mode it's in, where the picture is
+# keys that close nothing, and the launcher's command line's commands, as
+# swayimg-command carries them, and fails unless each does what it
+# should. swayimg writes to `shown` after every frame the picture it has
+# drawn or chosen, the mode it's in, where the picture is
 # and whether it's full screen. cage doesn't pass on how this ended, so it
 # leaves `moved` once every press has.
 # usage: swayimg-moves-by-its-keys.sh (beside a folder, pictures, holding
@@ -149,6 +151,19 @@ for key in dd Delete; do
   fi
 done
 
+# The launcher's command line, as swayimg-command carries it: a number goes
+# to that picture, and :d moves it to the trash, for u to bring back.
+typed gg a.ppm
+swayimg-command "$viewer" goto 4
+until_shown d.ppm ":4"
+swayimg-command "$viewer" delete
+until_not_shown d.ppm ":d"
+if [ -e pictures/d.ppm ] || [ ! -e "$trash/files/d.ppm" ]; then
+  echo ":d didn't move d.ppm to the trash: $(ls -A pictures "$trash/files")"
+  exit 1
+fi
+typed u d.ppm
+
 # yy copies the picture as shown, a PNG, and y alone waits for what it's
 # to copy, as in Vim, and copies nothing.
 copied() {
@@ -169,6 +184,21 @@ if [ -e copied ]; then
   exit 1
 fi
 
+# :rotate turns the picture, which :y copies as it's shown: the tall one,
+# 4 by 2000, comes out 2000 by 4, as its PNG's header says. :rotate 270
+# turns it back.
+press End z-tall.pgm
+swayimg-command "$viewer" rotate 90
+swayimg-command "$viewer" yank
+copied ":y"
+size=$(od -An -tu1 -j16 -N8 copied | tr -s ' ' ' ')
+if [ "$size" != " 0 0 7 208 0 0 0 4" ]; then
+  echo ":rotate and :y gave a picture of$size, not 2000 by 4"
+  exit 1
+fi
+rm copied
+swayimg-command "$viewer" rotate 270
+
 # ? asks the launcher for the keys, and Space ? as well. A keyboard sends ?
 # as question with Shift held, not as the slash it's printed beside.
 asks() {
@@ -183,6 +213,32 @@ asks() {
 }
 asks
 asks -k space
+
+# : asks the launcher for its command line over this swayimg, by its
+# process, which swayimg-command carries what's chosen back to. A keyboard
+# sends : as colon with Shift held.
+rm -f "$ASKED"
+wtype -M shift -k colon -m shift
+for _ in $(seq 100); do
+  if grep -qx "command-line swayimg $viewer" "$ASKED" 2>/dev/null; then break; fi
+  sleep 0.1
+done
+grep -qx "command-line swayimg $viewer" "$ASKED" 2>/dev/null \
+  || { echo ": asked the launcher for $(cat "$ASKED" 2>/dev/null || echo nothing)"; exit 1; }
+
+# [ and ] alone do nothing, since turning is :rotate: the tall picture is
+# still as tall, as :y copies it.
+wtype '['
+sleep 1
+rm -f copied
+swayimg-command "$viewer" yank
+copied "[ then :y"
+size=$(od -An -tu1 -j16 -N8 copied | tr -s ' ' ' ')
+if [ "$size" != " 0 0 0 4 0 0 7 208" ]; then
+  echo "[ alone turned the picture, to$size"
+  exit 1
+fi
+rm copied
 
 # On a picture larger than the window, Down moves it and Up back, and j and
 # k as far.
@@ -266,6 +322,7 @@ fi
 
 # Space w closes one opened afresh, once it has the keyboard, which l
 # moving it on shows.
+: > shown
 swayimg --execute="$watched" pictures/a.ppm pictures/b.ppm > said 2>&1 &
 viewer=$!
 until_shown a.ppm "opening again" 60
@@ -279,4 +336,29 @@ done
 until_shown b.ppm "l, opened again"
 wtype -k space w
 closes "Space w"
+
+# A command swayimg doesn't have, and :open with a program that isn't here,
+# leave it open, and :q closes it. What the last one showed is cleared, so
+# the wait is for this one's first frame, after which it hears USR1.
+: > shown
+swayimg --execute="$watched" pictures/a.ppm > said 2>&1 &
+viewer=$!
+until_shown a.ppm "opening a third time" 60
+swayimg-command "$viewer" nonsense
+swayimg-command "$viewer" open missing-program
+sleep 1
+kill -0 "$viewer" 2> /dev/null || { echo "a command it hasn't closed swayimg"; exit 1; }
+swayimg-command "$viewer" quit
+closes ":q"
+
+# :open and a program opens the picture in it, through niri, stood in, and
+# closes swayimg, as e does.
+: > shown
+swayimg --execute="$watched" pictures/a.ppm > said 2>&1 &
+viewer=$!
+until_shown a.ppm "opening a fourth time" 60
+swayimg-command "$viewer" open other-editor
+closes ":open other-editor"
+grep -qxF "msg action spawn -- other-editor $PWD/pictures/a.ppm" "$SPAWNED" \
+  || { echo ":open other-editor asked niri for: $(cat "$SPAWNED")"; exit 1; }
 touch moved

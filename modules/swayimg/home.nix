@@ -24,11 +24,14 @@
 # the gallery of its folder; e edits in GIMP, or Inkscape for a drawing,
 # and closes the viewer; dd and Delete move the picture to the trash
 # rather than deleting it, and u brings it back; yy copies the picture as
-# shown; and ? and Space ? open the launcher's Shortcuts at its keys. A
-# number or a key waiting for its second waits 300 ms at most, his
-# Neovim's timeoutlen, and shows nothing, as his Neovim has showcmd off;
-# [ and ] start ]b and [b, the next and previous picture, as Vim's go
-# between buffers, and turn the picture when no b follows. As a picture
+# shown; ? and Space ? open the launcher's Shortcuts at its keys; and :
+# opens the launcher's command line over the picture, for :d, :y, :open
+# and a program, :rotate, a number for that picture, and :q, which
+# swayimg-command (command.sh) carries back to it. A number or a key
+# waiting for its second waits 300 ms at most, his Neovim's timeoutlen,
+# and shows nothing, as his Neovim has showcmd off; [ and ] wait only for
+# the b of ]b and [b, the next and previous picture, as Vim's go between
+# buffers, and alone do nothing, since turning is :rotate. As a picture
 # opens, a quiet line under it names the letters that move on, for as long
 # as its name shows.
 #
@@ -203,19 +206,6 @@ let
         does = "Further";
         when = places.viewer;
       }
-      # A moment after them with no b, as Vim's timeout, they turn.
-      {
-        chord = "bracketleft";
-        does = "Turn left";
-        when = places.viewer;
-        act = "turn_left";
-      }
-      {
-        chord = "bracketright";
-        does = "Turn right";
-        when = places.viewer;
-        act = "turn_right";
-      }
       {
         chord = "f";
         does = "Full screen";
@@ -275,6 +265,11 @@ let
         does = "Close";
         act = "close";
       }
+      {
+        chord = "Shift+colon";
+        does = "A command for the picture";
+        act = "command_line";
+      }
       # Space ?, as in Joel's Neovim, which shows them everywhere.
       {
         chord = "Shift+slash";
@@ -303,6 +298,7 @@ let
   };
   typed = {
     "Shift+slash" = "?";
+    "Shift+colon" = ":";
     "Shift+plus" = "+";
     space = "Space";
   };
@@ -366,6 +362,7 @@ in
 {
   imports = [
     ../quickshell/recents.nix
+    ../quickshell/command-lines.nix
     ../theme/home.nix
     niri
     quickshell
@@ -376,6 +373,38 @@ in
   # in the state home); its other pictures stay the desktop's list of
   # files opened lately.
   systemd.user.tmpfiles.rules = [ "d ${viewing} 0700 - - -" ];
+  # : opens the launcher's command line over the picture, with these
+  # commands, each by the key language's name (../keys/language.toml).
+  jitsusama.quickshell.launcher.commandLines.swayimg = {
+    commands = [
+      {
+        command = "delete";
+        title = "Move to the trash";
+        key = "dd";
+      }
+      {
+        command = "yank";
+        title = "Copy the picture as shown";
+        key = "yy";
+      }
+      {
+        command = "open";
+        title = "Open it in another program, by its command";
+      }
+      {
+        command = "rotate";
+        title = "Turn it, by 90, 180 or 270 degrees";
+      }
+      {
+        command = "quit";
+        title = "Close";
+        key = "ZZ";
+      }
+    ];
+    goes = "That picture, by its number";
+    run = [ (lib.getExe (pkgs.callPackage ./command.nix { })) ];
+  };
+
   jitsusama.quickshell.launcher.recents = [
     {
       app = "swayimg";

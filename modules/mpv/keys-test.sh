@@ -3,7 +3,8 @@
 # back over its IPC socket what each did: Vim's beside the arrows that do as
 # they do, a number before them, 0 and $, gg G and a number before G through
 # the list, ]b and [b, yy, ? and F1, Space at once, Z alone, the keys j and
-# l displaced, and ZZ closing where q, Escape and Space w don't. mpv
+# l displaced, ZZ closing where q, Escape and Space w don't, and the
+# launcher's command line's commands, as mpv-command carries them. mpv
 # plays nothing to a screen here, so each key is pressed through mpv's own
 # keypress command, which goes through the same bindings a key on the
 # keyboard does.
@@ -59,9 +60,15 @@ reads() {
   done
   never "$3 to leave $1 at $2, not $(property "$1")"
 }
+# A seek sent while mpv is still opening the file is dropped, as the
+# opening puts it back at the start, so it's sent again until it lands.
 from() {
-  at "$1"
-  reads time-pos "${1}000" "a seek to $1 seconds"
+  for _ in $(seq 600); do
+    at "$1"
+    if [ "$(property time-pos)" = "${1}000" ]; then return 0; fi
+    sleep 0.1
+  done
+  never "a seek to $1 seconds to leave time-pos at ${1}000, not $(property time-pos)"
 }
 
 for _ in $(seq 600); do
@@ -181,6 +188,17 @@ reads pause false "Space before ? to play on"
 keys SPACE
 reads pause true "Space to pause again"
 
+# : asks the launcher for its command line over this mpv, by the socket
+# mpv-command carries what's chosen back over.
+rm -f "$ASKED"
+keys :
+for _ in $(seq 600); do
+  if grep -qxF "command-line mpv $PWD/mpv.sock" "$ASKED" 2> /dev/null; then break; fi
+  sleep 0.1
+done
+grep -qxF "command-line mpv $PWD/mpv.sock" "$ASKED" 2> /dev/null \
+  || never ": to ask the launcher for its command line"
+
 # Z alone, a moment on, delays the subtitles, as mpv has it.
 reads sub-delay 0 "the subtitles undelayed"
 keys Z
@@ -215,6 +233,33 @@ reads pause false Space
 keys SPACE
 reads pause true "Space again"
 
+# The launcher's command line, as mpv-command carries it: a time goes
+# there, :set turns pause off, on and over as Vim's :set does and sets a
+# property by its value, :y copies the frame, and a command mpv hasn't
+# does nothing.
+told() { mpv-command "$PWD/mpv.sock" "$@"; }
+told goto 1:30
+reads time-pos 90000 ":1:30"
+told goto 45
+reads time-pos 45000 ":45"
+told goto 1:x
+sleep 1
+reads time-pos 45000 ":1:x to go nowhere"
+told set nopause
+reads pause false ":set nopause"
+told set pause
+reads pause true ":set pause"
+told set 'pause!'
+reads pause false ":set pause!"
+told set pause
+reads pause true ":set pause again"
+told set volume=40
+reads volume 40 ":set volume=40"
+rm -f copied
+told yank
+copied ":y"
+told nonsense
+
 # Waits up to a minute for this mpv to close, saying what didn't close it.
 closed() {
   for _ in $(seq 600); do
@@ -237,6 +282,19 @@ open_after SPACE w
 # ZZ closes it.
 keys Z Z
 closed ZZ
+
+# :q closes one given no socket, over the one vi-keys.lua gives it,
+# named for its process.
+mpv --config-dir="$config" --vo=null --ao=null --force-window=no --idle=yes \
+  --save-position-on-quit=no --load-stats-overlay=no > said 2>&1 &
+mpv=$!
+for _ in $(seq 600); do
+  if [ -S "$XDG_RUNTIME_DIR/mpv-$mpv.sock" ]; then break; fi
+  sleep 0.1
+done
+[ -S "$XDG_RUNTIME_DIR/mpv-$mpv.sock" ] || never "vi-keys.lua to give mpv a socket"
+mpv-command "$XDG_RUNTIME_DIR/mpv-$mpv.sock" quit
+closed ":q"
 
 # A program that runs mpv with Escape of its own, forced, as the camera's
 # viewfinder does, always gets it, whichever script mpv loads first: of

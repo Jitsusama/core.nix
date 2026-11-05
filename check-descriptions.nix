@@ -709,7 +709,9 @@
     copies the frame as a PNG and y alone nothing, ? and F1 ask the launcher for the keys, ]b and
     [b, gg, G and a number before G go through the list, f and Escape go in and out of full
     screen, Space pauses at once, even before a ?, q, Q, Escape and Space w close nothing, ZZ
-    closes it, and a program running mpv with its own forced Escape always gets it
+    closes it, : asks the launcher for its command line by mpv's socket, what mpv-command carries
+    back does as it says (a time, :set, :y and :q, over a socket mpv names itself where it was
+    given none), and a program running mpv with its own forced Escape always gets it
   '';
   mpv-says-the-file-it-plays-now = ''
     mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
@@ -1349,8 +1351,10 @@
     a number before G to that picture and before a move that many, j and k move a large picture
     as ↓ and ↑ do, dd and Delete trash it and u brings it back, yy copies it,
     ? and Space ? ask the launcher for the keys, Escape stops a number or a pair waiting, Escape and
-    q close nothing and ZZ and Space w close it, the gallery answers the same keys, and the picture it
-    opened with, and none after, is said to the desktop's list of files opened lately
+    q close nothing and ZZ and Space w close it, [ and ] alone turn nothing, : asks the launcher
+    for its command line by swayimg's process, what swayimg-command carries back does as it says
+    (a number, :d, :rotate, :y, :open and :q), the gallery answers the same keys, and the picture
+    it opened with, and none after, is said to the desktop's list of files opened lately
   '';
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
@@ -2247,8 +2251,9 @@
   vm-desktop-opens-files = ''
     the desktop opens files: a screenshot found by typing, the portal's chooser, its save's name
     edited on the line and a name taken asked once, and Google Drive through it, a picture in
-    swayimg, a document in zathura, markdown in the reader, and a folder from kitty's Recent, while
-    the launcher's home keeps its shape
+    swayimg, where : opens the launcher's command line and :q there closes it, a document in
+    zathura, markdown in the reader, and a folder from kitty's Recent, while the launcher's home
+    keeps its shape
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the

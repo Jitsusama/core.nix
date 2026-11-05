@@ -2314,7 +2314,8 @@ Scope {
     // visual with its selection: { range, things, surface, go }, things
     // the rows the acts act on, the cursor row where none are given;
     // surface a surface's own commands (Commands.listed), as a viewer's
-    // :rotate; and go what :{n} and :$ do, where it isn't the rows'.
+    // :rotate; go what :{n} and :$ do, where it isn't the rows'; and goes
+    // what its line says that is, as "That picture, by its number".
     function commandLine(opening) {
         const row = selected;
         const things = opening?.things ?? (row ? [row] : []);
@@ -2330,8 +2331,53 @@ Scope {
             things: on,
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
-                table: Commands.standIn, said: words, row: current + 1 })
+                table: Commands.standIn, row: current + 1,
+                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words })
         };
+    }
+
+    // The command line opened over a viewer, as : in swayimg or mpv opens
+    // it (launcher-say command-line <viewer> <where>): the viewer's own
+    // commands (Options.commandLines, from its module), each carried to it
+    // by its program, given where the viewer is, its process or its
+    // socket, the command's whole name and what was typed after it; :{n}
+    // and a time are its goto. It opens over the launcher's Shortcuts at
+    // the viewer's own keys, which :help returns to, as F1 opens them. A
+    // viewer with none opens nothing.
+    function viewerCommandLine(viewer, where) {
+        const line = Options.commandLines[viewer];
+        if (!line)
+            return;
+        const carry = (name, arg) => Niri.spawn(line.run.concat([where, name, arg]));
+        const surface = line.commands.map(own => ({
+            command: own.command,
+            short: Options.commands[own.command]?.short ?? own.command,
+            title: own.title,
+            key: own.key ?? "",
+            bang: false,
+            run: call => {
+                open = false;
+                carry(call.name, call.arg);
+            }
+        })).concat([{
+            command: "help",
+            short: Options.commands.help?.short ?? "h",
+            title: (Words.field.command ?? {}).help ?? "",
+            key: "F1",
+            bang: false,
+            run: () => into("shortcuts")
+        }]);
+        into("shortcuts");
+        // Its commands act on the viewer, never on a row of the keys.
+        commandLine({
+            things: [],
+            surface,
+            goes: line.goes ?? "",
+            go: to => {
+                open = false;
+                carry("goto", String(to));
+            }
+        });
     }
 
     // The line let go, the keys back to the find line in the mode it was
@@ -2367,6 +2413,12 @@ Scope {
         }
         if (read.go !== undefined && opened.go) {
             opened.go(read.go);
+            return;
+        }
+        // A time is a player's to go to; the rows have none.
+        if (typeof read.go === "string" && read.go !== "$") {
+            commandSaid = `E492: Not an editor command: ${read.go}`;
+            commandSaidFor = prompt.keysTaken;
             return;
         }
         if (read.go !== undefined) {
@@ -3558,6 +3610,8 @@ Scope {
                         root.open = !root.open;
                     else if (words[0] === "collection")
                         root.pressed(words.slice(1).join(" "));
+                    else if (words[0] === "command-line" && words.length === 3)
+                        root.viewerCommandLine(words[1], words[2]);
                     else
                         console.warn(`The launcher was told "${line}", which it doesn't know.`);
                 }
@@ -3575,6 +3629,11 @@ Scope {
         // Opens the launcher into a collection by its provider's name.
         function collection(name: string): void {
             root.into(name);
+        }
+
+        // The command line over a viewer, by its name and where it is.
+        function commandLine(viewer: string, where: string): void {
+            root.viewerCommandLine(viewer, where);
         }
 
         function showing(): string {
