@@ -56,6 +56,23 @@ function commandOf(act) {
     return found ? found[0] : "";
 }
 
+// An act's words for the line (words.json's command, argument, bang and
+// range), by its key, `of` reading words.json's entry for an id: a verb's
+// id, or one made from it for each of several, as verb:sound-port-2 or
+// verb:on:waiting:go:<id>, which reads the verb's own. Only a verb names a
+// command; any other key has none.
+function wordsFor(key, of) {
+    let id = String(key ?? "");
+    while (id.startsWith("verb:")) {
+        const words = of(id);
+        if (words.command !== undefined) {
+            return words;
+        }
+        id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-")));
+    }
+    return {};
+}
+
 // The key an act has besides the line, as the menu says it, so it teaches
 // the key too: Return for the row's own act, d for its ending act and y
 // for its copy (modules/keys/language.toml's do, ending and copy).

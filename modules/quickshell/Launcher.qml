@@ -2686,19 +2686,9 @@ Scope {
             now: () => Theme.appearance }
     }, ...sources.map(source => source.setOptions ?? {}))
 
-    // An act's words for the line (words.json's command, argument, bang and
-    // range), by its key: a verb's id, or one made from it for each of
-    // several, as verb:sound-port-2 or verb:on:waiting:go:<id>, which reads
-    // the verb's own. Only a verb names a command; any other key has none.
+    // An act's words for the line, by its key (Commands.wordsFor).
     function commandWords(key) {
-        let id = key;
-        while (id.startsWith("verb:")) {
-            const words = Words.of(id);
-            if (words.command !== undefined)
-                return words;
-            id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-")));
-        }
-        return {};
+        return Commands.wordsFor(key, id => Words.of(id));
     }
 
     // The options as they stand as : is pressed, each read once, so the menu
