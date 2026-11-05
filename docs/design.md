@@ -1235,8 +1235,9 @@ works the same way everywhere.
   from today. Now holds every figure of this moment: the temperature, what
   it feels like, the humidity, the dew point, the precipitation, the wind
   and its gusts, the cloud cover, the UV index, the visibility and the
-  pressure. Rain says when it next rains ("from 15:00, 70%") beside the
-  next twelve hours' chance, and holds those hours. A day holds its own
+  pressure. Rain says when it next rains ("from 15:00 · 70%") beside the
+  next twelve hours' chance, and holds those hours; with no rain due in
+  them, it gives up its place rather than saying so. A day holds its own
   figures, its high and low, the most it rains and blows and its sun, then
   its hours; an hour ("14:00") holds its figures, the same thing in Rain as
   in its day, and a day never says a figure its hours do. "rain",

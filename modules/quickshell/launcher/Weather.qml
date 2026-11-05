@@ -6,7 +6,8 @@
 // like, the humidity, the dew point, the precipitation, the wind and its
 // gusts, the cloud cover, the UV index, the visibility and the pressure.
 // Rain says when it next rains, with a spark of the next twelve hours'
-// chance, and holds those hours. A day is a thing holding its own
+// chance, and holds those hours, shown only while rain is due in them.
+// A day is a thing holding its own
 // figures, its high and low, the most it rains and blows, its sun, then
 // its hours; an hour is a thing holding its figures, each the hour's own,
 // so nothing a day says is said again by its hours (Y2YBTS, 2026-11-04).
@@ -374,14 +375,20 @@ Provider {
         return from < 0 ? [] : hours.slice(from);
     }
 
-    // When it next rains, in a few words: the first hour likely to, or the
-    // most it might if none is, or that none will.
+    // Whether rain is due in these hours: one of them likely to.
+    function due(hours) {
+        return hours.some(hour => hour.chance >= likely);
+    }
+
+    // When it next rains, in a few words, its chance parted from it as the
+    // headline's facts are: the first hour likely to, or the most it might
+    // if none is, or that none will.
     function rainSaid(hours) {
         const wet = hours.findIndex(hour => hour.chance >= likely);
         if (wet === 0)
-            return `now, ${hours[0].chance}%`;
+            return `now \u00b7 ${hours[0].chance}%`;
         if (wet > 0)
-            return `from ${hours[wet].clock}, ${hours[wet].chance}%`;
+            return `from ${hours[wet].clock} \u00b7 ${hours[wet].chance}%`;
         const most = Math.max(0, ...hours.map(hour => hour.chance));
         if (most >= possible)
             return `unlikely, at most ${most}%`;
@@ -400,7 +407,7 @@ Provider {
     // An hour, the same thing wherever it's listed: its sky beside it, its
     // rain under it and as a bar, and every figure a step in.
     function hourThing(hour) {
-        const rain = `${hour.chance}%, ${amount(hour.falls)}`;
+        const rain = `${hour.chance}% \u00b7 ${amount(hour.falls)}`;
         const above = sky(hour.at);
         const figures = instant(hour.at, hour.unit);
         return thingRow({
@@ -502,9 +509,11 @@ Provider {
         }, () => figureRows("weather", figures))];
         // Rain holds its hours, a step in by the right arrow, and Return
         // copies when it next rains, as asked alone: a part holding more,
-        // as any is.
+        // as any is. It's there only while rain is due, giving up its
+        // place rather than saying there's none (VKCF3Z, 2026-11-04); the
+        // days' hours still say each hour's chance.
         const next = hours.slice(0, hoursAhead);
-        if (next.length > 0)
+        if (due(next))
             rows.push(holderRow({
                 name: Words.name("weather:rain"),
                 side: rainSaid(next),
