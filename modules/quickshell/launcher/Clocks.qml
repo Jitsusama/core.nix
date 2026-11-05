@@ -352,11 +352,11 @@ Provider {
         const parts = serverParts(server);
         const name = server.name || server.address;
         const sampled = server.lastSample !== null && server.lastSample !== undefined;
-        // Known by its address, since the launcher keeps a selection by its
-        // row's key as the reading changes; what it is says it's a server.
+        // Known by its address, since the launcher knows a row by what it
+        // is or else its key, keeping the selection on it as the reading
+        // changes and taking two known alike as one.
         return thingRow({
             key: `time-server:${server.address}`,
-            is: "time:server",
             name: name,
             side: sampled ? Keeping.seconds(server.offset, true) : "",
             note: Keeping.standing(server, serversSaid),
