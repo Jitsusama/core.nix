@@ -410,7 +410,8 @@ QtObject {
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
         // timed as the fastest of twenty batches of fifty, as the search's
-        // are, in a quarter of a key's 4 ms.
+        // are, in half a key's 4 ms: about 0.4 ms alone, and past 1 ms
+        // while VM tests shared the machine (2026-11-04).
         const windows = [];
         for (let at = 0; at < 400; at++) {
             const named = `Pull request #${at} \u00b7 Jitsusama/core.nix`;
@@ -443,8 +444,8 @@ QtObject {
         const ending = timed(() => Operators.asks(Operators.endings(
             Operators.taken(windows, spanOf("d"), null), actions).map(one => one.action)));
         console.log(`yG over 400 rows in ${yanking.toFixed(3)} ms, dG in ${ending.toFixed(3)} ms`);
-        holds("yG over 400 rows in a quarter of a key's 4 ms", yanking < 1, true);
-        holds("and dG", ending < 1, true);
+        holds("yG over 400 rows in half a key's 4 ms", yanking < 2, true);
+        holds("and dG", ending < 2, true);
     }
 
     function run() {
