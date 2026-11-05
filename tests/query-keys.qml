@@ -1229,10 +1229,13 @@ QtObject {
             ["Ctrl+O and Ctrl+I go back and forward through the places stepped into",
                 ["Escape", "Ctrl+o", "Ctrl+i", "Tab"],
                 ["normal", "jumpBack", "jumpForward", "jumpForward"]],
-            // Ctrl+] goes to the row's own place, as Vim follows a tag: into
-            // the parts of a row whose Return opens it (VKCF3Z, 2026-11-05).
-            ["Ctrl+] follows the row to its own place", ["Escape", "Ctrl+]"],
-                ["normal", "follow"]],
+            // Ctrl+] goes to the row's own place, as Vim follows a tag: where
+            // a row found elsewhere lives, or into the parts of a row whose
+            // Return opens it (VKCF3Z, 2026-11-05); Ctrl+T comes back through
+            // those followed.
+            ["Ctrl+] follows the row to its own place, and Ctrl+T back",
+                ["Escape", "Ctrl+]", "Ctrl+t"], ["normal", "follow", "tagBack"]],
+            ["on the find, Ctrl+] and Ctrl+T are the field's", ["Ctrl+]", "Ctrl+t"], []],
             ["Space ? and F1 show every key here", ["Escape", "Space", "?", "F1"],
                 ["normal", "keys", "keys"]],
             ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
@@ -1327,7 +1330,10 @@ QtObject {
             ["Ctrl with a letter", press({ control: true }, "\u0017", "w"), "Ctrl+w"],
             ["Alt shifting a letter to a mark", press({ alt: true }, "@", "q"), "@"],
             ["Alt typing beyond the marks", press({ alt: true }, "\u00f0", "d"), ""],
-            ["Shift with Tab", press({ shift: true }, "", "", "Tab"), "Shift+Tab"]
+            ["Shift with Tab", press({ shift: true }, "", "", "Tab"), "Shift+Tab"],
+            // Ctrl+] types a control character, so it goes by its key's
+            // name, as Prompt.qml names the bracket.
+            ["Ctrl with ]", press({ control: true }, "\u001d", "", "]"), "Ctrl+]"]
         ];
         for (const [what, pressed, want] of names)
             holds(`${what} is named ${want}`, KeyNames.nameOf(pressed), want);
@@ -1443,7 +1449,6 @@ QtObject {
             "Ctrl+F  Ctrl+B");
         holds("the list's way up, - alone, h and l stepping nowhere", keyed("up"), "-");
         holds("and normal's Return, which opens or goes in", keyed("open in"), "\u21b5");
-        holds("and Ctrl+], into what Return opens", keyed("follow"), "Ctrl+]");
         holds("the list's places stepped into, back and forward", keyed("jumps"),
             "Ctrl+O  Ctrl+I");
         holds("the list's fresh find", keyed("find"), "/  ?");
@@ -1463,6 +1468,8 @@ QtObject {
             (list.find(line => line.value === "last") ?? {}).keys, [["Space", "Tab"]]);
         holds("a sequence of letters, one run",
             (list.find(line => line.value === "ends") ?? {}).keys, [["gg"], ["G"]]);
+        holds("and Ctrl+], to a row's own place, and Ctrl+T back", keyed("follow"),
+            "Ctrl+]  Ctrl+T");
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's numbers", keyed("numbers"), "Space u l");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
@@ -1570,8 +1577,9 @@ QtObject {
             "letterAgain", "letterAgainBack"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         for (const act of ["run", "intoSaid", "outSaid", "out", "close", "quitSaid",
-            "lastPlace", "follow", "jumpBack", "jumpForward", "freshFind", "keys", "numbers",
-            "insert", "change", ""])            holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
+            "lastPlace", "follow", "tagBack", "jumpBack", "jumpForward", "freshFind", "keys",
+            "numbers", "insert", "change", ""])
+            holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
         // the 7th selected: [what, the act, the count, where it goes].

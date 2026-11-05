@@ -320,6 +320,62 @@ QtObject {
             run: does }), true);
         expect("the long lists are named", ["emoji", "notices"].map(Catalogue.long),
             [true, false]);
+        lives();
         Qt.exit(failed === 0 ? 0 : 1);
+    }
+
+    // Where a row lives, which Ctrl+] goes to as Vim follows a tag: the
+    // shallowest place from home holding a row that is it, never Now, which
+    // holds what lives elsewhere, nor inside a long list or a program.
+    function lives() {
+        const row = (key, fields) => Object.assign({ key: key, name: key }, fields);
+        const emoji = row("collection:emoji", { opens: "emoji" });
+        const smile = row("emoji:smile");
+        const quiet = row("session:quiet");
+        const lock = row("session:Lock");
+        const kitty = row("program:kitty");
+        const window = row("window:kitty");
+        const inside = {
+            "collection:on": [quiet, lock],
+            "category:desktop": [emoji, quiet, row("category:energy", { category: {} })],
+            "category:energy": [lock],
+            "collection:emoji": [smile],
+            "collection:applications": [kitty],
+            "program:kitty": [window]
+        };
+        const home = [row("collection:on", { opens: "on" }),
+            row("collection:applications", { opens: "applications" }),
+            row("category:desktop", { category: {} })];
+        const ways = { idOf: one => one.key, holds: one => inside[one.key] ?? [] };
+        const at = key => {
+            const path = Catalogue.livesAt(home, key, ways);
+            return path === null ? null : path.map(one => one.key);
+        };
+        expect("a thing lives in the place holding it, Now passed over", at("session:quiet"),
+            ["category:desktop", "session:quiet"]);
+        expect("a place inside a place, as deep as it is", at("session:Lock"),
+            ["category:desktop", "category:energy", "session:Lock"]);
+        expect("a collection lives in the place holding it", at("collection:emoji"),
+            ["category:desktop", "collection:emoji"]);
+        expect("a program, at home's Programs", at("program:kitty"),
+            ["collection:applications", "program:kitty"]);
+        expect("a place at home lives at home", at("category:desktop"), ["category:desktop"]);
+        expect("what a long list holds isn't walked", at("emoji:smile"), null);
+        expect("nor what a program holds", at("window:kitty"), null);
+        expect("what lives only in Now lives nowhere else", at("on:waitingOnYou"), null);
+        // Where Ctrl+] goes from where the launcher stands: the place that
+        // holds it and the row there, or nowhere when it's held here.
+        expect("found from home, it goes into its place, onto it",
+            Catalogue.followed(["category:desktop", "session:quiet"], []),
+            { trail: ["category:desktop"], spot: "session:quiet" });
+        expect("from Now, the same",
+            Catalogue.followed(["category:desktop", "session:quiet"], ["collection:on"]),
+            { trail: ["category:desktop"], spot: "session:quiet" });
+        expect("in its own place, it goes nowhere",
+            Catalogue.followed(["category:desktop", "session:quiet"], ["category:desktop"]),
+            null);
+        expect("a place at home, from home, goes nowhere",
+            Catalogue.followed(["category:desktop"], []), null);
+        expect("nor does what lives nowhere", Catalogue.followed(null, []), null);
     }
 }

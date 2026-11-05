@@ -1035,6 +1035,71 @@ def escape_at_rest_stays(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def walk_the_rows_follows(desktop: Desktop) -> None:
+    """Press Ctrl+] on a row found from home, and Ctrl+T, Ctrl+O and Tab over it, through niri.
+
+    Ctrl+] goes to the place the row lives, the cursor on it there, as Vim follows a tag, and
+    Ctrl+T comes back, as Vim's pops its tag stack, saying Vim's E73 with nothing to pop. The
+    place it went to is on the jump list too. In the row's own place Ctrl+] means nothing.
+    """
+    machine = desktop.machine
+    desktop.answer("emoji")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    desktop.normal()
+
+    def followed() -> None:
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["held"], shown["typed"], (shown["selected"] or {}).get("name"))
+                == (["desktop"], "", "Emoji")
+            )
+        )
+
+    def came_back() -> None:
+        desktop.launcher_until(
+            lambda shown: (shown["held"], shown["typed"], shown["rows"]) == ([], "emoji", ["Emoji"])
+        )
+
+    for key, then in [
+        ("ctrl-bracket_right", followed),
+        ("ctrl-t", came_back),
+        ("ctrl-bracket_right", followed),
+        ("ctrl-o", came_back),
+        ("tab", followed),
+    ]:
+        machine.send_key(key)
+        then()
+    machine.send_key("ctrl-bracket_right")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["Ctrl+] not here"])
+    machine.send_key("ctrl-t")
+    came_back()
+    machine.send_key("ctrl-t")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["E73: Tag stack empty"])
+    desktop.close_launcher()
+
+
+def walk_a_found_program_follows(desktop: Desktop) -> None:
+    """Press Ctrl+] on kitty found from home, and Ctrl+T, through niri.
+
+    A row that holds more goes into its parts, as the foot's Ctrl+] in says, before where it
+    lives, and Ctrl+T comes back from there to what was typed, as from any place followed.
+    """
+    machine = desktop.machine
+    desktop.answer("kitty")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+    desktop.normal()
+    machine.send_key("ctrl-bracket_right")
+    desktop.launcher_until(lambda shown: shown["held"][-1:] == ["kitty"])
+    machine.send_key("ctrl-t")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["held"], shown["typed"], (shown["selected"] or {}).get("is"))
+            == ([], "kitty", "program:kitty")
+        )
+    )
+    desktop.close_launcher()
+
+
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
     """A search lists each thing once, and normal's keys move and act on it as Vim's do."""
     walk_the_rows_moves(desktop)
@@ -1042,6 +1107,8 @@ def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Des
     walk_the_rows_finds(desktop)
     walk_the_rows_washed(desktop)
     walk_the_rows_keys(desktop)
+    walk_the_rows_follows(desktop)
+    walk_a_found_program_follows(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;
