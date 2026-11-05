@@ -1826,10 +1826,18 @@ Scope {
     }
 
     // Whether Return on a row changes how things stand (Catalogue.js's
-    // changesState): ending something, one that can't be taken back, or a
-    // setting's switch.
+    // changesState), as the key language flags the command the row is
+    // named by, so Return lands where d asks.
     function changesState(choice) {
-        return !!choice && Catalogue.changesState(choice);
+        return !!choice && Catalogue.changesState(choice, commandNamed(choice));
+    }
+
+    // The command a row is named by, as the command line names its act
+    // (Commands.js's actLine): the one its words give it, or else its verb;
+    // and the key language's flags for it, where the language names it.
+    function commandNamed(row) {
+        const command = commandWords(row.key ?? "").command ?? Commands.commandOf(row);
+        return { command, flags: Options.commands[command] };
     }
 
     // Whether Return steps into a thing whose own act changes something, as
@@ -3025,7 +3033,8 @@ Scope {
         const own = stepRows(row, things);
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        return into && things && stepsThing(row) ? Catalogue.quietFirst(into) : into;
+        return into && things && stepsThing(row)
+            ? Catalogue.quietFirst(into, one => root.commandNamed(one)) : into;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether

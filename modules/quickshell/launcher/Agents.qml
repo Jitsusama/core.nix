@@ -250,10 +250,8 @@ Provider {
                             ?.replace("{name}", session.title) ?? "";
                 }
             }),
-            // Pausing and resuming change how the session stands, so from
-            // the find Return lands on them first (Catalogue.changesState).
-            pause: () => act("pause", { changes: true, run: steered("pause") }),
-            resume: () => act("resume", { changes: true, run: steered("resume") }),
+            pause: () => act("pause", { run: steered("pause") }),
+            resume: () => act("resume", { run: steered("resume") }),
             stop: () => act("stop", { run: steered("stop") })
         };
         const windowed = !!(session.window || session.kitty || (!session.here && session.attach));

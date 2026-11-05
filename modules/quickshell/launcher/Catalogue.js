@@ -80,41 +80,56 @@ function opens(row) {
         && !ends(row) && !disruptive(row);
 }
 
-// What a row's verb says it does that changes nothing: it only shows,
-// copies, goes somewhere or looks again.
-const QUIET = new Set(["copy", "show", "see", "more", "open", "go", "find", "search", "retry"]);
+// The verbs whose rows may change things but which the key language names
+// no command for yet (modules/keys/language.toml), whose rows alone are
+// guessed at from how they're made. The guess stands in for these verbs
+// only until VCSELW's language names them, and tests/catalogue.qml pins
+// them, so the list only shrinks.
+const guessed = ["brighten", "brighter", "choose", "connect", "dim", "dimmer", "expect",
+    "flash", "gather", "hold", "join", "leave", "lock", "log", "mute", "off", "on", "record",
+    "share", "sign", "sleep", "start", "stop", "take", "thaw", "tile", "turn", "unmute",
+    "unread", "unstar", "use"];
 
-// Whether doing it changes how things stand (the vi-paradigm spec's Return):
-// it ends something or can't be taken back, as a disconnect, a lock or a
-// turning off does, or it's done and keeps the launcher, as a setting's
-// switch or a network's join is; never a row that only shows, copies, opens
-// or steps in. Return from the find line lands on such a row rather than
-// doing it, so typing a name and Return can only ever show it. It stands
-// for the key language's own flag until the launcher reads its acts from
-// there.
-function changesState(row) {
+// Whether doing it changes how things stand (the vi-paradigm spec's Return),
+// as the key language flags the command the row is named by (`named`, its
+// command and the language's flags for it, as Commands.js's actLine finds
+// them), so Return and d agree on every row. Return from the find line
+// lands on such a row rather than doing it, so typing a name and Return
+// can only ever show it. A row may say so itself, whatever its command.
+// Where the language names no command for one of the guessed verbs, it's
+// guessed: it ends something or can't be taken back, or it's done and
+// keeps the launcher, as a network's join is; any other command it names
+// nothing for changes nothing.
+function changesState(row, named = {}) {
     // A row that says it changes nothing, whatever its verb, as Ask's
     // question or a file picker's mark, which only picks.
     if (!row || row.gone || row.changes === false) {
         return false;
     }
-    if (row.changes === true || ends(row) || disruptive(row)) {
+    if (row.changes === true) {
         return true;
     }
-    const verb = verbOf(row).toLowerCase();
-    return row.stays === true && typeof row.run === "function" && !QUIET.has(verb)
-        && !row.spot && !row.from && !(row.verbs && row.targets);
+    if (named.flags !== undefined) {
+        return named.flags.changes === true;
+    }
+    if (!guessed.includes(named.command ?? "")) {
+        return false;
+    }
+    return ends(row) || disruptive(row) || (row.stays === true && typeof row.run === "function"
+        && !row.spot && !row.from && !(row.verbs && row.targets));
 }
 
 // A step's rows with a quiet one first, where the first would change
 // something: the first row inside a thing never changes state (See It,
 // Copy, a part), so a Return that steps in and a second Return after it
 // only ever show. Where every row changes something, they keep their order.
-function quietFirst(inside) {
-    if (inside.length < 2 || !changesState(inside[0])) {
+// Each row's command is `named` as changesState takes it.
+function quietFirst(inside, named) {
+    const changes = one => changesState(one, named(one));
+    if (inside.length < 2 || !changes(inside[0])) {
         return inside;
     }
-    const quiet = inside.findIndex(one => !changesState(one));
+    const quiet = inside.findIndex(one => !changes(one));
     if (quiet < 0) {
         return inside;
     }
