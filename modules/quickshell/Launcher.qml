@@ -1930,9 +1930,14 @@ Scope {
             return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
                 commandNamed(row))).length, Words.field.visual ?? {})]];
         // The row landed on says the act a second Return does, in the
-        // accent, since it's the one key that changes something now.
-        if (choice === selected && landedOn(choice))
-            return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent]];
+        // accent, since it's the one key that changes something now; the
+        // rest is normal's foot, as a landing is normal, so its shape never
+        // changes (VKCF3Z, 2026-11-05).
+        if (choice === selected && landedOn(choice)) {
+            const hints = Words.field.hints ?? {};
+            return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent],
+                [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]];
+        }
         // One Return lands on from the find says Return with no act, since
         // Return there does nothing of its own, and no arrow, since the
         // find's arrows move the caret.
