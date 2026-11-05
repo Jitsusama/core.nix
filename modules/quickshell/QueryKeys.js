@@ -53,23 +53,28 @@ const table = [
     { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
-    // The left and right arrows step out and in, with h and l beside them,
-    // and - and Backspace step out as his oil's do; a query typed is
-    // cleared first, and u brings it back, as vi's undo does.
-    { act: "into", mode: "normal", keys: ["Right", "l"] },
-    { act: "out", mode: "normal", keys: ["Left", "h", "-", "Backspace"] },
-    // q closes, as his Neovim closes help and its plugin windows, ZZ as it
-    // closes a buffer and Space w as his leader closes a split; :q is the
-    // command line's (CommandLine.qml), which : opens (read, below).
-    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"], ["Space", "w"]] },
-    // Tab goes back to the place used last, and again to the one before
-    // that, as his Space Tab goes back to the file used last (docs/
-    // design.md, Vi's Keys: Tab stays ours, and Space Tab does it too).
-    { act: "lastPlace", mode: "normal", keys: ["Tab", ["Space", "Tab"]] },
+    // l steps into the row and h out of the place, back onto the row stepped
+    // in from with its find, - and Backspace as his oil's do, and the arrows
+    // as their letters.
+    { act: "into", mode: "normal", keys: ["l", "Right"] },
+    { act: "out", mode: "normal", keys: ["h", "-", "Backspace", "Left"] },
+    // ZZ closes, as his Neovim closes a buffer, and Space w as his leader
+    // closes a split; :q is the command line's (CommandLine.qml), which :
+    // opens (read, below). q closes nothing,
+    // since recording is an unseen mode there are no macros for, and says
+    // so once, until the next key (the vi-paradigm spec, Normal).
+    { act: "close", mode: "normal", keys: [["Z", "Z"], ["Space", "w"]] },
+    { act: "quitSaid", mode: "normal", keys: ["q"] },
+    // Ctrl+O and Ctrl+I go back and forward through the places stepped
+    // into, as Vim's jump list does, Tab being Ctrl+I to a terminal; Space
+    // Tab goes back to the place used last, as his goes to the file used
+    // last.
+    { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
+    { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
+    { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
     // Every key here, as his leader's Space ? lists them, and F1 as help.
     // Space alone begins these and does nothing, waiting as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
-    { act: "restore", mode: "normal", keys: ["u"] },
     // Vim's operators on the rows as lines: d does each row's ending
     // action (Forget It, Close It) and y its copy, over the row again as
     // dd and yy, or as far as a motion goes (operated, below), so these
@@ -93,8 +98,10 @@ const table = [
     { act: "paragraphBack", mode: "normal", keys: ["{"] },
     { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
     { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
-    // Into insert: at the caret, after it, at the line's start and its end,
-    // or with the line cleared first.
+    // Back to the find: / and ? afresh, as a find has no direction; i a I A
+    // holding the find, at the caret, after it, at the line's start and its
+    // end; or cleared first, as cc clears a line.
+    { act: "freshFind", mode: "normal", keys: ["/", "?"] },
     { act: "insert", mode: "normal", keys: ["i"] },
     { act: "append", mode: "normal", keys: ["a"] },
     { act: "insertStart", mode: "normal", keys: ["I"] },
@@ -115,8 +122,10 @@ const table = [
     // Vim's Ctrl+W l and w go into the drawer, and his Neovim's Space and the
     // right arrow over them (Joel, 2026-11-05: "leader stuff can overlay").
     { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
-    // Escape steps back one level, and closes the launcher at its home.
-    { act: "back", mode: "normal", keys: ["Escape"] },
+    // Escape at rest closes the launcher, a popup, as his Neovim closes its
+    // floats, from any depth: it never steps out (the vi-paradigm spec's
+    // Normal), and cancels whatever's begun first (read, below).
+    { act: "dismiss", mode: "normal", keys: ["Escape"] },
 
     // A prompt's words in normal, as Vim edits a line: w, b and e to the
     // next word's start, back to a word's start and on to its end, 0 and $
@@ -372,8 +381,10 @@ function beforeTable(standing, key, mode, words) {
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and steps back out of anything on the next press. Words says the
-// line holds a prompt's words rather than a find, which normal edits.
+// does, and closes on the next press. A key that means nothing in normal
+// is `idle`, which the foot answers with "not here", so none is silent.
+// Words says the line holds a prompt's words rather than a find, which
+// normal edits.
 function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
     // changes nothing, so a sequence or a count begun carries on past it.
@@ -428,7 +439,7 @@ function read(standing, key, mode, words = false) {
     }
     // Where nothing types, a key that ends nothing is the line's and does
     // nothing, letting what was begun go, as vi does.
-    return { act: "", count: 0, standing: rest(), ours: still(mode) };
+    return { act: "", count: 0, standing: rest(), ours: still(mode), idle: still(mode) };
 }
 
 // How the keys stand once a sequence begun has waited its timeoutlen for
@@ -491,7 +502,7 @@ function modeAfter(act, mode, typing = "find") {
     if (["copy", "copyLines", "back"].includes(act) && chosen(mode)) {
         return "page";
     }
-    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]
+    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind"]
         .includes(act)) {
         return typing;
     }

@@ -19,22 +19,24 @@ const normal = [
     { name: "row", acts: [], also: [":12"] },
     { name: "inOut", acts: ["into", "out"] },
     { name: "run", acts: ["run"], firsts: true },
+    // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.
+    { name: "jumps", acts: ["jumpBack", "jumpForward"], without: ["Tab"] },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
     { name: "own", acts: ["openOwn"] },
+    { name: "find", acts: ["freshFind"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.
     { name: "ending", acts: ["ending"], also: ["dj"] },
     { name: "copyRow", acts: ["copy"], also: ["yG"] },
-    { name: "restore", acts: ["restore"] },
     // Vim's Ctrl+W l alone, as the way back names Ctrl+W h alone, so the
     // line sits whole at Joel's scale.
     { name: "intoDrawer", acts: ["drawer"], firsts: true },
     { name: "keys", acts: ["keys"] },
-    // q isn't listed, since Joel wants it to do nothing by itself and :q
-    // to quit (2026-11-05); his respec takes its binding out.
-    { name: "close", acts: ["close"], without: ["q"], also: [":q"] }
+    // q isn't listed, since it does nothing by itself but say how to
+    // close (Joel, 2026-11-05).
+    { name: "close", acts: ["close"], also: [":q"] }
 ];
 
 // The find's, the line the launcher opens on, whose keys a prompt's

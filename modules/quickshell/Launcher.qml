@@ -1946,6 +1946,11 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice) || stepsThing(choice);
+        // Normal names its keys by letter and lowercase verb, from the
+        // table that does them (the vi-paradigm spec's foot): l in, h out,
+        // : commands and Space ?, the way to every key, always.
+        if (prompt.modal && prompt.mode === "normal")
+            return normalKeys(choice, stepping, more);
         // An arrow is named only in a mode where it steps: in insert they
         // move the caret, so naming them there named keys that did nothing
         // of what was said (Joel, 2026-11-04). A secret's line has no
@@ -1975,6 +1980,43 @@ Scope {
         return keys;
     }
 
+    // Normal's keys for a row: Return's act, l where it steps in, h where
+    // there's a place to step out to, then : and Space ?.
+    function normalKeys(choice, stepping, more) {
+        const hints = Words.field.hints ?? {};
+        const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
+        if (stepping || holdsMore(choice))
+            keys.push([hintKey("into"), hints.in ?? ""]);
+        if (held.length > 0)
+            keys.push([hintKey("out"), hints.out ?? ""]);
+        if (choice === selected && drawerOut && drawerCard.more)
+            keys.push(["\u21e7\u2191\u2193", "scroll"]);
+        // The colon opens the command line from rest (QueryKeys.read).
+        keys.push([":", hints.commands ?? ""]);
+        keys.push([hintKey("keys"), hints.keys ?? ""]);
+        return keys;
+    }
+
+    // A key as the foot names it: the first the table gives an act in
+    // normal, drawn as the key list draws it, so a hint names the key that
+    // does what it says.
+    function hintKey(act) {
+        const row = QueryKeys.table.find(one => one.act === act
+            && QueryKeys.inMode(one, "normal"));
+        return row ? ListedKeys.sequenceFace(row.keys[0]) : "";
+    }
+
+    // A word the foot says for a key, in place of the keys, until the next
+    // key: q's “q does nothing · :q closes”, or “not here” for
+    // a key that means nothing in normal, so none is silent.
+    property var saying: []
+    property int sayingKeys: -1
+    readonly property bool sayingNow: saying.length > 0 && prompt.keysTaken === sayingKeys
+    function say(keys) {
+        saying = keys;
+        sayingKeys = prompt.keysTaken;
+    }
+
     // A key as the foot says it: its mark, then its word where it has one.
     function saidKey(key) {
         return key[1] === "" ? key[0] : `${key[0]} ${key[1]}`;
@@ -1999,10 +2041,10 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Return, then the widest key a row adds beside it, Shift+Return's
-    // "below".
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
+    // Return, then the most normal says beside it: in, out, the commands
+    // and the keys.
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["l", "in"], ["h", "out"],
+        [":", "commands"], ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -2431,8 +2473,43 @@ Scope {
     onHeldChanged: {
         const left = placeHeld;
         placeHeld = held;
-        if (open && placeOf(left) !== placeOf(held))
+        if (open && placeOf(left) !== placeOf(held)) {
             lastPlace = { held: left, here: here() };
+            // A place stepped to afresh goes on the way back, and leaves
+            // nothing ahead, as Vim's jump list does.
+            if (!jumping) {
+                jumpsBack = jumpsBack.concat([{ held: left, here: here() }]);
+                jumpsAhead = [];
+            }
+        }
+    }
+
+    // The places stepped into, as Vim's jump list: those left, which Ctrl+O
+    // goes back through, and those gone back from, which Ctrl+I and Tab go
+    // forward through again. Let go as the launcher opens, with the place
+    // used last.
+    property var jumpsBack: []
+    property var jumpsAhead: []
+    property bool jumping: false
+    function jump(by) {
+        const from = by < 0 ? jumpsBack : jumpsAhead;
+        if (from.length === 0)
+            return;
+        const to = from[from.length - 1];
+        const left = { held: held, here: here() };
+        if (by < 0) {
+            jumpsBack = jumpsBack.slice(0, -1);
+            jumpsAhead = jumpsAhead.concat([left]);
+        } else {
+            jumpsAhead = jumpsAhead.slice(0, -1);
+            jumpsBack = jumpsBack.concat([left]);
+        }
+        traces.began("jump", { from: held.length, to: to.held.length });
+        jumping = true;
+        held = to.held;
+        jumping = false;
+        restart(to.here.typed);
+        reselect(to.here);
     }
     function toLastPlace() {
         if (lastPlace === null)
@@ -5108,6 +5185,8 @@ Scope {
         homeDepth = held.length;
         // A place it never showed on the way is none to go back to.
         lastPlace = null;
+        jumpsBack = [];
+        jumpsAhead = [];
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -5146,6 +5225,8 @@ Scope {
             held = [];
             homeDepth = 0;
             lastPlace = null;
+            jumpsBack = [];
+            jumpsAhead = [];
             listing = false;
             listedInDrawer = false;
             prompt.forget();
@@ -5599,17 +5680,19 @@ Scope {
                                 text = root.answer.copy ?? root.answer.headline;
                             root.searchNow();
                         }
-                        // Normal's Escape at rest, the Escape ladder's last
-                        // rungs (docs/design.md, Vi's Keys): a step back out,
-                        // or, at the level it opened on, closing it.
+                        // Normal's Escape at rest: the key list let go, or
+                        // the launcher closed, a popup, from any depth, as
+                        // his Neovim closes its floats; it never steps out
+                        // (the vi-paradigm spec, Normal).
                         onCancelled: {
                             if (root.listing)
                                 root.listing = false;
-                            else if (root.held.length > root.homeDepth)
-                                root.back();
                             else
                                 root.open = false;
                         }
+                        // A key with no meaning here says so, until the next.
+                        onIdled: key => root.say([[ListedKeys.face(key),
+                            (Words.field.hints ?? {}).notHere ?? ""]])
                         onForward: {
                             root.searchNow();
                             trials.pressed("steps");
@@ -5682,6 +5765,19 @@ Scope {
                             case "lastPlace":
                                 root.toLastPlace();
                                 return;
+                            case "jumpBack":
+                                root.jump(-1);
+                                return;
+                            case "jumpForward":
+                                root.jump(1);
+                                return;
+                            case "quitSaid": {
+                                // Said with :q at the right end, where Return
+                                // stands, so it reads q then :q.
+                                const hints = Words.field.hints ?? {};
+                                root.say([[":q", hints.quits ?? ""], ["q", hints.quit ?? ""]]);
+                                return;
+                            }
                             case "nextFile":
                                 root.beside(1);
                                 return;
@@ -6280,7 +6376,7 @@ Scope {
                             : operatorWord !== null ? [operatorWord]
                             : prompt.asking !== "" || root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
-                            : root.keysFor(choice)
+                            : root.sayingNow ? root.saying : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []
