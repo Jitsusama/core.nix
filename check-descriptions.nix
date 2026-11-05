@@ -607,11 +607,10 @@
     are pressed in, and Neovim's keys, its command line's among them, agree with the language;
     that the language gives no key or command name to two acts, names no command Neovim names
     otherwise, gives no surface's act an arrow the leader doesn't begin in normal or visual mode,
-    lets the find line reach no change and guards no act that would never ask; that no modal
-    layer of ours binds such an arrow in normal but his Neovim, kept as it is, and those still
-    keeping theirs, a list that may only shrink; each way of straying shown to fail first, a
-    leader's arrow and Neovim's bare one shown to pass, the reader leaving out a key it takes only
-    while selecting among them
+    lets the find line reach no change and guards no act that would never ask; that a modal layer
+    of ours binds an arrow in normal only alone, as its letter's motion; each way of straying
+    shown to fail first, a leader's arrow and an arrow bound as its letter shown to pass, the
+    reader leaving out a key it takes only while selecting among them
   '';
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
