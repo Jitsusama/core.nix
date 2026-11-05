@@ -44,12 +44,14 @@ CARD = 680
 GAP = 32
 MARGIN = 48
 MOST = 520
-# The plate's pitch, half a row, and how near a line is to where it should be: a hundredth,
-# and the half a hundredth each of two lengths the launcher reports rounded may take.
+# The drawer's line pitch, Figure's, two of the card's beats, and how near a line is to where
+# it should be: a hundredth, and the half a hundredth each of two lengths the launcher reports
+# rounded may take.
 PITCH = 24
+BEAT = 12
 NEAR = 0.02
-# How far apart a Title's lines sit when its name wraps (Theme.space.xxl), tighter than two of
-# the pitch, so the name reads as one heading.
+# A Title's pitch: how far the title sits under the eyebrow, and its lines apart when its name
+# wraps, tighter than two of the plate's, so the name reads as one heading.
 TITLE_LEADING = 32
 # How far the text keeps from the plate's frame on every side, its foot included: an inset and a
 # step, 4 and 16, inside the border.
@@ -97,18 +99,26 @@ def at_scale(desktop: Desktop, scale: str) -> None:
     desktop.as_account(f"niri msg output winit scale {scale}")
 
 
-def after_the_title(line: float, lines: Json) -> bool:
-    """Say whether a line is the first of the pitch one empty line below the title's block.
+def body_line(lines: Json, card: Json) -> float | None:
+    """Say where the plate's body should start, or None where the title's lines are off.
 
-    The title's lines sit its leading apart, and its block ends on the next whole line of the
-    pitch after its last, so what follows it stays on the plate's lines.
+    The title's lines sit its leading apart, and the body starts on the first of the card's
+    beats, counted from its first row's baseline, two Title pitches or more under the title's
+    last line, so the head reads apart from what follows and the rest lies on the card's beats.
     """
     title, last = float(lines["title"]), float(lines["titleLast"])
     later = round((last - title) / TITLE_LEADING)
     if later < 0 or abs(last - title - later * TITLE_LEADING) > NEAR:
-        return False
-    block = -(-(PITCH + later * TITLE_LEADING) // PITCH) * PITCH
-    return abs(line - (title + block + PITCH)) <= NEAR
+        return None
+    first = float(card["rows"][0])
+    beats = -(-(last + 2 * TITLE_LEADING - first - NEAR) // BEAT)
+    return first + beats * BEAT
+
+
+def after_the_title(line: float, lines: Json, card: Json) -> bool:
+    """Say whether a line is the body's first, on the card's beat under the title's head."""
+    body = body_line(lines, card)
+    return body is not None and abs(line - body) <= NEAR
 
 
 def on_the_pitch(line: float, from_line: float) -> bool:
@@ -131,8 +141,13 @@ def plate_shown(desktop: Desktop, scale: str) -> Json:
     assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide, not {room}"
     assert drawer["height"] == drawer["cardHeight"], f"the plate isn't the card's height: {drawer}"
     lines, card = drawer["lines"], drawer["cardLines"]
-    assert abs(lines["title"] - card["rows"][0]) <= NEAR, (
-        f"at {scale} the title is off the first row's baseline: {drawer}"
+    # The head is one unit: the eyebrow on the field's baseline, the title a Title pitch under.
+    if lines["eyebrow"] is not None:
+        assert abs(lines["eyebrow"] - card["fieldBase"]) <= NEAR, (
+            f"at {scale} the eyebrow is off the field's baseline: {drawer}"
+        )
+    assert abs(lines["title"] - card["fieldBase"] - TITLE_LEADING) <= NEAR, (
+        f"at {scale} the title isn't a Title pitch under the eyebrow: {drawer}"
     )
     return cast("Json", drawer)
 
@@ -774,7 +789,7 @@ def moved_to(below: int, shown: Json) -> bool:
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A notice's plate has its eyebrow on the field's centre and its words on the pitch."""
+    """A notice's plate has its eyebrow on the field's baseline and its words on the beat."""
     desktop.as_account(
         "notify-send 'Nightly build finished'"
         " 'All 412 checks passed on the laptop, in 38 minutes. The slowest was the desktop.'"
@@ -797,11 +812,9 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         )
         drawer = plate_shown(desktop, scale)
         lines, card = drawer["lines"], drawer["cardLines"]
-        assert abs(lines["eyebrowMiddle"] - card["field"]) <= NEAR, (
-            f"at {scale} the eyebrow is off the field's centre: {drawer}"
-        )
-        # One empty line below the title's block.
-        assert after_the_title(lines["words"], lines), drawer
+        assert lines["eyebrow"] is not None, f"at {scale} the notice's plate has no eyebrow"
+        # On the card's beat, two Title pitches or more under the title.
+        assert after_the_title(lines["words"], lines, card), drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
@@ -810,7 +823,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
 def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A time server's plate has its facts from one empty line below the title, on the pitch."""
+    """A time server's plate has its facts from the beat under the title, on the pitch."""
     # chrony keeps the clock by the VM's own time server (tests/desktop.nix), whose plate
     # holds every figure chronyd has of it.
     desktop.machine.wait_until_succeeds(
@@ -835,9 +848,9 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         )
         drawer = plate_shown(desktop, scale)
         # The title, at Title, may take two lines of the plate's width, its leading apart;
-        # the facts start one empty line below its block, on the pitch.
+        # the facts start on the card's beat under it, on the pitch.
         facts = drawer["lines"]["facts"]
-        assert after_the_title(facts[0], drawer["lines"]), drawer
+        assert after_the_title(facts[0], drawer["lines"], drawer["cardLines"]), drawer
         assert all(
             later > earlier and on_the_pitch(later, earlier) for earlier, later in pairwise(facts)
         ), f"at {scale} a fact is off the pitch: {drawer}"
@@ -1028,9 +1041,11 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 drawer = plate_shown(desktop, scale)
                 assert drawer["eyebrow"] == eyebrow, f"{name}'s eyebrow: {drawer}"
                 assert drawer["drawnFacts"][1:] == ["Changed", "Where"], drawer
-                title, facts = drawer["lines"]["title"], drawer["lines"]["facts"]
+                facts = drawer["lines"]["facts"]
                 shown = drawer["lines"]["previewLines"]
-                assert all(on_the_pitch(line, title) for line in [*shown, *facts]), (
+                body = body_line(drawer["lines"], drawer["cardLines"])
+                assert body is not None, f"at {scale} {name}'s title is off its leading: {drawer}"
+                assert all(on_the_pitch(line, body) for line in [*shown, *facts]), (
                     f"at {scale} {name}'s plate is off the pitch: {drawer}"
                 )
                 if preview is not None:

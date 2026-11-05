@@ -10,10 +10,11 @@
 // piece 3), ranked by its type (docs/design.md, Type): an eyebrow saying
 // when or where at Label, the thing's name at Title, the one strong thing
 // while it's shown, its facts as a label at Note and a value at Figure,
-// its words, then its picture. Every line of it lies on one of the card's lines, so the two
-// read as one page: the eyebrow on the field's centre, the name on the
-// first row's baseline, and the rest on a pitch of half a row from the
-// second row's, one empty line between each group. A row gives it as
+// its words, then its picture. Its head is one unit and the rest lies on
+// the card's beats, so the two read as one page: the eyebrow on the
+// field's baseline, the name a Title pitch under it, and the rest from the
+// first of the card's beats two Title pitches under the name, on the
+// drawer's line pitch, one empty line between each group. A row gives it as
 // `drawer: { eyebrow, title, preview, facts: [{ label, value }], body,
 // styled, picture, across, down }`, the body plain unless it says it's
 // styled, a fact whose value isn't known yet null, shown as a fixed
@@ -205,9 +206,10 @@ Floating {
     // How tall it is, the card's height.
     property real tall: 0
     // The card's lines it's set on, down from the card's top as from its
-    // own, since the two share a top: the field's centre and the first
-    // row's.
-    property real fieldLine: 0
+    // own, since the two share a top: the field's baseline, which the
+    // eyebrow shares, and the middle of the first row, whose baseline the
+    // plate's beats are counted from.
+    property real fieldBase: 0
     property real rowLine: 0
     // The middle of each row the card shows, for the moment's lines.
     property var rowLines: []
@@ -255,18 +257,36 @@ Floating {
     // How far it's scrolled, for the launcher to report.
     readonly property real scrolled: view.contentY
 
-    // The plate's pitch: half a row, so its lines fall on each row's and
-    // halfway between two.
-    readonly property real pitch: Theme.space.xl
+    // The drawer's line pitch: Figure's, two beats, for every line of the
+    // plate, Note's runs too, so the plate keeps one grid and its lines
+    // fall on the card's beats (VKCF3Z, 2026-11-05).
+    readonly property real pitch: Theme.level.figure.pitch
     // How far below a line's centre a row's name has its baseline, as a row
-    // centred on that line does, and the same at Label for the eyebrow. Every line here is set on such a
+    // centred on that line does. Every line here is set on such a
     // baseline, whatever its own face, since the faces' line boxes differ.
     readonly property real dropped: monoRuler.y + monoRuler.baselineOffset
-    readonly property real eyebrowDropped: eyebrowRuler.y + eyebrowRuler.baselineOffset
-    // How far apart a Title's lines sit: tighter than the pitch's two, about
-    // 1.15 of its size, so a name that wraps reads as one heading rather
-    // than two (VKCF3Z, 2026-11-04).
-    readonly property real titleLeading: Theme.space.xxl
+    // How far apart a Title's lines sit: its own pitch, tighter than the
+    // plate's two, so a name that wraps reads as one heading rather than
+    // two (VKCF3Z, 2026-11-04).
+    readonly property real titleLeading: Theme.level.title.pitch
+    // The plate's head as one unit (docs/design.md, The Ladder): the eyebrow
+    // on the field's baseline, as everything on that line is, and the title
+    // a Title pitch under it, the tightest gap on the plate. What follows
+    // starts on the first of the card's beats at least two Title pitches
+    // under the title's last line, the widest, so the head reads apart
+    // from the body. The beats are counted from the first row's baseline,
+    // so every line after the head lies a whole number of them from every
+    // row of the card, home's gap or not.
+    readonly property real rowBaseline: rowLine + dropped
+    readonly property real titleBase: fieldBase + Theme.level.title.pitch
+    readonly property real titleLastBase: titleBase
+        + (titleText.lineCount - 1) * titleLeading
+    readonly property real bodyBase: onBeat(titleLastBase + 2 * Theme.level.title.pitch)
+    // The first of the card's beats at or below a line, down from the top.
+    function onBeat(line) {
+        return rowBaseline + Math.ceil((line - rowBaseline) / Theme.space.beat - 0.001)
+            * Theme.space.beat;
+    }
 
     // Where its lines' baselines are, down from its top, for the launcher
     // to report: the eyebrow's and the middle of its line, the title's first
@@ -856,22 +876,15 @@ Floating {
     // as a row refreshes, stays where it was scrolled.
     onTitleChanged: view.contentY = 0
 
-    // Empty lines of the mono, centred on a line's centre as a row's words
-    // are, whose baselines say where the plate's are: an empty line keeps
-    // the baseline a filled one has.
+    // An empty line of the mono, centred on a line's centre as a row's
+    // words are, whose baseline says where the plate's are: an empty line
+    // keeps the baseline a filled one has.
     Text {
         id: monoRuler
         y: -height / 2
         visible: false
         font.family: Theme.level.name.family
         font.pointSize: Theme.level.name.pointSize
-    }
-    Text {
-        id: eyebrowRuler
-        y: -height / 2
-        visible: false
-        font.family: Theme.level.label.family
-        font.pointSize: Theme.level.label.pointSize
     }
 
     // The widest of its facts' names, which their values start beyond, so
@@ -1047,8 +1060,12 @@ Floating {
     function unbroken(words) {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
     }
-    // Where the first line's box begins, down from the content's top.
-    readonly property real firstLine: drawer.rowLine - Theme.border - drawer.pitch / 2
+    // Where the first line's box after the head begins, down from the
+    // content's top: the moment's first row's, or the body's, whose
+    // whole lines the view ends on.
+    readonly property real firstLine: drawer.moment
+        ? drawer.rowLine - Theme.border - drawer.pitch / 2
+        : drawer.bodyBase - Theme.border - drawer.pitch / 2 - drawer.dropped
 
     // The time, read as it turns each second while the moment shows.
     SystemClock {
@@ -1147,7 +1164,7 @@ Floating {
                 id: eyebrowText
                 sought: drawer.washing
                 width: parent.width
-                y: drawer.fieldLine - Theme.border + drawer.eyebrowDropped - baselineOffset
+                y: drawer.fieldBase - Theme.border - baselineOffset
                 visible: drawer.eyebrow !== ""
                 plain: drawer.eyebrow
                 leading: 0
@@ -1323,26 +1340,26 @@ Floating {
             }
 
             // The title, then its facts, words and picture, each a group
-            // of whole lines one empty line apart, from the first row's
-            // line on.
+            // of whole lines one empty line apart, from the title's line
+            // on, or the body's where there's no title.
             Column {
                 id: flow
-                y: drawer.firstLine
+                y: (titleBlock.visible ? drawer.titleBase : drawer.bodyBase) - Theme.border
+                    - drawer.pitch / 2 - drawer.dropped
                 width: parent.width
                 spacing: drawer.pitch
                 visible: !drawer.moment
 
                 // The thing's name at Title, sized by capitals as every
-                // serif step is, on the first row's baseline beside it,
-                // whatever its own line box would put it on. A name that
-                // wraps sets its lines a Title's leading apart, and the
-                // block ends on the next whole line of the pitch, so what
-                // follows stays on the plate's.
+                // serif step is, a Title pitch under the eyebrow, whatever
+                // its own line box would put it on. A name that wraps sets
+                // its lines a Title's leading apart, and the block ends a
+                // line above the body's first, so what follows starts on
+                // the card's beat.
                 Item {
                     id: titleBlock
                     width: parent.width
-                    height: Math.ceil((drawer.pitch + (titleText.lineCount - 1)
-                        * drawer.titleLeading) / drawer.pitch) * drawer.pitch
+                    height: drawer.bodyBase - drawer.titleBase - drawer.pitch
                     visible: drawer.title !== ""
 
                     PageText {
@@ -1387,7 +1404,7 @@ Floating {
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
                     readonly property real room: Math.max(4 * drawer.pitch, view.height
-                        - drawer.firstLine - (titleBlock.visible ? titleBlock.height
+                        - flow.y - (titleBlock.visible ? titleBlock.height
                         + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 
