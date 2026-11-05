@@ -1350,8 +1350,9 @@ QtObject {
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
-        const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in", follow: "follow", run: "run",
-            lastPlace: "last", jumps: "jumps", find: "find", keys: "keys", close: "close",
+        const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in",
+            follow: "follow", run: "run", lastPlace: "last", jumps: "jumps", find: "find",
+            keys: "keys", close: "close",
             numbers: "numbers", ends: "ends", nextRow: "next row", caret: "caret",
             word: "word", intoDrawer: "into the drawer", lines: "lines", along: "along",
             scroll: "scroll", back: "back", ending: "ending", seek: "seek", seekOn: "seek on",
