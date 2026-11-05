@@ -374,6 +374,22 @@ function match(item, query, wantPositions) {
     return { score: total, grade: 0, positions: positions };
 }
 
+// The letters a match brought forward as runs, [start, end] each, the
+// letters side by side run together: a wash lays one ground under each
+// run (Wash.qml), so a word found reads as one find, as his Neovim's
+// Search draws one, rather than as a ground a letter.
+function runs(positions) {
+    const out = [];
+    for (const at of positions) {
+        const last = out.length > 0 ? out[out.length - 1] : null;
+        if (last !== null && last[1] === at)
+            last[1] = at + 1;
+        else
+            out.push([at, at + 1]);
+    }
+    return out;
+}
+
 // Matches worth showing, best first: those as tidy as the tidiest, and a
 // thing marked kept (one picked for this query before) whatever its grade.
 // Ties go to the shorter text, then the alphabet. Each found thing is

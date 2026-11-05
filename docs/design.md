@@ -1717,6 +1717,10 @@ says its own (`status.lua`).
 the cursor. A list shows relative numbers in a gutter at Note, muted, the
 cursor row's own absolute and in text, as his `number`, `relativenumber`
 and `cursorlineopt=number` draw them; Space u l switches them to absolute.
+The gutter's room is kept in every mode, three digits wide with the numbers
+right-aligned, and the field stands in from the card's edge with the rows,
+so `/` stays over the glyphs; on the find and command lines the gutter is
+empty, so nothing moves sideways as the mode changes.
 While a find narrows the rows, the find line keeps it after a muted `/`,
 with its count: "/slack · 3 of 12".
 
@@ -1745,7 +1749,10 @@ with its count: "/slack · 3 of 12".
 **The find line, `/`.** The launcher and the file picker open on it. It is
 a list's one way to find (Joel, 2026-11-04: "it is weird that the text box
 is a search, but i also have the / command"): the rows narrow as it's
-typed, the letters each row matched in Neovim's Search wash. What's typed is
+typed, the letters each row matched in Neovim's Search wash, the selected
+row's on rule, a shade past the selection, since raised sinks into it, and
+none on the accent, since a find has no match the cursor is on (Wash.qml).
+What's typed is
 the mono at Figure after the accent's `/`, with the mono's bar caret at
 every scale.
 
@@ -1785,9 +1792,14 @@ notices it takes the acts' place, and in the reader the bottom line.
   :y :u :red :noh :set :sort :g :v :sp :b :m :clo :sus :his); any other act
   is its row's verb in lowercase, Disconnect It's :disconnect. A name or
   short form Neovim defines with another meaning is refused, so Forget is
-  :forg[et] (:fo is :fold), a call :dial and a meeting :meet, and a notice
-  has no :read (Vim's reads a file in): reading a notice is d. One name an
-  act, with no synonyms; a switch is an option only. Short forms are
+  :forg[et] (:fo is :fold), a call :dial, a meeting :meet, the lock
+  :lockscreen, short locks (:lock is :lockmarks), and stopping an agent
+  mid-turn :interrupt, Vim's word for Ctrl+C; a notice has no :read (Vim's
+  reads a file in): reading a notice is d. One name an act, with no
+  synonyms; a switch is an option only, so Bluetooth connects with :set
+  bluetooth+=Earbuds, as Wi-Fi with :set wifi=Home-5G. Two acts on one row
+  never share a name but by argument: :new and :new ., :res third, :res
+  half and :res full. Short forms are
   written once beside each act, never computed, so :disc never changes
   meaning when a command is added.
 - **Ranges** count the rows as listed, read off the gutter: none is the
@@ -1831,7 +1843,7 @@ visual tints it, and the mode word's room says what it will hit. Operators,
 
 | Key | Launcher rows | File picker | Notices | Reader | Gallery |
 | --- | --- | --- | --- | --- | --- |
-| d, x in visual | the row's ending act: Close It, Disconnect It, Forget It | to the trash | done: read where the sender offers it, then taken away | `E21: Cannot make changes` | to the trash |
+| d, x in visual | the row's ending act: Close It, Disconnect It, Forget It | to the trash | done: read where the sender offers it, then forgotten | `E21: Cannot make changes` | to the trash |
 | y | the row's copy: a path, an address, a name | the paths | what it said | the markdown, flashing | the picture |
 | c | a new name, where the name is Joel's | rename | not here (:reply) | E21 | rename |
 | . | the last change again | the same | the same | nothing | the same |
@@ -1840,8 +1852,13 @@ visual tints it, and the mode word's room says what it will hit. Operators,
 What can't be undone asks once on the command line, as Vim's `confirm()`
 does ("Forget Home-5G and its password? (y/n)"). Only y answers yes, keys
 pressed in the first 300 ms are ignored, and ! skips the ask; what asks
-comes from the language's `undoable`, never a list kept by hand. Anything
-else acts at once, and the foot says how to take it back: "3 done · u
+comes from the language's `undoable`, never a list kept by hand. An act
+the language marks guarded keeps its own work, so one doesn't ask, though it can't be
+undone: closing a window, whose program asks before losing anything, as
+Vim's :close refuses a modified buffer, and interrupting an agent, whose
+session :reopen brings back. A range of more than one guarded thing asks
+once, with the count, and a prompt's Return, as :reply's, is its own
+asking. Anything else acts at once, and the foot says how to take it back: "3 done · u
 brings them back".
 
 **Return** opens, from the find line and from normal alike, but for one
@@ -1853,8 +1870,8 @@ it"):
 | --- | --- |
 | a place, or a thing with acts | steps in, onto a first row that never changes state |
 | a program, window, file, page, link or notice | opens it, or goes where it came from |
-| an act that changes nothing | does it |
-| an act that changes state | from the find line, lands on it in normal, its side saying "↵ turn off"; from normal, does it |
+| an act that changes nothing: Copy, Show, :sort, :rotate | does it |
+| an act that changes state: Turn Off Wi-Fi, Disconnect It, a call, a meeting | from the find line, lands on it in normal, its side saying "↵ turn off"; from normal, does it |
 
 Return acts only on a fresh press, so a held Return can't run what the
 first only reached. Stepping in from the find line keeps the find line,
@@ -1890,8 +1907,11 @@ His other groups have nothing to act on here, and none is faked.
 
 **The foot, the mode word and the key list.** The foot gives the status
 facts, the mode word's room, then the cursor row's keys in this mode by
-letter and lowercase verb, "↵ go to · d disconnect · Space ? keys", Space ?
-always last. Its hints come from the table that handles the keys, filtered
+letter and lowercase verb, "d disconnect · Space ? keys · ↵ go to": Return
+at the right end, as Joel chose, and Space ? just before it, so the way to
+the keys is always on screen. On the command line the foot names the
+line's own keys: "Tab choose" until a line is chosen or typed, then what
+Return runs. Its hints come from the table that handles the keys, filtered
 by mode and row, so none names a key that does nothing, and a check
 presses every hint drawn. The mode word's room is as wide as its widest
 word in its own font, set before the facts, which give way around it, so
@@ -1909,7 +1929,8 @@ fits whole on the laptop's plate.
   fast path is Super+Space, letters and Return, as before. Escape at rest,
   :q, ZZ and Space w close it. Its commands are its rows' verbs, :e with
   places as paths (`:e Machine/Power`), :b for a window, :sp, :m to a
-  workspace, :sort, :set and the session's (:lock, :sus, :logout, :reboot,
+  workspace, :sort, :set and the session's (:lockscreen, :sus, :logout,
+  :reboot,
   :poweroff), each of the session's asking once.
 - **The file picker** opens on the find line. Return takes the cursor row
   or a V selection; :arga, or :'<,'>arga, gathers files across folders,
@@ -1925,19 +1946,24 @@ fits whole on the laptop's plate.
   the sender's glyph, who, the first words and the time, the cursor card
   whole under its line, the newest first. / finds among them; l steps into
   a card's acts and h out; Return goes to whoever sent it. d is done, its
-  read sent at once; :forg takes a card away unread, :reply writes one, and
-  :g/Slack/d takes all of one sender's. Escape at rest, :q, ZZ, Space w and
-  Super+N let them go.
+  read sent at once, and the foot says "d read" where the sender offers a
+  read and "d forget" where it doesn't; :forg forgets a card unread, :reply
+  writes one, and :g/Slack/d takes all of one sender's. `:e Notices` opens
+  their history. Escape at rest, :q, ZZ, Space w and Super+N let them go.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
-  lights only the number, and a block only in visual. j and k move it by
+  lights only the number, and a block only in visual, which starts on the
+  line's first word, never on a list's number or bullet: those are the
+  margin's, as Vim's number column is, and the selection's ground leaves
+  them bare. j and k move it by
   the line as shown, the view following at his `scrolloff=4`; Ctrl+E and
   Ctrl+Y scroll the view alone. /, n N, ]] [[, { }, gO, marks, jumps and
   :{n} put the cursor where they land, so / and then yip copies the
   paragraph found. Escape at rest and q do nothing.
 - **The drawer** is the preview window: Space → goes in and the reader's
   keys work there, and Space ← or :q comes back.
-- **The viewers** close on :q, ZZ and Space w, never on Escape or q, and
+- **The viewers** close on :q and ZZ, swayimg and zathura on Space w too
+  (mpv's Space pauses at once and leads nothing), never on Escape or q, and
   their arrows are their letters, each with one meaning. swayimg's and mpv's
   : opens the launcher's command line aimed at the picture or the video
   (`:d`, `:y`, `:rotate`, `:{n}`, `:q`); zathura keeps its own, which is

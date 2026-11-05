@@ -3467,17 +3467,32 @@ Scope {
         return name.slice(at + typed.length);
     }
 
-    // A name with the letters that matched brought forward, as styled text.
-    // Worked out only for the rows drawn.
-    function marked(choice) {
+    // Which of a name's letters what's typed matched, in order: none for a
+    // row found by another word, or for an answer, named by what it says
+    // rather than by what was typed. A collection, a category or a part
+    // said plainly is still found by its name, so its letters are washed
+    // as any row's are. They're matched in the name drawn, which a place
+    // asked by name can say otherwise than the row it stands on. Worked
+    // out only for the rows drawn, as each is drawn or what's typed
+    // changes, and kept by nothing but the row drawing it, so a list of
+    // matches holds no more.
+    function matchedIn(choice) {
+        if (choice.byWord || choice.answered)
+            return [];
+        const drawn = choice.prepared?.text === choice.name ? choice.prepared
+            : Fuzzy.prepare(choice.name);
+        return Fuzzy.match(drawn, words, true).positions ?? [];
+    }
+
+    // A name with the letters that matched in Search's ink, as styled
+    // text, their ground drawn behind them (Wash.qml).
+    function marked(choice, at) {
         const escape = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-        const at = choice.byWord || choice.plain ? []
-            : Fuzzy.match(choice.prepared, words, true).positions ?? [];
         let out = "";
         for (let i = 0; i < choice.name.length; i++) {
             const letter = escape(choice.name[i]);
             out += at.includes(i)
-                ? `<font color="${Theme.strong}">${letter}</font>`
+                ? `<font color="${Theme.wash.ink}">${letter}</font>`
                 : letter;
         }
         // A command's form, what's typed after its start, is muted, so
@@ -3828,7 +3843,13 @@ Scope {
                 rows.push({ at, is: Rank.identity(row), selected: at === root.current,
                     depth: row.depth ?? 0,
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
-                        .join(" \u00b7 "), words: wordsIn(drawn, card) });
+                        .join(" \u00b7 "), words: wordsIn(drawn, card),
+                    // Whether its name is what was found, and the name's
+                    // letters washed beneath, a run each, as many as its
+                    // wash draws: a cut name's last may not.
+                    byName: !row.byWord && !row.answered,
+                    washed: drawn.drawnRow.finds.slice(0, drawn.drawnRow.washed.length)
+                        .map(run => row.name.slice(run[0], run[1])) });
         }
         // Where the selection is drawn, and where its row is, so a test can
         // say it's drawn on its row.
@@ -5213,8 +5234,17 @@ Scope {
                                     warns: !!entry.modelData.warns
                                     figures: list.figures
                                     sides: list.sides
-                                    name: selected || flashed ? entry.modelData.name
-                                        : root.marked(entry.modelData)
+                                    // A quiet row's name is plain, so its
+                                    // marks would read as letters, and its
+                                    // letters take no wash.
+                                    readonly property var matched: quiet ? []
+                                        : root.matchedIn(entry.modelData)
+                                    // A flashed row's name is plain in the
+                                    // flash's ink, as a selected one is.
+                                    name: selected || quiet || flashed ? entry.modelData.name
+                                        : root.marked(entry.modelData, matched)
+                                    plainName: entry.modelData.name
+                                    finds: Fuzzy.runs(matched)
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []

@@ -118,6 +118,7 @@ let
     "Launcher.qml"
     "Choice.qml"
     "ReadsOn.qml"
+    "Wash.qml"
     "Reading.js"
     "Graph.qml"
     "Chord.qml"
@@ -1828,6 +1829,20 @@ in
                     inherit (s) offset blur;
                     opacity = builtins.fromJSON s.opacity;
                   }) floating.shadows;
+                }
+              }
+              // A find's ink and ground, as Joel's Neovim draws a search's
+              // (modules/neovim/colors/jitsusama.lua, Search): the notices' /
+              // washes what it finds with it, and the launcher the letters
+              // its find line matched. On the selection, which lies a shade
+              // past raised, its ground is the shade past the selection,
+              // rule's, so a selected row's find still shows. No find takes
+              // the accent: the find line has no match the cursor is on.
+              readonly property var wash: ${
+                object {
+                  ink = colours.strong;
+                  ground = colours.raised;
+                  selected = colours.rule;
                 }
               }
               readonly property var motion: ${

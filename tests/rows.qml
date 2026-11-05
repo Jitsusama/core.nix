@@ -17,7 +17,10 @@
 // Ctrl+Y in insert and the left arrow in normal, its caret a bar a quarter
 // of a letter wide in insert and a block a letter wide in normal, resting on
 // the last letter, and a modal caret fades and then, with no key, holds
-// steady. It exits 0 once every case holds,
+// steady. The letters a find matched in a row's name are washed beneath
+// them, run by run, a selected row's on the ground a shade past the
+// selection, and a cut name's only before its ellipsis. It exits 0 once
+// every case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -84,6 +87,32 @@ ShellRoot {
                 name: "Nothing's on or waiting."
             }
             // The same words said quietly in the mono and in the voice.
+            // Rows whose names a find matched, as the launcher gives them:
+            // "fire" twice, the same selected, a name cut to its room with
+            // a run past the cut, and none.
+            Choice {
+                id: washedTwice
+                name: "Firefox, firewall"
+                side: "program"
+                glyph: "$"
+                finds: [[0, 4], [9, 13]]
+            }
+            Choice {
+                id: washedSelected
+                selected: true
+                name: "Firefox, firewall"
+                side: "program"
+                glyph: "$"
+                finds: [[0, 4], [9, 13]]
+            }
+            Choice {
+                id: washedCut
+                name: root.long + root.long
+                side: "7.0\u00d7 usual"
+                glyph: "$"
+                finds: [[0, 5], [2 * root.long.length - 6, 2 * root.long.length]]
+            }
+            Choice { id: washedNone; name: "Firefox"; side: "program"; glyph: "$" }
             Choice { id: plainSaid; quiet: true; glyph: "$"; name: root.voice }
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
@@ -231,6 +260,18 @@ ShellRoot {
         return texts;
     }
 
+    FontMetrics {
+        id: mono
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+    }
+
+    // Places as a row's wash lays them, for a failure to show.
+    function places(washed) {
+        return JSON.stringify(washed, (key, value) =>
+            typeof value === "number" ? Math.round(value * 10) / 10 : value);
+    }
+
     function expect(what, holds, shown) {
         if (!holds)
             throw new Error(`${what}: ${shown}`);
@@ -257,6 +298,34 @@ ShellRoot {
                 texts.map(t => t.text).join(" | ")
                     === "$ | zsh | \u201cterm\u201d · 2 · kitty · workspace 1, 1st column | window",
                 said(texts));
+            // The mono's letters are each a letter wide, so where a run
+            // starts and how wide it is are counted in letters.
+            const em = mono.advanceWidth("f");
+            const near = (got, want) => Math.abs(got - want) < 0.5;
+            const twice = washedTwice.washed;
+            expect("a find's letters are washed run by run, under them", twice.length === 2
+                && near(twice[0][0], 0) && near(twice[0][1], 4 * em)
+                && near(twice[1][0], 9 * em) && near(twice[1][1], 4 * em),
+                `${root.places(twice)}, a letter ${em} wide: ${said(drawn(washedTwice, []))}`);
+            apart(washedTwice, washedTwice.width);
+            expect("a row's find takes Search's ground",
+                twice.every(place => place[2] === Theme.wash.ground), root.places(twice));
+            const onSelection = washedSelected.washed;
+            expect("a selected row's find takes the ground a shade past the selection",
+                onSelection.length === 2
+                    && onSelection.every(place => place[2] === Theme.wash.selected),
+                root.places(onSelection));
+            texts = apart(washedCut, washedCut.width);
+            const cutName = texts.find(t => t.truncated);
+            const room = cutName === undefined ? 0
+                : cutName.to - cutName.from - mono.advanceWidth("\u2026");
+            const cutWash = washedCut.washed;
+            expect("a cut name is washed only where its letters show, before its ellipsis",
+                cutName !== undefined && cutWash.length === 1
+                    && cutWash.every(([start, wide]) => start + wide <= room + 0.5),
+                `${root.places(cutWash)} within ${room}: ${said(texts)}`);
+            expect("a row with no find washes nothing", washedNone.washed.length === 0,
+                root.places(washedNone.washed));
             texts = apart(nothing, nothing.width);
             expect("the margin's words for nothing on whole", cut(texts).length === 0,
                 said(texts));
