@@ -25,9 +25,10 @@ const moving = ["normal", "visual", "pending"];
 // the foot gives it, and `does` what Space ? says it does, in a few words.
 const table = [
     // Moving through the cards, the newest on line 1, as Vim moves through
-    // lines; an arrow is its letter and nothing else.
-    { act: "down", keys: ["j", "Down"], modes: moving, kind: "motion", does: "down a card" },
-    { act: "up", keys: ["k", "Up"], modes: moving, kind: "motion", does: "up a card" },
+    // lines; no arrow does anything in normal, as Joel asked (2026-11-05:
+    // "remove them and rely only on vi right feeling things").
+    { act: "down", keys: ["j"], modes: moving, kind: "motion", does: "down a card" },
+    { act: "up", keys: ["k"], modes: moving, kind: "motion", does: "up a card" },
     { act: "first", keys: [["g", "g"]], modes: moving, kind: "motion", does: "newest, or {n}th" },
     { act: "last", keys: ["G"], modes: moving, kind: "motion", does: "oldest, or {n}th" },
     { act: "viewTop", keys: ["H"], modes: moving, kind: "motion", does: "the view's top" },
@@ -43,8 +44,8 @@ const table = [
 
     // Into the cursor card's acts and out, as his oil's l and h; Backspace
     // and - are h, as in Vim.
-    { act: "into", keys: ["l", "Right"], does: "into its acts" },
-    { act: "out", keys: ["h", "Left", "Backspace", "-"], does: "out of its acts" },
+    { act: "into", keys: ["l"], does: "into its acts" },
+    { act: "out", keys: ["h", "Backspace", "-"], does: "out of its acts" },
     // Return goes to whoever sent it, or does the act it stands on.
     { act: "open", keys: ["Return", "Enter"], hint: "go to", does: "go to its sender" },
 
@@ -120,8 +121,8 @@ const table = [
         does: "normal over them" },
     { act: "insert", keys: ["i", "a"], modes: ["prompt"], does: "insert, or after" },
     { act: "insertEnds", keys: ["I", "A"], modes: ["prompt"], does: "insert at an end" },
-    { act: "left", keys: ["h", "Left", "Backspace"], modes: ["prompt"], does: "a letter left" },
-    { act: "right", keys: ["l", "Right"], modes: ["prompt"], does: "a letter right" },
+    { act: "left", keys: ["h", "Backspace"], modes: ["prompt"], does: "a letter left" },
+    { act: "right", keys: ["l"], modes: ["prompt"], does: "a letter right" },
     { act: "lineStart", keys: ["0", "Home"], modes: ["prompt"], does: "the line's start" },
     { act: "lineEnd", keys: ["$", "End"], modes: ["prompt"], does: "the line's end" },
     { act: "wordOn", keys: ["w"], modes: ["prompt"], does: "the next word" },
