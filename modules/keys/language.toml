@@ -783,6 +783,8 @@ kinds = ["list"]
 changes = true
 range = true
 
+# A device paired, Bluetooth's word, so a network never takes it: a Wi-Fi
+# network's New Password is :password and Account Over {method} :signin.
 [acts.pair]
 command = "pair"
 short = "pai"
@@ -790,6 +792,26 @@ kinds = ["list"]
 changes = true
 undoable = true
 range = true
+
+# A network's password given again, in a prompt on its row unless it follows
+# the command: the old one is gone, but the words typed were the asking.
+# Its short form clears Neovim's :packadd and :pause's pau.
+[acts.password]
+command = "password"
+short = "passw"
+kinds = ["list"]
+changes = true
+guarded = true
+
+# Signed in to a network by an account, over the way it names, as :signin
+# peap, Sign In being the glossary's word; the account typed was the asking.
+# Its short form clears Neovim's :sign.
+[acts.signin]
+command = "signin"
+short = "signi"
+kinds = ["list"]
+changes = true
+guarded = true
 
 [acts.open-it]
 command = "open"
