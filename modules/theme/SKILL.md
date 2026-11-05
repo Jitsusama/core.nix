@@ -87,8 +87,9 @@ loves whimsy", wanting "functionality and focus on simplicity that doesn't
 constrain".
 
 - **Modernist.** Form follows function. Type is the main material, set on a
-  grid of one unit, with hierarchy made by order, weight and colour rather
-  than by boxes or size. Nothing is ornament that doesn't also work: a
+  grid of one unit, with hierarchy made by order, size, weight and colour
+  rather than by boxes: a few named levels, each two cues from the next,
+  as docs/design.md's Levels set them. Nothing is ornament that doesn't also work: a
   border says a thing is a thing, a radius says whether it's whole or a
   part, and a mark names an idea.
 - **Nordic.** Calm, restrained and made to be lived with. Generous air, few
@@ -160,6 +161,12 @@ constrain".
   lifted off of shit" (2026-11-02). Type is set as a typesetter sets it,
   from his faces and this skill, and a redesign keeps what today's does
   better.
+- **Everything at one size and one weight.** "our typography game is still
+  weak. we are not levraging different weights and sizes enough to build a
+  good hierarchy of information" (2026-11-04). The shell had set nearly
+  everything at 13 points and one weight, and left colour to rank it. Every
+  run of text names a level, a title is larger than what it heads, a name
+  is heavier than its words, and furniture is a size smaller.
 - **Keys that aren't Neovim's.** "the keymap feels way too alien from vim"
   and, of the second look, "all of those ctrl keys do not feel very vim to
   me" (2026-11-02). Keys start from Neovim's modes and his leader, Space,

@@ -138,8 +138,9 @@ of each kind of line it sets, and a row's pitch is its height.
 
 ### Typesetting
 
-- **Type carries the design.** Hierarchy comes from face, weight, case and
-  colour role, set as a typesetter sets a page, never from a stock
+- **Type carries the design.** Hierarchy comes from the type levels (size,
+  weight, face, case and colour role, each with its own job), set as a
+  typesetter sets a page, never from a stock
   template's sizes and boxes (the first look, 2026-11-02: "the typography is
   middling ... not leveraging type and typesetting enough"). **Check:** a
   table of every run of text on the surface, giving its face, step, weight,
@@ -318,8 +319,9 @@ for other people's programs.
   SOFT 50, WONK 0, as the reader's page sets its text): a launcher row's
   words and notes, a notice's words, the lock's day and what it says, the
   greeter's words and the words of a password prompt. It's at the name's
-  size, on the mono's baseline, so the name is found first by face, not by a
-  second size. A line holding a strong span (a prompt's owner, the greeter's
+  size, on the mono's baseline, so a row stays one line: the name leads by
+  its weight, and the words follow by face and colour. A line holding a
+  strong span (a prompt's owner, the greeter's
   name) sits at Regular 400 with the span at SemiBold 600, since Qt's span
   styles can't move the weight axis and Fraunces names no 380 or 500.
 - **Sans** (Mona Sans) stays only where another program draws its
@@ -335,9 +337,9 @@ for other people's programs.
 - **Serif italic, the voice** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
   points) is the desktop's voice: what the launcher says to Joel rather than
   what he typed, such as its hint while nothing's typed and its words when
-  nothing is shown. Upright at title, 500 and drawn for 72 points, it names
-  the thing a launcher's drawer is about, a step larger than its row.
-  Joel, 2 November: "i love serif, i'm willing to give fraunces a try".
+  nothing is shown. Upright, at the Title level below, it names a place
+  and the thing a launcher's drawer is about. Joel, 2 November: "i love
+  serif, i'm willing to give fraunces a try".
   It's sized by capitals, not by its em: Monaspace's stand 0.730 of an em
   and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large and sits on the
   line Monaspace would, aligned by baseline.
@@ -353,21 +355,74 @@ for other people's programs.
   in place, so it never jiggles; units set smaller than the number; the same
   precision for the same quantity everywhere.
 - **One scale.** Sizes come from one base and one ratio,
-  `jitsusama.theme.type`, so every surface draws from the same few steps, and
-  a surface names the step, never a size. The ratio is a major third, 1.25:
-  far enough apart to read as different, near enough that a heading doesn't
-  shout. From a 10.5 point body:
+  `jitsusama.theme.type`, so every surface draws from the same few steps. The
+  ratio is a major third, 1.25, from a 10.5 point body. Only some powers are
+  used, so every step taken reads: a surface that seems to need a size
+  between two of them needs a weight or a colour instead. No level of the
+  shell's takes section; it's kept for the reader's page.
 
-  | Step    | Power | Size (pt) | For                                       |
-  | ------- | ----- | --------- | ----------------------------------------- |
-  | small   | -1    | 8.4       | units beside a number, a footnote         |
-  | body    | 0     | 10.5      | almost everything: meters, menus          |
-  | large   | 1     | 13.1      | the launcher, every prompt, every notice  |
-  | title   | 2     | 16.4      | a heading in a menu or dialog             |
-  | display | 6     | 40.1      | a clock shown large                       |
-  | hero    | 8     | 62.6      | the clock on the lock screen              |
+  | Step    | Power | Size (pt) |
+  | ------- | ----- | --------- |
+  | small   | -1    | 8.4       |
+  | body    | 0     | 10.5      |
+  | large   | 1     | 13.1      |
+  | section | 2     | 16.4      |
+  | title   | 3     | 20.5      |
+  | display | 6     | 40.1      |
+  | hero    | 8     | 62.6      |
 
-Each surface names which face it uses and why, in the surfaces table.
+### The Levels
+
+Joel, 4 November: "our typography game is still weak. we are not levraging
+different weights and sizes enough to build a good hierarchy of information."
+The scale had been used as a zoom, one size for a whole surface, so within a
+surface everything was one size and one weight, and colour alone ranked it.
+Now every run of text names one of eight levels, and the levels rank it.
+
+- **Each dimension has one job.** Size says the tier: a title over content,
+  content over a surface's furniture. Weight says what to read first in a
+  line. Face says what kind of thing it is: the mono for a name or a figure,
+  the serif upright for words to read, its italic for the voice. Capitals
+  with tracking say "label". Colour says focus and state; it never ranks
+  alone. Space groups.
+- **Two cues a step.** Neighbouring levels differ in at least two of size,
+  weight, face, case and colour. One 1.25 step of size alone, or 100 units of
+  weight alone, reads as texture, not rank, and light ink on a dark ground
+  hides it further. **Check:** the typesetting table names the two cues
+  between each run and the one nearest it.
+- **At most four levels on a surface** at once, and three in a row, since
+  working memory holds about four things.
+- **Selection never changes weight.** The fill and the strong colour show it,
+  so weight means only a level.
+- **One strong for each state.** Strong is the one focal thing: the selected
+  row's name, a drawer's title while it's shown, or a notice's sender.
+- **Figures are the mono's**, the lock's clock and a drawer's time among
+  them; figures inside a sentence are the serif's.
+- **Optical size follows the size drawn.** Never a poster cut (opsz 72 or
+  144) at a title's size or below.
+- **Italic means the voice**, nothing else, in the shell: not emphasis,
+  not a clock's seconds. A document the reader shows keeps a document's
+  italic, its emphasis and its third-level headings.
+- **No raw size or weight.** A run of text names its level, never a step, a
+  size or a weight; `type-is-set-by-level` fails on one that doesn't.
+
+The serif's sizes are the mono's grown by 0.730 / 0.700, so both share a cap
+height. Weights are Monaspace's (it has 400, 500 and 700) or Fraunces' wght
+axis.
+
+| Level   | Face and setting                                         | Step    | Case                | Colour                                                   | What goes at it                                                                                                               |
+| ------- | -------------------------------------------------------- | ------- | ------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Display | Monaspace 400, tabular figures                           | hero on the lock and greeter, display on a plate | as is, -0.01 em | text on a wallpaper, strong on a plate                 | a clock or a time shown large                                                                                                 |
+| Title   | Fraunces upright, wght 560, opsz 21, SOFT 100, WONK 1    | title   | sentence, -0.01 em  | strong on a drawer, text as a place's name              | a drawer's title, a place's name in the launcher's head, a dialog's heading, a page's section                                 |
+| Name    | Monaspace Medium 500                                     | large   | as written          | text; strong when selected or as a notice's sender       | a row's name, a notice's sender, a window's title                                                                             |
+| Figure  | Monaspace 400, tabular figures                           | large   | as written          | text; strong while typed                                 | a fact's value, a figure in a row, the typed query                                                                            |
+| Words   | Fraunces upright, wght 380, opsz 14, SOFT 50, WONK 0     | large   | sentence            | muted beside a name; text alone                          | a row's words, a notice's words, a drawer's prose, the lock's day, a prompt's ask                                             |
+| Voice   | Fraunces italic, wght 380, opsz 24, SOFT 100, WONK 1     | large   | sentence            | muted as a hint; text when it speaks                     | the hint while nothing's typed, what's said when nothing is found, the drawer's line on what needs him                        |
+| Note    | Monaspace 400                                            | body    | as written          | muted; text on the selection and for a chord             | a row's side note, the count, chords and their hints, the foot, a fact's label, a notice's program and time; units at small |
+| Label   | Monaspace Medium 500, the `case` feature                 | body    | capitals, +0.16 em  | muted                                                    | a drawer's eyebrow, a group's heading in a list                                                                               |
+
+Label is Note told apart by case, so a surface counting its levels counts
+them as one. Each surface says which levels it shows, in the surfaces table.
 
 ## Space
 
@@ -491,8 +546,9 @@ words, so Joel never wonders what he's talking to.
 | monospace                   | typing, or the machine being precise: commands, chords, figures, programs' names |
 | the serif upright           | words to read: what a thing holds or says                       |
 | the serif italic            | the system speaking to Joel                                     |
-| size                        | how much attention a kind asks, set for the kind and never changed within it |
-| weight and colour           | the hierarchy within a surface                                  |
+| size                        | the tier, by level: a title over content, content over a surface's furniture |
+| weight                      | what to read first in a line, by level; never a state           |
+| colour                      | focus and state, and pushing back; never a rank alone           |
 
 No surface picks a radius or a border width of its own; a check refuses any
 that does. The kinds that follow from it:
@@ -759,7 +815,7 @@ same way:
 3. **On request:** everything else, one consistent step away, behind the thing
    it belongs to.
 
-Importance shows by order, weight and colour, not by size or boxes. Calm never
+Importance shows by order and by the type levels, never by boxes. Calm never
 means empty: tier 1 is generous with what's genuinely useful, numbers
 included, and made quiet by typography rather than by removing it. A surface
 with nothing in tier 2 is calm. Something that merely interests (a temperature
@@ -1297,10 +1353,9 @@ works the same way everywhere.
   beside the card's right side, a floating surface like the card, top
   aligned and as tall as it, 12 (m) from it. It's set as a plate, a small
   page about the selected thing (look 3): an eyebrow saying when or
-  where, in Monaspace's capitals at body, 500, muted, tracked 0.16 em, a
-  notice's sender by the name its card signs it with; the thing's name
-  in the serif upright at title, 500, drawn for 72 points, strong; its
-  facts as a name in muted and a figure in text, the names whole and the
+  where, at Label, a notice's sender by the name its card signs it with;
+  the thing's name at Title, strong; its facts as a name at Note and a
+  figure at Figure, the names whole and the
   figures on one edge 24 (xl) beyond the longest, a figure wrapping with
   each number kept to its unit, a fact still being read a fixed
   placeholder, and none that only says the name again; then its words,
@@ -1314,9 +1369,8 @@ works the same way everywhere.
   row, so each line falls on a row's baseline or halfway between two,
   one empty line between the name, the facts and the words. Home's Now
   has a plate of the moment instead (look 3): the date as its eyebrow;
-  the time in the serif upright at display, 400, drawn for 144 points,
-  its figures lining and tabular, its capitals centred on Now's row,
-  and its seconds counting after it in the italic at title, muted; what
+  the time at Display, in the mono as the lock's clock is, its capitals
+  centred on Now's row, and its seconds counting after it at Note; what
   needs Joel, or that nothing does, in the voice on Agents' line; and
   the facts behind the moment in two groups that follow the card's,
   the weather, the next meeting and where Joel is from Programs' line,

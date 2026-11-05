@@ -382,6 +382,8 @@ The words core.nix is built from. Never a launcher place.
 | serif face | the theme's serif: italic, the desktop's voice, what the launcher says to Joel; upright, the words to read beside a mono name | voice face | `jitsusama.theme.font.serif`, `Theme.serif` |
 | serif text | the serif face upright at large, cut into a font of its own, for a program that can't set a variable font's axes | | `jitsusama.theme.font.serif.text`, `modules/fonts/serif-text.nix` |
 | sans face | the theme's sans-serif, only for other people's programs that draw their own interface | proportional face | `jitsusama.theme.font.sans` |
+| step | one size on the theme's type scale, by its power of the ratio, such as large | | `jitsusama.theme.type` |
+| level | one rank of text on the desktop: its face, step, weight, case and colour together, such as Name or Note | style, text style | `jitsusama.theme.type.levels`, `Theme.level` |
 | script face | Noto, script by script, for the letters the other faces lack, with a cut a script beside the serif and mono faces | | `jitsusama.theme.font.script` |
 | account | the account on a machine that home-manager configures | | `home-manager.users.<account>` |
 
