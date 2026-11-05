@@ -31,6 +31,11 @@ function bound(read, at) {
     return { rows: rows.rows.filter(row => holds(row) !== invert) };
 }
 
+// What a line asks before it runs on what it's bound to.
+function asking(_entry, _found, _all, _bang) {
+    return {};
+}
+
 // The act a line names among a thing's acts, so a line bound to several runs
 // each one's own: by its words' id (words.json) where the line's act has
 // words, else by its command and title; undefined where it has none.

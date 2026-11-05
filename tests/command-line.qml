@@ -563,6 +563,37 @@ QtObject {
                     [{ name: "See It", verb: "see" }], () => ({}))],
             ["Leave", "Disconnect It", undefined]);
         holdEarlier();
+        holdAsking();
+    }
+
+    // What a line asks before it runs, once, as the spec's Operators have it:
+    // nothing where its act can be undone; where it can't, once, on one
+    // thing or many, unless a ! says don't; a guarded one only over more
+    // than one; and where only some of what it's bound to have the act,
+    // once, naming how many can, ! or not. None that can says so.
+    function holdAsking() {
+        const menu = menuOf(network());
+        const entry = typed => Commands.ran(typed, menu).entry;
+        const guarded = { command: "close", undoable: false, guarded: true };
+        holds("an act that can be undone asks nothing, on one or many",
+            [CommandBinding.asking(entry("disc"), 1, 1, false),
+                CommandBinding.asking(entry("disc"), 3, 3, false)],
+            [{ ask: "" }, { ask: "" }]);
+        holds("one that can't asks once, on one or many, unless its ! says don't",
+            [CommandBinding.asking(entry("forg"), 1, 1, false),
+                CommandBinding.asking(entry("forg"), 3, 3, false),
+                CommandBinding.asking(entry("forg"), 3, 3, true)],
+            [{ ask: "one" }, { ask: "many" }, { ask: "" }]);
+        holds("a guarded one asks only over more than one",
+            [CommandBinding.asking(guarded, 1, 1, false),
+                CommandBinding.asking(guarded, 2, 2, false)],
+            [{ ask: "" }, { ask: "many" }]);
+        holds("where only some have it, it asks once, naming how many, ! or not",
+            [CommandBinding.asking(entry("disc"), 2, 3, false),
+                CommandBinding.asking(entry("forg"), 2, 3, true)],
+            [{ ask: "some" }, { ask: "some" }]);
+        holds("where none has it, it says so and asks nothing",
+            CommandBinding.asking(entry("disc"), 0, 3, false), { ask: "", none: true });
     }
 
     // Earlier lines, as Vim's :his lists them: each line Return ran
