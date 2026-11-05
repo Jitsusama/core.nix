@@ -587,7 +587,7 @@ QtObject {
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
             lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends",
             search: "search", found: "found", nextRow: "next row", caret: "caret",
-            word: "word" };
+            word: "word", ending: "ending", copy: "copy" };
         const modes = { normal: "Normal", insert: "Insert" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
@@ -605,6 +605,8 @@ QtObject {
         holds("the list's n and N", keyed("found"), "n  N");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
+        holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
+        holds("and y", keyed("copy"), "yy  yG");
         // Each mode's section, by its heading: the keys each line names, as
         // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
         const sections = {};
