@@ -70,7 +70,7 @@ Singleton {
     // What an action is to the key language, as words.json marks it: an
     // ending action, the one d does (the key language's act ending),
     // carries { act: "ending", ends } where `ends` is what the foot's ask
-    // says it does, "closes" or "forgets". One that ends something in use
+    // says it does, "close" or "forget". One that ends something in use
     // but isn't d's, as a disconnect, carries `ends` alone, so Return typed
     // in insert leaves it be too (Catalogue.js's ends); any other carries
     // nothing.

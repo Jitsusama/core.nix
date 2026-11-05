@@ -3736,7 +3736,7 @@
       "verb": "forget",
       "glyph": "dismiss",
       "act": "ending",
-      "ends": "forgets"
+      "ends": "forget"
     },
     {
       "id": "verb:notices:forget",
@@ -4521,7 +4521,7 @@
       "id": "verb:wifi-leave",
       "in": "wifi",
       "name": "Disconnect It",
-      "ends": "disconnects"
+      "ends": "disconnect"
     },
     {
       "id": "verb:wifi-join",
@@ -4553,7 +4553,7 @@
       "in": "wifi",
       "name": "Forget It",
       "act": "ending",
-      "ends": "forgets"
+      "ends": "forget"
     },
     {
       "id": "verb:wifi-sign-in",
@@ -4932,7 +4932,7 @@
       "id": "verb:bluetooth-disconnect",
       "in": "bluetooth",
       "name": "Disconnect It",
-      "ends": "disconnects"
+      "ends": "disconnect"
     },
     {
       "id": "verb:bluetooth-passkey",
@@ -4944,7 +4944,7 @@
       "in": "bluetooth",
       "name": "Forget It",
       "act": "ending",
-      "ends": "forgets"
+      "ends": "forget"
     },
     {
       "id": "verb:copy:paste",
@@ -5369,7 +5369,7 @@
       "glyph": "close",
       "sure": "Quit Now",
       "act": "ending",
-      "ends": "quits"
+      "ends": "quit"
     },
     {
       "id": "program:media",
@@ -5518,7 +5518,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "closes"
+      "ends": "close"
     },
     {
       "id": "verb:recent:site:link",
@@ -5569,7 +5569,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "closes"
+      "ends": "close"
     },
     {
       "id": "verb:path:folder:window",
@@ -5796,7 +5796,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "closes"
+      "ends": "close"
     },
     {
       "id": "verb:agent:switch",
@@ -6144,9 +6144,9 @@
       }
     },
     "operators": {
-      "ask": "again {ends} it",
-      "asks": "again {ends} {count}",
-      "ends": "ends",
+      "ask": "{ends} {name}? (y/n)",
+      "asks": "{ends} these {count}? (y/n)",
+      "ends": "end",
       "nothing": "nothing to end",
       "noCopy": "nothing to copy"
     }

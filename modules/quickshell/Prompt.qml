@@ -98,11 +98,10 @@ Item {
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
-    // Which of the keys taken began what stands now, or the act just done,
-    // as a count's first digit or an operator's key, so an operator done
-    // can be told from the keys straight after something it answers
-    // (Launcher.qml's ask).
-    property int begunAt: 0
+    // Whether an ask stands (Launcher.qml's askOnce), which takes every
+    // key as its answer, as Vim's confirm() does, until one answers it.
+    property bool confirming: false
+    signal answered(string key)
     // How long a sequence begun waits for its next key before it's let go,
     // as his Neovim's timeoutlen (modules/keys/language.toml).
     property int wait: 300
@@ -383,6 +382,13 @@ Item {
     function modalKey(event: KeyEvent) {
         const key = named(event);
         woken();
+        // A held key's repeats never answer it.
+        if (confirming) {
+            event.accepted = true;
+            if (!event.isAutoRepeat)
+                prompt.answered(key);
+            return;
+        }
         if (mode === "search") {
             searchKey(event, key);
             return;
@@ -397,8 +403,6 @@ Item {
             return;
         }
         keysTaken++;
-        if (!QueryKeys.pending(standing))
-            begunAt = keysTaken;
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
             cleared = "";

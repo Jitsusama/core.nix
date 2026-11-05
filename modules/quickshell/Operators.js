@@ -111,14 +111,7 @@ function asks(actions) {
     return actions.some(action => typeof action.undo !== "function");
 }
 
-// Whether an operator answers the ask standing, { act, from, to }: the
-// same act again over the same rows, as a second dd over the row it asked
-// about does; anything else lets the ask go.
-function answers(ask, act, span) {
-    return ask !== null && ask.act === act && ask.from === span.from && ask.to === span.to;
-}
-
-// The keys an operator was typed by, as the ask says them: its count
+// The keys an operator was typed by, as the ask's mark says them: its count
 // before it doubled, as 3dd, or its motion's after it, as d6j, where 2d3j
 // is said as Vim counts it.
 function typedAs(act, count, motion) {

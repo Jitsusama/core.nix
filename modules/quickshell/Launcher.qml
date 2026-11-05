@@ -52,6 +52,7 @@ import qs.launcher
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
+import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
 import "Search.js" as Search
 import "launcher/Catalogue.js" as Catalogue
@@ -3240,18 +3241,50 @@ Scope {
     // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
     // says what each does to a row): d does each row's ending action, as
     // dd deletes a line, and y copies each, as yy yanks one. What d does
-    // that can't be put back it asks about once, in Return's place in the
-    // foot, as a search's "not found" is said there: { act, from, to,
-    // rows, said }, the rows being the list it asked over, so a list made
-    // again meanwhile lets it go. The next key decides: the same operator
-    // over the same rows does it, and anything else lets it go, with
-    // nothing to dismiss and no time to wait out.
+    // that can't be put back it asks about once, as Vim's confirm() asks
+    // (Confirm.js): the launcher's one ask, said in Return's place in the
+    // foot as a search's "not found" is, the keys that asked it its mark.
+    // While it stands every key is its answer (Prompt.qml's confirming):
+    // y after its first 300 ms does it, any other key lets it go.
     property var asked: null
-    property int askedFor: -1
-    // Whether the ask still stands: said for the key just taken, or for
-    // the one before keys that begin its answer, as dd's first d.
-    readonly property bool askStands: asked !== null && (askedFor === prompt.keysTaken
-        || prompt.begunAt === askedFor + 1 && QueryKeys.pending(prompt.standing))
+    property string askedBy: ""
+
+    // Asks once, `yes` done on y and `no` on any other key, `mark` the
+    // keys that asked it, as "dd". The command line will draw it in place
+    // of the foot, through the same call.
+    function askOnce(question, yes, no, mark) {
+        asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
+        askedBy = mark ?? "";
+        askReady.restart();
+        Report.say(`asked ${question}`);
+    }
+
+    // A key while the ask stands, as Prompt.qml hands it over.
+    function answering(key) {
+        const ask = asked;
+        if (ask === null)
+            return;
+        const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
+        if (said === "early")
+            return;
+        asked = null;
+        Report.say(`answered ${said}`);
+        if (said === "yes")
+            ask.yes();
+        else
+            ask.no();
+    }
+
+    // When the ask can be answered, the same 300 ms as the key language's
+    // wait for a second key, said for the tests, which wait on it.
+    Timer {
+        id: askReady
+        interval: Options.keyTiming.wait
+        onTriggered: {
+            if (root.asked !== null)
+                Report.say("ask ready");
+        }
+    }
     // An operator's word for the key it was said for, as a search's is:
     // [mark, word, colour], for d over nothing to end or y over nothing to
     // copy.
@@ -3300,7 +3333,22 @@ Scope {
         if (act === "copy")
             yanked(taken);
         else
-            ended(taken, span, Operators.typedAs(act, count, motion));
+            ended(taken, Operators.typedAs(act, count, motion), false);
+    }
+
+    // d and y over rows named rather than spanned, as the command line's
+    // :d and :y with a range: d asks first unless `sure`, as :d! wouldn't,
+    // and says "done", "asked" or "nothing".
+    function ending(rows, sure) {
+        return ended(takenOf(rows), "", sure);
+    }
+
+    function copying(rows) {
+        yanked(takenOf(rows));
+    }
+
+    function takenOf(rows) {
+        return rows.map(row => ({ row, at: row === headline ? -1 : matches.indexOf(row) }));
     }
 
     // y: every copy over the rows joined a line each and put on the
@@ -3330,35 +3378,27 @@ Scope {
 
     // d: every ending action over the rows, asked about once where any
     // can't be put back, the rows with none passed over.
-    function ended(taken, span, typed) {
+    function ended(taken, typed, sure) {
         const words = Words.field.operators ?? {};
         const endings = Operators.endings(taken, actionsOf);
         if (endings.length === 0) {
-            asked = null;
             operatorSays(words.nothing);
-            return;
+            return "nothing";
         }
         const actions = endings.map(ending => ending.action);
-        // The keys that answer began on the key after the ask, as dd's
-        // first d; askStands has let it go by now, the operator being done.
-        const answered = asked !== null && prompt.begunAt === askedFor + 1
-            && asked.rows === matches && Operators.answers(asked, "ending", span);
-        if (Operators.asks(actions) && !answered) {
-            const unsure = actions.filter(action => typeof action.undo !== "function");
-            const ends = unsure.every(action => action.ends === unsure[0].ends)
-                && (unsure[0].ends ?? "") !== "" ? unsure[0].ends : words.ends ?? "";
-            const said = (actions.length === 1 ? words.ask ?? "" : words.asks ?? "")
-                .replace("{ends}", ends).replace("{count}", String(actions.length));
-            asked = { act: "ending", from: span.from, to: span.to, rows: matches,
-                said: [typed, said, Theme.warning] };
-            askedFor = prompt.keysTaken;
-            Report.say(`asked ${said}`);
-            return;
+        const doing = () => {
+            for (const action of actions)
+                Operators.doing(action)();
+            Report.say(`ended ${actions.length}`);
+        };
+        if (sure || !Operators.asks(actions)) {
+            doing();
+            return "done";
         }
-        asked = null;
-        for (const action of actions)
-            Operators.doing(action)();
-        Report.say(`ended ${actions.length}`);
+        const named = endings.map(ending => ({ ends: ending.action.ends,
+            name: (ending.at === -1 ? headline : matches[ending.at])?.name ?? "" }));
+        askOnce(Confirm.question(named, words), doing, null, typed);
+        return "asked";
     }
 
     // Text typed faster than it's searched, as a program types it, reaches
@@ -4637,12 +4677,6 @@ Scope {
                         // rungs (docs/design.md, Vi's Keys): a step back out,
                         // or, at the level it opened on, closing it.
                         onCancelled: {
-                            // d's ask, said for the key before this one,
-                            // is the rung this Escape takes.
-                            if (root.asked !== null && root.askedFor === prompt.keysTaken - 1) {
-                                root.asked = null;
-                                return;
-                            }
                             if (root.listing)
                                 root.listing = false;
                             else if (root.held.length > root.homeDepth)
@@ -4663,6 +4697,9 @@ Scope {
                         onSearched: (pattern, forward, count, how) =>
                             root.rowsSought(pattern, forward, count, how)
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
+                        // The ask, while it stands, takes every key.
+                        confirming: root.asked !== null
+                        onAnswered: key => root.answering(key)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
@@ -5156,7 +5193,8 @@ Scope {
                         // An operator's word, or d's ask while it stands.
                         readonly property var operatorWord: root.operatorSaid !== null
                             && root.operatorSaidFor === prompt.keysTaken ? root.operatorSaid
-                            : root.askStands ? root.asked.said : null
+                            : root.asked !== null
+                                ? [root.askedBy, root.asked.question, Theme.warning] : null
                         // A parting word stands where Return was, its
                         // mark in the success colour, and a search's word
                         // there too, for its key, as a search typed says
