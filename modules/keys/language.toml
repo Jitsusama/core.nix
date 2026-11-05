@@ -719,10 +719,12 @@ changes = true
 undoable = true
 range = true
 
+# On a page, another file, markdown in its window and anything else as the
+# desktop opens it.
 [acts.edit]
 command = "edit"
 short = "e"
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.buffer]
 command = "buffer"

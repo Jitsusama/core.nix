@@ -18,8 +18,12 @@
 # word here, marks, '' and Ctrl+O and Ctrl+I through the jumps, which a
 # move longer than a screen joins, g x to follow a link by its label and
 # Ctrl+] the one here, gf for the file a line names, ]b and [b to the
-# folder's next markdown file, gO for the headings as a list, :{n}, :q and
-# :noh, ZZ, Space w or :q to close, and Space ? or F1 for every key. Each
+# folder's next markdown file, gO for the headings as a list, ZZ, Space w
+# or :q to close, and Space ? or F1 for every key. The command line takes
+# Vim's ranges and names: :{n} and :$, :noh, :y with a range, :%y the
+# whole file and :'<,'>y the last selection's lines, as the file's
+# markdown, :e for another file, :bn and :bp, and :h for the keys, saying
+# Vim's error of anything else, E492 for a command it hasn't. Each
 # search, heading, mark or jump puts the cursor on the line it lands on. v
 # and V select, from the cursor's line, with the terminal's cursor, moved
 # by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap

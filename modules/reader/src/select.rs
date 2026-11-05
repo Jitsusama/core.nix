@@ -671,6 +671,49 @@ impl Layout {
         Some(selection)
     }
 
+    /// Lines `first` to `last` of the file, from 1, `usize::MAX` its last,
+    /// taken whole as :y takes a range: the page's lines set from them,
+    /// for the flash, and the lines themselves for copying, blank ones and
+    /// all, with whether the page shows any of them. None for a range past
+    /// the file's end, as Neovim's E16.
+    pub fn file_range(&self, first: usize, last: usize) -> Option<(Selection, bool)> {
+        // A file's last newline ends its last line rather than starting one.
+        let count = self.source_lines.len() - usize::from(self.source.ends_with('\n'));
+        let last = if last == usize::MAX { count } else { last };
+        if first == 0 || first > last || last > count {
+            return None;
+        }
+        let shown = |unit: &usize| {
+            let Unit {
+                first: from,
+                last: to,
+                ..
+            } = self.units[*unit];
+            from <= last && to >= first
+        };
+        let lines: Vec<usize> = (0..self.lines.len())
+            .filter(|&line| self.of_line[line].as_ref().is_some_and(shown))
+            .collect();
+        let at = |line: Option<&usize>| Pos {
+            line: line.copied().unwrap_or(0),
+            ch: 0,
+        };
+        let mut selection = Selection::new(Kind::Pieces, at(lines.first()));
+        selection.cursor = at(lines.last());
+        selection.taken = Some(Taken::Lines(first, last));
+        Some((selection, !lines.is_empty()))
+    }
+
+    /// The lines of the file a selection took, from 1, as Neovim's '< and
+    /// '> keep them once visual mode ends.
+    pub fn file_lines_of(&self, selection: &Selection) -> Option<(usize, usize)> {
+        if let Some(Taken::Lines(first, last)) = selection.taken {
+            return Some((first, last));
+        }
+        let (first, last) = self.covered_lines(selection);
+        self.file_lines(first, last)
+    }
+
     /// The character on a line nearest across to `x_pt`.
     fn nearest(&self, line: usize, x_pt: f64) -> usize {
         let spans = &self.lines[line].spans;
@@ -1764,6 +1807,37 @@ mod tests {
         );
         let code = page.pieces_from(4, 1).expect("the code's line");
         assert_eq!(page.copied(&code), "let x = 1;\n");
+    }
+
+    #[test]
+    fn a_range_of_the_files_lines_is_taken_whole_and_kept_after_a_selection() {
+        let page = page();
+        let (whole, shown) = page.file_range(1, usize::MAX).expect("every line");
+        assert!(shown);
+        assert_eq!(page.copied(&whole), FILE, "as :%y takes it");
+        assert_eq!(
+            page.pieces(&whole).len(),
+            page.lines.len(),
+            "all of it flashes"
+        );
+        let (list, _) = page.file_range(5, 7).expect("the list");
+        assert_eq!(page.copied(&list), "\n- first item\n- second `code` item\n");
+        assert_eq!(
+            page.pieces(&list).len(),
+            2,
+            "the items flash, not the blank line"
+        );
+        let (blank, shown) = page.file_range(2, 2).expect("a blank line");
+        assert!(!shown, "nothing to flash");
+        assert_eq!(page.copied(&blank), "\n");
+        assert!(page.file_range(0, 1).is_none());
+        assert!(page.file_range(10, 12).is_none(), "past the end");
+        assert!(page.file_range(11, 11).is_some(), "the last line");
+        let mut s = Selection::new(Kind::Chars, at(1, 2));
+        page.moved(&mut s, Motion::Down, 1);
+        assert_eq!(page.file_lines_of(&s), Some((3, 4)));
+        page.object(&mut s, Object::AParagraph);
+        assert_eq!(page.file_lines_of(&s), Some((3, 5)), "its blank line too");
     }
 
     #[test]
