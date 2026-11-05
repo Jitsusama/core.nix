@@ -6515,8 +6515,10 @@
     "command": {
       "quit": "Close the Launcher",
       "help": "List the Keys",
+      "set": "Set an Option",
       "row": "Go to a Row",
-      "on": "on {things}"
+      "on": "on {things}",
+      "asksPassword": "{network} asks its password: find it to join"
     },
     "asked": {
       "replace": "Replace {name}? (y/n)"

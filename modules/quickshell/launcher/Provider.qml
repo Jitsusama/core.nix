@@ -55,6 +55,12 @@ Scope {
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
     property var things: []
+    // The options :set takes from it, by name, as the command line reads
+    // them (Commands.setting): { kind: "switch" | "number" | "choice",
+    // takes, least, most, values, fixed, now: () => where it stands,
+    // set: to => "" or what to say }, so :set nowifi turns off what its
+    // Wi-Fi Off row does. Each is still found as a row.
+    property var setOptions: ({})
     // The desktop's actions its rows stand for, by what they do (Shortcuts'
     // `does`), each row drawing the action's chord, so the action is listed
     // only here rather than twice under two names: the session's Lock is

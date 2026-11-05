@@ -89,6 +89,33 @@ Provider {
     readonly property var outputs: devices.filter(node => node.isSink)
     readonly property var inputs: devices.filter(node => !node.isSink)
 
+    // :set mute and :set volume=40 act on the output sound plays through,
+    // as its rows do, a volume set unmuting it as their levels do.
+    setOptions: ({
+        mute: {
+            kind: "switch",
+            now: () => Pipewire.defaultAudioSink?.audio?.muted ?? false,
+            set: to => provider.toOut(out => out.audio.muted = to)
+        },
+        volume: {
+            kind: "number",
+            least: 0,
+            most: 100,
+            now: () => Math.round((Pipewire.defaultAudioSink?.audio?.volume ?? 0) * 100),
+            set: to => provider.toOut(out => {
+                out.audio.volume = to / 100;
+                out.audio.muted = false;
+            })
+        }
+    })
+
+    function toOut(change) {
+        const out = Pipewire.defaultAudioSink;
+        if (out?.audio)
+            change(out);
+        return "";
+    }
+
     // Each stream open to play through, which carries the server's sink
     // flag, and each open to record from, which doesn't.
     readonly property var streams: Pipewire.nodes.values

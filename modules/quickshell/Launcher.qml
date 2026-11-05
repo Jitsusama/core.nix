@@ -2288,9 +2288,11 @@ Scope {
     // its menu (Commands.js). Null while it's shut, so nothing of it is
     // made until : is typed.
     property var commanding: null
-    // What Return on the line said went wrong, as Vim's command line says
-    // E492, standing in the line's place for the key that ran it alone.
+    // What Return on the line said, standing in the line's place for the
+    // key that ran it alone: what went wrong, as Vim's command line says
+    // E492, or what it asked, as :set volume? says volume=40.
     property string commandSaid: ""
+    property bool commandFailed: false
     property int commandSaidFor: -1
     readonly property bool commandSays: commandSaid !== ""
         && commandSaidFor === prompt.keysTaken
@@ -2422,16 +2424,61 @@ Scope {
         return { title: line.title, body: on };
     }
 
+    function commandSay(words, failed) {
+        if (words === "")
+            return;
+        commandSaid = words;
+        commandFailed = failed;
+        commandSaidFor = prompt.keysTaken;
+    }
+
+    // The options :set takes, by name, as the providers give them (each
+    // Provider's setOptions), and the theme's background, which only a
+    // switch of the system sets.
+    readonly property var setOptions: Object.assign({
+        background: { kind: "choice", values: ["light", "dark"], fixed: true,
+            now: () => Theme.appearance }
+    }, ...sources.map(source => source.setOptions ?? {}))
+
+    // :set's words, each set as its option's row would, or said as Vim's
+    // :set volume? says it; :set all says every one, in name order. The
+    // first word it can't take says Vim's error and none of them changes.
+    function commandSet(arg) {
+        const options = setOptions;
+        const read = Commands.setting(arg, options);
+        if (read.error !== undefined) {
+            commandSay(read.error, true);
+            return;
+        }
+        const steps = read.changes.map(change => change.how === "show" ? { change }
+            : { change, to: Commands.toward(change, options[change.option].now(),
+                options[change.option]) });
+        const refused = steps.find(step => step.to?.error !== undefined);
+        if (refused) {
+            commandSay(refused.to.error, true);
+            return;
+        }
+        const said = [];
+        for (const { change, to } of steps) {
+            if (to !== undefined) {
+                said.push(options[change.option].set(to.to));
+                continue;
+            }
+            const names = change.option === "all" ? Object.keys(options).sort()
+                : [change.option];
+            for (const name of names)
+                said.push(Commands.shown(name, options[name].now(), options[name]));
+        }
+        commandSay(said.filter(words => words !== "").join("  "), false);
+    }
+
     // Return on the line: exactly what's typed, as Commands.ran read it.
     function commandRan(read) {
         const opened = commanding;
         // What went wrong is said where the line was, over a viewer too.
         commandLeft(read.error ? "said" : "normal");
         if (read.error !== undefined) {
-            if (read.error !== "") {
-                commandSaid = read.error;
-                commandSaidFor = prompt.keysTaken;
-            }
+            commandSay(read.error, true);
             return;
         }
         if (read.go !== undefined && opened.go) {
@@ -2456,6 +2503,9 @@ Scope {
             return;
         case "help":
             listing = true;
+            return;
+        case "set":
+            commandSet(read.arg);
             return;
         case "surface":
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
@@ -4775,10 +4825,11 @@ Scope {
                         }
                     }
 
-                    // What Return on the command line said went wrong,
-                    // in its place for the next key alone, as Vim's
-                    // command line says E492: the failed mark in the
-                    // alert, its words in text on the names' column.
+                    // What Return on the command line said, in its place
+                    // for the next key alone, as Vim's command line says
+                    // E492 or volume=40: its words in text on the names'
+                    // column, and for what went wrong the failed mark in
+                    // the alert.
                     Item {
                         x: Theme.inset
                         y: Theme.inset
@@ -4789,6 +4840,7 @@ Scope {
                         Text {
                             x: Theme.space.l
                             anchors.baseline: commandSaidText.baseline
+                            visible: root.commandFailed
                             text: Theme.glyph.failed
                             color: Theme.alert
                             font.family: Theme.level.figure.family

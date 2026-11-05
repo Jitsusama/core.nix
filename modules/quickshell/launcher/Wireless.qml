@@ -38,6 +38,32 @@ Provider {
     readonly property bool present: Wifi.described && Wifi.cards.length > 0
     readonly property bool on: present && Wifi.radio
 
+    // :set wifi, nowifi and wifi! turn the radio as Wi-Fi Off and On do,
+    // and :set wifi=Home-5G joins a network saved, as Return on it does;
+    // one never joined asks its password, which only its row can ask.
+    setOptions: !present ? ({}) : ({
+        wifi: {
+            kind: "switch",
+            takes: true,
+            now: () => !provider.on ? false : Wifi.joined?.network ?? true,
+            set: to => provider.setTo(to)
+        }
+    })
+
+    function setTo(to) {
+        if (typeof to === "boolean") {
+            if (to !== on)
+                Wifi.turn(to);
+            return "";
+        }
+        if (!Wifi.isSaved(to))
+            return ((Words.field.command ?? {}).asksPassword ?? "").replace("{network}", to);
+        if (!on)
+            Wifi.turn(true);
+        Wifi.join(to, null, null);
+        return "";
+    }
+
     collection: !present ? null : Words.collection("wifi", {
         empty: on ? "Looking for networks\u2026" : "Wi-Fi is off."
     })
