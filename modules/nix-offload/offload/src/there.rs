@@ -1450,7 +1450,12 @@ fn reach(lent: &Builder, scratch: &Path, ssh: &str) -> Result<(Command, PathBuf,
 
 /// Runs `command`, unpacking the tarball it writes into `out`, and gives
 /// its status. A build that failed writes none, so nothing is unpacked.
+/// One that passed but whose output couldn't be unpacked has failed too,
+/// with 1, since what it was asked for isn't here: on 4 November a
+/// gallery's run passed with its pictures unpacked nowhere, was kept as
+/// passed, and the next at that commit copied an older folder's.
 fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::process::ExitStatus> {
+    use std::os::unix::process::ExitStatusExt;
     fs::create_dir_all(out)?;
     let mut running = command.stdout(Stdio::piped()).spawn()?;
     let tarball = running
@@ -1468,9 +1473,10 @@ fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::proc
     let status = running.wait()?;
     if status.success() && !unpacking.is_ok_and(|unpacked| unpacked.success()) {
         eprintln!(
-            "nix-offload: couldn't unpack the output into {}",
+            "nix-offload: couldn't unpack the output into {}, so the run failed",
             out.display()
         );
+        return Ok(std::process::ExitStatus::from_raw(1 << 8));
     }
     Ok(status)
 }

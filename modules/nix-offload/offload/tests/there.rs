@@ -1726,6 +1726,56 @@ fn subtests_that_passed_at_a_commit_arent_run_again_and_their_pictures_come_from
     assert_eq!(builds(), 4, "a change is run");
 }
 
+/// A run whose output can't be unpacked here has failed, whatever its
+/// build said, and isn't kept as passed: on 4 November a gallery's run
+/// exited 0 with its pictures unpacked nowhere, and the next at that
+/// commit ran nothing and copied the last folder's stale pictures.
+#[test]
+fn a_run_whose_output_cant_be_unpacked_fails_and_isnt_kept_as_passed() {
+    // The lent builder's build passes, and sends back no tarball.
+    let changed = Changed::new();
+    let subtests = |out: &str| {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "--out"])
+            .arg(changed.folder.path().join(out))
+            .args(["--apply", "subtests: subtests { words = [ \"a\" ]; }"])
+            .arg(&changed.tree)
+            .arg("legacyPackages.x.subtests")
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    changed.bin.display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", &changed.offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", changed.folder.path())
+            .env("XDG_STATE_HOME", changed.folder.path())
+            .env("XDG_CONFIG_HOME", changed.folder.path())
+            .output()
+            .unwrap()
+    };
+    let sent = || {
+        fs::read_to_string(changed.bin.join("ssh-commands"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|command| command.contains("tar -czf"))
+            .count()
+    };
+
+    let ran = subtests("first");
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("couldn't unpack the output into"), "{said}");
+    assert_eq!(sent(), 1);
+
+    let ran = subtests("second");
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert_eq!(sent(), 2, "nothing was kept as passed, so it's sent again");
+}
+
 #[test]
 fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_own() {
     // On 2 November nine VM tests of runs sent whole to the lent builder
