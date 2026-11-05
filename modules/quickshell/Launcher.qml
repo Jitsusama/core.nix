@@ -2567,8 +2567,8 @@ Scope {
     // that opens on Return, as a mail, a program or a session do, into the
     // place listing its parts, which nothing else reaches (VKCF3Z,
     // 2026-11-05). The place left goes on the tags' way back, as Vim's tag
-    // stack keeps it, and on the jump list, as any place left does. A row
-    // holding nothing says so.
+    // stack keeps it, and on the jump list, as any place left does; Ctrl+T
+    // reads it back (#1905). A row holding nothing says so.
     property var tagsBack: []
     // Whether Ctrl+] goes into a row's own parts. A notice's acts are
     // commands under its card's words, not parts (VKCF3Z, 2026-11-05), so
