@@ -57,6 +57,11 @@ let
     space
     ;
   rgba = import ../theme/rgba.nix { inherit lib; };
+
+  # The bar's one line of the monospaced face, as GTK draws it: its ascent
+  # and descent, 1.245 of its em (MonaspiceXe's own; another face needs
+  # measuring again), to the next whole pixel.
+  line = builtins.ceil (builtins.fromJSON type.mono.body * 4 / 3 * 1.245);
   says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
   open-now = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
   plugins = pkgs.zathuraPkgs;
@@ -311,8 +316,10 @@ in
 
       default-bg = colours.deepest;
       default-fg = colours.text;
-      page-v-padding = space.s;
-      page-h-padding = space.s;
+      # Each page is bounded by its own ground, as a tile is, so pages sit
+      # as niri's tiles do (docs/design.md, The Ladder).
+      page-v-padding = space.beat;
+      page-h-padding = space.rung.apart;
       render-loading-bg = colours.background;
       render-loading-fg = colours.muted;
 
@@ -324,8 +331,12 @@ in
 
       statusbar-bg = colours.sunken;
       statusbar-fg = colours.text;
-      statusbar-h-padding = space.m;
-      statusbar-v-padding = space.s;
+      # The : line, its notices and the status bar are one launcher row
+      # tall, four beats, their text centred and its ends the inset in, on
+      # kitty's text column. girara halves each of these between the two
+      # ends, so each is both ends' room together: 48 is 24 an end.
+      statusbar-h-padding = 2 * space.rung.inset;
+      statusbar-v-padding = 4 * space.beat - line;
       statusbar-home-tilde = true;
       inputbar-bg = colours.sunken;
       inputbar-fg = colours.strong;
