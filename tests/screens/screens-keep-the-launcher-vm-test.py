@@ -28,7 +28,10 @@ def test_the_launcher_opens_finds_and_runs_a_row_on_each_screen(unlocked: Screen
 def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once(
     unlocked: Screens,
 ) -> None:
-    """Super+Space held opens the launcher once, and a Return held does its row once.
+    """Super+Space held opens the launcher once, a j held moves on, and a Return does its row once.
+
+    In normal a held move repeats, as Vim's does, and only a move: the guard that keeps a
+    Return to one press kept j to one row too, until normal's keys said which repeat.
 
     A key let go past the repeat delay repeats as if held (modules/keyboard/repeat.nix), and
     this machine keeps repeat on, as Joel's does. Each repeat ran the row again: on a loaded
@@ -65,6 +68,14 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
         screens.launcher_until(
             lambda shown: shown["open"] and shown["keys"], "took the keys at a held chord"
         )
+        machine.send_key("esc")
+        screens.launcher_until(lambda shown: shown["mode"] == "normal", "went to normal")
+        machine.send_monitor_command(f"sendkey j {int(held * 1000)}")
+        screens.launcher_until(
+            lambda shown: shown["current"] > 1, "moved more than a row at a held j"
+        )
+        machine.send_chars("i")
+        screens.launcher_until(lambda shown: shown["mode"] == "insert", "went back to insert")
         machine.send_chars("keep awake")
         screens.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake",
