@@ -732,10 +732,11 @@ menu_is() {
 }
 press ':'
 menu_is '12 lines, chosen None'
+# e starts :e's name, then a word of List Earlier Lines, :his's.
 press e
-menu_is '1 lines, chosen None'
+menu_is '2 lines, chosen None'
 press -k Tab
-menu_is '1 lines, chosen Some("e[dit]")'
+menu_is '2 lines, chosen Some("e[dit]")'
 press -M ctrl e -m ctrl
 press -k Return
 logged '^command: "e" is Edit\(None\)' 1
