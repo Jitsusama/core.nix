@@ -480,6 +480,16 @@ QtObject {
         holds("and so are o, gv, ip and ap", ["otherEnd", "reselect", "inParagraph",
             "aParagraph"].some(act => Keys.repeats(act)), false);
         holds("the selection ends on x as on d", Keys.takesSelection("ending"), true);
+        // The operator pressed again within 300 ms of visual's is taken
+        // with it, so V j j d d takes three and never two more: the same
+        // operator's key, d or y, never x, which is no operator.
+        const visualD = { key: "d", at: 1000 };
+        holds("d again within 300 ms is taken with visual's",
+            Keys.takenWith(visualD, "d", 1299, 300), true);
+        holds("but not from 300 ms", Keys.takenWith(visualD, "d", 1300, 300), false);
+        holds("nor another key", Keys.takenWith(visualD, "y", 1100, 300), false);
+        holds("nor after x", Keys.takenWith({ key: "x", at: 1000 }, "x", 1100, 300), false);
+        holds("nor with none before", Keys.takenWith(null, "d", 1100, 300), false);
         paragraphs(holds);
         holds("the command line takes the selection's range", [Keys.rangeFor(0, "visual"),
             Keys.rangeFor(3, "visual"), Keys.rangeFor(3, "normal"), Keys.rangeFor(0, "normal")],
