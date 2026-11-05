@@ -2547,7 +2547,8 @@ Scope {
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
                 called: commandWords, thing: one,
                 earlier: opening?.earlier ? commandEarlier : [] }),
-            options: standingOptions()
+            options: standingOptions(setOptions),
+            local: standingOptions(localOptions(on)[0])
         };
     }
 
@@ -2697,21 +2698,30 @@ Scope {
     // says where each stands without reading it again on every key: a
     // display's brightness is read from a file, which moves the reader it
     // shares, and read while the menu was worked out, that looped its
-    // binding.
-    function standingOptions() {
+    // binding. :set's are the machine's; :setl's those of what it's on.
+    function standingOptions(options) {
         const standing = {};
-        for (const [name, option] of Object.entries(setOptions)) {
+        for (const [name, option] of Object.entries(options)) {
             const now = option.now();
             standing[name] = Object.assign({}, option, { now: () => now });
         }
         return standing;
     }
 
+    // The options :setl sets on each thing it's bound to, those of the
+    // things it's inside where it's on one (CommandBinding.localOptions).
+    function localOptions(things) {
+        return CommandBinding.localOptions(things, held.map(step => step.row));
+    }
+
     // A named command's arguments, as a space after it lists them: :set's
-    // options, a surface command's own, or null for one that has none.
+    // options, :setl's of what it's on, a surface command's own, or null
+    // for one that has none.
     function commandArguments(entry, arg) {
         if (entry.kind === "set")
             return SetWords.setArguments(arg, commanding?.options ?? {});
+        if (entry.kind === "setlocal")
+            return SetWords.setArguments(arg, commanding?.local ?? {});
         return entry.kind === "surface" ? Commands.ownArguments(entry, arg) : null;
     }
 
@@ -2719,23 +2729,41 @@ Scope {
     // :set volume? says it; :set all says every one, in name order, and one
     // that can't be read says so. Each set is given the change too, so a
     // level only stepped, as a board's lights, steps by it. The first word
-    // it can't take says Vim's error and none of them changes.
-    function commandSet(arg) {
+    // it can't take says Vim's error and none of them changes. `sets` are
+    // the options it sets, the machine's unless :setl gives each thing's.
+    function commandSet(arg, sets) {
         const unread = (Words.field.command ?? {}).unread ?? "";
-        const options = setOptions;
-        const read = SetWords.setting(arg, options);
-        if (read.error !== undefined) {
-            commandSay(read.error, true);
-            return;
+        const planned = [];
+        for (const options of sets ?? [setOptions]) {
+            const plan = commandSetPlan(arg, options);
+            if (plan.error !== undefined) {
+                commandSay(plan.error, true);
+                return;
+            }
+            planned.push(plan);
         }
+        const said = [];
+        for (const { options, steps } of planned)
+            said.push(...commandSetSteps(options, steps, unread));
+        commandSay(said.filter(words => words !== "").join("  "), false);
+    }
+
+    // What :set's words do to a set of options, each change to where it
+    // goes from where it stands: { options, steps }, or { error } in Vim's
+    // words for the first it can't take.
+    function commandSetPlan(arg, options) {
+        const read = SetWords.setting(arg, options);
+        if (read.error !== undefined)
+            return read;
         const steps = read.changes.map(change => change.how === "show" ? { change }
             : { change, to: SetWords.toward(change, options[change.option].now(),
                 options[change.option]) });
         const refused = steps.find(step => step.to?.error !== undefined);
-        if (refused) {
-            commandSay(refused.to.error, true);
-            return;
-        }
+        return refused ? refused.to : { options, steps };
+    }
+
+    // Sets or says each of a plan's steps, giving what each says.
+    function commandSetSteps(options, steps, unread) {
         const said = [];
         for (const { change, to } of steps) {
             if (to !== undefined) {
@@ -2748,7 +2776,19 @@ Scope {
                 said.push(SetWords.shown(name, options[name].now(), options[name])
                     ?? unread.replace("{option}", name));
         }
-        commandSay(said.filter(words => words !== "").join("  "), false);
+        return said;
+    }
+
+    // :setl's words, set on each thing the line's bound to, or on what the
+    // cursor row is inside, as :set sets the machine's; one with no such
+    // option says Vim's E518 and none changes.
+    function commandSetLocal(read, opened) {
+        const bound = commandBound(read, opened);
+        if (bound.error !== undefined) {
+            commandSay(bound.error, true);
+            return;
+        }
+        commandSet(read.arg, localOptions(bound.things));
     }
 
     // Return on the line: exactly what's typed, as Commands.ran read it.
@@ -2797,6 +2837,9 @@ Scope {
             return;
         case "set":
             commandSet(read.arg);
+            return;
+        case "setlocal":
+            commandSetLocal(read, opened);
             return;
         case "history":
             commandLine({ earlier: true });

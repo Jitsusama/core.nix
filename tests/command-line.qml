@@ -138,7 +138,7 @@ QtObject {
             ["see", "disconnect", "forget"]);
         holds("an act's words find it where its command doesn't", shown("r"),
             ["sort"]);
-        holds("each line is listed once", shown("s"), ["see", "sort", "set"]);
+        holds("each line is listed once", shown("s"), ["see", "sort", "set", "setlocal"]);
         holds(":set's short form is its own", Commands.ran("se nowifi", menu).entry?.kind, "set");
         holds("case is ignored, as his ignorecase", shown("DISC"), ["disconnect"]);
         holds("a count shows where it goes", shown("12"), ["{n}"]);

@@ -72,9 +72,20 @@ function actFor(entry, acts, wordsOf) {
 }
 
 // The options :setl sets on each thing it's bound to, as Vim's :setlocal
-// sets the current buffer's: a stub until they're read.
-function localOptions(things) {
-    return things.map(() => ({}));
+// sets the current buffer's rather than the global one: a row's own
+// `options`, each as a provider's setOptions are. The one thing under the
+// cursor, an act's row with none, or no row at all, sets the nearest of
+// `around`, the things it's inside, outermost first, that has some, as
+// Muted inside a program sets the program's; over a range each thing sets
+// its own. A thing with none has none, so :setl there says E518, never
+// setting the machine's.
+function localOptions(things, around) {
+    if (things.length > 1) {
+        return things.map(thing => thing?.options ?? {});
+    }
+    const nearest = things.concat([...around].reverse())
+        .find(thing => thing?.options !== undefined);
+    return [nearest?.options ?? {}];
 }
 
 // An act's words for the line (words.json's command, argument, bang and

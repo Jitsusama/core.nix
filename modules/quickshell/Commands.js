@@ -115,6 +115,11 @@ function listed(from) {
         kind: "help", bang: true, takes: true, undoable: true });
     add({ command: "set", short: short("set"), title: said.set ?? "", key: "",
         kind: "set", bang: false, takes: true, undoable: true });
+    // :setl, the option of what it's on, as Vim's :setlocal is the
+    // buffer's, so it takes a range of things.
+    add({ command: "setlocal", short: short("setlocal"), title: said.setlocal ?? "", key: "",
+        kind: "setlocal", bang: false, takes: true, undoable: true,
+        ranged: table.setlocal?.range === true });
     add({ command: "history", short: short("history"), title: said.history ?? "", key: "",
         kind: "history", bang: false, takes: false, undoable: true });
     add({ command: "{n}", short: "{n}", title: said.row ?? "", key: "", kind: "row",
