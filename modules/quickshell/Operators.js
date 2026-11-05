@@ -122,3 +122,48 @@ function typedAs(act, count, motion) {
     const times = motion.count > 0 ? String(motion.count) : "";
     return key.slice(0, 1) + times + Keys.lettersOf(motion.act, "normal");
 }
+
+// An operator waiting for what it acts on, from how the keys stand: the
+// keys typed since its count, as 3d or d2 or dg, and the count its rows
+// would be as the two multiply, 0 where none was typed. Null with none
+// waiting.
+function pending(standing) {
+    const { operator } = standing;
+    if (operator === undefined) {
+        return null;
+    }
+    return {
+        typed: operator.count + operator.key + standing.count + standing.typed.join(""),
+        count: Keys.multiplied(operator.count, standing.count)
+    };
+}
+
+// What a pending operator will hit, as the mode word's room says it: the
+// keys typed, then the verb and the cursor row's name, or the count's
+// rows where it takes more than one, as "d · disconnect Home-5G" and
+// "3d · close 3"; where the row has nothing it takes, the operator's own
+// word for that. `hit` is { typed, act, verb, name, count }, its verb
+// null for nothing.
+function pendingSays(hit, words) {
+    const nothing = hit.act === "copy" ? words.noCopy : words.nothing;
+    const what = hit.verb === null ? nothing
+        : (hit.count > 1 ? words.hits : words.hit)
+            .replace("{verb}", hit.verb)
+            .replace("{name}", hit.name)
+            .replace("{count}", String(hit.count));
+    return words.pending.replace("{typed}", hit.typed).replace("{what}", what ?? "");
+}
+
+// A word that's only a mark, as the dot between the keys and the verb.
+const LONE_MARK = /^[\u00b7\u2022:,.-]*$/;
+
+// Words cut at a whole word to what fits, as `fits` measures them, never
+// ending on a lone mark; the first word stands, however wide.
+function wholeWords(text, fits) {
+    const words = text.split(" ");
+    const lone = word => LONE_MARK.test(word);
+    while (words.length > 1 && (!fits(words.join(" ")) || lone(words[words.length - 1]))) {
+        words.pop();
+    }
+    return words.join(" ");
+}

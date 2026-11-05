@@ -3183,6 +3183,28 @@ Scope {
         operatorSaidFor = prompt.keysTaken;
     }
 
+    // What a pending d or y will take, for the mode word's room, said at
+    // once so d is never pressed blind: the keys typed, then the cursor
+    // row's ending verb or copy and its name, or the count's rows ("d \u00b7
+    // disconnect Home-5G", "3d \u00b7 close 3"); "" with none waiting. Only
+    // the one row's actions are read, and only while an operator waits.
+    readonly property string pendingSaid: {
+        const hit = Operators.pending(prompt.standing);
+        const row = current >= 0 ? matches[current] : headline;
+        if (hit === null || !row)
+            return "";
+        const words = Words.field.operators ?? {};
+        const act = QueryKeys.operators[prompt.standing.operator.key];
+        const actions = actionsOf(row);
+        const copy = act === "copy"
+            && Operators.copyOf(row, actions, one => verbOf(one) === "copy" && !!one.run);
+        const ending = act === "ending" ? Operators.endingOf(row, actions) : null;
+        const verb = copy ? words.copies ?? ""
+            : ending !== null ? ending.ends || (words.ends ?? "") : null;
+        return Operators.pendingSays(Object.assign(hit, { act, verb, name: row.name ?? "" }),
+            words);
+    }
+
     // A row's actions that d and y may take: its operands, where it says
     // them, plain fields a place of hundreds makes in well under the 4 ms
     // a key has; else its actions as the right arrow lists them, each a
@@ -3904,6 +3926,10 @@ Scope {
             operated: foot.operatorWord === null ? ""
                 : `${foot.operatorWord[0]} ${foot.operatorWord[1]}`,
             flashing: Object.keys(root.flashing).map(Number),
+            // The mode word's room as it reads, and the rows tinted for
+            // what a pending operator will take, by their place.
+            modeWord: modeWord.visible ? modeWord.said : "",
+            tinted: root.pendingSaid !== "" ? [root.current] : [],
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4979,6 +5005,8 @@ Scope {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
                                     flashed: root.flashing[entry.index] === true
+                                    tinted: entry.index === root.current
+                                        && root.pendingSaid !== ""
                                     // Seen until the closing card has faded.
                                     shown: card.opacity > 0
                                     fills: false
@@ -5179,9 +5207,17 @@ Scope {
                             id: modeWord
 
                             readonly property string counted: prompt.standing.ex !== undefined
-                                ? `:${prompt.standing.ex}` : prompt.standing.count
+                                ? `:${prompt.standing.ex}` : root.pendingSaid !== "" ? ""
+                                : prompt.standing.count
+                            // A pending operator and what it will take, cut
+                            // at a whole word to the room, in the accent as
+                            // a mode's word is.
+                            readonly property string pending: root.pendingSaid === "" ? ""
+                                : Operators.wholeWords(root.pendingSaid,
+                                    text => measure.advanceWidth(text) <= width)
                             // A line with no modes, as a secret's, names none.
                             readonly property string said: counted !== "" ? counted
+                                : pending !== "" ? pending
                                 : !prompt.modal ? ""
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
@@ -5190,10 +5226,16 @@ Scope {
                             // to be measured again in the theme's face once
                             // that arrives: measured in the face before it,
                             // insert showed as its last letters at scale 2.
+                            // Visual's word is held with a count of three
+                            // figures, "visual line \u00b7 999", as the spec
+                            // sizes the room, so a count or an operator's
+                            // words never move the facts beside it.
                             readonly property real room: {
                                 void measure.font;
-                                const words = Object.values(Words.field.modes ?? {});
-                                let widest = 0;
+                                const modes = Words.field.modes ?? {};
+                                const words = Object.values(modes);
+                                let widest = modes.visual === undefined ? 0
+                                    : measure.advanceWidth(`${modes.visual} \u00b7 999`);
                                 for (const word of words)
                                     widest = Math.max(widest, measure.advanceWidth(word));
                                 return words.length === 0 ? 0

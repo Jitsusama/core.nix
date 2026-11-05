@@ -6090,7 +6090,8 @@
   ],
   "field": {
     "modes": {
-      "insert": "insert"
+      "insert": "insert",
+      "visual": "visual line"
     },
     "keys": {
       "complete": "complete",
@@ -6139,7 +6140,11 @@
       "asks": "{ends} these {count}? (y/n)",
       "ends": "end",
       "nothing": "nothing to end",
-      "noCopy": "nothing to copy"
+      "noCopy": "nothing to copy",
+      "pending": "{typed} \u00b7 {what}",
+      "hit": "{verb} {name}",
+      "hits": "{verb} {count}",
+      "copies": "copy"
     }
   },
   "meant": [

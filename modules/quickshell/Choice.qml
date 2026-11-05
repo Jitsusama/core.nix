@@ -39,6 +39,11 @@ Rectangle {
     property bool flashed: false
     // The ink on the flash's ground, for every word and glyph the row says.
     readonly property color flashInk: Theme.on_accent
+    // Taken by visual, or what a pending operator will take: it wears the
+    // selection's ground of its own, as his Neovim's Visual does, so the
+    // cursor row, the list's glide under it too, stands deeper than the
+    // rest. Only the fill changes, never weight.
+    property bool tinted: false
     // How many steps in it sits under the row it belongs to, as a session
     // under the one orchestrating it: 0, 1 or 2 (docs/design.md keeps no
     // layer deeper). Each step is the glyph's column, so a row's glyph
@@ -114,7 +119,7 @@ Rectangle {
     // it can glide from row to row (Launcher.qml's list).
     property bool fills: true
     color: flashed ? Theme.accent
-        : selected && fills ? Qt.alpha(Theme.selection, Theme.floating.selection)
+        : selected && fills || tinted ? Qt.alpha(Theme.selection, Theme.floating.selection)
         : "transparent"
 
     Text {
