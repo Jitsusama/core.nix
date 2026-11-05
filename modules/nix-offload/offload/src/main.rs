@@ -553,9 +553,19 @@ fn at_once<'a>(
             .map(|(index, dir, part)| {
                 let scratch = scratch.join(index.to_string());
                 let vm = vm_dirs.contains(&dir);
+                // The other VM builder, while a lender runs to make it,
+                // which a VM part waiting for room goes to once it has some.
+                let other = vm_dirs
+                    .into_iter()
+                    .find(|other| *other != dir && there::lends(other))
+                    .map(PathBuf::as_path);
                 scope.spawn(move || {
                     let began = now();
-                    let _claim = vm.then(|| there::admitted(dir, there::count(part), room));
+                    let (dir, _claim) = if vm {
+                        there::admitted(dir, other, there::count(part), room)
+                    } else {
+                        (dir.as_path(), None)
+                    };
                     let ran = sent(part, dir, vm, fallbacks, &scratch);
                     (part, began, now(), ran)
                 })

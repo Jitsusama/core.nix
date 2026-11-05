@@ -2527,12 +2527,17 @@ impl TwoVm {
     }
 
     /// A run of one check and `tests` VM tests: how many VM tests each
-    /// host was sent, by host, and what it said. One still waiting after
-    /// 30 s fails, as one sent behind a queue that never moves would.
+    /// host was sent, by host, and what it said.
     fn sent(&self, tests: usize) -> (Vec<(String, usize)>, String) {
+        let running = self.start(tests);
+        self.finish(running)
+    }
+
+    /// That run, started, its standard error going to the `said` file.
+    fn start(&self, tests: usize) -> std::process::Child {
         let _ = fs::remove_file(self.bin.join("ssh-sent"));
         let said = self.folder.path().join("said");
-        let mut running = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
             .args(["there", "-L", "github:o/r/abc", "checks.x.a"])
             .args((0..tests).map(|test| format!("checks.x.vm-{test}")))
             .env(
@@ -2549,7 +2554,19 @@ impl TwoVm {
             .stdout(std::process::Stdio::null())
             .stderr(fs::File::create(&said).unwrap())
             .spawn()
-            .unwrap();
+            .unwrap()
+    }
+
+    /// What it said so far.
+    fn said(&self) -> String {
+        fs::read_to_string(self.folder.path().join("said")).unwrap_or_default()
+    }
+
+    /// The run started, once it ends: what each host was sent and what it
+    /// said. One still waiting after 30 s fails, as one sent behind a queue
+    /// that never moves would.
+    fn finish(&self, mut running: std::process::Child) -> (Vec<(String, usize)>, String) {
+        let said = self.folder.path().join("said");
         let began = std::time::Instant::now();
         let status = loop {
             if let Some(status) = running.try_wait().unwrap() {
@@ -2583,8 +2600,9 @@ impl TwoVm {
 fn tests_on(built: &[(String, usize)], host: &str) -> usize {
     built
         .iter()
-        .find(|(to, _)| to == host)
-        .map_or(0, |(_, tests)| *tests)
+        .filter(|(to, _)| to == host)
+        .map(|(_, tests)| tests)
+        .sum()
 }
 
 // The VM builder runs six VM tests at once, and the rest wait their turn
@@ -2670,4 +2688,36 @@ fn vm_tests_go_to_a_second_builder_rather_than_wait_behind_runs_on_the_first() {
     assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
     assert!(said.contains("8 VM tests sent or waiting"), "{said}");
+}
+
+// A run's split is decided as it starts, so one waiting on the first VM
+// builder goes to the second once that one has room and nothing waits
+// there, rather than waiting out the first.
+#[test]
+fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let full = |dir: &Path| {
+        fs::create_dir_all(dir.join("sending")).unwrap();
+        let claim = dir.join(format!("sending/{}.0", std::process::id()));
+        fs::write(&claim, "6\n").unwrap();
+        claim
+    };
+    full(&rig.vm);
+    let second = full(&rig.more);
+    let running = rig.start(3);
+    let began = std::time::Instant::now();
+    while !rig.said().contains("so this waits for room") {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never waited: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    fs::remove_file(second).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
+    assert!(said.contains("another VM builder has room now"), "{said}");
 }
