@@ -1759,6 +1759,22 @@ one table, `QueryKeys.js`.
   in the file picker, the folders its holder lists, in the order in use,
   round from the last to the first. Leaving insert puts the caret one
   left, as Vim does.
+- **Search,** from normal: / searches forward and ? back, typed on the
+  line in place of what's typed, as his command line takes one, with
+  insert's keys for editing it; what's typed and its rows stand as they
+  were. Each letter lands on the first row from the selected one whose
+  words (its name, count, side and kind) hold it, as incsearch does;
+  Return keeps it there, and Return alone runs the last search again;
+  Escape, or Backspace with nothing left, puts the selection back. n goes
+  on to the next row holding it and N the other way, a count before any
+  of them going that many. Nothing is filtered or moved. What's sought
+  is literal, found in either case unless it has a capital, as his
+  ignorecase and smartcase have it, and a search going round past the
+  last row goes on from the first, as wrapscan does. The foot says, in
+  Return's place and for that key alone, "from the top" or "from the
+  bottom" where it went round, and "not found" where no row holds it,
+  the selection staying where it was, as Neovim says them. The
+  notices' / searches the same way (`Search.js`).
 - **Where the keys go shows twice.** The caret is a bar a quarter of a
   letter wide in insert and a block on a letter in normal, the letter in
   the ground's colour, as his Neovim's guicursor draws them (`init.lua`).
@@ -1773,7 +1789,7 @@ one table, `QueryKeys.js`.
   until its move, as an ex line does until its Return.
 - **The Escape ladder.** Each Escape takes one step back: it cancels a
   count, an ex line or a key waiting for its second (cc's first c, gg's
-  first g), or leaves insert for normal; at
+  first g), a search being typed, or leaves insert for normal; at
   rest in normal it steps out a level, and at the level the launcher
   opened on, home or a collection a chord opened it into, it closes it.
   Opening always puts the line in insert, and the mode stays as it is
@@ -1783,7 +1799,8 @@ one table, `QueryKeys.js`.
 Where vi meets the keys already here, each clash resolves one way:
 
 - **?** means every key here, and in vi searches backward. Where there's
-  text to search it's vi's, and Space ? shows the keys, as in his Neovim.
+  text or rows to search it's vi's, and Space ? shows the keys, as in his
+  Neovim.
 - **Escape at rest** backs out here, and in vi does nothing. It steps out
   of what floats over others; in a window, as the reader is, it does
   nothing, so a habitual second Escape never closes a page mid-read.

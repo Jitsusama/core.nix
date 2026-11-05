@@ -2,7 +2,8 @@
 // and act (docs/design.md, Vi's Keys), read apart from the stack
 // (Notifications.qml) so tests/notice-keys.qml can hold it in Qt's own
 // engine, and so the desktop's one control system can retune it later;
-// beside it, how a search typed with them finds what the cards say.
+// beside it, how a search is typed with them. What it finds in the cards,
+// and how a match is washed, is the shell's one way of searching, Search.js.
 // Letters go by what they type, wherever they sit on the layout.
 .pragma library
 
@@ -119,10 +120,6 @@ function ruler(top, room, total) {
 }
 
 const digit = /^[0-9]$/;
-const ampersand = /&/g;
-const opening = /</g;
-const closing = />/g;
-const newline = /\n/g;
 
 // Where the keys stand between presses: the count typed so far, and the
 // keys of a sequence begun.
@@ -196,44 +193,6 @@ function searching(pattern, key) {
     }
     // A letter types itself; any other key changes nothing.
     return { pattern: key.length === 1 ? pattern + key : pattern, ends: "" };
-}
-
-// Where a pattern is found in a text, as [start, end] each, the first
-// first and none overlapping, ignoring case until the pattern has a
-// capital, as Joel's smartcase does.
-function found(pattern, text) {
-    if (pattern === "") {
-        return [];
-    }
-    const cased = pattern !== pattern.toLowerCase();
-    const looked = cased ? text : text.toLowerCase();
-    const sought = cased ? pattern : pattern.toLowerCase();
-    const spans = [];
-    let from = looked.indexOf(sought);
-    while (from >= 0) {
-        spans.push([from, from + sought.length]);
-        from = looked.indexOf(sought, from + sought.length);
-    }
-    return spans;
-}
-
-function escaped(text) {
-    return text.replace(ampersand, "&amp;").replace(opening, "&lt;").replace(closing, "&gt;")
-        .replace(newline, "<br>");
-}
-
-// A text as rich text, each place the pattern's found washed: its ink and
-// ground as the wash gives them, as Neovim's Search draws a match.
-function washed(text, pattern, wash) {
-    let at = 0;
-    let html = "";
-    for (const [start, end] of found(pattern, text)) {
-        html += escaped(text.slice(at, start))
-            + `<span style="color:${wash.ink};background-color:${wash.ground}">`
-            + `${escaped(text.slice(start, end))}</span>`;
-        at = end;
-    }
-    return html + escaped(text.slice(at));
 }
 
 // Which card a search turns to, from a stack's cards in order, the front

@@ -6080,6 +6080,13 @@
       "complete": "complete",
       "clear": "clear",
       "restore": "restore"
+    },
+    "search": {
+      "find": "find",
+      "notFound": "not found",
+      "fromTop": "from the top",
+      "fromBottom": "from the bottom",
+      "none": "nothing searched yet"
     }
   },
   "meant": [

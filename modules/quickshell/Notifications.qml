@@ -47,6 +47,7 @@ import QtQuick
 import QtQuick.Effects
 import "Levels.js" as Levels
 import "NoticeKeys.js" as NoticeKeys
+import "Search.js" as Search
 import "Stack.js" as Stack
 import "launcher/Notice.js" as Notice
 
@@ -466,7 +467,7 @@ Scope {
     // searched for.
     function holds(id) {
         const notification = root.notice(id);
-        return notification !== null && pattern !== "" && NoticeKeys.found(pattern,
+        return notification !== null && pattern !== "" && Search.found(pattern,
             `${root.said(notification)}\n${Notices.sender(notification.appName).name}`).length > 0;
     }
 
@@ -1329,7 +1330,7 @@ Scope {
                             id: who
                             width: parent.width
                             text: card.washed
-                                ? NoticeKeys.washed(card.modelData.summary, root.pattern, root.wash)
+                                ? Search.washed(card.modelData.summary, root.pattern, root.wash)
                                 : card.modelData.summary
                             // Plain, as the spec has a summary: only the
                             // body carries markup. Washed, it's rich text,
@@ -1347,7 +1348,7 @@ Scope {
                         Text {
                             width: parent.width
                             text: card.washed
-                                ? NoticeKeys.washed(root.plain(card.modelData.body), root.pattern,
+                                ? Search.washed(root.plain(card.modelData.body), root.pattern,
                                     root.wash)
                                 : card.modelData.body
                             visible: card.modelData.body !== ""

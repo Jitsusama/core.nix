@@ -3,7 +3,8 @@
 // (Prompt.qml) so tests/query-keys.qml can hold it in Qt's own engine, and
 // so the desktop's one language of keys can take it in later. The line is
 // Neovim's command line, the rows a buffer below it: it opens in insert,
-// where letters type, and Escape gives normal, where nothing types.
+// where letters type, and Escape gives normal, where nothing types, and
+// where / and ? take a search typed on the line, as his command line does.
 // Letters go by what they type, wherever they sit on the layout.
 .pragma library
 
@@ -70,6 +71,14 @@ const table = [
     // beside it, as the file picker's folders do; elsewhere they do nothing.
     { act: "nextFile", mode: "normal", keys: [["]", "b"]] },
     { act: "previousFile", mode: "normal", keys: [["[", "b"]] },
+    // A search of the rows by their words, as Vim's / and ? search a
+    // buffer, typed on the line as his command line takes one (search,
+    // below); n and N go on to the next match, the way it went and the
+    // other, each a move, so a held n repeats as j does.
+    { act: "searchForward", mode: "normal", keys: ["/"] },
+    { act: "searchBack", mode: "normal", keys: ["?"] },
+    { act: "searchNext", mode: "normal", keys: ["n"] },
+    { act: "searchPrevious", mode: "normal", keys: ["N"] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
 
@@ -82,14 +91,29 @@ const table = [
     { act: "pageUp", mode: "both", keys: ["PageUp"] },
     { act: "pageDown", mode: "both", keys: ["PageDown"] },
     { act: "drawerUp", mode: "both", keys: ["Shift+Up"] },
-    { act: "drawerDown", mode: "both", keys: ["Shift+Down"] }
+    { act: "drawerDown", mode: "both", keys: ["Shift+Down"] },
+
+    // A search being typed, as Neovim's command line takes one: letters
+    // and Space type, and its keys edit as insert's do. Return runs it, and
+    // Escape or Ctrl+C cancels it, as Backspace does with nothing left to
+    // take (typedInSearch).
+    { act: "caretLeft", mode: "search", keys: ["Left"] },
+    { act: "caretRight", mode: "search", keys: ["Right"] },
+    { act: "caretStart", mode: "search", keys: ["Home"] },
+    { act: "caretEnd", mode: "search", keys: ["End"] },
+    { act: "deleteBack", mode: "search", keys: ["Backspace"] },
+    { act: "deleteWord", mode: "search", keys: ["Ctrl+w"] },
+    { act: "deleteToStart", mode: "search", keys: ["Ctrl+u"] },
+    { act: "find", mode: "search", keys: ["Return", "Enter"] },
+    { act: "cancel", mode: "search", keys: ["Escape", "Ctrl+c"] }
 ];
 
 // The acts that move through the rows, which repeat while their key is
 // held, as Vim's motions do; every other act is done once a press, so a
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
-    "halfDown", "halfUp", "pageDown", "pageUp", "drawerUp", "drawerDown"];
+    "halfDown", "halfUp", "pageDown", "pageUp", "drawerUp", "drawerDown", "searchNext",
+    "searchPrevious"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -153,8 +177,10 @@ function begins(sequence, typed) {
     return typed.length < sequence.length && typed.every((key, at) => key === sequence[at]);
 }
 
+// Whether a row's keys are a mode's: "both" is the line's two modes,
+// insert and normal, and a search being typed has only its own.
 function inMode(row, mode) {
-    return row.mode === mode || row.mode === "both";
+    return row.mode === mode || (row.mode === "both" && mode !== "search");
 }
 
 // Whether a key typed so far is a whole sequence of a mode's, or begins
@@ -213,8 +239,55 @@ function read(standing, key, mode) {
         return { act: "", count: 0, standing: { count: standing.count, typed }, ours: true };
     }
     // In normal nothing types, so a key that ends nothing is the line's
-    // and does nothing, letting what was begun go, as vi does.
-    return { act: "", count: 0, standing: rest(), ours: mode === "normal" };
+    // and does nothing, letting what was begun go, as vi does. A search
+    // being typed is the line's too, typed by typedInSearch rather than
+    // into the field, which holds the query meanwhile.
+    return { act: "", count: 0, standing: rest(), ours: mode !== "insert" };
+}
+
+// A search being typed, as { pattern, at }, the caret's place in it, after
+// an act of the search's, or the letters a key typed where it ends none:
+// the line after it, and whether it ends the typing, "found" to run it or
+// "cancelled" to put back what the field held, as Vim's / does with
+// Return, and with Escape or a Backspace with nothing left to take.
+function typedInSearch(line, act, letters) {
+    const { pattern, at } = line;
+    const put = (text, caret) => ({ pattern: text, at: caret, ends: "" });
+    switch (act) {
+    case "find":
+        return { pattern, at, ends: "found" };
+    case "cancel":
+        return { pattern, at, ends: "cancelled" };
+    case "deleteBack":
+        if (pattern === "") {
+            return { pattern, at, ends: "cancelled" };
+        }
+        return at === 0 ? put(pattern, at)
+            : put(pattern.slice(0, at - 1) + pattern.slice(at), at - 1);
+    case "deleteWord": {
+        const start = wordStart(pattern, at);
+        return put(pattern.slice(0, start) + pattern.slice(at), start);
+    }
+    case "deleteToStart":
+        return put(pattern.slice(at), 0);
+    case "caretLeft":
+        return put(pattern, Math.max(0, at - 1));
+    case "caretRight":
+        return put(pattern, Math.min(pattern.length, at + 1));
+    case "caretStart":
+        return put(pattern, 0);
+    case "caretEnd":
+        return put(pattern, pattern.length);
+    case "":
+        // A key that types a character, as a letter or Space does; one
+        // that types nothing, or a control character, changes nothing.
+        if (letters === "" || letters < " " || letters === "\u007f") {
+            return put(pattern, at);
+        }
+        return put(pattern.slice(0, at) + letters + pattern.slice(at), at + letters.length);
+    default:
+        return put(pattern, at);
+    }
 }
 
 // How the keys stand once a sequence begun has waited its timeoutlen for
@@ -323,6 +396,12 @@ function caretAfter(act, text, at) {
 
 // The mode an act leaves the line in.
 function modeAfter(act, mode) {
+    if (act === "searchForward" || act === "searchBack") {
+        return "search";
+    }
+    if (act === "find" || act === "cancel") {
+        return "normal";
+    }
     if (act === "normal") {
         return "normal";
     }
