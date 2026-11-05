@@ -841,7 +841,7 @@ impl App {
         let (view_top, view_foot) = self.view_pt();
         let half = (view_foot - view_top) / 2.0;
         if top < view_top - half || foot > view_foot + half {
-            self.jump_to(((top + foot) / 2.0 - half) * self.px_per_pt());
+            self.jump_to((f64::midpoint(top, foot) - half) * self.px_per_pt());
         } else {
             self.follow_line(top, foot, None);
         }

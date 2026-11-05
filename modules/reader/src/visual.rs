@@ -130,22 +130,7 @@ impl App {
                 return true;
             }
             Act::CopyPiece | Act::CopyParagraph | Act::CopyAParagraph | Act::CopyToParagraphEnd => {
-                let taken = layout.piece_at(here, foot).and_then(|unit| match act {
-                    Act::CopyPiece => layout.pieces_from(unit, times),
-                    Act::CopyParagraph => layout.paragraph_of(unit, Object::InParagraph),
-                    Act::CopyAParagraph => layout.paragraph_of(unit, Object::AParagraph),
-                    _ => layout.to_paragraph_end(unit, times),
-                });
-                // As Vim's yank, the cursor goes to the start of what it
-                // took when that's above it, as y i p's is from inside.
-                if let Some(taken) = taken {
-                    let (top, foot) = layout.line_extent(taken.ends().0.line);
-                    if top < here - 0.5 {
-                        self.aim = Some(top);
-                        self.follow_line(top, foot, None);
-                    }
-                    self.copy(&layout, taken);
-                }
+                self.copy_at_rest(&layout, act, times);
                 return true;
             }
             _ => {}
@@ -203,6 +188,28 @@ impl App {
         layout.moved(selection, motion, times);
         self.follow_cursor();
         true
+    }
+
+    /// y y, y i p, y a p or y } at rest, from the cursor's line. As Vim's
+    /// yank, the cursor goes to the start of what it took when that's above
+    /// it, as y i p's is from inside.
+    fn copy_at_rest(&mut self, layout: &Arc<select::Layout>, act: Act, times: usize) {
+        let (_, foot) = self.view_pt();
+        let here = self.cursor_pt();
+        let taken = layout.piece_at(here, foot).and_then(|unit| match act {
+            Act::CopyPiece => layout.pieces_from(unit, times),
+            Act::CopyParagraph => layout.paragraph_of(unit, Object::InParagraph),
+            Act::CopyAParagraph => layout.paragraph_of(unit, Object::AParagraph),
+            _ => layout.to_paragraph_end(unit, times),
+        });
+        if let Some(taken) = taken {
+            let (top, foot) = layout.line_extent(taken.ends().0.line);
+            if top < here - 0.5 {
+                self.aim = Some(top);
+                self.follow_line(top, foot, None);
+            }
+            self.copy(layout, taken);
+        }
     }
 
     /// After a key that moved the view while selecting: the cursor keeps to

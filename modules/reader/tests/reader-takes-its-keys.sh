@@ -178,14 +178,19 @@ act 1 gg
 
 # The keyboard's repeats move and do nothing else: y and a held y copy
 # once, from the press, and a held j goes on down. g g after them is how
-# the test knows the repeats are all in.
+# the test knows the repeats are all in. After a held key the reader can
+# read the next wtype's first keys by the keymap of the one before, whose
+# first key is wtype's Escape here, so a key misread does nothing, and g g
+# goes again until it's read as itself.
 flashes=$(how_many '^flash: [1-9]')
 downs=$(how_many '^key Down ')
-press y -P y -s 1500 -p y -P j -s 1500 -p j g g
-deadline=$((SECONDS + 20))
-until grep -a -E '^key ' said | tail -n 1 | grep -q '^key First'; do
+firsts=$(how_many '^key First ')
+press -k Escape y -P y -s 1500 -p y -P j -s 1500 -p j
+deadline=$((SECONDS + 30))
+until [ "$(how_many '^key First ')" -gt "$firsts" ]; do
   ((SECONDS < deadline)) || fail "the reader never took g g after the held keys"
-  inotifywait -q -q -t 1 -e modify said || true
+  press gg
+  inotifywait -q -q -t 2 -e modify said || true
 done
 keys=$(how_many '^key ')
 copied '"# Every Key Neovim Has\n"'
