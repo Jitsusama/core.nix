@@ -66,6 +66,16 @@ ShellRoot {
                 side: "Kitty · workspace 2, 3rd column, 2nd down"
                 glyph: "$"
             }
+            // A side of words too long for its room, as Slack Theme's how-to
+            // is: it gives way at a whole word, never through one (VKCF3Z,
+            // 2026-11-05: "pick Aubergine, then Custom the\u2026").
+            Choice {
+                id: sideWords
+                width: 480
+                name: "Slack Theme"
+                side: "pick Aubergine, then Custom theme, Import"
+                glyph: "$"
+            }
             // A noun: its kind at the right edge, and what else it says after
             // its name, in its own words.
             Choice {
@@ -266,6 +276,17 @@ ShellRoot {
         font.pointSize: Theme.level.name.pointSize
     }
 
+    // What a row says at its right, in the face it's drawn in.
+    FontMetrics {
+        id: sideFace
+        font.family: Theme.level.note.family
+        font.italic: Theme.level.note.italic
+        font.pointSize: Theme.level.note.pointSize
+        font.weight: Theme.level.note.weight
+        font.variableAxes: Theme.level.note.variableAxes
+        font.features: Theme.level.note.features
+    }
+
     // Places as a row's wash lays them, for a failure to show.
     function places(washed) {
         return JSON.stringify(washed, (key, value) =>
@@ -291,6 +312,17 @@ ShellRoot {
             texts = apart(titled, titled.width);
             expect("a window's title kept whole, its program and place cut first",
                 cut(texts).length === 1 && cut(texts)[0] === titled.side, said(texts));
+            texts = apart(sideWords, sideWords.width);
+            const sideCut = texts.find(t => t.text === sideWords.side);
+            const drawnWide = sideCut === undefined ? 0 : sideCut.to - sideCut.from;
+            const words = sideWords.side.split(" ");
+            const whole = words.slice(1).map((_, count) => `${words.slice(0, count + 1)
+                .join(" ").replace(/[,;:\u00b7]+$/, "")}\u2026`);
+            expect("a side too long gives way at a whole word, not through one",
+                sideCut !== undefined && sideCut.truncated
+                    && whole.some(cut => Math.abs(sideFace.advanceWidth(cut) - drawnWide) < 1),
+                `${drawnWide} wide, whole cuts ${JSON.stringify(whole.map(cut =>
+                    [cut, Math.round(sideFace.advanceWidth(cut))]))}: ${said(texts)}`);
             texts = apart(fits, fits.width);
             expect("words that fit left whole", cut(texts).length === 0, said(texts));
             texts = apart(noun, noun.width);
