@@ -191,6 +191,22 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         stands_in_the_mode_words_room(desktop, ":q", f"launcher-ex-at-{scale}")
         lists_every_key(desktop, scale)
         desktop.close_launcher()
+        washes_what_it_finds(desktop, scale)
+
+
+def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
+    """Type a find that several of home's rows hold, and photograph the letters it washed.
+
+    Each row's matched letters take the Search wash, the selected row's on the ground a shade
+    past the selection, as his Neovim's hlsearch washes a match.
+    """
+    desktop.answer("s")
+    desktop.launcher_until(lambda shown: shown["current"] == 0 and shown["count"] > 1)
+    rows = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"]
+    washed = [row for row in rows if row["washed"]]
+    assert len(washed) > 1, f"at {scale} few rows drawn washed a letter of s: {rows}"
+    desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
