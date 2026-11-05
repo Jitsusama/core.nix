@@ -406,7 +406,11 @@ fn compare(
             eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
         }
         built.there |= alone.there;
-        built.bytes = built.bytes.or(alone.bytes);
+        // Each build there sent its own, so the run sent them all.
+        built.bytes = match (built.bytes, alone.bytes) {
+            (Some(before), Some(now)) => Some(before + now),
+            (before, now) => before.or(now),
+        };
     }
     noted.built(count, began.elapsed(), built.passed);
     if built.there {
