@@ -842,7 +842,8 @@ def says_how_wi_fi_is_set(desktop: Desktop) -> None:
 
     A space after :set lists every option with where it stands; typing narrows them and Tab
     writes the one chosen in; :set wifi? says the network joined, and a word no option names
-    says E518.
+    says E518. Then the session's: dnd=60 holds notices an hour and nodnd ends it, and
+    keepawake keeps the machine awake until nokeepawake lets it sleep.
     """
     machine = desktop.machine
 
@@ -876,7 +877,31 @@ def says_how_wi_fi_is_set(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["commandSaid"] == "E518: Unknown option: wfii" and shown["open"]
     )
+    sets_the_session(desktop)
     desktop.close_launcher()
+
+
+def sets_the_session(desktop: Desktop) -> None:
+    """Hold notices an hour by :set dnd=60, end it by nodnd, and keep awake by keepawake."""
+    machine = desktop.machine
+
+    def says(typed: str, said: str) -> None:
+        machine.send_chars(typed)
+        desktop.launcher_until(
+            lambda shown: shown["command"] is None and shown["commandSaid"] == said
+        )
+
+    machine.send_chars(":set dnd=60\n")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
+    says(":set dnd?\n", "dnd=60")
+    machine.send_chars(":set nodnd\n")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
+    says(":set dnd?\n", "nodnd")
+    machine.send_chars(":set keepawake\n")
+    machine.wait_until_succeeds("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
+    says(":set keepawake?\n", "keepawake")
+    machine.send_chars(":set nokeepawake\n")
+    machine.wait_until_fails("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
 
 
 def sets_wi_fi(desktop: Desktop) -> None:
