@@ -576,8 +576,9 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
 def walk_the_rows_acts(desktop: Desktop) -> None:
     """Press every act normal takes on a search's rows besides its moves, through niri.
 
-    l steps into a row and - out of it, as his oil's do; :12 goes to the 12th row, its line
-    showing in the foot until its Return; and q, ZZ and :q each close the launcher.
+    l steps into a row and - out of it, as his oil's do; :12 goes to the 12th row, on the
+    command line in the find line's place, its menu saying where it goes, until its Return;
+    and q, ZZ and :q each close the launcher.
     """
     machine = desktop.machine
     desktop.answer("emoji")
@@ -593,11 +594,18 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
     desktop.normal()
     row = 12
     machine.send_chars(f":{row}")
-    desktop.launcher_until(lambda shown: shown["ex"] == str(row) and shown["counted"] == "")
-    foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-    assert any(word["text"] == f":{row}" for word in foot), foot
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("line") == str(row)
+            and shown["command"]["menu"] == ["{n} Go to a Row"]
+        )
+    )
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["current"] == row - 1 and shown["ex"] is None)
+    desktop.launcher_until(
+        lambda shown: (
+            shown["current"] == row - 1 and shown["command"] is None and shown["mode"] == "normal"
+        )
+    )
     for keys in ["q", "ZZ", ":q\n"]:
         machine.send_chars(keys)
         desktop.launcher_until(lambda shown: not shown["open"])
