@@ -14,5 +14,4 @@ quickshell/KeyboardMap.qml
 quickshell/Launcher.qml
 quickshell/Meter.qml
 quickshell/Notifications.qml
-quickshell/Picker.qml
 quickshell/Prompt.qml

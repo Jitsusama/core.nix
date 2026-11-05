@@ -29,6 +29,8 @@ Item {
     // Whole device pixels tall, as every band beside a rule is
     // (Hairline.qml).
     implicitHeight: rule.whole(words + inset)
+    // How wide it wants to be: its keys with the inset each side.
+    readonly property real wanted: hints.implicitWidth + 2 * inset
 
     Hairline {
         id: rule
