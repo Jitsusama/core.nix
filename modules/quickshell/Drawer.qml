@@ -976,14 +976,44 @@ Floating {
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
     // A binding doesn't see what a call reads, so it reads both faces, to be
     // measured again as a key list's face comes and goes.
+    // The names' column ends at a name, the widest of those that keep their
+    // values beside them, chosen so the most do: a column as wide as the
+    // widest name pushed half a narrow plate's values under their names,
+    // its two columns lost (VKCF3Z, 2026-11-05). A name wider goes on its
+    // own line, its value under it, as one too wide always has. A key
+    // list's sayings stay beside every key, and the moment's beside every
+    // name, so the column is never narrower than the widest of those.
     readonly property real labelsWide: {
         void valueFace.font;
         void factFace.font;
-        let widest = 0;
-        for (const fact of allFacts)
-            widest = Math.max(widest, factFace.advanceWidth(fact.label ?? ""));
-        return Math.min(column.width - labelsGap - valueFace.advanceWidth("00000000"),
-            Math.ceil(widest));
+        void wordsFace.font;
+        void latinFace.font;
+        const room = column.width - labelsGap;
+        const most = room - valueFace.advanceWidth("00000000");
+        const named = allFacts.filter(fact => fact && fact.heading === undefined)
+            .map(fact => ({
+                name: Math.ceil(factFace.advanceWidth(fact.label ?? "")),
+                value: fact.value === null || fact.value === undefined ? 0
+                    : faceOf(fact).advanceWidth(unbroken(fact.value))
+            }));
+        const widest = Math.max(0, ...named.map(one => one.name));
+        if (listsKeys || widest <= most && named.every(one => one.value <= room - widest))
+            return Math.min(most, widest);
+        const least = Math.max(0, ...[].concat(...groups.map(group => group.facts))
+            .map(fact => Math.ceil(factFace.advanceWidth(fact.label ?? ""))));
+        const ends = [...new Set(named.map(one => one.name))]
+            .filter(end => end <= most && end >= least).sort((one, other) => other - one);
+        let best = Math.min(most, Math.max(least, widest));
+        let kept = -1;
+        for (const end of ends) {
+            const beside = named.filter(one => one.name <= end && one.value <= room - end)
+                .length;
+            if (beside > kept) {
+                best = end;
+                kept = beside;
+            }
+        }
+        return best;
     }
     // How many of its facts take more than a line, a name or a value
     // wrapped, for the launcher to report when asked: a key list's take one.
@@ -1052,9 +1082,9 @@ Floating {
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
-    // Between a name and its value, a run's width apart, so the two never
-    // read as one.
-    readonly property real labelsGap: Theme.space.xl
+    // Between the names' column and the values', two columns, so the two
+    // never read as one.
+    readonly property real labelsGap: Theme.space.rung.groups
     // Where any thing in a list takes more than a line as it's laid out,
     // every thing in it stands a beat further from the one before, so a
     // wrapped line sits nearer its own thing than the next and the list
