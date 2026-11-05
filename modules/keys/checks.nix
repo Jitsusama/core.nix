@@ -231,10 +231,12 @@ in
   # every machine writes is read as the launcher reads it, and a chord the
   # language gives to another act, an act a surface's kinds hold that it
   # leaves out, or a chord bound to an act that isn't one of the act's keys
-  # fails (speaks-the-language.py). So the check can't pass by seeing
-  # nothing, each way of straying is shown to fail first, as is a language
-  # that gives one key to two acts and the reader leaving out a key it
-  # takes only while selecting.
+  # fails (speaks-the-language.py), as does a language whose commands
+  # Neovim names otherwise, by what the machine's Neovim resolves each
+  # name to, read once as a file of its own. So the check can't pass by
+  # seeing nothing, each way of straying is shown to fail first, as is a
+  # language that gives one key to two acts and the reader leaving out a
+  # key it takes only while selecting.
   keys-speak-the-language =
     let
       # A workstation with a desktop has every layer, Neovim's among them.
@@ -243,12 +245,19 @@ in
         self.nixosModules.graphical
       ];
       keys = (account machine).xdg.configFile."jitsusama/keys.json".source;
+      # Every name the machine's Neovim takes for a command of its own,
+      # looked up once with no config and kept, so the check reads a file
+      # in a moment.
+      neovimCommands = pkgs.runCommandLocal "neovim-commands.json" { } ''
+        HOME=$TMPDIR ${lib.getExe (account machine).programs.neovim.package} --clean \
+          -l ${./neovim-commands.lua} > $out
+      '';
       check = "${lib.getExe pkgs.python3} ${./speaks-the-language.py}";
     in
     pkgs.runCommandLocal "keys-speak-the-language" { } ''
       # A language and a key map that stray, and what the check must say.
       strays() {
-        if ${check} "$1" "$2" neovim > said; then
+        if ${check} "$1" "$2" neovim ${neovimCommands} > said; then
           echo "The key language check passed on $2, which strays."
           exit 1
         fi
@@ -274,7 +283,7 @@ in
         ${keys} > unselecting.json
       strays ${./language.toml} unselecting.json \
         "reader: a page has word-on, which it leaves out"
-      ${check} ${./language.toml} ${keys} neovim
+      ${check} ${./language.toml} ${keys} neovim ${neovimCommands}
       touch $out
     '';
 

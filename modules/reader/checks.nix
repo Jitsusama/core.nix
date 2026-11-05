@@ -172,7 +172,7 @@ onLinux {
 
   # The reader keeps the file it shows, read by the command its Recent in
   # the launcher is led by as its process and the whole path of a file given
-  # by name in the folder it was started in, and nothing once q closes it
+  # by name in the folder it was started in, and nothing once ZZ closes it
   # (../../tests/says-what-it-has-open.sh). What a killed reader left is
   # cleared as it starts.
   reader-says-the-file-it-shows =
@@ -201,8 +201,8 @@ onLinux {
         printf '# A Sheet\n\nTo read.\n' > sheet.md
         printf '999999\t/gone.md\n' > state/reader/showing/999999
         : > state/reader/showing/.999999
-        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} sheet.md \
-          reader -- ${opened} > ran 2>&1 || true
+        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} --closed-by ZZ \
+          sheet.md reader -- ${opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
         if [ -n "$(ls -A state/reader/showing)" ]; then
           echo "the reader left this: $(ls -A state/reader/showing)"
