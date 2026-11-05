@@ -1910,10 +1910,15 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        // In visual, Return opens the selection's rows it can, by count.
+        // In visual, Return opens the selection's rows it can, by count;
+        // d and y say what they do to the cursor row, and Space ? stands
+        // just before Return, the way to every key, as in normal (VKCF3Z,
+        // 2026-11-05).
         if (visual)
             return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
-                commandNamed(row))).length, Words.field.visual ?? {})]];
+                commandNamed(row))).length, Words.field.visual ?? {})],
+                ...operatorKeys(choice),
+                [hintKey("keys", "visual"), (Words.field.hints ?? {}).keys ?? ""]];
         // The row landed on says the act a second Return does, in the
         // accent, since it's the one key that changes something now; the
         // rest is normal's foot, as a landing is normal, so its shape never

@@ -93,6 +93,8 @@ const table = [
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
     { act: "otherEnd", mode: "visual", keys: ["o"] },
+    // Space leads in visual too, so the key list stands over a selection.
+    { act: "keys", mode: "visual", keys: [["Space", "?"], "F1"] },
     { act: "reselect", mode: "normal", keys: [["g", "v"]] },
     // A paragraph of rows is a run of one kind or sender that a gap ends
     // (Operators.runAt): } and { go by them, ip and ap take one, as in Vim.
