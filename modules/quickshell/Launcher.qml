@@ -1956,23 +1956,11 @@ Scope {
         // : commands and Space ?, the way to every key, always.
         if (prompt.modal && prompt.mode === "normal")
             return normalKeys(choice, stepping, more);
-        // An arrow is named only in a mode where it steps: in insert they
-        // move the caret, so naming them there named keys that did nothing
-        // of what was said (Joel, 2026-11-04). A secret's line has no
-        // modes and its arrows only move the caret, as inputsecret()'s.
-        // On a prompt's words, as a save's name, they move its caret.
-        const arrows = prompt.modal && !prompt.editsWords;
-        const into = arrows && QueryKeys.binds("into", "Right", prompt.mode);
-        const out = arrows && QueryKeys.binds("out", "Left", prompt.mode);
-        // One with nothing to do yet (`still`), as the file chooser's Open
+        // No arrow is named: where a line is typed they move its caret, and
+        // nothing else steps by them (Joel, 2026-11-05). One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
-        const keys = choice.still ? []
-            : [stepping ? [into ? "\u21b5 \u2192" : "\u21b5", more] : ["\u21b5", verbOf(choice)]];
-        if (into && !stepping && holdsMore(choice))
-            keys.push(["\u2192", ""]);
-        if (out && typed === "" && held.length > 0)
-            keys.push(["\u2190", ""]);
+        const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
         keys.push(...findTaught(choice));
         // Where the line holds a prompt's words, it says how to get to
         // normal's keys and to the list of them, just before Return

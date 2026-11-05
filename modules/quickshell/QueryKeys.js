@@ -439,12 +439,6 @@ function keyOf(act, mode) {
     return Array.isArray(keys) ? keys.join("") : keys;
 }
 
-// Whether a key does an act in a mode, so a hint names a key only where
-// pressing it does what the hint says.
-function binds(act, key, mode) {
-    return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
-}
-
 // Whether an act in visual takes its selection: d, y and Return.
 function takesSelection(act) {
     return act === "ending" || act === "copy" || act === "run";

@@ -490,7 +490,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.type_in(typed, selecting=name)
         # In normal, where l steps in; on the find letters type, so it names none.
         desktop.normal()
-        desktop.launcher_until(lambda shown: "\u2192" in (shown["selected"] or {}).get("told", []))
+        desktop.launcher_until(lambda shown: "l in" in (shown["selected"] or {}).get("told", []))
         told = desktop.showing()["selected"]["told"]
         assert not any(key.startswith("Ctrl") for key in told), told
         if stepping:

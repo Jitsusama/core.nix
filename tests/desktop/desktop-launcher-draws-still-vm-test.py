@@ -440,7 +440,7 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert "\u2192" in told, shown["selected"]
+    assert "l in" in told, shown["selected"]
     assert not any(key.startswith("Ctrl") for key in told), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()

@@ -241,13 +241,14 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     # A screen's rotation is a step inside the screen, inside Screens,
     # inside Desktop; from the root it's found by its name, saying so,
     # below the focused screen's answer. l, in normal mode,
-    # goes there as Return does, the foot saying the two as one (Joel,
-    # 2026-10-26: where Return goes somewhere in the launcher, the right
-    # arrow does the same).
+    # goes there as Return does (Joel, 2026-10-26: where Return goes
+    # somewhere in the launcher, the step in does the same), the foot
+    # naming each by its key.
     find_rotation()
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
-    assert "\u21b5 \u2192 go" in told, told
+    assert told[0] == "\u21b5 go", told
+    assert "l in" in told, told
     machine.send_key("l")
     desktop.launcher_until(at_rotation)
     desktop.close_launcher()
