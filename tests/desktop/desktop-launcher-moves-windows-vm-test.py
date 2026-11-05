@@ -473,16 +473,19 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
 def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     """V and j choose windows, y copies their titles, d closes them once asked, Return opens."""
     machine = desktop.machine
-    first = desktop.opened("Chosen first")
-    second = desktop.opened("Chosen second")
-    third = desktop.opened("Chosen third")
+    opened = {
+        title: desktop.opened(title)["id"]
+        for title in ("Chosen first", "Chosen second", "Chosen third")
+    }
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("chosen")
-    chosen = {"Chosen first", "Chosen second", "Chosen third"}
-    desktop.launcher_until(lambda shown: set(shown["rows"][:3]) == chosen)
+    desktop.launcher_until(lambda shown: set(shown["rows"][:3]) == set(opened))
     desktop.normal()
+    # niri lists them in its own order, so the walk takes the first two
+    # rows as it finds them and leaves the third.
     rows = desktop.showing()["rows"]
+    taken, kept = rows[:2], rows[2]
     # V begins visual line on the cursor row, which it tints, saying so in
     # the mode word's room; j takes the row below too, and the foot says
     # how many Return opens.
@@ -498,7 +501,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     since = desktop.mark()
     machine.send_chars("y")
     desktop.reported("yanked 2", lambda rest: rest == "", since)
-    assert desktop.as_account("wl-paste --no-newline") == "\n".join(rows[:2])
+    assert desktop.as_account("wl-paste --no-newline") == "\n".join(taken)
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["tinted"] == [])
     # A colon opens the command line on the selection, as Vim's '<,'>,
     # and Escape gives the selection back, as it stood.
@@ -509,7 +512,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
         lambda shown: (
             (shown["command"] or {}).get("from") == "visual"
             and shown["command"]["range"] == "'<,'>"
-            and shown["command"]["things"] == len(rows[:2])
+            and shown["command"]["things"] == len(taken)
         )
     )
     machine.send_key("esc")
@@ -519,7 +522,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
         )
     )
     # d asks once for both and y closes both, the third left.
-    with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
         machine.send_chars("d")
     with desktop.told("ended 2"):
         machine.send_chars("y")
@@ -527,7 +530,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     def closed(_: bool) -> bool:
         """Say whether the two chosen windows have gone and the third stays."""
         left = {window["id"] for window in desktop.windows()}
-        return not {first["id"], second["id"]} & left and third["id"] in left
+        return not {opened[title] for title in taken} & left and opened[kept] in left
 
     retry(closed, timeout=dt.timedelta(seconds=10))
     # Return over the selection opens what it holds: the third window,
@@ -537,7 +540,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     at = next(
         at
         for at, thing in enumerate(shown["things"])
-        if not thing["gone"] and thing["reads"].startswith("Chosen third ")
+        if not thing["gone"] and thing["reads"].startswith(f"{kept} ")
     )
     machine.send_chars(f"{at + 1}G")
     desktop.launcher_until(lambda shown: shown["current"] == at)
@@ -546,7 +549,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
     retry(
-        lambda _: desktop.window_titled("Chosen third")["is_focused"],
+        lambda _: desktop.window_titled(kept)["is_focused"],
         timeout=dt.timedelta(seconds=10),
     )
 
