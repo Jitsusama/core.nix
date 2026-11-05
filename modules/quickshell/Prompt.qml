@@ -100,6 +100,9 @@ Item {
     // gone into with Space and the right arrow, as his Neovim goes to the
     // window beside. It opens in insert (take()).
     property string mode: "insert"
+    // Visual's operator just done, its key and when, for the same pressed
+    // again to be taken with it (QueryKeys.takenWith); null after any key.
+    property var visualOperated: null
     // Whether there's a selection for gv to bring back (Launcher.qml's
     // lastVisual).
     property bool reselectable: false
@@ -462,6 +465,15 @@ Item {
                 prompt.answered(key);
             return;
         }
+        // The operator pressed again just after visual's is taken with it;
+        // a key with no name, as Shift alone, lets nothing go.
+        const after = visualOperated;
+        if (key !== "")
+            visualOperated = null;
+        if (QueryKeys.takenWith(after, key, Date.now(), wait)) {
+            event.accepted = true;
+            return;
+        }
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -499,8 +511,10 @@ Item {
             // Visual's d, y and Return take the selection before it ends,
             // as Vim's visual operators do (Launcher.qml's operated, which
             // the file picker's takes(rows) hooks for Return).
-            if (mode === "visual" && QueryKeys.takesSelection(read.act))
+            if (mode === "visual" && QueryKeys.takesSelection(read.act)) {
                 prompt.operated(read.act, 0, { act: "visual", count: 0 });
+                visualOperated = { key, at: Date.now() };
+            }
             input.deselect();
             // Going into insert on a prompt's words is a change u takes
             // back whole, as Vim's is, unless nothing's typed before it ends.

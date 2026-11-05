@@ -429,6 +429,14 @@ function binds(act, key, mode) {
     return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
 }
 
+// Whether a key is taken with the visual operator before it, `after`, its
+// key and when it was pressed: the same operator's key within `wait` ms,
+// as the spec's V j j d d, whose second d would otherwise wait for a
+// motion on the rows left.
+function takenWith(after, key, now, wait) {
+    return after !== null && key === after.key && key in operators && now - after.at < wait;
+}
+
 // Whether an act in visual takes its selection: d, y and Return.
 function takesSelection(act) {
     return act === "ending" || act === "copy" || act === "run";
