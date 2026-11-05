@@ -435,6 +435,8 @@ Singleton {
             note: name === dated ? "" : dated,
             targets: () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 name: `${Words.of(key).sure} to ${dated}, ${root.tellingOfChanges(meeting)}`,
                 verb: Words.verb(key),
                 glyph: Words.glyph(key),
@@ -461,6 +463,8 @@ Singleton {
             hue: "action",
             targets: () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 name: `${Words.of(key).sure}, ${told}`,
                 verb: Words.verb(key),
                 glyph: Words.glyph(key),

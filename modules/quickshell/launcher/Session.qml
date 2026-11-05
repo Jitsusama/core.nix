@@ -151,6 +151,8 @@ Provider {
             confirm: sure !== "",
             verbs: sure !== "" ? () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 verb: Words.verb(key),
                 name: sure + provider.closing,
                 glyph: Words.glyph(key),

@@ -392,6 +392,8 @@ Scope {
             // One whose doing takes a while keeps the launcher open, as
             // asking a question does, its whole words below the rows.
             stays: said.stays ?? false,
+            // Whether it says it changes nothing, as asking a question.
+            changes: said.changes,
             reads: said.reads ?? "",
             note: said.note ?? "",
             copies: said.run ? "" : said.copy ?? said.headline,
@@ -1835,8 +1837,9 @@ Scope {
     // its act is only done from inside it (the vi-paradigm spec's Return):
     // a name typed and Return never joins, disconnects or forgets.
     function stepsThing(choice) {
-        return !!choice && prompt.modal && changesState(choice) && kindOf(choice) !== ""
-            && holdsMore(choice) && !stepsIn(choice);
+        const kind = kindOf(choice);
+        return !!choice && prompt.modal && changesState(choice)
+            && (kind === "network" || kind === "device") && holdsMore(choice) && !stepsIn(choice);
     }
 
     // Whether Return from the find lands on a row rather than doing it: one
@@ -1844,12 +1847,12 @@ Scope {
     // what a second Return does (Joel, 2026-11-04: "it is quite dangerous
     // how in insert mode i can type in a name of a wifi network and then
     // hitting enter disconnects from it"). Normal's Return does it.
-    // One that asks for words first asks, as Join by Code does, and one in
-    // a step that asked to be sure is done, since stepping in was the
-    // second press.
+    // One that asks for words first asks, as Join by Code does, and one
+    // asking Joel to be sure is done, since stepping in was the second press.
     function lands(choice) {
         return !!choice && prompt.modal && prompt.mode === "find" && changesState(choice)
-            && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !sureOf();
+            && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !choice.sure
+            && !sureOf();
     }
 
     // Whether the step Joel is in asks him to be sure, as Power Off's does.
@@ -1931,7 +1934,7 @@ Scope {
         // as possible"). Going elsewhere keeps Return's own word, where it
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
-        const stepping = stepsIn(choice);
+        const stepping = stepsIn(choice) || stepsThing(choice);
         // An arrow is named only in a mode where it steps: in insert they
         // move the caret, so naming them there named keys that did nothing
         // of what was said (Joel, 2026-11-04). A secret's line has no
@@ -3008,19 +3011,18 @@ Scope {
     }
 
     // What a step into a row holds: its own rows, then a thing's parts
-    // after what can be done to it. Inside a thing, as a network or a
-    // device, the first is never one that changes anything, so a Return
-    // that steps in and a second after it only ever show (Catalogue.js's
-    // quietFirst). Anywhere else its own order stands: a setting's act
-    // still leads its step, and an answer's levels its copy (VKCF3Z's
-    // order). Null where it holds nothing.
+    // after what can be done to it. Inside a network or a device whose own
+    // act changes something, which Return steps into rather than doing,
+    // the first is never one that changes anything, so a Return that steps
+    // in and a second after it only ever show (Catalogue.js's quietFirst).
+    // Anywhere else its own order stands: a setting's act still leads its
+    // step, a sound output's use, and an answer's levels its copy. Null
+    // where it holds nothing.
     function inside(row, things) {
         const own = stepRows(row, things);
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        const kind = kindOf(row);
-        return into && things && kind !== "" && kind !== "answer"
-            ? Catalogue.quietFirst(into) : into;
+        return into && things && stepsThing(row) ? Catalogue.quietFirst(into) : into;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
@@ -4741,8 +4743,10 @@ Scope {
             sigilHue: Qt.colorEqual(prompt.hue, Theme.accent) ? "accent"
                 : Qt.colorEqual(prompt.hue, Theme.muted) ? "muted" : "",
             lead: prompt.lead,
-            // The row Return landed on from the find, until the next key.
+            // The row Return landed on from the find, until the next key,
+            // and whether a Return now would come too soon after it.
             landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
+            landedFresh: root.landedJustNow(),
             returned: root.returned,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and

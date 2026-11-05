@@ -274,6 +274,8 @@ Provider {
         return said(key, "", {
             targets: () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 verb: Words.verb(key),
                 name: `${Words.of(key).sure}, Closing ${closing}`,
                 glyph: Words.glyph(key),
