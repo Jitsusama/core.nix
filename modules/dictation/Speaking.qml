@@ -223,6 +223,10 @@ PanelWindow {
                 font: ink.font
             }
 
+            // The speaking glyph's right arc measures short of its ink, so
+            // its word stands about 10 off it at 2 rather than 8. That stands:
+            // a nudge for one glyph is a number that goes wrong when the icon
+            // font changes (VKCF3Z, 2026-11-05).
             Text {
                 id: said
                 x: mark.x + line.glyph.x + line.glyph.width + Theme.space.rung.mark - line.words.x
