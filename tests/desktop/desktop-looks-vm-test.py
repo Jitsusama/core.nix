@@ -274,16 +274,21 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
             machine.send_chars("dd")
         # The ask stands alone in the keys' place, ending where Return
         # ends, wider than Return's word, so it reaches into the room the
-        # other keys left; how things stand beside it holds, whole (a
-        # minute turning keeps its length).
+        # other keys left, and how things stand gives way around it as
+        # the foot's facts give way to any keys: each fact whole or gone,
+        # never cut, and all of them back once the ask goes.
         shown = desktop.showing()
-        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the ask cut {shown}"
+        facts = before["glance"].split("  ")
+        kept = shown["glance"].split("  ")
+        assert kept == facts[: len(kept)], f"at {scale} the ask cut a fact: {kept} of {facts}"
         assert shown["operated"] == "dd Close Notes for Tuesday? (y/n)", shown
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
             machine.send_key("esc")
         desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
-        assert desktop.showing()["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
+        after_ask = desktop.showing()
+        assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
+        assert len(after_ask["glance"].split("  ")) == len(facts), f"at {scale} {after_ask}"
         desktop.close_launcher()
 
 
