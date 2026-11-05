@@ -114,7 +114,8 @@
 //! answer, so Nix never waits on one that's away. Those in the file
 //! `--beside` gives may take any of this machine's work, so they join
 //! /run/nix-offload/machines, for every build, beside the one lent, and
-//! only while they answer.
+//! only while they answer. Both files are read again each time the
+//! builders are named, so a switch that changes them needs no reload.
 
 mod changed;
 mod decide;
@@ -372,10 +373,8 @@ fn main() -> ExitCode {
             eprintln!("nix-offload: stand needs --standing or --beside\n{USED}");
             return ExitCode::from(64);
         }
-        let read = |path: Option<String>| {
-            path.map_or_else(Vec::new, |path| read_standing(Path::new(&path)))
-        };
-        if stand(read(standing), read(beside)) {
+        let (standing, beside) = (standing.map(PathBuf::from), beside.map(PathBuf::from));
+        if stand(standing, beside) {
             return ExitCode::from(RESTARTS);
         }
         return ExitCode::SUCCESS;
@@ -1228,17 +1227,19 @@ fn read_standing(path: &Path) -> Vec<machines::Standing> {
 /// Name the standing builders, and those beside, that answer, lending
 /// none, until told to end, or at once once superseded, since it holds
 /// nothing. It says whether it ended superseded.
-fn stand(standing: Vec<machines::Standing>, beside: Vec<machines::Standing>) -> bool {
+fn stand(standing: Option<PathBuf>, beside: Option<PathBuf>) -> bool {
     hear_stops();
+    let read = |path: &Option<PathBuf>| path.as_deref().map_or_else(Vec::new, read_standing);
     let mut machines = Machines::new(
         MACHINES.into(),
         WITH_STANDING.into(),
         STORE.into(),
         LENDING.into(),
-        standing,
+        read(&standing),
     )
-    .beside(BESIDE.into(), beside)
-    .for_anything(ANYTHING.into());
+    .beside(BESIDE.into(), read(&beside))
+    .for_anything(ANYTHING.into())
+    .read_from(standing, beside);
     while !ENDING.load(Ordering::SeqCst) {
         if SUPERSEDED.load(Ordering::SeqCst) {
             return true;
@@ -1273,6 +1274,7 @@ fn machines_of(settings: &Settings) -> Machines {
             .map_or_else(Vec::new, read_standing),
     )
     .for_anything(dir.join("machines-for-anything"))
+    .read_from(settings.standing.clone(), settings.beside.clone())
 }
 
 /// Whether a lender whose unit changed ends now, as `decide::restarts`
