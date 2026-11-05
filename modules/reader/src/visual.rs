@@ -27,9 +27,13 @@ use crate::{
 const RULE_PX: f64 = 2.0;
 
 /// How far the rule's right edge stands from the words' edge, in points of
-/// the page: just past the box a numbered list hangs its numbers in, two of
-/// the text's em wide (27.4 pt at its 13.69), so a number never touches it.
-const RULE_FROM_WORDS_PT: f64 = 30.0;
+/// the page: the items rung past the page's outer column, which a list's
+/// numbers hang within and a spread table or code ends on, so nothing that
+/// hangs out of the words comes near it.
+fn rule_from_words_pt() -> f64 {
+    let space = crate::theme::get().space;
+    (space.outer + space.rung.items) * crate::theme::PT_A_PX
+}
 
 impl App {
     /// The view the cursor keeps to, its top and foot in points down the
@@ -379,7 +383,7 @@ impl App {
         }
         let words = f64::from(self.page_x()) + self.width.spread_pt * px;
         let width = (RULE_PX * self.scale).round().max(1.0);
-        let right = words - (RULE_FROM_WORDS_PT * px).min(words / 2.0);
+        let right = words - (rule_from_words_pt() * px).min(words / 2.0);
         if right < width {
             return;
         }
