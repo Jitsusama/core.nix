@@ -337,6 +337,9 @@ Provider {
             part("offset", server.lastSample !== null && server.lastSample !== undefined
                 ? Keeping.seconds(server.offset, true) : "", said.within
                     .replace("{error}", Keeping.seconds(server.error, false))),
+            // What chronyc's selectdata calls the Interval: the range expected
+            // to hold the clock's true offset at the last selection, named
+            // Error Bounds here since it bounds how wrong this source may be.
             part("interval", chosen && chosen.high > chosen.low ? said.interval
                 .replace("{low}", Keeping.seconds(chosen.low, true))
                 .replace("{high}", Keeping.seconds(chosen.high, true)) : "")
