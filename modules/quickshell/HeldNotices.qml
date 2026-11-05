@@ -21,6 +21,7 @@
 pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
+import "Changes.js" as Changes
 import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
@@ -45,7 +46,7 @@ Floating {
 
     // What u and Ctrl+R move between, and the cards it holds away from the
     // list, let go for good as the keys go back.
-    property var changes: NoticeList.changes()
+    property var changes: Changes.changes()
     readonly property var awayIds: NoticeList.away(changes.done)
     // The last change, for . to do again.
     property var lastChange: null
@@ -197,7 +198,7 @@ Floating {
 
     function letGo() {
         stack.dismiss(awayIds);
-        changes = NoticeList.changes();
+        changes = Changes.changes();
         reset();
     }
 
@@ -265,7 +266,7 @@ Floating {
         const from = Math.min(...ids.map(id => listed.indexOf(id)).filter(at => at >= 0));
         cursorId = left[Math.min(from, left.length - 1)] ?? null;
         cursorAt = Math.max(Math.min(from, left.length - 1), 0);
-        changes = NoticeList.changed(changes, { ids, kind });
+        changes = Changes.changed(changes, { ids, kind });
         const count = ids.length;
         said = `${count} ${kind === "done" ? "done" : "forgotten"} \u00b7 u brings `
             + `${plural(count, "it", "them")} back`;
@@ -305,7 +306,7 @@ Floating {
     }
 
     function undo(count) {
-        const undone = NoticeList.undo(changes, count);
+        const undone = Changes.undo(changes, count);
         if (undone.moved === null) {
             said = "Already at oldest change";
             return;
@@ -318,7 +319,7 @@ Floating {
     }
 
     function redo(count) {
-        const redone = NoticeList.redo(changes, count);
+        const redone = Changes.redo(changes, count);
         if (redone.moved === null) {
             said = "Already at newest change";
             return;
