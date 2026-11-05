@@ -336,6 +336,8 @@ enum Before {
     Failed,
     /// The check didn't exist before it.
     Absent,
+    /// The merge didn't change the check, so it can't have broken it.
+    Unchanged,
     Unsent,
 }
 
@@ -344,11 +346,21 @@ enum Before {
 /// without a run there, and a commit without the check as passing it, so
 /// a test failing since before the start, or a split that only moved a
 /// failing case under a new name, would otherwise be blamed on a good
-/// merge.
+/// merge. So would one that began failing for something outside the code,
+/// such as the date, at every commit after its last pass: the bisect then
+/// finds the merge just after that pass, which changed nothing it runs.
 fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result<Before, String> {
     let parent = world.parent(commit)?;
     if !world.has_check(&parent, check)? {
         return Ok(Before::Absent);
+    }
+    if !world
+        .changed(&parent, commit)?
+        .moved
+        .iter()
+        .any(|moved| moved == check)
+    {
+        return Ok(Before::Unchanged);
     }
     Ok(match attempt(world, state, &parent, check) {
         Outcome::Passed | Outcome::Flaky => Before::Passed,
@@ -558,14 +570,24 @@ fn broke(
                         "the first merge to have it, so it may only have moved a case already \
                          failing, as a split does",
                     ),
+                    Before::Unchanged => (
+                        "failed-unchanged",
+                        "a merge that didn't change it, so something outside the code broke \
+                         it, such as the date or the builders",
+                    ),
                     _ => (
                         "failed-before",
                         "and before it too, so no merge since broke it",
                     ),
                 };
+                // No merge is to blame for a test failing unchanged, so
+                // its finding names no owner.
+                let owner = (not_broken_here != Before::Unchanged)
+                    .then(|| pr_of(&world.subject(&commit)))
+                    .flatten();
                 state.find(&json!({
                     "kind": kind, "test": test, "commit": commit,
-                    "owner_pr": pr_of(&world.subject(&commit)), "log": log, "at": now(),
+                    "owner_pr": owner, "log": log, "at": now(),
                 }))?;
                 state.say(&format!(
                     "{test} fails at {}, {why}: nothing is reverted or held",
@@ -646,6 +668,8 @@ mod tests {
         exits: Mutex<HashMap<(String, String), Vec<i32>>>,
         built: Mutex<Vec<(String, String)>>,
         missing: Vec<(String, String)>,
+        /// Merges that change no check since the commit before them.
+        same: Vec<String>,
         quarantined: Vec<String>,
         reverted: Mutex<Vec<String>>,
         put_in_quarantine: Mutex<Vec<String>>,
@@ -686,7 +710,10 @@ mod tests {
                 .and_then(|at| at.checked_sub(1))
                 .map_or_else(|| "s".to_owned(), |before| self.merges[before].clone()))
         }
-        fn changed(&self, _: &str, _: &str) -> Result<Changed, String> {
+        fn changed(&self, _: &str, head: &str) -> Result<Changed, String> {
+            if self.same.iter().any(|same| same == head) {
+                return Ok(Changed::default());
+            }
             Ok(self.changed.clone())
         }
         fn has_check(&self, commit: &str, check: &str) -> Result<bool, String> {
@@ -1049,6 +1076,31 @@ mod tests {
         assert!(world.reverted.lock().unwrap().is_empty());
         assert!(state.hold().is_none());
         assert_eq!(findings(&state)[0]["kind"], "failed-before");
+    }
+
+    #[test]
+    fn a_test_failing_after_a_merge_that_left_it_alone_blames_none() {
+        let state = state("unchanged");
+        let world = Stand {
+            head: "m3".into(),
+            merges: names("m1 m2 m3"),
+            changed: changed("vm-a"),
+            same: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", "vm-a", &[1])
+        .exits("m2", "vm-a", &[1])
+        .exits("m3", "vm-a", &[1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m3".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(state.hold().is_none());
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "failed-unchanged");
+        assert_eq!(found[0]["commit"], "m1");
+        assert_eq!(found[0]["owner_pr"], Value::Null);
     }
 
     #[test]
