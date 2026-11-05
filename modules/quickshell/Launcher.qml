@@ -5681,11 +5681,14 @@ Scope {
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
                         keyWords: Words.field.keys ?? {}
-                        // After the gutter's room, so the / stands over the
-                        // rows' glyphs (VKCF3Z, 2026-11-05).
-                        x: Theme.inset + rowsGutter.width
+                        // At the card's inset, over the gutter's numbers, as
+                        // Vim's / and : lines start at column 0, left of its
+                        // number column: the line is the screen's, the
+                        // gutter the buffer's, and a long ask keeps its room
+                        // (VKCF3Z, 2026-11-05).
+                        x: Theme.inset
                         y: Theme.inset
-                        width: parent.width - 2 * Theme.inset - rowsGutter.width
+                        width: parent.width - 2 * Theme.inset
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
@@ -5941,9 +5944,9 @@ Scope {
                     // : is open, made only then.
                     Loader {
                         id: commandLoader
-                        x: Theme.inset + rowsGutter.width
+                        x: Theme.inset
                         y: Theme.inset
-                        width: parent.width - 2 * Theme.inset - rowsGutter.width
+                        width: parent.width - 2 * Theme.inset
                         height: prompt.height
                         active: root.commanding !== null
                         onLoaded: item.take(root.commanding?.range ?? "")
@@ -5968,9 +5971,9 @@ Scope {
                     // column, and for what went wrong the failed mark in
                     // the alert.
                     Item {
-                        x: Theme.inset + rowsGutter.width
+                        x: Theme.inset
                         y: Theme.inset
-                        width: parent.width - 2 * Theme.inset - rowsGutter.width
+                        width: parent.width - 2 * Theme.inset
                         height: prompt.height
                         visible: root.commandSays
 
