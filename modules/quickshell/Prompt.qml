@@ -79,8 +79,24 @@ Item {
     property bool modal: false
     // The mode it's in: "insert" or "normal". It opens in insert (take()).
     property string mode: "insert"
-    // The keys of a sequence begun in normal, as cc's first c.
+    // The keys of a sequence begun in normal, as cc's first c, and a count
+    // typed before a move.
     property var standing: QueryKeys.rest()
+    // How long a sequence begun waits for its next key before it's let go,
+    // as his Neovim's timeoutlen (modules/keys/language.toml).
+    property int wait: 300
+    onStandingChanged: {
+        if (standing.typed.length > 0)
+            waiting.restart();
+        else
+            waiting.stop();
+    }
+
+    Timer {
+        id: waiting
+        interval: prompt.wait
+        onTriggered: prompt.standing = QueryKeys.waited(prompt.standing)
+    }
     // Whether the caret blinks: while the line is on screen and modal.
     property bool awake: true
     // The field's keys' words, by what each does (launcher/words.json),
@@ -248,9 +264,10 @@ Item {
     // a modal line, normal's arrows, l and h, and Backspace.
     signal forward
     signal backward
-    // A modal line's keys for the rows below it, by their act's name:
-    // next, previous, pageUp, pageDown, drawerUp and drawerDown.
-    signal stepped(string act)
+    // A modal line's keys for the rows below it, by their act's name, with
+    // the count typed before it, 0 for none: the moves QueryKeys.moved
+    // takes, and drawerUp and drawerDown.
+    signal stepped(string act, int count)
 
     function clear() {
         cleared = "";
@@ -329,6 +346,14 @@ Item {
         const key = named(event);
         woken();
         const read = QueryKeys.read(standing, key, mode);
+        // A key held in normal repeats only a move, as Vim's motions do:
+        // any other act, and a count or a sequence begun, is a press's
+        // once, so a key let go late by a busy shell, which repeats as if
+        // held (modules/keyboard/repeat.nix), never does it twice.
+        if (event.isAutoRepeat && mode === "normal" && !QueryKeys.repeats(read.act)) {
+            event.accepted = true;
+            return;
+        }
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
             cleared = "";
@@ -401,7 +426,7 @@ Item {
         case "":
             break;
         default:
-            prompt.stepped(read.act);
+            prompt.stepped(read.act, read.count);
         }
     }
 
@@ -671,9 +696,11 @@ Item {
             // the shell is busy, repeats as if held
             // (modules/keyboard/repeat.nix). No field here wants a
             // character held for many, so only keys that move or delete
-            // repeat.
+            // repeat. In a modal line's normal nothing types, and its table
+            // says which keys repeat: the moves (modalKey).
             if (event.isAutoRepeat && event.text !== "" && event.text >= " "
-                && event.text !== "\u007f" && (event.modifiers & Qt.ControlModifier) === 0) {
+                && event.text !== "\u007f" && (event.modifiers & Qt.ControlModifier) === 0
+                && !(prompt.modal && prompt.mode === "normal")) {
                 event.accepted = true;
                 return;
             }

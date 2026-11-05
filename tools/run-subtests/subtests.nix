@@ -11,7 +11,9 @@
 }:
 let
   run-subtests = pkgs.callPackage ./run-subtests.nix { };
-  test = checks.${check};
+  # A gallery is an attribute of its area's check, `vm-desktop-looks.gallery`, as run-subtests
+  # names it here too.
+  test = pkgs.lib.getAttrFromPath (pkgs.lib.splitString "." check) checks;
 in
 test.overrideTestDerivation (_: {
   buildCommand = ''

@@ -1666,7 +1666,9 @@ doesn't. A surface keeps a key of its own only where Vim has nothing for
 the act, as zoom, pause and full screen, or where a clash below is already
 settled. No such call goes to Joel: it's already made. His Neovim's values
 are kept too: a key that could begin a pair waits his timeoutlen, 300 ms;
-nothing shows while keys wait, since his showcmd is off; a block cursor in
+nothing shows while keys wait, since his showcmd is off, but for a count
+typed before a move, which a list shows in the mode word's place until
+the move, as showcmd would, so 12 isn't typed blind; a block cursor in
 normal mode and a bar in insert; the mode named in the accent, lowercase,
 only when it isn't normal; and what's copied flashes for 200 ms.
 
@@ -1738,15 +1740,21 @@ one table, `QueryKeys.js`.
   Backspace do nothing, since stepping in and out is normal's.
 - **Normal:** nothing types. → and l step into the selected row; ←, h and
   Backspace take away what's typed, then step out a level, and u brings
-  back what they took; ↓ ↑, Tab and Shift+Tab, Page Up and Page Down move
-  through the rows, and Return does the row or steps into it, as it does
-  from insert. i, a, I and A go into insert at the caret, after it, at the
-  line's start and at its end, and cc and S clear the line first. ]b and
-  [b go to the place beside this one, the next and the one before, as
-  Vim's next buffer does, where the place has neighbours: in the file
-  picker, the folders its holder lists, in the order in use, round from
-  the last to the first. Leaving insert puts the caret one left, as Vim
-  does.
+  back what they took. The rows are a buffer, moved through as Vim's
+  lines are: j k ↓ ↑ (and Tab and Shift+Tab, until the place used last
+  takes Tab), gg and G to the first and last, H M L to the top, middle
+  and bottom row wholly in view, Ctrl+D and Ctrl+U half the rows in view,
+  keeping the selection's place in view, and Ctrl+F and Ctrl+B, as Page
+  Down and Page Up, a screen. A count goes before any of them, 3j or 12G,
+  a lone 0 counting nothing; every move stops at the first and last rows,
+  and a held key repeats only a move. Return does the row or steps into
+  it, as it does from insert. i, a, I and A go into insert at the caret,
+  after it, at the line's start and at its end, and cc and S clear the
+  line first. ]b and [b go to the place beside this one, the next and the
+  one before, as Vim's next buffer does, where the place has neighbours:
+  in the file picker, the folders its holder lists, in the order in use,
+  round from the last to the first. Leaving insert puts the caret one
+  left, as Vim does.
 - **Where the keys go shows twice.** The caret is a bar a quarter of a
   letter wide in insert and a block on a letter in normal, the letter in
   the ground's colour, as his Neovim's guicursor draws them (`init.lua`).
@@ -1756,9 +1764,12 @@ one table, `QueryKeys.js`.
   names the mode in the accent, lowercase, only while it isn't normal
   ("insert"), after how things stand, as his status line puts it after
   what's already on its left (`status.lua`). Its room is kept in every
-  mode, so nothing else in the foot moves as the mode changes.
-- **The Escape ladder.** Each Escape takes one step back: it cancels a key
-  waiting for its second (cc's first c), or leaves insert for normal; at
+  mode, so nothing else in the foot moves as the mode changes, and a count
+  typed in normal stands in that room, in the strong ink of what's typed,
+  until its move.
+- **The Escape ladder.** Each Escape takes one step back: it cancels a
+  count or a key waiting for its second (cc's first c, gg's first g), or
+  leaves insert for normal; at
   rest in normal it steps out a level, and at the level the launcher
   opened on, home or a collection a chord opened it into, it closes it.
   Opening always puts the line in insert, and the mode stays as it is

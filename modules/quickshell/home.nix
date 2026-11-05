@@ -1667,6 +1667,9 @@ in
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
               // How the launcher's caret blinks, in milliseconds.
               readonly property var caret: ${object config.jitsusama.quickshell.caret}
+              // How long keys wait, in milliseconds, from the key language
+              // (modules/keys/language.toml), as Neovim reads it too.
+              readonly property var keyTiming: ${object config.jitsusama.keyLanguage.timing}
               // Whether a shut lid suspends the machine on the charger.
               readonly property bool lidSleepsOnPower: ${lib.boolToString lidSleepsOnPower}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
