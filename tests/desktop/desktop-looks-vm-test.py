@@ -491,8 +491,8 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
 ) -> None:
     """V j counts two in the mode word, and a window arriving waits as "1 new" in the foot.
 
-    The arrival is a window, a source the typed search already shows, since a search is
-    asked again only by a source whose rows it holds.
+    The arrival is a window opened aside, as another session's is, from a source the typed
+    search already shows, since a search is asked again only by a source whose rows it holds.
     """
     machine = desktop.machine
     desktop.notes_window()
@@ -507,7 +507,7 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         desktop.normal()
         machine.send_chars("ggVj")
         desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
-        arriving = desktop.opened(f"Notes for the shot at {named}")
+        arriving = desktop.opened_aside(f"Notes for the shot at {named}")
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
         )

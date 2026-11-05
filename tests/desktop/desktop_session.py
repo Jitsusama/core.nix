@@ -650,6 +650,20 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         )
         return self.window_titled(title)
 
+    def opened_aside(self, title: str) -> Json:
+        """Open a kitty with this title as another session's spawn does, and give its window.
+
+        Classed pi-spawned, niri opens it without taking the focus (modules/niri/config.kdl), so
+        it arrives among the launcher's windows rather than being the one Joel is in, which the
+        windows search leaves out.
+        """
+        self.as_account(f"niri msg action spawn -- kitty --class pi-spawned --title '{title}'")
+        self.machine.wait_until_succeeds(
+            self.in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
+            timeout=STARTING,
+        )
+        return self.window_titled(title)
+
     def close(self, window: Json) -> None:
         """Close a window niri listed."""
         self.as_account(f"niri msg action close-window --id {window['id']}")

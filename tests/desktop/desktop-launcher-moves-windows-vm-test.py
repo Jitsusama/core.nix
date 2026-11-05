@@ -635,7 +635,7 @@ def test_v_o_gv_ip_and_a_copy_waiting_behind_what_is_chosen(desktop: Desktop) ->
     # search its rows are in, so the arrival is one more window.
     machine.send_chars("V")
     desktop.launcher_until(lambda shown: shown["mode"] == "visual")
-    desktop.opened(ARRIVING)
+    desktop.opened_aside(ARRIVING)
     desktop.launcher_until(
         lambda shown: shown["waiting"] == 1 and len(shown["rows"]) == len(PARAGRAPH)
     )
