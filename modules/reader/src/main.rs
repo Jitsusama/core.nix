@@ -3396,10 +3396,15 @@ fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
 }
 
 impl App {
-    fn key(&mut self, event: &KeyEvent) {
+    /// Takes a key pressed, or repeated while `held`. Typing a search or a
+    /// command takes repeats as presses, as a held Backspace goes on; a
+    /// link's label and a page's keys take only those that move.
+    fn key(&mut self, event: &KeyEvent, held: bool) {
         if let Some(key) = key_of(event, self.ctrl) {
             if self.labelling.is_some() {
-                self.label_key(key);
+                if !held {
+                    self.label_key(key);
+                }
                 return;
             }
             // What a command said stays until the next key, as Neovim's.
@@ -3423,7 +3428,13 @@ impl App {
                 self.typed(said);
                 return;
             }
-            if let Some((act, count)) = self.keys.press(key, self.selection.is_some()) {
+            let selecting = self.selection.is_some();
+            let done = if held {
+                self.keys.held(key, selecting)
+            } else {
+                self.keys.press(key, selecting)
+            };
+            if let Some((act, count)) = done {
                 self.act(act, count);
             }
         }
@@ -3446,7 +3457,9 @@ impl SeatHandler for App {
     ) {
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             let repeat = Box::new(
-                |app: &mut App, _: &wl_keyboard::WlKeyboard, event: KeyEvent| app.key(&event),
+                |app: &mut App, _: &wl_keyboard::WlKeyboard, event: KeyEvent| {
+                    app.key(&event, true);
+                },
             );
             match self.seats.get_keyboard_with_repeat(
                 qh,
@@ -3520,7 +3533,7 @@ impl KeyboardHandler for App {
         _: u32,
         event: KeyEvent,
     ) {
-        self.key(&event);
+        self.key(&event, false);
     }
 
     fn repeat_key(
@@ -3531,7 +3544,7 @@ impl KeyboardHandler for App {
         _: u32,
         event: KeyEvent,
     ) {
-        self.key(&event);
+        self.key(&event, true);
     }
 
     fn release_key(

@@ -172,6 +172,26 @@ act 1 yy
 copied '"# Every Key Neovim Has\n"'
 act 1 gg
 
+# The keyboard's repeats move and do nothing else: y and a held y copy
+# once, from the press, and a held j goes on down. g g after them is how
+# the test knows the repeats are all in.
+flashes=$(how_many '^flash: [1-9]')
+downs=$(how_many '^key Down ')
+press y -P y -s 1500 -p y -P j -s 1500 -p j g g
+deadline=$((SECONDS + 20))
+until grep -a -E '^key ' said | tail -n 1 | grep -q '^key First'; do
+  ((SECONDS < deadline)) || fail "the reader never took g g after the held keys"
+  inotifywait -q -q -t 1 -e modify said || true
+done
+keys=$(how_many '^key ')
+copied '"# Every Key Neovim Has\n"'
+[ "$(how_many '^copied: ')" -eq "$copies" ] \
+  || fail "a held y copied $(($(how_many '^copied: ') - copies + 1)) times, not once"
+[ "$(how_many '^flash: [1-9]')" -eq $((flashes + 1)) ] \
+  || fail "a held y flashed $(($(how_many '^flash: [1-9]') - flashes)) times, not once"
+[ "$(how_many '^key Down ')" -gt $((downs + 2)) ] \
+  || fail "a held j moved $(($(how_many '^key Down ') - downs)) times, not on and on"
+
 # v starts on the first of the file's words in view, the title's, past
 # the eyebrow over it, and } goes on by paragraphs, to the line of words
 # after the title's. w goes on a word, iw takes it, and y copies it as the
