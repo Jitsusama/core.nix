@@ -420,6 +420,45 @@ QtObject {
         holds("and :set still lists its options after a space",
             Commands.narrowed(paired, "set w", argued).map(line => line.command), ["wifi"]);
 
+        // A bang its words give is the act's own, as :skip! goes back where
+        // :skip goes on; it's written in and only a bang typed runs it.
+        const said2 = {
+            "track:next": { command: "skip" },
+            "track:previous": { command: "skip", bang: true },
+            "notice:forget": { command: "forget" },
+            "notices:forget": { command: "forget", range: "%" },
+            "wifi:join": { command: "set", argument: "wifi={name}" },
+            "sound:port": { command: "set", argument: "port={port}" },
+            "player:other": { command: "pause", argument: "{player}" }
+        };
+        const filledMenu = (acts, thing) => Commands.listed({ acts, table: commands, said,
+            called: act => said2[act.key] ?? {}, row: 1, thing });
+        const tracks = filledMenu([{ key: "track:next", name: "Next" },
+            { key: "track:previous", name: "Previous" }]);
+        holds("an act's own bang is written on its line",
+            lines(tracks).slice(0, 2).map(line => line[0]), ["skip", "skip!"]);
+        holds("and runs only where a bang is typed",
+            [titled("skip", tracks), titled("skip!", tracks), titled("skip !", tracks)],
+            ["Next", "Previous", "E488: Trailing characters: !"]);
+        holds("choosing writes its bang in",
+            Commands.chosen(Commands.typing("ski"), 2, Commands.narrowed(tracks, "ski")).line,
+            "skip!");
+        holds("an act on every row waits for ranges",
+            lines(filledMenu([{ key: "notice:forget", name: "Forget It" },
+                { key: "notices:forget", name: "Forget Them All" }])).map(line => line[1])
+                .filter(title => title.startsWith("Forget")), ["Forget It"]);
+        const joining = filledMenu([{ key: "wifi:join", name: "Connect" }],
+            { name: "Home 5G" });
+        holds("what's in braces is filled from the row, a space escaped as Vim's",
+            [lines(joining)[0][0], titled("set wifi=Home\\ 5G", joining)],
+            ["se[t] wifi=Home\\ 5G", "Connect"]);
+        holds("the act's own fill comes first",
+            lines(filledMenu([{ key: "sound:port", name: "Speakers", fill: { port: "Line" } }],
+                { name: "Card", port: "Jack" }))[0][0], "se[t] port=Line");
+        holds("words it can't fill give way to its verb",
+            lines(filledMenu([{ key: "player:other", name: "Pause the Other", verb: "pause" }],
+                { name: "Playing" }))[0][0], "pause");
+
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",
             [SetWords.shown("quiet", true, options.quiet),
