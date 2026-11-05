@@ -1894,7 +1894,7 @@ impl App {
         if most <= 0.0 {
             return false;
         }
-        let row = prompt::KEY_ROW_PT * self.prompt_px_per_pt();
+        let row = page::pitch_pt() * self.prompt_px_per_pt();
         let screen = self.screen_px();
         let times = f64::from(count.unwrap_or(1));
         let by = match act {

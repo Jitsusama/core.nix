@@ -16,9 +16,6 @@ use crate::page;
 /// at 0.75 pt a logical pixel.
 pub const ROW_PT: f64 = 36.0;
 
-/// A row of the key list: the page's 25 px rhythm, as 18.75 pt.
-pub const KEY_ROW_PT: f64 = 18.75;
-
 /// What the prompt says: what is typed after its / or ?, and how many it
 /// finds.
 pub struct Ask {
@@ -543,15 +540,17 @@ fn strip(room: Room, pages: &mut impl Iterator<Item = Label>, px_per_pt: f64) ->
     })
 }
 
-/// The key list's Typst, as his which-key draws it: on the sunken ground,
-/// as notes, the keys in the text and what they do muted, each group
-/// under its name as a label, in two columns. Its gaps are Space's steps in points:
-/// xl round it, xxl between a key and its words and between the columns,
-/// l between groups and s under a group's name; its rows stand on the
-/// page's 25 px rhythm. The groups in a column share one edge for their
-/// words, measured from the widest keys in it. Each column is a stack of
-/// its own, the groups shared out so the two stand as near one height as
-/// they can.
+/// The key list's Typst, as the launcher's drawer lists keys: on the
+/// sunken ground, as notes, the keys in the text and what they do muted,
+/// each group under its name as a label, in two columns. Every line is
+/// the page's pitch, its baseline where a row's centres its capitals, so
+/// a group's name stands a pitch over its first key and each key a pitch
+/// under the last, a beat more between groups. Its spaces are rungs: the
+/// inset round it, groups between a key column and its words and between
+/// the columns, apart between a key's chords and tie between a chord's
+/// keys. The groups in a column share one edge for their words, measured
+/// from the widest keys in it. Each column is a stack of its own, the
+/// groups shared out so the two stand as near one height as they can.
 ///
 /// It is set for a window `width_pt` wide, Space's xl clear of each side:
 /// two columns where they fit, else one, every group in order down it,
@@ -567,44 +566,43 @@ fn key_list(width_pt: f64) -> String {
     for ((group, rows), &column) in listing.into_iter().zip(&columns) {
         let mut cells = Vec::new();
         for (ways, does) in rows {
-            widest[column].push(quoted(&ways.join(" \u{b7} ")));
-            let keys: Vec<String> = ways
-                .iter()
-                .map(|way| format!("text(fill: ink.text, {})", quoted(way)))
-                .collect();
-            cells.push(format!(
-                "[#({})]",
-                keys.join(" + text(fill: ink.muted, \" · \") + ")
-            ));
+            let chords: Vec<String> = ways.iter().map(|way| chord(way)).collect();
+            let name = format!("({},)", chords.join(", h(rung.apart), "));
+            widest[column].push(name.clone());
+            cells.push(format!("[#{name}.join()]"));
             cells.push(format!("[#{}]", quoted(does)));
         }
-        groups[column].push(format!(
-            "stack(spacing: 6pt, at(level.label, {}), grid(columns: (keys.at({column}), auto), rows: 18.75pt, align: horizon, column-gutter: 24pt, {}))",
-            quoted(group),
-            cells.join(", ")
-        ));
-        // Alone in a column that may be narrower than its words, a row
-        // grows for words that wrap, each line the rhythm's 18.75 pt with
-        // its capitals where a fixed row centres them.
-        alone.push(format!(
-            "stack(spacing: 6pt, at(level.label, {}), {{ set text(top-edge: (18.75pt + cap) / 2, bottom-edge: -(18.75pt - cap) / 2); set par(leading: 0pt); grid(columns: (calc.max(..keys), auto), column-gutter: 24pt, {}) }})",
-            quoted(group),
-            cells.join(", ")
-        ));
+        // A grid's rows take their lines' height, and every line is the
+        // pitch, so the rows need no height of their own; alone in a
+        // column that may be narrower than its words, a row's words wrap
+        // onto lines a pitch each.
+        let listed = |keys: &str| {
+            format!(
+                "stack(at(level.label, {}), grid(columns: ({keys}, auto), column-gutter: rung.groups, {}))",
+                quoted(group),
+                cells.join(", ")
+            )
+        };
+        groups[column].push(listed(&format!("keys.at({column})")));
+        alone.push(listed("calc.max(..keys)"));
     }
     let stacks: Vec<String> = groups
         .iter()
-        .map(|column| format!("stack(spacing: 12pt, {})", column.join(", ")))
+        .map(|column| format!("stack(spacing: beat, {})", column.join(", ")))
         .collect();
     format!(
-        r"{}#set page(width: auto, height: auto, margin: {SIDE_PT}pt, fill: ink.sunken)
+        r"{}#set page(width: auto, height: auto, margin: rung.inset, fill: ink.sunken)
 #set text(..level.note.text)
+#set par(leading: 0pt)
 #context {{
   let cap = measure([H]).height
-  let keys = (({}), ({})).map(column => calc.max(0pt, ..column.map(it => measure(text(it)).width)))
+  // Each line a pitch, its baseline where a row's of the page centres
+  // its capitals, whatever its level, so names and keys share the lines.
+  set text(top-edge: (pitch + cap) / 2, bottom-edge: -(pitch - cap) / 2)
+  let keys = (({}), ({})).map(column => calc.max(0pt, ..column.map(it => measure(it.join()).width)))
   let note = [A number first does it that many times: 5j goes five lines down.]
-  let two = stack(spacing: 12pt, grid(columns: 2, column-gutter: 24pt, {}), note)
-  let one = stack(spacing: 12pt, {}, note)
+  let two = stack(spacing: beat, grid(columns: 2, column-gutter: rung.groups, {}), note)
+  let one = stack(spacing: beat, {}, note)
   let room = {room}pt
   if measure(two).width <= room {{ two }} else {{ block(width: calc.min(measure(one).width, room), one) }}
 }}
@@ -614,13 +612,26 @@ fn key_list(width_pt: f64) -> String {
         widest[1].join(", ") + ",",
         stacks.join(", "),
         alone.join(", "),
-        room = (width_pt - 4.0 * SIDE_PT).max(KEYS_LEAST_PT),
+        room = (width_pt - 4.0 * inset_pt()).max(KEYS_LEAST_PT),
     )
 }
 
-/// Space's xl, round the key list's words and between it and the window's
-/// sides.
-const SIDE_PT: f64 = 18.0;
+/// One way to a key's action as the key list sets it, in Typst: each of
+/// its keys a run in the text, a chord's keys the tie rung apart, as the
+/// drawer sets a chord.
+fn chord(way: &str) -> String {
+    let keys: Vec<String> = way
+        .split(' ')
+        .map(|key| format!("text(fill: ink.text, {})", quoted(key)))
+        .collect();
+    format!("({},).join(h(rung.tie))", keys.join(", "))
+}
+
+/// The inset rung, in points: round the key list's words and between it
+/// and the window's sides.
+fn inset_pt() -> f64 {
+    crate::theme::get().space.rung.inset * crate::theme::PT_A_PX
+}
 
 /// The narrowest the key list's words are set, however narrow the window:
 /// its keys and a few words beside them.
@@ -744,8 +755,122 @@ mod tests {
         for window in [400.0, 640.0, 960.0, 1920.0] {
             let (width, _) = key_list_set(window);
             assert!(
-                width <= window - 2.0 * SIDE_PT,
+                width <= window - 2.0 * inset_pt(),
                 "the key list is {width:.0} pt wide in a window {window} pt wide"
+            );
+        }
+    }
+
+    #[test]
+    fn the_key_list_sets_its_lines_on_the_pitch_and_its_spaces_by_rung() {
+        let space = &crate::theme::get().space;
+        let pt = |px: f64| px * crate::theme::PT_A_PX;
+        let (pitch, beat) = (pt(space.pitch), pt(space.beat));
+        let rung = &space.rung;
+        let mut world = page::new_world();
+        world.set_main(&key_list(1920.0));
+        let document = typst::compile::<PagedDocument>(&world)
+            .output
+            .unwrap_or_else(|errors| {
+                panic!(
+                    "{:?}",
+                    errors
+                        .iter()
+                        .map(|e| e.message.to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        let page = &document.pages()[0].frame;
+        let (mut texts, mut rects) = (Vec::new(), Vec::new());
+        drawn(page, (0.0, 0.0), &mut texts, &mut rects);
+        let near = |a: f64, b: f64, by: f64| (a - b).abs() < by;
+        assert!(
+            !texts.iter().any(|t| t[2] < 0.1),
+            "every run has ink: {texts:?}"
+        );
+        let left = texts.iter().map(|t| t[0]).fold(f64::INFINITY, f64::min);
+        assert!(
+            near(left, pt(rung.inset), 1.0),
+            "its words start {left} pt in, not the inset rung's {}",
+            pt(rung.inset)
+        );
+        // Lines by baseline, every one on the beat from the first, since
+        // each column is a stack of its own whose groups stand a beat
+        // apart, so one column's lines may fall a beat off the other's.
+        fn lines_of<'a>(runs: impl Iterator<Item = &'a [f64; 4]>) -> Vec<f64> {
+            let mut lines: Vec<f64> = runs.map(|t| t[1]).collect();
+            lines.sort_by(f64::total_cmp);
+            lines.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+            lines
+        }
+        let baselines = lines_of(texts.iter());
+        for line in &baselines {
+            let beats = (line - baselines[0]) / beat;
+            assert!(
+                near(beats, beats.round(), 0.001),
+                "a line at {line} pt is off the beat from the first at {} pt",
+                baselines[0]
+            );
+        }
+        // Down the first column, its names and keys flush with the inset,
+        // each line a pitch from the one before, or a pitch and a beat
+        // where a group ends; the note under both columns may stand lower.
+        let first = lines_of(texts.iter().filter(|t| near(t[0], left, 0.01)));
+        for pair in first[..first.len() - 1].windows(2) {
+            let step = pair[1] - pair[0];
+            assert!(
+                near(step, pitch, 0.01) || near(step, pitch + beat, 0.01),
+                "lines at {} and {} pt stand {step} pt apart, not a pitch of {pitch} or a pitch and a beat",
+                pair[0],
+                pair[1]
+            );
+        }
+        // The first line's baseline stands where a row of the page a pitch
+        // tall centres a note's capitals, the last line's, from the inset.
+        let last = baselines[baselines.len() - 1];
+        let cap = texts
+            .iter()
+            .find(|t| near(t[1], last, 0.01))
+            .expect("a last line")[3];
+        assert!(
+            near(baselines[0], pt(rung.inset) + (pitch + cap) / 2.0, 0.01),
+            "its first baseline is {} pt down",
+            baselines[0]
+        );
+        // Along a line, one run from the next stands a chord's tie, a
+        // key's apart, or the groups rung from a key to its words and from
+        // one column to the next; no dot sets them apart.
+        assert!(
+            !texts.is_empty() && !key_list(1920.0).contains('\u{b7}'),
+            "chords stand apart by space, not a dot"
+        );
+        let mut gaps = Vec::new();
+        for &line in &baselines {
+            let mut runs: Vec<&[f64; 4]> =
+                texts.iter().filter(|t| near(t[1], line, 0.01)).collect();
+            runs.sort_by(|a, b| a[0].total_cmp(&b[0]));
+            // Runs that touch are one word's, set in two faces.
+            for pair in runs.windows(2) {
+                let gap = pair[1][0] - (pair[0][0] + pair[0][2]);
+                if gap > 0.5 {
+                    gaps.push(gap);
+                }
+            }
+        }
+        let groups = pt(rung.groups);
+        for gap in &gaps {
+            assert!(
+                [pt(rung.tie), pt(rung.apart)]
+                    .iter()
+                    .any(|r| near(*gap, *r, 0.05))
+                    || *gap >= groups - 0.05,
+                "two runs stand {gap} pt apart, no rung: {gaps:?}"
+            );
+        }
+        for rung_pt in [pt(rung.tie), pt(rung.apart), groups] {
+            assert!(
+                gaps.iter().any(|gap| near(*gap, rung_pt, 0.05)),
+                "no two runs stand {rung_pt} pt apart: {gaps:?}"
             );
         }
     }
