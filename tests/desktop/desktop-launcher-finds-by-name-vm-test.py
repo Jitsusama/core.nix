@@ -71,15 +71,15 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     typed = next(word for word in field if word["text"] == "batt")
     assert typed["x"] < complete["x"], field
     assert not any(word["text"].endswith(" clear") for word in field), field
-    bar = desktop.showing()["caretWidth"]
-    # Escape gives normal: the caret one left, a block on its letter, no
-    # word for the mode with the rest of the foot where it was, and the
+    assert desktop.showing()["caretShown"] is True, desktop.showing()
+    # Escape gives normal: the caret one left and not drawn, since the
+    # keys are on the rows, no word for the mode with the rest of the foot where it was, and the
     # left arrow's key in the field's place. It's read before the walk's
     # edits, since a wider aside they bring crowds the keys' words out
     # until the step ends; A goes back.
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
-    assert desktop.showing()["caretWidth"] > 3 * bar, (bar, desktop.showing()["caretWidth"])
+    assert desktop.showing()["caretShown"] is False, desktop.showing()
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     assert sorted(word["x"] for word in laid["foot"]) == rest, (rest, laid["foot"])
     assert field_key(laid["field"], "\u2190", "clear")["x"] == complete["x"], laid["field"]
