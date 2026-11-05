@@ -101,7 +101,7 @@ QtObject {
             ["another operator lets d go", ["Escape", "d", "y", "y"], ["normal"]],
             ["a g with anything but g after it lets d go", ["Escape", "d", "g", "j", "j"],
                 ["normal", "next"]],
-            ["a colon after d opens no ex line", ["Escape", "d", ":", "j"], ["normal", "next"]],
+            ["a colon after d opens no command line", ["Escape", "d", ":", "j"], ["normal", "next"]],
             ["Shift pressed for a capital keeps d waiting", ["Escape", "d", "", "G"],
                 ["normal", "ending last"]],
             ["in insert, d and y type", ["d", "d", "y", "y"], []]
