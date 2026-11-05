@@ -119,7 +119,7 @@ function listed(from) {
             title: String(act.name ?? ""), key: keyOf(act, at === 0), kind: "act", act,
             bang: banged || !undoable, banged, takes: false, undoable,
             guarded: table[command]?.guarded === true, ranged: table[command]?.range === true,
-            every: words.range === "%" });
+            every: words.range === "%", named: String(words.id ?? "") });
     });
     for (const own of from.surface ?? []) {
         add({ command: own.command, short: own.short ?? short(own.command),
@@ -357,14 +357,40 @@ function ranRanged(matching, read) {
     return running.error === undefined ? Object.assign(running, { range: read.range }) : running;
 }
 
-// The rows a line names, bound to things as : is pressed.
-function bound(_read, _at) {
-    return { rows: [] };
+// The rows a line Return read names (ran), as indexes from 0, given where
+// things stood as : was pressed, `at` = { names, cursor, marks }: the
+// cursor row with no range, a range's rows (Ex.resolve), and of those,
+// for :g, the rows whose names hold its pattern, or for :v the rest. A
+// pattern with no capital ignores case, as Vim's smartcase has it.
+// { rows } or { error } in Vim's words.
+const capital = /[A-Z]/;
+
+function bound(read, at) {
+    const range = read.range ?? null;
+    const rows = Ex.resolve(range, { cursor: at.cursor, count: at.names.length,
+        marks: at.marks });
+    if (rows.error !== undefined || !read.global) {
+        return rows;
+    }
+    const { pattern, invert } = read.global;
+    const cased = capital.test(pattern);
+    const wanted = cased ? pattern : pattern.toLowerCase();
+    const holds = row => {
+        const name = String(at.names[row] ?? "");
+        return (cased ? name : name.toLowerCase()).includes(wanted);
+    };
+    return { rows: rows.rows.filter(row => holds(row) !== invert) };
 }
 
-// The act a line names on a thing it's bound to.
-function actFor(_entry, _acts, _called) {
-    return undefined;
+// The act a line names among a thing's acts, so a line bound to several
+// runs each one's own: by its words' id (words.json) where the line's act
+// has words, else by its command and title; undefined where it has none.
+function actFor(entry, acts, called) {
+    if (entry.named) {
+        return acts.find(act => (called(act)?.id ?? "") === entry.named);
+    }
+    return acts.find(act => commandOf(act) === entry.command
+        && String(act.name ?? "") === entry.title);
 }
 
 // :g/pat/cmd and :v/pat/cmd, read as Ex.js reads them, then the command
