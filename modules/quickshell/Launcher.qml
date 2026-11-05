@@ -4797,7 +4797,9 @@ Scope {
                 range: root.commanding?.range ?? "",
                 things: root.commanding?.things.length ?? 0,
                 // What it's aimed at over a viewer, whose rows aren't drawn.
-                over: root.over ? root.commanding.things.map(thing => thing.name) : null
+                // After :q over a viewer the line is gone while the viewer
+                // stands a moment, so commanding may be null here.
+                over: root.over ? (root.commanding?.things ?? []).map(thing => thing.name) : null
             },
             // Where the card's top and foot sit on a screen this tall.
             card: {
