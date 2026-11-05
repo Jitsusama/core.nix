@@ -6518,7 +6518,9 @@
       "set": "Set an Option",
       "row": "Go to a Row",
       "on": "on {things}",
-      "asksPassword": "{network} asks its password: find it to join"
+      "asksPassword": "{network} asks its password: find it to join",
+      "run": "run",
+      "choose": "choose"
     },
     "asked": {
       "replace": "Replace {name}? (y/n)"

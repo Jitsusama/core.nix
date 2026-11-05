@@ -2408,6 +2408,30 @@ Scope {
         prompt.resume(to === "said" ? "normal" : to);
     }
 
+    // Whether a line of the menu is chosen, which takes the selection ground
+    // from the cursor row, raised beneath it, so the screen has one focal
+    // point (VKCF3Z, 2026-11-05); the row takes it back as the line closes.
+    readonly property bool commandChosen: (commandLoader.item?.chosenLine ?? null) !== null
+
+    // The command line's own keys, as the foot says them while it's open:
+    // Return and the command it runs, once one is typed or chosen, since
+    // Return on an empty line runs nothing, and Tab while nothing is chosen.
+    // Space ? isn't among them, since there Space types a space.
+    function commandKeys() {
+        const line = commandLoader.item;
+        if (!line)
+            return [];
+        const words = Words.field.command ?? {};
+        const keys = [];
+        if (line.text.trim() !== "") {
+            const read = Commands.ran(line.text, commanding?.menu ?? []);
+            keys.push(["\u21b5", read.entry?.command ?? words.run ?? ""]);
+        }
+        if (!commandChosen && line.shown.length > 0)
+            keys.push(["Tab", words.choose ?? ""]);
+        return keys;
+    }
+
     // What the drawer says while a line of the menu is chosen: what it
     // acts on, "on Home-5G".
     function commandPlate(line) {
@@ -5191,7 +5215,9 @@ Scope {
                                 y: list.originY + list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 radius: Theme.inner
-                                color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                                color: root.commandChosen
+                                    ? Qt.alpha(Theme.raised, Theme.floating.opacity)
+                                    : Qt.alpha(Theme.selection, Theme.floating.selection)
                             }
 
                             delegate: Item {
@@ -5338,7 +5364,9 @@ Scope {
                         // its own (y/n) saying how it's answered.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
-                            : prompt.asking !== "" ? [] : root.keysFor(choice)
+                            : prompt.asking !== "" ? []
+                            : root.commanding !== null ? root.commandKeys()
+                            : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []
