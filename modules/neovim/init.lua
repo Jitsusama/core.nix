@@ -240,9 +240,10 @@ vim.api.nvim_create_autocmd('VimResized', {
   end,
 })
 
--- Close certain filetypes with q
+-- Keep helper buffers out of the buffer list. q closes nothing, as Joel
+-- asked: :q closes them, as any window.
 vim.api.nvim_create_autocmd('FileType', {
-  group = augroup('close_with_q'),
+  group = augroup('unlisted_helpers'),
   pattern = {
     'help',
     'lspinfo',
@@ -256,7 +257,6 @@ vim.api.nvim_create_autocmd('FileType', {
   },
   callback = function(event)
     vim.bo[event.buf].buflisted = false
-    vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = event.buf, silent = true })
   end,
 })
 

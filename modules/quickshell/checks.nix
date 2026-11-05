@@ -2899,6 +2899,23 @@ onLinux {
       touch $out
     '';
 
+  # Vim's command line is read as Vim reads it, as tests/ex.qml holds Ex.js
+  # to: ranges, names by their short forms, a bang, :g and :v, the rows a
+  # range names, and Vim's own errors.
+  ex-reads-vims-command-lines =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "ex-reads-vims-command-lines" { } ''
+      cp ${../../tests/ex.qml} ex.qml
+      cp ${./Ex.js} Ex.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml ex.qml
+      touch $out
+    '';
+
   # The notices' stack keeps the order tests/stack.qml holds: a critical one
   # in front, the rest as they came, one unheard at the back, and turning and
   # bringing one forward as the keys and a click do.
@@ -2919,7 +2936,7 @@ onLinux {
   # The notices' stack takes vi's keys beside the arrows, from one table,
   # as tests/notice-keys.qml holds NoticeKeys.js to: sequences, counts, and
   # an Escape that cancels what's begun before it steps out; and Search.js,
-  # which their / shares with the launcher's, to what it finds and washes.
+  # which their / searches through, to what it finds and washes.
   the-notices-take-vi-keys =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2940,9 +2957,9 @@ onLinux {
   # ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
   # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
-  # to the keys Space ? lists; Search.js to where / ? n N land on the rows,
-  # and how soon; Operators.js to what d and y do to the rows they take;
-  # and Confirm.js to how the launcher asks once, as Vim's confirm() does.
+  # to the keys Space ? lists; Operators.js to what d and y do to the rows
+  # they take; and Confirm.js to how the launcher asks once, as Vim's
+  # confirm() does.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2952,7 +2969,6 @@ onLinux {
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Typing.js} Typing.js
-      cp ${./Search.js} Search.js
       cp ${./Operators.js} Operators.js
       cp ${./Confirm.js} Confirm.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

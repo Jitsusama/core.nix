@@ -141,6 +141,8 @@ PanelWindow {
         y: Theme.floating.reach
         width: root.length
 
+        // A meter's frame sets its glyph, its word and its time at Note, as
+        // Meter.qml does, the time's figures tabular so it never shifts.
         Item {
             width: parent.width
             height: Theme.space.xxxl - 2 * Theme.border
@@ -152,8 +154,8 @@ PanelWindow {
                 width: Theme.space.xl
                 text: root.face ? Theme.glyph[root.face.glyph] : ""
                 color: root.face ? Theme[root.face.hue] : Theme.muted
-                font.family: Theme.mono.family
-                font.pointSize: Theme.mono.body
+                font.family: Theme.level.note.family
+                font.pointSize: Theme.level.note.pointSize
             }
 
             Text {
@@ -162,8 +164,8 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.words
                 color: root.face && root.face.quiet ? Theme.muted : Theme.text
-                font.family: Theme.mono.family
-                font.pointSize: Theme.mono.body
+                font.family: Theme.level.note.family
+                font.pointSize: Theme.level.note.pointSize
             }
 
             // The newest bar at the right, each the loudest the microphone
@@ -212,8 +214,8 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.face ? root.face.time : ""
                 color: Theme.text
-                font.family: Theme.mono.family
-                font.pointSize: Theme.mono.body
+                font.family: Theme.level.note.family
+                font.pointSize: Theme.level.note.pointSize
                 font.features: { "tnum": 1 }
             }
         }

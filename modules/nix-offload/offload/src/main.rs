@@ -503,7 +503,10 @@ fn there(arguments: &[String]) -> ExitCode {
 /// The VM tests `vm` split between the VM builder and a second, those
 /// past the first's room going to the second while a lender runs in
 /// `vm_more_dir` to make one, counting what other runs still going have
-/// sent each. With no lender, all go to the first.
+/// sent each and wait to send it. With no lender, all go to the first.
+/// Those waiting count, since a run sent where others wait goes only
+/// after them: on 4 November ten runs waited 51 minutes on the first
+/// builder, with 2 of its 4 claimed, while the second sat idle.
 fn overflowed(
     vm: Option<there::Asked>,
     vm_dir: &Path,
@@ -516,12 +519,12 @@ fn overflowed(
     if !there::lends(vm_more_dir) {
         return (vm, None);
     }
-    let busy = [there::claimed(vm_dir), there::claimed(vm_more_dir)];
+    let busy = [vm_dir, vm_more_dir].map(|dir| there::claimed(dir) + there::waiting(dir));
     let (first, second) = there::overflow(part, busy, builds);
     if let Some(second) = &second {
         eprintln!(
-            "nix-offload: the VM builder has {} VM tests of runs here and runs {builds} at \
-             once, so {} go to a second VM builder",
+            "nix-offload: the VM builder has {} VM tests sent or waiting from runs here and \
+             runs {builds} at once, so {} go to a second VM builder",
             busy[0],
             there::count(second)
         );
@@ -550,9 +553,19 @@ fn at_once<'a>(
             .map(|(index, dir, part)| {
                 let scratch = scratch.join(index.to_string());
                 let vm = vm_dirs.contains(&dir);
+                // The other VM builder, while a lender runs to make it,
+                // which a VM part waiting for room goes to once it has some.
+                let other = vm_dirs
+                    .into_iter()
+                    .find(|other| *other != dir && there::lends(other))
+                    .map(PathBuf::as_path);
                 scope.spawn(move || {
                     let began = now();
-                    let _claim = vm.then(|| there::admitted(dir, there::count(part), room));
+                    let (dir, _claim) = if vm {
+                        there::admitted(dir, other, there::count(part), room)
+                    } else {
+                        (dir.as_path(), None)
+                    };
                     let ran = sent(part, dir, vm, fallbacks, &scratch);
                     (part, began, now(), ran)
                 })
@@ -1297,13 +1310,14 @@ fn serve(settings: &Settings) -> bool {
     }
     let mut lent = adopt(settings, &mut machines, into_day());
     let mut leaving: Vec<Leaving> = Vec::new();
-    let mut not_before = 0;
+    let mut hold = decide::Hold::default();
     let mut hand_over_after = 0;
     let mut said_on = None;
     let mut sleep = sleep::Sleep::default();
     let mut said_superseded = false;
     let mut restarts = false;
     while !ENDING.load(Ordering::SeqCst) {
+        let asked = there::wanted(dir);
         let tick = Tick {
             now: now(),
             into_day: into_day(),
@@ -1313,22 +1327,21 @@ fn serve(settings: &Settings) -> bool {
                     fs::read_to_string(&settings.queue)
                         .is_ok_and(|queue| queue::wants(&queue, now()))
                 },
-                there::wanted(dir),
+                asked,
             ),
+            asked,
             woke: sleep.woke(now()),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref(), &leaving);
         let mut reached = false;
         lent = match lent.take() {
-            None => {
-                decide::lend(settings.hours, tick, not_before, unreturned).and_then(|seconds| {
-                    let lent = lend(settings, &mut machines, tick.now, seconds);
-                    if lent.is_none() {
-                        not_before = after_failing(tick);
-                    }
-                    lent
-                })
-            }
+            None => decide::lend(settings.hours, tick, hold, unreturned).and_then(|seconds| {
+                let lent = lend(settings, &mut machines, tick.now, seconds);
+                if lent.is_none() {
+                    hold = after_failing(tick);
+                }
+                lent
+            }),
             Some(mut builder) => {
                 reached = in_use(Path::new("/proc"), &builder.host)
                     || outlives_on(settings, tick, &builder);
@@ -1340,8 +1353,7 @@ fn serve(settings: &Settings) -> bool {
                     Some(event) => {
                         let (used, ends) = (builder.used, builder.ends);
                         give_back(settings, &mut machines, builder, event);
-                        not_before =
-                            decide::next_after(event, tick.wants, used, ends, tick.woke, now());
+                        hold = decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
                     None => Some(handed_over(
@@ -1413,13 +1425,13 @@ fn handed_over(
     let (kept, outgoing) = hand_over(settings, machines, builder, tick.now, seconds);
     match outgoing {
         Some(outgoing) => leaving.push(outgoing),
-        None => *hand_over_after = after_failing(tick),
+        None => *hand_over_after = after_failing(tick).until,
     }
     kept
 }
 
 /// When to ask again for a builder that failed to stand.
-fn after_failing(tick: Tick) -> u64 {
+fn after_failing(tick: Tick) -> decide::Hold {
     decide::next_after(Event::Failed, tick.wants, 0, u64::MAX, false, now())
 }
 

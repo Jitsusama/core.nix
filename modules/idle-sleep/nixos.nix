@@ -24,9 +24,10 @@
 # The charger is read as logind reads it for the lid
 # (HandleLidSwitchExternalPower), by systemd-ac-power, and a reading that
 # fails counts as the charger, so a machine that can't tell never sleeps by
-# itself. udev restarts the follower whenever a power supply changes, and
-# systemd runs it again for a change that comes while it runs, so the newest
-# reading is always the last one acted on.
+# itself. udev restarts the follower whenever a power supply changes,
+# stopping a run still going, and each run reloads logind whenever logind's
+# own idle action isn't yet the one it read for, so the newest reading is
+# always the last one acted on.
 #
 # Holding logind's lock against idling on the charger would be simpler, but
 # swayidle drops every timeout while anything holds it, so the screens would
@@ -65,6 +66,12 @@ in
     # It reloads logind, which has to be running to hear it.
     after = [ "systemd-logind.service" ];
     wantedBy = [ "multi-user.target" ];
+    # A charger plugged in or out, or a USB-C supply settling, sends a burst
+    # of power_supply events, each a restart, past systemd's five starts in
+    # ten seconds. The unit was then refused, and the burst's last reading,
+    # the one that counts, never acted on. Each run is a reading and at most
+    # one reload, so it takes every one.
+    startLimitIntervalSec = 0;
     path = [ config.systemd.package ];
     serviceConfig = {
       Type = "oneshot";

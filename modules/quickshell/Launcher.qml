@@ -54,7 +54,6 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
-import "Search.js" as Search
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -1789,9 +1788,9 @@ Scope {
         if (!choice || choice.gone)
             return [];
         // One Return typed in insert leaves be says Return only where it
-        // steps in.
+        // steps in, and no arrow, since insert's arrows move the caret.
         if (guarded(choice))
-            return holdsMore(choice) ? [["\u21b5 \u2192", ""]] : [];
+            return holdsMore(choice) ? [["\u21b5", ""]] : [];
         // The arrows are said by their marks alone, which Joel knows: the
         // right arrow steps in and the left one steps back wherever they
         // work, so their words only took room from the marks beside them
@@ -1800,16 +1799,22 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice);
+        // An arrow is named only in a mode where it steps: in insert they
+        // move the caret, so naming them there named keys that did nothing
+        // of what was said (Joel, 2026-11-04). A secret's line has no
+        // modes and its arrows only move the caret, as inputsecret()'s.
+        const into = prompt.modal && QueryKeys.binds("into", "Right", prompt.mode);
+        const out = prompt.modal && QueryKeys.binds("out", "Left", prompt.mode);
         // One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
         const keys = choice.still ? []
-            : [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
+            : [stepping ? [into ? "\u21b5 \u2192" : "\u21b5", more] : ["\u21b5", verbOf(choice)]];
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
-        if (!stepping && holdsMore(choice))
+        if (into && !stepping && holdsMore(choice))
             keys.push(["\u2192", ""]);
-        if (typed === "" && held.length > 0)
+        if (out && typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
         // The drawer's keys, only while it holds more than fits, keeping
         // their word, since Shift and the arrows aren't the arrows alone.
@@ -1931,10 +1936,7 @@ Scope {
     // takes the room they need afresh (Prompt.qml's steady). Known by the
     // path, since a refresh makes the same steps again.
     readonly property string stepsTaken: held.map(step => steadyId(step.row)).join("/")
-    onStepsTakenChanged: {
-        prompt.forget();
-        searchGone();
-    }
+    onStepsTakenChanged: prompt.forget()
 
     // How many times the rows have been made, and how many rows drawn
     // afresh, for the check that a refresh redraws only what changed.
@@ -2277,7 +2279,7 @@ Scope {
     property bool listing: false
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
-        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "",
+        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "", keys: true,
             facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {}) };
     }
     onListingChanged: drawerSettled()
@@ -3114,130 +3116,6 @@ Scope {
         keyTimed(arrow, began, heard, pressed);
     }
 
-    // Normal's / and ?, typed on the query line, and n and N, as his Neovim
-    // searches a buffer (docs/design.md, Vi's Keys): each lands on a row
-    // whose words hold what's sought, from the selected row, going round
-    // past the last as wrapscan does, and nothing is filtered or moved.
-    // What's sought is literal, and found in either case unless it has a
-    // capital, as his ignorecase and smartcase have it (Search.js).
-    // The search last run, which n and N go on with, kept across openings
-    // as Neovim keeps it across buffers: "" until one is.
-    property var finding: ({ pattern: "", forward: true })
-    // What the rows' matches are washed for, as hlsearch marks them, ""
-    // for none: the search being typed, or else the last run, until the
-    // launcher steps to another place or closes.
-    property string washing: ""
-    // Where a search being typed began, and what was washed then: as
-    // incsearch does, each letter lands from there, and Escape puts both
-    // back.
-    property int searchFrom: 0
-    property string washedBefore: ""
-    // A search's word for the foot, [mark, word, colour], as Neovim says
-    // "Pattern not found" or where it went round, and the key it was said
-    // for (prompt.keysTaken), since it's said for that key alone.
-    property var searchSaid: null
-    property int searchSaidFor: -1
-    // The rows' words as a search reads them, made once for each list of
-    // rows rather than for each letter, and the list they were made for.
-    property var searchRows: null
-    property var searchRowsOf: null
-
-    // What a row shows, as a search reads it: its name, its count, its
-    // side and, at home, its kind, a line each so nothing is found across
-    // two of them. Lowered, its name is the one its ranking lowered
-    // already (Fuzzy.prepare), which is most of what lowering costs.
-    function searchedWords(row, lowered) {
-        const name = row.name ?? "";
-        const rest = [row.count ?? "", row.side ?? "", held.length === 0 ? kindOf(row) : ""]
-            .join("\n");
-        return lowered ? `${row.prepared?.folded ?? name.toLowerCase()}\n${rest.toLowerCase()}`
-            : `${name}\n${rest}`;
-    }
-
-    function searchable() {
-        if (searchRowsOf !== matches) {
-            searchRows = Search.searchable(matches.map(row => searchedWords(row, false)),
-                matches.map(row => searchedWords(row, true)));
-            searchRowsOf = matches;
-        }
-        return searchRows;
-    }
-
-    // Where a search lands: { at, wrapped }, or null where no row holds it.
-    function landing(pattern, forward, count, from) {
-        return Search.landing(Search.holding(searchable(), pattern), from, forward, count);
-    }
-
-    // Says a search's word for the key just taken.
-    function searchSays(mark, word) {
-        searchSaid = [mark, word, Theme.warning];
-        searchSaidFor = prompt.keysTaken;
-    }
-
-    // The search as the query line types it (Prompt.qml's searched).
-    function rowsSought(pattern, forward, count, how) {
-        searchNow();
-        const words = Words.field.search ?? {};
-        switch (how) {
-        case "begun":
-            searchFrom = current;
-            washedBefore = washing;
-            return;
-        case "typing": {
-            washing = pattern;
-            const landed = pattern === "" ? null : landing(pattern, forward, count, searchFrom);
-            arrowed(landed ? landed.at : searchFrom, forward ? "/" : "?");
-            return;
-        }
-        case "cancelled":
-            washing = washedBefore;
-            arrowed(searchFrom, "Escape");
-            return;
-        }
-        // Return with nothing typed runs the last search again, this way.
-        const sought = pattern !== "" ? pattern : finding.pattern;
-        if (sought === "") {
-            washing = washedBefore;
-            arrowed(searchFrom, "\u21b5");
-            searchSays(Theme.glyph.nothingFound, words.none ?? "");
-            return;
-        }
-        finding = { pattern: sought, forward };
-        searchOn(sought, forward, count, searchFrom, "\u21b5");
-    }
-
-    // n, or N the other way, from the selected row.
-    function searchAgain(act, count) {
-        if (finding.pattern === "") {
-            searchSays(Theme.glyph.nothingFound, (Words.field.search ?? {}).none ?? "");
-            return;
-        }
-        const forward = act === "searchNext" ? finding.forward : !finding.forward;
-        searchOn(finding.pattern, forward, count, current, QueryKeys.keyOf(act, "normal"));
-    }
-
-    // Lands a search, washing what it found, or leaves the selection where
-    // it was and says it found nothing, as Neovim does; a search that went
-    // round says so, by the key that took it there.
-    function searchOn(pattern, forward, count, from, key) {
-        const words = Words.field.search ?? {};
-        washing = pattern;
-        const landed = landing(pattern, forward, count, from);
-        arrowed(landed ? landed.at : from, key);
-        if (!landed)
-            searchSays(Theme.glyph.nothingFound, words.notFound ?? "");
-        else if (landed.wrapped)
-            searchSays(key, (forward ? words.fromTop : words.fromBottom) ?? "");
-    }
-
-    // A step to another place, or the launcher closing, ends what was
-    // washed and said; the search itself stays for n and N.
-    function searchGone() {
-        washing = "";
-        searchSaid = null;
-        asked = null;
-    }
-
     // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
     // says what each does to a row): d does each row's ending action, as
     // dd deletes a line, and y copies each, as yy yanks one. What d does
@@ -4015,16 +3893,6 @@ Scope {
             counted: prompt.standing.count,
             begun: prompt.standing.typed.join(""),
             ex: prompt.standing.ex ?? null,
-            // A search: the one being typed, as the line says it with its
-            // / or ?, or null; the last run, which n and N go on with;
-            // what the rows are washed for; and the foot's word for it.
-            search: {
-                typing: prompt.searching === null ? null
-                    : (prompt.searching.forward ? "/" : "?") + prompt.searching.pattern,
-                last: root.finding.pattern,
-                washing: root.washing,
-                said: foot.searchWord
-            },
             // Whether Space ? lists the keys in the drawer, and whether
             // there's a place used last for Tab to go back to.
             listing: root.listing,
@@ -4040,9 +3908,13 @@ Scope {
             // headline, and the first and last rows wholly in view.
             current: root.current,
             inView: list.inView(),
-            // How wide its caret is drawn: a block or a bar. How lit it is
-            // as it blinks isn't said, since this is said on every change.
+            // How wide its caret is drawn, and whether it's drawn: not in
+            // normal. How lit it is as it blinks isn't said, since this is
+            // said on every change.
             caretWidth: root.hundredths(prompt.caretWidth),
+            caretShown: prompt.caretShown,
+            // Whether the line has modes: not while it asks for a secret.
+            modal: prompt.modal,
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
             // What the field asks while nothing's typed.
@@ -4152,6 +4024,8 @@ Scope {
                     lines: (drawerCard.preview.lines ?? []).length
                 },
                 labelsWhole: drawerCard.labelsWhole(),
+                factsWrapped: drawerCard.factsWrapped(),
+                factsUnder: drawerCard.factsUnder(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
@@ -4266,7 +4140,6 @@ Scope {
             partingLater.stop();
             fading = false;
             parting = "";
-            searchGone();
             footCatchUp();
             footReset();
             footStage = 0;
@@ -4293,6 +4166,8 @@ Scope {
             prompt.take();
             Report.say(`stands ${standing.said}`);
         } else {
+            // An ask closing with it says no, as any other key would.
+            asked = null;
             screenHere = focusedScreen;
             trials.closed();
             spotsLater.restart();
@@ -4589,8 +4464,11 @@ Scope {
                     Prompt {
                         id: prompt
                         steady: true
-                        // Neovim's command line, opening in insert.
-                        modal: true
+                        // Neovim's command line, opening in insert, but for
+                        // a secret, which has no modes, as Vim's
+                        // inputsecret() has none (VKCF3Z's vi-paradigm
+                        // spec, Insert).
+                        modal: !prompt.secret
                         awake: root.open
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
@@ -4694,8 +4572,6 @@ Scope {
                             trials.pressed("backs");
                             root.back();
                         }
-                        onSearched: (pattern, forward, count, how) =>
-                            root.rowsSought(pattern, forward, count, how)
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
                         // The ask, while it stands, takes every key.
                         confirming: root.asked !== null
@@ -4738,10 +4614,6 @@ Scope {
                                 return;
                             case "previousFile":
                                 root.beside(-1);
-                                return;
-                            case "searchNext":
-                            case "searchPrevious":
-                                root.searchAgain(act, count);
                                 return;
                             }
                             const view = list.inView();
@@ -5187,24 +5059,16 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
-                        // A search's word, for the key that said it.
-                        readonly property string searchWord: root.searchSaid !== null
-                            && root.searchSaidFor === prompt.keysTaken ? root.searchSaid[1] : ""
                         // An operator's word, or d's ask while it stands.
                         readonly property var operatorWord: root.operatorSaid !== null
                             && root.operatorSaidFor === prompt.keysTaken ? root.operatorSaid
                             : root.asked !== null
                                 ? [root.askedBy, root.asked.question, Theme.warning] : null
                         // A parting word stands where Return was, its
-                        // mark in the success colour, and a search's word
-                        // there too, for its key, as a search typed says
-                        // what Return does to it.
+                        // mark in the success colour.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : searchWord !== "" ? [root.searchSaid]
-                            : prompt.searching !== null
-                                ? [["\u21b5", (Words.field.search ?? {}).find ?? ""]]
                             : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
@@ -5316,14 +5180,24 @@ Scope {
 
                             readonly property string counted: prompt.standing.ex !== undefined
                                 ? `:${prompt.standing.ex}` : prompt.standing.count
+                            // A line with no modes, as a secret's, names none.
                             readonly property string said: counted !== "" ? counted
+                                : !prompt.modal ? ""
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
-                            // held whichever shows.
+                            // held whichever shows. A binding doesn't see
+                            // what a call reads, so it reads the face itself,
+                            // to be measured again in the theme's face once
+                            // that arrives: measured in the face before it,
+                            // insert showed as its last letters at scale 2.
                             readonly property real room: {
+                                void measure.font;
                                 const words = Object.values(Words.field.modes ?? {});
-                                return words.length === 0 ? 0 : keys.spacing
-                                    + Math.max(...words.map(word => measure.advanceWidth(word)));
+                                let widest = 0;
+                                for (const word of words)
+                                    widest = Math.max(widest, measure.advanceWidth(word));
+                                return words.length === 0 ? 0
+                                    : keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
                             width: Math.max(0, room - keys.spacing)
@@ -5331,7 +5205,9 @@ Scope {
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
-                            elide: Text.ElideLeft
+                            // A mode's word is never cut; a count or an ex
+                            // line longer than the room keeps its last letters.
+                            elide: counted !== "" ? Text.ElideLeft : Text.ElideNone
                             color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
                         }

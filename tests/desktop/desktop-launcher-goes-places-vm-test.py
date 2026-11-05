@@ -245,9 +245,9 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     # 2026-10-26: where Return goes somewhere in the launcher, the right
     # arrow does the same).
     find_rotation()
+    desktop.normal()
     told = desktop.showing()["selected"]["told"]
     assert "\u21b5 \u2192 go" in told, told
-    desktop.normal()
     machine.send_key("right")
     desktop.launcher_until(at_rotation)
     desktop.close_launcher()

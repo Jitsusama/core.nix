@@ -44,6 +44,9 @@ MOST = 520
 # and the half a hundredth each of two lengths the launcher reports rounded may take.
 PITCH = 24
 NEAR = 0.02
+# How far apart a Title's lines sit when its name wraps (Theme.space.xxl), tighter than two of
+# the pitch, so the name reads as one heading.
+TITLE_LEADING = 32
 # How far the text keeps from the plate's frame on every side, its foot included: an inset and a
 # step, 4 and 16, inside the border.
 INSIDE = 20
@@ -74,6 +77,20 @@ def at_scale(desktop: Desktop, scale: str) -> None:
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account(f"niri msg output winit scale {scale}")
+
+
+def after_the_title(line: float, lines: Json) -> bool:
+    """Say whether a line is the first of the pitch one empty line below the title's block.
+
+    The title's lines sit its leading apart, and its block ends on the next whole line of the
+    pitch after its last, so what follows it stays on the plate's lines.
+    """
+    title, last = float(lines["title"]), float(lines["titleLast"])
+    later = round((last - title) / TITLE_LEADING)
+    if later < 0 or abs(last - title - later * TITLE_LEADING) > NEAR:
+        return False
+    block = -(-(PITCH + later * TITLE_LEADING) // PITCH) * PITCH
+    return abs(line - (title + block + PITCH)) <= NEAR
 
 
 def on_the_pitch(line: float, from_line: float) -> bool:
@@ -139,6 +156,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} home's rows say nothing: {card}"
         )
         desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
+        # No key is named in a mode where it does nothing: in insert the arrows move the caret,
+        # so home's first row, a place, says Return alone, and in normal its arrow as well.
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
+        assert not arrowed, f"at {scale} insert's foot names an arrow: {arrowed}"
+        desktop.normal()
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
+        desktop.insert()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
         card = desktop.showing()["drawer"]["cardLines"]
@@ -146,7 +172,13 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing: {card}"
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
-        # In normal the caret is a block on the last letter and the foot names no mode, the
+        # The mode's word is the one word saying where his keys go, so it never gives up a
+        # letter; the facts before it give way first.
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        mode = [word for word in foot if word["text"] == "insert"]
+        assert mode, f"at {scale} the foot names no mode in insert: {foot}"
+        assert not mode[0]["cut"], f"at {scale} insert's word is cut: {mode[0]}"
+        # In normal the field draws no caret and the foot names no mode, the
         # row's words where insert left them.
         desktop.normal()
         card = desktop.showing()["drawer"]["cardLines"]
@@ -177,6 +209,12 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["labelsWhole"], f"at {scale} a key's name is broken: {drawer}"
+    # Each key and what it does are at Note, as the reader's list sets them, so at 1.5 each
+    # fits on one line. At 2 the plate leaves about 17 letters beside the widest key, so a
+    # longer saying may take a second line, but it always stands beside its key.
+    assert drawer["factsUnder"] == 0, f"at {scale} {drawer['factsUnder']} under their keys"
+    if scale == "1.5":
+        assert drawer["factsWrapped"] == 0, f"at 1.5 {drawer['factsWrapped']} keys wrap: {drawer}"
     assert drawer["more"] or drawer["lines"]["facts"][-1] < drawer["foot"], drawer
     desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
     desktop.machine.send_key("esc")
@@ -283,8 +321,8 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         assert abs(lines["eyebrowMiddle"] - card["field"]) <= NEAR, (
             f"at {scale} the eyebrow is off the field's centre: {drawer}"
         )
-        # One empty line below the title's last line.
-        assert abs(lines["words"] - (lines["titleLast"] + 2 * PITCH)) <= NEAR, drawer
+        # One empty line below the title's block.
+        assert after_the_title(lines["words"], lines), drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
@@ -333,10 +371,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
                 )
             )
             drawer = plate_shown(desktop, scale)
-            # The title, at Title, may take two lines of the plate's width, each two of the
-            # pitch; the facts start one empty line below its last.
-            title, facts = drawer["lines"]["titleLast"], drawer["lines"]["facts"]
-            assert abs(facts[0] - (title + 2 * PITCH)) <= NEAR, drawer
+            # The title, at Title, may take two lines of the plate's width, its leading apart;
+            # the facts start one empty line below its block, on the pitch.
+            facts = drawer["lines"]["facts"]
+            assert after_the_title(facts[0], drawer["lines"]), drawer
             assert all(
                 later > earlier and on_the_pitch(later, earlier)
                 for earlier, later in pairwise(facts)

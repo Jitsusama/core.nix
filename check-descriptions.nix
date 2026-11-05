@@ -413,6 +413,11 @@
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count
   '';
+  ex-reads-vims-command-lines = ''
+    a : line is read as Vim reads it: its range, a command by its full name or fixed short form, a
+    bang and what follows, :g and :v, the rows a range names, and Vim's own errors for what it can't
+    take
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';
@@ -1749,11 +1754,10 @@
     S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c or a
     count begun before it steps back, normal's moves through the rows as Vim's, with counts:
     j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and Space w closing, an ex line whose
-    :q closes and :12 goes to the 12th row, Tab to the place used last, Space ? and F1 listing
-    every key, and / ? n N, a search typed on the line and landed on rows within half a key's
-    4 ms for 400 of them; and Vim's d and y over the rows, dd 3dd d3j dgg dG yy y{motion}, each
-    row's ending action and copy, the ask once before what can't be put back, and yG or dG over
-    400 rows within half a key's 4 ms
+    :q closes and :12 goes to the 12th row, Tab to the place used last, and Space ? and F1
+    listing every key, while / ? n N search nothing on the rows; and Vim's d and y over the
+    rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending action and copy, the (y/n) ask
+    once before what can't be put back, and yG or dG over 400 rows within half a key's 4 ms
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
@@ -2319,8 +2323,8 @@
     at its prompt open the disk, lets the lock go for that one prompt, and boots anew after
   '';
   vm-idle-sleep-comes-only-on-battery = ''
-    a machine left idle on the charger stays awake, and sleeps once the charger is unplugged; on
-    battery a session still in use keeps it awake, and an idle one stays awake while a program
+    a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even
+    as the last of a burst of twenty power supply events; on battery a session still in use keeps it awake, and an idle one stays awake while a program
     holds logind's lock against idling and sleeps once it lets go
   '';
   vm-ir-camera-opens-for-readers = ''

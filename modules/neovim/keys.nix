@@ -1779,8 +1779,9 @@ in
 # The plugins' own windows, which bind their keys themselves: each key names
 # the plugin's action, and its file hands the plugin these and no others.
 # They share words with the pickers: Return opens, Ctrl+S below, Ctrl+V
-# beside, Ctrl+T in a tab, q closes, ? shows the window's keys, Ctrl+L reads
-# it again, and a float closes on Escape too. Neovim's own z keys fold.
+# beside, Ctrl+T in a tab, ? shows the window's keys, Ctrl+L reads it again,
+# a float closes on Escape, and :q closes any of them; q closes nothing, as
+# Joel asked. Neovim's own z keys fold.
 ++ inWindow "outline" [
   {
     chord = "?";
@@ -1836,11 +1837,6 @@ in
     chord = "] ]";
     does = "Go to the next symbol, a level up";
     plugin = "actions.next_up";
-  }
-  {
-    chord = "q";
-    does = "Close the outline";
-    plugin = "actions.close";
   }
   {
     chord = "l";
@@ -1917,11 +1913,6 @@ in
     plugin = "actions.right";
   }
   {
-    chord = "q";
-    does = "Stop walking the outline";
-    plugin = "actions.close";
-  }
-  {
     chord = "Escape";
     does = "Stop walking the outline";
     plugin = "actions.close";
@@ -1977,11 +1968,6 @@ in
     chord = "Ctrl+P";
     does = "Show the file beside, staying here";
     plugin = "actions.preview";
-  }
-  {
-    chord = "q";
-    does = "Close the file browser";
-    plugin = "actions.close";
   }
   {
     chord = "Ctrl+L";
@@ -2065,11 +2051,6 @@ in
     chord = "Escape";
     does = "Put back what the preview replaced";
     plugin = "cancel";
-  }
-  {
-    chord = "q";
-    does = "Close the problems list";
-    plugin = "close";
   }
   {
     chord = "Ctrl+L";

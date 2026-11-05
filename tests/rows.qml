@@ -303,16 +303,21 @@ ShellRoot {
                     && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
             expect("typed in insert, the launcher's field says Ctrl+Y completes",
                 texts.length > 0 && texts[texts.length - 1].text.includes("Ctrl+Y"), said(texts));
-            // The caret says the mode, as his Neovim's guicursor draws it:
-            // a bar a quarter of a letter wide in insert, and a block a
-            // letter wide in normal, resting on the last letter typed.
+            // Insert's caret is a bar a quarter of a letter wide, as his
+            // Neovim's guicursor draws it. In normal the keys are on the
+            // rows, so the field draws no caret at all: a block there sat
+            // on the hint's first letter, in the hint's face (Joel,
+            // 2026-11-04: "a text box cursor on a non fixed-width font in
+            // command mode").
             const letter = typing.letterWidth;
             expect("insert's caret is a bar a quarter of a letter wide",
                 typing.caretWidth === Math.max(1, Math.round(letter / 4)),
                 `${typing.caretWidth} for a letter ${letter} wide`);
+            expect("insert draws its caret", typing.caretShown === true,
+                `caretShown ${typing.caretShown}`);
             typing.mode = "normal";
-            expect("normal's caret is a block a letter wide", typing.caretWidth === letter,
-                `${typing.caretWidth} for a letter ${letter} wide`);
+            expect("normal draws no caret in the field", typing.caretShown === false,
+                `caretShown ${typing.caretShown}`);
             expect("normal's caret rests on the last letter", typing.caret === 1,
                 `at ${typing.caret} of "${typing.text}"`);
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);

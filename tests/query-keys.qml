@@ -2,13 +2,12 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Typing.js, ListedKeys.js,
-// Search.js, Operators.js and Confirm.js beside this file and runs
+// Operators.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "ListedKeys.js" as Listed
 import "QueryKeys.js" as Keys
 import "Typing.js" as Typing
-import "Search.js" as Search
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 
@@ -54,174 +53,6 @@ QtObject {
             }
         }
         return { acts, counted, ours, mode, standing };
-    }
-
-    // A search typed on the line: what the keys typed after the line's
-    // opening leave it as, { pattern, at, ends }, each key's letters being
-    // the key itself where it's one character, or a space for Space.
-    function searchTyped(keys) {
-        let standing = Keys.rest();
-        let mode = "insert";
-        let line = { pattern: "", at: 0, ends: "" };
-        for (const key of keys) {
-            const read = Keys.read(standing, key, mode);
-            standing = read.standing;
-            if (mode === "search")
-                line = Typing.typedInSearch(line, read.act,
-                    key === "Space" ? " " : key.length === 1 ? key : "");
-            mode = Keys.modeAfter(read.act, mode);
-        }
-        return line;
-    }
-
-    // / ? n N, the search's line, and where Search.js lands a search.
-    function searching(holds) {
-        // [what, the keys typed from the opening, the acts done]
-        const doing = [
-            ["/ and ? begin a search, and Return runs it",
-                ["Escape", "/", "f", "Return", "?", "Return"],
-                ["normal", "searchForward", "find", "searchBack", "find"]],
-            ["Escape cancels a search, and only it, then steps back",
-                ["Escape", "/", "Escape", "Escape"], ["normal", "searchForward", "cancel", "back"]],
-            ["Ctrl+C cancels a search too", ["Escape", "?", "Ctrl+c"],
-                ["normal", "searchBack", "cancel"]],
-            ["a search's keys edit it as insert's edit the line",
-                ["Escape", "/", "Left", "Right", "Home", "End", "Backspace", "Ctrl+w", "Ctrl+u"],
-                ["normal", "searchForward", "caretLeft", "caretRight", "caretStart", "caretEnd",
-                    "deleteBack", "deleteWord", "deleteToStart"]],
-            ["n and N go on to the next match, either way", ["Escape", "n", "N"],
-                ["normal", "searchNext", "searchPrevious"]],
-            ["a letter typed in a search is the search's, never a key's",
-                ["Escape", "/", "n", "j", "g", "g", "i", "q", "3"], ["normal", "searchForward"]],
-            ["the rows' and drawer's keys do nothing in a search",
-                ["Escape", "/", "PageDown", "Shift+Down", "Down", "Tab"],
-                ["normal", "searchForward"]],
-            ["/ and ? in insert type", ["/", "?", "n"], []]
-        ];
-        for (const [what, keys, want] of doing)
-            holds(what, typed(keys).acts, want);
-        holds("a count goes before n and N", typed(["Escape", "3", "n", "2", "N"]).counted,
-            ["normal", "3 searchNext", "2 searchPrevious"]);
-        holds("and before / and ?", typed(["Escape", "2", "/", "Return", "4", "?"]).counted,
-            ["normal", "2 searchForward", "find", "4 searchBack"]);
-        holds("/ leaves the line taking a search", typed(["Escape", "/"]).mode, "search");
-        holds("Return leaves it in normal", typed(["Escape", "/", "Return"]).mode, "normal");
-        holds("and Escape", typed(["Escape", "?", "Escape"]).mode, "normal");
-        holds("a letter in a search is the line's, not the field's",
-            typed(["Escape", "/", "x"]).ours, true);
-        holds("a key with no name in a search, as Space, is left to the line",
-            typed(["Escape", "/", ""]).ours, false);
-        for (const act of ["searchNext", "searchPrevious"])
-            holds(`${act} repeats while held`, Keys.repeats(act), true);
-        for (const act of ["searchForward", "searchBack", "find", "cancel"])
-            holds(`${act} is once a press`, Keys.repeats(act), false);
-
-        // [what, the keys typed from the opening, the line they leave]
-        const lines = [
-            ["letters and Space type", ["Escape", "/", "f", "Space", "X"],
-                { pattern: "f X", at: 3, ends: "" }],
-            ["a letter goes in at the caret", ["Escape", "/", "a", "c", "Left", "b"],
-                { pattern: "abc", at: 2, ends: "" }],
-            ["Backspace takes the letter before the caret",
-                ["Escape", "/", "a", "b", "c", "Left", "Backspace"],
-                { pattern: "ac", at: 1, ends: "" }],
-            ["Backspace at the start takes nothing", ["Escape", "/", "a", "Home", "Backspace"],
-                { pattern: "a", at: 0, ends: "" }],
-            ["Backspace with nothing left cancels", ["Escape", "/", "a", "Backspace", "Backspace"],
-                { pattern: "", at: 0, ends: "cancelled" }],
-            ["Ctrl+W takes the word before the caret",
-                ["Escape", "/", "f", "o", "Space", "b", "a", "Ctrl+w"],
-                { pattern: "fo ", at: 3, ends: "" }],
-            ["Ctrl+U takes all before the caret", ["Escape", "/", "a", "b", "Left", "Ctrl+u"],
-                { pattern: "b", at: 0, ends: "" }],
-            ["End goes to the end", ["Escape", "/", "a", "b", "Home", "Right", "End"],
-                { pattern: "ab", at: 2, ends: "" }],
-            ["Return finds", ["Escape", "/", "a", "Return"], { pattern: "a", at: 1, ends: "found" }],
-            ["Escape cancels", ["Escape", "/", "a", "Escape"],
-                { pattern: "a", at: 1, ends: "cancelled" }]
-        ];
-        for (const [what, keys, want] of lines)
-            holds(`in a search, ${what}`, searchTyped(keys), want);
-        holds("a control character types nothing",
-            Typing.typedInSearch({ pattern: "a", at: 1 }, "", "\u0001"),
-            { pattern: "a", at: 1, ends: "" });
-
-        // Rows by their words, as the launcher says them to Search.js.
-        const rows = Search.searchable(["Firefox web browser", "Files", "Kitty terminal",
-            "Fire alarm", "Spotify music", "firewall"]);
-        holds("lowercase finds rows either case", Search.holding(rows, "fire"), [0, 3, 5]);
-        holds("a capital finds only itself", Search.holding(rows, "Fire"), [0, 3]);
-        holds("words past the name are found", Search.holding(rows, "music"), [4]);
-        holds("a space is a letter like any", Search.holding(rows, "y t"), [2]);
-        holds("what's typed is no pattern", Search.holding(Search.searchable(["a.b", "axb"]), "a.b"),
-            [0]);
-        holds("nothing sought finds no rows", Search.holding(rows, ""), []);
-
-        // The rows holding a match, by their places: [what, from, forward,
-        // count, where it lands].
-        const holding = [2, 5, 8];
-        const landings = [
-            ["/ goes to the next row holding it", 2, true, 0, { at: 5, wrapped: false }],
-            ["from a row between, the next", 3, true, 0, { at: 5, wrapped: false }],
-            ["from the last, round to the first", 8, true, 0, { at: 2, wrapped: true }],
-            ["past the last, round to the first", 9, true, 0, { at: 2, wrapped: true }],
-            ["? goes to the one before", 5, false, 0, { at: 2, wrapped: false }],
-            ["from the first, round to the last", 2, false, 0, { at: 8, wrapped: true }],
-            ["3n goes on three", 2, true, 3, { at: 2, wrapped: true }],
-            ["2n without going round", 0, true, 2, { at: 5, wrapped: false }],
-            ["2N round", 5, false, 2, { at: 8, wrapped: true }],
-            ["a count past every match goes round again", 2, true, 7, { at: 5, wrapped: true }],
-            ["from an answer's headline, the first", -1, true, 0, { at: 2, wrapped: false }]
-        ];
-        for (const [what, from, forward, count, want] of landings)
-            holds(what, Search.landing(holding, from, forward, count), want);
-        holds("the one row holding it is found from itself, round",
-            Search.landing([4], 4, true, 0), { at: 4, wrapped: true });
-        holds("no row holding it lands nowhere", Search.landing([], 0, true, 0), null);
-
-        // A place of 400 rows, each a window's long title and what it says
-        // beside it, made searchable once as a search begins, its names
-        // already lowered as the launcher's are for ranking, and searched
-        // as each letter is typed, each in a small part of a key's 4 ms
-        // (docs/design.md): it says how long each took.
-        const names = [];
-        const sides = [];
-        for (let at = 0; at < 400; at++) {
-            names.push(`Pull request #${at} \u00b7 Jitsusama/core.nix \u2014 Firefox`);
-            sides.push(`firefox \u00b7 ${at % 9} \u00b7 window`);
-        }
-        const folded = names.map(name => name.toLowerCase());
-        // Each is timed as the fastest of twenty batches of fifty, since a
-        // check shares its machine: a slower batch is the machine's other
-        // work or the collector, not the search's own cost. Fifty a batch
-        // keeps Date.now's whole milliseconds a fiftieth of one each.
-        const batches = 20;
-        const tries = 50;
-        const timed = work => {
-            let fastest = Infinity;
-            for (let batch = 0; batch < batches; batch++) {
-                const began = Date.now();
-                for (let at = 0; at < tries; at++)
-                    work();
-                fastest = Math.min(fastest, (Date.now() - began) / tries);
-            }
-            return fastest;
-        };
-        const make = () => Search.searchable(names.map((name, at) => `${name}\n${sides[at]}`),
-            folded.map((name, at) => `${name}\n${sides[at].toLowerCase()}`));
-        const making = timed(make);
-        const made = make();
-        const finding = timed(() => {
-            Search.holding(made, "term");
-            Search.holding(made, "Program");
-        }) / 2;
-        console.log(`400 rows made searchable in ${making.toFixed(3)} ms,`
-            + ` searched in ${finding.toFixed(3)} ms`);
-        // A search's first letter pays for both, so both together keep to
-        // half the key's budget, leaving the other half for drawing.
-        holds("400 rows made searchable and searched in half a key's 4 ms",
-            making + finding < 2, true);
-        holds("and each later letter in a quarter of a millisecond", finding < 0.25, true);
     }
 
     // d and y, Vim's operators, over the rows as lines: the keys that make
@@ -425,9 +256,9 @@ QtObject {
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
-        // timed as the fastest of twenty batches of fifty, as the search's
-        // are, in half a key's 4 ms: about 0.4 ms alone, and past 1 ms
-        // while VM tests shared the machine (2026-11-04).
+        // timed as the fastest of twenty batches of fifty, since a check
+        // shares its machine, in half a key's 4 ms: about 0.4 ms alone, and
+        // past 1 ms while VM tests shared the machine (2026-11-04).
         const windows = [];
         for (let at = 0; at < 400; at++) {
             const named = `Pull request #${at} \u00b7 Jitsusama/core.nix`;
@@ -594,16 +425,18 @@ QtObject {
         holds("and Return reads past it",
             typed(["Escape", ":", "q", "Space", "Return"]).acts, ["normal", "close"]);
         holds("insert's Space is the field's to type", typed(["Space"]).ours, false);
-        holds("a search's Space is a letter of it",
-            Keys.read({ count: "", typed: [] }, "Space", "search").act, "");
+        // The rows have no search of their own: the find line is the list's
+        // one way to find (VKCF3Z's vi-paradigm spec, The Find Line).
+        holds("/ ? n N search nothing in normal", typed(["Escape", "/", "?", "n", "N"]).acts,
+            ["normal"]);
+        holds("and leave it in normal", typed(["Escape", "/", "?"]).mode, "normal");
         holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
             lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends",
-            search: "search", found: "found", nextRow: "next row", caret: "caret",
-            word: "word", ending: "ending", copy: "copy" };
+            nextRow: "next row", caret: "caret", word: "word", ending: "ending", copy: "copy" };
         const modes = { normal: "Normal", insert: "Insert" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
@@ -617,8 +450,6 @@ QtObject {
         holds("the list's Return, once", keyed("run"), "\u21b5");
         holds("the list's place used last", keyed("last"), "Tab  Space Tab");
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
-        holds("the list's searches, ? among them alone", keyed("search"), "/  ?");
-        holds("the list's n and N", keyed("found"), "n  N");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
@@ -654,7 +485,6 @@ QtObject {
         // in that mode's section.
         const arrows = ["Up", "Down", "Left", "Right"];
         holds("every act an arrow does lists its arrow", Keys.table
-            .filter(one => one.mode !== "search")
             .map(one => ({ in: one.mode === "both" ? ["Normal", "Insert"] : [modes[one.mode]],
                 arrows: one.keys.filter(key => arrows.includes(key)) }))
             .filter(one => one.arrows.some(key => one.in.some(mode =>
@@ -755,7 +585,6 @@ QtObject {
         holds("normal's caret rests on the last letter", Typing.resting("sound", 5), 4);
         holds("and on an empty line at its start", Typing.resting("", 0), 0);
 
-        searching(holds);
         operating(holds);
 
         for (const failure of failures)

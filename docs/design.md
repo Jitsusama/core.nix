@@ -47,10 +47,10 @@ one is answered for it in [the surfaces table][surfaces].
 6. **Hints in place.** Keys sit beside the actions they trigger, in muted
    type, and each surface can turn them off once they're learned.
 7. **Modal, as vi is, and never hidden.** Every list and text box has vi's
-   modes ([Vi's Keys][vi]). A mode other than normal always shows that it's
-   on, and Escape always leaves it.
-8. **One gesture per meaning.** Arrows move, Enter opens or confirms,
-   Escape steps back one level, typing filters, and each layer has one
+   modes, each with one purpose ([Vi's Keys][vi]). A mode other than normal
+   always shows that it's on, and Escape always leaves it.
+8. **One gesture per meaning.** Arrows move, Return opens or confirms, l
+   steps in and h out, / finds, : names a command, and each layer has one
    "what's here" key. Where vi has a key for it, the key is vi's.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
@@ -1177,7 +1177,7 @@ works the same way everywhere.
   and u right after puts it back, as vi's undo does. Any other key lets it
   go. With nothing typed it steps back out, putting back what was typed
   before with the same row selected. In insert the arrows move the caret,
-  as in Vim. Escape takes one step back each time (Vi's Keys), and only in
+  as in Vim. Escape cancels, then closes the launcher (Vi's Keys), and only in
   the launcher: the window behind never hears it. The foot names
   every key that works on the selection: what Return does, Shift+Return
   where a row opens below, and the right arrow wherever there's something
@@ -1374,7 +1374,10 @@ works the same way everywhere.
   centre, the name on the first row's baseline (the serif's own line box
   would set it 1.72 lower), and the rest on a pitch of 24 (xl), half a
   row, so each line falls on a row's baseline or halfway between two,
-  one empty line between the name, the facts and the words. Home's Now
+  one empty line between the name, the facts and the words. A name that
+  wraps sets its lines 32 (xxl) apart, a heading's leading tighter than
+  the pitch, so it reads as one title, and its block ends on the next
+  whole line of the pitch, so what follows stays on the card's. Home's Now
   has a plate of the moment instead (look 3): the date as its eyebrow;
   the time at Display, in the mono as the lock's clock is, its capitals
   centred on Now's row, and its seconds counting after it at Note; what
@@ -1546,7 +1549,7 @@ comes along, and what to do.
   | W            | close the one in focus                   | the window     | the tab           | the split           |
   | Space        | find anything here                       | the launcher   | the scrollback    | anything            |
   | ?            | what's here: every key, by what it does  | every layer's  | the terminal's    | Neovim's            |
-  | Escape       | back out                                 | everywhere     | everywhere        | everywhere          |
+  | Escape       | cancel, and close what floats            | everywhere     | everywhere        | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
@@ -1577,7 +1580,8 @@ same, or more forcefully: Space b W closes the file without saving it. [ and
 key that only makes sense somewhere, in code a language server reads or a
 file git tracks, is there only then. A window a plugin opens, the outline,
 the file browser or the problems list, uses the pickers' words: Return opens,
-Ctrl+S below, Ctrl+V beside, Ctrl+T in a tab, q closes and ? shows its keys.
+Ctrl+S below, Ctrl+V beside, Ctrl+T in a tab, Escape and :q close it and ?
+shows its keys; q closes nothing ([Vi's Keys][vi]).
 
 Each program's shortcuts are data: a chord, what it does in plain words, and
 the program's action, in `jitsusama.niri.binds` and `jitsusama.kitty.keys`,
@@ -1618,9 +1622,9 @@ Neovim is listed.
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N takes the notices on screen by
 the launcher's keys, then gathers every notice into the launcher. Either
-way Return goes to who sent one, and the right arrow steps into its verbs:
-its own actions (Reply, Mark as read), copying what it said, and letting it
-go; Up and Down choose, Left steps back.
+way Return goes to who sent one, and l steps into its verbs: its own
+actions (Reply, Mark as read), copying what it said, and forgetting it; j
+and k choose, h steps back.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through
@@ -1653,203 +1657,340 @@ next, from the launcher or anywhere else.
 
 ### Vi's Keys
 
-Every surface of ours speaks vi, exactly as Neovim does (Joel,
-2026-10-31: "i want it to feel exactly like neovim"). The keys go by
-letter, wherever they sit on Colemak Mod-DH, and the arrows keep doing
-what they do, since they're what Joel presses; h, j, k and l work beside
-them ("vi compatible, support hjkl even though i only use arrows").
+Every surface of ours is a Vim buffer, and a Vim user is at home on each
+with no training (Joel, 2026-11-04: "i want a vi user to feel at home in
+every interface without a bunch of training"). The keys go by letter,
+wherever they sit on Colemak Mod-DH.
 
 **When vi and a key here disagree, do what Vim does, as his Neovim has
 it** (Joel, 2026-11-04: "fuck, vi like ffs"). The answer is his config in
 `modules/neovim` where it gives the key a meaning, and Vim's own where it
-doesn't. A surface keeps a key of its own only where Vim has nothing for
-the act, as zoom, pause and full screen, or where a clash below is already
-settled. No such call goes to Joel: it's already made. His Neovim's values
-are kept too: a key that could begin a pair waits his timeoutlen, 300 ms;
-nothing shows while keys wait, since his showcmd is off, but for a count
-typed before a move, which a list shows in the mode word's place until
-the move, as showcmd would, so 12 isn't typed blind; a block cursor in
-normal mode and a bar in insert; the mode named in the accent, lowercase,
-only when it isn't normal; and what's copied flashes for 200 ms.
+doesn't. Where a surface has no exact Vim equivalent, it takes the whole
+behaviour of the nearest kind of Vim buffer, never half of one, and a key
+that departs from Vim is in the Departures below with its reason. No such
+call goes to Joel: it's already made. His Neovim's values are kept: a key
+that could begin a pair waits his timeoutlen, 300 ms; which-key lists what
+can follow after 200 ms; the mode is named in the accent, lowercase, only
+when it isn't normal; and what's copied flashes for 200 ms.
 
-**Everything is modal** (Joel, 2026-11-04: "i want to be able to use vi
-motion and search and shit everywhere a list can come up. i think i want
-everything modal"). Every list and every text box of ours has vi's
-modes, the launcher's field and the file picker's included.
+The surfaces move to these keys a piece at a time. Until a surface's piece
+lands, its own paragraphs above say what it does today; where they
+disagree with this section, this section is the design.
 
-- **What each opens in.** A surface with a field to type in opens in
-  insert, so typing finds at once, as Neovim's command line does; Escape
-  gives normal mode over its list, and i, a, I or A types again. A surface
-  where nothing types, as the reader, the notices and the drawer, opens in
-  normal.
-- **One key language.** Each act is named once, with its keys in Neovim's
-  notation, the modes it's pressed in (normal, insert, visual) and the
-  kinds of surface it belongs to (field, list, page, player), in
-  `modules/keys/language.toml`, beside how long a waiting key waits, the
-  which-key list's delay and the yank flash's, which Neovim reads from
-  there too. Each surface reads its keys from it by the acts' names; it
-  names its kinds in `jitsusama.surfaces` and each chord's act in its key
-  map, and `keys-speak-the-language` fails on a surface that leaves out an
-  act its kinds hold, gives a key of the language to another act, or binds
-  an act by a key not its own, and on a change to Neovim's keys the
-  language doesn't agree with. The language is held to `modules/neovim`,
-  so his Neovim stays the source. Until a surface reads from it, its keys
-  sit in one table of key and act, never scattered through its code, so ?
-  lists them.
-- **First, on every such surface:**
-  - **Moving:** h, j, k and l, as the arrows; gg and G to the first and
-    last; and, where there's more than a screen to move through, Ctrl+D
-    and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen.
-  - **Counts** before a motion: 5j, 3G. A digit is a count and nothing
-    else; it never jumps straight to an item.
-  - **Searching,** where there's text: / and ?, then n and N, with case
-    ignored until a capital is typed, as his smartcase has it.
-  - **Marks,** where a place lasts: m and a letter sets one, ' and the
-    letter goes back, and '' goes back to the last jump.
-  - **Closing:** q closes, as his Neovim closes help and its plugin
-    windows.
-  - **An Escape that always works:** it cancels whatever is in progress (a
-    count, a search, a selection, labels, a key waiting for its second),
-    and in insert it gives normal mode. At rest in normal it steps out a
-    level, and at the top closes a surface that floats over others.
-  - **The next of a kind:** ]b and [b go to the next and the previous
-    file, folder or item beside this one, as his Neovim's next buffer.
-- **Then, in each surface's turn:** visual mode, operators (y copies as
-  the surface's own format; d does a thing's ending act, asking once when
-  it can't be undone) and text objects, wherever there's text to act on.
-  The reader has them from the start. A page at rest has no cursor, so
-  there v and V put the terminal's cursor, as kitty and Neovim draw it, on
-  the first word wholly in view, and Escape takes it away again. The
-  selection is the selection's ground with its words in strong. y and
-  Ctrl+C copy the file's markdown, flashing what they took for 200 ms as
-  his Neovim's yank does; at rest, y y and y i p take the first block
-  wholly in view, or its paragraph, the flash the only sign of what went.
-- **Proved by a VM test of its keys,** one for each surface, as it lands.
+**What each surface is, in Vim:**
 
-**The launcher's query line** is Neovim's command line, its rows a buffer
-below it, as Telescope lays out its prompt over its results. Its keys are
-one table, `QueryKeys.js`.
+| Surface | In Vim, it's |
+| --- | --- |
+| the launcher | an oil buffer over a tree, home its root and a place a folder, found through Vim's `/` line |
+| the file picker | the same buffer over real folders, its first line the name when it saves |
+| the notices, held | the quickfix list, a line a card |
+| the reader | a help buffer, read-only, with a cursor |
+| the drawer | the preview window |
+| the gallery, a PDF, a video | a buffer whose lines are pictures, pages and seconds |
+| a question, the lock, the greeter, a Wi-Fi password | `inputsecret()`: a secret, with no modes |
+| a reply, a new name, a save name | a prompt buffer |
+| the launcher, held notices, which-key, a menu | popups, which Vim closes on Escape |
 
-- **Insert,** where it opens: letters type and Backspace deletes; ← and →
-  move the caret, and Home and End take it to the start and the end;
-  Ctrl+W deletes the word before it and Ctrl+U everything before it; ↓ ↑,
-  Tab and Shift+Tab, and Ctrl+N and Ctrl+P go to the next row and the one
-  before, and Ctrl+Y takes the selected row's completion into the line, as
-  his Neovim's completion menu does (`modules/neovim/keys.nix`); Return
-  does the row; Escape gives normal. At the line's ends the arrows and
-  Backspace do nothing, since stepping in and out is normal's.
-- **Normal:** nothing types. → and l step into the selected row; ←, h, -
-  and Backspace take away what's typed, then step out a level, as his
-  oil's - does, and u brings back what they took. q and ZZ close the
-  launcher, as his Neovim's q closes help, and so does :q; the colon
-  opens an ex line, shown in the mode word's room until its Return, where
-  Vim's other ways of quitting (:wq, :x, :qa) close it too and :12 goes
-  to the 12th row, as it goes to Vim's 12th line. The rows are a buffer, moved through as Vim's
-  lines are: j k ↓ ↑, gg and G to the first and last, H M L to the top, middle
-  and bottom row wholly in view, Ctrl+D and Ctrl+U half the rows in view,
-  keeping the selection's place in view, and Ctrl+F and Ctrl+B, as Page
-  Down and Page Up, a screen. A count goes before any of them, 3j or 12G,
-  a lone 0 counting nothing; every move stops at the first and last rows,
-  and a held key repeats only a move. Return does the row or steps into
-  it, as it does from insert. i, a, I and A go into insert at the caret,
-  after it, at the line's start and at its end, and cc and S clear the
-  line first. ]b and [b go to the place beside this one, the next and the
-  one before, as Vim's next buffer does, where the place has neighbours:
-  in the file picker, the folders its holder lists, in the order in use,
-  round from the last to the first. Tab and Space Tab go back to the
-  place used last, what was typed and selected there as it was left, and
-  again come back, as his Space Tab goes to the file used last; Shift+Tab
-  does nothing, as in Vim. Space ? and F1 list the launcher's keys in the
-  drawer, in place of the row's plate, until Space ? again or Escape, as
-  the notices' Space ? does: normal's and then insert's, each under its
-  mode's name and only where they work, Vim's own where an act has them
-  and the arrows he presses, so each name sits whole beside what it
-  does. The close line names ZZ and :q, not q. Space w closes, as it closes his split; and
-  Space alone waits for its second key, as gg's g does, and lets go.
-  Leaving insert puts the caret one left, as Vim does.
-- **Search,** from normal: / searches forward and ? back, typed on the
-  line in place of what's typed, as his command line takes one, with
-  insert's keys for editing it; what's typed and its rows stand as they
-  were. Each letter lands on the first row from the selected one whose
-  words (its name, count, side and kind) hold it, as incsearch does;
-  Return keeps it there, and Return alone runs the last search again;
-  Escape, or Backspace with nothing left, puts the selection back. n goes
-  on to the next row holding it and N the other way, a count before any
-  of them going that many. Nothing is filtered or moved. What's sought
-  is literal, found in either case unless it has a capital, as his
-  ignorecase and smartcase have it, and a search going round past the
-  last row goes on from the first, as wrapscan does. The foot says, in
-  Return's place and for that key alone, "from the top" or "from the
-  bottom" where it went round, and "not found" where no row holds it,
-  the selection staying where it was, as Neovim says them. The
-  notices' / searches the same way (`Search.js`).
-- **Where the keys go shows twice.** The caret is a bar a quarter of a
-  letter wide in insert and a block on a letter in normal, the letter in
-  the ground's colour, as his Neovim's guicursor draws them (`init.lua`).
-  It fades out and back in over 0.8 s each way after a key, and holds
-  steady 15 s after the last, as his kitty blinks a cursor, so a launcher
-  left still draws nothing more (`jitsusama.quickshell.caret`). The foot
-  names the mode in the accent, lowercase, only while it isn't normal
-  ("insert"), after how things stand, as his status line puts it after
-  what's already on its left (`status.lua`). Its room is kept in every
-  mode, so nothing else in the foot moves as the mode changes, and a count
-  typed in normal stands in that room, in the strong ink of what's typed,
-  until its move, as an ex line does until its Return.
-- **The Escape ladder.** Each Escape takes one step back: it cancels a
-  count, an ex line or a key waiting for its second (cc's first c, gg's
-  first g, a Space), a search being typed, hides the keys listed, or
-  leaves insert for normal; at
-  rest in normal it steps out a level, and at the level the launcher
-  opened on, home or a collection a chord opened it into, it closes it.
-  Opening always puts the line in insert, and the mode stays as it is
-  through steps in and out, but for a row that asks for words, which
-  starts in insert.
+The launcher is oil rather than netrw or Telescope. netrw's keys are
+one-letter shortcuts that aren't Vim's, and Telescope's pickers are right
+for how it looks but have no levels, ranges or operators. Oil is already
+his (`keys.nix`, `inWindow "files"`), and its listing is a buffer, so dd,
+yy, V and :3,5 mean something.
 
-Where vi meets the keys already here, each clash resolves one way:
+**Each mode has one purpose** (Joel, 2026-11-04: "we need the modes to be
+separate and have separate purposes"):
 
-- **?** means every key here, and in vi searches backward. Where there's
-  text or rows to search it's vi's, and Space ? shows the keys, as in his
-  Neovim.
-- **Escape at rest** backs out here, and in vi does nothing. It steps out
-  of what floats over others; in a window, as the reader is, it does
-  nothing, so a habitual second Escape never closes a page mid-read.
-- **Return** opens or acts here, and in vi moves down a line. It acts, and
-  moves down a line only on plain text.
-- **Tab** is the one used last here, and in vi goes forward through the
-  jumps. It stays ours; where Space is the leader, Space Tab is the one
-  used last, and Ctrl+I goes forward through the jumps.
-- **Page Up and Page Down** are the level above here, and a screen in vi.
-  The reader takes vi's; everywhere else keeps the level above.
-- **q** records a macro in vi. Here it closes, as in his Neovim's help and
-  plugin windows, so no surface of ours has macros.
-- **Ctrl+C** cancels in vi. Here it copies, as on the whole desktop.
-- **x and dd** delete in vi. Here they do a thing's ending act, asking once
-  when it can't be undone.
+| Mode | Its one purpose | It shows by |
+| --- | --- | --- |
+| normal | standing on a thing and acting on it | no caret; the cursor row's ground; relative numbers in the gutter |
+| the find line, `/` | typing what to find, the rows narrowing | the accent's `/` at its start; the mono's bar caret |
+| the command line, `:` | naming a command from a menu of every one | the accent's `:`; the bar caret; the menu |
+| insert | writing a prompt's words | the bar caret; "insert" |
+| visual, `v` `V` | choosing several things | the selection's ground; "visual line · 3" |
+| operator-pending | an operator waiting for what it acts on | the cursor row tinted; "d · disconnect Home-5G" |
 
-On the notices on screen, held: j and k (and ↓ and ↑) turn through the
-cards, l steps into the front card's acts and h back out, and there j and
-k choose an act. Return runs it, and q lets the stack go after. dd,
-Delete or Backspace forgets the front card; dG, as vi deletes to the last
-line, or Shift with Delete or Backspace forgets them all. yy copies what
-the front card said, as vi yanks a line, and the stack stays held; its
-acts show dd, dG and yy as their keys. gg and G go to
-the newest and the oldest, and a count goes before any of them, as 3dd.
-u brings back what was forgotten last, since nothing forgotten while the
-stack is held is let go until the stack is. / and ? search what the cards
-say and who signed them, with smartcase, turning to the first match as
-it's typed; the front card's matches take the search wash, Neovim's
-Search, and its foot says the search and which match of how many it is.
-n and N go to the next match either way, round the stack. V selects
-whole cards, j and k carry the selection on without going round, and d
-or y forgets or copies them all; the foot says "visual line" in the
-accent meanwhile. Space ? lists every key in the acts' place, scrolled
-there by j and k as Neovim's help is, with its ruler in the foot, so the
-card never grows. Escape
-cancels what's begun, a search or a selection, then steps out, then
-lets the stack go. The stack shows one card at a time, so it has no
-screen keys. In
-the viewfinder, q closes as Escape does, and nothing else changes, since
-its keys are few on purpose.
+This is Vim's own split: `/` and `:` aren't insert in Vim but its command
+line, and his status line names no mode for them, since the command line
+says its own (`status.lua`).
+
+**Normal.** Nothing types, and no caret shows: the cursor row's ground is
+the cursor. A list shows relative numbers in a gutter at Note, muted, the
+cursor row's own absolute and in text, as his `number`, `relativenumber`
+and `cursorlineopt=number` draw them; Space u l switches them to absolute.
+While a find narrows the rows, the find line keeps it after a muted `/`,
+with its count: "/slack · 3 of 12".
+
+- **Moving:** j k, gg G and {n}G, H M L, Ctrl+D Ctrl+U Ctrl+F Ctrl+B, and
+  { } to the next and previous group of rows, each taking a count. Only a
+  motion repeats while its key is held.
+- **In and out:** l steps into the cursor row, a place or a thing's acts;
+  h, - and Backspace step out a level, onto the row stepped in from, with
+  its find. Ctrl+O and Ctrl+I go back and forward through places.
+- **Return** opens the cursor row (Return, below).
+- **The lines:** / and ? start a fresh find on a list; i, a, I and A open
+  the find line on the current find, the caret at its start, after the
+  caret, at the start and at the end; : opens the command line.
+- **Operators and visual:** d y c, dd yy cc, ., u Ctrl+R, v V and gv.
+- **Marks,** where a place lasts: m and a letter sets one, ' and the letter
+  goes back, and '' goes back to the last jump.
+- **Escape** cancels a count, a pending operator, a waiting key, which-key
+  or the menu. At rest it closes a popup, as Vim closes one and his Neovim
+  closes its floats: the launcher, held notices. In a window (the reader,
+  the drawer, a viewer) it does nothing at rest, and it never steps out a
+  level, which is h's.
+- **q does nothing.** There are no macros, since recording is a mode no one
+  sees. The foot says "q does nothing · :q closes" until the next key, as
+  every key with no meaning on a surface says "not here", never silent.
+
+**The find line, `/`.** The launcher and the file picker open on it. It is
+a list's one way to find (Joel, 2026-11-04: "it is weird that the text box
+is a search, but i also have the / command"): the rows narrow as it's
+typed, the letters each row matched in Neovim's Search wash. What's typed is
+the mono at Figure after the accent's `/`, with the mono's bar caret at
+every scale.
+
+- Letters, Backspace, Ctrl+W, Ctrl+U and Ctrl+H type and delete; ← →, Home
+  and End move the caret, as on Vim's command line.
+- ↓ ↑, Tab and Shift+Tab, and Ctrl+N and Ctrl+P choose the next row and the
+  one before, as his completion menu does, and Ctrl+Y takes the chosen
+  row's name into the line; Ctrl+R + puts the clipboard in.
+- `:` as the first letter opens the command line.
+- Return opens what's chosen. Escape or Ctrl+C gives normal with the rows
+  as found, and Backspace on an empty line gives normal.
+- Earlier finds are Space s h. A held key never crosses a mode: a held
+  Backspace stops at empty.
+
+**The command line, `:`.** From normal or visual, or as the find's first
+letter, it takes the find line's place, which comes back on Escape; on the
+notices it takes the acts' place, and in the reader the bottom line.
+
+- **The menu shows as `:` is typed** (Joel, 2026-11-04: "Ex mode makes no
+  sense, i don't know what I can do and there is no autocomplete"). It
+  rises over the bottom of the rows, keeping the cursor row or the
+  selection in view, ten lines at most as his `pumheight`: the row's or
+  the selection's acts first, Return's leading, then the surface's, then
+  :q, :help, :set and :{n}. Each line reads `disc[onnect]   Disconnect It
+  d`, the command in Vim's help notation, the act's name and its key, so
+  the menu teaches all three. While a line is chosen the drawer names what
+  it acts on: "on 3 notices: Slack, Slack, Mail".
+- Typing narrows the menu; Tab, Shift+Tab, ↓ ↑, Ctrl+N and Ctrl+P choose a
+  line and write it in, as his cmp does; Ctrl+Y takes it and Ctrl+E puts the
+  menu away; a space after a name lists its arguments (`:sort `'s orders,
+  `:e `'s places and paths, `:set `'s options).
+- Return runs exactly what's typed, unless Tab or an arrow chose a line. A
+  word that isn't a command says `E492: Not an editor command: wifi`,
+  whatever the menu shows. Escape and Ctrl+C drop the line; :his lists
+  earlier commands and @: runs the last again.
+- **Names:** a Vim command keeps Vim's name and meaning (:q :x :w :e :h :d
+  :y :u :red :noh :set :sort :g :v :sp :b :m :clo :sus :his); any other act
+  is its row's verb in lowercase, Disconnect It's :disconnect. A name or
+  short form Neovim defines with another meaning is refused, so Forget is
+  :forg[et] (:fo is :fold), a call :dial and a meeting :meet, and a notice
+  has no :read (Vim's reads a file in): reading a notice is d. One name an
+  act, with no synonyms; a switch is an option only. Short forms are
+  written once beside each act, never computed, so :disc never changes
+  meaning when a command is added.
+- **Ranges** count the rows as listed, read off the gutter: none is the
+  cursor row; visual gives '<,'>; 3: gives .,.+2; % is every row listed;
+  3,5, .,+2 and 'a,'b; and :g/pat/cmd and :v/pat/cmd on every list
+  (`:g/Slack/d`). A range holds the things in it, never their places, so a
+  row arriving can't shift it. A command that takes no rows says `E481: No
+  range allowed`.
+- **Options are :set**, as Vim's are: :set wifi, :set nowifi, :set wifi!,
+  :set wifi=Home-5G, :set volume=40, :set volume+=5, :set brightness=60,
+  :set background=light; :set volume? shows one and :set all lists them.
+- **!** is "don't ask" or "the other way": :forget!, :sort!, :w!, :q!.
+
+**Insert** is only in a prompt: a reply, a new name (cc), the file picker's
+save name. Vim's insert keys work, Ctrl+O runs one normal command, and
+Return hands the words over from insert or from normal. Escape gives normal
+over the words, with Vim's editing (w b e 0 $ x dw cw u), and :q drops the
+prompt. **A secret,** a question's password, the lock, the greeter or a
+Wi-Fi password, is `inputsecret()`: one line with no modes and no mode
+word. Return answers, Ctrl+W Ctrl+U and Ctrl+H edit, and Escape and Ctrl+C
+cancel it, or clear it where it can't be cancelled, at the lock and the
+greeter.
+
+**Visual** works wherever there are rows, cards, files, pictures or words
+(Joel, 2026-11-04: "imaging visual mode a number of notfications and then
+dd to mark them as read"). On a list a row has no letters to choose among,
+so v is V and the mode word says "visual line · 3"; on a page v takes
+characters. o goes to the other end, gv brings the last back, and : gives
+:'<,'>. The same operator pressed again within 300 ms of a visual
+operator is taken with it, so V j j d d acts on three. While a surface is
+in visual, operator-pending or on the command line, its rows hold still,
+and what arrives waits behind a "2 new" line.
+
+**Operator-pending** follows d, y or c: a motion, a count, a text object
+or the operator again. On a list ip is the run of rows of one kind or one
+sender, and ap the run with its gap. The cursor row is tinted at once as
+visual tints it, and the mode word's room says what it will hit. Operators,
+., u and Ctrl+R act only on a fresh press, never on a held key's repeats.
+
+**The operators** do one thing to each kind of row, named by the foot:
+
+| Key | Launcher rows | File picker | Notices | Reader | Gallery |
+| --- | --- | --- | --- | --- | --- |
+| d, x in visual | the row's ending act: Close It, Disconnect It, Forget It | to the trash | done: read where the sender offers it, then taken away | `E21: Cannot make changes` | to the trash |
+| y | the row's copy: a path, an address, a name | the paths | what it said | the markdown, flashing | the picture |
+| c | a new name, where the name is Joel's | rename | not here (:reply) | E21 | rename |
+| . | the last change again | the same | the same | nothing | the same |
+| u, Ctrl+R | every change with an inverse, while the surface is open | the same | the cards back, still read | nothing | from the trash |
+
+What can't be undone asks once on the command line, as Vim's `confirm()`
+does ("Forget Home-5G and its password? (y/n)"). Only y answers yes, keys
+pressed in the first 300 ms are ignored, and ! skips the ask; what asks
+comes from the language's `undoable`, never a list kept by hand. Anything
+else acts at once, and the foot says how to take it back: "3 done · u
+brings them back".
+
+**Return** opens, from the find line and from normal alike, but for one
+case (Joel, 2026-11-04: "it is quite dangerous how in insert mode i can
+type in a name of a wifi network and then hitting enter disconnects from
+it"):
+
+| The cursor row | Return |
+| --- | --- |
+| a place, or a thing with acts | steps in, onto a first row that never changes state |
+| a program, window, file, page, link or notice | opens it, or goes where it came from |
+| an act that changes nothing | does it |
+| an act that changes state | from the find line, lands on it in normal, its side saying "↵ turn off"; from normal, does it |
+
+Return acts only on a fresh press, so a held Return can't run what the
+first only reached. Stepping in from the find line keeps the find line,
+empty, inside: "net", Return, "home", Return. No modified Return has an
+act; Vim's :sp opens below.
+
+**The arrows are their letters** (Joel, 2026-11-04: "i'm thinking arrow
+actions should probably go and we should use vi like interactions"). In
+normal and visual ↓ ↑ ← → are j k h l and nothing more, so they still move,
+since he presses them; on a line or in a prompt ← → move the caret and ↓ ↑
+choose. No arrow or Shift with an arrow has an act of its own. Hints name
+the letter, "l in" and "h out", and the key list shows both.
+
+**The leader** is Space, in normal and visual, as his Neovim's
+(`keys.nix`, "What every layer shares"):
+
+| Keys | Here |
+| --- | --- |
+| Space ?, F1, :help | this surface's keys and commands, by mode |
+| Space w | close, as :q |
+| Space Tab | the place, folder, page or picture used last |
+| Space Space | a fresh find across everything |
+| Space / | the reader's and the drawer's lines and headings |
+| Space . | the launcher on its last place and find |
+| Space ← → | into the drawer and back |
+| Space Return | a terminal in this folder |
+| Space f r, Space f Space | files opened lately, and finding a file |
+| Space s h | earlier finds |
+| Space u b, u l, u w | light or dark, the numbers, the reader's wrap |
+| Space Q | close every surface of ours, as :qa |
+
+His other groups have nothing to act on here, and none is faked.
+
+**The foot, the mode word and the key list.** The foot gives the status
+facts, the mode word's room, then the cursor row's keys in this mode by
+letter and lowercase verb, "↵ go to · d disconnect · Space ? keys", Space ?
+always last. Its hints come from the table that handles the keys, filtered
+by mode and row, so none names a key that does nothing, and a check
+presses every hint drawn. The mode word's room is as wide as its widest
+word in its own font, set before the facts, which give way around it, so
+it's never cut (Joel, 2026-11-04: "the mode text is truncated so I only see
+...rt instead of insert"). Space ?, F1 and :help open the key list, grouped
+by mode under its purpose ("Normal: moving and acting", "The find: the /
+line", "Commands: the : line", "Visual: choosing several", "Insert: writing
+words"), each line its keys at Note in text and what they do at Note,
+muted: a saying of about 17 letters at most and a chord of 14, so a line
+fits whole on the laptop's plate.
+
+**On each surface:**
+
+- **The launcher** opens on the find line, the first row chosen, so the
+  fast path is Super+Space, letters and Return, as before. Escape at rest,
+  :q, ZZ and Space w close it. Its commands are its rows' verbs, :e with
+  places as paths (`:e Machine/Power`), :b for a window, :sp, :m to a
+  workspace, :sort, :set and the session's (:lock, :sus, :logout, :reboot,
+  :poweroff), each of the session's asking once.
+- **The file picker** opens on the find line. Return takes the cursor row
+  or a V selection; :arga, or :'<,'>arga, gathers files across folders,
+  the mode word saying "2 gathered" and :args listing them, and Return then
+  answers with them. A save dialog's first line is the name, a prompt in
+  insert with the caret before the extension; Return there saves, a taken
+  name asks once, and :w, :w!, :x and ZZ save from anywhere. :sort name
+  (A to Z), :sort changed (newest first) and :sort size (largest first),
+  with :sort! the other way, are kept across asks; :e, :cd, :set hidden
+  and :mkdir go with them, ]b [b to the folders beside, gx to a file's own
+  program.
+- **The notices,** held on Super+N, are the quickfix list: a line a card,
+  the sender's glyph, who, the first words and the time, the cursor card
+  whole under its line, the newest first. / finds among them; l steps into
+  a card's acts and h out; Return goes to whoever sent it. d is done, its
+  read sent at once; :forg takes a card away unread, :reply writes one, and
+  :g/Slack/d takes all of one sender's. Escape at rest, :q, ZZ, Space w and
+  Super+N let them go.
+- **The reader** has a cursor, as a help buffer does: the cursor line marked
+  by a thin accent rule in the left margin, as his `cursorlineopt=number`
+  lights only the number, and a block only in visual. j and k move it by
+  the line as shown, the view following at his `scrolloff=4`; Ctrl+E and
+  Ctrl+Y scroll the view alone. /, n N, ]] [[, { }, gO, marks, jumps and
+  :{n} put the cursor where they land, so / and then yip copies the
+  paragraph found. Escape at rest and q do nothing.
+- **The drawer** is the preview window: Space → goes in and the reader's
+  keys work there, and Space ← or :q comes back.
+- **The viewers** close on :q, ZZ and Space w, never on Escape or q, and
+  their arrows are their letters, each with one meaning. swayimg's and mpv's
+  : opens the launcher's command line aimed at the picture or the video
+  (`:d`, `:y`, `:rotate`, `:{n}`, `:q`); zathura keeps its own, which is
+  Vim's already.
+
+**His Neovim is held to the same bar:** q closes none of its windows, and
+Escape and :q close its floats, as ours.
+
+**The Departures.** Each key here that doesn't do what Vim's does, and why:
+
+1. A list's / narrows the rows rather than moving to a match, and n N say
+   "not here": a list finds by narrowing, with one way to find.
+2. ? on a list is the same find, since a narrowing has no direction; on a
+   page it searches back, as Vim's.
+3. % means the rows listed, fewer than all while a find narrows them.
+4. The launcher and the picker open on the find line, as Telescope opens on
+   its prompt, which keeps the fast path.
+5. Escape and Ctrl+C on the find line keep what was found, since on a list
+   the find is what the list is.
+6. `:` as a find's first letter opens the command line, since a find never
+   starts with one.
+7. i, a, I and A reopen the find line, since a list has no text of its own.
+8. l and h step in and out, as his oil's → and ← do.
+9. v is V on a list, since a row has no letters to choose among.
+10. q records nothing: recording is a mode no one sees.
+11. The same operator pressed again just after a visual operator is taken
+    with it: Joel's "visual ... then dd".
+12. A pending operator shows at once, though his showcmd is off, since an
+    armed d is the riskiest state no one sees.
+13. Return from the find line on an act that changes state lands on it.
+14. A key with no meaning says so in the foot, where Vim beeps.
+15. The picker's sort is kept across asks, a folder's order being a
+    preference.
+16. mpv's Space pauses at once and leads nothing, as a player's does.
+
+**Where Vim's keys live.** Each act is named once in
+`modules/keys/language.toml`, with its keys in Neovim's notation, the
+modes it's pressed in (normal, find, command, insert, visual), the kinds of
+surface it belongs to (field, list, page, player, prompt, secret), its
+command name and fixed short form, and whether it changes state, can be
+undone and takes a range, beside how long a waiting key waits, the
+which-key list's delay and the yank flash's, which Neovim reads from there
+too. Each surface reads its keys from it by the acts' names, names its
+kinds in `jitsusama.surfaces`, and is proved by a VM test pressing every
+key it adds. `keys-speak-the-language` fails on a surface that leaves out
+an act its kinds hold, gives a key of the language to another act or binds
+an act by a key not its own, and on a change to Neovim's keys the language
+doesn't agree with. As the language takes in the commands it fails too on a
+short form that isn't unique or a name Neovim defines otherwise, on an act
+that changes state reachable by Return from the find line, and on a hint
+whose key isn't in its mode's table. Until a surface
+reads from it, its keys sit in one table of key and act, never scattered
+through its code.
 
 ## Customising
 

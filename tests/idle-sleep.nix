@@ -6,7 +6,8 @@
 # screens go off, and clears as a key would. Its sleep stands in, leaving a
 # file for the test to find and returning at once, and logind waits five
 # seconds of idling rather than five minutes. Idle on the charger, it stays
-# awake, and unplugging the charger puts it to sleep. On battery, a session
+# awake, and unplugging the charger puts it to sleep, even as the last of a
+# burst of power supply events, as a supply settling sends. On battery, a session
 # still in use keeps it awake, and an idle one stays awake while a program
 # holds logind's lock against idling, as mycelium does, and sleeps once it
 # lets go. The script is idle-sleep-vm-test.py.

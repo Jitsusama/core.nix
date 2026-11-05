@@ -480,6 +480,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
+        # In normal, where the arrows step; insert's move the caret, so it names none.
+        desktop.normal()
         desktop.launcher_until(lambda shown: "\u2192" in (shown["selected"] or {}).get("told", []))
         told = desktop.showing()["selected"]["told"]
         assert not any(key.startswith("Ctrl") for key in told), told
@@ -701,6 +703,26 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # Never joined, it asks for its password, which a wrong one doesn't
     # satisfy; the launcher stays to say so.
     desktop.step_in("ret")
+    # A password is a secret, as Vim's inputsecret() is: one line with no
+    # modes and no mode word, where Ctrl+H deletes the letter before, Ctrl+W
+    # the word before, the arrows only move the caret, Ctrl+U deletes back
+    # to the start, and Escape gives it up.
+    desktop.launcher_until(lambda shown: shown["asking"] and shown["modal"] is False)
+    foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    assert not any(word["text"] == "insert" for word in foot), foot
+    machine.send_chars("not the pass")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the pass"))
+    machine.send_key("ctrl-h")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the pas"))
+    machine.send_key("ctrl-w")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the "))
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the"))
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["caret"] == 0)
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
+    desktop.step_in("ret")
     desktop.type_in("not the password")
     desktop.photograph("launcher-wifi-password")
     with desktop.told("refused wifi Lantern", timeout=timedelta(seconds=60)):
@@ -814,9 +836,10 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
     # Joined, its Return typed in insert steps in too, rather than
-    # disconnecting it, so the foot says the two as one.
+    # disconnecting it, so the foot says Return alone: insert's arrows
+    # move the caret, so no arrow is named there.
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5 \u2192"], told
+    assert told[:1] == ["\u21b5"], told
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (

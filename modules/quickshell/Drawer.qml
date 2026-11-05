@@ -73,6 +73,12 @@ Floating {
     readonly property var facts: shown ? (shown.facts ?? [])
         .filter(fact => fact && String(fact.value ?? "") !== title) : []
     readonly property string body: shown ? shown.body ?? "" : ""
+    // Whether it lists keys (`keys: true`), as Space ? does: each chord is
+    // the name and what it does the value, both at Note, the chord in the
+    // text's ink and its words muted, as the reader's key list sets them, so
+    // a line fits on one. At Figure, in the mono, most wrapped (VKCF3Z,
+    // 2026-11-04).
+    readonly property bool listsKeys: shown ? shown.keys === true : false
     readonly property string picture: shown ? shown.picture ?? "" : ""
     readonly property var preview: shown ? shown.preview ?? null : null
     // Whether it's the moment's plate, home's Now's.
@@ -105,6 +111,10 @@ Floating {
     // baseline, whatever its own face, since the faces' line boxes differ.
     readonly property real dropped: monoRuler.y + monoRuler.baselineOffset
     readonly property real eyebrowDropped: eyebrowRuler.y + eyebrowRuler.baselineOffset
+    // How far apart a Title's lines sit: tighter than the pitch's two, about
+    // 1.15 of its size, so a name that wraps reads as one heading rather
+    // than two (VKCF3Z, 2026-11-04).
+    readonly property real titleLeading: Theme.space.xxl
 
     // Where its lines' baselines are, down from its top, for the launcher
     // to report: the eyebrow's and the middle of its line, the title's first
@@ -124,10 +134,9 @@ Floating {
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
-            // Its last line's, two of the pitch a line, which what follows
-            // stands one empty line below.
+            // Its last line's, a Title's leading below its first.
             titleLast: titleText.visible ? flowed(titleText)
-                + (titleText.lineCount - 1) * 2 * drawer.pitch : null,
+                + (titleText.lineCount - 1) * drawer.titleLeading : null,
             preview: previewBox.visible ? contentTop + flow.y + previewBox.y : null,
             previewLines: previewLines.visible ? Array.from({ length: previewRows.count },
                 (_, at) => {
@@ -233,14 +242,45 @@ Floating {
     }
     FontMetrics {
         id: valueFace
-        font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.family: drawer.listsKeys ? Theme.level.note.family : Theme.level.figure.family
+        font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
+            : Theme.level.figure.pointSize
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
-    readonly property real labelsWide: Math.min(
-        column.width - labelsGap - valueFace.advanceWidth("00000000"),
-        Math.ceil(Math.max(0, ...allFacts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
+    // A binding doesn't see what a call reads, so it reads both faces, to be
+    // measured again as a key list's face comes and goes.
+    readonly property real labelsWide: {
+        void valueFace.font;
+        void factFace.font;
+        let widest = 0;
+        for (const fact of allFacts)
+            widest = Math.max(widest, factFace.advanceWidth(fact.label ?? ""));
+        return Math.min(column.width - labelsGap - valueFace.advanceWidth("00000000"),
+            Math.ceil(widest));
+    }
+    // How many of its facts take more than a line, a name or a value
+    // wrapped, for the launcher to report when asked: a key list's take one.
+    function factsWrapped() {
+        let wrapped = 0;
+        for (let at = 0; at < factRows.count; at++) {
+            const row = factRows.itemAt(at);
+            if (row && !row.heading && row.height > drawer.pitch + 0.5)
+                wrapped += 1;
+        }
+        return wrapped;
+    }
+    // How many of its values stand under their names rather than beside
+    // them, for the launcher to report: a key list's never do.
+    function factsUnder() {
+        let under = 0;
+        for (let at = 0; at < factRows.count; at++) {
+            const row = factRows.itemAt(at);
+            if (row && !row.heading && row.under)
+                under += 1;
+        }
+        return under;
+    }
     // Whether every name fits its column on one line, for the launcher to
     // report when asked.
     function labelsWhole() {
@@ -475,11 +515,15 @@ Floating {
 
                 // The thing's name at Title, sized by capitals as every
                 // serif step is, on the first row's baseline beside it,
-                // whatever its own line box would put it on. Too large for
-                // the pitch, a name that wraps takes two of it a line.
+                // whatever its own line box would put it on. A name that
+                // wraps sets its lines a Title's leading apart, and the
+                // block ends on the next whole line of the pitch, so what
+                // follows stays on the plate's.
                 Item {
+                    id: titleBlock
                     width: parent.width
-                    height: (2 * titleText.lineCount - 1) * drawer.pitch
+                    height: Math.ceil((drawer.pitch + (titleText.lineCount - 1)
+                        * drawer.titleLeading) / drawer.pitch) * drawer.pitch
                     visible: drawer.title !== ""
 
                     Text {
@@ -493,7 +537,7 @@ Floating {
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         lineHeightMode: Text.FixedHeight
-                        lineHeight: 2 * drawer.pitch
+                        lineHeight: drawer.titleLeading
                         color: Theme.level.title.colour
                         font.family: Theme.level.title.family
                         font.pointSize: Theme.level.title.pointSize
@@ -518,8 +562,8 @@ Floating {
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
                     readonly property real room: Math.max(4 * drawer.pitch, view.height
-                        - drawer.firstLine - (titleText.visible ? 2 * titleText.lineCount * drawer.pitch
-                        : 0) - (factsShown.visible ? factsShown.height
+                        - drawer.firstLine - (titleBlock.visible ? titleBlock.height
+                        + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 
                     width: parent.width
@@ -637,7 +681,10 @@ Floating {
                             // lines takes the plate's whole width on the
                             // line under it, so it never reads a word a line
                             // (VKCF3Z, 2026-11-04).
+                            // A key list's sayings stay beside their keys,
+                            // so each key heads its own (VKCF3Z, 2026-11-04).
                             readonly property bool under: beside.lineCount > 2
+                                && !drawer.listsKeys
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
 
@@ -684,7 +731,7 @@ Floating {
                                 wrapMode: Text.Wrap
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: drawer.pitch
-                                color: Theme.muted
+                                color: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
@@ -704,10 +751,13 @@ Floating {
                                 wrapMode: Text.Wrap
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: drawer.pitch
-                                color: fact.known ? Theme.text : Theme.muted
-                                font.family: Theme.level.figure.family
-                                font.pointSize: Theme.level.figure.pointSize
-                                font.features: Theme.level.figure.features
+                                color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
+                                font.family: drawer.listsKeys ? Theme.level.note.family
+                                    : Theme.level.figure.family
+                                font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
+                                    : Theme.level.figure.pointSize
+                                font.features: drawer.listsKeys ? ({})
+                                    : Theme.level.figure.features
                             }
                         }
                     }

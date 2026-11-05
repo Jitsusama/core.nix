@@ -2480,47 +2480,111 @@ fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
     )
 }
 
-// The VM builder runs six VM tests at once, and the rest wait their turn
-// there: on 3 November 49 of 189 runs failed, 37% of VM tests failing
-// with 7 to 12 runs overlapping. So while a second VM lender runs, the VM
-// tests past the first's room go to its builder, at once beside the
-// first's, counting those other runs already sent.
-#[test]
-fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
-    let folder = tempfile::tempdir().unwrap();
-    let bin = folder.path().join("bin");
-    fs::create_dir(&bin).unwrap();
-    stand_ins(&bin, 0);
-    let offload = lending(folder.path(), "offload", "nix-offload");
-    let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
-    let more = folder.path().join("offload-vm-more");
-    fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
-    fs::write(
-        folder.path().join("nix-offload/vm-tests"),
-        "checks.*.vm-*\n",
-    )
-    .unwrap();
-    fs::write(folder.path().join("nix-offload/vm-builds"), "6\n").unwrap();
-    let sent = |tests: usize| {
-        let _ = fs::remove_file(bin.join("ssh-sent"));
-        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+/// A machine with a VM lender, and a second one once `lend_second` is
+/// called, its first VM builder running six at once, and what `there`
+/// sends them.
+struct TwoVm {
+    folder: tempfile::TempDir,
+    bin: PathBuf,
+    offload: PathBuf,
+    vm: PathBuf,
+    more: PathBuf,
+}
+
+impl TwoVm {
+    fn new() -> Self {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        stand_ins(&bin, 0);
+        let offload = lending(folder.path(), "offload", "nix-offload");
+        let vm = lending(folder.path(), "offload-vm", "nix-offload-vm");
+        let more = folder.path().join("offload-vm-more");
+        fs::create_dir_all(folder.path().join("nix-offload")).unwrap();
+        fs::write(
+            folder.path().join("nix-offload/vm-tests"),
+            "checks.*.vm-*\n",
+        )
+        .unwrap();
+        fs::write(folder.path().join("nix-offload/vm-builds"), "6\n").unwrap();
+        Self {
+            folder,
+            bin,
+            offload,
+            vm,
+            more,
+        }
+    }
+
+    fn lend_second(&self) {
+        fs::create_dir(&self.more).unwrap();
+        fs::write(self.more.join("lender"), std::process::id().to_string()).unwrap();
+        fs::write(
+            self.more.join("store"),
+            STORE.replace("nix-offload", "nix-offload-vm-more"),
+        )
+        .unwrap();
+    }
+
+    /// A run of one check and `tests` VM tests: how many VM tests each
+    /// host was sent, by host, and what it said.
+    fn sent(&self, tests: usize) -> (Vec<(String, usize)>, String) {
+        let running = self.start(tests);
+        self.finish(running)
+    }
+
+    /// That run, started, its standard error going to the `said` file.
+    fn start(&self, tests: usize) -> std::process::Child {
+        let _ = fs::remove_file(self.bin.join("ssh-sent"));
+        let said = self.folder.path().join("said");
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
             .args(["there", "-L", "github:o/r/abc", "checks.x.a"])
             .args((0..tests).map(|test| format!("checks.x.vm-{test}")))
             .env(
                 "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
             )
-            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_DIR", &self.offload)
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .env("NIX_OFFLOAD_VM_DIR", &vm)
-            .env("NIX_OFFLOAD_VM_MORE_DIR", &more)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
-            .output()
-            .unwrap();
-        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-        let sent = fs::read_to_string(bin.join("ssh-sent")).unwrap();
+            .env("NIX_OFFLOAD_VM_DIR", &self.vm)
+            .env("NIX_OFFLOAD_VM_MORE_DIR", &self.more)
+            .env("XDG_RUNTIME_DIR", self.folder.path())
+            .env("XDG_STATE_HOME", self.folder.path())
+            .env("XDG_CONFIG_HOME", self.folder.path())
+            .stdout(std::process::Stdio::null())
+            .stderr(fs::File::create(&said).unwrap())
+            .spawn()
+            .unwrap()
+    }
+
+    /// What it said so far.
+    fn said(&self) -> String {
+        fs::read_to_string(self.folder.path().join("said")).unwrap_or_default()
+    }
+
+    /// The run started, once it ends: what each host was sent and what it
+    /// said. One still waiting after 30 s fails, as one sent behind a queue
+    /// that never moves would.
+    fn finish(&self, mut running: std::process::Child) -> (Vec<(String, usize)>, String) {
+        let said = self.folder.path().join("said");
+        let began = std::time::Instant::now();
+        let status = loop {
+            if let Some(status) = running.try_wait().unwrap() {
+                break status;
+            }
+            if began.elapsed() > std::time::Duration::from_secs(30) {
+                let _ = running.kill();
+                let _ = running.wait();
+                panic!(
+                    "it waited rather than going: {}",
+                    fs::read_to_string(&said).unwrap_or_default()
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        let said = fs::read_to_string(&said).unwrap();
+        assert_eq!(status.code(), Some(0), "{said}");
+        let sent = fs::read_to_string(self.bin.join("ssh-sent")).unwrap();
         let mut built: Vec<(String, usize)> = sent
             .lines()
             .filter_map(|line| line.split_once(' '))
@@ -2528,30 +2592,36 @@ fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
             .map(|(host, command)| (host.to_owned(), command.matches("#checks.x.vm-").count()))
             .collect();
         built.sort();
-        (built, String::from_utf8_lossy(&ran.stderr).into_owned())
-    };
-    let tests_on = |built: &[(String, usize)], host: &str| {
-        built
-            .iter()
-            .find(|(to, _)| to == host)
-            .map_or(0, |(_, tests)| *tests)
-    };
+        (built, said)
+    }
+}
 
-    let (built, _) = sent(8);
+/// How many VM tests `host` was sent, of what `TwoVm::sent` says.
+fn tests_on(built: &[(String, usize)], host: &str) -> usize {
+    built
+        .iter()
+        .filter(|(to, _)| to == host)
+        .map(|(_, tests)| tests)
+        .sum()
+}
+
+// The VM builder runs six VM tests at once, and the rest wait their turn
+// there: on 3 November 49 of 189 runs failed, 37% of VM tests failing
+// with 7 to 12 runs overlapping. So while a second VM lender runs, the VM
+// tests past the first's room go to its builder, at once beside the
+// first's, counting those other runs already sent.
+#[test]
+fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
+    let rig = TwoVm::new();
+    let (built, _) = rig.sent(8);
     assert_eq!(
         tests_on(&built, "nix-offload-vm"),
         8,
         "no second lender runs: {built:?}"
     );
 
-    fs::create_dir(&more).unwrap();
-    fs::write(more.join("lender"), std::process::id().to_string()).unwrap();
-    fs::write(
-        more.join("store"),
-        STORE.replace("nix-offload", "nix-offload-vm-more"),
-    )
-    .unwrap();
-    let (built, said) = sent(8);
+    rig.lend_second();
+    let (built, said) = rig.sent(8);
     assert_eq!(
         tests_on(&built, "nix-offload-vm"),
         6,
@@ -2568,7 +2638,7 @@ fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
     );
     assert!(said.contains("so 2 go to a second VM builder"), "{said}");
 
-    let (built, _) = sent(3);
+    let (built, _) = rig.sent(3);
     assert_eq!(
         tests_on(&built, "nix-offload-vm-more"),
         0,
@@ -2576,17 +2646,78 @@ fn vm_tests_past_the_vm_builders_room_go_to_a_second_at_once() {
     );
 
     // Another run's five are there already, so one of these fits.
-    fs::create_dir_all(vm.join("sending")).unwrap();
-    fs::write(vm.join(format!("sending/{}.0", std::process::id())), "5\n").unwrap();
+    fs::create_dir_all(rig.vm.join("sending")).unwrap();
+    fs::write(
+        rig.vm.join(format!("sending/{}.0", std::process::id())),
+        "5\n",
+    )
+    .unwrap();
     // And a run since gone counts for nothing.
-    fs::write(vm.join("sending/999999999.0"), "6\n").unwrap();
-    let (built, _) = sent(3);
+    fs::write(rig.vm.join("sending/999999999.0"), "6\n").unwrap();
+    let (built, _) = rig.sent(3);
     assert_eq!(tests_on(&built, "nix-offload-vm"), 1, "{built:?}");
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 2, "{built:?}");
     assert!(
-        !vm.join("sending/999999999.0").exists(),
+        !rig.vm.join("sending/999999999.0").exists(),
         "the gone run's is taken away"
     );
-    let claims = fs::read_dir(vm.join("sending")).unwrap().count();
+    let claims = fs::read_dir(rig.vm.join("sending")).unwrap().count();
     assert_eq!(claims, 1, "each run takes its own away as it ends");
+}
+
+// A run sent where others wait for room goes only after them, so those
+// waiting count as the builder's too: on 4 November ten runs waited 51
+// minutes on the first VM builder, with 2 of its 4 claimed, while the
+// second sat idle and was given back.
+#[test]
+fn vm_tests_go_to_a_second_builder_rather_than_wait_behind_runs_on_the_first() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    fs::create_dir_all(rig.vm.join("sending")).unwrap();
+    fs::write(
+        rig.vm.join(format!("sending/{}.0", std::process::id())),
+        "2\n",
+    )
+    .unwrap();
+    fs::create_dir_all(rig.vm.join("waiting")).unwrap();
+    let place = |pid: u32| rig.vm.join(format!("waiting/{:020}.{pid}.0", 1));
+    fs::write(place(std::process::id()), "6\n").unwrap();
+    // A place whose run is gone counts for nothing.
+    fs::write(place(999_999_999), "6\n").unwrap();
+    let (built, said) = rig.sent(3);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
+    assert!(said.contains("8 VM tests sent or waiting"), "{said}");
+}
+
+// A run's split is decided as it starts, so one waiting on the first VM
+// builder goes to the second once that one has room and nothing waits
+// there, rather than waiting out the first.
+#[test]
+fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let full = |dir: &Path| {
+        fs::create_dir_all(dir.join("sending")).unwrap();
+        let claim = dir.join(format!("sending/{}.0", std::process::id()));
+        fs::write(&claim, "6\n").unwrap();
+        claim
+    };
+    full(&rig.vm);
+    let second = full(&rig.more);
+    let running = rig.start(3);
+    let began = std::time::Instant::now();
+    while !rig.said().contains("so this waits for room") {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never waited: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    fs::remove_file(second).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
+    assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
+    assert!(said.contains("another VM builder has room now"), "{said}");
 }

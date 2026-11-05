@@ -63,25 +63,28 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     field = laid["field"]
     mode = next(word for word in laid["foot"] if word["text"] == "insert")
-    rest = sorted(word["x"] for word in laid["foot"] if word is not mode)
-    assert rest[0] < mode["x"], laid["foot"]
+    rest = {(word["text"], word["x"]) for word in laid["foot"] if word is not mode}
+    assert min(x for _, x in rest) < mode["x"], laid["foot"]
     complete = field_key(field, "Ctrl+Y", "complete")
     # It isn't flush against what's typed, and it's the field's one key in
     # insert: clearing is normal's.
     typed = next(word for word in field if word["text"] == "batt")
     assert typed["x"] < complete["x"], field
     assert not any(word["text"].endswith(" clear") for word in field), field
-    bar = desktop.showing()["caretWidth"]
-    # Escape gives normal: the caret one left, a block on its letter, no
-    # word for the mode with the rest of the foot where it was, and the
-    # left arrow's key in the field's place. It's read before the walk's
+    assert desktop.showing()["caretShown"] is True, desktop.showing()
+    # Escape gives normal: the caret one left and not drawn, since the
+    # keys are on the rows, no word for the mode with the rest of the foot
+    # where it was, the right arrow named beside Return now that it steps
+    # in, and the left arrow's key in the field's place. It's read before the walk's
     # edits, since a wider aside they bring crowds the keys' words out
     # until the step ends; A goes back.
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
-    assert desktop.showing()["caretWidth"] > 3 * bar, (bar, desktop.showing()["caretWidth"])
+    assert desktop.showing()["caretShown"] is False, desktop.showing()
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
-    assert sorted(word["x"] for word in laid["foot"]) == rest, (rest, laid["foot"])
+    held = {(word["text"], word["x"]) for word in laid["foot"]}
+    assert rest <= held, (rest, laid["foot"])
+    assert all("\u2192" in text for text, _ in held - rest), (rest, laid["foot"])
     assert field_key(laid["field"], "\u2190", "clear")["x"] == complete["x"], laid["field"]
     machine.send_chars("A")
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("insert", 4))
@@ -603,87 +606,23 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
-def sought_in(things: list[Json]) -> tuple[str, int]:
-    """Give a row's name to search for, lowered, and its place: the first row holding it.
+def walk_the_rows_unsearched(desktop: Desktop) -> None:
+    """Press / ? n N on a search's rows in normal, through niri, and see nothing change.
 
-    It's a name of letters and spaces, so it's typed as it is, held by no row before its own,
-    so a search from the first row lands on it whatever rows come past the twenty named.
-    """
-    reads = [thing["reads"].lower() for thing in things]
-    for at, read in enumerate(reads[1:], start=1):
-        name = read.split(" \u00b7 ")[0]
-        if re.fullmatch(r"[a-z][a-z ]+", name) and not any(name in one for one in reads[:at]):
-            return name, at
-    message = f"no row's name is held by no row before it: {reads}"
-    raise AssertionError(message)
-
-
-def walk_the_rows_searches(desktop: Desktop) -> None:
-    """Search a search's rows with / ? n N, as Joel would through niri.
-
-    They're his Neovim's, as QueryKeys.js and Search.js hold them (tests/query-keys.qml): this
-    is that each reaches the rows through niri, that the search is typed on the line in place of
-    what's typed, and that the foot says where it went round or that it found nothing.
+    The find line is the list's one way to find (VKCF3Z's vi-paradigm spec, The Find Line), so
+    the rows have no search of their own: the selection, the mode and what's typed stay put.
     """
     machine = desktop.machine
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
     desktop.normal()
-    sought, row = sought_in(desktop.showing()["things"])
-
-    def at(current: int, mode: str = "normal") -> Json:
-        """Wait until this row is selected in this mode, what's typed still "s", and give it."""
-        desktop.launcher_until(
-            lambda shown: (shown["current"], shown["mode"], shown["typed"]) == (current, mode, "s")
-        )
-        return desktop.showing()
-
-    def laid() -> Json:
-        return cast("Json", json.loads(desktop.as_account("qs ipc call launcher laidOut")))
-
-    # / takes a search on the line in place of what's typed, the foot saying what Return does
-    # to it, and each letter lands on the first row holding it, as incsearch does, the rows
-    # staying as they were. Escape puts the selection back, and only ends the search.
-    machine.send_chars("/")
-    desktop.launcher_until(lambda shown: shown["search"]["typing"] == "/")
-    field_key(laid()["foot"], "\u21b5", "find")
-    machine.send_chars(sought, delay=desktop_session.KEY_PACE)
-    shown = at(row, "search")
-    assert shown["search"]["typing"] == f"/{sought}", shown["search"]
-    assert any(word["text"].startswith("/") for word in laid()["field"]), laid()["field"]
-    machine.send_key("esc")
-    shown = at(0)
-    assert shown["open"], "an Escape cancelling a search closed the launcher"
-    assert shown["search"]["typing"] is None, shown["search"]
-    # Return runs it, and with nothing typed runs the last again.
-    machine.send_chars(f"/{sought}", delay=desktop_session.KEY_PACE)
-    machine.send_key("ret")
-    assert at(row)["search"]["last"] == sought
-    machine.send_chars("gg")
-    at(0)
-    machine.send_chars("/")
-    desktop.launcher_until(lambda shown: shown["mode"] == "search")
-    machine.send_key("ret")
-    at(row)
-    # N from the first row goes round to the last holding it, and n from there round to the
-    # first, each saying so in the foot for its key alone.
-    machine.send_chars("gg")
-    at(0)
-    machine.send_chars("N")
-    desktop.launcher_until(lambda shown: shown["search"]["said"] == "from the bottom")
-    assert desktop.showing()["current"] >= row, desktop.showing()
-    machine.send_chars("n")
-    desktop.launcher_until(
-        lambda shown: (shown["current"], shown["search"]["said"]) == (row, "from the top")
-    )
-    # A search finding nothing leaves the selection where it was and says so, until a key.
-    machine.send_chars("/zqxjv", delay=desktop_session.KEY_PACE)
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["search"]["said"] == "not found")
-    assert at(row)["search"]["last"] == "zqxjv"
+    machine.send_chars("j")
+    desktop.launcher_until(lambda shown: shown["current"] == 1)
+    machine.send_chars("/?nN", delay=desktop_session.KEY_PACE)
+    # A move after them shows every key before it was taken, and took nothing.
     machine.send_chars("j")
     desktop.launcher_until(
-        lambda shown: (shown["current"], shown["search"]["said"]) == (row + 1, "")
+        lambda shown: (shown["current"], shown["mode"], shown["typed"]) == (2, "normal", "s")
     )
     desktop.close_launcher()
 
@@ -736,10 +675,10 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
 
 
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
-    """A search lists each thing once, and normal's keys move, act and search on it as Vim's do."""
+    """A search lists each thing once, and normal's keys move and act on it as Vim's do."""
     walk_the_rows_moves(desktop)
     walk_the_rows_acts(desktop)
-    walk_the_rows_searches(desktop)
+    walk_the_rows_unsearched(desktop)
     walk_the_rows_keys(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so

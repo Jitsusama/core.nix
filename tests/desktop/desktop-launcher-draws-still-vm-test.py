@@ -436,6 +436,8 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
         lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
     )
     desktop.down_to("Do Not Disturb")
+    # In normal, where the arrows step; insert's move the caret, so it names none.
+    desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
     assert "\u2192" in told, shown["selected"]
