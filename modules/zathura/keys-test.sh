@@ -211,7 +211,7 @@ found /find 3
 typed n 5
 typed N 3
 press End 5
-press Left 4
+typed K 4
 found '?find' 3
 
 # Space ? asks the launcher for the keys, where it lists the viewer's

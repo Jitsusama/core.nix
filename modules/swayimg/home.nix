@@ -262,7 +262,7 @@ let
       # what does (init.lua), as in every program of Joel's.
       {
         chord = "Escape";
-        does = "Out of full screen";
+        does = "The picture out of full screen";
         act = "escape";
       }
       {
