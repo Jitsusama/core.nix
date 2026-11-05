@@ -84,6 +84,21 @@ impl State {
         (field("passed"), field("seen"))
     }
 
+    /// The head a round began on and hasn't finished, until `set_heads`.
+    pub fn under_way(&self) -> Option<String> {
+        read_json(&self.root.join("state.json"))
+            .and_then(|state| state["round"].as_str().map(str::to_owned))
+    }
+
+    /// Write down that a round begins on `head`, keeping the heads.
+    pub fn begin(&self, head: &str) -> Result<(), String> {
+        let path = self.root.join("state.json");
+        let mut written = read_json(&path).unwrap_or_else(|| json!({}));
+        written["round"] = json!(head);
+        write_json(&path, &written)
+    }
+
+    /// Write down the heads, which ends any round under way.
     pub fn set_heads(&self, passed: &str, seen: &str) -> Result<(), String> {
         write_json(
             &self.root.join("state.json"),
