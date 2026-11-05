@@ -115,6 +115,8 @@ pub enum Act {
     ZoomBack,
     /// Lists every key here, as Space ? in Joel's Neovim.
     ShowKeys,
+    /// @: the last line the command line ran, run again.
+    AgainCommand,
     /// v and V: a selection, of characters or of whole paragraphs, items
     /// and lines of code, from the first word on the cursor's line, with
     /// the block cursor there; the same key again ends it, and the other
@@ -304,6 +306,7 @@ const SPOKEN: &[(&str, Act)] = &[
     ("put-after", Act::Change(Edit::PutAfter)),
     ("close", Act::Close),
     ("show-keys", Act::ShowKeys),
+    ("again-command", Act::AgainCommand),
 ];
 
 /// An act that takes the letter typed after its key, as a mark's name.
@@ -765,6 +768,7 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::ZoomOut => ("The Page", "Smaller"),
         Act::ZoomBack => ("The Page", "Back to its own size"),
         Act::ShowKeys => ("The Page", "Show every key here"),
+        Act::AgainCommand => ("Command Line", "Run the last command again"),
         Act::Close => ("The Page", "Close the page"),
         Act::Change(_) => ("The Page", "Nothing: a page can't be changed"),
         Act::Rest => return None,
@@ -908,6 +912,7 @@ pub fn chords() -> Vec<Listed> {
                 "Links and Files" => "links".to_string(),
                 "Text Objects" => "objects".to_string(),
                 "The Page" => "page".to_string(),
+                "Command Line" => "commands".to_string(),
                 other => other.to_lowercase(),
             };
             Some(Listed {
@@ -1222,7 +1227,12 @@ mod tests {
             .into_iter()
             .find(|(group, _)| *group == "Command Line")
             .expect("the lines' group");
-        assert_eq!(rows.len(), 11, "Backspace and Ctrl+H on one row");
+        assert_eq!(rows.len(), 12, "@:, then Backspace and Ctrl+H on one row");
+        assert!(
+            chords()
+                .iter()
+                .any(|c| c.group == "commands" && c.chord == "@ :" && c.act == "again-command")
+        );
         assert_eq!(line_key(Key::Tab, true), Some(LineKey::NextRow));
         assert_eq!(line_key(Key::BackTab, true), Some(LineKey::PreviousRow));
         assert_eq!(line_key(Ctrl('y'), true), Some(LineKey::TakeName));

@@ -476,6 +476,8 @@ struct App {
     menu: Option<menu::Menu>,
     menu_away: bool,
     menu_entries: Vec<menu::Entry>,
+    /// The lines the command line ran, the newest last, for :his and @:.
+    earlier: Vec<String>,
     /// gO's outline while it shows, a search through it being typed, and
     /// it set, waiting to be painted, and painted.
     outline: Option<outline::Outline>,
@@ -1023,29 +1025,8 @@ impl App {
                 };
                 self.close_menu();
                 self.prompt_shown = false;
-                let command = ex::parse(&typing.typed);
-                match &command {
-                    ex::Command::Go(range) => self.go_to_range(*range),
-                    ex::Command::Quit => self.exit = true,
-                    ex::Command::NoHighlight => self.highlighting = false,
-                    ex::Command::Change => self.say(ex::CANNOT_CHANGE),
-                    ex::Command::Copy(range) => self.copy_range(*range),
-                    ex::Command::Edit(file) => self.edit(file.as_deref()),
-                    ex::Command::File { on, times } => self.file_beside(*on, *times),
-                    ex::Command::Help => self.show_keys(true),
-                    ex::Command::Global { pattern, range } => self.list_global(pattern, *range),
-                    ex::Command::Marks(letters) => self.list_marks(letters),
-                    ex::Command::Jumps => self.list_jumps(),
-                    ex::Command::Nothing => {}
-                    ex::Command::Refused(said) => self.say(said),
-                }
-                if keys_logged() {
-                    eprintln!(
-                        "command: {:?} is {command:?}: heading {:.1} pt",
-                        typing.typed,
-                        self.heading() / self.px_per_pt()
-                    );
-                }
+                self.remember_line(&typing.typed);
+                self.run_line(&typing.typed);
             }
             search::Typed::Cancelled => {
                 self.commanding = None;
@@ -1056,6 +1037,74 @@ impl App {
         }
         if !self.frame_pending {
             self.draw();
+        }
+    }
+
+    /// Keeps a line run for :his and @:, as Vim's history keeps them: once
+    /// each, the newest last, fifty at most, as the launcher's are.
+    fn remember_line(&mut self, line: &str) {
+        let line = line.trim();
+        if line.is_empty() {
+            return;
+        }
+        self.earlier.retain(|earlier| earlier != line);
+        self.earlier.push(line.to_string());
+        let over = self.earlier.len().saturating_sub(EARLIER_KEPT);
+        self.earlier.drain(..over);
+    }
+
+    /// @: the last line run, run again, or Vim's E30 with none yet.
+    fn again_command(&mut self) {
+        match self.earlier.last().cloned() {
+            Some(line) => self.run_line(&line),
+            None => self.say("E30: No previous command line"),
+        }
+    }
+
+    /// :his: the lines run, oldest first and the newest chosen, each by its
+    /// number as Vim's :his numbers them; Return runs the one chosen.
+    fn list_history(&mut self) {
+        let rows: Vec<outline::Row> = self
+            .earlier
+            .iter()
+            .enumerate()
+            .map(|(at, line)| outline::Row {
+                level: 1,
+                words: format!("{}  {line}", at + 1),
+                to: outline::To::Command(line.clone()),
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.say("E30: No previous command line");
+        }
+        let newest = rows.len() - 1;
+        self.list(rows, newest);
+    }
+
+    /// Runs a command line's words, as Return on it does.
+    fn run_line(&mut self, typed: &str) {
+        let command = ex::parse(typed);
+        match &command {
+            ex::Command::Go(range) => self.go_to_range(*range),
+            ex::Command::Quit => self.exit = true,
+            ex::Command::NoHighlight => self.highlighting = false,
+            ex::Command::Change => self.say(ex::CANNOT_CHANGE),
+            ex::Command::Copy(range) => self.copy_range(*range),
+            ex::Command::Edit(file) => self.edit(file.as_deref()),
+            ex::Command::File { on, times } => self.file_beside(*on, *times),
+            ex::Command::Help => self.show_keys(true),
+            ex::Command::Global { pattern, range } => self.list_global(pattern, *range),
+            ex::Command::Marks(letters) => self.list_marks(letters),
+            ex::Command::Jumps => self.list_jumps(),
+            ex::Command::History => self.list_history(),
+            ex::Command::Nothing => {}
+            ex::Command::Refused(said) => self.say(said),
+        }
+        if keys_logged() {
+            eprintln!(
+                "command: {typed:?} is {command:?}: heading {:.1} pt",
+                self.heading() / self.px_per_pt()
+            );
         }
     }
 
@@ -1478,8 +1527,15 @@ impl App {
         };
         let row = outline.rows[outline.chosen].clone();
         self.close_outline();
+        if let outline::To::Command(line) = &row.to {
+            // An earlier line is run, not gone to, so it's no jump.
+            self.remember_line(line);
+            self.run_line(line);
+            return;
+        }
         self.remember(self.heading() / self.px_per_pt());
         match row.to {
+            outline::To::Command(_) => {}
             outline::To::Heading(top) => self.land(top),
             outline::To::Line(top) => self.bring(top),
             outline::To::Jump(file, pt, aim) => self.revisit(Spot { file, pt, aim }),
@@ -2259,6 +2315,7 @@ impl App {
             }
             Act::Next | Act::Previous => self.go_on(act == Act::Next, count.unwrap_or(1)),
             Act::ShowKeys => self.show_keys(!listed),
+            Act::AgainCommand => self.again_command(),
             Act::Change(_) => self.say(ex::CANNOT_CHANGE),
             // Escape at rest does nothing, as Vim's does; :noh puts the
             // search's marks away. The page is set to fit the window's
@@ -3753,6 +3810,8 @@ impl CompositorHandler for App {
 /// letters are vi's, with Ctrl named apart since it changes what's typed.
 /// How far the page zooms: half its own size, and three times it.
 const ZOOM_LEAST: f64 = 0.5;
+/// How many lines the command line's history keeps, as the launcher's.
+const EARLIER_KEPT: usize = 50;
 const ZOOM_MOST: f64 = 3.0;
 
 fn key_of(event: &KeyEvent, ctrl: bool, shift: bool) -> Option<keys::Key> {
@@ -4609,6 +4668,7 @@ impl App {
             menu: None,
             menu_away: false,
             menu_entries: menu::entries(),
+            earlier: Vec::new(),
             said: None,
             outline: None,
             outline_typing: None,

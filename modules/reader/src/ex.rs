@@ -40,6 +40,8 @@ pub enum Command {
     Marks(String),
     /// :ju to :jumps.
     Jumps,
+    /// :his to :history: the lines the command line ran.
+    History,
     /// Nothing typed, which does nothing, as in Neovim.
     Nothing,
     /// What Neovim says of a line it won't run, as it says it.
@@ -143,6 +145,13 @@ pub fn parse(typed: &str) -> Command {
         return refusal(given, bang, None).unwrap_or(Command::Marks(letters));
     } else if abbreviates(name, "jumps", 2) {
         Some((Command::Jumps, false, false))
+    } else if abbreviates(name, "history", 3) {
+        // The command line's own history is the only one the page keeps,
+        // as Vim's :his : and :his cmd name it.
+        if matches!(argument, ":" | "c" | "cmd") {
+            return refusal(given, bang, None).unwrap_or(Command::History);
+        }
+        Some((Command::History, false, false))
     } else {
         None
     };
@@ -350,6 +359,15 @@ mod tests {
         assert_eq!(parse("jumps"), Command::Jumps);
         assert_eq!(refused("jumps 3"), "E488: Trailing characters: 3");
         assert_eq!(refused("%marks"), "E481: No range allowed");
+    }
+
+    #[test]
+    fn history_lists_the_command_lines_own() {
+        assert_eq!(parse("his"), Command::History);
+        assert_eq!(parse("history :"), Command::History);
+        assert_eq!(parse("his cmd"), Command::History);
+        assert_eq!(refused("hi"), "E492: Not an editor command: hi");
+        assert_eq!(refused("his /"), "E488: Trailing characters: /");
     }
 
     #[test]

@@ -1160,7 +1160,8 @@
     E484 of a file that isn't, lists the keys on :h, lists the lines :g/pat/ matches, the marks on
     :marks and the jumps on :ju, going to one on Return, shows the command line's menu on :, narrowed
     by what's typed and chosen from with Tab, Shift+Tab, the arrows, Ctrl+N, Ctrl+P, Ctrl+E and
-    Ctrl+Y, the files after :e, and closes on :q; markdown files open in it
+    Ctrl+Y, the files after :e, runs the last line again on @: and an earlier one from :his, and
+    closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests

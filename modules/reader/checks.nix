@@ -118,7 +118,8 @@ onLinux {
   # sections and Return goes to one, :marks and :ju list theirs, the menu
   # shows on :, narrows as e or b is typed, and Tab, Shift+Tab, the arrows,
   # Ctrl+N, Ctrl+P, Ctrl+E and Ctrl+Y choose, put away and take its lines,
-  # :e and a space listing the files, and :q
+  # :e and a space listing the files, @: runs the last line again, :his
+  # lists them and Return runs one, and :q
   # closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
