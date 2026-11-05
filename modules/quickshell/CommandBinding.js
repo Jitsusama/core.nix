@@ -31,9 +31,24 @@ function bound(read, at) {
     return { rows: rows.rows.filter(row => holds(row) !== invert) };
 }
 
-// What a line asks before it runs on what it's bound to.
-function asking(_entry, _found, _all, _bang) {
-    return {};
+// What a line asks before it runs, once, as the spec's Operators have it,
+// given how many of the `all` things it's bound to have its act (`found`)
+// and whether a ! was typed: "some" where only some have it, ! or not, so
+// a range never acts on fewer than it named unasked; else, for an act that
+// can't be undone, "one" or "many", unless the ! says don't, a guarded one
+// asking only over more than one; else nothing. None having it says so.
+function asking(entry, found, all, bang) {
+    if (found === 0) {
+        return { ask: "", none: true };
+    }
+    if (found < all) {
+        return { ask: "some" };
+    }
+    const asks = entry.undoable === false && (entry.guarded !== true || found > 1);
+    if (!asks || bang) {
+        return { ask: "" };
+    }
+    return { ask: found > 1 ? "many" : "one" };
 }
 
 // The act a line names among a thing's acts, so a line bound to several runs
