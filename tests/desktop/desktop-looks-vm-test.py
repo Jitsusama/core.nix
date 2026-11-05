@@ -429,6 +429,42 @@ def changed_from(after: Image.Image, frame: Image.Image) -> float:
     return float(ImageStat.Stat(ImageChops.difference(frame, after).convert("L")).mean[0])
 
 
+# Visual line counts the rows it holds in the mode word, and what arrives
+# while they're chosen waits, counted last among the foot's facts, beside
+# the mode holding them still (VKCF3Z, 2026-11-05), photographed at each
+# of Joel's scales for a person to judge.
+
+
+def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """V j counts two in the mode word, and a copy arriving waits as "1 new" in the foot."""
+    machine = desktop.machine
+    desktop.notes_window()
+    thursday = desktop.opened("Notes for Thursday")
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        named = scale.replace(".", "-")
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("notes for")
+        desktop.launcher_until(lambda shown: len(shown["rows"]) > 1)
+        desktop.normal()
+        machine.send_chars("ggVj")
+        desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
+        desktop.as_account(f"wl-copy 'Notes for the shot at {named}'")
+        desktop.launcher_until(
+            lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
+        )
+        desktop.photograph(f"launcher-visual-waits-at-{named}")
+        machine.send_key("esc")
+        desktop.launcher_until(
+            lambda shown: shown["waiting"] == 0 and not shown["glance"].endswith("new")
+        )
+        desktop.close_launcher()
+    desktop.as_account(f"niri msg action close-window --id {thursday['id']}")
+
+
 def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
