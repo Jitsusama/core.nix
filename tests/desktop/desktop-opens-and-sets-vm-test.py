@@ -459,6 +459,18 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     # Louder is meant to be heard, so it unmutes.
     press("Louder", then="now 100%")
     heard("1.00")
+    # :setl sets the option of what it's in, the program's Sound, as Vim's
+    # :setlocal sets the buffer's: it mutes the stream alone, never the
+    # speakers, and says how it stands.
+    machine.send_chars(":setl mute\n")
+    heard("1.00 [MUTED]")
+    machine.fail(desktop.in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"))
+    machine.send_chars(":setl mute?\n")
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "mute"
+    )
+    machine.send_chars(":setl nomute\n")
+    heard("1.00")
 
     # The volume's bar follows too, filling from the left by the volume:
     # twenty places in ten characters, so a twentieth more lights one
@@ -806,6 +818,13 @@ def commands_a_network(desktop: Desktop) -> None:
         )
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # :setl trust trusts the network the cursor is on, as its Trust It row
+    # does, which turns on mDNS there, and notrust stops.
+    for typed, mdns in [("trust", "+mDNS"), ("notrust", "-mDNS")]:
+        machine.send_chars(f":setl {typed}\n")
+        machine.wait_until_succeeds(
+            f"resolvectl status wlan1 | grep -qF -- {mdns}", timeout=timedelta(seconds=30)
+        )
     for key in ["esc", "ctrl-c", "backspace"]:
         machine.send_chars(":")
         desktop.launcher_until(lambda shown: line(shown).get("line") == "")

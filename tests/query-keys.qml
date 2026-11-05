@@ -1258,7 +1258,7 @@ QtObject {
             word: "word", intoDrawer: "into the drawer", lines: "lines", along: "along",
             scroll: "scroll", back: "back", ending: "ending", seek: "seek", seekOn: "seek on",
             select: "select", reselect: "reselect", otherEnd: "other end", copy: "copy",
-            copyRow: "copy row" };
+            copyRow: "copy row", option: "option", optionHere: "option here" };
         const modes = { normal: "Normal", find: "Find", page: "Drawer",
             pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
@@ -1289,6 +1289,10 @@ QtObject {
         holds("the list's numbers", keyed("numbers"), "Space u l");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
+        // An option, the machine's by :set and that of what it's on by :setl,
+        // as Vim's :setlocal is the buffer's (VKCF3Z, 2026-11-05).
+        holds("the list's options, the machine's and what it's on",
+            [keyed("option"), keyed("option here")], [":set dnd", ":setl mute"]);
         holds("and y", keyed("copy row"), "yy  yG");
         holds("no line scrolls the drawer with Shift and an arrow",
             list.filter(line => (line.label ?? "").includes("\u21e7+\u2193")).length, 0);

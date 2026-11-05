@@ -711,6 +711,17 @@ kinds = ["list"]
 changes = true
 undoable = true
 
+# An option of what it's on rather than the machine's, as Vim's :setlocal
+# sets the buffer's: :setl mute on a program mutes it alone, and a range
+# sets each thing's.
+[acts.setlocal]
+command = "setlocal"
+short = "setl"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
 [acts.sort]
 command = "sort"
 short = "sor"

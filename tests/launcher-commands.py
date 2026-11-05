@@ -52,6 +52,8 @@ TOGGLES = re.compile(r"^inv[a-z]+$|!$")
 # A switch turned one way, :set wifi or :set nowifi, which a row in its
 # other state turns the other.
 SWITCH = re.compile(r"^[a-z]+$")
+# What sets an option: the machine's, or with :setl that of what it's on.
+SETS = {"set", "setlocal"}
 
 
 def commands_of(language: Entry) -> Commands:
@@ -92,29 +94,30 @@ def strays(verb: Entry, commands: Commands) -> list[str]:
     out = []
     if command not in commands:
         out.append(f"{name}'s :{command} is no act's in the key language.")
-    if command == "set" and "argument" not in verb:
-        out.append(f"{name}'s :set sets nothing.")
+    if command in SETS and "argument" not in verb:
+        out.append(f"{name}'s :{command} sets nothing.")
     argument = verb.get("argument")
     if argument is not None and (argument != argument.strip() or not argument):
         out.append(f"{name}'s argument {argument!r} isn't one word or more, spaces trimmed.")
     if "range" in verb and (verb["range"] != EVERY_ROW or not commands.get(command)):
         out.append(f"{name}'s range {verb['range']!r} isn't every row of an act that takes rows.")
-    if command == "set":
+    if command in SETS:
         out += toggles(verb)
     return out
 
 
 def toggles(verb: Entry) -> list[str]:
-    """Say where a :set row toggles, or a switch's state names nothing of its own."""
+    """Say where a :set or :setl row toggles, or a switch's state names nothing of its own."""
     name = verb["id"]
+    command = verb["command"]
     said = {"": verb, **verb.get("states", {})}
     out = [
-        f"{name}{f' {state}' if state else ''} toggles, :set {words['argument']}."
+        f"{name}{f' {state}' if state else ''} toggles, :{command} {words['argument']}."
         for state, words in said.items()
         if TOGGLES.search(str(words.get("argument", "")))
     ]
     out += [
-        f"{name} {state} names no :set of its own."
+        f"{name} {state} names no :{command} of its own."
         for state, words in verb.get("states", {}).items()
         if "argument" not in words and SWITCH.match(str(verb.get("argument", "")))
     ]
@@ -140,8 +143,8 @@ def unnamed(vocabulary: Entry, commands: Commands) -> list[str]:
     return out
 
 
-# A language of two acts, one taking rows, for the check's own strays.
-OWN: Commands = {"forget": True, "set": False}
+# A language of three acts, two taking rows, for the check's own strays.
+OWN: Commands = {"forget": True, "set": False, "setlocal": True}
 
 # What each rule is there to refuse, one stray each, so a rule that stops
 # refusing fails the check rather than passing everything.
@@ -176,6 +179,10 @@ REFUSED: list[tuple[str, list[Entry]]] = [
     (
         "a :set toggling",
         [{"id": "verb:bad", "in": "x", "command": "set", "argument": "wifi!"}],
+    ),
+    (
+        "a :setl toggling",
+        [{"id": "verb:bad", "in": "x", "command": "setlocal", "argument": "mute!"}],
     ),
     (
         "a :set toggling as inv does",

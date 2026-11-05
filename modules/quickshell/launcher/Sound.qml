@@ -256,7 +256,7 @@ Provider {
         // Muted. A Return that muted it would do the opposite as it
         // flipped, an act hidden in the row (docs/design.md, a switch is
         // one row).
-        return entering(member({
+        const row = entering(member({
             thing: true,
             key: `sound:${node.name}`,
             name: named(node),
@@ -266,6 +266,63 @@ Provider {
             graph: loudness(node),
             note: note
         }), () => provider.verbs(node));
+        // Read as :setl asks, so a port read since it was drawn is one.
+        Object.defineProperty(row, "options", {
+            enumerable: true,
+            get: () => provider.deviceOptions(node)
+        });
+        return row;
+    }
+
+    // A device's own options, and a program's playing through it, which
+    // :setl sets as Vim's :setlocal sets a buffer's (VKCF3Z, 2026-11-05):
+    // whether it's muted, how loud, and a device's port where it has a
+    // choice of them, on it alone, never the default output :set's are
+    // (setOptions). A level set or raised is meant to be heard, so it
+    // unmutes, as its rows' do.
+    function nodeOptions(nodes) {
+        const live = () => nodes.filter(node => !!node.audio);
+        return {
+            mute: {
+                kind: "switch",
+                now: () => provider.hushed(nodes),
+                set: to => {
+                    for (const node of live())
+                        node.audio.muted = to;
+                    return "";
+                }
+            },
+            volume: {
+                kind: "number",
+                least: 0,
+                most: 100,
+                now: () => Math.round(provider.loudestOf(nodes) * 100),
+                set: (to, change) => {
+                    for (const node of live()) {
+                        node.audio.volume = to / 100;
+                        if (change?.how !== "subtract")
+                            node.audio.muted = false;
+                    }
+                    return "";
+                }
+            }
+        };
+    }
+
+    function deviceOptions(node) {
+        const options = nodeOptions([node]);
+        const ports = portChoices(node);
+        if (ports !== null)
+            options.port = {
+                kind: "choice",
+                values: ports.choosable.map(port => port.name),
+                now: () => ports.now.name,
+                set: to => {
+                    provider.movePort(node, ports.choosable.find(port => port.name === to));
+                    return "";
+                }
+            };
+        return options;
     }
 
     // What desk-facts knows of each card, by its ALSA id and direction; a
@@ -687,6 +744,7 @@ Provider {
         return thingRow({
             thing: true,
             key: key,
+            options: nodeOptions(streams),
             name: program.name,
             side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),
             graph: bar(hushed(streams) ? 0 : loudestOf(streams)),
@@ -904,13 +962,22 @@ Provider {
         portMover.running = true;
     }
 
-    function portPart(node) {
+    // The ports a device has a choice of, { now, choosable }, or null where
+    // it has none. A port nothing's plugged into is no choice, unless it's
+    // chosen.
+    function portChoices(node) {
         const offered = portsOf[node.name] ?? [];
         const now = offered.find(port => port.active) ?? null;
-        // A port nothing's plugged into is no choice, unless it's chosen.
         const choosable = offered.filter(port => port.active || port.available !== "no");
-        if (!routed(node) || now === null || choosable.length < 2)
+        return !routed(node) || now === null || choosable.length < 2 ? null
+            : { now, choosable };
+    }
+
+    function portPart(node) {
+        const ports = portChoices(node);
+        if (ports === null)
             return null;
+        const { now, choosable } = ports;
         const mark = glyph(kind(node));
         return holderRow({
             key: `sound:${node.name}:port`,

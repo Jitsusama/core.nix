@@ -17,6 +17,10 @@ const normal = [
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "count", acts: [], also: ["3j", "12G"] },
     { name: "row", acts: [], also: [":12"] },
+    // An option, the machine's, and that of what it's on, as Vim's
+    // :setlocal is the buffer's.
+    { name: "option", acts: [], also: [":set dnd"] },
+    { name: "optionHere", acts: [], also: [":setl mute"] },
     { name: "inOut", acts: ["into", "out"] },
     { name: "run", acts: ["run"], firsts: true },
     // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.

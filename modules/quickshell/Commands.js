@@ -44,10 +44,11 @@ function notation(command, short) {
     return `${shortest}[${command.slice(shortest.length)}]`;
 }
 
-// Whether a command never asks, whatever it changes: :set, a row's own
-// included, as Vim's :set never asks (2V74KO, 2026-11-05).
+// Whether a command never asks, whatever it changes: :set and :setl, a
+// row's own included, as Vim's :set and :setlocal never ask (2V74KO,
+// 2026-11-05).
 function neverAsks(command) {
-    return command === "set";
+    return command === "set" || command === "setlocal";
 }
 
 // What an act is named on the line: its verb in lowercase, the word on its
@@ -121,6 +122,11 @@ function listed(from) {
         kind: "help", bang: true, takes: true, undoable: true });
     add({ command: "set", short: short("set"), title: said.set ?? "", key: "",
         kind: "set", bang: false, takes: true, undoable: true });
+    // :setl, the option of what it's on, as Vim's :setlocal is the
+    // buffer's, so it takes a range of things.
+    add({ command: "setlocal", short: short("setlocal"), title: said.setlocal ?? "", key: "",
+        kind: "setlocal", bang: false, takes: true, undoable: true,
+        ranged: table.setlocal?.range === true });
     add({ command: "history", short: short("history"), title: said.history ?? "", key: "",
         kind: "history", bang: false, takes: false, undoable: true });
     add({ command: "{n}", short: "{n}", title: said.row ?? "", key: "", kind: "row",

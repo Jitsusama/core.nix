@@ -2788,7 +2788,7 @@
     },
     {
       "id": "verb:sound-louder",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume+=5",
       "in": "sound",
       "name": "Louder",
@@ -2796,7 +2796,7 @@
     },
     {
       "id": "verb:sound-quieter",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume-=5",
       "in": "sound",
       "name": "Quieter",
@@ -2804,7 +2804,7 @@
     },
     {
       "id": "verb:sound-to",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume=",
       "in": "sound",
       "name": "Volume to {level}",
@@ -2831,7 +2831,7 @@
     },
     {
       "id": "verb:sound-port",
-      "command": "set",
+      "command": "setlocal",
       "argument": "port={port}",
       "in": "sound",
       "name": "Use {port}",
@@ -4945,7 +4945,7 @@
     },
     {
       "id": "verb:wifi-trust",
-      "command": "set",
+      "command": "setlocal",
       "argument": "trust",
       "in": "wifi",
       "name": "Trust It",
@@ -5918,7 +5918,7 @@
     },
     {
       "id": "verb:program:mute",
-      "command": "set",
+      "command": "setlocal",
       "argument": "mute",
       "in": "program:sound",
       "name": "Muted",
@@ -5934,7 +5934,7 @@
     },
     {
       "id": "verb:program:louder",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume+=5",
       "in": "program:sound",
       "name": "Louder",
@@ -5942,7 +5942,7 @@
     },
     {
       "id": "verb:program:quieter",
-      "command": "set",
+      "command": "setlocal",
       "argument": "volume-=5",
       "in": "program:sound",
       "name": "Quieter",
@@ -6743,6 +6743,8 @@
         "screen": "A screen",
         "count": "So many times",
         "row": "To that row",
+        "option": "Set an option",
+        "optionHere": "Set its own option",
         "inOut": "Into it and out",
         "run": "Do it",
         "jumps": "Back and forward",
@@ -6798,6 +6800,7 @@
       "quit": "Close the Launcher",
       "help": "List the Keys",
       "set": "Set an Option",
+      "setlocal": "Set an Option of This",
       "history": "List Earlier Lines",
       "row": "Go to a Row",
       "on": "on {things}",

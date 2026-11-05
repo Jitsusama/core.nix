@@ -573,6 +573,24 @@ ShellRoot {
             same("its volume says so", `${volume.side} ${sound.graph.values[0]}`, "muted 0");
             same("then Muted, keeping its name, says yes",
                 `${sound.targets()[0].name} ${sound.targets()[0].side}`, "Muted yes");
+            // Its own options, which :setl sets, as Vim's :setlocal sets the
+            // buffer's (VKCF3Z, 2026-11-05): mute and volume, on its streams
+            // alone, never the machine's output.
+            const local = sound.options ?? {};
+            same("Sound's options are its mute and volume", Object.keys(local).sort().join(" "),
+                "mute volume");
+            same("each reading its streams", `${local.mute?.now()} ${local.volume?.now()}`,
+                "true 35");
+            local.mute?.set(false);
+            same("nomute unmutes its streams, and no one else's",
+                [first, second, other].map(node => node.audio.muted).join(" "),
+                "false false false");
+            local.volume?.set(60, { option: "volume", how: "set", value: 60 });
+            same("volume=60 sets its streams, and no one else's", volumes(),
+                "0.60 0.60 0.90 0.70");
+            local.mute?.set(true);
+            same("mute mutes them again", `${first.audio.muted} ${second.audio.muted}`,
+                "true true");
 
             same("Notices counts its own", `${told.count} ${told.side}`, "2 1 unread");
             same("and holds more", told.nested, true);
@@ -655,6 +673,12 @@ ShellRoot {
             same("its Microphone says so", `${microphone.side} ${recording.side}`, "muted muted");
             same("then Muted says yes",
                 `${microphone.targets()[0].name} ${microphone.targets()[0].side}`, "Muted yes");
+            const heldMic = microphone.options ?? {};
+            same("its Microphone's option is its mute alone, reading what it records",
+                `${Object.keys(heldMic).join(" ")} ${heldMic.mute?.now()}`, "mute true");
+            heldMic.mute?.set(false);
+            same("nomute unmutes what it records, and not a level meter",
+                `${listening.muted} ${meter.muted}`, "false false");
 
             // Typing on looks only through what the last key found
             // (Provider.qml's poolFor), and finds just what looking
