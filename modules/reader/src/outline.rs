@@ -1,7 +1,7 @@
 //! gO's outline: the page's headings as a list at the window's foot, as
 //! Neovim's gO opens them in a location list, moved through in normal mode
 //! with j and k, gg and G and counts, searched with / and ? then n and N,
-//! Return going to the heading chosen and Escape or ZZ putting it away.
+//! Return going to the heading chosen and ZZ or Space w putting it away.
 //! :g/pat/, :marks and :jumps list their lines in it the same way. Kept
 //! apart from the window so it can be tested; prompt.rs sets it.
 use crate::place::Block;
