@@ -694,11 +694,14 @@ Floating {
                             // A value that won't sit beside its name in two
                             // lines takes the plate's whole width on the
                             // line under it, so it never reads a word a line
-                            // (VKCF3Z, 2026-11-04).
+                            // (VKCF3Z, 2026-11-04); so does one holding a
+                            // word too wide to sit beside it whole, as an
+                            // address, which would otherwise break partway.
                             // A key list's sayings stay beside their keys,
                             // so each key heads its own (VKCF3Z, 2026-11-04).
-                            readonly property bool under: beside.lineCount > 2
-                                && !drawer.listsKeys
+                            readonly property bool under: !drawer.listsKeys
+                                && (beside.lineCount > 2 || value.text.split(" ").some(
+                                    word => factFace.advanceWidth(word) > beside.width))
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
                             // How wide its value may run where it's drawn.
