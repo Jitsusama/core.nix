@@ -436,8 +436,9 @@ impl Layout {
     }
 
     /// The first word wholly in a view from `top_pt` to `foot_pt`, where v
-    /// starts, given the cursor's line's top for `top_pt`: the first letter or digit of the first line wholly in it
-    /// that has one, so never a list's bullet.
+    /// starts, given the cursor's line's top for `top_pt`: the first letter
+    /// or digit of the first line wholly in it that has one, so never a
+    /// list's bullet.
     pub fn first_in_view(&self, top_pt: f64, foot_pt: f64) -> Option<Pos> {
         // The file's own words first: the eyebrow over a title, an alert's
         // kind and a caption are the page's, not the file's, so a copy from

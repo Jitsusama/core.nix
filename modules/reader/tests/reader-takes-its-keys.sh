@@ -156,9 +156,15 @@ copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\
 act 1 'y}'
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
 # j moves the cursor and not the view: two rows down, past the title, y y
-# copies the lede alone, a block of its own, and k and gg go back.
+# copies the lede alone, a block of its own, y i p still the paragraph
+# round it, and y } only the lede, from it to the paragraph's end; then k
+# and gg go back.
 act 1 2j
 act 1 yy
+copied '"Some of it is on [the second page](second.md).\n"'
+act 1 yip
+copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
+act 1 'y}'
 copied '"Some of it is on [the second page](second.md).\n"'
 near "$(heading)" 0 || fail "j moved the view to $(heading) pt"
 act 1 k
@@ -376,9 +382,11 @@ press -M ctrl e -m ctrl
 logged '^key ScrollDown None' 1
 lower=$(heading)
 awk "BEGIN { exit !($lower > $linked) }" || fail "Ctrl+E left the view at $lower pt"
+kept=$(cursor)
 press -M ctrl y -m ctrl
 logged '^key ScrollUp None' 1
 near "$(heading)" "$linked" || fail "Ctrl+Y took the view to $(heading) pt, not $linked"
+near "$(cursor)" "$kept" || fail "Ctrl+Y moved the cursor from $kept pt to $(cursor)"
 press -M ctrl e -m ctrl
 logged '^key ScrollDown None' 2
 left=$(heading)
