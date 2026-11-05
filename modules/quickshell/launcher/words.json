@@ -1507,8 +1507,10 @@
       "in": "today",
       "name": "Calendars",
       "said": {
+        "atSunset": "at sunset",
         "days": "{value} days",
         "months": "{value} months",
+        "noSunset": "no sunset today",
         "silent": "not answering"
       }
     },
@@ -1551,6 +1553,16 @@
       "id": "today:calendars:day",
       "in": "today:calendars",
       "name": "Day"
+    },
+    {
+      "id": "today:calendars:dayBegins",
+      "in": "today:calendars",
+      "name": "Day Begins"
+    },
+    {
+      "id": "today:calendars:dayBegan",
+      "in": "today:calendars",
+      "name": "Day Began"
     },
     {
       "id": "today:calendars:monthDays",
