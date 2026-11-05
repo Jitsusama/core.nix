@@ -6629,6 +6629,7 @@
     }
   ],
   "field": {
+    "found": "{at} of {all}",
     "modes": {
       "insert": "insert",
       "pageVisual": "visual",

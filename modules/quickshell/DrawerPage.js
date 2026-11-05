@@ -43,16 +43,32 @@ function margin(page) {
     return Math.max(0, Math.min(page.off * page.pitch, most));
 }
 
-// Where a search lands, as { line, letter, want, top, wrapped }, or null
-// where nothing is sought or it's found nowhere: on the next match's first
+// Every match of a search in lines as they're shown, as { line, letter },
+// in order down the page, matched by smartcase as Search.js matches.
+function matchesIn(lines, pattern) {
+    return [].concat(...lines.map((line, at) => Search.found(pattern, line.text ?? "")
+        .map(([start]) => ({ line: at, letter: start }))));
+}
+
+// Which match the cursor stands on, of how many, as { at, of } counting
+// from one, or null where it stands on none: the foot counts it as
+// Neovim's search count does.
+function found(lines, pattern, line, letter) {
+    const matches = matchesIn(lines, pattern);
+    const at = matches.findIndex(match => match.line === line && match.letter === letter);
+    return at < 0 ? null : { at: at + 1, of: matches.length };
+}
+
+// Where a search lands, as { line, letter, want, top, wrapped, at, of },
+// or null where nothing is sought or it's found nowhere, `at` being which
+// match of the `of` it found: on the next match's first
 // letter past the cursor, or with `forward` false the one before it, a
 // count going on that many, round past either end as Vim's wrapscan does,
 // matched by smartcase as Search.js matches. Each line is searched as it's
 // shown, so a match never runs across a line's end, and the view follows
 // the cursor there as a move's does.
 function sought(page, pattern, forward, count) {
-    const matches = [].concat(...page.lines.map((line, at) => Search.found(pattern,
-        line.text ?? "").map(([start]) => ({ line: at, letter: start }))));
+    const matches = matchesIn(page.lines, pattern);
     if (matches.length === 0) {
         return null;
     }
@@ -75,13 +91,16 @@ function sought(page, pattern, forward, count) {
         target = last - times;
     }
     const wrapped = target < 0 || target >= matches.length;
-    const landed = matches[((target % matches.length) + matches.length) % matches.length];
+    const which = ((target % matches.length) + matches.length) % matches.length;
+    const landed = matches[which];
     return {
         line: landed.line,
         letter: landed.letter,
         want: page.xOf(landed.line, landed.letter),
         top: shown(page.lines[landed.line], page.top, page),
-        wrapped
+        wrapped,
+        at: which + 1,
+        of: matches.length
     };
 }
 
