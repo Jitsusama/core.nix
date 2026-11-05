@@ -254,6 +254,12 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       fields.insert("spacing", items)
       return it.func()(..fields, ..children)
     }
+    // Typst ranks the room between two blocks by how weak it is before
+    // how large: a weak v first, then a block's set above or below, then
+    // auto and par spacing, the larger winning only between equals. Set
+    // above and below would beat a heading's room, so the list leaves
+    // them to the paragraphs' spacing, which a heading's set below wins
+    // over and a paragraph's gives way to by being smaller.
     let off = if wide { gap(2) } else { gap(1.5) }
     set par(spacing: off)
     block(above: auto, below: auto, { set par(spacing: gap(1.5)); inner })
