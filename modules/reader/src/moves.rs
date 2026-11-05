@@ -27,6 +27,14 @@ pub fn foot_of(line: &Line) -> f64 {
     line.baseline_pt + line.size_pt * 0.3
 }
 
+/// Where the cursor's rule stands beside a line, its top and foot down the
+/// page in points: the line's cell, as a selection's ground is, so the rule
+/// is one height on a label, the words and a heading, and meets the ground
+/// on the line it marks.
+pub fn rule_of(line: &Line) -> (f64, f64) {
+    crate::select::line_cell(line.baseline_pt, line.cap_pt, line.size_pt)
+}
+
 /// Where a block's words start: its first line's top, or the block's own
 /// top where it has none, as a picture or a rule.
 fn landing(blocks: &[Block], lines: &[Line], at: usize) -> f64 {
@@ -385,6 +393,32 @@ mod tests {
             cap_pt: 7.0,
             text: text.into(),
             spans: text.chars().map(|_| (0.0, 1.0)).collect(),
+        }
+    }
+
+    /// The eyebrow's label, the words and a section's heading, at the
+    /// theme's sizes: the rule beside each is the page's pitch tall,
+    /// standing as far over its capitals as under its baseline, as a
+    /// selection's ground does.
+    #[test]
+    fn the_cursors_rule_is_one_height_on_every_line() {
+        let pitch = crate::page::pitch_pt();
+        for (size_pt, cap_pt) in [(10.5, 7.4), (13.69, 9.2), (17.11, 12.0)] {
+            let at = Line {
+                size_pt,
+                cap_pt,
+                ..line(100.0, "Words")
+            };
+            let (top, foot) = rule_of(&at);
+            assert!(
+                ((foot - top) - pitch).abs() < 1e-9,
+                "the rule beside a {size_pt} pt line is {} pt, not the pitch's {pitch}",
+                foot - top
+            );
+            assert!(
+                ((100.0 - cap_pt - top) - (foot - 100.0)).abs() < 1e-9,
+                "the rule beside a {size_pt} pt line isn't centred on its capitals"
+            );
         }
     }
 
