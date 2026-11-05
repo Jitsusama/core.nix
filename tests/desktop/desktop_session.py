@@ -632,12 +632,14 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         into what a verb asks; - goes back up. A program, a window or a file opens on Return
         instead, so its parts are reached by `follow`, and its acts by : and their commands.
         Return from the find keeps the find, where the next Return on a row that changes
-        something only lands, so it ends in normal, as `follow` and `step_out` do.
+        something only lands, so it ends in normal, as `follow` and `step_out` do. A step into
+        what asks, as a password, stays on its line, which Escape would give up.
         """
         before = len(self.showing()["held"])
         self.machine.send_key(key)
-        self.launcher_until(lambda shown: len(shown["held"]) > before)
-        self.normal()
+        self.launcher_until(lambda shown: len(shown["held"]) > before or bool(shown["asking"]))
+        if not self.showing()["asking"]:
+            self.normal()
 
     def follow(self) -> None:
         """Go into the selected row's parts by Ctrl+] from normal, and wait until it's there.

@@ -292,9 +292,7 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
     into_notes("move")
     desktop.step_in("ret")
     desktop.photograph("launcher-target")
-    # Moving it changes how things stand, so Return from the find lands on
-    # the workspace, and a second moves it there.
-    desktop.land()
+    # The step ends in normal, where Return moves it to the workspace.
     machine.send_key("ret")
 
     def moved(_: bool) -> bool:
