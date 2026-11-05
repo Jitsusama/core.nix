@@ -36,6 +36,21 @@ QtObject {
         row: "Go to a Row"
     })
 
+    // The key language's commands as the shell has them (Options.commands,
+    // from modules/keys/language.toml), by their whole names, a flag left
+    // out where the language leaves it out.
+    readonly property var commands: ({
+        quit: { act: "close", short: "q" },
+        help: { act: "help", short: "h" },
+        set: { act: "set", short: "se", changes: true, undoable: true },
+        sort: { act: "sort", short: "sor", changes: true, undoable: true, range: true },
+        open: { act: "open-it", short: "ope" },
+        disconnect: { act: "disconnect", short: "disc", changes: true, undoable: true,
+            range: true },
+        forget: { act: "forget", short: "forg", changes: true, range: true },
+        suspend: { act: "suspend", short: "sus", changes: true }
+    })
+
     // A network's acts, as Wireless.qml makes them: Return's first, the
     // ending act d does, and its copy.
     function network() {
@@ -53,7 +68,7 @@ QtObject {
         return Commands.listed({
             acts: acts ?? network(),
             surface: surface ?? [],
-            table: Commands.standIn,
+            table: commands,
             said: said,
             row: 3
         });
@@ -192,6 +207,13 @@ QtObject {
         holds("words after an act that takes none say so", ran("disc now"),
             "E488: Trailing characters: now");
         holds("an act that asks takes !, which doesn't", ran("forg!"), "forget!");
+        holds("an act that changes nothing asks nothing, so takes no !",
+            Commands.ran("ope!", menuOf([{ name: "Open It", verb: "open" }])).error,
+            "E477: No ! allowed");
+        holds("what asks is what changes and can't be undone",
+            menuOf([{ name: "Open It", verb: "open" }, { name: "Forget It", verb: "forget" },
+                { name: "Disconnect It", verb: "disconnect" }, { name: "See It", verb: "see" }])
+                .slice(0, 4).map(entry => entry.undoable), [true, false, true, true]);
         holds("a surface's command takes what follows it", ran("sort name"), "sort name");
 
         // Ctrl+W deletes the word before the caret, as Vim's command line's.
