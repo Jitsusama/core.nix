@@ -2231,8 +2231,12 @@ Scope {
             root.readSelectedActions();
             // The foot's room starts again for each mode, which changes
             // what it draws, so the glance never gives way to keys a mode
-            // no longer shows, as normal's once back on the find (QIFT5D).
+            // no longer shows, as normal's once back on the find (QIFT5D);
+            // and its facts' forms with it, which within one mode only
+            // shorten, or a form normal forced would outlive it (Y2YBTS).
             root.footReset();
+            root.footStage = 0;
+            root.factsWidest = {};
             root.noteKeys();
         }
     }
