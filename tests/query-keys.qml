@@ -358,7 +358,9 @@ QtObject {
                 ["selectLines", "previous", "scrollDown", "seekPrevious"], "pageVisualLine"],
             ["o goes to its other end", ["v", "o"], ["select", "otherEnd"], "pageVisual"],
             ["y copies it and goes back to the page", ["v", "y"], ["select", "copy"], "page"],
-            ["and Y", ["V", "Y"], ["selectLines", "copy"], "page"],
+            // Y copies the lines it's on however it chooses, as Vim's v_Y.
+            ["Y copies its whole lines", ["V", "Y"], ["selectLines", "copyLines"], "page"],
+            ["and by letters too", ["v", "Y"], ["select", "copyLines"], "page"],
             ["Escape lets it go", ["V", "Escape"], ["selectLines", "back"], "page"],
             ["and Ctrl+C", ["v", "Ctrl+c"], ["select", "back"], "page"],
             ["Escape lets a count go first", ["v", "3", "Escape"], ["select"], "pageVisual"],
@@ -384,7 +386,8 @@ QtObject {
             typed(into.concat(["v", "d"])).ours, true);
         holds("the drawer's visual: : in it opens the command line, whose :q goes back",
             typed(into.concat(["V", ":"])).acts, ["normal", "drawer", "selectLines", "command"]);
-        for (const act of ["select", "selectLines", "otherEnd", "copy", "reselect", "back"])
+        for (const act of ["select", "selectLines", "otherEnd", "copy", "copyLines", "reselect",
+            "back"])
             holds(`the drawer's visual: ${act} is once a press`, Keys.repeats(act), false);
         holds("the drawer's visual: v on the rows chooses nothing here",
             typed(["Escape", "v"]).mode, "normal");

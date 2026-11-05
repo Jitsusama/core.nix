@@ -563,6 +563,12 @@ def test_in_a_drawer_v_and_shift_v_choose_and_y_copies_what_they_chose(desktop: 
             == "line 1 of the deploy went by\nline 2 of the deploy went by"
         ),
     )
+    # Y copies the whole line, however few of its letters are chosen, as Vim's v_Y.
+    page.until("v l", chose("letters", 2))
+    page.pressed_until(
+        "shift-y",
+        lambda shown: shown["drawer"]["chosen"]["copied"] == "line 1 of the deploy went by",
+    )
     for scale in (*JOELS_SCALES, "1"):
         desktop.close_launcher()
         desktop.as_account(f"niri msg output winit scale {scale}")
