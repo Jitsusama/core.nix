@@ -154,10 +154,15 @@ function textOf(codes) {
 }
 
 // An item ready to be matched: its text, its letters in lower case (one
-// for one, so positions line up) as a string and as character codes, each
-// letter's bonus, and which letters it holds. A word written with a hyphen
-// is the same word typed without one, so "wifi" is Wi-Fi: it's kept closed
-// up too, with where each of its letters is in the text.
+// for one, so positions line up), each letter's bonus, and which letters
+// it holds. A word written with a hyphen is the same word typed without
+// one, so "wifi" is Wi-Fi: it's kept closed up too, with where each of its
+// letters is in the text. The lower case is the engine's own for the whole
+// text wherever that is one for one, which is every text but one holding a
+// letter whose lower case is two, as İ's is; only then is it made from the
+// codes, since spreading them into a call makes a value for each
+// (QV4::Runtime::CallWithSpread): that was the most any of the shell's
+// JavaScript allocated, 66 MB in its first four minutes (2026-11-04).
 function prepare(text) {
     const source = String(text);
     const n = source.length;
@@ -175,8 +180,10 @@ function prepare(text) {
         mask |= bitOf(codes[j]);
         if (bonus[j] > 0) first |= bitOf(codes[j]);
     }
-    return Object.assign({ text: source, folded: textOf(codes), codes: codes, bonus: bonus,
-        mask: mask, starts: first }, closedUp(source, codes, bonus));
+    const lower = source.toLowerCase();
+    const folded = lower.length === n ? lower : textOf(codes);
+    return Object.assign({ text: source, folded: folded, bonus: bonus, mask: mask,
+        starts: first }, closedUp(source, folded, bonus));
 }
 
 // Texts already made ready, by their text, so a row made again as its list
@@ -227,24 +234,38 @@ function keptSoFar() {
 
 // The text with each hyphen inside a word taken out, its letters' places in
 // the text, and their bonuses as the closed-up word has them, or nothing
-// for a text without such a hyphen.
-function closedUp(source, codes, bonus) {
+// for a text without such a hyphen. Most texts have none, and are passed
+// at once. The rest are counted first, so the places and bonuses are typed
+// arrays of their size and the closed-up text is joined from the few
+// pieces between hyphens: grown a place at a time, an array of numbers
+// and a text spread from it kept a hyphenated text at 8 KB, four times one
+// without (tests/fuzzy-light.qml, 2026-11-04).
+function closedUp(source, folded, bonus) {
+    if (folded.indexOf("-") < 0) return { closed: null };
     const n = source.length;
-    const left = [];
-    const at = [];
+    const inside = j => folded.charCodeAt(j) === HYPHEN && j > 0 && j < n - 1
+        && JOINED.test(source[j - 1]) && JOINED.test(source[j + 1]);
+    let gone = 0;
+    for (let j = 1; j < n - 1; j++)
+        if (inside(j)) gone += 1;
+    if (gone === 0) return { closed: null };
+    const closedAt = new Int32Array(n - gone);
+    const closedBonus = new Int8Array(n - gone);
+    const pieces = [];
+    let from = 0;
+    let k = 0;
     for (let j = 0; j < n; j++) {
-        const inside = codes[j] === HYPHEN && j > 0 && j < n - 1
-            && JOINED.test(source[j - 1]) && JOINED.test(source[j + 1]);
-        if (!inside) {
-            left.push(codes[j]);
-            at.push(j);
+        if (inside(j)) {
+            pieces.push(folded.slice(from, j));
+            from = j + 1;
+            continue;
         }
+        closedAt[k] = j;
+        closedBonus[k] = k > 0 && j !== closedAt[k - 1] + 1 ? 0 : bonus[j];
+        k += 1;
     }
-    if (at.length === n) return { closed: null };
-    const closedBonus = new Int8Array(at.length);
-    for (let k = 0; k < at.length; k++)
-        closedBonus[k] = k > 0 && at[k] !== at[k - 1] + 1 ? 0 : bonus[at[k]];
-    return { closed: textOf(left), closedAt: at, closedBonus: closedBonus };
+    pieces.push(folded.slice(from));
+    return { closed: pieces.join(""), closedAt: closedAt, closedBonus: closedBonus };
 }
 
 // What a word is worth landing at `at`: fzf's score for a run of letters,
