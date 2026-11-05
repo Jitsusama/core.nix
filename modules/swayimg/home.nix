@@ -339,7 +339,16 @@ let
     mono = font.mono.family;
     size = pixels type.mono.large;
     space = {
-      inherit (space) s l;
+      inherit (space.rung)
+        tie
+        mark
+        apart
+        inset
+        screen
+        ;
+      # The chessboard behind a picture's clear parts: a texture, not a
+      # space between two things, so it's sized by the unit, not a rung.
+      square = 2 * space.unit;
     };
     inherit (shape) border;
     inherit places;
@@ -428,16 +437,13 @@ in
     return ${lua given}
   '';
 
-  # After niri's own rules, which match no window of swayimg's. It opens at
-  # four fifths of the screen, centred, with the desktop showing around it:
-  # swayimg's own size is a fixed 1280 by 720, too wide for a laptop's
-  # screen at twice its scale.
+  # After niri's own rules, which match no window of swayimg's. It floats
+  # over the work, centred, and init.lua sizes it to stand the screen rung
+  # from every edge, as every floating frame does.
   xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
     window-rule {
         match app-id="^swayimg$"
         open-floating true
-        default-column-width { proportion 0.8; }
-        default-window-height { proportion 0.8; }
     }
   '';
 
