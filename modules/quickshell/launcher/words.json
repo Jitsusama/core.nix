@@ -6706,7 +6706,15 @@
       "complete": "complete",
       "nextTime": "next time",
       "enough": "is enough",
-      "E21": "E21: Cannot make changes"
+      "E21": "E21: Cannot make changes",
+      "wrappedBottom": "search hit BOTTOM, continuing at TOP",
+      "wrappedTop": "search hit TOP, continuing at BOTTOM",
+      "E35": "E35: No previous regular expression",
+      "E486": "E486: Pattern not found: {typed}",
+      "noLetter": "no row {way} begins with {letter}",
+      "below": "below",
+      "above": "above",
+      "noAgain": "no f or F to go again"
     },
     "listed": {
       "eyebrow": "Keys",
@@ -6745,6 +6753,8 @@
         "beside": "The place beside",
         "own": "Open in its program",
         "find": "A fresh find",
+        "matches": "Its next row and back",
+        "letters": "To a row by its letter",
         "insert": "Type",
         "change": "Clear it and type",
         "ending": "Close or forget it",
