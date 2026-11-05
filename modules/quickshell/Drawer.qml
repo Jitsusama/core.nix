@@ -583,20 +583,24 @@ Floating {
     // are drawn to stand with Latin as the mono's do, and CJK's fill their
     // em, so they keep their size. Both are measured at ten times Figure's
     // size, since a face's bounds come in whole pixels, and at Figure's a
-    // pixel's rounding put the ratio at 1.17 rather than 1.25.
+    // pixel's rounding put the ratio at 1.17 rather than 1.25. Neither face
+    // draws anything, so the size they measure at isn't type shown.
+    readonly property int measuredLarger: 10
     FontMetrics {
         id: scriptDigitFace
         font.family: drawer.script !== "" ? Theme.script.mono[drawer.script]
             : Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize * 10
+        font.pointSize: Theme.level.figure.pointSize * drawer.measuredLarger
     }
     FontMetrics {
         id: figureDigitFace
         font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize * 10
+        font.pointSize: Theme.level.figure.pointSize * drawer.measuredLarger
         font.features: Theme.level.figure.features
     }
     // A binding doesn't see what a call reads, so it reads both faces.
+    // A script's cut takes no axes of the serif's.
+    readonly property var noAxes: ({})
     readonly property real scriptGrown: {
         void scriptDigitFace.font;
         void figureDigitFace.font;
@@ -984,7 +988,7 @@ Floating {
                         // The serif's axes are its own, so a script's cut
                         // takes its own weight instead.
                         font.variableAxes: drawer.script === "" ? Theme.level.title.variableAxes
-                            : ({})
+                            : drawer.noAxes
                     }
                 }
 
