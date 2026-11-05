@@ -718,9 +718,10 @@ HINT_PRESSES = {
 
 
 def standing(shown: dict[str, Any]) -> tuple[object, ...]:
-    """Say what a key in normal changes: where it is, what it lists and what it says."""
+    """Say what a key in normal changes: where it is, what it lists, what it says and waits on."""
     return (
         shown["open"],
+        shown["operator"],
         shown["mode"],
         shown["held"],
         (shown["command"] or {}).get("line"),

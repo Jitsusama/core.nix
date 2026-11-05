@@ -1073,6 +1073,9 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
     desktop.normal()
+    # Normal's foot names d by the row's ending verb, as docs/design.md's foot does.
+    told = desktop.showing()["selected"]["told"]
+    assert "d disconnect" in told, told
     machine.send_chars("d")
     desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
     with desktop.told("ask ready"), desktop.told("asked Disconnect Lantern? (y/n)"):
