@@ -363,13 +363,13 @@ kinds = ["list"]
 changes = true
 undoable = true
 
-# The last line the command line ran, run again, as Vim's @: does; with no
+# The last line a command line ran, run again, as Vim's @: does; with no
 # line yet it says E30: No previous command line. Whether it changes
 # anything, or asks first, is the line's own act's.
 [acts.again-command]
 keys = ["@:"]
 modes = ["normal"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.undo]
 keys = ["u"]
@@ -756,7 +756,7 @@ range = true
 [acts.history]
 command = "history"
 short = "his"
-kinds = ["list"]
+kinds = ["list", "page"]
 
 # Files gathered across folders for one answer, as Vim's arglist; the
 # gathered; another folder; a new folder.

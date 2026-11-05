@@ -6,6 +6,8 @@
 // where letters type, and Escape gives normal, where nothing types.
 // Letters go by what they type, wherever they sit on the layout.
 .pragma library
+.import "LineEditing.js" as LineEditing
+.import "Operators.js" as Operators
 
 // Each act, the mode it's done in and the keys that do it. A key is named as
 // the field names it (Prompt.qml, `named`): a modifier, then the letter it
@@ -75,23 +77,18 @@ const table = [
     // below), and which d, y and Return take at once, as Vim's visual
     // operators wait for no motion. V again ends it, and Escape, after a
     // count begun; a colon hands the command line the selection. On rows v
-    // is V too, the spec's, since a row has no letters to choose among;
-    // and x is d, as Vim's visual x is.
+    // is V, a row having no letters to choose among, and x is d, as in Vim.
     { act: "selectLines", mode: "normal", keys: ["V", "v"] },
     { act: "selectLines", mode: "visual", keys: ["V", "v"] },
     { act: "ending", mode: "visual", keys: ["d", "x"] },
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape"] },
-    // o goes to the selection's other end, and gv brings the last one
-    // back, as Vim's do.
+    // o goes to the other end and gv brings the last back, as Vim's do.
     { act: "otherEnd", mode: "visual", keys: ["o"] },
     { act: "reselect", mode: "normal", keys: [["g", "v"]] },
-    // A paragraph of rows, as Vim's of lines: a run of one kind, or of one
-    // sender's notices, that a gap or a change of either ends (VKCF3Z,
-    // 2026-11-05; Operators.runAt). } and { go to the next run's first row
-    // and back to this one's, and ip and ap select it, the same rows, since
-    // a list has no blank rows for ap to take besides; after d or y they're
-    // its text objects (objects, below).
+    // A paragraph of rows, a run of one kind or one sender's notices that a
+    // gap ends (VKCF3Z; Operators.runAt): } and { go by runs, and ip and ap,
+    // the same rows on a list, select one, as d's and y's text objects too.
     { act: "paragraphOn", mode: "normal", keys: ["}"] },
     { act: "paragraphBack", mode: "normal", keys: ["{"] },
     { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
@@ -182,7 +179,29 @@ const table = [
     { act: "viewTop", mode: "page", keys: ["H"] },
     { act: "viewMiddle", mode: "page", keys: ["M"] },
     { act: "viewBottom", mode: "page", keys: ["L"] },
-    { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] }
+    { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] },
+    // n and N go on to the search's next match, the way it went and the
+    // other, each a move, so a held n repeats as j does; / and ? open the
+    // search itself (seekRead).
+    { act: "seekNext", mode: "page", keys: ["n"] },
+    { act: "seekPrevious", mode: "page", keys: ["N"] },
+    // Visual on the page, the language's select and select-lines: v from
+    // the cursor's letter, V by whole lines, and gv the last chosen again.
+    // While choosing, its rows are pageVisual's, whose two kinds share them
+    // (inMode): the same key again ends it and the other changes its kind,
+    // as Vim's do; the page's moves extend it; o goes to its other end; y
+    // copies it and Escape lets it go, each back on the page. No way back
+    // to the rows is in it, as Vim's visual has no ZZ.
+    { act: "select", mode: "page", keys: ["v"] },
+    { act: "selectLines", mode: "page", keys: ["V"] },
+    { act: "reselect", mode: "page", keys: [["g", "v"]] },
+    { act: "select", mode: "pageVisual", keys: ["v"] },
+    { act: "selectLines", mode: "pageVisual", keys: ["V"] },
+    { act: "otherEnd", mode: "pageVisual", keys: ["o"] },
+    { act: "copy", mode: "pageVisual", keys: ["y"] },
+    // Y copies the whole lines it's on, however it chooses, as Vim's v_Y.
+    { act: "copyLines", mode: "pageVisual", keys: ["Y"] },
+    { act: "back", mode: "pageVisual", keys: ["Escape", "Ctrl+c"] }
 ];
 
 // The acts that move through the rows, which repeat while their key is
@@ -190,8 +209,8 @@ const table = [
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
     "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
-    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "paragraphOn",
-    "paragraphBack"];
+    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "seekNext", "seekPrevious",
+    "paragraphOn", "paragraphBack"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -205,64 +224,16 @@ function rest() {
     return { count: "", typed: [] };
 }
 
-// Whether anything's begun: a count, a sequence's first keys or an
-// operator.
+// Whether anything's begun: a count, a sequence's first keys, an operator,
+// or a search being typed.
 function pending(standing) {
     return standing.count !== "" || standing.typed.length > 0
-        || standing.operator !== undefined;
+        || standing.operator !== undefined || standing.seek !== undefined;
 }
 
 // The operators, by their key, and the act each does over the rows it
-// takes.
-const operators = { d: "ending", y: "copy" };
-
-// The moves an operator takes as its motion, each linewise on the rows,
-// as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
-// scroll rather than move, so Vim takes none of them as a motion.
-const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
-    "paragraphOn", "paragraphBack"];
-
-// The text objects an operator takes in a motion's place, as dip does.
-const objects = ["inParagraph", "aParagraph"];
-
-// Two counts as one, as Vim multiplies the count before an operator and
-// the one after it: 2d3j goes six rows. Either alone is itself, and
-// neither is no count.
-function multiplied(before, after) {
-    if (before === "" && after === "") {
-        return 0;
-    }
-    return Number(before === "" ? 1 : before) * Number(after === "" ? 1 : after);
-}
-
-// A key while an operator waits: the operator's own key again does it
-// over the row and those below, as dd does; a motion does it as far as
-// that goes, as dj does, with the counts multiplied; a sequence's first
-// key (gg's g) waits for the rest; anything else lets it go. It waits as
-// long as it takes for its motion, as Vim's does.
-function operated(standing, key) {
-    const { operator } = standing;
-    const act = operators[operator.key];
-    const count = multiplied(operator.count, standing.count);
-    if (standing.typed.length === 0 && key === operator.key) {
-        return { act, count, motion: null, standing: rest(), ours: true };
-    }
-    // Another operator's key lets this one go, as dy does in Vim. A text
-    // object is read first, so the i of ip waits rather than inserting.
-    const typed = standing.typed.concat([key]);
-    const object = matching(typed, "object");
-    const matched = key in operators ? { act: "", begun: false }
-        : object.act !== "" || object.begun ? object : matching(typed, "normal");
-    if (motions.includes(matched.act) || objects.includes(matched.act)) {
-        return { act, count: 0, motion: { act: matched.act, count }, standing: rest(),
-            ours: true };
-    }
-    if (matched.act === "" && matched.begun) {
-        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
-            ours: true };
-    }
-    return { act: "", count: 0, standing: rest(), ours: true };
-}
+// takes (Operators.js, which reads a key while one waits).
+const operators = Operators.operators;
 
 // The range a count before a colon gives the command line, as Vim's 3:
 // gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
@@ -274,6 +245,36 @@ function counted(count) {
 // as Vim's '<,'>, whatever was counted, or the count's in normal.
 function rangeFor(count, mode) {
     return mode === "visual" ? "'<,'>" : counted(count);
+}
+
+// The field names a Ctrl chord by its letter as typed, and the line's
+// editing (LineEditing.js) by the letter's capital, as Vim's help writes it.
+const ctrlLetter = /^Ctrl\+[a-z]$/;
+
+// A key typed in the drawer's search, held in how the keys stand as
+// `seek`, { pattern, forward }, while it's open, as Vim types / and ? on
+// its command line: Return runs it, with the count typed before the /,
+// and says what it sought, an empty pattern seeking the last again as
+// Vim's does; Escape or Ctrl+C lets it go, as Backspace or Ctrl+H does
+// with nothing left. Every other key edits it as the find line and the
+// command line are edited (LineEditing.js): Ctrl+W takes the word before,
+// Ctrl+U all of it, and anything printable is typed, a page's keys among
+// them, as a space is.
+function seekRead(standing, key) {
+    const seek = standing.seek;
+    const open = pattern => ({ act: "", count: 0,
+        standing: { count: standing.count, typed: [], seek: { pattern, forward: seek.forward } },
+        ours: true });
+    if (key === "Return" || key === "Enter") {
+        return { act: "seek", count: standing.count === "" ? 0 : Number(standing.count),
+            sought: seek, standing: rest(), ours: true };
+    }
+    const chord = ctrlLetter.test(key) ? `Ctrl+${key.slice(-1).toUpperCase()}` : key;
+    const edited = LineEditing.edit(LineEditing.line(seek.pattern), chord, false);
+    if (key === "Escape" || chord === "Ctrl+C" || edited.act === "leave") {
+        return { act: "", count: 0, standing: rest(), ours: true };
+    }
+    return open(edited.line.text);
 }
 
 const digit = /^[0-9]$/;
@@ -289,13 +290,28 @@ function begins(sequence, typed) {
 // Whether a mode is one where nothing types, where counts and the command
 // line are taken: normal and visual on the rows, and the drawer's page.
 function still(mode) {
-    return mode === "normal" || mode === "visual" || mode === "page";
+    return mode === "normal" || mode === "visual" || paged(mode);
+}
+
+// Whether the keys are in the drawer: on its page, or choosing on it by
+// letters or by lines.
+function paged(mode) {
+    return mode === "page" || chosen(mode);
+}
+function chosen(mode) {
+    return mode === "pageVisual" || mode === "pageVisualLine";
 }
 
 // Whether a row's keys are a mode's: "both" is the line's two modes,
-// insert and normal, and the drawer's page. Visual has normal's moves
-// besides its own, since every move extends it.
+// insert and normal, and the drawer's page. Choosing on the page, by
+// letters or lines, has pageVisual's rows and the page's moves; visual on
+// the rows has normal's moves besides its own, since every move extends
+// it.
 function inMode(row, mode) {
+    if (chosen(mode)) {
+        return row.mode === "pageVisual"
+            || ((row.mode === "page" || row.mode === "both") && moves.includes(row.act));
+    }
     if (mode === "visual" && row.mode === "normal") {
         return moves.includes(row.act);
     }
@@ -343,7 +359,7 @@ function beforeTable(standing, key, mode, words) {
             { count: standing.count + key, typed: [] }), ours: true };
     }
     if (standing.operator !== undefined) {
-        return operated(standing, key);
+        return Operators.operated(standing, key, matching, rest());
     }
     if (mode === "normal" && atRest && !words && key in operators) {
         const operator = { key, count: standing.count };
@@ -363,6 +379,15 @@ function read(standing, key, mode, words = false) {
     // changes nothing, so a sequence or a count begun carries on past it.
     if (key === "") {
         return { act: "", count: 0, standing, ours: false };
+    }
+    if (standing.seek !== undefined) {
+        return seekRead(standing, key);
+    }
+    // In the drawer, / and ? at rest open its search, the way it goes,
+    // keeping a count typed before them for the match it lands on.
+    if (paged(mode) && (key === "/" || key === "?") && standing.typed.length === 0) {
+        return { act: "", count: 0, standing: { count: standing.count, typed: [],
+            seek: { pattern: "", forward: key === "/" } }, ours: true };
     }
     // A colon at rest where nothing types opens the command line, which
     // takes the keys from here (CommandLine.qml): in normal with a count
@@ -384,10 +409,10 @@ function read(standing, key, mode, words = false) {
     if (before !== null) {
         return before;
     }
-    // A count before a move in the drawer, where nothing types: 0 alone is
-    // Vim's first column, which rows haven't, so it counts only after
-    // another digit.
-    if (mode === "page" && standing.typed.length === 0 && digit.test(key)
+    // A count before a move in the drawer, choosing or not, where nothing
+    // types: 0 alone is Vim's first column, which rows haven't, so it
+    // counts only after another digit.
+    if (paged(mode) && standing.typed.length === 0 && digit.test(key)
         && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: { count: standing.count + key, typed: [] },
             ours: true };
@@ -429,14 +454,6 @@ function binds(act, key, mode) {
     return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
 }
 
-// Whether a key is taken with the visual operator before it, `after`, its
-// key and when it was pressed: the same operator's key within `wait` ms,
-// as the spec's V j j d d, whose second d would otherwise wait for a
-// motion on the rows left.
-function takenWith(after, key, now, wait) {
-    return after !== null && key === after.key && key in operators && now - after.at < wait;
-}
-
 // Whether an act in visual takes its selection: d, y and Return.
 function takesSelection(act) {
     return act === "ending" || act === "copy" || act === "run";
@@ -447,10 +464,12 @@ function modeAfter(act, mode) {
     if (act === "normal" || act === "rows") {
         return "normal";
     }
-    if (act === "selectLines") {
+    // V on the rows begins visual line there and ends it; in the drawer
+    // it chooses the page's lines (below).
+    if (act === "selectLines" && !paged(mode)) {
         return mode === "visual" ? "normal" : "visual";
     }
-    if (act === "reselect") {
+    if (act === "reselect" && !paged(mode)) {
         return "visual";
     }
     // Visual's d, y and Return take the selection and end it, as Vim's
@@ -459,6 +478,17 @@ function modeAfter(act, mode) {
         return "normal";
     }
     if (act === "drawer") {
+        return "page";
+    }
+    // v and V choose by their kind, the same again ending it and the other
+    // changing it; a copy or Escape ends it on the page.
+    if (act === "select") {
+        return mode === "pageVisual" ? "page" : "pageVisual";
+    }
+    if (act === "selectLines") {
+        return mode === "pageVisualLine" ? "page" : "pageVisualLine";
+    }
+    if (["copy", "copyLines", "back"].includes(act) && chosen(mode)) {
         return "page";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]

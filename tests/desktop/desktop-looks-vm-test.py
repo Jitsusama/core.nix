@@ -14,6 +14,8 @@ it as it found it.
 from __future__ import annotations
 
 import json
+import tarfile
+import time
 from datetime import timedelta
 from functools import partial
 from itertools import pairwise
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
+    from PIL import Image
     from test_driver.machine import BaseMachine
 
 # Joel's scales.
@@ -59,6 +62,15 @@ HALF_A_PIXEL = 0.5
 HELD_MS = 20
 TRIES = 3
 TRIED = timedelta(seconds=10)
+# y's flash lasts Joel's 200 ms (language.toml's yank-flash), so the screen is taken this many
+# times at once after it, and a picture is the flash where it differs, by this many pixels
+# changed by more than this much light, from both the choice before it and the page after.
+# Enough pictures after the screen first changes, one after the other, to span the flash's
+# 200 ms.
+FLASH_SHOTS = 5
+FLASHED = 200
+CHANGED = 40
+NEVER_FLASHED = "no picture caught y's flash"
 
 
 @pytest.fixture(scope="module")
@@ -316,15 +328,14 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 # for the screen to hold still, so the screen is taken as fast as QEMU
 # gives it, and the picture kept is the one furthest from the screen once
 # the flash has gone. Whether y flashed is held by what the launcher says;
-# the picture is for a person, so where no frame caught it, as an answer's
-# ghost was missed at both scales on 2026-11-05, y copies again, up to
-# three times. A frame that missed it differs from the screen after by a
-# mean light under 0.005, and a row's flash caught by 1.1 (2026-11-05); a
-# ghost's covers a few letters, a tenth of a row, so a twentieth of a step
-# tells them apart.
-FLASH_FRAMES = 8
-FLASH_TRIES = 3
-FLASH_SEEN = 0.05
+# the picture is for a person. QEMU's screendumps, each a whole screen at
+# 2, came too slowly to land inside the fifth of a second: on 2026-11-05
+# none of four caught it in three tries each. So the screen is recorded
+# through niri, as Joel's recorder does, which keeps every frame niri
+# draws, and the frame kept is the one furthest from the last.
+RECORDING = "/run/user/1000/flash.mkv"
+RECORDED = "/run/user/1000/flash.log"
+FRAMES = "/run/user/1000/flash"
 
 
 def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
@@ -409,19 +420,56 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     """Copy what's selected with yy, see `rows` flash, and keep the frame furthest from after."""
     machine = desktop.machine
     desktop.normal()
-    for _ in range(FLASH_TRIES):
-        since = desktop.mark()
-        machine.send_chars("yy")
-        frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
-        desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
-        desktop.launcher_until(lambda shown: shown["flashing"] == [])
-        after = desktop.settled_screen(settled)
-        flashed = max(frames, key=partial(changed_from, after))
-        if changed_from(after, flashed) > FLASH_SEEN:
-            break
-    if desktop.values["photographs"]:
-        flashed.save(machine.out_dir / f"{flash}.png")
+    photographs = desktop.values["photographs"]
+    if photographs:
+        # The output named, as Joel's recorder names it (Recorder.qml), since
+        # with more than one wf-recorder asks which; and every frame taken,
+        # damaged or not (-D), since on a still screen it waited for a frame
+        # to end on once told to stop, and never ended.
+        output = (
+            "niri msg --json focused-output"
+            ' | grep -o \'"name":"[^"]*"\' | head -1 | cut -d\'"\' -f4'
+        )
+        desktop.as_account(
+            f'rm -f {RECORDING}; setsid -f wf-recorder -y -D --output "$({output})"'
+            f" --file {RECORDING} </dev/null >{RECORDED} 2>&1"
+        )
+        # It says the region it records once it has begun; the file stays
+        # empty a while, the encoder holding frames back on a still screen.
+        began, _ = machine.execute(
+            f"timeout 10 sh -c 'until grep -q \"selected region\" {RECORDED}; do sleep 0.1; done'"
+        )
+        assert began == 0, f"wf-recorder never began: {machine.execute(f'cat {RECORDED}')[1]}"
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
+    desktop.launcher_until(lambda shown: shown["flashing"] == [])
+    desktop.settled_screen(settled)
+    if photographs:
+        machine.succeed("pkill -INT -x wf-recorder")
+        machine.wait_until_fails("pgrep -x wf-recorder", timeout=timedelta(seconds=10))
+        flashed_frame(desktop).save(machine.out_dir / f"{flash}.png")
     desktop.close_launcher()
+
+
+def flashed_frame(desktop: Desktop) -> Image.Image:
+    """Give the recording's frame furthest from its last, the flash at its height."""
+    machine = desktop.machine
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    machine.succeed(
+        f"rm -rf {FRAMES} && mkdir -p {FRAMES}"
+        f" && {ffmpeg} -i {RECORDING} -fps_mode passthrough {FRAMES}/%03d.png"
+        f" && tar -C {FRAMES} -cf {FRAMES}.tar ."
+    )
+    machine.copy_from_machine(f"{FRAMES}.tar")
+    frames = []
+    with tarfile.open(machine.out_dir / "flash.tar") as kept:
+        for member in sorted(kept.getmembers(), key=lambda member: member.name):
+            read = kept.extractfile(member)
+            if read is not None:
+                frames.append(Image.open(read).convert("RGB"))
+    (machine.out_dir / "flash.tar").unlink()
+    return max(frames, key=partial(changed_from, frames[-1]))
 
 
 def changed_from(after: Image.Image, frame: Image.Image) -> float:
@@ -501,6 +549,114 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
             lambda: None,
         )
         closed_from_the_list(desktop)
+
+
+def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Search the key list's drawer, choose in it and copy, photographing each at both scales.
+
+    What's typed after / is washed as it's typed; v chooses letters and V lines, the mode word
+    counting them, "visual line \u00b7 3"; and y flashes what it took. Each is kept for a person
+    to judge: the wash and the choice change fill and colour, never weight.
+    """
+
+    def relisted() -> None:
+        closed_from_the_list(desktop)
+        listed_keys(desktop)
+
+    for scale in at_each_scale:
+        named = scale.replace(".", "-")
+        at_scale(desktop, scale)
+        listed_keys(desktop)
+        pressed_until(
+            desktop, "spc right", lambda shown: shown["drawer"]["cursor"] is not None, relisted
+        )
+        pressed(desktop, "slash d o w n")
+        desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "down")
+        desktop.photograph(f"launcher-drawer-washed-at-{named}")
+        pressed(desktop, "ret")
+        desktop.launcher_until(partial(landed_on, "Down"))
+        pressed(desktop, "v l l l l")
+        desktop.launcher_until(partial(chose, "letters", 5))
+        desktop.photograph(f"launcher-drawer-letters-at-{named}")
+        pressed(desktop, "esc shift-v j j")
+        desktop.launcher_until(partial(chose, "lines", 3))
+        desktop.photograph(f"launcher-drawer-lines-at-{named}")
+        caught_flash(desktop, f"launcher-drawer-flash-at-{named}")
+        pressed_until(
+            desktop,
+            "spc left",
+            lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"],
+            lambda: None,
+        )
+        closed_from_the_list(desktop)
+
+
+def landed_on(word: str, shown: Json) -> bool:
+    """Say whether the drawer's cursor stands on the word's first letter.
+
+    The report's words join a line's parts with a space its letters don't count, so the cursor's
+    letter is read from what it's on rather than as a place in them.
+    """
+    cursor = shown["drawer"]["cursor"]
+    return cursor is not None and cursor["on"] == word[0] and word in str(cursor["says"])
+
+
+def chose(by: str, count: int, shown: Json) -> bool:
+    """Say whether the drawer's visual has chosen so many, by letters or by lines."""
+    chosen = shown["drawer"]["chosen"]
+    return bool(chosen["by"] == by and chosen["count"] == count)
+
+
+def caught_flash(desktop: Desktop, name: str) -> None:
+    """Copy what's chosen with y, keeping a picture of its flash in the gallery.
+
+    The flash is shorter than a picture held still, and a loaded builder has taken over a third
+    of a second to show a key at all, so the screen is taken over and over from y until it first
+    changes from the choice, then at once a few times more. A shot that differs from both the
+    choice before and the page after is the flash. One that missed it chooses the same three
+    lines again and copies them again.
+    """
+    seen = []
+    for tried in range(TRIES):
+        if tried:
+            pressed(desktop, "shift-v j j")
+            desktop.launcher_until(partial(chose, "lines", 3))
+        desktop.held_still()
+        choice = desktop.screen_now()
+        pressed(desktop, "y")
+        pressed_at = time.monotonic()
+        first = desktop.screen_now()
+        while (
+            changed(first, choice) < FLASHED
+            and time.monotonic() - pressed_at < TRIED.total_seconds()
+        ):
+            first = desktop.screen_now()
+        shots = [(first, time.monotonic() - pressed_at)] + [
+            (desktop.screen_now(), time.monotonic() - pressed_at) for _ in range(FLASH_SHOTS)
+        ]
+        desktop.launcher_until(
+            lambda shown: shown["mode"] == "page" and not shown["drawer"]["chosen"]["flashing"]
+        )
+        # The screen follows the shell late, so the page is taken once it's done drawing.
+        desktop.held_still()
+        page = desktop.screen_now()
+        for shot, after in shots:
+            before, since = changed(shot, choice), changed(shot, page)
+            if before >= FLASHED and since >= FLASHED:
+                if desktop.values["photographs"]:
+                    shot.save(desktop.machine.out_dir / f"{name}.png")
+                return
+            seen.append(f"{after * 1000:.0f} ms: {before} from the choice, {since} from the page")
+    missed = f"{NEVER_FLASHED}; each picture after y: {'; '.join(seen)}"
+    raise AssertionError(missed)
+
+
+def changed(one: Image.Image, other: Image.Image) -> int:
+    """Count the pixels two pictures of the screen differ at by more than a little light."""
+    difference = ImageChops.difference(one, other).convert("L")
+    return difference.point(lambda light: 255 if light > CHANGED else 0).histogram()[255]
 
 
 def pressed(desktop: Desktop, keys: str) -> None:
@@ -938,11 +1094,18 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
                 "systemd-run --user --collect --unit=choose-to-save"
                 f" {desktop.values['choose_a_file']} save {folder} a.md"
             )
-            asked_in(desktop, "~/saving", {"a.md", "drafts"})
-            # The caret before the extension, so typing renames it.
+            asked_in(desktop, "~/saving", {"drafts"})
+            # The caret before the extension, so typing renames it. The line is
+            # the row Return stands on, above the rows, the name never said
+            # again among them (VKCF3Z, #1812).
             desktop.launcher_until(
                 lambda shown: (
-                    shown["typed"] == "a.md" and shown["caret"] == 1 and shown["mode"] == "insert"
+                    shown["typed"] == "a.md"
+                    and shown["caret"] == 1
+                    and shown["mode"] == "insert"
+                    and shown["current"] == -1
+                    and (shown["selected"] or {}).get("name") == "a.md"
+                    and "a.md" not in shown["rows"]
                 )
             )
             desktop.photograph(f"file-picker-save-name-at-{shot}")

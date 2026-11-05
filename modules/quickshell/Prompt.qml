@@ -29,6 +29,7 @@ import QtQuick
 import "Reading.js" as Reading
 import "Editing.js" as Editing
 import "QueryKeys.js" as QueryKeys
+import "Operators.js" as Operators
 import "Typing.js" as Typing
 
 Item {
@@ -98,21 +99,25 @@ Item {
     // The mode it's in: "insert", "normal", "visual" while visual line
     // chooses rows, or "page" while the launcher's drawer holds the keys,
     // gone into with Space and the right arrow, as his Neovim goes to the
-    // window beside. It opens in insert (take()).
+    // window beside, and "pageVisual" or "pageVisualLine" while choosing
+    // there. It opens in insert (take()).
     property string mode: "insert"
     // Visual's operator just done, its key and when, for the same pressed
-    // again to be taken with it (QueryKeys.takenWith); null after any key.
+    // again to be taken with it (Operators.takenWith); null after any key.
     property var visualOperated: null
     // Whether there's a selection for gv to bring back (Launcher.qml's
     // lastVisual).
     property bool reselectable: false
     // Whether the keys are on the rows, in normal and visual alike.
     readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
+    // The kind the drawer last chose by, for gv to choose by again, let go
+    // once the keys leave it, as the drawer lets what it chose go.
+    property string lastChosen: ""
     // Whether there's a drawer to go into: out, with lines to sit on. Gone
     // while it holds the keys, they come back to the rows.
     property bool drawerHere: false
     onDrawerHereChanged: {
-        if (!drawerHere && mode === "page")
+        if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
     // The keys of a sequence begun in normal, as cc's first c, and a count
@@ -307,7 +312,7 @@ Item {
     signal forward
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
-    // the count typed before it, 0 for none: the moves QueryKeys.moved
+    // the count typed before it, 0 for none: the moves Operators.moved
     // takes; or, in the page mode, the drawer's, which DrawerPage.moved
     // takes.
     signal stepped(string act, int count)
@@ -322,6 +327,9 @@ Item {
     // gives ".,.+2", or "" for none. The line holds what's typed as it
     // is, and resume() gives it the keys back.
     signal commanded(string range)
+    // The drawer's search run, by Return on / or ?: what it seeks, empty
+    // for the last again, the way it goes, and the count typed before it.
+    signal sought(string pattern, bool forward, int count)
 
     // A question asked once, said in the field's place, "Replace notes.md?
     // (y/n)", or "" while none is; the launcher's ask (Launcher.qml's
@@ -470,7 +478,7 @@ Item {
         const after = visualOperated;
         if (key !== "")
             visualOperated = null;
-        if (QueryKeys.takenWith(after, key, Date.now(), wait)) {
+        if (Operators.takenWith(after, key, Date.now(), wait)) {
             event.accepted = true;
             return;
         }
@@ -499,14 +507,17 @@ Item {
         event.accepted = true;
         const text = input.text;
         const at = input.cursorPosition;
-        const next = QueryKeys.modeAfter(read.act, mode);
-        // gv with no selection before it does nothing, as Vim's; with one,
-        // the rows take it back before visual begins round the cursor.
-        if (read.act === "reselect") {
+        // gv on the rows with no selection before it does nothing, as
+        // Vim's; with one, the rows take it back before visual begins round
+        // the cursor. The drawer's gv goes back to the mode it chose in.
+        const onRows = !QueryKeys.paged(mode);
+        if (read.act === "reselect" && onRows) {
             if (!reselectable)
                 return;
             prompt.stepped(read.act, read.count);
         }
+        const next = read.act === "reselect" && !onRows && lastChosen !== "" ? lastChosen
+            : QueryKeys.modeAfter(read.act, mode);
         if (next !== mode) {
             // Visual's d, y and Return take the selection before it ends,
             // as Vim's visual operators do (Launcher.qml's operated, which
@@ -515,6 +526,11 @@ Item {
                 prompt.operated(read.act, 0, { act: "visual", count: 0 });
                 visualOperated = { key, at: Date.now() };
             }
+            // y copies what the drawer chose and gv brings the last back
+            // before the mode moves, while it still holds what they act on.
+            else if (["copy", "copyLines"].includes(read.act)
+                || read.act === "reselect" && !onRows)
+                prompt.stepped(read.act, read.count);
             input.deselect();
             // Going into insert on a prompt's words is a change u takes
             // back whole, as Vim's is, unless nothing's typed before it ends.
@@ -617,6 +633,9 @@ Item {
         case "undo":
             undo();
             break;
+        case "seek":
+            prompt.sought(read.sought.pattern, read.sought.forward, read.count);
+            break;
         case "":
             break;
         default:
@@ -650,7 +669,13 @@ Item {
                 input.cursorPosition = at;
         }
     }
-    onModeChanged: rest()
+    onModeChanged: {
+        rest();
+        if (QueryKeys.chosen(mode))
+            lastChosen = mode;
+        else if (!QueryKeys.paged(mode))
+            lastChosen = "";
+    }
 
     // The caret's blink, as his kitty blinks a cursor (modules/kitty/
     // kitty.conf): a key shows it whole, it fades out and back in over
@@ -1091,14 +1116,32 @@ Item {
         // in the field's own face (look 3's piece 1).
         // y over an answer copies what the ghost says, so the ghost flashes
         // as a row y copies does (Choice.qml's flashed): the accent's ground
-        // under its own ink, fill and colour only.
+        // under its own ink, fill and colour only. Like a find's wash
+        // (Wash.qml) it lies under the letters alone, from the first to the
+        // last, so the space that sets "= 84" off what's typed stays bare.
+        // The letters are measured as a Text set exactly as the ghost's is,
+        // its axes too, which a FontMetrics given the ghost's font left out,
+        // measuring them narrow; the ghost ends in its letters, so the
+        // ground ends where it does.
         Rectangle {
-            visible: prompt.ghostFlashed && hintText.visible
-            x: hintText.x
+            readonly property real before: Math.max(0, hintText.implicitWidth - inked.implicitWidth)
+            visible: prompt.ghostFlashed && hintText.visible && inked.text !== ""
+            x: hintText.x + before
             y: hintText.y
-            width: Math.min(hintText.width, hintText.contentWidth)
+            width: Math.max(0, Math.min(hintText.width, hintText.implicitWidth) - before)
             height: hintText.height
             color: Theme.accent
+
+            Text {
+                id: inked
+                visible: false
+                textFormat: Text.PlainText
+                text: hintText.text.trim()
+                font.family: hintText.level.family
+                font.italic: hintText.level.italic
+                font.pointSize: hintText.level.pointSize
+                font.variableAxes: hintText.level.variableAxes
+            }
         }
 
         Text {

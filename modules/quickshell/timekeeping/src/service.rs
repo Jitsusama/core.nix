@@ -4,6 +4,9 @@
 //! ```sh
 //! varlinkctl call --more "$XDG_RUNTIME_DIR/io.jitsusama.Timekeeping" \
 //!   io.jitsusama.Timekeeping.Watch '{}'
+//! varlinkctl call "$XDG_RUNTIME_DIR/io.jitsusama.Timekeeping" \
+//!   io.jitsusama.Timekeeping.Calendars \
+//!   '{"day": "2026-11-05", "latitude": 51.4769, "longitude": -0.0005}'
 //! ```
 
 use std::env;
@@ -20,6 +23,7 @@ use zlink::introspect::CustomType;
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
+use crate::calendar::{self, Calendar, Calendars, Evening, Figure, Reckoning};
 use crate::chrony::{self, Chrony, Names, Unanswered};
 
 /// How long apart a watch's readings are.
@@ -36,6 +40,8 @@ pub enum Unkept {
     /// chronyd didn't answer, for this reason: it isn't running, or it
     /// refused.
     NotAnswering { reason: String },
+    /// The day asked for names no day, or none the calendars reach.
+    NotADay { day: String },
 }
 
 /// The leap second announced, or that the clock isn't synchronised.
@@ -268,8 +274,8 @@ fn unkept(why: &Unanswered) -> Unkept {
 #[service(
     interface = "io.jitsusama.Timekeeping",
     types = [
-        Activity, Chosen, Clock, Exchange, HardwareClock, Keeping, Kind, Leaping, Samples,
-        Server, Standing, Why
+        Activity, Calendar, Calendars, Chosen, Clock, Evening, Exchange, Figure, HardwareClock,
+        Keeping, Kind, Leaping, Reckoning, Samples, Server, Standing, Why
     ],
     vendor = "jitsusama",
     product = "timekeeping",
@@ -277,6 +283,24 @@ fn unkept(why: &Unanswered) -> Unkept {
     url = "https://github.com/Jitsusama/core.nix"
 )]
 impl Timekeeping {
+    /// A day, as an ISO date, in the Chinese, Japanese, Hebrew and Islamic
+    /// calendars, answered once: it's reckoned, so nothing is asked. Asked
+    /// from a place, in degrees north and east, it says when the day ends
+    /// there for the calendars whose days begin at sunset.
+    #[expect(
+        clippy::unused_async,
+        clippy::unused_async_trait_impl,
+        reason = "zlink's service macro awaits every method it answers with, so each must be async"
+    )]
+    async fn calendars(
+        &self,
+        day: String,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+    ) -> Result<Calendars, Unkept> {
+        calendar::on(&day, latitude.zip(longitude)).ok_or(Unkept::NotADay { day })
+    }
+
     /// How the clock is kept now. Called with more, it answers again each
     /// second until the call ends, asking chronyd only while someone is
     /// asking.

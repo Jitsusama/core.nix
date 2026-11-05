@@ -1047,8 +1047,88 @@ def time_inside(desktop: Desktop) -> None:
     desktop.launcher_until(kept_rows)
 
 
+def begins_at_sunset(drawer: Json) -> bool:
+    """Whether a plate says, just after its Day, at what time today's sunset begins its day."""
+    facts = cast("list[str]", drawer.get("drawnFacts") or [])
+    values = cast("list[str | None]", drawer.get("values") or [])
+    if "Day" not in facts:
+        return False
+    at = facts.index("Day") + 1
+    return (
+        at < len(facts)
+        and facts[at] in {"Day Begins", "Day Began"}
+        and re.fullmatch(r"\d{2}:\d{2}", values[at] or "") is not None
+    )
+
+
+def date_steps_into_its_calendars(desktop: Desktop) -> None:
+    """Step Date into today in other calendars, once without the reader and once with it."""
+    # Seen from Greenwich, as whereabouts would say it, with no zone to move the clock to,
+    # so the Hebrew day says when the sun sets there to begin it. What was there before is
+    # put back after, or nowhere, since the shell can't see a removed file come back.
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    said = {"v": 2, "latitude": 51.4769, "longitude": -0.0005, "accuracy": 3000, "when": 1,
+            "place": None, "zone": None}  # fmt: skip
+    desktop.as_account(f"if test -e {fix}; then cp {fix} {fix}.kept; fi")
+    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+    try:
+        calendars_asked(desktop)
+    finally:
+        desktop.as_account(
+            f"if test -e {fix}.kept; then mv {fix}.kept {fix}; "
+            f"else echo '{{}}' > {fix}.new && mv {fix}.new {fix}; fi"
+        )
+
+
+def calendars_asked(desktop: Desktop) -> None:
+    """Ask Date's calendars without the reader, then with it, from where the laptop is."""
+    # With the reader gone, Calendars says it isn't answering, and Return closes rather than
+    # copying those words. It's asked first, since a day once answered is kept.
+    try:
+        desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
+        desktop.answer("date")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: any(
+                str(thing["reads"]).startswith("Calendars \u00b7 not answering")
+                for thing in shown["things"]
+            )
+        )
+        desktop.down_to("Calendars")
+        assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
+        desktop.close_launcher()
+    finally:
+        desktop.as_account("systemctl --user start timekeeping.socket")
+    # Asked again, today in the Chinese, Japanese, Hebrew and Islamic calendars, each a
+    # thing whose plate is titled with its date in its own script.
+    desktop.answer("date")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: any(
+            str(thing["reads"]).startswith("Calendars \u00b7 4") for thing in shown["things"]
+        )
+    )
+    desktop.down_to("Calendars")
+    desktop.step_in()
+    calendars = ["Chinese", "Japanese", "Hebrew", "Islamic"]
+    desktop.launcher_until(lambda shown: shown["rows"][: len(calendars)] == calendars)
+    desktop.down_to("Hebrew")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and any("\u0590" <= letter <= "\u05ff" for letter in shown["drawer"]["title"])
+            and begins_at_sunset(shown["drawer"])
+        )
+    )
+    desktop.close_launcher()
+
+
 def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
-    """The time here says how chrony keeps the clock, each server a thing to dig into."""
+    """The time here says how chrony keeps the clock, each server a thing to dig into.
+
+    The same reader reckons the date in other calendars, which Date steps into.
+    """
+    date_steps_into_its_calendars(desktop)
     kept_by_the_stand_in(desktop)
     time_inside(desktop)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
@@ -1109,6 +1189,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             )
         )
         assert "Servers" not in desktop.showing()["rows"], desktop.showing()["rows"]
+        desktop.down_to("Clock")
+        assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
         desktop.close_launcher()
     finally:
         desktop.machine.succeed("systemctl start chronyd")

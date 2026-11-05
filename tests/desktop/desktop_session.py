@@ -537,8 +537,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         From insert the first gives normal, each after it steps back out a level, and the one
         at the level it opened on closes it. A key sent before this that the launcher hears late
         moves it on too, so each Escape waits only for something to change. Escape does nothing
-        in the drawer, as in any window, so with the keys there :q brings them back to the rows
-        first, a line typed that no wait can come apart.
+        in the drawer, as in any window, so with the keys there, on its page or choosing on it,
+        :q brings them back to the rows first, a line typed that no wait can come apart.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -551,7 +551,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             was = where(self.showing())
             if not was[0]:
                 return
-            if was[1] == "page":
+            if str(was[1]).startswith("page"):
                 self.machine.send_chars(":q\n")
                 self.launcher_until(functools.partial(moved, was))
                 continue
@@ -608,11 +608,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
 
         Rows are counted by name, since what leads a step (Return's own act) moves the rest,
         and from the row selected, which a step in from a match keeps rather than the first.
+        A selection above the rows, an answer's headline or a save's name on the line, is -1.
         """
         shown = self.showing()
         rows = shown["rows"]
         selected = (shown["selected"] or {}).get("name")
-        steps = rows.index(name) - (rows.index(selected) if selected in rows else 0)
+        above = -1 if shown["current"] == -1 else 0
+        steps = rows.index(name) - (rows.index(selected) if selected in rows else above)
         for _ in range(abs(steps)):
             self.machine.send_key("down" if steps > 0 else "up")
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)

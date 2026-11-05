@@ -28,6 +28,7 @@ mod page;
 mod painter;
 mod place;
 mod prompt;
+mod reading;
 mod search;
 mod select;
 mod showing;
@@ -64,6 +65,7 @@ use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Fra
 use smithay_client_toolkit::dispatch2::Dispatch2;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::channel::{self, Event};
+use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{EventLoop, LoopHandle};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
@@ -476,12 +478,16 @@ struct App {
     menu: Option<menu::Menu>,
     menu_away: bool,
     menu_entries: Vec<menu::Entry>,
+    /// The lines the command line ran, the newest last, for :his and @:.
+    earlier: Vec<String>,
     /// gO's outline while it shows, a search through it being typed, and
     /// it set, waiting to be painted, and painted.
     outline: Option<outline::Outline>,
     outline_typing: Option<search::Typing>,
     outline_set: Option<prompt::Set>,
     outline_canvas: Option<gl::Texture>,
+    /// Its chosen row's words reading on, where they're too long for it.
+    reads_on: Option<ReadsOn>,
     /// Whether the last search was * or #'s, which ignores case whatever
     /// it holds, as vi's do.
     word_search: bool,
@@ -1023,29 +1029,8 @@ impl App {
                 };
                 self.close_menu();
                 self.prompt_shown = false;
-                let command = ex::parse(&typing.typed);
-                match &command {
-                    ex::Command::Go(range) => self.go_to_range(*range),
-                    ex::Command::Quit => self.exit = true,
-                    ex::Command::NoHighlight => self.highlighting = false,
-                    ex::Command::Change => self.say(ex::CANNOT_CHANGE),
-                    ex::Command::Copy(range) => self.copy_range(*range),
-                    ex::Command::Edit(file) => self.edit(file.as_deref()),
-                    ex::Command::File { on, times } => self.file_beside(*on, *times),
-                    ex::Command::Help => self.show_keys(true),
-                    ex::Command::Global { pattern, range } => self.list_global(pattern, *range),
-                    ex::Command::Marks(letters) => self.list_marks(letters),
-                    ex::Command::Jumps => self.list_jumps(),
-                    ex::Command::Nothing => {}
-                    ex::Command::Refused(said) => self.say(said),
-                }
-                if keys_logged() {
-                    eprintln!(
-                        "command: {:?} is {command:?}: heading {:.1} pt",
-                        typing.typed,
-                        self.heading() / self.px_per_pt()
-                    );
-                }
+                self.remember_line(&typing.typed);
+                self.run_line(&typing.typed);
             }
             search::Typed::Cancelled => {
                 self.commanding = None;
@@ -1056,6 +1041,74 @@ impl App {
         }
         if !self.frame_pending {
             self.draw();
+        }
+    }
+
+    /// Keeps a line run for :his and @:, as Vim's history keeps them: once
+    /// each, the newest last, fifty at most, as the launcher's are.
+    fn remember_line(&mut self, line: &str) {
+        let line = line.trim();
+        if line.is_empty() {
+            return;
+        }
+        self.earlier.retain(|earlier| earlier != line);
+        self.earlier.push(line.to_string());
+        let over = self.earlier.len().saturating_sub(EARLIER_KEPT);
+        self.earlier.drain(..over);
+    }
+
+    /// @: the last line run, run again, or Vim's E30 with none yet.
+    fn again_command(&mut self) {
+        match self.earlier.last().cloned() {
+            Some(line) => self.run_line(&line),
+            None => self.say("E30: No previous command line"),
+        }
+    }
+
+    /// :his: the lines run, oldest first and the newest chosen, each by its
+    /// number as Vim's :his numbers them; Return runs the one chosen.
+    fn list_history(&mut self) {
+        let rows: Vec<outline::Row> = self
+            .earlier
+            .iter()
+            .enumerate()
+            .map(|(at, line)| outline::Row {
+                level: 1,
+                words: format!("{}  {line}", at + 1),
+                to: outline::To::Command(line.clone()),
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.say("E30: No previous command line");
+        }
+        let newest = rows.len() - 1;
+        self.list(rows, newest);
+    }
+
+    /// Runs a command line's words, as Return on it does.
+    fn run_line(&mut self, typed: &str) {
+        let command = ex::parse(typed);
+        match &command {
+            ex::Command::Go(range) => self.go_to_range(*range),
+            ex::Command::Quit => self.exit = true,
+            ex::Command::NoHighlight => self.highlighting = false,
+            ex::Command::Change => self.say(ex::CANNOT_CHANGE),
+            ex::Command::Copy(range) => self.copy_range(*range),
+            ex::Command::Edit(file) => self.edit(file.as_deref()),
+            ex::Command::File { on, times } => self.file_beside(*on, *times),
+            ex::Command::Help => self.show_keys(true),
+            ex::Command::Global { pattern, range } => self.list_global(pattern, *range),
+            ex::Command::Marks(letters) => self.list_marks(letters),
+            ex::Command::Jumps => self.list_jumps(),
+            ex::Command::History => self.list_history(),
+            ex::Command::Nothing => {}
+            ex::Command::Refused(said) => self.say(said),
+        }
+        if keys_logged() {
+            eprintln!(
+                "command: {typed:?} is {command:?}: heading {:.1} pt",
+                self.heading() / self.px_per_pt()
+            );
         }
     }
 
@@ -1197,6 +1250,7 @@ impl App {
     /// Lets go of what stands over the prompt's row, gO's outline or the
     /// menu, so the next to show never shows the last's pixels.
     fn forget_over_list(&mut self) {
+        self.stop_reading();
         self.outline_set = None;
         if let (Some(gl), Some(old)) = (self.gl.as_ref(), self.outline_canvas.take()) {
             gl.forget(old);
@@ -1373,6 +1427,16 @@ impl App {
 
     /// Asks for gO's outline set as it stands now.
     fn ask_outline(&mut self) {
+        // Given up by the selection, words reading on are back at their
+        // start at once.
+        let moved = match (self.reads_on.as_ref(), self.outline.as_ref()) {
+            (Some(on), Some(outline)) => on.strip.said != outline.rows[outline.chosen].words,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if moved {
+            self.stop_reading();
+        }
         let px_per_pt = self.prompt_px_per_pt();
         let (Some(outline), Some(prompt), Some(gl)) = (
             self.outline.as_ref(),
@@ -1410,6 +1474,7 @@ impl App {
 
     /// Puts gO's outline away.
     fn close_outline(&mut self) {
+        self.stop_reading();
         self.outline = None;
         self.outline_set = None;
         if let (Some(gl), Some(old)) = (self.gl.as_ref(), self.outline_canvas.take()) {
@@ -1478,8 +1543,15 @@ impl App {
         };
         let row = outline.rows[outline.chosen].clone();
         self.close_outline();
+        if let outline::To::Command(line) = &row.to {
+            // An earlier line is run, not gone to, so it's no jump.
+            self.remember_line(line);
+            self.run_line(line);
+            return;
+        }
         self.remember(self.heading() / self.px_per_pt());
         match row.to {
+            outline::To::Command(_) => {}
             outline::To::Heading(top) => self.land(top),
             outline::To::Line(top) => self.bring(top),
             outline::To::Jump(file, pt, aim) => self.revisit(Spot { file, pt, aim }),
@@ -2004,9 +2076,10 @@ impl App {
         }
     }
 
-    fn prompt_arrived(&mut self, set: prompt::Set) {
+    fn prompt_arrived(&mut self, mut set: prompt::Set) {
         if set.outline {
             if self.outline.is_some() || self.menu_shows() {
+                self.read_on(set.reading.take());
                 self.outline_set = Some(set);
                 if !self.frame_pending {
                     self.draw();
@@ -2259,6 +2332,7 @@ impl App {
             }
             Act::Next | Act::Previous => self.go_on(act == Act::Next, count.unwrap_or(1)),
             Act::ShowKeys => self.show_keys(!listed),
+            Act::AgainCommand => self.again_command(),
             Act::Change(_) => self.say(ex::CANNOT_CHANGE),
             // Escape at rest does nothing, as Vim's does; :noh puts the
             // search's marks away. The page is set to fit the window's
@@ -2926,6 +3000,10 @@ impl App {
         let surface = self.window.wl_surface();
         let asks = self.measure.is_some()
             || self.jump.is_some()
+            || self
+                .reads_on
+                .as_ref()
+                .is_some_and(|on| on.reading.at(Instant::now()).resting_until.is_none())
             || !self.arrived.is_empty()
             || !self.loading.is_empty()
             || !self.asked.is_empty();
@@ -3038,13 +3116,135 @@ impl App {
             Some(canvas) if self.prompt_shown => canvas.height as f32,
             _ => 0.0,
         };
+        let mut list_top = None;
         if (self.outline.is_some() || self.menu_shows())
             && let Some(canvas) = painted(gl, &mut self.outline_canvas, self.outline_set.take())
         {
             let (width, height) = (canvas.width as f32, canvas.height as f32);
             gl.draw(canvas, 0.0, screen - below - height, width, height);
+            list_top = Some(screen - below - height);
+        }
+        if let Some(top) = list_top {
+            self.draw_reading(top);
         }
         self.draw_keys();
+    }
+
+    /// Starts the chosen row's words reading on, when they run past their
+    /// room, or keeps them reading where it's the row already reading;
+    /// a set for a row no longer chosen reads nothing.
+    fn read_on(&mut self, strip: Option<prompt::Strip>) {
+        let chosen = self
+            .outline
+            .as_ref()
+            .map(|outline| outline.rows[outline.chosen].words.as_str());
+        let Some(strip) = strip.filter(|strip| Some(strip.said.as_str()) == chosen) else {
+            self.stop_reading();
+            return;
+        };
+        let over = f64::from(strip.words.width) - strip.room_px;
+        if let Some(on) = self.reads_on.as_mut()
+            && on.strip.said == strip.said
+            && (on.over - over).abs() < 0.5
+        {
+            on.strip = strip;
+            on.painted = false;
+            return;
+        }
+        self.stop_reading();
+        if keys_logged() {
+            eprintln!("outline: reads on {} px past its room", over.round());
+        }
+        let pace = reading::FIGURES_A_SECOND * strip.figure_px;
+        self.reads_on = Some(ReadsOn {
+            reading: reading::Reading::new(over, pace, Instant::now()),
+            over,
+            strip,
+            canvas: None,
+            painted: false,
+            wake: None,
+            moved: false,
+            ended: false,
+        });
+    }
+
+    /// Lets the chosen row's words go back to their start.
+    fn stop_reading(&mut self) {
+        if let Some(on) = self.reads_on.take()
+            && let (Some(gl), Some(canvas)) = (self.gl.as_ref(), on.canvas)
+        {
+            gl.forget(canvas);
+        }
+    }
+
+    /// The chosen row's words where they've slid to, over the list whose
+    /// top stands at `top`, shown only inside their room; at their start
+    /// the list's own row shows, ending in its ellipsis. Resting, a timer
+    /// wakes the frame that moves them on.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "a row is a few thousand pixels at most"
+    )]
+    fn draw_reading(&mut self, top: f32) {
+        let (Some(gl), Some(on)) = (self.gl.as_ref(), self.reads_on.as_mut()) else {
+            return;
+        };
+        let at = on.reading.at(Instant::now());
+        if let Some(until) = at.resting_until
+            && on.wake != Some(until)
+        {
+            on.wake = Some(until);
+            let woken = self.loop_handle.insert_source(
+                Timer::from_deadline(until),
+                |_, (), app: &mut App| {
+                    if !app.frame_pending {
+                        app.draw();
+                    }
+                    TimeoutAction::Drop
+                },
+            );
+            if let Err(error) = woken {
+                eprintln!("reader: can't time the reading on: {error}");
+            }
+        }
+        if at.slid <= 0.0 {
+            return;
+        }
+        if !on.moved && keys_logged() {
+            eprintln!("outline: reading on");
+        }
+        on.moved = true;
+        if !on.ended && at.resting_until.is_some() && keys_logged() {
+            eprintln!("outline: read on to its end");
+        }
+        on.ended |= at.resting_until.is_some();
+        let words = &on.strip.words;
+        let fits = on
+            .canvas
+            .as_ref()
+            .is_some_and(|it| it.width == words.width && it.height == words.height);
+        if !fits {
+            if let Some(old) = on.canvas.take() {
+                gl.forget(old);
+            }
+            on.canvas = gl.canvas(words.width, words.height).ok();
+            on.painted = false;
+        }
+        let Some(canvas) = on.canvas.as_ref() else {
+            return;
+        };
+        if !on.painted {
+            gl.paint(canvas, &words.pixels);
+            on.painted = true;
+        }
+        let (left, y) = (on.strip.left_px as f32, top + on.strip.top_px as f32);
+        let (width, height) = (canvas.width as f32, canvas.height as f32);
+        gl.draw_within(
+            canvas,
+            (left - at.slid as f32, y, width, height),
+            [left, y, on.strip.room_px as f32, height],
+        );
     }
 
     /// The frame past the first frame's wait and the measure's script: the
@@ -3753,6 +3953,8 @@ impl CompositorHandler for App {
 /// letters are vi's, with Ctrl named apart since it changes what's typed.
 /// How far the page zooms: half its own size, and three times it.
 const ZOOM_LEAST: f64 = 0.5;
+/// How many lines the command line's history keeps, as the launcher's.
+const EARLIER_KEPT: usize = 50;
 const ZOOM_MOST: f64 = 3.0;
 
 fn key_of(event: &KeyEvent, ctrl: bool, shift: bool) -> Option<keys::Key> {
@@ -4350,6 +4552,21 @@ fn print_keys() {
     );
 }
 
+/// gO's chosen row's words reading on: how they slide and how far past
+/// their room they run, their strip set whole and painted, when a timer
+/// last asked to wake the frame after a rest, and whether they've moved
+/// and come to rest at their end, each said once.
+struct ReadsOn {
+    reading: reading::Reading,
+    over: f64,
+    strip: prompt::Strip,
+    canvas: Option<gl::Texture>,
+    painted: bool,
+    wake: Option<Instant>,
+    moved: bool,
+    ended: bool,
+}
+
 /// A set's pixels in its canvas, made again only when its size changes,
 /// and the canvas to draw; the last one painted when nothing new came.
 fn painted<'a>(
@@ -4508,6 +4725,10 @@ impl Measure {
 }
 
 impl App {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "it starts each of the reader's fields, a line each"
+    )]
     fn new(
         globals: &wayland_client::globals::GlobalList,
         qh: QueueHandle<App>,
@@ -4609,11 +4830,13 @@ impl App {
             menu: None,
             menu_away: false,
             menu_entries: menu::entries(),
+            earlier: Vec::new(),
             said: None,
             outline: None,
             outline_typing: None,
             outline_set: None,
             outline_canvas: None,
+            reads_on: None,
             word_search: false,
         }
     }

@@ -4,10 +4,72 @@
 // does what can't be put back. Read apart from the launcher so
 // tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
-.import "QueryKeys.js" as Keys
 
-// The rows an operator takes, from where the rows stand (as Keys.moved
-// takes them): over the row and count - 1 below it with no motion, as dd
+// The operators, by their key, and the act each does over the rows it
+// takes.
+const operators = { d: "ending", y: "copy" };
+
+// The moves an operator takes as its motion, each linewise on the rows,
+// as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
+// scroll rather than move, so Vim takes none of them as a motion.
+const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
+    "paragraphOn", "paragraphBack"];
+
+// The text objects an operator takes in a motion's place, as dip does.
+const objects = ["inParagraph", "aParagraph"];
+
+// Whether a key is taken with the visual operator before it, `after`, its
+// key and when it was pressed: the same operator's key within `wait` ms,
+// as the spec's V j j d d, whose second d would otherwise wait for a
+// motion on the rows left.
+function takenWith(after, key, now, wait) {
+    return after !== null && key === after.key && key in operators && now - after.at < wait;
+}
+
+// Two counts as one, as Vim multiplies the count before an operator and
+// the one after it: 2d3j goes six rows. Either alone is itself, and
+// neither is no count.
+function multiplied(before, after) {
+    if (before === "" && after === "") {
+        return 0;
+    }
+    return Number(before === "" ? 1 : before) * Number(after === "" ? 1 : after);
+}
+
+// A key while an operator waits: the operator's own key again does it
+// over the row and those below, as dd does; a motion does it as far as
+// that goes, as dj does, with the counts multiplied; a sequence's first
+// key (gg's g) waits for the rest; anything else lets it go. It waits as
+// long as it takes for its motion, as Vim's does. What a mode's table
+// makes of the keys typed (`matching`, given them and the mode) and how
+// the keys stand at rest (`rested`) are QueryKeys.js's, which reads every
+// other key.
+function operated(standing, key, matching, rested) {
+    const { operator } = standing;
+    const act = operators[operator.key];
+    const count = multiplied(operator.count, standing.count);
+    if (standing.typed.length === 0 && key === operator.key) {
+        return { act, count, motion: null, standing: rested, ours: true };
+    }
+    // Another operator's key lets this one go, as dy does in Vim. A text
+    // object is read first, so the i of ip waits rather than inserting.
+    const typed = standing.typed.concat([key]);
+    const object = matching(typed, "object");
+    const matched = key in operators ? { act: "", begun: false }
+        : object.act !== "" || object.begun ? object : matching(typed, "normal");
+    if (motions.includes(matched.act) || objects.includes(matched.act)) {
+        return { act, count: 0, motion: { act: matched.act, count }, standing: rested,
+            ours: true };
+    }
+    if (matched.act === "" && matched.begun) {
+        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
+            ours: true };
+    }
+    return { act: "", count: 0, standing: rested, ours: true };
+}
+
+// The rows an operator takes, from where the rows stand (as moved takes
+// them): over the row and count - 1 below it with no motion, as dd
 // and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
 // row to wherever the motion goes, whichever way, every row between
 // included, as a linewise motion takes lines. No rows span nothing.
@@ -247,7 +309,7 @@ function pending(standing) {
     }
     return {
         typed: operator.count + operator.key + standing.count + standing.typed.join(""),
-        count: Keys.multiplied(operator.count, standing.count)
+        count: multiplied(operator.count, standing.count)
     };
 }
 
