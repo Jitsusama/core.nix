@@ -312,6 +312,9 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # and what doesn't fit above the foot's inset waits for Shift and the arrows.
         assert "Name" not in drawer["drawnFacts"], drawer
         assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+        # A value too wide beside its name for one of its words, as an address, goes under
+        # it rather than breaking the word.
+        assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
         assert drawer["more"] or facts[-1] < drawer["foot"], (
             f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
         )

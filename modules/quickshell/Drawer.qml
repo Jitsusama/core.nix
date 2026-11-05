@@ -286,6 +286,20 @@ Floating {
     function labelsWhole() {
         return allFacts.every(fact => factFace.advanceWidth(fact.label ?? "") <= labelsWide);
     }
+    // Whether every value drawn keeps each of its words whole, none so
+    // wide where it's drawn that it breaks partway, for the launcher to
+    // report when asked.
+    function valuesWhole() {
+        for (let at = 0; at < factRows.count; at += 1) {
+            const row = factRows.itemAt(at);
+            if (row === null || !row.known)
+                continue;
+            const words = unbroken(row.modelData.value).split(" ");
+            if (words.some(word => factFace.advanceWidth(word) > row.valueWide))
+                return false;
+        }
+        return true;
+    }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
     // Between a name and its value, a run's width apart, so the two never
@@ -687,6 +701,8 @@ Floating {
                                 && !drawer.listsKeys
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
+                            // How wide its value may run where it's drawn.
+                            readonly property real valueWide: width - valueFrom
 
                             width: parent.width
                             height: heading ? headingRoom + drawer.pitch

@@ -3852,6 +3852,8 @@ Scope {
                 labelsWhole: drawerCard.labelsWhole(),
                 factsWrapped: drawerCard.factsWrapped(),
                 factsUnder: drawerCard.factsUnder(),
+                // Whether every value keeps its words whole where it's drawn.
+                valuesWhole: drawerCard.valuesWhole(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
