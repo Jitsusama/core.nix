@@ -1410,17 +1410,18 @@ works the same way everywhere.
   shows in certain places"). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
   selection rests, so holding an arrow never flickers it. It's Vim's
-  preview window, a split the keys go into: Space and the right arrow
-  take them in, where its frame takes the accent, an accent rule in its
+  preview window, a split the keys go into: Ctrl+W l takes them in, or
+  his Neovim's Space and the right arrow over it, where its frame takes the accent, an accent rule in its
   left margin marks the cursor's line as the reader's does, and the
   reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
   view following at his scrolloff by whole lines, its eyebrow and title
   among them, so no line is ever shown cut at its top or foot. It stops
   above the card's foot, which stays and, while the drawer has the keys,
   reads "Space ? keys · Ctrl+W h back", the way out at the right end as
-  Return is on the card. Ctrl+W h or w, :q, ZZ or Space w bring
-  them back, and Escape and q do nothing there. Shift and
-  the arrows no longer scroll it, since an arrow is its letter. Another
+  Return is on the card. Ctrl+W h or w, Space and the left arrow, :q, ZZ
+  or Space w bring them back, and Escape and q do nothing there. Neither
+  the arrows nor Shift and the arrows scroll it, since no bare arrow does
+  anything in normal (Joel, 2026-11-05). Another
   program's words are shown plain, never as markup.
 - **A file picked shows what it is** (Joel, 2026-11-03: "i see no
   previews for files ... no clue about sizes or when last updated"). In
@@ -1928,6 +1929,7 @@ the letter, "l in" and "h out", and the key list shows both.
 | Space Space | a fresh find across everything |
 | Space / | the reader's and the drawer's lines and headings |
 | Space . | the launcher on its last place and find |
+| Space → ← | into the drawer and back, over Ctrl+W l and h |
 | Space Return | a terminal in this folder |
 | Space f r, Space f Space | files opened lately, and finding a file |
 | Space s h | earlier finds |
@@ -2003,7 +2005,9 @@ fits whole on the laptop's plate.
   paragraph found. Escape at rest and q do nothing.
 - **The drawer** is the preview window: Ctrl+W l goes in and the reader's
   keys work there, and Ctrl+W h or :q comes back, Ctrl+W w either way, as
-  Vim goes between windows; no arrow does anything in normal.
+  Vim goes between windows, with his Neovim's Space and an arrow over
+  them (Joel, 2026-11-05: "leader stuff can overlay default stuff"); no
+  bare arrow does anything in normal.
 - **The viewers** close on :q and ZZ, swayimg and zathura on Space w too
   (mpv's Space pauses at once and leads nothing), never on Escape or q, and
   their arrows are their letters, each with one meaning. swayimg's and mpv's
