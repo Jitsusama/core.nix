@@ -82,14 +82,15 @@ function listed(from) {
     };
     // An act is named by the command its words give it, with the argument
     // telling it from another of that name, or else by its verb; it takes
-    // a ! only where it would ask first, its ! saying don't.
+    // a ! only where it would ask first, its ! saying don't. A guarded one
+    // asks nothing on one thing, only once on more, so takes ! too.
     (from.acts ?? []).forEach((act, at) => {
         const words = from.called ? from.called(act) : {};
         const command = words.command ?? commandOf(act);
         const undoable = !asks(command);
         add({ command, argument: String(words.argument ?? ""), short: short(command),
             title: String(act.name ?? ""), key: keyOf(act, at === 0), kind: "act", act,
-            bang: !undoable, takes: false, undoable });
+            bang: !undoable, takes: false, undoable, guarded: table[command]?.guarded === true });
     });
     for (const own of from.surface ?? []) {
         add({ command: own.command, short: own.short ?? short(own.command),
