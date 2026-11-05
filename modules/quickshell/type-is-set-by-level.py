@@ -44,10 +44,11 @@ RAW = re.compile(r"\bTheme\.(?:mono|serif|sans|eyebrow)\b|\bFont\.\w+|(?<![\w.])
 CARRIED_ON = ("?", ":", "+", "-", "*", "/", "&&", "||", "(", ",")
 
 
-# A Typst argument that sets type, and a size given a name, as a template
-# says them; a number among what either is said as is one of its own.
+# A Typst argument that sets type, and a size, weight or tracking given a
+# name, as a template says them; a number among what either is said as is
+# one of its own.
 TYPST_SETTING = re.compile(r"\b(size|weight|tracking|delta|wght|opsz)\s*:\s*([^,)]*)")
-TYPST_SIZE = re.compile(r"#let\s+([\w-]*size)\s*=\s*(.*)")
+TYPST_NAMED = re.compile(r"#let\s+([\w-]*(?:size|weight|tracking|delta))\s*=\s*(.*)")
 NUMBER = re.compile(r"(?<![\w.{])\d+(?:\.\d+)?")
 
 
@@ -86,18 +87,22 @@ def raw_settings(modules: Path, name: str) -> list[str]:
 def raw_in_template(template: Path) -> list[str]:
     """Find each run of text a Rust file's Typst sets by number, saying where.
 
-    Its tests, from the first `#[cfg(test)]` on, set nothing the reader
-    shows, so they're left out.
+    Its tests, from the test module on, set nothing the reader shows, so
+    they're left out; an item only for tests before it is read as any other,
+    so it can't hide what follows.
     """
     found: list[str] = []
+    before = ""
     for number, line in enumerate(template.read_text(encoding="utf-8").splitlines()):
-        if line.strip() == "#[cfg(test)]":
+        if before == "#[cfg(test)]" and line.lstrip().startswith("mod "):
             break
+        if line.strip():
+            before = line.strip()
         said = code(line)
         # A comment, Rust's or Typst's, says why rather than setting anything.
         if said.startswith("//"):
             continue
-        settings = [*TYPST_SETTING.finditer(said), *TYPST_SIZE.finditer(said)]
+        settings = [*TYPST_SETTING.finditer(said), *TYPST_NAMED.finditer(said)]
         found.extend(
             f"{template.name}:{number + 1}: {match.group(1)} is {match.group(2).strip()}"
             for match in settings

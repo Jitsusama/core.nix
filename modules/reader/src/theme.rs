@@ -363,7 +363,7 @@ impl Theme {
 
     /// Reads the theme's file: every role it names, Typst's plain page's for
     /// any it doesn't.
-    fn read(text: &str) -> Self {
+    pub(crate) fn read(text: &str) -> Self {
         let mut theme = Self::plain();
         let Ok(serde_json::Value::Object(roles)) = serde_json::from_str::<serde_json::Value>(text)
         else {

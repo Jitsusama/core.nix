@@ -516,14 +516,17 @@ onLinux {
       sets '#set strong(delta: 100)' 'delta is 100'
       sets '#let display-axes = (opsz: 144, SOFT: 100, WONK: 1)' 'opsz is 144'
       sets '#let code-size = 10.5pt' 'code-size is 10.5pt'
+      sets '#let heading-weight = 540' 'heading-weight is 540'
+      sets $'#[cfg(test)]\nconst ROWS: u8 = 3;\n#let lede-size = 12pt' 'lede-size is 12pt'
       # A level, read from the theme or a property holding one, passes, as
-      # a comment saying a size and a test after the page's own lines do.
+      # a comment saying a size and the test module after the page's own
+      # lines do.
       mkdir -p modules/shell
       printf '%s\n' 'font.pointSize: Theme.level.note.pointSize * set.scale' \
         'font.weight: chord.level.weight' 'font: other.font' > modules/shell/Surface.qml
       printf '%s\n' '#set text(..level.note.text, fill: ink.on_accent)' \
         '/// The words at 13.69 pt, weight: 380.' '// size: 12pt, as a note says' \
-        '#[cfg(test)]' 'size: 11.5pt' > page.rs
+        '#[cfg(test)]' 'mod tests {' 'size: 11.5pt' > page.rs
       : > unmoved.txt
       ${check} modules unmoved.txt page.rs
       ${check} ${shells} ${./not-yet-by-level.txt} ${lib.concatStringsSep " " pages}

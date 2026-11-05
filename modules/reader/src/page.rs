@@ -102,12 +102,13 @@ pub const PITCH_PT: f64 = 21.0;
 ///
 /// Every run of text is set at one of the theme's type levels, as the page
 /// sets it (`level`, from the theme's file, and home.nix for which level
-/// each is): the words at Words, a section at Title, the page's title at
-/// Display's step in the serif, code at Figure, eyebrows at Label, the
-/// quieter words at Note. None says a size or a weight of its own
-/// (type-is-set-by-level). Typst sets a face's optical size to the text's
-/// by itself, and every other axis from `variations`, the later winning,
-/// so a level names its optical size too. A line is a capital's height and the leading below it, so the
+/// each is): the words at Words, a section in Title's cut at the section
+/// step, the page's title at Display's step in the serif, code and figures
+/// in Figure's mono, eyebrows at Label, the quieter words at Note. None
+/// says a size or a weight of its own (type-is-set-by-level). Typst sets a
+/// face's optical size to the text's by itself, and every other axis from
+/// `variations`, the later winning, so a level names its optical size too.
+/// A line is a capital's height and the leading below it, so the
 /// leading is the pitch less the capitals, and a gap between paragraphs is
 /// said as baseline to baseline (`gap`).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
@@ -119,8 +120,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // would, never at one Typst adds, which would read as a third word.
 #show regex("[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)+"): set text(hyphenate: false)
 // Strong is the words at their strong span's weight, in the strong text:
-// Typst's own adds 300, which draws this face black.
-#set strong(delta: level.words.strong - level.words.text.weight)
+// Typst's own adds 300, which draws this face black. Words whose level
+// gives no strong weight keep Typst's.
+#set strong(delta: level.words.strong - level.words.text.weight) if level.words.strong != none
 #show strong: set text(fill: ink.strong)
 // Code at its level, in the colour of what's around it and with no box.
 // Typst's raw takes 0.8 em of its own, so the size is said whole.
@@ -407,22 +409,30 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 /// them. All but the width is the same for every page, so it is made once.
 pub fn template(world: &PageWorld, width: Width) -> String {
     static LOOK: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
-    let (ink, look) = LOOK.get_or_init(|| {
-        let theme = crate::theme::get();
-        let words = &theme.levels.words;
-        let size = words.size;
-        let cap = world.capitals_pt(&words.family, size);
-        // Each face's capitals in ems, for the gaps over a heading and an
-        // eyebrow, so the page holds its line in whatever faces it finds.
-        let caps = cap / size;
-        let code_caps = world.capitals_pt(&theme.levels.code.family, 1.0);
-        (
-            theme.typst(),
-            format!(
-                "#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
-            ),
-        )
-    });
+    let (ink, look) = LOOK.get_or_init(|| look(crate::theme::get(), world));
+    at_width(ink, look, width)
+}
+
+/// A theme's ink, and the page's look in it, its words' capitals read from
+/// the face `world` finds for them.
+fn look(theme: &crate::theme::Theme, world: &PageWorld) -> (String, String) {
+    let words = &theme.levels.words;
+    let size = words.size;
+    let cap = world.capitals_pt(&words.family, size);
+    // Each face's capitals in ems, for the gaps over a heading and an
+    // eyebrow, so the page holds its line in whatever faces it finds.
+    let caps = cap / size;
+    let code_caps = world.capitals_pt(&theme.levels.code.family, 1.0);
+    (
+        theme.typst(),
+        format!(
+            "#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
+        ),
+    )
+}
+
+/// The page at `width`, in `ink` and `look`.
+fn at_width(ink: &str, look: &str, width: Width) -> String {
     let Width {
         measure_pt,
         spread_pt,
@@ -1012,6 +1022,25 @@ mod tests {
             steps.iter().all(|s| *s == 100 || *s == 150),
             "a key's frame grew its line: {steps:?}"
         );
+    }
+
+    #[test]
+    fn a_theme_whose_words_give_no_strong_weight_still_sets_a_strong_span() {
+        let theme = crate::theme::Theme::read(
+            &serde_json::json!({"levels": {"words": {"strong": null}}}).to_string(),
+        );
+        let mut world = super::new_world();
+        let (ink, look) = super::look(&theme, &world);
+        let program = format!(
+            "{}Words with #strong[a strong span] in them.",
+            super::at_width(&ink, &look, super::Width::WHOLE)
+        );
+        let page = super::set_page(&mut world, &program).expect("the page sets");
+        let words: String = crate::text::runs(&page.frame)
+            .iter()
+            .flat_map(|run| run.chars.iter().map(|c| c.0))
+            .collect();
+        assert!(words.contains("strong"), "the page says its words: {words}");
     }
 
     #[test]
