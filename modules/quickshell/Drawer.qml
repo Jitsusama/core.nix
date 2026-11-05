@@ -169,6 +169,12 @@ Floating {
     // a line fits on one. At Figure, in the mono, most wrapped (VKCF3Z,
     // 2026-11-04).
     readonly property bool listsKeys: shown ? shown.keys === true : false
+    // The script its title and values are written in (`script: "hebrew"`),
+    // as a calendar's date in its own is, set in the script face's cuts
+    // beside the serif and the mono (Theme.script), since Qt falls back by
+    // script, not language, and so draws Chinese in its own forms only where
+    // its cut is named. Its names stay in the theme's own.
+    readonly property string script: shown ? shown.script ?? "" : ""
     readonly property string picture: shown ? shown.picture ?? "" : ""
     readonly property var preview: shown ? shown.preview ?? null : null
     // Whether it's the moment's plate, home's Now's.
@@ -542,11 +548,15 @@ Floating {
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
     }
+    // A value's face, measured and drawn: a key list's at Note, a script's
+    // in its cut beside the mono, and the rest at Figure.
     FontMetrics {
         id: valueFace
-        font.family: drawer.listsKeys ? Theme.level.note.family : Theme.level.figure.family
+        font.family: drawer.listsKeys ? Theme.level.note.family
+            : drawer.script !== "" ? Theme.script.mono[drawer.script] : Theme.level.figure.family
         font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
             : Theme.level.figure.pointSize
+        font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
@@ -890,10 +900,14 @@ Floating {
                         plain: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
                         leading: drawer.titleLeading
                         color: Theme.level.title.colour
-                        font.family: Theme.level.title.family
+                        font.family: drawer.script === "" ? Theme.level.title.family
+                            : Theme.script.serif[drawer.script]
                         font.pointSize: Theme.level.title.pointSize
                         font.letterSpacing: Theme.level.title.letterSpacing
-                        font.variableAxes: Theme.level.title.variableAxes
+                        // The serif's axes are its own, so a script's cut
+                        // takes its own weight instead.
+                        font.variableAxes: drawer.script === "" ? Theme.level.title.variableAxes
+                            : ({})
                     }
                 }
 
@@ -1126,12 +1140,7 @@ Floating {
                                 plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 leading: drawer.pitch
                                 color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
-                                font.family: drawer.listsKeys ? Theme.level.note.family
-                                    : Theme.level.figure.family
-                                font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
-                                    : Theme.level.figure.pointSize
-                                font.features: drawer.listsKeys ? ({})
-                                    : Theme.level.figure.features
+                                font: valueFace.font
                             }
                         }
                     }

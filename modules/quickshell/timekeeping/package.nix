@@ -10,6 +10,9 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      # The shell's checks stand in for the reader with this day, which a
+      # test holds to what the reader says of it.
+      ./calendars-reading.json
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;

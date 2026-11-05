@@ -7,7 +7,12 @@
 // day and the modified one, each copied by Return, then the season and the
 // moon, each a thing stepping into its figures, with its drawer saying
 // them. It's all reckoned from the clock (Moment.js), the season where the
-// laptop is, so nothing is asked.
+// laptop is, so nothing is asked, but for Calendars: the day in the
+// Chinese, Japanese, Hebrew and Islamic calendars, which timekeeping
+// reckons with ICU4X (Calendars.qml), asked once a day while Date is
+// shown. Each is a thing, its side in Latin letters and its drawer in its
+// own script, in that script's cut of the theme's faces (VKCF3Z's design,
+// 2026-10-30).
 import qs
 import QtQuick
 import "Moment.js" as Moment
@@ -100,6 +105,103 @@ Provider {
         ]);
     }
 
+    // While the date is shown, as the answer or a step held in it, today's
+    // calendars are asked for, once, and the date is answered again as
+    // they come.
+    readonly property bool shown: launcher !== null && launcher.open
+        && (launcher.answer?.live === provider
+            || (launcher.held ?? []).some(step => step.row?.live === provider))
+    onShownChanged: {
+        if (shown)
+            Calendars.ask(Moment.iso(new Date()));
+    }
+
+    Connections {
+        target: Calendars
+        function onReadingChanged() {
+            if (provider.shown)
+                provider.answered();
+        }
+        function onRefusedChanged() {
+            if (provider.shown)
+                provider.answered();
+        }
+    }
+
+    readonly property var calendarsSaid: Words.of("today:calendars").said ?? {}
+
+    // The script each calendar is written in, by the theme's script names.
+    readonly property var scripts: ({
+        chinese: "chinese",
+        japanese: "japanese",
+        hebrew: "hebrew",
+        islamic: "arabic"
+    })
+
+    // The words a count is said in, by the figure it is.
+    readonly property var counts: ({ monthDays: "days", yearDays: "days", months: "months" })
+
+    // A calendar's figure in Latin letters: a day it's reckoned from as
+    // the launcher says a day, and a count in its words.
+    function latinOf(figure, now) {
+        if (figure.day) {
+            const [year, month, day] = figure.day.split("-").map(Number);
+            return Moment.dayOf(new Date(year, month - 1, day).getTime(), now);
+        }
+        const counted = calendarsSaid[counts[figure.id] ?? ""];
+        return counted ? counted.replace("{value}", figure.latin) : figure.latin;
+    }
+
+    // The same in the calendar's own script where it has its own, as a
+    // Chinese month's length, 大月 for a long one, and otherwise as in Latin
+    // letters.
+    function nativeOf(figure, now) {
+        return figure.native !== figure.latin && !figure.day ? figure.native
+            : latinOf(figure, now);
+    }
+
+    function calendarThing(calendar, now) {
+        const id = `today:calendars:${calendar.reckoning}`;
+        return thingRow({
+            key: id,
+            name: Words.name(id),
+            side: calendar.latin,
+            note: Words.of(id).said?.note ?? "",
+            glyph: Theme.glyph.date,
+            thing: true,
+            drawer: () => ({
+                title: calendar.native,
+                script: scripts[calendar.reckoning],
+                facts: calendar.figures.map(figure => ({
+                    label: Words.name(`today:calendars:${figure.id}`),
+                    value: nativeOf(figure, now)
+                }))
+            })
+        }, () => calendar.figures.map(figure => {
+            const side = latinOf(figure, now);
+            return copyRow({ name: Words.name(`today:calendars:${figure.id}`), side: side,
+                copy: side, note: "", glyph: "" });
+        }));
+    }
+
+    // Today in every calendar, stepping into each, once they're reckoned;
+    // until then it says it's asking, or that the reader isn't answering.
+    function calendarsRow(at, now) {
+        const reading = Calendars.reading;
+        const said = calendarsSaid;
+        if (reading?.day !== Moment.iso(at)) {
+            const side = Calendars.refused ? said.silent : "\u2026";
+            return copyRow({ name: Words.name("today:calendars"), side: side, copy: "",
+                note: "", glyph: Theme.glyph.date });
+        }
+        return holderRow({
+            key: "today:calendars",
+            name: Words.name("today:calendars"),
+            side: String(reading.calendars.length),
+            glyph: Theme.glyph.date
+        }, () => reading.calendars.map(calendar => calendarThing(calendar, now)));
+    }
+
     function told(now) {
         const at = new Date(now);
         const row = (id, side, note) => copyRow({ name: Words.name(`today:${id}`), side: side,
@@ -129,7 +231,8 @@ Provider {
                 dayNumber("julian", Moment.dayNumber(at), said("today:julian", "noon")),
                 dayNumber("mjd", Moment.modified(at), said("today:mjd", "since")),
                 seasonThing(now),
-                moonThing(now)
+                moonThing(now),
+                calendarsRow(at, now)
             ],
             note: said("today", "from")
         };
