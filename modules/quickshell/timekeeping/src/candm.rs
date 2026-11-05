@@ -58,7 +58,7 @@ impl Command {
         match self {
             Self::Sources => (14, Vec::new(), 2, 4),
             Self::SourceData(index) => (15, index.to_be_bytes().to_vec(), 3, 48),
-            Self::Tracking => (33, Vec::new(), 5, 80),
+            Self::Tracking => (33, Vec::new(), 5, 76),
             Self::SourceStats(index) => (34, index.to_be_bytes().to_vec(), 6, 56),
             Self::Rtc => (35, Vec::new(), 7, 28),
             Self::Activity => (44, Vec::new(), 12, 20),
@@ -803,12 +803,17 @@ mod tests {
     fn a_tracking_reply_as_chronyd_writes_it_is_taken() {
         let bytes: Vec<u8> = (0..TRACKED.len())
             .step_by(2)
-            .map(|at| u8::from_str_radix(&TRACKED[at..at + 2], 16).unwrap_or_else(|e| panic!("{e}")))
+            .map(|at| {
+                u8::from_str_radix(&TRACKED[at..at + 2], 16).unwrap_or_else(|e| panic!("{e}"))
+            })
             .collect();
         assert_eq!(bytes.len(), 104);
         let read = reply(Command::Tracking, 7, &bytes).map(tracking);
         assert_eq!(read.as_ref().map(|it| it.stratum), Ok(3));
-        assert_eq!(read.map(|it| reference(it.reference)), Ok("7F7F0101".to_owned()));
+        assert_eq!(
+            read.map(|it| reference(it.reference)),
+            Ok("7F7F0101".to_owned())
+        );
     }
 
     #[test]
