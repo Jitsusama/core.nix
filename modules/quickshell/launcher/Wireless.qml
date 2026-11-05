@@ -53,9 +53,11 @@ Provider {
     })
 
     function setTo(to) {
+        // The radio is turned as asked whatever it seems to be, as :set sets
+        // an option already set, so a word from wifid still on its way never
+        // keeps :set nowifi from turning it off.
         if (typeof to === "boolean") {
-            if (to !== on)
-                Wifi.turn(to);
+            Wifi.turn(to);
             return "";
         }
         if (!Wifi.isSaved(to))
