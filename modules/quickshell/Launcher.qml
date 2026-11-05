@@ -3850,13 +3850,13 @@ Scope {
     onVisualFromChanged: visualId = visualFrom >= 0 && matches[visualFrom]
         ? Rank.identity(matches[visualFrom]) : ""
 
-    // The last selection, where it began and where the cursor was, for gv
-    // to bring back, as Vim's '< and '> keep it; null until there's been
-    // one, and again once the launcher closes.
+    // The last selection, where it began and where the cursor was, each
+    // held by its row, for gv to bring back as Vim's '< and '> keep it;
+    // null until there's been one, and again once the launcher closes.
     property var lastVisual: null
     onVisualChanged: {
         if (!visual && visualFrom >= 0)
-            lastVisual = { from: visualFrom, at: current };
+            lastVisual = Operators.marked(matches, visualFrom, current, Rank.identity);
         visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current;
     }
 
@@ -3871,17 +3871,18 @@ Scope {
 
     // Visual's own acts on the rows: o to the selection's other end; ip and
     // ap over the run the cursor's in, and count - 1 after it; and gv, the
-    // last selection again, the find having moved its rows or not, as
-    // Vim's gv keeps lines.
+    // last selection's rows again wherever they've moved, as Vim's gv
+    // keeps its lines.
     function visualStep(act, count) {
         const last = matches.length - 1;
         if (act === "otherEnd") {
             const other = visualFrom;
             visualFrom = current;
             arrowed(other, "o");
-        } else if (act === "reselect" && lastVisual !== null) {
-            visualFrom = Math.min(lastVisual.from, last);
-            arrowed(Math.min(lastVisual.at, last), "gv");
+        } else if (act === "reselect" && lastVisual !== null && last >= 0) {
+            const back = Operators.reselected(matches, lastVisual, Rank.identity);
+            visualFrom = back.from;
+            arrowed(back.at, "gv");
         } else if (act === "inParagraph" || act === "aParagraph") {
             const run = Operators.spanned(0, { act, count }, {
                 at: current, highest: prompt.highest, last, runOf: at => runOf(at)

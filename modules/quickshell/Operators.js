@@ -349,6 +349,22 @@ function heldFrom(rows, id, from, identity) {
     return found >= 0 ? found : Math.max(0, Math.min(from, rows.length - 1));
 }
 
+// The last selection as gv keeps it, each end by its row as well as its
+// place, so that it can be found again once the rows have changed.
+function marked(rows, from, at, identity) {
+    const id = index => (rows[index] ? identity(rows[index]) : "");
+    return { from, at, fromId: id(from), atId: id(at) };
+}
+
+// The last selection found again in the rows as they are now: each end on
+// its row, or where it was within what's left once that row has gone.
+function reselected(rows, last, identity) {
+    return {
+        from: heldFrom(rows, last.fromId, last.from, identity),
+        at: heldFrom(rows, last.atId, last.at, identity)
+    };
+}
+
 // What the foot says Return does over a selection: open its rows, by
 // their count, as "open 3".
 // Visual's mode word, counting the rows chosen (`span`, as selection gives
