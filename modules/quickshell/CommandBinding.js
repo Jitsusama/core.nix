@@ -38,10 +38,10 @@ function bound(read, at) {
 // `all` how many things and `bang` whether a ! was typed, and the
 // language's commands (Options.commands): "some" where only some have
 // it, ! or not, so a range never acts on fewer than it named unasked; else,
-// where the language says it changes and d would ask, as it does unless
-// each act says how it's put back (its undo) or it's guarded and alone,
-// "one" or "many", unless the ! says don't; else nothing. None having it
-// says so.
+// where the language says it changes, never :set (Commands.neverAsks), and
+// d would ask, as it does unless each act says how it's put back (its
+// undo) or it's guarded and alone, "one" or "many", unless the ! says
+// don't; else nothing. None having it says so.
 function asking(entry, acts, line, commands) {
     const { all, bang } = line;
     const found = acts.length;
@@ -51,7 +51,8 @@ function asking(entry, acts, line, commands) {
     if (found < all) {
         return { ask: "some" };
     }
-    const changes = commands[entry.command]?.changes === true;
+    const changes = commands[entry.command]?.changes === true
+        && !Commands.neverAsks(entry.command);
     const asks = changes && Operators.asks(acts.map(act => ({ command: entry.command,
         undo: act.undo })), commands);
     if (!asks || bang) {
@@ -72,19 +73,21 @@ function actFor(entry, acts, wordsOf) {
 }
 
 // An act's words for the line (words.json's command, argument, bang and
-// range), by its key and the state its words are in, `of` reading
-// words.json's entry for an id in a state, as Words.of does: a verb's
-// id, or one made from it for each of several, as verb:sound-port-2 or
+// range), by its key and the state its words are in (its wordState), `of`
+// reading words.json's entry for an id in a state, as Words.of does: a
+// verb's id, or one made from it for each of several, as verb:sound-port-2 or
 // verb:on:waiting:go:<id>, which reads the verb's own; or a row that's an
 // act itself, as session:Lock names :lockscreen, the step it asks first,
 // as session:Power Off:sure, reading its row's. A state's words name the
 // command for that state, as Wi-Fi On's :set wifi, since the line says
-// what runs, never a toggle. Where no words name one, the act is named by
-// its verb (Commands.commandOf).
-function wordsFor(key, of, state) {
-    let id = String(key ?? "");
+// what runs, never a toggle. A row keyed so it never walks back to its
+// words, as a display's Warmth is displays:eDP-1:warmth, names them by their
+// id, its wordsId. Where no words name one, the act is named by its verb
+// (Commands.commandOf).
+function wordsFor(act, of) {
+    let id = String(act?.wordsId ?? act?.key ?? "");
     while (id !== "") {
-        const words = of(id, state ?? "");
+        const words = of(id, act.wordState ?? "");
         if (words.command !== undefined) {
             return words;
         }

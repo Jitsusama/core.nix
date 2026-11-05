@@ -2812,10 +2812,9 @@ Scope {
     }, ...sources.map(source => source.setOptions ?? {}))
 
     // An act's words for the line, by its key and the state its words are
-    // in, a row's wordState (CommandBinding.wordsFor).
+    // in (CommandBinding.wordsFor).
     function commandWords(act) {
-        return CommandBinding.wordsFor(act.key ?? "", (id, state) => Words.of(id, state),
-            act.wordState ?? "");
+        return CommandBinding.wordsFor(act, (id, state) => Words.of(id, state));
     }
 
     // The options as they stand as : is pressed, each read once, so the menu

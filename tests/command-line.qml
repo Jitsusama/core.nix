@@ -511,27 +511,39 @@ QtObject {
     // verb's own, or the verb's for one of several made from it; a row that
     // is an act itself, as Lock, its own, and the step it asks first, as
     // Power Off's sure, its row's; one in a state, as Wi-Fi On, its state's,
-    // so the line says what runs, never a toggle; none for a key whose words
-    // name none.
+    // so the line says what runs, never a toggle; a row whose key never walks
+    // back to its words, as a display's Warmth, by the id it names them by;
+    // none for a key whose words name none.
     function holdWords() {
         const vocabulary = {
             "wifi:radio": { id: "wifi:radio", command: "set", argument: "nowifi",
                 states: { off: { argument: "wifi" } } },
             "verb:sound-port": { id: "verb:sound-port", command: "set",
                 argument: "port={port}" },
+            "displays:warmth": { id: "displays:warmth", command: "set", argument: "nowarmth",
+                states: { off: { argument: "warmth" } } },
+            "keyboards:lights:to": { id: "keyboards:lights:to", command: "set",
+                argument: "kbdlevel={n}" },
             "session:Lock": { id: "session:Lock", command: "lockscreen" },
             "session:Power Off": { id: "session:Power Off", command: "poweroff" },
             "session:quiet": { id: "session:quiet" }
         };
         const of = (id, state) => Object.assign({ id }, vocabulary[id] ?? {},
             ((vocabulary[id] ?? {}).states ?? {})[state] ?? {});
-        const named = key => CommandBinding.wordsFor(key, of).command ?? "";
-        const set = state => CommandBinding.wordsFor("wifi:radio", of, state).argument ?? "";
+        const named = key => CommandBinding.wordsFor({ key }, of).command ?? "";
+        const set = state => CommandBinding.wordsFor({ key: "wifi:radio", wordState: state },
+            of).argument ?? "";
         holds("a row in a state names its state's", [set(""), set("off")], ["nowifi", "wifi"]);
         holds("a verb made one of several reads the verb's", named("verb:sound-port-2"), "set");
         holds("a row that's an act names its own", named("session:Lock"), "lockscreen");
         holds("the step a row asks first names the row's", named("session:Power Off:sure"),
             "poweroff");
+        const warmth = state => CommandBinding.wordsFor({ key: "displays:eDP-1:warmth",
+            wordsId: "displays:warmth", wordState: state }, of).argument ?? "";
+        holds("a row names its words by their id", [warmth(""), warmth("off"),
+            CommandBinding.wordsFor({ key: "verb:keyboards-lights-2",
+                wordsId: "keyboards:lights:to" }, of).argument ?? ""],
+        ["nowarmth", "warmth", "kbdlevel={n}"]);
         holds("a row whose words name none has none",
             [named("session:quiet"), named("session:quiet:60"), named("")], ["", "", ""]);
     }
@@ -706,6 +718,20 @@ QtObject {
             [{ ask: "some" }, { ask: "some" }]);
         holds("where none has it, it says so and asks nothing",
             asking("disc", 0, 3, false), { ask: "", none: true });
+        // A row's :set runs its own act, as Return on it does, and asks
+        // nothing, as a typed :set never asks (2V74KO, 2026-11-05): a
+        // display's Warmth, by :set warmth, with no undo of its own.
+        const warmth = Commands.listed({ acts: [{ key: "displays:warmth", name: "Warmth" }],
+            table: commands, said, called: () => ({ command: "set", argument: "warmth" }),
+            row: 1 });
+        holds("a row's :set asks nothing, on one or many, and its line isn't banged",
+            [CommandBinding.asking(warmth[0], acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(warmth[0], acts(2), { all: 2, bang: false }, commands),
+                warmth[0].bang],
+            [{ ask: "" }, { ask: "" }, false]);
+        holds("though where only some have it, it asks once all the same",
+            CommandBinding.asking(warmth[0], acts(1), { all: 2, bang: false }, commands),
+            { ask: "some" });
     }
 
     // Earlier lines, as Vim's :his lists them: each line Return ran

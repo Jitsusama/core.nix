@@ -29,14 +29,16 @@ Provider {
         .find(action => action.run.join(" ") === "qs ipc call keyboard toggle") ?? { chord: [] }
 
     // An act on the board, named, done and found as the vocabulary says
-    // (Words.qml), with what it fills into its name ({layer}). An act,
-    // not a key, so it says no kind (docs/design.md).
+    // (Words.qml), with what it fills into its name ({layer}), kept so the
+    // : line fills its command too, as :set lock={layer}. An act, not a
+    // key, so it says no kind (docs/design.md).
     function act(id, key, fields, fill) {
         return member(Object.assign({
             key: key,
             what: "",
             verb: Words.verb(id),
             name: Words.name(id, "", fill),
+            fill: fill ?? {},
             hue: "machine"
         }, fields));
     }
