@@ -2701,14 +2701,15 @@ Scope {
     // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
     // 2026-11-05): first wherever followed() takes it, as the old step in
     // by l did, so a row that holds more goes into its parts, as the
-    // foot's Ctrl+] in says, a notice's acts among them. A row with no
-    // parts living in another place, as a Now row or one found from home,
-    // goes to that place, onto it there. A row Return takes elsewhere, a
-    // spot or a program's act found from home, keeps where it lives; any
-    // other is walked for from home (Catalogue.js's livesAt). The place
-    // left goes on the tags' way back, as Vim's tag stack keeps it, and
-    // once on the jump list, as a tag is one jump in Vim, not one a step.
-    // A row with none says so.
+    // foot's Ctrl+] in says. A row with no parts living in another place,
+    // as a Now row, one found from home or a notice, whose acts are
+    // commands, not parts (VKCF3Z, 13:07), goes to that place, onto it
+    // there. A row Return takes elsewhere, a spot or a program's act found
+    // from home, keeps where it lives; a notice lives as its sender, its
+    // program's row; any other is walked for from home (Catalogue.js's
+    // livesAt). The place left goes on the tags' way back, as Vim's tag
+    // stack keeps it, and once on the jump list, as a tag is one jump in
+    // Vim, not one a step. A row with none says so.
     function follow(row) {
         const live = row && !row.gone ? row : null;
         const came = { held: held, here: here() };
@@ -2739,7 +2740,7 @@ Scope {
     function followedTo(row) {
         const own = row.trail !== undefined ? { trail: row.trail, spot: row.spot } : row.inside;
         const path = own ? own.trail.concat([own.spot])
-            : Catalogue.livesAt(home(), steadyId(row), {
+            : Catalogue.livesAt(home(), row.follows || steadyId(row), {
                 idOf: one => steadyId(one),
                 holds: (one, above) => catalogueHolds(one,
                     above === null || collects({ row: above }))
