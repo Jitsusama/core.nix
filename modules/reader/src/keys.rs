@@ -25,6 +25,9 @@ pub enum Key {
     PageUp,
     PageDown,
     F1,
+    /// Tab, and Shift+Tab, which the lines' menu steps through.
+    Tab,
+    BackTab,
 }
 
 /// What a key asks of the reader.
@@ -330,6 +333,22 @@ pub enum LineKey {
     /// Return: the command run, or the search made.
     Run,
     Open,
+    /// The command line's menu: the next line or the one before written
+    /// in, the one chosen taken, or the menu put away.
+    NextRow,
+    PreviousRow,
+    TakeName,
+    MenuAway,
+}
+
+impl LineKey {
+    /// Whether it's the menu's, rather than the line's own.
+    pub fn menus(self) -> bool {
+        matches!(
+            self,
+            LineKey::NextRow | LineKey::PreviousRow | LineKey::TakeName | LineKey::MenuAway
+        )
+    }
 }
 
 /// The acts of the find line and the command line, by their names, and
@@ -354,6 +373,18 @@ const LINES: &[(&str, LineKey, &str)] = &[
     ),
     ("run", LineKey::Run, "Run the command typed"),
     ("open", LineKey::Open, "Search for what's typed"),
+    (
+        "next-row",
+        LineKey::NextRow,
+        "Choose the next command in the menu",
+    ),
+    (
+        "previous-row",
+        LineKey::PreviousRow,
+        "Choose the command before in the menu",
+    ),
+    ("take-name", LineKey::TakeName, "Take the command chosen"),
+    ("menu-away", LineKey::MenuAway, "Put the menu away"),
 ];
 
 /// A key of a line, what it does, and whether it's the command line's,
@@ -507,6 +538,51 @@ fn read_lines(language: &toml::Table) -> Vec<LineSlot> {
         .collect()
 }
 
+/// A command the language gives the page: the act's name, its whole
+/// command and short form, whether it takes a range, and the act's first
+/// key as the key list shows it, if the reader has one for it.
+pub struct Command {
+    pub act: String,
+    pub command: String,
+    pub short: String,
+    pub ranged: bool,
+    pub key: Option<String>,
+}
+
+/// Every command the language gives the page, by its act's name.
+pub fn commands() -> Vec<Command> {
+    let language: toml::Table = LANGUAGE.parse().expect("the key language is TOML");
+    let acts = language["acts"]
+        .as_table()
+        .expect("the language's acts are a table");
+    acts.iter()
+        .filter(|(_, act)| {
+            act.get("kinds")
+                .and_then(|kinds| kinds.as_array())
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("page")))
+        })
+        .filter_map(|(name, act)| {
+            let command = act.get("command")?.as_str()?.to_string();
+            let short = act
+                .get("short")
+                .and_then(|short| short.as_str())
+                .map_or_else(|| command.clone(), str::to_string);
+            let key = SPOKEN
+                .iter()
+                .find(|(spoken, _)| spoken == name)
+                .and_then(|&(_, done)| table().sequences.iter().find(|(_, act, _)| *act == done))
+                .map(|(keys, _, _)| shown_all(keys));
+            Some(Command {
+                act: name.clone(),
+                command,
+                short,
+                ranged: act.get("range").and_then(toml::Value::as_bool) == Some(true),
+                key,
+            })
+        })
+        .collect()
+}
+
 /// What a key does on the command line, or on the find line when not.
 pub fn line_key(key: Key, command: bool) -> Option<LineKey> {
     table()
@@ -553,6 +629,8 @@ fn parse(notation: &str) -> Option<Vec<Key>> {
                 "PageUp" => Key::PageUp,
                 "PageDown" => Key::PageDown,
                 "F1" => Key::F1,
+                "Tab" => Key::Tab,
+                "S-Tab" => Key::BackTab,
                 held => {
                     let mut letters = held.strip_prefix("C-")?.chars();
                     match (letters.next(), letters.next()) {
@@ -713,6 +791,8 @@ fn shown(key: Key) -> String {
         Key::PageUp => "Page Up".into(),
         Key::PageDown => "Page Down".into(),
         Key::F1 => "F1".into(),
+        Key::Tab => "Tab".into(),
+        Key::BackTab => "Shift+Tab".into(),
     }
 }
 
@@ -1141,7 +1221,16 @@ mod tests {
             .into_iter()
             .find(|(group, _)| *group == "Command Line")
             .expect("the lines' group");
-        assert_eq!(rows.len(), 7, "Backspace and Ctrl+H on one row");
+        assert_eq!(rows.len(), 11, "Backspace and Ctrl+H on one row");
+        assert_eq!(line_key(Key::Tab, true), Some(LineKey::NextRow));
+        assert_eq!(line_key(Key::BackTab, true), Some(LineKey::PreviousRow));
+        assert_eq!(line_key(Ctrl('y'), true), Some(LineKey::TakeName));
+        assert_eq!(line_key(Ctrl('e'), true), Some(LineKey::MenuAway));
+        assert_eq!(
+            line_key(Ctrl('e'), false),
+            None,
+            "the find line has no menu to put away"
+        );
     }
 
     #[test]

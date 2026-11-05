@@ -44,7 +44,12 @@
 # the command line take the key language's keys, as Vim's command line:
 # Escape or Ctrl+C drops one, Backspace or Ctrl+H takes a letter and
 # leaves an empty line, Ctrl+W a word, Ctrl+U the rest, and Return makes
-# it; held, a key never leaves the line. The same table, as
+# it; held, a key never leaves the line. The moment : is typed, a menu of
+# every command the page has rises over the line, as his completion menu
+# does, each in Vim's help notation with its name and key: typing narrows
+# it, Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P choose a line and
+# write it in, Ctrl+Y takes it, Ctrl+E puts the menu away, and after :e
+# and a space it lists the files. The same table, as
 # the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
@@ -362,6 +367,14 @@ let
     (commands "delete-to-start" "Ctrl+U" "Delete everything typed")
     (commands "run" "Return" "Run the command typed")
     (commands "open" "Return" "Search for what's typed")
+    (commands "next-row" "Down" "Choose the next command in the menu")
+    (commands "next-row" "Tab" "Choose the next command in the menu")
+    (commands "next-row" "Ctrl+N" "Choose the next command in the menu")
+    (commands "previous-row" "Up" "Choose the command before in the menu")
+    (commands "previous-row" "Shift+Tab" "Choose the command before in the menu")
+    (commands "previous-row" "Ctrl+P" "Choose the command before in the menu")
+    (commands "take-name" "Ctrl+Y" "Take the command chosen")
+    (commands "menu-away" "Ctrl+E" "Put the menu away")
   ];
 in
 {

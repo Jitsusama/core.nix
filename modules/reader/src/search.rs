@@ -76,6 +76,10 @@ impl Typing {
                 self.typed.truncate(kept);
                 Typed::Changed
             }
+            // The menu's keys are the window's to take, with the menu.
+            Some(
+                LineKey::NextRow | LineKey::PreviousRow | LineKey::TakeName | LineKey::MenuAway,
+            ) => Typed::Nothing,
             None => match key {
                 Key::Char(c) if !c.is_control() => {
                     self.typed.push(c);

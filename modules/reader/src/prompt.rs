@@ -32,6 +32,12 @@ pub struct Ask {
     /// heading's level and words and whether it's chosen. `width_pt`,
     /// `px_per_pt` and `page` count besides.
     pub outline: Vec<(u8, String, bool)>,
+    /// The command line's menu rather than the prompt; `width_pt`,
+    /// `px_per_pt` and `page` count besides.
+    pub menu: Option<Menu>,
+    /// What the prompt's row says at its end where it counts no matches:
+    /// how to choose from the menu, or what Return runs.
+    pub note: String,
     /// What the prompt opens with: / or ? for a search, : for a command,
     /// and nothing for a message.
     pub mark: &'static str,
@@ -48,6 +54,14 @@ pub struct Ask {
     /// How wide the page is set for the window, so the prompt's words start
     /// where its measure does.
     pub page: crate::page::Width,
+}
+
+/// The command line's menu as it shows: each line's command, title and
+/// key and whether it's chosen, and every line's command, which sets the
+/// columns so they hold still as typing narrows it.
+pub struct Menu {
+    pub lines: Vec<(String, String, String, bool)>,
+    pub all: Vec<String>,
 }
 
 /// The prompt set, as pixels.
@@ -101,7 +115,7 @@ fn rendered(page: &typst_layout::Page, px_per_pt: f64) -> Label {
 fn slot(ask: &Ask) -> usize {
     if !ask.labels.is_empty() {
         2
-    } else if !ask.outline.is_empty() {
+    } else if !ask.outline.is_empty() || ask.menu.is_some() {
         3
     } else {
         usize::from(ask.keys)
@@ -126,6 +140,8 @@ impl Prompt {
                     keys: false,
                     labels: Vec::new(),
                     outline: Vec::new(),
+                    menu: None,
+                    note: String::new(),
                     mark: "/",
                     typed: String::new(),
                     cursor: true,
@@ -149,6 +165,8 @@ impl Prompt {
                             labels(&ask.labels)
                         } else if !ask.outline.is_empty() {
                             outline(&ask)
+                        } else if let Some(menu) = &ask.menu {
+                            menu_source(&ask, menu)
                         } else if ask.keys {
                             key_list(ask.width_pt)
                         } else {
@@ -179,7 +197,7 @@ impl Prompt {
                             Set {
                                 serial: ask.serial,
                                 keys: ask.keys,
-                                outline: !ask.outline.is_empty(),
+                                outline: !ask.outline.is_empty() || ask.menu.is_some(),
                                 width: first.width,
                                 height: first.height,
                                 pixels: first.pixels,
@@ -218,7 +236,8 @@ fn source(ask: &Ask) -> String {
     let mark = ask.mark;
     let count = match ask.count {
         Some((_, 0)) if !ask.typed.is_empty() => "Nothing matches.".into(),
-        None | Some((_, 0)) => String::new(),
+        None => ask.note.clone(),
+        Some((_, 0)) => String::new(),
         Some((at, all)) => format!("{at} of {all}"),
     };
     let cursor = if ask.cursor {
@@ -236,7 +255,7 @@ fn source(ask: &Ask) -> String {
 #set text(..typing)
 #show raw: set text(..typing)
 #align(horizon, grid(columns: (1fr, auto),
-  [#raw({typed}){cursor}],
+  [{lead}#raw({typed}){cursor}],
   at(level.note, {count})))
 "#,
         ink = crate::theme::get().typst(),
@@ -244,8 +263,73 @@ fn source(ask: &Ask) -> String {
         // centres the page, and end where it ends.
         side = ((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt,
         row = ROW_PT,
-        typed = quoted(&format!("{mark}{}", ask.typed)),
+        // The command line's : is in the accent, where his keys go, as
+        // the spec has it; a search's / and ? are typed as they read.
+        lead = if mark == ":" {
+            "#text(fill: ink.accent, raw(\":\"))"
+        } else {
+            ""
+        },
+        typed = quoted(&if mark == ":" {
+            ask.typed.clone()
+        } else {
+            format!("{mark}{}", ask.typed)
+        }),
         count = quoted(&count),
+    )
+}
+
+/// The command line's menu's Typst, as his completion menu rises over his
+/// command line and the launcher's over its rows: a hairline in the rule
+/// splitting it from the page, then each line on the page's rhythm, all
+/// at Note in muted. Its commands stand under what's typed after the :,
+/// so a command chosen reads straight down from the line; its titles on a
+/// column Space's xl past the widest command it could hold; its keys
+/// flush with the end of the page's measure, where the prompt's count
+/// ends. The chosen line takes the selection's ground the window across,
+/// its words in the text, since muted isn't drawn there.
+fn menu_source(ask: &Ask, menu: &Menu) -> String {
+    let rows: Vec<String> = menu
+        .lines
+        .iter()
+        .map(|(command, title, key, chosen)| {
+            let (fill, ink) = if *chosen {
+                ("ink.selection", "ink.text")
+            } else {
+                ("none", "ink.muted")
+            };
+            format!(
+                "block(width: 100%, height: {row}pt, fill: {fill}, {{ set text(fill: {ink}); place(left + horizon, dx: commands, {command}); place(left + horizon, dx: titles, {title}); place(right + horizon, dx: -side, {key}) }})",
+                row = KEY_ROW_PT,
+                command = quoted(command),
+                title = quoted(title),
+                key = quoted(key),
+            )
+        })
+        .collect();
+    // A Typst array, a trailing comma making one of a single command.
+    let all: String = menu
+        .all
+        .iter()
+        .map(|command| format!("{}, ", quoted(command)))
+        .collect();
+    let width = ask.width_pt.max(290.0 + 72.0);
+    format!(
+        r#"{ink}#set page(width: {width}pt, height: auto, margin: 0pt, fill: ink.sunken)
+#set text(..level.note.text, features: level.note.text.features + ("calt",))
+#context {{
+  let side = {side}pt
+  let commands = side + measure(text(..level.figure.text, ":")).width
+  let widest = calc.max(0pt, ..({all}).map(it => measure(text(it)).width))
+  let titles = commands + widest + {xl}pt
+  block(width: 100%, stroke: (top: 0.75pt + ink.rule), inset: (y: {xs}pt), stack({rows}))
+}}
+"#,
+        ink = crate::theme::get().typst(),
+        side = ((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt,
+        xl = SIDE_PT,
+        xs = SPREAD_PT / 2.0,
+        rows = rows.join(", "),
     )
 }
 
@@ -600,6 +684,8 @@ mod tests {
             keys: false,
             labels: Vec::new(),
             outline: Vec::new(),
+            menu: None,
+            note: String::new(),
             mark: "/",
             typed: typed.into(),
             cursor: true,
@@ -611,5 +697,50 @@ mod tests {
         assert!(source(&ask("cat", Some((0, 0)))).contains("Nothing matches."));
         assert!(!source(&ask("", Some((0, 0)))).contains("Nothing matches."));
         assert!(source(&ask("cat", Some((2, 5)))).contains("2 of 5"));
+    }
+
+    #[test]
+    fn the_menu_sets_each_line_and_the_row_says_how_to_choose() {
+        let mut ask = Ask {
+            serial: 1,
+            keys: false,
+            labels: Vec::new(),
+            outline: Vec::new(),
+            menu: None,
+            note: "Tab choose".into(),
+            mark: ":",
+            typed: "b".into(),
+            cursor: true,
+            count: None,
+            width_pt: 720.0,
+            px_per_pt: 2.0,
+            page: crate::page::Width::WHOLE,
+        };
+        assert!(source(&ask).contains("\"Tab choose\""));
+        let menu = Menu {
+            lines: vec![
+                ("bn[ext]".into(), "Next File".into(), "]b".into(), true),
+                (
+                    "bp[revious]".into(),
+                    "Previous File".into(),
+                    "[b".into(),
+                    false,
+                ),
+            ],
+            all: vec!["bn[ext]".into()],
+        };
+        let set = menu_source(&ask, &menu);
+        assert!(set.contains("\"bn[ext]\"") && set.contains("\"Previous File\""));
+        assert_eq!(
+            set.matches("ink.selection").count(),
+            1,
+            "the chosen line's ground"
+        );
+        assert!(
+            set.contains("(\"bn[ext]\", )"),
+            "every command, as an array"
+        );
+        ask.menu = Some(menu);
+        assert_eq!(slot(&ask), 3, "set where the outline is");
     }
 }
