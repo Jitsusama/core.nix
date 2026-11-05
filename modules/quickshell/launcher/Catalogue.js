@@ -117,8 +117,10 @@ function changesState(row, command = {}) {
     // question or a file picker's mark, which only picks; and a figure,
     // which only says a value, its Return copying it or, with nothing to
     // copy yet, closing the launcher, never the :close of a window its
-    // verb would name.
-    if (!row || row.gone || row.changes === false || row.figure === true) {
+    // verb would name; and one that asks for words first, whose Return
+    // only asks, whatever the words then do.
+    if (!row || row.gone || row.changes === false || row.figure === true
+        || typeof row.given === "function") {
         return false;
     }
     if (row.changes === true) {
