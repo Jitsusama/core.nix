@@ -6687,12 +6687,6 @@
   ],
   "field": {
     "found": "{at} of {all}",
-    "modes": {
-      "insert": "insert",
-      "visual": "visual line",
-      "pageVisual": "visual",
-      "pageVisualLine": "visual line"
-    },
     "waiting": "{count} new",
     "keys": {
       "complete": "complete",
@@ -6789,7 +6783,7 @@
       "copies": "copy"
     },
     "visual": {
-      "counted": "{mode} \u00b7 {count}",
+      "counted": "{count} chosen",
       "opens": "open {count}",
       "opened": "{open} of {count} open"
     },

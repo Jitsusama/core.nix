@@ -3177,6 +3177,7 @@ onLinux {
       cp ${../../tests/query-keys.qml} query-keys.qml
       cp ${./KeyNames.js} KeyNames.js
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./ModeMarks.js} ModeMarks.js
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Typing.js} Typing.js

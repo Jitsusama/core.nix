@@ -393,11 +393,10 @@ function reselected(rows, last, identity) {
 
 // What the foot says Return does over a selection: open its rows, by
 // their count, as "open 3".
-// Visual's mode word, counting the rows chosen (`span`, as selection gives
-// it), as the spec's "visual line · 3".
-function visualSaid(mode, span, words) {
-    return (words.counted ?? "{mode}").replace("{mode}", mode)
-        .replace("{count}", String(span.to - span.from + 1));
+// What visual's mode word says, now the mark names the mode: how many are
+// chosen, "3 chosen".
+function chosenSaid(count, words) {
+    return (words.counted ?? "").replace("{count}", String(count));
 }
 
 function opensSaid(count, words) {

@@ -112,6 +112,7 @@ let
     "Prompt.qml"
     "KeyNames.js"
     "QueryKeys.js"
+    "ModeMarks.js"
     "CommandLine.qml"
     "CommandMenu.qml"
     "Commands.js"
