@@ -1759,11 +1759,12 @@ one table, `QueryKeys.js`.
   round from the last to the first. Tab and Space Tab go back to the
   place used last, what was typed and selected there as it was left, and
   again come back, as his Space Tab goes to the file used last; Shift+Tab
-  does nothing, as in Vim. Space ? and F1 list every key here in the
+  does nothing, as in Vim. Space ? and F1 list the launcher's keys in the
   drawer, in place of the row's plate, until Space ? again or Escape, as
-  the notices' Space ? does: Vim's own where an act has them and the
-  arrows he presses, j k ↓ ↑ without PgDn, Backspace or Space w beside
-  them, so each name sits whole beside what it does. Space w closes, as it closes his split; and
+  the notices' Space ? does: normal's and then insert's, each under its
+  mode's name and only where they work, Vim's own where an act has them
+  and the arrows he presses, so each name sits whole beside what it
+  does. The close line names ZZ and :q, not q. Space w closes, as it closes his split; and
   Space alone waits for its second key, as gg's g does, and lets go.
   Leaving insert puts the caret one left, as Vim does.
 - **Search,** from normal: / searches forward and ? back, typed on the

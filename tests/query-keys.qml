@@ -355,8 +355,10 @@ QtObject {
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
             lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends",
-            search: "search", found: "found" };
-        const list = Listed.keyList(Keys.table, lines);
+            search: "search", found: "found", nextRow: "next row", caret: "caret",
+            word: "word" };
+        const modes = { normal: "Normal", insert: "Insert" };
+        const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
         holds("the list's rows, the arrows after Vim's", keyed("rows"),
             "j  k  \u2193  \u2191");
@@ -370,24 +372,49 @@ QtObject {
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's searches, ? among them alone", keyed("search"), "/  ?");
         holds("the list's n and N", keyed("found"), "n  N");
-        holds("the list's closing, :q among them", keyed("close"), "q  ZZ  :q");
+        holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
+        // Each mode's section, by its heading: the keys each line names, as
+        // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
+        const sections = {};
+        let heading = "";
+        list.forEach(line => {
+            if (line.heading !== undefined) {
+                heading = line.heading;
+                sections[heading] = [];
+            } else {
+                sections[heading] = sections[heading].concat(line.label.split("  "));
+            }
+        });
+        holds("the list's sections, normal's where it's opened first",
+            list.filter(line => line.heading !== undefined).map(line => line.heading),
+            ["Normal", "Insert"]);
+        holds("insert's next row, Ctrl+N with the arrow", keyed("next row"), "Ctrl+N  \u2193");
+        holds("insert's caret", keyed("caret"), "\u2190  \u2192");
+        holds("insert's word deleted", keyed("word"), "Ctrl+W");
+        holds("normal's keys aren't listed in insert, where they type",
+            ["j", "k", "gg", "ZZ", "Tab"].filter(key => sections.Insert.includes(key)),
+            []);
+        holds("insert's keys aren't listed in normal, where they do nothing",
+            ["Ctrl+W", "Ctrl+N", "Ctrl+Y", "Home"].filter(key => sections.Normal.includes(key)),
+            []);
+        const facts = list.filter(line => line.heading === undefined);
         holds("every line the list gives has its keys",
-            Listed.keyList(Keys.table, {}).filter(line => line.label === "").length, 0);
-        // Joel presses the arrows, so every act one does in normal lists it.
-        const arrowed = Keys.table.filter(one => (one.mode === "normal" || one.mode === "both")
-            && one.keys.some(key => ["Up", "Down", "Left", "Right"].includes(key)));
-        const drawn = Listed.keyList(Keys.table, {}).map(line => line.label).join("  ")
-            .split("  ");
-        holds("every act an arrow does lists its arrow", arrowed
-            .map(one => one.keys.filter(key => ["Up", "Down", "Left", "Right"].includes(key)))
-            .reduce((all, some) => all.concat(some), [])
-            .filter(key => !drawn.includes(Listed.face(key))), []);
+            facts.filter(line => line.label === "").length, 0);
+        // Joel presses the arrows, so every act one does in a mode lists it
+        // in that mode's section.
+        const arrows = ["Up", "Down", "Left", "Right"];
+        holds("every act an arrow does lists its arrow", Keys.table
+            .filter(one => one.mode !== "search")
+            .map(one => ({ in: one.mode === "both" ? ["Normal", "Insert"] : [modes[one.mode]],
+                arrows: one.keys.filter(key => arrows.includes(key)) }))
+            .filter(one => one.arrows.some(key => one.in.some(mode =>
+                !sections[mode].includes(Listed.face(key)))))
+            .map(one => one.arrows), []);
         // The narrowest plate's names sit whole at 16 figures; 14 leaves a
         // glyph's room.
         holds("every line's keys are short enough to sit whole",
-            Listed.keyList(Keys.table, {}).filter(line => line.label.length > 14)
-                .map(line => line.label), []);
+            facts.filter(line => line.label.length > 14).map(line => line.label), []);
         holds("a g waiting its timeoutlen lets go, keeping the count",
             Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",

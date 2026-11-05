@@ -2260,7 +2260,7 @@ Scope {
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
         return { eyebrow: words.eyebrow ?? "", title: words.title ?? "",
-            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}) };
+            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {}) };
     }
     onListingChanged: drawerSettled()
 
@@ -3954,7 +3954,7 @@ Scope {
                 },
                 // The facts it draws, by name, whether each name is on one
                 // line whole, and where its last line's box may end.
-                drawnFacts: drawerCard.facts.map(fact => fact.label ?? ""),
+                drawnFacts: drawerCard.facts.map(fact => fact.heading ?? fact.label ?? ""),
                 // Each fact's value as it's drawn, null while it's asked.
                 values: drawerCard.facts.map(fact => fact.value ?? null),
                 // Its preview: the picture it's of, or how many lines.

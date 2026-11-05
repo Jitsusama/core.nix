@@ -6090,8 +6090,20 @@
     },
     "listed": {
       "eyebrow": "Keys",
-      "title": "The Rows in Normal Mode",
+      "title": "The Launcher's Keys",
+      "modes": {
+        "normal": "Normal",
+        "insert": "Insert"
+      },
       "lines": {
+        "nextRow": "The next row",
+        "previousRow": "The row before",
+        "complete": "Take the completion",
+        "caret": "Move the caret",
+        "caretEnds": "The start and end",
+        "letter": "Delete the letter before",
+        "word": "Delete the word before",
+        "start": "Delete back to the start",
         "rows": "Down and up",
         "ends": "The first and last",
         "view": "Top, middle and bottom",

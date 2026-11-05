@@ -620,10 +620,19 @@ Floating {
                         Item {
                             id: fact
                             required property var modelData
+                            required property int index
+                            // A heading over the facts after it, as the
+                            // keys' list names each mode's, set as the
+                            // eyebrow is and an empty line below any
+                            // fact before it.
+                            readonly property bool heading: modelData.heading !== undefined
+                            readonly property real headingRoom: heading && index > 0 ? drawer.pitch
+                                : 0
                             readonly property bool known: modelData.value !== null
                                 && modelData.value !== undefined
                             // Its first baseline, down from its top.
                             readonly property real base: drawer.pitch / 2 + drawer.dropped
+                                + headingRoom
                             // A value that won't sit beside its name in two
                             // lines takes the plate's whole width on the
                             // line under it, so it never reads a word a line
@@ -633,8 +642,25 @@ Floating {
                                 : drawer.labelsWide + drawer.labelsGap
 
                             width: parent.width
-                            height: (under ? label.lineCount + value.lineCount
-                                : Math.max(1, label.lineCount, value.lineCount)) * drawer.pitch
+                            height: heading ? headingRoom + drawer.pitch
+                                : (under ? label.lineCount + value.lineCount
+                                    : Math.max(1, label.lineCount, value.lineCount)) * drawer.pitch
+
+                            Text {
+                                width: parent.width
+                                y: fact.base - baselineOffset
+                                visible: fact.heading
+                                text: fact.modelData.heading ?? ""
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: Theme.muted
+                                font.family: Theme.level.label.family
+                                font.pointSize: Theme.level.label.pointSize
+                                font.weight: Theme.level.label.weight
+                                font.capitalization: Theme.level.label.capitalization
+                                font.letterSpacing: Theme.level.label.letterSpacing
+                                font.features: Theme.level.label.features
+                            }
 
                             // The value as it would wrap beside its name,
                             // measured and never drawn.
@@ -650,6 +676,7 @@ Floating {
 
                             Text {
                                 id: label
+                                visible: !fact.heading
                                 width: drawer.labelsWide
                                 y: fact.base - baselineOffset
                                 text: fact.modelData.label ?? ""
@@ -667,6 +694,7 @@ Floating {
                             // at, a long one breaking onto the pitch.
                             Text {
                                 id: value
+                                visible: !fact.heading
                                 x: fact.valueFrom
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
