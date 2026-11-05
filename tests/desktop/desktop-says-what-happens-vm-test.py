@@ -917,7 +917,7 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
             machine.send_key("meta_l-n")
         desktop.photograph(f"notice-held-at-{named}")
         with desktop.told("notice verb Open"):
-            machine.send_key("right")
+            machine.send_key("l")
         desktop.photograph(f"notice-stepped-at-{named}")
         with desktop.told("notice back"):
             machine.send_key("esc")
