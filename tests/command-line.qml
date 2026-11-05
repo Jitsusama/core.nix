@@ -524,5 +524,36 @@ QtObject {
             [global("g/Slack/wat"), global("g/a/g/b/disc"), global("g")],
             ["E492: Not an editor command: wat", "E147: Cannot do :global recursive",
                 "E35: No previous regular expression"]);
+
+        // The rows a line names, as the launcher binds them to things as :
+        // is pressed: the cursor row, a range's, or those :g finds by name,
+        // ignoring case where the pattern has no capital, as smartcase does.
+        const at = { names: ["Slack", "kitty", "Slack Huddle", "Files", "slack notes"],
+            cursor: 1, marks: { "<": 2, ">": 3 } };
+        const bound = typed => {
+            const read = Commands.bound(Commands.ran(typed, menu), at);
+            return read.error ?? read.rows;
+        };
+        holds("no range binds the cursor row, a range the rows it names",
+            [bound("disc"), bound("3,5disc"), bound("%forg"), bound("'<,'>disc"),
+                bound(".,+2disc")], [[1], [2, 3, 4], [0, 1, 2, 3, 4], [2, 3], [1, 2, 3]]);
+        holds(":g binds those it finds, :v those it doesn't, within its range",
+            [bound("g/Slack/disc"), bound("g/slack/disc"), bound("v/slack/disc"),
+                bound("2,3g/Slack/disc")], [[0, 2], [0, 2, 4], [1, 3], [2]]);
+        holds("a range it can't bind says Vim's error",
+            [bound("'a,'bdisc"), bound("7,9disc")], ["E20: Mark not set", "E16: Invalid range"]);
+
+        // The act a line names on each thing it's bound to: by its words'
+        // id where it has words, else by its command and title.
+        const wordsOf = { "wifi:leave": { id: "verb:wifi-leave", command: "disconnect" } };
+        const worded = Commands.listed({ acts: [{ key: "wifi:leave", name: "Leave It" }],
+            table: commands, said, called: act => wordsOf[act.key] ?? {} });
+        holds("each thing's own act is found by the line's words, else command and title",
+            [Commands.actFor(worded[0], [{ key: "x" }, { key: "wifi:leave", name: "Leave" }],
+                act => wordsOf[act.key] ?? {})?.name,
+                Commands.actFor(Commands.ran("disc", menu).entry, network(), () => ({}))?.name,
+                Commands.actFor(Commands.ran("disc", menu).entry,
+                    [{ name: "See It", verb: "see" }], () => ({}))],
+            ["Leave", "Disconnect It", undefined]);
     }
 }

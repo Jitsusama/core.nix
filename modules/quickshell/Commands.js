@@ -357,6 +357,16 @@ function ranRanged(matching, read) {
     return running.error === undefined ? Object.assign(running, { range: read.range }) : running;
 }
 
+// The rows a line names, bound to things as : is pressed.
+function bound(_read, _at) {
+    return { rows: [] };
+}
+
+// The act a line names on a thing it's bound to.
+function actFor(_entry, _acts, _called) {
+    return undefined;
+}
+
 // :g/pat/cmd and :v/pat/cmd, read as Ex.js reads them, then the command
 // after as any other, so :g/Slack/d runs d's act on each row that finds
 // Slack: { global: { pattern, invert }, range, entry, bang, arg }, every
