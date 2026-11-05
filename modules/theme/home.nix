@@ -314,12 +314,15 @@ let
   };
 
   # Each step of the type scale, as a power of its ratio: body is the face's
-  # own size, and each step up multiplies it by the ratio once more.
+  # own size, and each step up multiplies it by the ratio once more. The
+  # steps between are left out on purpose, so every step taken reads as one
+  # (docs/design.md, Type); section is the reader's alone.
   typeSteps = {
     small = -1;
     body = 0;
     large = 1;
-    title = 2;
+    section = 2;
+    title = 3;
     display = 6;
     hero = 8;
   };
@@ -370,6 +373,88 @@ let
   # The marks every surface draws from, looked up by meaning, each with a
   # stand-in a console font can draw (glyphs.nix).
   marks = import ./glyphs.nix { inherit lib; };
+
+  # A level of the type hierarchy: how one kind of run of text is set,
+  # wherever a surface sets it (docs/design.md, Type).
+  level = lib.types.submodule {
+    options = {
+      face = lib.mkOption {
+        type = lib.types.enum [
+          "mono"
+          "serif"
+        ];
+        description = ''
+          The face it's set in: the mono for a thing's name and a figure, the
+          serif for words to read and the voice.
+        '';
+      };
+      step = lib.mkOption {
+        type = lib.types.str;
+        description = "The type scale's step it's set at, by name.";
+      };
+      wallpaper = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          The larger step it's set at standing alone on the wallpaper, as the
+          lock's clock does, rather than on a plate; none for a level that's
+          only ever on one.
+        '';
+      };
+      weight = lib.mkOption {
+        type = lib.types.ints.between 100 900;
+        default = 400;
+        description = ''
+          The mono's weight, one of the weights it's cut at. The serif, a
+          variable font, is weighted by its `wght` axis instead.
+        '';
+      };
+      axes = lib.mkOption {
+        type = lib.types.attrsOf lib.types.number;
+        default = { };
+        description = "The serif's variable axes, its weight among them, by their tags.";
+      };
+      italic = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether it's set in the italic, which means the voice and nothing else.";
+      };
+      strong = lib.mkOption {
+        type = lib.types.nullOr (lib.types.ints.between 100 900);
+        default = null;
+        description = ''
+          The weight of a strong span in a line at this level, such as a name
+          in a sentence; such a line takes its weight from the face rather
+          than its axis, since Qt's rich text can't set an axis in a span.
+        '';
+      };
+      case = lib.mkOption {
+        type = lib.types.enum [
+          "as-written"
+          "capitals"
+        ];
+        default = "as-written";
+        description = "Whether it's set as written or in capitals, which say label.";
+      };
+      tracking = lib.mkOption {
+        type = lib.types.number;
+        default = 0;
+        description = "Its letter spacing in ems, for a level spaced other than as drawn.";
+      };
+      features = lib.mkOption {
+        type = lib.types.listOf (lib.types.strMatching "[a-z0-9]{4}");
+        default = [ ];
+        description = "The OpenType features it's drawn with, by their tags.";
+      };
+      colour = lib.mkOption {
+        type = lib.types.enum (lib.attrNames colours);
+        description = ''
+          The colour role it's drawn in where nothing says otherwise: beside
+          a name, on the selection or in a state, a surface names another.
+        '';
+      };
+    };
+  };
 
   keyFace = lib.types.submodule {
     options = {
@@ -610,8 +695,8 @@ in
         };
         upright = lib.mkOption {
           type = lib.types.attrsOf (lib.types.attrsOf lib.types.number);
-          # Look 3's plate: a thing's name at title, a touch heavier than the
-          # voice and drawn for its size, and the time at display, regular,
+          # Look 3's plate: a thing's name at section, a touch heavier than
+          # the voice and drawn for its size, and the time at display, regular,
           # drawn for a poster's size with its wonky letters off, so its
           # figures stand plain. At large, the words the shell sets for
           # reading, as the reader's page sets its text: the voice's weight,
@@ -624,7 +709,7 @@ in
               WONK = 0;
               opsz = 14;
             };
-            title = {
+            section = {
               wght = 500;
               opsz = 72;
             };
@@ -641,10 +726,10 @@ in
         };
         slanted = lib.mkOption {
           type = lib.types.attrsOf (lib.types.attrsOf lib.types.number);
-          # The seconds after Now's time, in the voice's italic at title,
+          # The seconds after Now's time, in the voice's italic at section,
           # regular and drawn for their size beside the time's.
           default = {
-            title = {
+            section = {
               wght = 400;
               opsz = 72;
             };
@@ -795,6 +880,89 @@ in
         default = serifSizes;
         defaultText = lib.literalMD "`type.mono`'s sizes times `font.serif.capitals`";
         description = "Each step's size in points, in the serif face, its capitals as tall as the mono's.";
+      };
+      levels = lib.mkOption {
+        type = lib.types.attrsOf level;
+        # The hierarchy of 4 November (docs/design.md, Type): each level
+        # differs from its neighbours in at least two of size, weight, face,
+        # case and colour, since one step of one alone reads as texture
+        # rather than rank. Words and the voice are the serif as the shell
+        # set it before there were levels; label is note's variant, told
+        # apart by its case.
+        default = {
+          display = {
+            face = "mono";
+            step = "display";
+            wallpaper = "hero";
+            tracking = -1.0e-2;
+            features = [ "tnum" ];
+            colour = "text";
+          };
+          # Drawn for the size it's set at, never a poster's cut, and with
+          # the threshold's whimsy: softened, its wonky letters on.
+          title = {
+            face = "serif";
+            step = "title";
+            axes = {
+              wght = 560;
+              opsz = 21;
+              SOFT = 100;
+              WONK = 1;
+            };
+            tracking = -1.0e-2;
+            colour = "strong";
+          };
+          # Medium always, so selection changes only colour and fill and a
+          # weight means only a level; the mono swells at bold on a dark
+          # ground.
+          name = {
+            face = "mono";
+            step = "large";
+            weight = 500;
+            colour = "text";
+          };
+          figure = {
+            face = "mono";
+            step = "large";
+            features = [ "tnum" ];
+            colour = "text";
+          };
+          words = {
+            face = "serif";
+            step = "large";
+            axes = cfg.font.serif.axes // cfg.font.serif.upright.large;
+            strong = 600;
+            colour = "muted";
+          };
+          voice = {
+            face = "serif";
+            step = "large";
+            italic = cfg.font.serif.italic;
+            axes = cfg.font.serif.axes // {
+              wght = cfg.font.serif.weight;
+            };
+            colour = "muted";
+          };
+          note = {
+            face = "mono";
+            step = "body";
+            colour = "muted";
+          };
+          label = {
+            face = "mono";
+            step = "body";
+            weight = 500;
+            case = "capitals";
+            tracking = cfg.type.eyebrow.tracking;
+            features = [ "case" ];
+            colour = "muted";
+          };
+        };
+        defaultText = lib.literalMD "display, title, name, figure, words, voice, note and label";
+        description = ''
+          The type hierarchy's levels, by name: how each kind of run of text
+          is set, so a surface names a level rather than a size or a weight.
+        '';
       };
     };
 
@@ -1134,6 +1302,20 @@ in
       icons
       ;
     inherit (cfg.type) mono sans;
+    # Each level with its size in points worked out, as the shell's Theme
+    # gives it, for a program that sets its own text, such as the reader.
+    levels = lib.mapAttrs (
+      _: level:
+      let
+        size = step: builtins.fromJSON cfg.type.${level.face}.${step};
+      in
+      level
+      // {
+        inherit (cfg.font.${level.face}) family;
+        size = size level.step;
+        wallpaper = if level.wallpaper == null then null else size level.wallpaper;
+      }
+    ) cfg.type.levels;
     name = cfg.title;
     marks = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
   };
