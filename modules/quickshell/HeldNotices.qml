@@ -1076,11 +1076,14 @@ Floating {
     // What a row leaves under its baseline, which the last of anything
     // leaves too, so the hairline under it always stands as far off.
     readonly property real rowLeaves: (rowHeight - rowCaps) / 2
-    // The columns: the gutter's figures right-aligned in the room of two,
-    // the mark's cell a group on, and the Name a glyph's column after the
-    // mark's start, so names align whatever a mark's width.
-    readonly property real markAt: Theme.space.rung.inset + twoFigures.advanceWidth
-        + Theme.space.rung.groups
+    // The columns, the launcher's (VKCF3Z's family mocks, 2026-11-05): the
+    // gutter's figures right-aligned in the room of three, the ground a
+    // mark on and the mark's cell a mark inside it, and the Name a glyph's
+    // column after the mark's start, so names align whatever a mark's
+    // width.
+    readonly property real groundAt: Theme.space.rung.inset + gutterFigures.advanceWidth
+        + Theme.space.rung.mark
+    readonly property real markAt: groundAt + Theme.space.rung.mark
     readonly property real nameAt: markAt + Theme.level.name.pitch + Theme.space.rung.mark
     // Space ?'s pitch, the drawer's key list's: Figure's, at Note.
     readonly property real keyPitch: Theme.level.figure.pitch
@@ -1123,9 +1126,9 @@ Floating {
 
     // The gutter's width, by the widest it holds.
     TextMetrics {
-        id: twoFigures
+        id: gutterFigures
         font: note.font
-        text: "99"
+        text: "999"
     }
 
     // How wide a run of Note's is, asked again as the face loads.
@@ -1253,8 +1256,9 @@ Floating {
         // place in the launcher reads, led by the find's /, which types
         // here, since a find narrows the list beneath. The / stands at the
         // inset over the gutter, as Vim's lines start at column 0, muted at
-        // rest and the accent while it finds; what's typed follows the
-        // Title at Figure, on its baseline (VKCF3Z, 2026-11-05).
+        // rest and the accent while it finds; the glyph and the Title follow
+        // a mark apart, as one place, and what's typed follows the Title at
+        // Figure, on its baseline (VKCF3Z's family mocks, 2026-11-05).
         Item {
             id: head
 
@@ -1269,6 +1273,7 @@ Floating {
             }
 
             Text {
+                id: slash
                 x: Theme.space.rung.inset
                 y: held.headBase - baselineOffset
                 text: "/"
@@ -1277,16 +1282,17 @@ Floating {
             }
 
             Text {
-                x: held.markAt
+                id: placeMark
+                x: slash.x + slash.implicitWidth + Theme.space.rung.mark
                 y: held.headBase - baselineOffset
                 text: Theme.glyph.notifications
-                color: Theme.muted
+                color: Theme.accent
                 font: note.font
             }
 
             Text {
                 id: place
-                x: held.nameAt
+                x: placeMark.x + placeMark.implicitWidth + Theme.space.rung.mark
                 y: held.headBase - baselineOffset
                 text: "Notices"
                 color: Theme.text
@@ -1360,13 +1366,14 @@ Floating {
                     // wears the selection's ground, as the launcher's tinted
                     // rows do; a command line's targets lie on raised. It's
                     // the launcher's ground, close round the row's ink: a
-                    // mark round the gutter and the time, above the capitals
+                    // mark round the glyph and the time, above the capitals
                     // and below the baseline, so more room stands outside
-                    // it than in.
+                    // it than in; the gutter stands outside it, as it
+                    // numbers the row rather than being part of it.
                     Rectangle {
-                        x: Theme.space.rung.inset - Theme.space.rung.mark
+                        x: held.groundAt
                         y: held.rowLeaves - Theme.space.rung.mark
-                        width: parent.width - 2 * x
+                        width: parent.width - Theme.space.rung.inset + Theme.space.rung.mark - x
                         height: held.rowCaps + 2 * Theme.space.rung.mark
                         radius: Theme.inner
                         visible: line.chosenLine || line.targeted
@@ -1379,7 +1386,7 @@ Floating {
                     Text {
                         id: gutter
                         x: Theme.space.rung.inset
-                        width: twoFigures.advanceWidth
+                        width: gutterFigures.advanceWidth
                         anchors.baseline: who.baseline
                         horizontalAlignment: Text.AlignRight
                         text: NoticeList.number(line.at, held.cursor, held.relative)
