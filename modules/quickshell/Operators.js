@@ -76,17 +76,18 @@ const digit = /^[0-9]$/;
 // one after an operator is its motion's. An operator's key at rest in
 // normal begins it, with the count before it, but on a prompt's words
 // (`words`), where d and c are the words' own, as dw and cw; visual's
-// take no motion. `matching` and `rested` are as operated's.
-function beforeTable(standing, key, { mode, words }, { matching, rested }) {
+// take no motion. The line is its mode and whether it holds words, and
+// the table QueryKeys' `matching` and `rested`, as operated takes them.
+function beforeTable(standing, key, line, table) {
     const atRest = standing.typed.length === 0;
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,
             { count: standing.count + key, typed: [] }), ours: true };
     }
     if (standing.operator !== undefined) {
-        return operated(standing, key, matching, rested);
+        return operated(standing, key, table.matching, table.rested);
     }
-    if (mode === "normal" && atRest && !words && key in operators) {
+    if (line.mode === "normal" && atRest && !line.words && key in operators) {
         const operator = { key, count: standing.count };
         return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
     }
