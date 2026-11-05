@@ -600,11 +600,16 @@ Floating {
     }
     // Laid out anew while it holds the keys, as a fact's value comes or the
     // row refreshes: the lines read again once Qt has laid them out, the
-    // cursor kept on its line and letter where they still are.
+    // cursor kept on its line and letter where they still are. A page not
+    // laid out yet gives no lines, as the drawer comes in over the card,
+    // and that says nothing of where the cursor was: clamped into it, the
+    // cursor would fall from the title to the eyebrow and stay.
     function relay() {
         if (keys)
             Qt.callLater(() => {
                 laid = lines();
+                if (laid.length === 0)
+                    return;
                 const line = Math.max(0, Math.min(cursor.line, laid.length - 1));
                 const most = laid.length > 0 ? Math.max(0, laid[line].length - 1) : 0;
                 cursor = { line, letter: Math.min(cursor.letter, most), want: cursor.want };
