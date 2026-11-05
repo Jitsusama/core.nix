@@ -54,6 +54,7 @@ let
       inherit (about) short;
       changes = about.changes or false;
       undoable = about.undoable or false;
+      guarded = about.guarded or false;
       range = about.range or false;
     }
   ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
@@ -118,6 +119,7 @@ let
     "Launcher.qml"
     "Choice.qml"
     "ReadsOn.qml"
+    "Wash.qml"
     "Reading.js"
     "Graph.qml"
     "Chord.qml"
@@ -148,6 +150,7 @@ let
     "Niri.qml"
     "Wifi.qml"
     "ProcessorTelemetry.qml"
+    "Timekeeping.qml"
     "SignIn.qml"
     "Floating.qml"
     "Fuzzy.js"
@@ -206,6 +209,7 @@ let
     "launcher/Units.js"
     "launcher/Zones.js"
     "launcher/Moment.js"
+    "launcher/Keeping.js"
     "launcher/Ago.js"
     "launcher/Colours.js"
     "launcher/Asking.js"
@@ -656,9 +660,9 @@ let
   clockFollows = pkgs.callPackage ./clock-follows/package.nix { };
   timedatectl = lib.getExe' pkgs.systemd "timedatectl";
   # The program that says how the clock is kept, for Time's insides, where
-  # the machine keeps it with systemd-timesyncd.
+  # the machine keeps it with chrony.
   timekeeping = pkgs.callPackage ./timekeeping/package.nix { };
-  keepsTime = osConfig.services.timesyncd.enable or false;
+  keepsTime = osConfig.services.chrony.enable or false;
   # Whether shutting the lid on the charger suspends the machine, as logind
   # does unless told otherwise; the lid module tells it to ignore it. Only
   # where it suspends does keeping awake need to hold the lid too. Only
@@ -1639,10 +1643,14 @@ in
                       list = "${emojiList (provider.tone or "none")}";
                     }
                     # The zones, and which tzdata they came from, which
-                    # Time's Zone says.
+                    # Time's Zone says, and which chrony keeps the clock,
+                    # which its Clock says, where chrony does.
                     // lib.optionalAttrs (provider.source == "time") {
                       list = "${timeZones}";
                       tzdata = pkgs.tzdata.version;
+                    }
+                    // lib.optionalAttrs (provider.source == "time" && keepsTime) {
+                      chrony = osConfig.services.chrony.package.version;
                     }
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
@@ -1830,6 +1838,20 @@ in
                   }) floating.shadows;
                 }
               }
+              // A find's ink and ground, as Joel's Neovim draws a search's
+              // (modules/neovim/colors/jitsusama.lua, Search): the notices' /
+              // washes what it finds with it, and the launcher the letters
+              // its find line matched. On the selection, which lies a shade
+              // past raised, its ground is the shade past the selection,
+              // rule's, so a selected row's find still shows. No find takes
+              // the accent: the find line has no match the cursor is on.
+              readonly property var wash: ${
+                object {
+                  ink = colours.strong;
+                  ground = colours.raised;
+                  selected = colours.rule;
+                }
+              }
               readonly property var motion: ${
                 object {
                   # Slowed as niri slows its own, so the two stay in step.
@@ -2004,21 +2026,28 @@ in
         ExecStart = "${lib.getExe clockFollows} put-back %S/clock-follows ${timedatectl}";
       };
     };
-    # How the clock is kept, as timesyncd last said, in the runtime
-    # directory for Time to watch: heard over D-Bus as each exchange with
-    # the server is made, never asked on a clock nor through timedatectl.
+    # How the clock is kept, as chrony says it, for Time: systemd holds the
+    # socket and starts the reader the first time the shell connects, and
+    # the reader asks chronyd only while the shell watches.
+    systemd.user.sockets.timekeeping = lib.mkIf keepsTime {
+      Unit.Description = "Where the launcher asks how the clock is kept";
+      Socket = {
+        ListenStream = "%t/io.jitsusama.Timekeeping";
+        FileDescriptorName = "varlink";
+        SocketMode = "0600";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
     systemd.user.services.timekeeping = lib.mkIf keepsTime {
       Unit = {
         Description = "Says how the clock is kept, for the launcher's Time";
-        PartOf = [ "graphical-session.target" ];
-        After = [ "graphical-session.target" ];
+        Requires = [ "timekeeping.socket" ];
+        After = [ "timekeeping.socket" ];
       };
       Service = {
-        ExecStart = "${lib.getExe timekeeping} %t/timekeeping.json";
+        ExecStart = lib.getExe timekeeping;
         Restart = "on-failure";
-        RestartSec = 60;
       };
-      Install.WantedBy = [ "graphical-session.target" ];
     };
 
     # Keeping awake, from the launcher (Caffeinate.qml): one service holds

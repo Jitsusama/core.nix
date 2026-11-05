@@ -74,11 +74,14 @@ Singleton {
     // but isn't d's, as a disconnect, carries `ends` alone, so Return typed
     // in insert leaves it be too (Catalogue.js's ends); any other carries
     // nothing.
+    // Each carries its command too, the key language's whole name for it
+    // (Options.commands), whose flags say whether d asks first.
     function ending(id) {
         const entry = of(id);
+        const command = (entry.command ?? "") !== "" ? { command: entry.command } : {};
         if (entry.act === "ending")
-            return { act: entry.act, ends: entry.ends ?? "" };
-        return (entry.ends ?? "") !== "" ? { ends: entry.ends } : {};
+            return Object.assign({ act: entry.act, ends: entry.ends ?? "" }, command);
+        return (entry.ends ?? "") !== "" ? Object.assign({ ends: entry.ends }, command) : {};
     }
 
     // The words that ask its answer, typed whole, best first, as a

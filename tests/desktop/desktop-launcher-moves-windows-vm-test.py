@@ -417,15 +417,17 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
 
 
 def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Desktop) -> None:
-    """Dd and dj close windows once asked, and yy copies a title with the launcher open."""
+    """Dd closes a window, dj closes two once asked, and yy copies a title."""
     machine = desktop.machine
     first = desktop.opened("Ending first")
     second = desktop.opened("Ending second")
+    third = desktop.opened("Ending third")
+    endings = {first["id"], second["id"], third["id"]}
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("ending")
     desktop.launcher_until(
-        lambda shown: sorted(shown["rows"][:2]) == ["Ending first", "Ending second"]
+        lambda shown: sorted(shown["rows"][:3]) == ["Ending first", "Ending second", "Ending third"]
     )
     desktop.normal()
     top = desktop.showing()["rows"][0]
@@ -436,28 +438,34 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
     desktop.reported("yanked 1", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline") == top
     desktop.launcher_until(lambda shown: shown["open"] and shown["flashing"] == [])
-    # dd asks, in Return's place, as Vim's ask_yesno does, and closes
-    # nothing yet; it can be answered once it's stood 300 ms.
-    with desktop.told("ask ready"), desktop.told(f"asked Close {top}? (y/n)"):
+    # dd closes the one window at once: its program keeps its own work,
+    # as Vim's :close refuses a modified buffer, so the language marks
+    # Close guarded and one asks nothing.
+    with desktop.told("ended 1"):
         machine.send_chars("dd")
-    assert desktop.showing()["operated"] == f"dd Close {top}? (y/n)", desktop.showing()
-    # Escape, as any key but y, says no, and the launcher stays.
+
+    def left() -> set[int]:
+        """Give the ending windows still open."""
+        return endings & {window["id"] for window in desktop.windows()}
+
+    retry(lambda _: len(left()) == len(endings) - 1, timeout=dt.timedelta(seconds=10))
+    # dj over the other two asks once, in Return's place, as Vim's
+    # ask_yesno does, answered once it's stood 300 ms; Escape says no,
+    # and the launcher stays.
+    machine.send_chars("gg")
+    with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+        machine.send_chars("dj")
+    assert desktop.showing()["operated"] == "dj Close these 2? (y/n)", desktop.showing()
     with desktop.told("answered no"):
         machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
-    assert {first["id"], second["id"]} <= {window["id"] for window in desktop.windows()}
-    # dj asks for both, and y closes both.
+    assert len(left()) == len(endings) - 1, desktop.windows()
+    # dj again, and y closes both.
     with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
         machine.send_chars("dj")
     with desktop.told("ended 2"):
         machine.send_chars("y")
-
-    def closed(_: bool) -> bool:
-        """Say whether both windows have gone."""
-        left = {window["id"] for window in desktop.windows()}
-        return not {first["id"], second["id"]} & left
-
-    retry(closed, timeout=dt.timedelta(seconds=10))
+    retry(lambda _: not left(), timeout=dt.timedelta(seconds=10))
     assert desktop.showing()["open"], "d closed the launcher"
 
 

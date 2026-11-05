@@ -1168,9 +1168,11 @@ claims to get and set the real time (bit 2 of `_GCP`) but has neither `_GRT`
 nor `_SRT`, so nothing reached the Aggregator's clock, and nothing set it.
 
 surface-clock ([`clock/clock.nix`][26]) sets it. Early in each boot, before
-timesyncd starts and so before the kernel writes the synchronised time to the
-CMOS clock, it reads both clocks and keeps their difference as the firmware's
-offset. While the time is synchronised, at shutdown and every hour, it sets
+chrony starts and so before anything writes the synchronised time to the CMOS
+clock, it reads both clocks and keeps their difference as the firmware's
+offset. chrony trims the CMOS clock itself once it's far out (its
+`rtcautotrim`), rather than having the kernel write it every eleven minutes,
+and either starts only with chrony. While the time is synchronised, at shutdown and every hour, it sets
 the Aggregator's clock to the true time plus that offset, so the next start's
 CMOS clock reads the true time. It takes the offset as measured rather than as
 eight hours, and refuses one past any time zone's. Started once the time is

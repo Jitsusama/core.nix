@@ -405,8 +405,10 @@ Provider {
     }
 
     // An hour, the same thing wherever it's listed: its sky beside it, its
-    // rain under it and as a bar, and every figure a step in.
-    function hourThing(hour) {
+    // rain under it and as a bar, and every figure a step in. `today` is
+    // the forecast's own, so its drawer says the year only of next year's
+    // hours.
+    function hourThing(hour, today) {
         const rain = `${hour.chance}% \u00b7 ${amount(hour.falls)}`;
         const above = sky(hour.at);
         const figures = instant(hour.at, hour.unit);
@@ -418,7 +420,7 @@ Provider {
                 : Theme.glyph.rain,
             graph: { shape: "bar", values: [hour.chance / percent], warn: false },
             thing: true,
-            drawer: () => drawerOf(words("at", { day: Moment.eyebrow(dateOf(hour.date)),
+            drawer: () => drawerOf(words("at", { day: Moment.eyebrow(dateOf(hour.date), today),
                 clock: hour.clock }), above ?? rain, "weather", figures)
         }, () => figureRows("weather", figures));
     }
@@ -483,7 +485,7 @@ Provider {
             headline: when.startsWith("none") ? `no rain in the next ${hours.length} hours`
                 : `rain ${when}`,
             graph: spark(hours),
-            rows: hours.map(hour => hourThing(hour)),
+            rows: hours.map(hour => hourThing(hour, dateOf(hours[0].date))),
             note: note
         };
     }
@@ -520,7 +522,7 @@ Provider {
                 hue: "voice",
                 glyph: Theme.glyph.rain,
                 graph: spark(next)
-            }, () => next.map(hour => hourThing(hour))));
+            }, () => next.map(hour => hourThing(hour, dateOf(date)))));
         for (let i = 0; i < (daily.time ?? []).length; i++) {
             const day = daily.time[i];
             const side = `${degrees(daily.temperature_2m_min[i])} to `
@@ -535,9 +537,10 @@ Provider {
                     { chance: share(chance) }) : "",
                 glyph: glyph(daily.weather_code[i], true),
                 thing: true,
-                drawer: () => drawerOf(Moment.eyebrow(dateOf(day)), side, "weather:day", own)
+                drawer: () => drawerOf(Moment.eyebrow(dateOf(day), dateOf(date)), side,
+                    "weather:day", own)
             }, () => figureRows("weather:day", own).concat(hours.filter(hour => hour.date === day)
-                .map(hour => hourThing(hour)))));
+                .map(hour => hourThing(hour, dateOf(date))))));
         }
         return {
             headline: headline,

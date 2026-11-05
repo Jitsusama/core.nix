@@ -1,8 +1,8 @@
 """A machine's clock sets from its own time server past the network's, which never answers.
 
 tests/clock.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says why timesyncd waits to be started. The silent server the network names
-is a Nix value, given as the `values` fixture, so networkd's and timesyncd's answers are
+opening comment says how chrony hears of the network's server. The silent server the network
+names is a Nix value, given as the `values` fixture, so networkd's and chrony's answers are
 checked against the same address the machine was given.
 """
 
@@ -17,9 +17,10 @@ if TYPE_CHECKING:
     from test_driver.driver import Driver
     from test_driver.machine import BaseMachine
 
-# How long networkd may take to hear of the network's server once the link is up.
+# How long networkd may take to hear of the network's server once the link is up, and
+# chrony to be told it.
 HEARING = timedelta(minutes=1)
-# How long timesyncd may take to give up on the silent server and set the clock from its own.
+# How long chrony may take to set the clock from the machine's own server.
 SYNCING = timedelta(minutes=2)
 
 
@@ -32,30 +33,35 @@ def silent(values: dict[str, Any]) -> str:
 
 @pytest.fixture(scope="module")
 def syncing(driver: Driver, machines: dict[str, BaseMachine], silent: str) -> BaseMachine:
-    """Give the machine with timesyncd started once networkd knows the network's server.
-
-    Started sooner, timesyncd would find no server named and fall back to the machine's own,
-    which proves nothing.
-    """
+    """Give the machine once networkd knows the network's server."""
     driver.start_all()
     machines["server"].wait_for_unit("chronyd.service")
     machine = machines["machine"]
+    machine.wait_for_unit("chronyd.service")
     machine.wait_until_succeeds(
         f"networkctl status eth1 | grep -q 'NTP: {silent}'", timeout=HEARING
     )
-    machine.succeed("systemctl start systemd-timesyncd.service")
     return machine
 
 
-def test_timesyncd_is_told_the_networks_server(syncing: BaseMachine, silent: str) -> None:
-    """Timesyncd is told the network's server, so it's the one it has to get past."""
-    servers = syncing.succeed("timedatectl show-timesync -p LinkNTPServers --value").split()
-    assert servers == [silent]
+def test_chrony_is_told_the_networks_server(syncing: BaseMachine, silent: str) -> None:
+    """Chrony is told the network's server, as it's named, beside the machine's own."""
+    syncing.wait_until_succeeds(
+        f"chronyc -n -c sources | cut -d, -f3 | grep -qx {silent}", timeout=HEARING
+    )
 
 
-def test_the_clock_sets_from_the_machines_own_server(syncing: BaseMachine) -> None:
+def test_the_clock_sets_from_the_machines_own_server(syncing: BaseMachine, silent: str) -> None:
     """The clock sets from the machine's own server, past the one that never answers."""
+    syncing.wait_until_succeeds("chronyc waitsync 1", timeout=SYNCING)
     syncing.wait_until_succeeds(
         "timedatectl show -p NTPSynchronized --value | grep -qx yes", timeout=SYNCING
     )
-    assert syncing.succeed("timedatectl show-timesync -p ServerName --value").strip() == "server"
+    # The server chosen is the machine's own, by the name it was given, which chronyc says
+    # only when asked to; the network's is out of reach.
+    sources = syncing.succeed("chronyc -c -N sources").splitlines()
+    chosen = [line.split(",")[2] for line in sources if line.split(",")[1] == "*"]
+    assert chosen == ["server"], sources
+    unheard = [line for line in sources if line.split(",")[2] == silent]
+    assert unheard, sources
+    assert unheard[0].split(",")[1] == "?", sources

@@ -59,6 +59,15 @@ Rectangle {
     property string glyph
     property color hue
     property string name
+    // The name as it reads, when `name` carries the launcher's marks.
+    property string plainName: name
+    // The runs of the name's letters the find matched, [start, end] each
+    // (Fuzzy.runs), which take Search's wash, as his Neovim's hlsearch
+    // washes a match: the selected row's too, on a ground a shade past the
+    // selection. The ink is the launcher's to give (Launcher.marked).
+    property var finds: []
+    // Where the name is washed, each run's start, width and ground.
+    readonly property var washed: nameBox.washed
     property var chord: []
     property string side
     // What it says at its right as items, each `{ said, keep }` in the
@@ -165,6 +174,11 @@ Rectangle {
         anchors.baseline: monoLine.baseline
         level: row.voiced ? Theme.level.voice : Theme.level.name
         text: row.name
+        plain: row.plainName
+        // The flash takes the row's ground, so a find's wash, which would
+        // lie on it in the selection's colour and vanish, gives way.
+        finds: row.flashed ? [] : row.finds
+        washedSelected: row.selected
         format: row.selected || row.quiet || row.flashed ? Text.PlainText : Text.StyledText
         color: row.flashed ? row.flashInk : row.quiet ? Theme.muted
             : row.selected ? Theme.strong : Theme.text

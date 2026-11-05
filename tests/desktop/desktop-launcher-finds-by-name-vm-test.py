@@ -635,6 +635,36 @@ def walk_the_rows_unsearched(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+def walk_the_rows_washed(desktop: Desktop) -> None:
+    """Type a find and see the letters it matched washed in the rows drawn, the selected one's too.
+
+    As his Neovim's hlsearch washes a match (Search), and in normal as in the find line, since a
+    find stays until it's changed. A row found by another word than its name washes nothing.
+    """
+    desktop.answer("s")
+    desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+
+    def washed() -> list[Json]:
+        return cast(
+            "list[Json]", json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"]
+        )
+
+    for mode in ["insert", "normal"]:
+        if mode == "normal":
+            desktop.normal()
+        rows = washed()
+        runs = [run for row in rows for run in row["washed"]]
+        assert runs, f'in {mode} no row drawn for "s" washed a letter: {rows}'
+        assert all(run.lower() == "s" for run in runs), f"in {mode} washed {runs}, not s"
+        unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
+        assert not unwashed, f"in {mode} rows found by name washed nothing: {unwashed}"
+        selected = next(row for row in rows if row["selected"])
+        name = selected["reads"].split(" \u00b7 ")[0]
+        if any(word.lower().startswith("s") for word in re.split(r"\W+", name)):
+            assert selected["washed"], f"in {mode} the selected {name!r} washed nothing"
+    desktop.close_launcher()
+
+
 def walk_the_rows_keys(desktop: Desktop) -> None:
     """Press normal's Tab, Space ?, F1 and Space w on a search's rows, through niri.
 
@@ -687,6 +717,7 @@ def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Des
     walk_the_rows_moves(desktop)
     walk_the_rows_acts(desktop)
     walk_the_rows_unsearched(desktop)
+    walk_the_rows_washed(desktop)
     walk_the_rows_keys(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
@@ -921,6 +952,38 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         desktop.step_in()
         # Each wait ends before the loop moves on, so it reads this pass's part.
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
+        desktop.photograph(picture)
+        desktop.close_launcher()
+    # How chrony keeps the clock, once it keeps it by the VM's own time server: inside Clock,
+    # and inside Servers with the chosen one's plate out beside it.
+    desktop.machine.wait_until_succeeds(
+        "chronyc -c -N sources | grep -q '^^,[*],time.harbour.test,'",
+        timeout=dt.timedelta(seconds=90),
+    )
+    for holder, first, picture in [
+        ("Clock", "Offset", "launcher-time-clock"),
+        ("Servers", "time.harbour.test", "launcher-time-servers"),
+    ]:
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: holder in shown["rows"])  # noqa: B023
+        desktop.down_to(holder)
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
+        desktop.down_to(first)
+        if holder == "Servers":
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["drawer"]["out"] is True
+                    and shown["drawer"]["title"] == "time.harbour.test"
+                )
+            )
+            # Each fact is its name and its value on one line, or its name with its value
+            # under it: no name broken, no value wrapping beside one, no word broken.
+            drawer = desktop.showing()["drawer"]
+            assert drawer["labelsWhole"], f"a fact's name is broken: {drawer}"
+            assert drawer["besideOnOneLine"], f"a value wraps beside its name: {drawer}"
+            assert drawer["valuesWhole"], f"a fact's value breaks a word: {drawer}"
         desktop.photograph(picture)
         desktop.close_launcher()
     # The time here counts each second while it's shown, and a tick never moves the

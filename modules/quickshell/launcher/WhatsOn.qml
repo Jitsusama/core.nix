@@ -284,7 +284,7 @@ Provider {
             : said("unsynchronised");
         return {
             now: true,
-            eyebrow: Moment.eyebrow(now),
+            eyebrow: Moment.eyebrow(now, now),
             title: Words.name("on"),
             // How the seconds are said after the time, "and 12 s".
             seconds: said("seconds"),

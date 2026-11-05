@@ -191,6 +191,26 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         shows_the_command_line(desktop, scale)
         lists_every_key(desktop, scale)
         desktop.close_launcher()
+        washes_what_it_finds(desktop, scale)
+
+
+def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
+    """Type a find that several of home's rows hold, and photograph the letters it washed.
+
+    Each row's matched letters take the Search wash, the selected row's on the ground a shade
+    past the selection, as his Neovim's hlsearch washes a match.
+    """
+    desktop.answer("s")
+    desktop.launcher_until(lambda shown: shown["current"] == 0 and shown["count"] > 1)
+    rows = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"]
+    washed = [row for row in rows if row["washed"]]
+    assert len(washed) > 1, f"at {scale} few rows drawn washed a letter of s: {rows}"
+    # Home's collections and a program's parts are found by their names too, Shortcuts and
+    # Slack Theme among them, so every row found by its name washes what it matched.
+    unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
+    assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
+    desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
@@ -281,6 +301,9 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
 ) -> None:
     """Y flashes the row it copies, and d's ask takes Return's place and moves nothing."""
     machine = desktop.machine
+    # A second window, so dj has two to close and asks once for both,
+    # where one closes at once.
+    wednesday = desktop.opened("Notes for Wednesday")
     desktop.notes_window()
     for scale in at_each_scale:
         at_scale(desktop, scale)
@@ -296,27 +319,43 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         flashed = max(frames, key=partial(changed_from, after))
         if desktop.values["photographs"]:
             flashed.save(machine.out_dir / f"launcher-yank-flash-at-{named}.png")
+        desktop.close_launcher()
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("notes for")
+        desktop.launcher_until(
+            lambda shown: sorted(shown["rows"]) == ["Notes for Tuesday", "Notes for Wednesday"]
+        )
+        desktop.normal()
+        machine.send_chars("gg")
+        desktop.launcher_until(lambda shown: shown["current"] == 0)
         before = desktop.showing()
         # d waiting says at once, in the mode word's room, what it will
-        # take, cut at a whole word to the room, and moves nothing.
+        # take, cut at a whole word to the room, and moves nothing; j then
+        # takes both rows, and asks once for both.
         machine.send_chars("d")
         desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 close"))
         shown = desktop.showing()
         assert shown["tinted"] == [shown["current"]], shown
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} d cut {shown}"
         desktop.photograph(f"launcher-pending-at-{named}")
-        with desktop.told("ask ready"), desktop.told("asked Close Notes for Tuesday? (y/n)"):
-            machine.send_chars("d")
+        with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+            machine.send_chars("j")
         # The ask stands alone in the keys' place, ending where Return
         # ends, wider than Return's word, so it reaches into the room the
         # other keys left, and how things stand gives way around it as
-        # the foot's facts give way to any keys: each fact whole or gone,
-        # never cut, and all of them back once the ask goes.
+        # the foot's facts give way to any keys: a fact's figure before
+        # its glyph, the last first, never a word cut, and all of them
+        # whole once the ask goes.
         shown = desktop.showing()
         facts = before["glance"].split("  ")
         kept = shown["glance"].split("  ")
-        assert kept == facts[: len(kept)], f"at {scale} the ask cut a fact: {kept} of {facts}"
-        assert shown["operated"] == "dd Close Notes for Tuesday? (y/n)", shown
+        assert len(kept) <= len(facts), f"at {scale} the ask added a fact: {kept} of {facts}"
+        for said, fact in zip(kept, facts, strict=False):
+            assert said == fact or fact.startswith(f"{said} "), (
+                f"at {scale} the ask cut a fact: {kept} of {facts}"
+            )
+        assert shown["operated"] == "dj Close these 2? (y/n)", shown
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
             machine.send_key("esc")
@@ -325,6 +364,7 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
         assert len(after_ask["glance"].split("  ")) == len(facts), f"at {scale} {after_ask}"
         desktop.close_launcher()
+    desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
 
 
 def changed_from(after: Image.Image, frame: Image.Image) -> float:
@@ -372,85 +412,76 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
     """A time server's plate has its facts from one empty line below the title, on the pitch."""
-    kept = "$XDG_RUNTIME_DIR/timekeeping.json"
-    machine = desktop.machine
-    machine.wait_until_succeeds(
-        desktop.in_session("systemctl --user is-active timekeeping"),
-        timeout=timedelta(seconds=60),
+    # chrony keeps the clock by the VM's own time server (tests/desktop.nix), whose plate
+    # holds every figure chronyd has of it.
+    desktop.machine.wait_until_succeeds(
+        "chronyc -c -N sources | grep -q '^^,[*],time.harbour.test,'",
+        timeout=timedelta(seconds=90),
     )
-    # An exchange made, written as timekeeping writes it, with it stopped so nothing writes
-    # over it.
-    desktop.as_account("systemctl --user stop timekeeping")
-    last = int(machine.succeed("date +%s%3N").strip()) - 120_000
-    said = {
-        "version": 2, "synchronised": True, "frequency": 6.267,
-        "poll": {"now": 2048, "least": 32, "most": 2048},
-        "servers": {
-            "system": [], "link": [], "runtime": [],
-            "fallback": ["0.harbour.pool.ntp.org", "1.harbour.pool.ntp.org"],
-        },
-        "exchange": {
-            "server": "0.harbour.pool.ntp.org", "address": "192.0.2.7", "stratum": 1,
-            "reference": "GNSS", "offset": 388, "delay": 36112, "jitter": 11888,
-            "rootDelay": 15, "rootDispersion": 457, "precision": -25, "leap": "normal",
-            "ntpVersion": 4, "last": last, "packets": 13,
-        },
-    }  # fmt: skip
-    try:
-        desktop.as_account(f"echo '{json.dumps(said)}' > {kept}.new && mv {kept}.new {kept}")
-        for scale in at_each_scale:
-            at_scale(desktop, scale)
-            desktop.answer("time")
-            desktop.step_in()
-            desktop.down_to("0.harbour.pool.ntp.org")
-            desktop.launcher_until(
-                lambda shown: (
-                    shown["drawer"]["out"] is True
-                    and shown["drawer"]["title"] == "0.harbour.pool.ntp.org"
-                    and len(shown["drawer"]["lines"]["facts"]) > 1
-                )
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
+        desktop.down_to("Servers")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
+        desktop.down_to("time.harbour.test")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "time.harbour.test"
+                and len(shown["drawer"]["lines"]["facts"]) > 1
             )
-            drawer = plate_shown(desktop, scale)
-            # The title, at Title, may take two lines of the plate's width, its leading apart;
-            # the facts start one empty line below its block, on the pitch.
-            facts = drawer["lines"]["facts"]
-            assert after_the_title(facts[0], drawer["lines"]), drawer
-            assert all(
-                later > earlier and on_the_pitch(later, earlier)
-                for earlier, later in pairwise(facts)
-            ), f"at {scale} a fact is off the pitch: {drawer}"
-            # Its name is the title, so it isn't said again under it; every other name is
-            # whole; and what doesn't fit above the foot's inset waits for Shift and the arrows.
-            assert "Name" not in drawer["drawnFacts"], drawer
-            assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
-            assert drawer["more"] or facts[-1] < drawer["foot"], (
-                f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
+        )
+        drawer = plate_shown(desktop, scale)
+        # The title, at Title, may take two lines of the plate's width, its leading apart;
+        # the facts start one empty line below its block, on the pitch.
+        facts = drawer["lines"]["facts"]
+        assert after_the_title(facts[0], drawer["lines"]), drawer
+        assert all(
+            later > earlier and on_the_pitch(later, earlier) for earlier, later in pairwise(facts)
+        ), f"at {scale} a fact is off the pitch: {drawer}"
+        # Its name is the title, so it isn't said again under it; every other name is whole;
+        # and what doesn't fit above the foot's inset waits for Shift and the arrows.
+        assert "Name" not in drawer["drawnFacts"], drawer
+        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+        # Each fact is its name and its value on one line, or its name with its value under
+        # it, so a value too long beside its name, as an address or a reach, never wraps
+        # there or breaks a word.
+        assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
+        assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+        assert drawer["more"] or facts[-1] < drawer["foot"], (
+            f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
+        )
+        assert drawer["height"] - drawer["foot"] >= INSIDE - NEAR, (
+            f"at {scale} the last line runs into the plate's foot: {drawer}"
+        )
+        desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+        # The zone's plate, under its eyebrow: a value that won't sit beside its name on one
+        # line, as "none before 2046", takes the plate's width under it instead, so no fact
+        # stands taller than two lines and none reads a word a line.
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
+        desktop.down_to("Zone")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] != "time.harbour.test"
+                and len(shown["drawer"]["lines"]["facts"]) > 1
             )
-            assert drawer["height"] - drawer["foot"] >= INSIDE - NEAR, (
-                f"at {scale} the last line runs into the plate's foot: {drawer}"
-            )
-            desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
-            # The zone's plate, under its eyebrow: a value that won't sit beside its name in
-            # two lines, as "none before 2046", takes the plate's width under it instead, so
-            # no fact stands taller than two lines and none reads a word a line.
-            desktop.down_to("Zone")
-            desktop.launcher_until(
-                lambda shown: (
-                    shown["drawer"]["out"] is True
-                    and shown["drawer"]["title"] != "0.harbour.pool.ntp.org"
-                    and len(shown["drawer"]["lines"]["facts"]) > 1
-                )
-            )
-            drawer = plate_shown(desktop, scale)
-            facts = drawer["lines"]["facts"]
-            assert drawer["eyebrow"] == "Time Zone", f"at {scale} the zone's plate: {drawer}"
-            assert all(later - earlier <= 2 * PITCH + NEAR for earlier, later in pairwise(facts)), (
-                f"at {scale} a value stands a word a line beside its name: {drawer}"
-            )
-            desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
-            desktop.close_launcher()
-    finally:
-        desktop.as_account("systemctl --user start timekeeping")
+        )
+        drawer = plate_shown(desktop, scale)
+        facts = drawer["lines"]["facts"]
+        assert drawer["eyebrow"] == "Time Zone", f"at {scale} the zone's plate: {drawer}"
+        assert all(later - earlier <= 2 * PITCH + NEAR for earlier, later in pairwise(facts)), (
+            f"at {scale} a value stands a word a line beside its name: {drawer}"
+        )
+        assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
+        desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
 
 
 def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(

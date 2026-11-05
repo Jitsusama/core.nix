@@ -272,8 +272,9 @@ function closedUp(source, folded, bonus) {
 // the first worth more where a stronger word starts and doubled, each
 // later one keeping the bonus of the start of its run, unless a stronger
 // word start inside it begins a new one. A run ending where its word ends
-// is worth more again.
-function worth(bonus, at, m) {
+// is worth more again, unless it's the end of a word an apostrophe broke,
+// as the s of "what's" is.
+function worth(bonus, at, m, whole) {
     let opened = bonus[at];
     let score = scoreMatch + opened * bonusFirstLetter;
     for (let j = at + 1; j < at + m; j++) {
@@ -285,8 +286,17 @@ function worth(bonus, at, m) {
             score += scoreMatch + Math.max(b, bonusConsecutive, opened);
         }
     }
-    if (at + m >= bonus.length || bonus[at + m] > 0) score += bonusWhole;
+    if (whole && (at + m >= bonus.length || bonus[at + m] > 0)) score += bonusWhole;
     return score;
+}
+
+// Whether the letter at `at` follows an apostrophe inside a word, as the
+// s of "what's" and the ll of "you'll" do: those letters are the word's
+// own, so they're never a word typed whole, though they can still be
+// found by, as "roll" finds "rock'n'roll".
+function broken(text, at) {
+    const c = text[at - 1];
+    return (c === "'" || c === "\u2019") && at > 1 && kindOf(text[at - 2]) > delimiter;
 }
 
 // The best place one word of a query (already in lower case) starts a word
@@ -301,7 +311,7 @@ function align(item, word, positions) {
     let bestAt = -1;
     for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
         if (bonus[at] <= 0) continue;
-        const score = worth(bonus, at, m);
+        const score = worth(bonus, at, m, !broken(text, at));
         if (score > best) {
             best = score;
             bestAt = at;
@@ -324,7 +334,7 @@ function alignClosed(item, word, positions) {
     let bestAt = -1;
     for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
         if (bonus[at] <= 0) continue;
-        const score = worth(bonus, at, m);
+        const score = worth(bonus, at, m, !broken(text, at));
         if (score > best) {
             best = score;
             bestAt = at;
@@ -372,6 +382,22 @@ function match(item, query, wantPositions) {
     if (!marks) return { score: total, grade: 0 };
     const positions = Array.from(new Set(marks)).sort((a, b) => a - b);
     return { score: total, grade: 0, positions: positions };
+}
+
+// The letters a match brought forward as runs, [start, end] each, the
+// letters side by side run together: a wash lays one ground under each
+// run (Wash.qml), so a word found reads as one find, as his Neovim's
+// Search draws one, rather than as a ground a letter.
+function runs(positions) {
+    const out = [];
+    for (const at of positions) {
+        const last = out.length > 0 ? out[out.length - 1] : null;
+        if (last !== null && last[1] === at)
+            last[1] = at + 1;
+        else
+            out.push([at, at + 1]);
+    }
+    return out;
 }
 
 // Matches worth showing, best first: those as tidy as the tidiest, and a

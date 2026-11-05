@@ -68,8 +68,8 @@ ShellRoot {
         { scope: "calculator", from: calculator, typed: ["0x1f", "255 in hex"],
             ids: ["binary", "decimal", "hex", "octal"] },
         { scope: "time", from: clocks, typed: ["time in tokyo", "time"],
-            ids: ["apart", "day", "gps", "sidereal", "synchronised", "tai", "unix", "utc",
-                "zone"] },
+            ids: ["apart", "clock", "day", "gps", "servers", "sidereal", "tai", "unix",
+                "utc", "zone"] },
         { scope: "today", from: today, typed: ["date"],
             ids: ["iso", "julian", "mjd", "moon", "ordinal", "quarter", "season", "unix-day",
                 "week"] },
@@ -130,6 +130,45 @@ ShellRoot {
             !clock.some(name => calendar.includes(name)),
             clock.filter(name => calendar.includes(name)).join(", "));
         asNowShows();
+        asKept();
+    }
+
+    // How chrony keeps the clock, from a reading as timekeeping gives it
+    // (tests/timekeeping-reading.json): Clock steps into every figure the
+    // vocabulary names for it, Servers into each server, the chosen first,
+    // and a server into every figure it has, each named as its drawer
+    // names it; one that's answered none of its polls is out of reach.
+    function asKept() {
+        const time = clocks.answer("time");
+        const row = id => time.rows.find(each => each.name === Words.name(id));
+        const ids = parent => Object.keys(Words.things)
+            .filter(id => Words.things[id].in === parent).map(id => Words.things[id].name);
+        const clock = row("time:clock");
+        expect("the clock says it's synchronised", clock?.side === "synchronised",
+            clock?.side);
+        const inside = clock.verbs().map(each => each.name);
+        expect("the clock holds each of its figures, in their order",
+            inside.join(", ") === ids("time:clock").join(", "), inside.join(", "));
+        const servers = row("time:servers").verbs();
+        expect("the servers are each a thing, the chosen first",
+            servers.map(each => `${each.name} ${each.note}`).join(", ")
+                === "time.harbour.test chosen, far.harbour.test out of reach",
+            servers.map(each => `${each.name} ${each.note}`).join(", "));
+        // The launcher knows a row by what it is, or else its key, keeping
+        // the selection on it as the reading changes and taking two it knows
+        // alike as one, so two servers known alike would pull it back to the
+        // first.
+        const known = servers.map(each => each.is ?? each.key);
+        expect("each server is known as itself", new Set(known).size === servers.length,
+            known.join(", "));
+        const chosen = servers[0];
+        const figures = chosen.verbs().map(each => each.name);
+        const plate = chosen.drawer();
+        expect("the chosen server holds every figure the vocabulary names for one",
+            figures.join(", ") === ids("time:server").join(", "), figures.join(", "));
+        expect("its plate says the same figures",
+            plate.facts.map(fact => fact.label).join(", ") === figures.join(", "),
+            JSON.stringify(plate.facts));
     }
 
     // The time here and the date as Now shows them: each wearing its own

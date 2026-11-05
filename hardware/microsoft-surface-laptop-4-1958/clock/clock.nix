@@ -31,8 +31,8 @@ in
     SUBSYSTEM=="misc", KERNEL=="surface_aggregator", TAG+="systemd"
   '';
 
-  # It reads the offset before timesyncd starts, since once the time is
-  # synchronised the kernel writes it to the CMOS clock, and the firmware's
+  # It reads the offset before chrony starts, since once the time is
+  # synchronised chrony writes it to the CMOS clock, and the firmware's
   # difference is gone until the next start. It sets the Aggregator's clock
   # as the system stops.
   systemd.services.surface-clock = {
@@ -44,7 +44,7 @@ in
       "local-fs.target"
     ];
     before = [
-      "systemd-timesyncd.service"
+      "chronyd.service"
       "shutdown.target"
     ];
     conflicts = [ "shutdown.target" ];

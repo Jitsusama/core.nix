@@ -16,6 +16,7 @@ import "Characters.js" as Characters
 import "Units.js" as Units
 import "Zones.js" as Zones
 import "Moment.js" as Moment
+import "Keeping.js" as Keeping
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
@@ -546,6 +547,16 @@ QtObject {
         // solstices and the moons against the instants USNO publishes, to
         // the minute, and the rest worked by hand.
         const minute = ms => new Date(ms).toISOString().slice(0, 16);
+        // The words Keeping.js is given, as the vocabulary's Clock and
+        // Servers say them (launcher/words.json).
+        const KeepingCases = {
+            clock: { onTime: "on time", fast: "{offset} fast", slow: "{offset} slow",
+                gains: "gains {seconds} a day", loses: "loses {seconds} a day" },
+            servers: { reach: "{count} of the last 8", unreachable: "out of reach",
+                unusable: "set aside", aside: "set aside: {why}",
+                "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
+                "why:tooFewSamples": "too few samples yet" }
+        };
         const evening = at("2026-11-04T22:00");
         const day = new Date(2026, 10, 4);
         const moon = Moment.moon(evening);
@@ -558,6 +569,11 @@ QtObject {
             ["Greenwich sidereal time", Moment.sidereal(evening, 0), "00:56:37"],
             ["a date this year, without its year", Moment.day(day, evening),
                 "Wednesday 4 November"],
+            ["an eyebrow this year, without its year", Moment.eyebrow(day, evening),
+                "Wednesday 4 November"],
+            // A seven-day forecast from 28 December reaches into next year.
+            ["an eyebrow of another year, with its year",
+                Moment.eyebrow(new Date(2027, 0, 1), evening), "Friday 1 January 2027"],
             ["a date of another year, with its year", Moment.day(new Date(2027, 0, 1), evening),
                 "Friday 1 January 2027"],
             ["ISO date", Moment.iso(day), "2026-11-04"],
@@ -580,7 +596,38 @@ QtObject {
             ["moon lit", Math.round(moon.lit * 100), 19],
             ["next new moon", minute(moon.new), "2026-11-09T07:02"],
             ["next full moon", minute(moon.full), "2026-11-24T14:53"],
-            ["full moon on its day", Moment.moon(at("2026-11-24T12:00")).phase, "full"]
+            ["full moon on its day", Moment.moon(at("2026-11-24T12:00")).phase, "full"],
+            // How chrony's keeping is worded: seconds in the unit that reads
+            // them, signed with a true minus; how far a clock is out and how
+            // fast it runs; a span; a hardware clock's drift in a day; how
+            // many polls were answered; and where a server stands.
+            ["nanoseconds", Keeping.seconds(2.98e-8, false), "30 ns"],
+            ["microseconds, signed", Keeping.seconds(-0.000388, true), "\u2212388 \u00b5s"],
+            ["milliseconds", Keeping.seconds(0.036112, false), "36.1 ms"],
+            ["a microsecond short of a millisecond", Keeping.seconds(0.0009996, false),
+                "1.0 ms"],
+            ["seconds", Keeping.seconds(1.5, true), "+1.500 s"],
+            ["a clock behind", Keeping.out(-0.000012, KeepingCases.clock), "12 \u00b5s slow"],
+            ["a clock ahead", Keeping.out(0.31, KeepingCases.clock), "310.0 ms fast"],
+            ["a clock on time", Keeping.out(0, KeepingCases.clock), "on time"],
+            ["a clock running fast", Keeping.runs(6.267, KeepingCases.clock), "6.267 ppm fast"],
+            ["a clock running slow", Keeping.runs(-3.225, KeepingCases.clock), "3.225 ppm slow"],
+            ["a span in minutes", Keeping.span(1024), "17 min 4 s"],
+            ["a span in hours", Keeping.span(86400), "24 h"],
+            ["a span under a second", Keeping.span(0.5), "0.5 s"],
+            ["a drift in a day", Keeping.daily(2.1, KeepingCases.clock), "gains 181.4 ms a day"],
+            ["a loss in a day", Keeping.daily(-0.5, KeepingCases.clock), "loses 43.2 ms a day"],
+            ["polls answered", Keeping.reach(0o375, KeepingCases.servers), "7 of the last 8"],
+            ["the next poll", Keeping.nextPoll({ poll: 64, lastSample: 12 }), 52],
+            ["a chosen server", Keeping.standing({ standing: "chosen", reach: 255 },
+                KeepingCases.servers), "chosen"],
+            ["a server out of reach", Keeping.standing({ standing: "unusable", reach: 0 },
+                KeepingCases.servers), "out of reach"],
+            ["a server set aside, and why", Keeping.standing({ standing: "unusable", reach: 3,
+                chosen: { why: "tooFewSamples" } }, KeepingCases.servers),
+                "set aside: too few samples yet"],
+            ["a server too variable", Keeping.standing({ standing: "tooVariable", reach: 255 },
+                KeepingCases.servers), "set aside: too variable"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

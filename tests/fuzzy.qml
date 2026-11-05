@@ -234,6 +234,18 @@ QtObject {
                 failures.push(`"${item.text}" starts its words differently said alone`);
         if (unstarted === 0)
             failures.push("no thing was passed over by its word starts");
+        // The letters after an apostrophe are the word's own, as in
+        // "what's" or "you'll", so they're never a word typed whole: "s"
+        // lands on the S that starts "Show what's on" or "Settings", which
+        // the find washes, not on the s of "what's" or "Joel's". They still
+        // start a word to be found by, so "roll" finds "rock'n'roll".
+        for (const [query, text, at] of [["s", "Show what's on", 0],
+            ["s", "Joel's Settings", 7], ["roll", "Play rock'n'roll", 12]]) {
+            const landed = Fuzzy.match(Fuzzy.prepare(text), Fuzzy.words(query), true).positions;
+            if ((landed ?? [])[0] !== at)
+                failures.push(`"${query}" landed at ${quoted(landed)} in "${text}", not at ${at}`);
+        }
+
         // A text kept ready is made once while it reads the same, and
         // matches as one made afresh does.
         const once = Fuzzy.kept("Open a terminal");
@@ -347,10 +359,39 @@ QtObject {
             slow.push(`finding a kept text again took ${keptTimes.toFixed(1)} times the least, `
                 + `more than ${fewest}`);
 
+        // The letters a match brings forward are washed as runs, letters
+        // side by side run together, so a word found is one find.
+        const ran = JSON.stringify(Fuzzy.runs(
+            Fuzzy.match(Fuzzy.prepare("Open a terminal"), Fuzzy.words("op term"), true)
+                .positions));
+        if (ran !== "[[0,2],[7,11]]" || JSON.stringify(Fuzzy.runs([])) !== "[]")
+            failures.push(`"op term" in "Open a terminal" ran as ${ran}, not [[0,2],[7,11]]`);
+
+        // A row's letters to wash are worked out only for the rows drawn,
+        // as each is drawn or what's typed changes, but even every row of
+        // a 400-row list keeps inside half a key's 4 ms (docs/design.md):
+        // each match with its letters, then its runs. The fastest of five
+        // batches counts, and too slow exits 2, to be run again in a fresh
+        // process, as the timings above are.
+        const rows = Array.from({ length: 400 },
+            (_, at) => Fuzzy.prepare(`${names[at % names.length]} ${at}`));
+        const washQuery = Fuzzy.words("fo wi");
+        let washing = Infinity;
+        for (let batch = 0; batch < 5; batch++) {
+            const started = Date.now();
+            for (let r = 0; r < 10; r++)
+                for (const row of rows)
+                    Fuzzy.runs(Fuzzy.match(row, washQuery, true).positions ?? []);
+            washing = Math.min(washing, (Date.now() - started) / 10);
+        }
+        console.warn(`the letters to wash in 400 rows: ${washing.toFixed(2)} ms`);
+        if (washing > 4)
+            slow.push(`the letters to wash in 400 rows took ${washing.toFixed(2)} ms, more than 4`);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures.concat(slow))
             console.warn(failure);
-        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 7;
+        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 9;
         console.warn(failures.length > 0 ? `${failures.length} of ${asked} went wrong`
             : slow.length > 0 ? `${slow.length} of ${asked} too slow in this process`
             : `all ${asked} held`);
