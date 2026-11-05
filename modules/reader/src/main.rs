@@ -380,6 +380,8 @@ struct App {
     jump_at: usize,
     /// Where the last jump left from, for ''.
     last_jump: Option<Spot>,
+    /// The lines of the file the last selection took, from 1, for :'<,'>.
+    selected: Option<(usize, usize)>,
     /// The page's lines, read off its frames for search; none until read.
     words: Option<Vec<text::Line>>,
     /// The file as last saved, drawing until it can take the page's place.
@@ -1006,22 +1008,20 @@ impl App {
                 };
                 self.prompt_shown = false;
                 let command = ex::parse(&typing.typed);
-                let here = self.heading() / self.px_per_pt();
                 match &command {
-                    ex::Command::Line(n) => {
-                        let blocks = place::blocks(&self.painter.page().frame);
-                        let to = moves::source_line(&blocks, *n).unwrap_or(0.0);
-                        self.remember(here);
-                        self.bring(to);
-                    }
-                    ex::Command::Last => {
-                        self.remember(here);
-                        self.land(f64::INFINITY);
-                    }
+                    ex::Command::Go(range) => self.go_to_range(*range),
                     ex::Command::Quit => self.exit = true,
                     ex::Command::NoHighlight => self.highlighting = false,
+                    ex::Command::Change => self.say(ex::CANNOT_CHANGE),
+                    ex::Command::Copy(range) => self.copy_range(*range),
+                    ex::Command::Edit(file) => self.edit(file.as_deref()),
+                    ex::Command::File { on, times } => self.file_beside(*on, *times),
+                    ex::Command::Help => self.show_keys(true),
+                    ex::Command::Global { pattern, range } => self.list_global(pattern, *range),
+                    ex::Command::Marks(letters) => self.list_marks(letters),
+                    ex::Command::Jumps => self.list_jumps(),
                     ex::Command::Nothing => {}
-                    ex::Command::Unknown(typed) => self.say(&ex::unknown(typed)),
+                    ex::Command::Refused(said) => self.say(said),
                 }
                 if keys_logged() {
                     eprintln!(
@@ -1039,6 +1039,174 @@ impl App {
         }
         if !self.frame_pending {
             self.draw();
+        }
+    }
+
+    /// A range alone, as :12, :$ and :'<,'> go: to its last line, as a
+    /// jump, the view moving as Vim's does; the file's end for $.
+    fn go_to_range(&mut self, range: ex::Range) {
+        let line = match range {
+            ex::Range::Here => return,
+            ex::Range::Lines(_, last) => last,
+            ex::Range::Selected => match self.selected {
+                Some((_, last)) => last,
+                None => return self.say(ex::NOTHING_SELECTED),
+            },
+        };
+        self.remember(self.heading() / self.px_per_pt());
+        if line == usize::MAX {
+            self.land(f64::INFINITY);
+        } else {
+            let blocks = place::blocks(&self.painter.page().frame);
+            let pt = moves::source_line(&blocks, line).unwrap_or(0.0);
+            // The line it's set on is the first whose foot is past it, since
+            // a heading's ink stands above the top of its block.
+            let top = self
+                .words
+                .as_deref()
+                .and_then(|lines| lines.iter().find(|l| moves::foot_of(l) > pt + 0.5))
+                .map_or(pt, moves::top_of);
+            self.bring(top);
+        }
+    }
+
+    /// Shows a list in gO's place, its rows moved through and gone to as
+    /// the outline's are.
+    fn list(&mut self, rows: Vec<outline::Row>, chosen: usize) {
+        self.outline = outline::Outline::of(rows, chosen);
+        self.ask_outline();
+    }
+
+    /// :g/pat/: the pieces of the range it matches, each by the line its
+    /// first match is on, as / matches; an empty pattern is the last
+    /// search's, as Vim's is.
+    fn list_global(&mut self, pattern: &str, range: ex::Range) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let (from, to) = match range {
+            ex::Range::Here => return,
+            ex::Range::Lines(from, to) => (from, to),
+            ex::Range::Selected => match self.selected {
+                Some(lines) => lines,
+                None => return self.say(ex::NOTHING_SELECTED),
+            },
+        };
+        let pattern = match (pattern, &self.searched) {
+            ("", Some((query, _))) => query.clone(),
+            ("", None) => return self.say("E35: No previous regular expression"),
+            (pattern, _) => pattern.to_string(),
+        };
+        let rows: Vec<outline::Row> = layout
+            .matching(&pattern, from, to)
+            .into_iter()
+            .map(|(top, words)| outline::Row {
+                level: 1,
+                words,
+                to: outline::To::Line(top),
+            })
+            .collect();
+        if rows.is_empty() {
+            // As Vim's :global says it, with no number, unlike a search's.
+            return self.say(&format!("Pattern not found: {pattern}"));
+        }
+        // The list opens on the first match from the cursor's line on.
+        let here = self.cursor_pt() - 0.5;
+        let chosen = rows
+            .iter()
+            .position(|row| matches!(row.to, outline::To::Line(top) if top >= here))
+            .unwrap_or(0);
+        self.list(rows, chosen);
+    }
+
+    /// :marks: ' for the last jump, then each letter's, with the words of
+    /// the line it's on, as Vim lists them; only the letters given, when
+    /// some are.
+    fn list_marks(&mut self, letters: &str) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let jumped = self.last_jump.as_ref().map_or(0.0, |spot| spot.aim);
+        let mut marks: Vec<(char, f64)> = self.marks.iter().map(|(&c, &pt)| (c, pt)).collect();
+        marks.sort_by_key(|&(letter, _)| (letter.is_uppercase(), letter));
+        let rows: Vec<outline::Row> = std::iter::once(('\'', jumped))
+            .chain(marks)
+            .filter(|(letter, _)| letters.is_empty() || letters.contains(*letter))
+            .map(|(letter, pt)| outline::Row {
+                level: 1,
+                words: format!("{letter}  {}", layout.words_at(pt).unwrap_or_default()),
+                to: outline::To::Line(pt),
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.say(&format!("E283: No marks matching \"{letters}\""));
+        }
+        self.list(rows, 0);
+    }
+
+    /// :jumps: the jump list, oldest first, the place Ctrl+O and Ctrl+I
+    /// stand at chosen, each by its line's words, or on another file by
+    /// the file's name.
+    fn list_jumps(&mut self) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let rows: Vec<outline::Row> = self
+            .jumps
+            .iter()
+            .map(|spot| outline::Row {
+                level: 1,
+                words: if links::same(&spot.file, &self.file) {
+                    layout.words_at(spot.aim).unwrap_or_default().to_string()
+                } else {
+                    spot.file.file_name().map_or_else(
+                        || spot.file.display().to_string(),
+                        |name| name.to_string_lossy().into_owned(),
+                    )
+                },
+                to: outline::To::Jump(spot.file.clone(), spot.pt, spot.aim),
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.say("No jumps yet");
+        }
+        let chosen = self.jump_at.min(rows.len() - 1);
+        self.list(rows, chosen);
+    }
+
+    /// :e: another file, named from the folder the reader was started in
+    /// or from home with ~, as Vim's takes it. Markdown opens in this
+    /// window and anything else as the desktop opens it. The file shown,
+    /// or none named, is already as it was last written, read again at
+    /// every save.
+    fn edit(&mut self, named: Option<&str>) {
+        let Some(named) = named else {
+            return;
+        };
+        let file = match named.strip_prefix("~/") {
+            Some(under) => std::env::var_os("HOME").map_or_else(
+                || std::path::PathBuf::from(named),
+                |home| std::path::Path::new(&home).join(under),
+            ),
+            None => std::path::PathBuf::from(named),
+        };
+        if file.is_dir() {
+            return self.say(&format!("\"{named}\" is a directory"));
+        }
+        if !file.is_file() {
+            return self.say(&format!("E484: Can't open file {named}"));
+        }
+        if links::same(&file, &self.file) {
+            return;
+        }
+        if links::markdown(&file) {
+            if keys_logged() {
+                eprintln!("file: {}", file.display());
+            }
+            self.remember(self.heading() / self.px_per_pt());
+            self.open(file, Landing::Kept);
+        } else {
+            desktop_open(&file.to_string_lossy());
         }
     }
 
@@ -1145,7 +1313,11 @@ impl App {
         let row = outline.rows[outline.chosen].clone();
         self.close_outline();
         self.remember(self.heading() / self.px_per_pt());
-        self.land(row.top_pt);
+        match row.to {
+            outline::To::Heading(top) => self.land(top),
+            outline::To::Line(top) => self.bring(top),
+            outline::To::Jump(file, pt, aim) => self.revisit(Spot { file, pt, aim }),
+        }
         if keys_logged() {
             eprintln!(
                 "outline went to {:?}: heading {:.1} pt",
@@ -1904,13 +2076,14 @@ impl App {
             }
             Act::Next | Act::Previous => self.go_on(act == Act::Next, count.unwrap_or(1)),
             Act::ShowKeys => self.show_keys(!listed),
-            Act::Rest if listed => {}
-            Act::Rest => self.highlighting = false,
-            // The page is set to fit the window's width, so there's never
-            // anything beside it to move to; h and l move only a
-            // selection's cursor, which takes them, with its own keys,
-            // before they get here.
-            Act::Left
+            Act::Change(_) => self.say(ex::CANNOT_CHANGE),
+            // Escape at rest does nothing, as Vim's does; :noh puts the
+            // search's marks away. The page is set to fit the window's
+            // width, so there's never anything beside it to move to; h and
+            // l move only a selection's cursor, which takes them, with its
+            // own keys, before they get here.
+            Act::Rest
+            | Act::Left
             | Act::Right
             | Act::Select
             | Act::SelectPieces
@@ -3019,6 +3192,7 @@ impl App {
             .unwrap_or_default();
         self.take_kept_marks();
         self.last_jump = None;
+        self.selected = None;
         if !self.measuring
             && let Err(error) = showing::keep(&file)
         {
@@ -4197,6 +4371,7 @@ impl App {
             jumps: Vec::new(),
             jump_at: 0,
             last_jump: None,
+            selected: None,
             words: None,
             incoming: None,
             next_version: 1,

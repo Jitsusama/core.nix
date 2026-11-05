@@ -536,7 +536,9 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
 
         From insert the first gives normal, each after it steps back out a level, and the one
         at the level it opened on closes it. A key sent before this that the launcher hears late
-        moves it on too, so each Escape waits only for something to change.
+        moves it on too, so each Escape waits only for something to change. Escape does nothing
+        in the drawer, as in any window, so with the keys there :q brings them back to the rows
+        first, a line typed that no wait can come apart.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -549,6 +551,10 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             was = where(self.showing())
             if not was[0]:
                 return
+            if was[1] == "page":
+                self.machine.send_chars(":q\n")
+                self.launcher_until(functools.partial(moved, was))
+                continue
             self.machine.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
         still = self.showing()

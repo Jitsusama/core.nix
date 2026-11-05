@@ -248,14 +248,16 @@ function bulk(entry, counts) {
 // A folder's entries in `order`: by name, A to Z (natural); by when each
 // changed, newest first; or by size, largest first, a folder by how many
 // items it holds. Folders come first in every order, ordered among
-// themselves the same way, and a tie goes by name (VKCF3Z, 2026-11-04).
-function ordered(entries, order, counts) {
+// themselves the same way, and a tie goes by name (VKCF3Z, 2026-11-04);
+// `reversed` turns each round, as :sort! does.
+function ordered(entries, order, counts, reversed) {
     const by = {
         changed: (one, other) => (other.modified ?? 0) - (one.modified ?? 0),
         size: (one, other) => bulk(other, counts) - bulk(one, counts)
     }[order];
+    const way = reversed === true ? -1 : 1;
     return entries.slice().sort((one, other) => (other.folder === true) - (one.folder === true)
-        || (by ? by(one, other) : 0) || natural(one.name, other.name));
+        || way * ((by ? by(one, other) : 0) || natural(one.name, other.name)));
 }
 
 // The drawer's plate for the files marked, in the order they were, each

@@ -55,6 +55,21 @@ Provider {
     // What niri says of each display, by its connector's name.
     property var outputs: ({})
 
+    // :set brightness=60 sets the screen as its Brightness row does, on a
+    // machine with a backlight.
+    setOptions: backlights.count === 0 ? ({}) : ({
+        brightness: {
+            kind: "number",
+            least: 0,
+            most: 100,
+            now: () => provider.backlight()?.share ?? 0,
+            set: to => {
+                provider.brighten(to);
+                return "";
+            }
+        }
+    })
+
     function refresh() {
         Niri.request("Outputs", answer => provider.outputs = answer.Outputs);
     }

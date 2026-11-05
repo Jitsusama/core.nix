@@ -40,6 +40,22 @@ Provider {
         run: () => Caffeinate.on ? Caffeinate.release() : Caffeinate.keep()
     })
 
+    // :set quiet holds notices until it's ended, as an option stays on
+    // until it's turned off, and :set noquiet ends it.
+    setOptions: ({
+        quiet: {
+            kind: "switch",
+            now: () => Quiet.on,
+            set: to => {
+                if (!to)
+                    Quiet.end();
+                else if (!Quiet.on)
+                    Quiet.keep(0);
+                return "";
+            }
+        }
+    })
+
     // Do not disturb (Quiet.qml): Return holds notices for an hour, and the
     // right arrow offers holding them until it's ended.
     readonly property var quiet: said("session:quiet", Quiet.on ? "on" : "", {

@@ -106,10 +106,16 @@ onLinux {
   # Then [b and ]b go through the folder's markdown files, } and { by
   # paragraphs, ]], 2]] and [[ by headings, H, M and L down the view, zt,
   # zz and zb place it, 50% goes half way and % from a code block's { to
-  # its }, * and # search for the word here, :noh, :5 and E492 on the
-  # command line, Return a line, gO lists the headings and Return in it goes
+  # its }, * and # search for the word here, :noh, :5, E492 and E481 on
+  # the command line, :%y copies the file and says its lines, :'<,'>y the
+  # lines V j took, a range past the end is E16, Escape at rest leaves the search's marks, every change
+  # (d d, c c, S, x, p, d and c with a motion, :d, d on a selection) says
+  # E21, Return a line, gO lists the headings and Return in it goes
   # to one, a mark is kept with its file between openings, gf and Ctrl+]
-  # open the second file, and :q closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
+  # open the second file, :bp, :e and :bn go between the two, :e of a
+  # file that isn't is E484, :h lists the keys, :g/Part/ lists the four
+  # sections and Return goes to one, :marks and :ju list theirs, and :q
+  # closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
     let

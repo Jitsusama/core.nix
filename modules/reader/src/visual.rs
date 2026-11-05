@@ -18,7 +18,8 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use crate::keys::Act;
 use crate::select::{Kind, Motion, Object, Selection};
 use crate::{
-    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, gl, keys_logged, moves, prompt, select, text,
+    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, moves, prompt, select,
+    text,
 };
 
 /// How wide the cursor's rule is, in logical pixels: thin, a whole number
@@ -84,6 +85,7 @@ impl App {
         };
         if let Some(layout) = self.layout.as_ref() {
             self.aim = Some(layout.line_extent(selection.cursor.line).0);
+            self.selected = layout.file_lines_of(&selection);
         }
         if keys_logged() {
             eprintln!("selected: nothing");
@@ -212,6 +214,36 @@ impl App {
         }
     }
 
+    /// :y, a range's lines of the file as they're written, flashing what
+    /// the page shows of them, and saying how many past two, as Neovim
+    /// does; with none, the cursor's piece, as y y takes it.
+    pub(crate) fn copy_range(&mut self, range: ex::Range) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let (first, last) = match range {
+            ex::Range::Here => return self.copy_at_rest(&layout, Act::CopyPiece, 1),
+            ex::Range::Lines(first, last) => (first, last),
+            ex::Range::Selected => match self.selected {
+                Some(lines) => lines,
+                None => return self.say(ex::NOTHING_SELECTED),
+            },
+        };
+        let Some((taken, shown)) = layout.file_range(first, last) else {
+            return self.say(ex::PAST_THE_END);
+        };
+        let lines = layout
+            .file_lines_of(&taken)
+            .map_or(0, |(first, last)| last + 1 - first);
+        if shown {
+            self.flash(layout.pieces(&taken));
+        }
+        clip(&layout, taken);
+        if let Some(said) = ex::copied(lines) {
+            self.say(&said);
+        }
+    }
+
     /// After a key that moved the view while selecting: the cursor keeps to
     /// it, or for a search's n and N goes to the match, as Neovim's does.
     pub(crate) fn after_view_moved(&mut self, to_match: bool) {
@@ -271,20 +303,7 @@ impl App {
     /// wl-copy, and flashes what it took for a moment.
     fn copy(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
         self.flash(layout.pieces(&taken));
-        let layout = Arc::clone(layout);
-        let copying = std::thread::Builder::new()
-            .name("copy".into())
-            .spawn(move || {
-                let text = layout.copied(&taken);
-                match put_on_clipboard(&text) {
-                    Ok(()) if keys_logged() => eprintln!("copied: {text:?}"),
-                    Ok(()) => {}
-                    Err(error) => eprintln!("reader: can't copy: {error}"),
-                }
-            });
-        if let Err(error) = copying {
-            eprintln!("reader: can't copy: {error}");
-        }
+        clip(layout, taken);
     }
 
     /// Flashes pieces of the page on the selection's ground for a moment,
@@ -420,6 +439,25 @@ impl App {
                 layout.shown(selection)
             );
         }
+    }
+}
+
+/// Copies what a selection took as the file's markdown, on a thread, so
+/// reading it and wl-copy's start never hold a frame.
+fn clip(layout: &Arc<select::Layout>, taken: Selection) {
+    let layout = Arc::clone(layout);
+    let copying = std::thread::Builder::new()
+        .name("copy".into())
+        .spawn(move || {
+            let text = layout.copied(&taken);
+            match put_on_clipboard(&text) {
+                Ok(()) if keys_logged() => eprintln!("copied: {text:?}"),
+                Ok(()) => {}
+                Err(error) => eprintln!("reader: can't copy: {error}"),
+            }
+        });
+    if let Err(error) = copying {
+        eprintln!("reader: can't copy: {error}");
     }
 }
 

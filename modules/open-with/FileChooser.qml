@@ -149,6 +149,12 @@ Provider {
     // 2026-11-04).
     readonly property var orders: ["name", "changed", "size"]
     property string order: "name"
+    // Whether that order is turned round, as :sort! turns Vim's lines,
+    // kept with it.
+    property bool reversed: false
+    // Whether a folder lists its hidden files, as :set hidden says, until
+    // :set nohidden.
+    property bool showsHidden: false
     // Each kind of file by how it's named, and the kinds each is one of.
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
@@ -216,9 +222,11 @@ Provider {
     function rowsOf(path) {
         const all = listed[path] ?? [];
         const held = heldKeys();
-        const hidden = entry => entry.name.startsWith(".") && !held.includes(`folder:${entry.path}`)
+        const hidden = entry => !showsHidden && entry.name.startsWith(".")
+            && !held.includes(`folder:${entry.path}`)
             && !(start === entry.path || start.startsWith(`${entry.path}/`));
-        const shown = FileFacts.ordered(all.filter(entry => !hidden(entry)), order, counts);
+        const shown = FileFacts.ordered(all.filter(entry => !hidden(entry)), order, counts,
+            reversed);
         const own = shown.filter(entry => entry.folder).map(entry => folderRow(entry.path))
             .concat(folders ? [] : shown.filter(entry => !entry.folder && passes(entry.name))
                 .map(entry => fileRow(entry.path)));
@@ -226,13 +234,12 @@ Provider {
         // listed again below.
         const lead = saving && path !== "/" ? savingRow(path, provider.saveName) : null;
         const named = lead ? fileRow(lead.path).key : "";
-        // The filters, choices and Order wait for the folder's read as its
-        // Copy the Path does (folderRow), to come after its files. What was
+        // The filters and choices wait for the folder's read as its Copy
+        // the Path does (folderRow), to come after its files. What was
         // opened lately keeps its own order, apart and on top.
-        return apart([several ? [markedLead()] : [],
-            (lead ? [lead] : []).concat(path === start ? recent(path) : []),
+        return apart([(lead ? [lead] : []).concat(path === start ? recent(path) : []),
             own.filter(row => row.key !== named), path === Files.home ? places.slice() : [],
-            path in listed ? options().concat([orderRow()]) : []]);
+            path in listed ? options() : []]);
     }
 
     // Groups one after another, each set apart from the one before it by a
@@ -282,7 +289,10 @@ Provider {
         const row = Object.assign(Files.folder(path, thing, acts, () => rowsOf(readIn(path))), {
             empty: "Nothing here.",
             typed: letters => typedIn(path, letters),
-            beside: by => provider.beside(path, by)
+            beside: by => provider.beside(path, by),
+            commands: () => provider.commandsIn(path),
+            standing: () => provider.gatheredSaid(),
+            takes: rows => provider.takes(rows)
         }, saving ? naming(() => rowsOf(readIn(path))) : {});
         // Until the folder's read, it holds no Copy the Path: rows shown
         // keep their place and those that come go below them, so a Copy
@@ -584,7 +594,12 @@ Provider {
         onExited: code => provider.staged(code)
     }
 
-    // A file kept elsewhere: fetched, then picked by Return, or marked
+    // The folder :mkdir makes.
+    Process {
+        id: folding
+    }
+
+    // A file kept elsewhere: fetched, then picked by Return, or gathered
     // where several may be opened. One of Google's own kinds is the row it
     // is everywhere (`adopt`), picked the same way.
     function fileElsewhere(fields) {
@@ -600,7 +615,7 @@ Provider {
             return row;
         };
         if (several)
-            return markingRow(fields.key, made);
+            return gatheringRow(fields.key, made);
         return made([act("verb:path:file:open", fields.key, [fields.key])]);
     }
 
@@ -614,51 +629,47 @@ Provider {
     }
 
     // A file's row: opened by Return, or, saving, stepped into to Replace It,
-    // or, where several may be opened, marked by Return.
+    // or, where several may be opened, opening what's gathered.
     function fileRow(path, away) {
         const made = saving
             ? Files.file(path, thing, [act("verb:file-chooser:replace", path, [path])], () => [])
-            : several ? markingRow(path, acts => Files.file(path, thing, acts))
+            : several ? gatheringRow(path, acts => Files.file(path, thing, acts))
             : Files.file(path, thing, [act("verb:path:file:open", path, [path])]);
         // Normal's gx opens it in its own program, as his oil's does, the
         // ask still waiting.
         made.openOwn = () => Niri.spawn(["xdg-open", path]);
+        // What a V selection's Return answers of it (takes).
+        if (!saving)
+            made.gathers = path;
         return described(made, path, away === true);
     }
 
-    // A file where several may be opened: Return flips its Marked, the
-    // launcher staying, as Muted is flipped (Sound.qml), and the row wears
-    // the mark while it's marked; inside, Marked, then Open for it alone,
-    // then Copy the Path. How it stands is read as it's drawn, so the row
-    // says what Return just did without being made again (VKCF3Z,
-    // 2026-10-29).
-    function markingRow(path, made) {
-        const is = () => provider.marked.includes(path);
-        const flip = () => {
-            provider.marked = is() ? provider.marked.filter(each => each !== path)
-                : provider.marked.concat([path]);
-            provider.changed();
-        };
-        const verb = () => Words.verb("file-chooser:marked", is() ? "marked" : "");
-        const marking = thing({
-            key: `file-chooser:marked:${path}`,
-            name: Words.name("file-chooser:marked"),
-            glyph: Words.glyph("file-chooser:marked"),
-            hue: "action",
-            stays: true,
-            run: flip
-        });
-        Object.defineProperties(marking, {
-            verb: { enumerable: true, get: verb },
-            side: { enumerable: true, get: () => is() ? "yes" : "no" }
-        });
-        const row = made([marking, act("verb:path:file:open", path, [path])]);
-        row.stays = true;
-        // Marked, its glyph is the mark, in an act's hue rather than a
-        // file's, the one colour on the row changing with it (VKCF3Z,
-        // 2026-11-03), never the accent, which stays where the keys go.
+    // A file where several may be opened: Return opens it, or rather
+    // answers every file gathered, as :arga gathers them, or, with none,
+    // this one; the foot says how many, "\u21b5 open 2", and a file
+    // gathered wears the mark in an act's hue, the one colour on its row
+    // changing with it (VKCF3Z, 2026-11-03), never the accent, which stays
+    // where the keys go. How it stands is read as it's drawn, so the row
+    // says it without being made again (VKCF3Z's vi-paradigm spec, The File
+    // Picker).
+    function gatheringRow(id, made) {
+        const is = () => provider.marked.includes(id);
+        const row = made([act("verb:path:file:open", id, [id])]);
+        const opens = row.verb;
+        row.run = () => provider.choose(provider.marked.length > 0 ? provider.marked.slice()
+            : [id]);
+        // What :arga gathers of it, whatever it's drawn as.
+        row.gathers = id;
+        // A file kept elsewhere keeps the launcher while it's fetched.
+        const away = () => (provider.marked.length > 0 ? provider.marked : [id])
+            .some(each => !each.startsWith("/"));
         Object.defineProperties(row, {
-            verb: { enumerable: true, get: verb },
+            stays: { enumerable: true, get: away },
+            verb: {
+                enumerable: true,
+                get: () => provider.marked.length > 0 ? `${opens} ${provider.marked.length}`
+                    : opens
+            },
             glyph: {
                 enumerable: true,
                 get: () => Words.glyph(is() ? "file-chooser:marked" : "path:file")
@@ -668,43 +679,56 @@ Provider {
         return row;
     }
 
-    // The lead where several may be opened, there from the start so nothing
-    // slides when the first is marked (VKCF3Z, 2026-11-03). Until one is,
-    // it says "none" and nothing more, and Return on it does nothing, the
-    // foot saying no Return; then it counts them, its note names them in
-    // the order marked, its plate lists them with their size together,
-    // Return opens them all, and the right arrow steps into Marked, which
-    // stays while he's in it though the last is unmarked.
-    function markedLead() {
-        const count = marked.length;
-        const said = Words.of("verb:file-chooser:marked").said ?? {};
-        const name = accept !== "" ? `${accept} the Marked` : Words.name("verb:file-chooser:marked");
-        const row = {
+    // Gathers the files of the rows given, as :arga adds them to Vim's
+    // argument list, in the order given, each once; a row that isn't a
+    // file is passed over.
+    // How many are gathered, "2 gathered", or "" with none, as the mode
+    // word's room says it (VKCF3Z's vi-paradigm spec, The File Picker).
+    function gatheredSaid() {
+        if (marked.length === 0)
+            return "";
+        const said = Words.of("verb:file-chooser:marked").said?.marked ?? "";
+        return said.replace("{count}", `${marked.length}`);
+    }
+
+    // What :arga runs on: the files among the rows the line acts on, or,
+    // where none of them is one, as when the line stands for the folder,
+    // the cursor row's.
+    function gatherOr(things, cursor) {
+        const files = things.filter(row => typeof row?.gathers === "string");
+        gather(files.length > 0 ? files : [cursor]);
+    }
+
+    function gather(rows) {
+        const ids = rows.filter(row => typeof row?.gathers === "string").map(row => row.gathers);
+        const fresh = ids.filter((id, at) => !provider.marked.includes(id)
+            && ids.indexOf(id) === at);
+        if (fresh.length === 0)
+            return;
+        provider.marked = provider.marked.concat(fresh);
+        provider.changed();
+    }
+
+    // What :args steps into: the files gathered, listed as Vim's :args
+    // lists its arguments, its plate counting them with their size
+    // together, its crumb the place, Gathered.
+    function gatheredPlace() {
+        const name = Words.name("file-chooser:marked");
+        return thing({
             key: "file-chooser:marked",
             name: name,
-            // Stepped into, its crumb is the place, not the act that
-            // leads to it (VKCF3Z, 2026-11-04).
-            title: Words.name("file-chooser:marked"),
-            verb: word("verb:file-chooser:marked"),
+            title: name,
+            verb: "more",
             glyph: Words.glyph("verb:file-chooser:marked"),
             hue: "action",
-            side: count === 0 ? said.none ?? "" : `${count}`,
-            note: fetchingSaid() || marked.map(each => markedName(each)).join(" \u00b7 "),
-            still: count === 0,
-            stays: count === 0 || marked.some(each => !each.startsWith("/")),
-            run: () => {
-                if (provider.marked.length > 0)
-                    provider.choose(provider.marked.slice());
-            }
-        };
-        // The launcher draws a plate only for a thing, by its kind, or a
-        // row that says it's plated, as Now does at home; the lead is no
-        // thing, so it says so while it has the marked files to list.
-        if (count > 0)
-            Object.assign(row, { plated: true, drawer: () => provider.markedPlate(name) });
-        if (count > 0 || inMarked())
-            row.verbs = () => provider.insideMarked();
-        return thing(row);
+            side: `${marked.length}`,
+            stays: true,
+            now: false,
+            plated: true,
+            drawer: () => provider.markedPlate(name),
+            verbs: () => provider.insideMarked(),
+            targets: () => provider.insideMarked()
+        });
     }
 
     // A file marked, by its name: its path's last part, or what the place
@@ -732,10 +756,10 @@ Provider {
     // asks for the rows again.
     readonly property var shownInMarked: ({ ids: [] })
 
-    // Inside Marked: the files marked, in the order they were, each with
-    // its folder as its note, Return flipping its mark as anywhere else, so
-    // one unmarked stays there, unmarked, until he leaves; then Unmark All,
-    // then Copy the Paths, both with nothing to do once none is marked.
+    // Inside Gathered: the files gathered, in the order they were, each
+    // with its folder as its note, Return answering them all as anywhere
+    // else; then Let Them Go, then Copy the Paths, both with nothing to do
+    // once none is gathered.
     function insideMarked() {
         const was = inMarked() ? shownInMarked.ids : [];
         shownInMarked.ids = was.concat(marked.filter(each => !was.includes(each)));
@@ -743,9 +767,9 @@ Provider {
         const paths = marked.filter(each => each.startsWith("/"));
         const files = shownInMarked.ids.map(id => {
             if (!id.startsWith("/"))
-                return markingRow(id, acts => Files.elsewhere("file", { key: id, name: markedName(id) },
+                return gatheringRow(id, acts => Files.elsewhere("file", { key: id, name: markedName(id) },
                     thing, acts));
-            const row = markingRow(id, acts => Files.file(id, thing, acts));
+            const row = gatheringRow(id, acts => Files.file(id, thing, acts));
             row.note = Files.within(id);
             return described(row, id, false);
         });
@@ -1070,8 +1094,8 @@ Provider {
             return;
         }
         const around = FileFacts.ordered(listed[parent].filter(entry => entry.folder
-            && (entry.path === path || !entry.name.startsWith("."))), order, counts)
-            .map(entry => entry.path);
+            && (entry.path === path || showsHidden || !entry.name.startsWith("."))), order,
+            counts, reversed).map(entry => entry.path);
         const at = around.indexOf(path);
         if (at < 0 || around.length < 2)
             return;
@@ -1315,8 +1339,12 @@ Provider {
         printErrors: false
         onLoaded: {
             const kept = text().trim();
-            if (provider.orders.includes(kept))
-                provider.order = kept;
+            const turned = kept.endsWith("!");
+            const each = turned ? kept.slice(0, -1) : kept;
+            if (provider.orders.includes(each)) {
+                provider.order = each;
+                provider.reversed = turned;
+            }
         }
     }
 
@@ -1388,52 +1416,194 @@ Provider {
         previewer.running = false;
     }
 
-    // The row that says the order in use and steps into the three, that
-    // one first, each its name; Return on one lists every folder so, kept
-    // for the next ask, and goes back to the folder on its first row, made
-    // afresh, since rows shown keep their places.
-    function orderRow() {
-        const said = Words.of("file-chooser:order").said ?? {};
-        const names = { name: "file-chooser:name", changed: "file-chooser:changed",
-            size: "file-chooser:size" };
-        const inside = () => [order].concat(orders.filter(each => each !== order))
-            .map(each => thing({
-                key: `file-chooser:order:${each}`,
-                name: Words.name(names[each]),
-                verb: Words.verb("file-chooser:order"),
-                glyph: Words.glyph("file-chooser:order"),
-                hue: "action",
-                side: each === provider.order ? "chosen" : "",
-                stays: true,
-                run: () => provider.orderBy(each)
-            }));
-        return thing({
-            key: "file-chooser:order",
-            name: Words.name("file-chooser:order"),
-            verb: "more",
-            glyph: Words.glyph("file-chooser:order"),
-            hue: "action",
-            side: said[order] ?? "",
-            stays: true,
-            now: false,
-            verbs: inside,
-            targets: inside
-        });
-    }
-
-    function orderBy(each) {
+    // Lists every folder in an order, turned round or not, as :sort and
+    // :sort! say, kept for the next ask and a restart; the folder shown is
+    // made afresh on its first row, since rows shown keep their places.
+    function orderBy(each, turned) {
         if (!orders.includes(each))
             return;
-        if (each !== order) {
+        if (each !== order || turned !== reversed) {
             order = each;
+            reversed = turned;
             if (settings.orderIn)
-                orderFile.setText(`${each}\n`);
+                orderFile.setText(`${each}${turned ? "!" : ""}\n`);
         }
-        const steps = launcher?.held ?? [];
-        if (steps.length < 3 || steps[steps.length - 1].row.key !== "file-chooser:order")
+        afresh();
+    }
+
+    // The picker's own commands on the launcher's command line, as Vim's
+    // and his oil's are, each { command, short, title, key, ranged, bang,
+    // undoable, args, run } (V3's line, Commands.js): :sort, :set hidden,
+    // :mkdir, :e and :cd with their paths completed from folders already
+    // read, a save's :w and :x, :q answering nothing, and, where several
+    // may be opened, :arga and :args (VKCF3Z's vi-paradigm spec, The File
+    // Picker). Short forms sit here until the key language says them.
+    function commandsIn(path) {
+        const titled = (command, fields) => Object.assign({
+            command,
+            title: Words.name(`command:file-chooser:${command}`),
+            key: "",
+            ranged: false,
+            bang: false,
+            undoable: true,
+            args: []
+        }, fields);
+        const notes = Words.of("file-chooser:order").said ?? {};
+        const options = Words.of("command:file-chooser:set").said ?? {};
+        const rows = [
+            titled("sort", {
+                short: "sor",
+                bang: true,
+                args: orders.map(each => ({ value: each, note: notes[each] ?? "" })),
+                run: call => provider.orderBy(call.arg === "" ? provider.order : call.arg, call.bang)
+            }),
+            titled("set", {
+                short: "se",
+                args: ["hidden", "nohidden"].map(each => ({ value: each, note: options[each] ?? "" })),
+                run: call => provider.setOption(call.arg)
+            }),
+            titled("mkdir", { short: "mkdir", run: call => provider.makeFolder(path, call.arg) }),
+            titled("edit", {
+                short: "e",
+                args: typed => provider.completed(path, typed, false),
+                run: call => provider.edit(path, call.arg)
+            }),
+            titled("cd", {
+                short: "cd",
+                args: typed => provider.completed(path, typed, true),
+                run: call => provider.goTo(provider.resolved(path, call.arg))
+            }),
+            titled("quit", { short: "q", run: () => launcher.open = false })
+        ];
+        if (saving)
+            rows.push(titled("write", {
+                short: "w",
+                bang: true,
+                run: call => provider.write(path, call.arg, call.bang)
+            }), titled("xit", {
+                short: "x",
+                run: call => provider.write(path, call.arg, false)
+            }));
+        if (several)
+            rows.push(titled("argadd", {
+                short: "arga",
+                ranged: true,
+                run: call => provider.gatherOr(call.things ?? [], launcher.selected)
+            }), titled("args", { short: "ar", run: () => launcher.enter(provider.gatheredPlace()) }));
+        return rows;
+    }
+
+    // Return in a V selection, as V4's visual hands it the rows it took:
+    // every file among them is answered, in order, or the first alone
+    // where one is taken; with none, the launcher does what it would
+    // (VKCF3Z's vi-paradigm spec, The File Picker).
+    function takes(rows) {
+        const ids = (rows ?? []).map(taken => taken?.row ?? taken)
+            .filter(row => typeof row?.gathers === "string").map(row => row.gathers);
+        if (ids.length === 0 || saving || folders)
+            return false;
+        choose(several ? ids : ids.slice(0, 1));
+        if (ids.every(id => id.startsWith("/")))
+            launcher.open = false;
+        return true;
+    }
+
+    // :set hidden lists a folder's hidden files, and :set nohidden leaves
+    // them out again; anything else is no option of the picker's.
+    function setOption(option) {
+        if (option !== "hidden" && option !== "nohidden")
             return;
-        const folder = steps[steps.length - 2].row;
-        launcher.back();
+        showsHidden = option === "hidden";
+        afresh();
+    }
+
+    // A path typed on the line, from the folder shown: ~ is home, and one
+    // not starting at / is inside the folder.
+    function resolved(path, typed) {
+        const text = typed.startsWith("~") ? `${Files.home}${typed.slice(1)}` : typed;
+        const whole = text.startsWith("/") ? text : `${path === "/" ? "" : path}/${text}`;
+        return whole.length > 1 ? whole.replace(/\/+$/, "") : whole;
+    }
+
+    // What a path typed so far could go on to, from the folders already
+    // read alone, never reading one as a key is typed: each entry of the
+    // folder it names starting as typed, a folder's with a / after it, the
+    // hidden only once a . is typed or :set hidden says.
+    function completed(path, typed, foldersOnly) {
+        const said = typed.slice(0, typed.lastIndexOf("/") + 1);
+        const whole = resolved(path, typed);
+        const ends = typed === "" || typed.endsWith("/");
+        const folder = ends ? whole : parentOf(whole);
+        const start = ends ? "" : whole.slice(whole.lastIndexOf("/") + 1);
+        const note = Words.of("command:file-chooser:edit").said?.folder ?? "";
+        return (listed[folder] ?? []).filter(entry => entry.name.startsWith(start)
+            && (!foldersOnly || entry.folder)
+            && (showsHidden || start.startsWith(".") || !entry.name.startsWith(".")))
+            .map(entry => ({ value: `${said}${entry.name}${entry.folder ? "/" : ""}`,
+                note: entry.folder ? note : "" }));
+    }
+
+    // Goes to a folder as if the ask had opened there: each folder on the
+    // way held, and Escape there refusing the ask, as :cd moves Vim.
+    function goTo(folder) {
+        if (asking === null || !folder.startsWith("/"))
+            return;
+        launcher.into(settings.name);
+        for (const each of onTheWay(folder))
+            launcher.enter(folderRow(each));
+        launcher.openedHere();
+    }
+
+    // :e a folder goes there, as :e on a directory opens his oil; a file
+    // is opened, or, saving, named and gone to, the name on the line.
+    function edit(path, typed) {
+        if (typed === "")
+            return;
+        const target = resolved(path, typed);
+        const entry = (listed[parentOf(target)] ?? []).find(each => each.path === target);
+        if (entry?.folder || typed.endsWith("/")) {
+            goTo(target);
+        } else if (saving) {
+            saveName = target.slice(target.lastIndexOf("/") + 1);
+            goTo(parentOf(target));
+        } else {
+            choose([target]);
+            launcher.open = false;
+        }
+    }
+
+    // :mkdir makes a folder in the one shown, which lists it once its
+    // watch hears it.
+    function makeFolder(path, name) {
+        if (name === "" || name === "." || name === "..")
+            return;
+        folding.command = [settings.mkdir ?? "mkdir", "-p", "--", resolved(path, name)];
+        folding.running = true;
+    }
+
+    // :w saves as the name given, or the line's, asking once over a file
+    // already there as :w says E13; :w! saves over it without asking.
+    function write(path, name, over) {
+        if (name !== "")
+            saveName = name;
+        const row = savingRow(path, saveName);
+        if (row === null)
+            return;
+        if (over) {
+            pick([row.path]);
+            launcher.open = false;
+            return;
+        }
+        row.run();
+    }
+
+    // The folder shown made again, as it's stepped back into, so its rows
+    // take what's changed: an order, or what's hidden.
+    function afresh() {
+        const steps = launcher?.held ?? [];
+        const folder = steps[steps.length - 1]?.row;
+        if (!String(folder?.key ?? "").startsWith("folder:"))
+            return;
         launcher.back();
         launcher.enter(folder);
     }

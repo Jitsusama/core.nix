@@ -551,14 +551,14 @@ onLinux {
   # Every launcher verb names the command the : line runs it by, one the key
   # language has, with what follows it, and no two on a row alike
   # (tests/launcher-commands.py), as the account writes the vocabulary.
-  the-launcher-names-every-verb-a-command =
+  the-launcher-names-every-action-a-command =
     let
       words =
         pkgs.writeText "words.json"
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
       language = ../keys/language.toml;
     in
-    pkgs.runCommandLocal "the-launcher-names-every-verb-a-command" { } ''
+    pkgs.runCommandLocal "the-launcher-names-every-action-a-command" { } ''
       ${lib.getExe pkgs.python3} ${../../tests/launcher-commands.py} ${words} ${language}
       touch $out
     '';
@@ -3019,8 +3019,10 @@ onLinux {
 
   # The launcher's command line lists every command it can take, the cursor
   # row's acts first, narrows as it's typed, chooses as his cmp does and
-  # runs exactly what's typed, as tests/command-line.qml holds
-  # Commands.js to.
+  # runs exactly what's typed, with Vim's ranges and :g, and reads :set as
+  # Vim does, as tests/command-line.qml holds Commands.js and SetWords.js
+  # to, with the Ex.js they read ranges by and CommandBinding.js, which
+  # binds a line to things.
   the-command-line-lists-every-command =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3028,6 +3030,9 @@ onLinux {
     pkgs.runCommandLocal "the-command-line-lists-every-command" { } ''
       cp ${../../tests/command-line.qml} command-line.qml
       cp ${./Commands.js} Commands.js
+      cp ${./SetWords.js} SetWords.js
+      cp ${./Ex.js} Ex.js
+      cp ${./CommandBinding.js} CommandBinding.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3058,9 +3063,10 @@ onLinux {
   # keys, normal's ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
   # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
-  # to the keys Space ? lists; Operators.js to what d and y do to the rows
-  # they take; and Confirm.js to how the launcher asks once, as Vim's
-  # ask_yesno does.
+  # to the keys Space ? lists; the drawer as a window, Space and the arrows
+  # into it and back, with DrawerPage.js to where its keys take its cursor
+  # and view; Operators.js to what d and y do to the rows they take; and
+  # Confirm.js to how the launcher asks once, as Vim's ask_yesno does.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3073,6 +3079,7 @@ onLinux {
       cp ${./Typing.js} Typing.js
       cp ${./Operators.js} Operators.js
       cp ${./Confirm.js} Confirm.js
+      cp ${./DrawerPage.js} DrawerPage.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

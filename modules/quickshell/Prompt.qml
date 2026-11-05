@@ -95,11 +95,20 @@ Item {
     property bool editsWords: words
     property var changes: []
     onWordsChanged: changes = []
-    // The mode it's in: "insert", "normal", or "visual" while visual line
-    // chooses rows. It opens in insert (take()).
+    // The mode it's in: "insert", "normal", "visual" while visual line
+    // chooses rows, or "page" while the launcher's drawer holds the keys,
+    // gone into with Space and the right arrow, as his Neovim goes to the
+    // window beside. It opens in insert (take()).
     property string mode: "insert"
-    // Whether nothing types, in normal and visual alike.
+    // Whether the keys are on the rows, in normal and visual alike.
     readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
+    // Whether there's a drawer to go into: out, with lines to sit on. Gone
+    // while it holds the keys, they come back to the rows.
+    property bool drawerHere: false
+    onDrawerHereChanged: {
+        if (!drawerHere && mode === "page")
+            mode = "normal";
+    }
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
@@ -196,7 +205,8 @@ Item {
     // A modal line says no key for putting back what was cleared, since
     // normal's u is vi's own way back.
     // A question asked once takes no key of the field's, so none is said.
-    readonly property bool keysHeld: keyed && asking === "" && (typed
+    // Nor do a prompt's words, which nothing clears or brings back.
+    readonly property bool keysHeld: keyed && asking === "" && !words && (typed
         || (!modal && input.text === "" && cleared !== ""))
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
@@ -292,7 +302,8 @@ Item {
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
     // the count typed before it, 0 for none: the moves QueryKeys.moved
-    // takes, and drawerUp and drawerDown.
+    // takes; or, in the page mode, the drawer's, which DrawerPage.moved
+    // takes.
     signal stepped(string act, int count)
     // An operator done: "ending" for d and "copy" for y, with the count
     // typed before it, 0 for none, and the motion it took, { act, count },
@@ -449,11 +460,19 @@ Item {
             return;
         }
         const read = QueryKeys.read(standing, key, mode, editsWords);
-        // A key held in normal repeats only a move, as Vim's motions do:
-        // any other act, and a count or a sequence begun, is a press's
-        // once, so a key let go late by a busy shell, which repeats as if
-        // held (modules/keyboard/repeat.nix), never does it twice.
-        if (event.isAutoRepeat && overRows && !QueryKeys.repeats(read.act)) {
+        // A key held where nothing types repeats only a move, as Vim's
+        // motions do: any other act, and a count or a sequence begun, is a
+        // press's once, so a key let go late by a busy shell, which
+        // repeats as if held (modules/keyboard/repeat.nix), never does it
+        // twice.
+        if (event.isAutoRepeat && QueryKeys.still(mode) && !QueryKeys.repeats(read.act)) {
+            event.accepted = true;
+            return;
+        }
+        // With no drawer out, Space and the right arrow do nothing, as
+        // his Ctrl+W l does with no window to the right.
+        if (read.act === "drawer" && !drawerHere) {
+            standing = read.standing;
             event.accepted = true;
             return;
         }
@@ -577,7 +596,9 @@ Item {
         case "":
             break;
         default:
-            prompt.stepped(read.act, read.count);
+            // ZZ is Vim's :x, writing what there is to write as it closes,
+            // where Space w and q only close (modules/keys/language.toml).
+            prompt.stepped(read.act === "close" && key === "Z" ? "xit" : read.act, read.count);
         }
     }
 
@@ -669,8 +690,10 @@ Item {
     readonly property real caretWidth: modal ? Math.max(1, Math.round(letterWidth / 4)) : 2
     // Whether the field draws its caret: not in normal, where the keys are
     // on the rows. A block there sat on the hint's first letter, in the
-    // hint's face, before anything was typed (Joel, 2026-11-04).
-    readonly property bool caretShown: !overRows
+    // hint's face, before anything was typed (Joel, 2026-11-04). Nor in
+    // visual, nor while the drawer holds the keys, as Neovim draws one
+    // cursor, in the window the keys are in.
+    readonly property bool caretShown: !(modal && QueryKeys.still(mode))
 
     FontMetrics {
         id: typedFace
@@ -786,14 +809,32 @@ Item {
         : chipsWanted.reduce((sum, wide) => sum + wide, 0)
             + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.m
 
-    // Each step's words' width, as Reading.sharedSteps shares the room: a
-    // folder's path gives way first, down to four characters, cut in its
-    // middle.
-    readonly property var fitted: {
-        const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom
-            - betweenDrawn.implicitWidth * Math.max(0, chips.length - 1) - pathGap);
-        return Reading.sharedSteps(chipsWanted, chips.map(chip => chip.yields === true), room,
-            4 * titleFace.averageCharacterWidth);
+    // The path's steps as they're drawn, given way at whole names where
+    // they don't fit (Reading.crumbs): a folder's path a folder at a time,
+    // then the middle steps folded into one mark, so no name is cut.
+    readonly property var crumbsShown: {
+        void titleFace.font;
+        const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom - pathGap);
+        const stretch = titleStretch;
+        // A step's whole words as their Text draws them, and words given
+        // way as the face measures them, stretched as the title's axes do.
+        const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
+        return Reading.crumbs(chips.map(chip => ({ text: chip.text, yields: chip.yields === true })),
+            room, text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
+            betweenDrawn.implicitWidth);
+    }
+    // How much wider the title's axes draw its letters than its face's
+    // metrics say, the most of any step's whole words, so a step given
+    // way is measured as it will be drawn.
+    readonly property real titleStretch: {
+        void titleFace.font;
+        let most = 1;
+        chips.forEach((chip, at) => {
+            const measured = titleFace.advanceWidth(chip.text);
+            if (measured > 0)
+                most = Math.max(most, ((chipsWanted[at] ?? 0) - 1) / measured);
+        });
+        return most;
     }
 
     // Each step's words' width, whole, as a Text draws them: a face's
@@ -827,8 +868,7 @@ Item {
         font: titleFace.font
     }
     // Whether each step is said whole, for the launcher's report.
-    readonly property var chipsWhole: chipsWanted.map((width, index) =>
-        (fitted[index] ?? 0) >= width)
+    readonly property var chipsWhole: crumbsShown.whole
 
 
     // Where Joel is, the place's name at Title in the text colour, with no
@@ -848,13 +888,18 @@ Item {
             y: (prompt.height + prompt.titleCapitals) / 2 - titleFace.ascent
 
             Repeater {
-                model: prompt.chips
+                id: stepsShown
+                model: prompt.crumbsShown.said
 
                 Row {
                     id: step
 
-                    required property var modelData
+                    required property string modelData
                     required property int index
+                    // Whether its words are drawn cut, and the room it
+                    // takes past them, for the launcher's report.
+                    readonly property bool cut: stepName.truncated
+                    readonly property real spare: stepName.width - stepName.implicitWidth
 
                     Text {
                         visible: step.index > 0
@@ -863,18 +908,30 @@ Item {
                         font: titleFace.font
                     }
 
+                    // Its words as they're given way, whole, so nothing
+                    // is cut and the next mark follows them at its own
+                    // spacing.
                     Text {
-                        width: prompt.fitted[step.index] ?? implicitWidth
-                        text: step.modelData.text
-                        // A path keeps both ends, where it starts and the
-                        // folder it's at, cut in its middle.
-                        elide: step.modelData.yields === true ? Text.ElideMiddle : Text.ElideRight
+                        id: stepName
+                        text: step.modelData
                         color: Theme.text
                         font: titleFace.font
                     }
                 }
             }
         }
+    }
+
+    // How each of the path's steps is drawn, for the launcher's report: its
+    // words, whether they're cut, and the room past them before the next.
+    function pathDrawn(): var {
+        const drawn = [];
+        for (let at = 0; at < stepsShown.count; at += 1) {
+            const step = stepsShown.itemAt(at);
+            if (step)
+                drawn.push({ said: step.modelData, cut: step.cut, spare: step.spare });
+        }
+        return drawn;
     }
 
     // Whether the question asked is drawn whole, for the launcher's report.
@@ -944,7 +1001,7 @@ Item {
             // says which keys repeat: the moves (modalKey).
             if (event.isAutoRepeat && event.text !== "" && event.text >= " "
                 && event.text !== "\u007f" && (event.modifiers & Qt.ControlModifier) === 0
-                && !prompt.overRows) {
+                && !(prompt.modal && QueryKeys.still(prompt.mode))) {
                 event.accepted = true;
                 return;
             }

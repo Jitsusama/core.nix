@@ -18,8 +18,14 @@
 # word here, marks, '' and Ctrl+O and Ctrl+I through the jumps, which a
 # move longer than a screen joins, g x to follow a link by its label and
 # Ctrl+] the one here, gf for the file a line names, ]b and [b to the
-# folder's next markdown file, gO for the headings as a list, :{n}, :q and
-# :noh, ZZ, Space w or :q to close, and Space ? or F1 for every key. Each
+# folder's next markdown file, gO for the headings as a list, ZZ, Space w
+# or :q to close, and Space ? or F1 for every key. The command line takes
+# Vim's ranges and names: :{n} and :$, :noh, :y with a range, :%y the
+# whole file and :'<,'>y the last selection's lines, as the file's
+# markdown, :e for another file, :bn and :bp, :h for the keys, and
+# :g/pat/, :marks and :ju, which list the lines they name in gO's place,
+# Return going to one, saying Vim's error of anything else, E492 for a
+# command it hasn't. Each
 # search, heading, mark or jump puts the cursor on the line it lands on. v
 # and V select, from the cursor's line, with the terminal's cursor, moved
 # by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap
@@ -28,10 +34,14 @@
 # y a p and y } copy the block the cursor is in, its paragraph, that and
 # the blank line after it, or on to the paragraph's end, each flashing what
 # it took for 200 ms, as his Neovim's yank does. q does nothing, since
-# nothing records. A link to another markdown
-# file sets it in the same window, as Neovim's gf, keeping the place on the
-# first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only
-# cancels. The same table, as the launcher lists it over
+# nothing records. A change, d d or d with its motion, c c, S or c with
+# its motion, x, p, or d, c and p on a selection, and :d, says Vim's
+# E21: Cannot make changes, as a buffer that can't be modified does. A
+# link to another markdown file sets it in the same window, as Neovim's
+# gf, keeping the place on the first, and Ctrl+O and Ctrl+I go back and
+# forth across files. Escape only cancels: at rest it does nothing, as
+# Vim's does, and :noh puts the search's marks away. The same table, as
+# the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
 #
@@ -328,6 +338,13 @@ let
     (page "" "Ctrl+Plus" "Larger")
     (page "" "Ctrl+Minus" "Smaller")
     (page "" "Ctrl+0" "Back to its own size")
+    (page "ending" "d d" "Nothing: a page can't be changed")
+    (page "change-line" "c c" "Nothing: a page can't be changed")
+    (page "change-line" "S" "Nothing: a page can't be changed")
+    (page "delete-character" "x" "Nothing: a page can't be changed")
+    (page "put-after" "p" "Nothing: a page can't be changed")
+    (page "delete-motion" "d" "Nothing: a page can't be changed")
+    (page "change-motion" "c" "Nothing: a page can't be changed")
     (page "show-keys" "Space ?" "Show every key here")
     (page "show-keys" "F1" "Show every key here")
     (page "close" "Z Z" "Close the page")

@@ -19,9 +19,12 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
+from test_driver.machine import CHAR_TO_KEY
 
 if TYPE_CHECKING:
-    from desktop_session import Desktop
+    from collections.abc import Callable
+
+    from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
 
@@ -120,47 +123,285 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.close_launcher()
 
 
-# How far Shift and an arrow scroll the launcher's drawer: three of its lines of 24, so what
-# it shows stays on the card's lines (vm-desktop-looks measures them).
-SCROLLED = 3 * 24
+# The drawer's line pitch, which Ctrl+E and Ctrl+Y scroll it by, so what it shows stays on the
+# card's lines (vm-desktop-looks measures them).
+PITCH = 24
+# How far three Ctrl+E scroll it.
+SCROLLED = 3 * PITCH
+# The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
+# is pressed before its coming apart is a failure, and how long each try waits.
+WAITING = frozenset({"spc right", "spc left", "Z Z", "g g"})
+TRIES = 3
+TRIED = timedelta(seconds=10)
 
 
-def test_a_notices_drawer_says_who_sent_it_and_shift_scrolls_it(desktop: Desktop) -> None:
-    """A notice's drawer says who sent it and when, and Shift with the arrows scrolls it.
+def keyed(name: str, *, down: bool) -> Json:
+    """Give QEMU's input event for a key going down or up, by its name or its number."""
+    key = (
+        {"type": "number", "data": int(name, 16)}
+        if name.startswith("0x")
+        else {"type": "qcode", "data": name}
+    )
+    return {"type": "key", "data": {"down": down, "key": key}}
 
-    Shift and an arrow scroll it three of its lines at a time, said in the foot while it holds
-    more than fits, and leave the selection where it was.
+
+class InTheDrawer:
+    """The launcher holding a long notice's drawer, and the keys that go into it and move there.
+
+    Its notice is a deploy's log of forty lines, so the drawer holds more than fits.
     """
-    machine = desktop.machine
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    body = "\n".join(f"step {at} of the long build went by" for at in range(1, 41))
-    desktop.as_account(f"notify-send 'Long build log' {shlex.quote(body)}")
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"),
-        timeout=timedelta(seconds=60),
-    )
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("long build log")
-    desktop.launcher_until(
-        lambda shown: shown["drawer"]["out"] and shown["drawer"]["title"] == "Long build log"
-    )
-    drawer = desktop.showing()["drawer"]
+
+    TITLE = "Deploy log"
+    LAST = "line 40 of the deploy went by"
+
+    def __init__(self, desktop: Desktop) -> None:
+        """Send the notice, and open the launcher on its row."""
+        self.desktop = desktop
+        machine = desktop.machine
+        # A subtest that failed with the launcher open leaves it closed for this one.
+        if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
+            desktop.close_launcher()
+        body = "\n".join(f"line {at} of the deploy went by" for at in range(1, 41))
+        desktop.as_account(f"notify-send {shlex.quote(self.TITLE)} {shlex.quote(body)}")
+        machine.wait_until_fails(
+            desktop.in_session("niri msg layers | grep -q notifications"),
+            timeout=timedelta(seconds=60),
+        )
+        self.open()
+
+    def open(self) -> None:
+        """Open the launcher on the notice's row, its drawer out, in normal mode."""
+        desktop = self.desktop
+        desktop.machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10)
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("deploy log")
+        desktop.launcher_until(
+            lambda shown: shown["drawer"]["out"] and shown["drawer"]["title"] == self.TITLE
+        )
+        desktop.normal()
+        self.rows = desktop.showing()
+        assert self.rows["drawer"]["cursor"] is None, self.rows["drawer"]
+
+    def press(self, keys: str) -> None:
+        """Press each key named, a letter by its character and any other by QEMU's name.
+
+        Every key goes down and up in one batch of QEMU's input events, so the guest reads them
+        all at once. Sent one sendkey at a time, a loaded builder let niri draw the first key's
+        frame before it read the second, and a waiting key's 300 ms ran out between them.
+        """
+        events: list[Json] = []
+        for key in keys.split():
+            *held, pressed = CHAR_TO_KEY.get(key, key).split("-")
+            chord = [*held, pressed]
+            events += [keyed(name, down=True) for name in chord]
+            events += [keyed(name, down=False) for name in reversed(chord)]
+        client = self.desktop.machine.qmp_client
+        assert client is not None
+        # The driver says a command's arguments are strings, so the events go through JSON to
+        # reach it as they are.
+        client.send("input-send-event", json.loads(json.dumps({"events": events})))
+
+    def pressed_until(
+        self, keys: str, test: Callable[[Json], object], again: Callable[[], None] | None = None
+    ) -> None:
+        """Press the keys, and wait until the launcher passes the test.
+
+        A sequence whose first key waits Joel's 300 ms for the rest is pressed again when it
+        came apart, after `again` puts back what its second key did alone. Sent as one batch,
+        its keys reach the guest together, so this is only for a machine so loaded that niri
+        stalls between reading them: what a busy machine does to keys, not what the shell does.
+        """
+        for _ in range(TRIES - 1 if keys in WAITING else 0):
+            self.press(keys)
+            try:
+                self.desktop.launcher_until(test, TRIED)
+            except AssertionError:
+                print(f"{keys} came apart, the wait letting go between them: pressed again")
+                if again:
+                    again()
+            else:
+                return
+        self.press(keys)
+        self.desktop.launcher_until(test)
+
+    def drawer(self) -> Json:
+        """Give the drawer as the launcher reports it."""
+        return cast("Json", self.desktop.showing()["drawer"])
+
+    def until(self, keys: str, test: Callable[[Json], object]) -> Json:
+        """Press the keys, and wait until the drawer, holding the keys, passes the test."""
+        self.pressed_until(
+            keys, lambda shown: shown["drawer"]["cursor"] is not None and test(shown["drawer"])
+        )
+        return self.drawer()
+
+    def into(self) -> Json:
+        """Go into the drawer with Space and the right arrow, and give its cursor.
+
+        The arrow alone steps into the notice's row, so the launcher opens on it again before
+        another try.
+        """
+
+        def again() -> None:
+            self.desktop.close_launcher()
+            self.open()
+
+        self.pressed_until(
+            "spc right",
+            lambda shown: shown["mode"] == "page" and shown["drawer"]["cursor"] is not None,
+            again,
+        )
+        return cast("Json", self.drawer()["cursor"])
+
+    def back(self, keys: str) -> None:
+        """Press the keys, and wait for the keys back on the rows, the selection unmoved."""
+        self.pressed_until(
+            keys, lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"]
+        )
+        shown = self.desktop.showing()
+        assert shown["open"], shown
+        assert shown["selected"]["name"] == self.rows["selected"]["name"], shown
+        assert shown["drawer"]["cursor"] is None, shown["drawer"]
+
+
+def held(drawer: Json) -> bool:
+    """Say whether the drawer's cursor is wholly inside its view."""
+    top, height = int(drawer["cursor"]["top"]), int(drawer["cursor"]["height"])
+    return top >= 0 and top + height <= int(drawer["height"])
+
+
+def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Desktop) -> None:
+    """A notice's drawer says who sent it and when, and gone into, its keys scroll it.
+
+    The foot names no Shift with the arrows, which scroll nothing now: Space and the right arrow
+    go in, three Ctrl+E scroll it three of its lines, and Space and the left arrow come back,
+    the selection where it was.
+    """
+    page = InTheDrawer(desktop)
+    drawer = page.drawer()
     # Signed as a card signs it: a program known by no other name by its own, in title case.
     assert re.fullmatch(r"Desktop \u00b7 \d\d:\d\d", drawer["eyebrow"]), drawer
     assert drawer["more"], f"forty lines fit the drawer: {drawer}"
-    assert "\u21e7\u2191\u2193 scroll" in desktop.showing()["selected"]["told"], desktop.showing()
+    assert "\u21e7" not in page.rows["selected"]["told"], page.rows["selected"]
     desktop.photograph("launcher-plate")
-    # Shift and the arrows scroll it, the list where it was.
-    selected = desktop.showing()["selected"]["name"]
     title = drawer["lines"]["title"]
-    machine.send_key("shift-down")
-    desktop.launcher_until(lambda shown: shown["drawer"]["scrolled"] == SCROLLED)
-    scrolled = desktop.showing()
-    assert scrolled["selected"]["name"] == selected, scrolled
-    assert round(title - scrolled["drawer"]["lines"]["title"]) == SCROLLED, scrolled["drawer"]
-    machine.send_key("shift-up")
-    desktop.launcher_until(lambda shown: shown["drawer"]["scrolled"] == 0)
+    page.into()
+    scrolled = page.until("ctrl-e ctrl-e ctrl-e", lambda drawer: drawer["scrolled"] == SCROLLED)
+    assert round(title - scrolled["lines"]["title"]) == SCROLLED, scrolled
+    page.back("spc left")
+    desktop.close_launcher()
+
+
+def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_back(
+    desktop: Desktop,
+) -> None:
+    """Space and the right arrow take the keys into the drawer, and four keys give them back.
+
+    Its frame takes the accent the card's gives up, and the cursor stands on the title's first
+    letter with nothing scrolled, its line marked by a rule in the margin left of the letters.
+    Escape only lets a count go, and q does nothing; ZZ, :q and Space with the left arrow each
+    give the keys back to the rows, the selection where it was. Its pictures at 1 and both of
+    Joel's scales, on the title and down in the words, are for a person to judge the rule and
+    the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
+    """
+    page = InTheDrawer(desktop)
+    came = page.into()
+    assert came["says"] == page.TITLE, came
+    assert came["letter"] == 0, came
+    assert came["on"] == page.TITLE[0], came
+    rule = came["rule"]
+    assert rule["top"] == came["top"], came
+    assert rule["height"] == came["height"], came
+    assert rule["x"] > 0, came
+    assert rule["width"] > 0, came
+    drawer = page.drawer()
+    assert drawer["scrolled"] == 0, drawer
+    assert drawer["frame"] != page.rows["drawer"]["frame"], drawer
+    # Each scale is set with the launcher closed, so it opens laid out for it, as
+    # desktop-looks sets its own.
+    for scale in (*JOELS_SCALES, "1"):
+        desktop.close_launcher()
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        page.open()
+        at = page.into()
+        named = scale.replace(".", "-")
+        desktop.photograph(f"launcher-drawer-keys-at-{named}")
+
+        def five_down(drawer: Json, below: int = int(at["line"]) + 5) -> bool:
+            return bool(drawer["cursor"]["line"] == below)
+
+        page.until("5 j", five_down)
+        # Four along, or the line's last letter where a narrow drawer wraps it shorter.
+        page.until(
+            "l l l l",
+            lambda drawer: (
+                drawer["cursor"]["letter"] == min(len("line"), len(drawer["cursor"]["says"]) - 1)
+            ),
+        )
+        desktop.photograph(f"launcher-drawer-cursor-at-{named}")
+    page.press("3")
+    desktop.launcher_until(lambda shown: shown["counted"] == "3")
+    page.press("esc")
+    desktop.launcher_until(lambda shown: shown["counted"] == "" and shown["mode"] == "page")
+    # Escape at rest and q alone leave the keys where they are: j still moves the cursor.
+    line = page.drawer()["cursor"]["line"]
+    page.until("esc q j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    page.back("Z Z")
+    for keys in (": q ret", "spc left"):
+        page.into()
+        page.back(keys)
+    desktop.close_launcher()
+
+
+def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> None:
+    """In the drawer, j k h l and a count move its cursor, and the view follows it.
+
+    j and k move it a line, after a count as many; h and l along the line; gg and G to its
+    first and last line; Ctrl+E and Ctrl+Y scroll a line; Ctrl+D and Ctrl+U half the view;
+    Ctrl+F, Ctrl+B, Page Down and Page Up nearly a whole one; and H, L and M to the view's top,
+    bottom and middle lines, the view staying. Shift and an arrow do nothing.
+    """
+    page = InTheDrawer(desktop)
+    title = page.into()["line"]
+    page.until("j", lambda drawer: drawer["cursor"]["line"] == title + 1)
+    page.until("3 j", lambda drawer: drawer["cursor"]["line"] == title + 4)
+    page.until("k", lambda drawer: drawer["cursor"]["line"] == title + 3)
+    page.until("l l", lambda drawer: drawer["cursor"]["letter"] == 1 + 1)
+    page.until("h", lambda drawer: drawer["cursor"]["letter"] == 1)
+    last = page.until("G", lambda drawer: drawer["cursor"]["line"] == drawer["cursor"]["lines"] - 1)
+    assert last["scrolled"] > 0, last
+    assert held(last), last
+    assert last["cursor"]["says"] == page.LAST, last
+    page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0 and drawer["scrolled"] == 0)
+    page.until("ctrl-e", lambda drawer: drawer["scrolled"] == PITCH and held(drawer))
+    page.until("ctrl-y", lambda drawer: drawer["scrolled"] == 0)
+    half = page.until("ctrl-d", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
+    page.until("ctrl-u", lambda drawer: drawer["scrolled"] == 0)
+    paged = page.until("ctrl-f", lambda drawer: drawer["scrolled"] > half["scrolled"])
+    assert held(paged), paged
+    page.until("ctrl-b", lambda drawer: drawer["scrolled"] == 0)
+    page.until("pgdn", lambda drawer: drawer["scrolled"] == paged["scrolled"])
+    page.until("pgup", lambda drawer: drawer["scrolled"] == 0)
+    page.until("ctrl-d", lambda drawer: drawer["scrolled"] == half["scrolled"])
+    # H, L and M each move it from the line before, and the view stays.
+    lines = [page.drawer()["cursor"]["line"]]
+    for key in ("shift-h", "shift-l", "shift-m"):
+        drawer = page.until(key, lambda drawer: drawer["cursor"]["line"] != lines[-1])
+        assert held(drawer), drawer
+        assert drawer["scrolled"] == half["scrolled"], drawer
+        lines.append(drawer["cursor"]["line"])
+    assert lines[1] < lines[3] < lines[2], lines
+    # Shift and an arrow move nothing, so the k after them moves from where H M L left it.
+    page.until(
+        "shift-down shift-up k",
+        lambda drawer: (
+            drawer["cursor"]["line"] == lines[-1] - 1 and drawer["scrolled"] == half["scrolled"]
+        ),
+    )
+    page.back("spc left")
     desktop.close_launcher()
 
 

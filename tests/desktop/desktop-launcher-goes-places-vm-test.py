@@ -819,6 +819,12 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     assert reads["category:computer"].startswith("Machine \u00b7 Power, Bluetooth, "), (
         f"machine reads {reads['category:computer']!r}"
     )
+    # A place names the places it holds, by their names, never the words
+    # its typed commands start with: Network once read "ip, is, split, mac".
+    held = reads["category:network"].split(" \u00b7 ", 1)[1].split(", ")
+    assert all(name[:1].isupper() or name == "\u2026" for name in held), (
+        f"network reads {reads['category:network']!r}"
+    )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
     # Home holds still while the machine's queue changes, which a busy

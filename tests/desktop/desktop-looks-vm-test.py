@@ -25,7 +25,7 @@ from desktop_session import LAUNCHER_OPEN
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -54,6 +54,11 @@ INSIDE = 20
 # baseline to half a device pixel.
 WORDS_GAP = 12
 HALF_A_PIXEL = 0.5
+# How long QEMU holds a key down, and how often and how long a sequence that waits for its
+# second key is pressed before it counts as never doing what it does.
+HELD_MS = 20
+TRIES = 3
+TRIED = timedelta(seconds=10)
 
 
 @pytest.fixture(scope="module")
@@ -216,7 +221,7 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
 def lists_every_key(desktop: Desktop, scale: str) -> None:
     """Show every key normal takes with Space ?, as a plate in the drawer, and photograph it.
 
-    Each key's name is whole, and what won't fit above the foot waits for Shift and the arrows.
+    Each key's name is whole, and what won't fit above the foot waits for the drawer's keys.
     """
     desktop.machine.send_chars(" ?")
     desktop.launcher_until(
@@ -243,11 +248,24 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
 def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     """Open the command line on kitty's row, photograph it and its menu, and let it go.
 
-    The menu lists kitty's acts, Return's first, before :q, :help and :{n}; a line chosen
-    says in the drawer what it acts on, and Escape puts the find line back in normal.
+    The menu lists kitty's acts, Return's first, before :q, :help, :set and :{n}; the foot
+    names the line's own keys, Tab until a line is chosen and Return once one is, never the
+    rows'; a line chosen says in the drawer what it acts on, and Escape puts the find line
+    back in normal.
     """
+
+    def foot() -> list[str]:
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return [word["text"] for word in laid["foot"]]
+
     machine = desktop.machine
-    everywhere = ["quit Close the Launcher", "help List the Keys", "{n} Go to a Row"]
+    everywhere = [
+        "quit Close the Launcher",
+        "help List the Keys",
+        "set Set an Option",
+        "history List Earlier Lines",
+        "{n} Go to a Row",
+    ]
     machine.send_chars(":")
     desktop.launcher_until(
         lambda shown: (
@@ -257,12 +275,18 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
         )
     )
     desktop.photograph(f"launcher-command-at-{scale.replace('.', '-')}")
+    said = foot()
+    assert any("choose" in text for text in said), said
+    assert not any("below" in text or "\u21b5" in text for text in said), said
     machine.send_key("tab")
     desktop.launcher_until(
         lambda shown: (
             (shown["command"] or {}).get("chosen") == 0 and shown["drawer"]["body"] == "on kitty"
         )
     )
+    said = foot()
+    assert any("\u21b5" in text for text in said), said
+    assert not any("choose" in text or "below" in text for text in said), said
     desktop.photograph(f"launcher-command-chosen-at-{scale.replace('.', '-')}")
     machine.send_key("esc")
     desktop.launcher_until(
@@ -287,8 +311,8 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 
 
 # y flashes the rows it copies for a moment (his Neovim's on_yank), and
-# d's ask stands in Return's place, one line, moving nothing (Y2YBTS,
-# 2026-11-04). The flash is gone in a fifth of a second, too soon to wait
+# d's ask stands on the line in the find's place, tinting the rows it
+# covers (VKCF3Z, 2026-11-05). The flash is gone in a fifth of a second, too soon to wait
 # for the screen to hold still, so the screen is taken as fast as QEMU
 # gives it, and the picture kept is the one furthest from the screen once
 # the flash has gone. Whether y flashed is held by what the launcher says;
@@ -296,10 +320,10 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 FLASH_FRAMES = 8
 
 
-def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
+def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Y flashes the row it copies, and d's ask takes Return's place and moves nothing."""
+    """Y flashes the row it copies, and d's ask stands on the line, tinting what it covers."""
     machine = desktop.machine
     # A second window, so dj has two to close and asks once for both,
     # where one closes at once.
@@ -350,6 +374,15 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         assert shown["question"] == "Close 2 windows? (y/n)", shown
         assert shown["questionWhole"], f"at {scale} the ask was cut: {shown}"
         assert shown["tinted"] == [0, 1], shown
+        # The rows it covers wear the tint alone, the find's wash giving
+        # way on each, and the line leads with no glyph, since it isn't a
+        # find while it asks.
+        laid = desktop_session.laid_out(desktop)
+        covered = [row for row in laid["rows"] if row["at"] in shown["tinted"]]
+        assert covered, f"at {scale} no covered row was drawn: {laid['rows']}"
+        assert not any(row["washed"] for row in covered), f"at {scale} washed {covered}"
+        leading = min(laid["field"], key=lambda word: word["x"])
+        assert leading["text"].startswith("Close"), f"at {scale} the line leads {leading}"
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
@@ -365,6 +398,118 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
 def changed_from(after: Image.Image, frame: Image.Image) -> float:
     """Say how far a picture is from another, as the mean of its differences' light."""
     return float(ImageStat.Stat(ImageChops.difference(frame, after).convert("L")).mean[0])
+
+
+def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Go into the key list's drawer at each of Joel's scales, move there, and photograph it.
+
+    Gone into, the drawer holds the keys: its frame takes the accent and its cursor's line the
+    rule in its left margin. Five lines down and four letters along, it's photographed with the
+    foot at the laptop's size, for a person to judge, and Space with the left arrow comes back.
+    """
+
+    def relisted() -> None:
+        closed_from_the_list(desktop)
+        listed_keys(desktop)
+
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        listed_keys(desktop)
+        # The arrow alone steps into the list's row, so the list is shown again.
+        pressed_until(
+            desktop, "spc right", lambda shown: shown["drawer"]["cursor"] is not None, relisted
+        )
+        line = int(desktop.showing()["drawer"]["cursor"]["line"])
+        pressed(desktop, "5 j l l l l")
+        desktop.launcher_until(partial(moved_to, line + 5))
+        drawn = desktop.showing()["drawer"]
+        assert drawn["keys"], f"at {scale} the drawer doesn't hold the keys: {drawn}"
+        assert drawn["cursor"]["rule"]["width"] > 0, f"at {scale} no rule: {drawn['cursor']}"
+        desktop.photograph(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
+        # The arrow alone moves the cursor a letter, which leaves nothing to put back.
+        pressed_until(
+            desktop,
+            "spc left",
+            lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"],
+            lambda: None,
+        )
+        closed_from_the_list(desktop)
+
+
+def pressed(desktop: Desktop, keys: str) -> None:
+    """Press each key QEMU names, held a moment, the next following at once."""
+    for key in keys.split():
+        desktop.machine.send_monitor_command(f"sendkey {key} {HELD_MS}")
+
+
+def pressed_until(
+    desktop: Desktop, keys: str, test: Callable[[Json], bool], again: Callable[[], None]
+) -> None:
+    """Press the keys and wait until the launcher passes the test, pressing them again if not.
+
+    Space waits Joel's 300 ms for the arrow, which a loaded builder has kept from the shell
+    longer, so a pair that came apart is pressed again once `again` puts back what the arrow
+    did alone.
+    """
+    for _ in range(TRIES - 1):
+        pressed(desktop, keys)
+        try:
+            desktop.launcher_until(test, TRIED)
+        except AssertionError:
+            print(f"{keys} came apart, the wait letting go between them: pressed again")
+            again()
+        else:
+            return
+    pressed(desktop, keys)
+    desktop.launcher_until(test)
+
+
+def closed_from_the_list(desktop: Desktop) -> None:
+    """Close the launcher with the key list shown, or not.
+
+    Escape puts the list away first, which changes nothing close_launcher waits on.
+    """
+    if desktop.showing()["listing"]:
+        desktop.machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
+    desktop.close_launcher()
+
+
+def listed_keys(desktop: Desktop) -> None:
+    """Open the launcher, and list its keys with Space ? in the drawer.
+
+    Space waits for ? as it does for an arrow, so a pair that came apart is pressed again in a
+    launcher opened afresh.
+    """
+
+    def opened() -> None:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.normal()
+
+    def reopened() -> None:
+        desktop.close_launcher()
+        opened()
+
+    opened()
+    pressed_until(
+        desktop,
+        "spc shift-0x35",
+        lambda shown: shown["listing"] and shown["drawer"]["out"],
+        reopened,
+    )
+
+
+def moved_to(below: int, shown: Json) -> bool:
+    """Say whether the drawer's cursor is on a line, four letters along or at its last."""
+    cursor = shown["drawer"]["cursor"]
+    return bool(
+        cursor is not None
+        and cursor["line"] == below
+        and cursor["letter"] == min(4, len(cursor["says"]) - 1)
+    )
 
 
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
@@ -438,7 +583,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
             later > earlier and on_the_pitch(later, earlier) for earlier, later in pairwise(facts)
         ), f"at {scale} a fact is off the pitch: {drawer}"
         # Its name is the title, so it isn't said again under it; every other name is whole;
-        # and what doesn't fit above the foot's inset waits for Shift and the arrows.
+        # and what doesn't fit above the foot's inset waits for the drawer's keys.
         assert "Name" not in drawer["drawnFacts"], drawer
         assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
         # Each fact is its name and its value on one line, or its name with its value under
@@ -555,6 +700,9 @@ def asked_in(desktop: Desktop, place: str, rows: set[str]) -> None:
         ),
         timeout=timedelta(seconds=60),
     )
+    # The folder he's in is always named, however little room the crumbs have.
+    drawn = desktop.showing()["pathDrawn"]
+    assert drawn[-1]["said"].endswith(place.rsplit("/", 1)[-1]), f"{place} isn't named: {drawn}"
 
 
 PICKED = {
@@ -649,16 +797,31 @@ def selected_is(shown: Json, name: str, side: str | None = None, told: str | Non
     )
 
 
-def marked_is_in_sight(shown: Json, scale: str) -> None:
-    """Hold Marked, b.md left in it, to its rows' order and its crumbs."""
+def gathered_is_in_sight(shown: Json, scale: str) -> None:
+    """Hold Gathered, a.md and d.md in it, to its rows' order and its crumbs."""
     rows = shown["rows"]
-    assert rows[-3:] == ["b.md", "Unmark All", "Copy the Paths"], rows
+    assert rows == ["a.md", "d.md", "Forget Them", "Copy the Paths"], rows
     # Its crumb is the place, and the program's ask and the place are said
     # whole, a folder's path giving way first where they don't fit.
-    assert shown["path"] == ["Open the Notes", "~/marking/more", "Marked"], shown["path"]
+    assert shown["path"][-1:] == ["Gathered"], shown["path"]
     whole = shown["pathWhole"]
     assert whole[0], f"at {scale} the program's ask is cut: {whole}"
     assert whole[-1], f"at {scale} the place is cut: {whole}"
+    # A step gives way at whole names, never cut inside one, and its mark
+    # keeps its own spacing, with no room left past the words before it
+    # (VKCF3Z, 2026-11-05: "~\u2026e" and a wide gap after it).
+    drawn = shown["pathDrawn"]
+    assert not any(step["cut"] for step in drawn), f"at {scale} a name is cut: {drawn}"
+    assert all(step["spare"] <= 1 for step in drawn), f"at {scale} a step leaves a gap: {drawn}"
+
+
+def ran(desktop: Desktop, line: str) -> None:
+    """Type a command on the launcher's line from normal, and wait until it's run."""
+    desktop.normal()
+    desktop.machine.send_chars(f":{line}")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == line)
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["command"] is None and shown["commandSaid"] == "")
 
 
 def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
@@ -682,7 +845,7 @@ def test_a_one_file_picker_asks_for_one_and_says_return_opens_it(
             asked_in(desktop, "~/one", {"a.md"})
             shown = desktop.showing()
             assert shown["hint"] == "open which file?", shown
-            assert "Open the Marked" not in shown["rows"], shown["rows"]
+            assert "Open the Gathered" not in shown["rows"], shown["rows"]
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-one-file-at-{scale.replace('.', '-')}")
@@ -739,17 +902,16 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
         desktop.as_account(f"rm -rf {folder}")
 
 
-def test_the_file_picker_says_whats_marked_and_what_return_does(
+def test_the_file_picker_gathers_files_and_says_what_return_opens(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Marking in the file picker says what Return does, and Open the Marked counts and lists."""
+    """:arga gathers files across folders, the foot and mode word say how many, :args lists."""
     machine = desktop.machine
-    folder = f"/home/{desktop.account}/marking"
+    folder = f"/home/{desktop.account}/gathering"
     chose = "/run/user/1000/portal-chose"
     desktop.as_account(
         f"mkdir -p {folder}/more && printf 'one\\n' > {folder}/a.md"
-        f" && printf 'two\\n' > {folder}/b.md"
-        f" && touch {folder}/c.md {folder}/more/d.md {folder}/more/e.md"
+        f" && printf 'two\\n' > {folder}/b.md && touch {folder}/more/d.md"
     )
     try:
         for scale in at_each_scale:
@@ -757,45 +919,34 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
             said = scale.replace(".", "-")
             machine.succeed(f"rm -f {chose}")
             desktop.as_account(
-                "systemd-run --user --collect --unit=choose-to-mark"
+                "systemd-run --user --collect --unit=choose-to-gather"
                 f" {desktop.values['choose_a_file']} open-several {folder}"
             )
-            asked_in(desktop, "~/marking", {"a.md", "b.md", "more"})
+            asked_in(desktop, "~/gathering", {"a.md", "b.md", "more"})
             assert desktop.showing()["hint"] == "open which files?", desktop.showing()
-            desktop.down_to("Open the Marked")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="none"))
-            assert not [key for key in desktop.showing()["selected"]["told"] if "\u21b5" in key], (
-                "with none marked, Open the Marked says a Return"
-            )
             desktop.down_to("a.md")
-            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
-            desktop.photograph(f"file-picker-nothing-marked-at-{said}")
-            for name in ["a.md", "b.md"]:
-                desktop.down_to(name)
-                machine.send_key("ret")
-                desktop.launcher_until(partial(selected_is, name=name, told="\u21b5 unmark"))
-            desktop.down_to("Open the Marked")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
-            desktop.launcher_until(
-                lambda shown: (shown["drawer"] or {}).get("eyebrow") == "2\u00a0marked"
-            )
-            desktop.photograph(f"file-picker-two-marked-at-{said}")
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
+            desktop.photograph(f"file-picker-nothing-gathered-at-{said}")
+            ran(desktop, "arga")
             desktop.down_to("more")
-            # The right arrow steps in from normal, where the walk stays from here.
             desktop.step_in()
-            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/marking/more"])
-            desktop.down_to("Open the Marked")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="2"))
-            desktop.photograph(f"file-picker-marked-elsewhere-at-{said}")
-            desktop.step_in()
-            desktop.launcher_until(lambda shown: "Unmark All" in shown["rows"])
-            desktop.down_to("a.md")
-            machine.send_key("ret")
-            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 mark"))
-            marked_is_in_sight(desktop.showing(), scale)
-            desktop.photograph(f"file-picker-inside-marked-at-{said}")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/gathering/more"])
+            desktop.down_to("d.md")
+            ran(desktop, "arga")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["placeSays"] == "2 gathered"
+                    and selected_is(shown, name="d.md", told="\u21b5 open 2")
+                )
+            )
+            desktop.photograph(f"file-picker-two-gathered-at-{said}")
+            ran(desktop, "args")
+            desktop.launcher_until(lambda shown: "Forget Them" in shown["rows"])
+            # The cursor stands on the first gathered, and Return still answers both.
+            desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
+            gathered_is_in_sight(desktop.showing(), scale)
+            desktop.photograph(f"file-picker-inside-gathered-at-{said}")
             machine.send_key("left")
-            desktop.launcher_until(partial(selected_is, name="Open the Marked", side="1"))
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")
@@ -806,13 +957,14 @@ def test_the_file_picker_says_whats_marked_and_what_return_does(
         desktop.as_account(f"rm -rf {folder}")
 
 
-# Each order the file picker lists in, what its Order row says of it, and
-# the files it lists so: a.md is the smallest and changed between, b.md the
-# largest and oldest, c.md between and newest, and the folder first in each.
+# Each :sort the file picker takes and the files it lists so: a.md is the
+# smallest and changed between, b.md the largest and oldest, c.md between
+# and newest, and the folder first in each, :sort! turning the files round.
 ORDERS = {
-    "Name": ("name", ["more", "a.md", "b.md", "c.md"]),
-    "Size": ("size, largest first", ["more", "b.md", "c.md", "a.md"]),
-    "Changed": ("changed, newest first", ["more", "c.md", "a.md", "b.md"]),
+    "sort size": ["more", "b.md", "c.md", "a.md"],
+    "sort!": ["more", "a.md", "c.md", "b.md"],
+    "sort changed": ["more", "c.md", "a.md", "b.md"],
+    "sort name": ["more", "a.md", "b.md", "c.md"],
 }
 
 
@@ -829,7 +981,7 @@ def listed_from_the_top(shown: Json, listed: list[str]) -> bool:
 def test_the_file_picker_lists_a_folder_in_the_order_chosen(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Order steps into Name, Changed and Size, and each lists the folder so, folders first."""
+    """:sort name, changed and size list the folder so, :sort! turned round, folders first."""
     machine = desktop.machine
     folder = f"/home/{desktop.account}/ordered"
     chose = "/run/user/1000/portal-chose"
@@ -847,26 +999,20 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
                 "systemd-run --user --collect --unit=choose-in-order"
                 f" {desktop.values['choose_a_file']} open {folder}"
             )
-            asked_in(desktop, "~/ordered", {"Order"})
-            for name in ["Size", "Changed", "Name"]:
-                side, listed = ORDERS[name]
-                desktop.down_to("Order")
-                # The right arrow steps in from normal, where the walk stays after the first.
-                desktop.step_in()
-                desktop.launcher_until(
-                    lambda shown: sorted(shown["rows"]) == ["Changed", "Name", "Size"]
-                )
-                if name == "Size":
-                    assert desktop.showing()["rows"] == ["Name", "Changed", "Size"], (
-                        "Order doesn't start on Name, the one in use first"
-                    )
-                    desktop.photograph(f"file-picker-inside-order-at-{said}")
-                desktop.down_to(name)
-                machine.send_key("ret")
+            asked_in(desktop, "~/ordered", {"a.md", "b.md", "c.md"})
+            assert "Order" not in desktop.showing()["rows"], desktop.showing()["rows"]
+            desktop.normal()
+            machine.send_chars(":sort ")
+            desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "sort ")
+            desktop.photograph(f"file-picker-sort-menu-at-{said}")
+            machine.send_key("ctrl-u")
+            machine.send_key("esc")
+            desktop.launcher_until(lambda shown: shown["command"] is None)
+            for line, listed in ORDERS.items():
+                ran(desktop, line)
                 desktop.launcher_until(partial(listed_from_the_top, listed=listed))
-                desktop.down_to("Order")
-                desktop.launcher_until(partial(selected_is, name="Order", side=side))
-                desktop.photograph(f"file-picker-by-{name.lower()}-at-{said}")
+                shot = line.replace(" ", "-").replace("!", "-turned")
+                desktop.photograph(f"file-picker-{shot}-at-{said}")
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:

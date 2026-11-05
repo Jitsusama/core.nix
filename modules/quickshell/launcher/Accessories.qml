@@ -52,6 +52,18 @@ Provider {
     readonly property var adapter: Bluetooth.defaultAdapter
     readonly property bool on: adapter !== null && adapter.enabled
 
+    // :set bluetooth, nobluetooth and bluetooth! turn it as its row does.
+    setOptions: adapter === null ? ({}) : ({
+        bluetooth: {
+            kind: "switch",
+            now: () => provider.on,
+            set: to => {
+                provider.adapter.enabled = to;
+                return "";
+            }
+        }
+    })
+
     collection: adapter === null ? null : Words.collection("bluetooth", {
         empty: on ? "Looking for devices\u2026" : "Bluetooth is off."
     })

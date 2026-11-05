@@ -55,6 +55,8 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
+import "SetWords.js" as SetWords
+import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -1216,14 +1218,15 @@ Scope {
     // their rows name them ("Agents, AI spend, Calls, Capture"), as many
     // whole as fit in `room` characters, but for one its own name already
     // says (Sound's Sound). Read from the vocabulary as home is made, so no
-    // answer is asked for it.
+    // answer is asked for it. Its typed commands are rows inside it but
+    // not named here: the words they start with read as stray lowercase
+    // words among the places (VKCF3Z, 2026-11-05: "Wi-Fi, Address, Speed,
+    // ip, is, split, mac").
     function holding(category, room) {
         const stands = standsOf(category);
         if (stands !== "")
             return stands;
-        const names = holdings(category).map(id => heldName(id)).filter(name => name !== "")
-            .concat(commandsIn(category).map(row => row.start.trim()
-                || row.key.replace(/^command:/, "")));
+        const names = holdings(category).map(id => heldName(id)).filter(name => name !== "");
         const own = (category.name ?? category.id).toLowerCase();
         return listed(names.filter(name => name.toLowerCase() !== own), room);
     }
@@ -1808,8 +1811,10 @@ Scope {
         // move the caret, so naming them there named keys that did nothing
         // of what was said (Joel, 2026-11-04). A secret's line has no
         // modes and its arrows only move the caret, as inputsecret()'s.
-        const into = prompt.modal && QueryKeys.binds("into", "Right", prompt.mode);
-        const out = prompt.modal && QueryKeys.binds("out", "Left", prompt.mode);
+        // On a prompt's words, as a save's name, they move its caret.
+        const arrows = prompt.modal && !prompt.editsWords;
+        const into = arrows && QueryKeys.binds("into", "Right", prompt.mode);
+        const out = arrows && QueryKeys.binds("out", "Left", prompt.mode);
         // One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
@@ -1821,10 +1826,15 @@ Scope {
             keys.push(["\u2192", ""]);
         if (out && typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
-        // The drawer's keys, only while it holds more than fits, keeping
-        // their word, since Shift and the arrows aren't the arrows alone.
-        if (choice === selected && drawerOut && drawerCard.more)
-            keys.push(["\u21e7\u2191\u2193", "scroll"]);
+        // Where the line holds a prompt's words, it says how to get to
+        // normal's keys and to the list of them, just before Return
+        // (VKCF3Z, 2026-11-05).
+        if (holdsWords) {
+            const said = Words.field.footKeys ?? {};
+            if (prompt.mode === "insert")
+                keys.push(["Esc", said.normal ?? ""]);
+            keys.push(["Space ?", said.keys ?? ""]);
+        }
         return keys;
     }
 
@@ -1852,10 +1862,10 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Return, then the widest key a row adds beside it, the drawer's
-    // scroll, wider than Shift+Return's "below".
+    // Return, then the widest key a row adds beside it, Shift+Return's
+    // "below".
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        ["\u21e7\u2191\u2193", "scroll"], ["\u2192", ""]]
+        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -1958,14 +1968,17 @@ Scope {
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
     // one with the way it goes whole ("log out", "put back", whose first
-    // word alone says nothing), anything else by its first word.
+    // word alone says nothing), a verb with how many it takes whole (the
+    // file picker's "open 2", which said "open" while it would answer two
+    // gathered files), anything else by its first word.
     readonly property var phrasal: ["in", "out", "back"]
 
     function oneWord(verb) {
         const said = verb.split(" ");
         if (said[0] === "turn" && said.length > 1)
             return said[said.length - 1];
-        return said.length === 2 && phrasal.includes(said[1]) ? verb : said[0];
+        return said.length === 2 && (phrasal.includes(said[1]) || /^\d+$/.test(said[1]))
+            ? verb : said[0];
     }
 
     // A chord as words, for the foot: its keys joined by +, those pressed
@@ -2290,15 +2303,21 @@ Scope {
     onListingChanged: drawerSettled()
 
     // The command line, the : line (CommandLine.qml), while it's open:
-    // { from, range, things, menu }, the mode : was pressed in, which
-    // Escape gives back, the range typed before it, the rows its acts act
-    // on, bound as : was pressed so a row arriving can't shift them, and
-    // its menu (Commands.js). Null while it's shut, so nothing of it is
-    // made until : is typed.
+    // { from, range, things, go, menu, options }, the mode : was pressed
+    // in, which Escape gives back, the range typed before it, the rows its
+    // acts act on, bound as : was pressed so a row arriving can't shift
+    // them, what :{n} does, its menu (Commands.js) and :set's options as
+    // they stood (standingOptions). Null while it's shut, so nothing of it
+    // is made until : is typed.
     property var commanding: null
-    // What Return on the line said went wrong, as Vim's command line says
-    // E492, standing in the line's place for the key that ran it alone.
+    // The lines Return ran, as Vim's history keeps them for :his and @:,
+    // the newest last (Commands.remembered).
+    property var commandEarlier: []
+    // What Return on the line said, standing in the line's place for the
+    // key that ran it alone: what went wrong, as Vim's command line says
+    // E492, or what it asked, as :set volume? says volume=40.
     property string commandSaid: ""
+    property bool commandFailed: false
     property int commandSaidFor: -1
     readonly property bool commandSays: commandSaid !== ""
         && commandSaidFor === prompt.keysTaken
@@ -2328,7 +2347,8 @@ Scope {
         const row = selected;
         const things = opening?.things ?? (row ? [row] : []);
         const one = things.length === 1 ? things[0] : null;
-        const acts = one ? actsOf(one) : [];
+        // A selection's acts are each of its things', listed once.
+        const acts = one ? actsOf(one) : [].concat(...things.map(thing => actsOf(thing)));
         // An act on the cursor row acts on the thing it's inside.
         const on = one && acts.length === 1 && acts[0] === one && held.length > 0
             ? [held[held.length - 1].row] : things;
@@ -2337,10 +2357,21 @@ Scope {
             from: prompt.mode,
             range: opening?.range ?? "",
             things: on,
+            // The rows as they stood, which a range binds to things.
+            rows: matches.slice(),
+            cursor: current,
+            marks: things.length > 1 ? { "<": matches.indexOf(things[0]),
+                ">": matches.indexOf(things[things.length - 1]) } : {},
             go: opening?.go ?? null,
-            menu: Commands.listed({ acts, surface: opening?.surface ?? [],
-                table: Commands.standIn, row: current + 1,
-                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words })
+            // Given no surface, the place stood in lists its own, as the
+            // file picker's folders give :sort and :cd (V3's interface).
+            menu: Commands.listed({ acts, surface: opening?.surface
+                ?? held[held.length - 1]?.row.commands?.() ?? [],
+                table: Options.commands, row: current + 1,
+                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
+                called: act => commandWords(act.key ?? ""), thing: one,
+                earlier: opening?.earlier ? commandEarlier : [] }),
+            options: standingOptions()
         };
     }
 
@@ -2412,34 +2443,161 @@ Scope {
         prompt.resume(to === "said" ? "normal" : to);
     }
 
+    // Whether a line of the menu is chosen, which takes the selection ground
+    // from the cursor row, raised beneath it, so the screen has one focal
+    // point (VKCF3Z, 2026-11-05); the row takes it back as the line closes.
+    readonly property bool commandChosen: (commandLoader.item?.chosenLine ?? null) !== null
+
+    // The command line's own keys, as the foot says them while it's open:
+    // Return and the command it runs, once one is typed or chosen, since
+    // Return on an empty line runs nothing, and Tab while nothing is chosen.
+    // Space ? isn't among them, since there Space types a space.
+    function commandKeys() {
+        const line = commandLoader.item;
+        if (!line)
+            return [];
+        const words = Words.field.command ?? {};
+        const keys = [];
+        if (line.text.trim() !== "") {
+            const read = Commands.ran(line.text, commanding?.menu ?? []);
+            keys.push(["\u21b5", read.entry?.command ?? words.run ?? ""]);
+        }
+        if (!commandChosen && line.shown.length > 0)
+            keys.push(["Tab", words.choose ?? ""]);
+        return keys;
+    }
+
     // What the drawer says while a line of the menu is chosen: what it
-    // acts on, "on Home-5G".
+    // acts on, "on Home-5G", or for the several a range or :g binds as
+    // typed, how many of the rows, "on 3 of 12".
     function commandPlate(line) {
         if (!commanding)
             return null;
-        const names = commanding.things.map(thing => thing.name ?? "").filter(name => name);
+        const aimed = commanding.things.map(thing => thing.name ?? "").filter(name => name);
         // Over a viewer, with nothing chosen, it names what it's aimed at.
-        if (!line && over !== null && names.length > 0)
-            return { title: names.join(", "), body: "" };
+        if (!line && over !== null && aimed.length > 0)
+            return { title: aimed.join(", "), body: "" };
         if (!line || (line.kind !== "act" && line.kind !== "surface"))
             return null;
+        const words = Words.field.command ?? {};
+        const read = Commands.ran(commandLoader.item?.text ?? "", commanding.menu);
+        const bound = read.error === undefined && read.go === undefined
+            ? commandBound(read, commanding) : { things: commanding.things };
+        const things = bound.things ?? commanding.things;
+        if (things.length > 1) {
+            return { title: line.title, body: String(words.onSome ?? "")
+                .replace("{some}", things.length).replace("{all}", commanding.rows.length) };
+        }
+        const names = things.map(thing => thing.name ?? "").filter(name => name);
         if (names.length === 0)
             return null;
-        const on = ((Words.field.command ?? {}).on ?? "on {things}")
-            .replace("{things}", names.join(", "));
-        return { title: line.title, body: on };
+        return { title: line.title, body: String(words.on ?? "").replace("{things}", names[0]) };
+    }
+
+    function commandSay(words, failed) {
+        if (words === "")
+            return;
+        commandSaid = words;
+        commandFailed = failed;
+        commandSaidFor = prompt.keysTaken;
+    }
+
+    // The options :set takes, by name, as the providers give them (each
+    // Provider's setOptions), and the theme's background, which only a
+    // switch of the system sets.
+    readonly property var setOptions: Object.assign({
+        background: { kind: "choice", values: ["light", "dark"], fixed: true,
+            now: () => Theme.appearance }
+    }, ...sources.map(source => source.setOptions ?? {}))
+
+    // An act's words for the line (words.json's command, argument, bang and
+    // range), by its key: a verb's id, or one made from it for each of
+    // several, as verb:sound-port-2 or verb:on:waiting:go:<id>, which reads
+    // the verb's own. Only a verb names a command; any other key has none.
+    function commandWords(key) {
+        let id = key;
+        while (id.startsWith("verb:")) {
+            const words = Words.of(id);
+            if (words.command !== undefined)
+                return words;
+            id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-")));
+        }
+        return {};
+    }
+
+    // The options as they stand as : is pressed, each read once, so the menu
+    // says where each stands without reading it again on every key: a
+    // display's brightness is read from a file, which moves the reader it
+    // shares, and read while the menu was worked out, that looped its
+    // binding.
+    function standingOptions() {
+        const standing = {};
+        for (const [name, option] of Object.entries(setOptions)) {
+            const now = option.now();
+            standing[name] = Object.assign({}, option, { now: () => now });
+        }
+        return standing;
+    }
+
+    // A named command's arguments, as a space after it lists them: :set's
+    // options, a surface command's own, or null for one that has none.
+    function commandArguments(entry, arg) {
+        if (entry.kind === "set")
+            return SetWords.setArguments(arg, commanding?.options ?? {});
+        return entry.kind === "surface" ? Commands.ownArguments(entry, arg) : null;
+    }
+
+    // :set's words, each set as its option's row would, or said as Vim's
+    // :set volume? says it; :set all says every one, in name order. The
+    // first word it can't take says Vim's error and none of them changes.
+    function commandSet(arg) {
+        const options = setOptions;
+        const read = SetWords.setting(arg, options);
+        if (read.error !== undefined) {
+            commandSay(read.error, true);
+            return;
+        }
+        const steps = read.changes.map(change => change.how === "show" ? { change }
+            : { change, to: SetWords.toward(change, options[change.option].now(),
+                options[change.option]) });
+        const refused = steps.find(step => step.to?.error !== undefined);
+        if (refused) {
+            commandSay(refused.to.error, true);
+            return;
+        }
+        const said = [];
+        for (const { change, to } of steps) {
+            if (to !== undefined) {
+                said.push(options[change.option].set(to.to));
+                continue;
+            }
+            const names = change.option === "all" ? Object.keys(options).sort()
+                : [change.option];
+            for (const name of names)
+                said.push(SetWords.shown(name, options[name].now(), options[name]));
+        }
+        commandSay(said.filter(words => words !== "").join("  "), false);
     }
 
     // Return on the line: exactly what's typed, as Commands.ran read it.
+    // From the drawer, :q closes its window, the keys back on the rows, as
+    // his Neovim's :q closes a split, and :{n} stays in it.
     function commandRan(read) {
         const opened = commanding;
-        // What went wrong is said where the line was, over a viewer too.
-        commandLeft(read.error ? "said" : "normal");
+        commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
+        // What went wrong is said where the line was, over a viewer too,
+        // and from the drawer the keys stay in it, as an error leaves his
+        // Neovim in the window it was typed in.
+        const drawn = opened.from === "page";
+        if (drawn)
+            commandLeft(read.error || read.go !== undefined ? "page" : "normal");
+        else
+            commandLeft(read.error ? "said" : "normal");
+        if (drawn && read.error === undefined && read.go === undefined
+            && read.entry.kind === "quit")
+            return;
         if (read.error !== undefined) {
-            if (read.error !== "") {
-                commandSaid = read.error;
-                commandSaidFor = prompt.keysTaken;
-            }
+            commandSay(read.error, true);
             return;
         }
         if (read.go !== undefined && opened.go) {
@@ -2465,9 +2623,25 @@ Scope {
         case "help":
             listing = true;
             return;
-        case "surface":
+        case "set":
+            commandSet(read.arg);
+            return;
+        case "history":
+            commandLine({ earlier: true });
+            return;
+        }
+        const bound = commandBound(read, opened);
+        if (bound.error !== undefined) {
+            commandSay(bound.error, true);
+            return;
+        }
+        if (entry.kind === "surface") {
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
-                things: opened.things, count: opened.things.length });
+                things: bound.things, count: bound.things.length });
+            return;
+        }
+        if (bound.things.length !== 1 || bound.things[0] !== opened.things[0]) {
+            commandAcross(entry, read, bound.things);
             return;
         }
         // An act that asks for a target or for words is stepped into, as
@@ -2479,7 +2653,73 @@ Scope {
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;
         }
-        run(act, false);
+        commandAsked(entry, [act], 1, read.bang, thing.name ?? "");
+    }
+
+    // Runs a line's acts on what it's bound to, asking once first where
+    // CommandBinding.asking says, through the one ask (askOnce), as the
+    // spec's Operators have it: y runs them past their own confirm, as a !
+    // does; n, Escape and Ctrl+C leave them be.
+    function commandAsked(entry, acts, all, bang, name) {
+        const words = Words.field.command ?? {};
+        const asked = CommandBinding.asking(entry, acts.length, all, bang);
+        const fill = template => {
+            const said = String(template ?? "").replace(/\{command\}/g, entry.command)
+                .replace("{some}", acts.length).replace("{all}", all)
+                .replace("{count}", acts.length).replace("{name}", name);
+            return said.charAt(0).toUpperCase() + said.slice(1);
+        };
+        if (asked.none) {
+            commandSay(fill(words.none), true);
+            return;
+        }
+        const sure = () => {
+            for (const act of acts)
+                run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
+        };
+        if (asked.ask !== "") {
+            askOnce(fill(words[asked.ask]), sure, () => {});
+            return;
+        }
+        if (bang) {
+            sure();
+            return;
+        }
+        for (const act of acts)
+            run(act, false);
+    }
+
+    // @:, the last line Return ran run again on the cursor row as it is
+    // now, or Vim's E30 where none has.
+    function commandAgain() {
+        const last = commandEarlier[commandEarlier.length - 1];
+        if (last === undefined) {
+            commandSay("E30: No previous command line", true);
+            return;
+        }
+        commandLine(null);
+        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }));
+    }
+
+    // The things a line acts on: those bound as : was pressed, or where a
+    // range or :g is typed, the rows it names as they stood then
+    // (CommandBinding.bound), so a row arriving after can't shift them.
+    function commandBound(read, opened) {
+        if ((read.range ?? null) === null && !read.global)
+            return { things: opened.things };
+        const bound = CommandBinding.bound(read, { names: opened.rows.map(row => String(row.name ?? "")),
+            cursor: opened.cursor, marks: opened.marks });
+        return bound.error !== undefined ? bound
+            : { things: bound.rows.map(at => opened.rows[at]) };
+    }
+
+    // A line run on several things, or on one a range or :g found: each
+    // thing's own act (CommandBinding.actFor), asked first where it asks.
+    function commandAcross(entry, read, things) {
+        const acts = things.map(thing => CommandBinding.actFor(entry, actsOf(thing),
+            act => commandWords(act.key ?? "")))
+            .filter(act => act !== undefined);
+        commandAsked(entry, acts, things.length, read.bang, things[0]?.name ?? "");
     }
 
     // Where the launcher is now, for a step into something to keep.
@@ -2962,6 +3202,26 @@ Scope {
 
     // Whether the step held holds its words in the line rather than a
     // find: then normal edits them, and its rows aren't narrowed by them.
+    // ZZ: the place stood in writes what it has to write, by its own :x, as
+    // a save dialog saves; with none, the launcher closes.
+    function xit() {
+        const own = held.length > 0 ? held[held.length - 1].row.commands?.() ?? [] : [];
+        const writes = own.find(one => one.command === "xit");
+        if (!writes) {
+            open = false;
+            return;
+        }
+        writes.run({ name: "xit", bang: false, arg: "", things: [], count: 0 });
+    }
+
+    // How the place stood in says it stands, in the mode word's room in
+    // normal, as the file picker's "2 gathered": read again as its rows
+    // are, since a place says it changed by asking for them again.
+    readonly property string placeSays: {
+        void matches;
+        return held.length > 0 ? held[held.length - 1].row.standing?.() ?? "" : "";
+    }
+
     readonly property bool holdsWords: held.length > 0
         && typeof held[held.length - 1].row.words === "function"
 
@@ -4202,6 +4462,12 @@ Scope {
             Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
     readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
         Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
+    // A quarter down; over a viewer low, its foot a twelfth of the screen
+    // up, as the lock screen sits, so the picture or the video its line
+    // acts on stays in view above it, as Vim's command line sits at the
+    // bottom.
+    readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
+        ? screenHere.height * 11 / 12 - card.height : screenHere.height / 4)
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -4224,6 +4490,7 @@ Scope {
             question: prompt.asking,
             takesAnswer: prompt.asking !== "" && Date.now() - prompt.askedAt >= prompt.wait,
             questionWhole: prompt.askedWhole,
+            placeSays: root.placeSays,
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -4235,7 +4502,9 @@ Scope {
                 line: commandLoader.item.text,
                 caret: commandLoader.item.caret,
                 chosen: commandLoader.item.choosing.at,
-                menu: commandLoader.item.shown.map(line => `${line.command} ${line.title}`),
+                menu: commandLoader.item.shown.map(line => (line.argument ?? "") === ""
+                    ? `${line.command} ${line.title}`
+                    : `${line.command} ${line.argument} ${line.title}`),
                 from: root.commanding?.from ?? "",
                 // The range it was opened with, as visual's '<,'>, and
                 // how many rows its acts act on.
@@ -4243,6 +4512,12 @@ Scope {
                 things: root.commanding?.things.length ?? 0,
                 // What it's aimed at over a viewer, whose rows aren't drawn.
                 over: root.over ? root.commanding.things.map(thing => thing.name) : null
+            },
+            // Where the card's top and foot sit on a screen this tall.
+            card: {
+                top: root.cardTop,
+                foot: root.cardTop + card.height,
+                screen: root.screenHere ? root.screenHere.height : 0
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
@@ -4281,6 +4556,9 @@ Scope {
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
             pathWhole: prompt.chipsWhole,
+            // How each step is drawn: its words, whether they're cut, and
+            // the room past them before the next step's mark.
+            pathDrawn: prompt.pathDrawn(),
             rows: root.matches.slice(0, 20).map(row => row.name),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
@@ -4391,6 +4669,23 @@ Scope {
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
+                // Whether it holds the keys, and its cursor while it does:
+                // its line, of how many, the letter along it, the words
+                // the line says and where the line is, down from the
+                // drawer's top, and where its rule is drawn, in from the
+                // drawer's left.
+                keys: drawerCard.keys,
+                frame: String(drawerCard.keys ? Theme.accent : Theme.edge),
+                cursor: drawerCard.block === null ? null : {
+                    line: drawerCard.cursor.line,
+                    lines: drawerCard.laid.length,
+                    letter: drawerCard.cursor.letter,
+                    on: drawerCard.block.letter,
+                    says: drawerCard.block.said,
+                    top: Math.round(Theme.border + drawerCard.block.y - drawerCard.scrolled),
+                    height: Math.round(drawerCard.block.height),
+                    rule: drawerCard.rule()
+                },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
                 at: Math.round(drawerCard.mapToGlobal(0, 0).x),
                 width: Math.round(drawerCard.width),
@@ -4755,8 +5050,7 @@ Scope {
         anchors.top: true
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.open && screen // qmllint disable unqualified
-            ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
+        margins.top: root.open ? root.cardTop - card.reach : 0 // qmllint disable unqualified
         margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
         implicitWidth: root.open
             ? root.width + root.drawerGap + root.drawerWidth + 2 * card.reach : 1
@@ -4805,7 +5099,8 @@ Scope {
             x: reach
             y: reach
             width: root.width
-            keys: true
+            // Its frame says the keys are here, unless the drawer holds them.
+            keys: prompt.mode !== "page"
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
@@ -4836,8 +5131,15 @@ Scope {
                         // open, and what it said went wrong for a key
                         // after; hidden by its light, so its focus stays.
                         opacity: root.commanding === null && !root.commandSays ? 1 : 0
+                        // From the drawer, :{n} and :$ go to its lines,
+                        // as they do in his Neovim's window; from visual,
+                        // the line takes the rows chosen.
                         onCommanded: range => root.commandLine(root.over
-                            ?? (root.visual ? { range, things: root.visualRows() } : { range }))
+                            ?? (prompt.mode === "page"
+                                ? { go: to => drawerCard.go(to === "$" ? "last" : "first",
+                                    to === "$" ? 0 : to) }
+                                : root.visual ? { range, things: root.visualRows() }
+                                : { range }))
                         steady: true
                         // Neovim's command line, opening in insert, but for
                         // a secret, which has no modes, as Vim's
@@ -4859,7 +5161,9 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        glyph: secret ? Theme.glyph.secret
+                        // An ask leads with nothing, since the line isn't a
+                        // find while it stands, its words where the find's are.
+                        glyph: root.asked !== null ? "" : secret ? Theme.glyph.secret
                             : thing ? thing.lead ?? thing.glyph : Theme.glyph.launcher
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
@@ -4955,38 +5259,42 @@ Scope {
                         confirming: root.asked !== null
                         asking: root.asked?.question ?? ""
                         onAnswered: key => root.answerAsk(key)
+                        // There's a drawer to go into while it's out with
+                        // words to sit on.
+                        drawerHere: root.drawerOut && drawerCard.lined
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        // The rows' keys, in either mode (QueryKeys.js). With
-                        // Shift, the arrows scroll the drawer instead, since
-                        // Page Up and Page Down page the list: the outer
-                        // column and the right hand's arrows, never the
-                        // little finger's Ctrl (Joel, 2026-11-02: "all of
-                        // those ctrl keys do not feel very vim to me").
-                        // Every other is a move, which QueryKeys.moved
+                        // The rows' keys, in either mode (QueryKeys.js).
+                        // Every one is a move, which QueryKeys.moved
                         // says the end of from the rows in view, as the
                         // list has them. Ctrl+D and Ctrl+U scroll the rows
                         // as far as they move the selection, so it keeps
                         // its place in view, as Vim's do.
+                        // In the drawer, every one is the drawer's: where
+                        // its cursor goes and its view with it.
                         onStepped: (act, count) => {
                             root.searchNow();
+                            if (mode === "page") {
+                                drawerCard.go(act, count);
+                                return;
+                            }
                             switch (act) {
+                            case "xit":
+                                root.xit();
+                                return;
                             case "close":
                                 root.open = false;
+                                return;
+                            case "commandAgain":
+                                root.commandAgain();
                                 return;
                             case "keys":
                                 root.listing = !root.listing;
                                 return;
                             case "lastPlace":
                                 root.toLastPlace();
-                                return;
-                            case "drawerUp":
-                                drawerCard.scroll(-1);
-                                return;
-                            case "drawerDown":
-                                drawerCard.scroll(1);
                                 return;
                             case "nextFile":
                                 root.beside(1);
@@ -5027,20 +5335,25 @@ Scope {
                         width: parent.width - 2 * Theme.inset
                         height: prompt.height
                         active: root.commanding !== null
-                        onLoaded: item.take()
+                        onLoaded: item.take(root.commanding?.range ?? "")
 
                         sourceComponent: CommandLine {
                             menu: root.commanding?.menu ?? []
+                            argued: (entry, arg) => root.commandArguments(entry, arg)
                             onRan: read => root.commandRan(read)
+                            // Let go from the drawer, the keys go back into
+                            // it however it was let go.
                             onLetGo: how => root.commandLeft(how === "dropped"
+                                || root.commanding?.from === "page"
                                 ? root.commanding?.from ?? "normal" : "normal")
                         }
                     }
 
-                    // What Return on the command line said went wrong,
-                    // in its place for the next key alone, as Vim's
-                    // command line says E492: the failed mark in the
-                    // alert, its words in text on the names' column.
+                    // What Return on the command line said, in its place
+                    // for the next key alone, as Vim's command line says
+                    // E492 or volume=40: its words in text on the names'
+                    // column, and for what went wrong the failed mark in
+                    // the alert.
                     Item {
                         x: Theme.inset
                         y: Theme.inset
@@ -5051,6 +5364,7 @@ Scope {
                         Text {
                             x: Theme.space.l
                             anchors.baseline: commandSaidText.baseline
+                            visible: root.commandFailed
                             text: Theme.glyph.failed
                             color: Theme.alert
                             font.family: Theme.level.figure.family
@@ -5388,7 +5702,14 @@ Scope {
                                 y: list.originY + list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 radius: Theme.inner
-                                color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                                // While the drawer holds the keys the row
+                                // stays marked, in the raised role rather
+                                // than the selection's, since the keys
+                                // aren't here: a mark, not a selection.
+                                color: root.commandChosen
+                                    ? Qt.alpha(Theme.raised, Theme.floating.opacity)
+                                    : Qt.alpha(prompt.mode === "page" ? Theme.raised
+                                        : Theme.selection, Theme.floating.selection)
                             }
 
                             delegate: Item {
@@ -5444,8 +5765,11 @@ Scope {
                                     selected: entry.index === root.current
                                     flashed: root.flashing[entry.index] === true
                                     tinted: root.tints(entry.index)
-                                    // Seen until the closing card has faded.
-                                    shown: card.opacity > 0
+                                    // Seen until the closing card has faded, and
+                                    // reading a long name on only while the keys
+                                    // are on the rows: with them in the drawer,
+                                    // only what they move moves.
+                                    shown: card.opacity > 0 && prompt.mode !== "page"
                                     fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
@@ -5468,12 +5792,18 @@ Scope {
                                     // letters take no wash.
                                     readonly property var matched: quiet ? []
                                         : root.matchedIn(entry.modelData)
+                                    // A row the ask covers wears the tint
+                                    // alone, the find's wash giving way, as
+                                    // it gives way to the flash (VKCF3Z).
+                                    readonly property bool covered: root.asked !== null
+                                        && root.askedOver.includes(entry.index)
                                     // A flashed row's name is plain in the
                                     // flash's ink, as a selected one is.
-                                    name: selected || quiet || flashed ? entry.modelData.name
+                                    name: selected || quiet || flashed || covered
+                                        ? entry.modelData.name
                                         : root.marked(entry.modelData, matched)
                                     plainName: entry.modelData.name
-                                    finds: Fuzzy.runs(matched)
+                                    finds: covered ? [] : Fuzzy.runs(matched)
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []
@@ -5545,7 +5875,9 @@ Scope {
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : prompt.asking !== "" ? [] : root.keysFor(choice)
+                            : prompt.asking !== "" ? []
+                            : root.commanding !== null ? root.commandKeys()
+                            : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []
@@ -5661,10 +5993,16 @@ Scope {
                             readonly property string pending: root.pendingSaid === "" ? ""
                                 : Operators.wholeWords(root.pendingSaid,
                                     text => measure.advanceWidth(text) <= width)
-                            // A line with no modes, as a secret's, names none.
+                            // A line with no modes, as a secret's, names none,
+                            // and nor does the command line, as his status line
+                            // shows none for it, whatever mode : came from (a
+                            // viewer's : opens it from insert; VKCF3Z). In
+                            // normal, which names none, the place stood in says
+                            // how it stands, as the file picker's "2 gathered".
                             readonly property string said: counted !== "" ? counted
                                 : pending !== "" ? pending
-                                : !prompt.modal ? ""
+                                : !prompt.modal || root.commanding !== null ? ""
+                                : prompt.mode === "normal" && root.placeSays !== "" ? root.placeSays
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see
@@ -5680,8 +6018,11 @@ Scope {
                                 void measure.font;
                                 const modes = Words.field.modes ?? {};
                                 const words = Object.values(modes);
-                                let widest = modes.visual === undefined ? 0
-                                    : measure.advanceWidth(`${modes.visual} \u00b7 999`);
+                                // What the place says widens it while it says
+                                // it, so it's read whole.
+                                let widest = Math.max(modes.visual === undefined ? 0
+                                    : measure.advanceWidth(`${modes.visual} \u00b7 999`),
+                                root.placeSays === "" ? 0 : measure.advanceWidth(root.placeSays));
                                 for (const word of words)
                                     widest = Math.max(widest, measure.advanceWidth(word));
                                 return words.length === 0 ? 0
@@ -5694,8 +6035,10 @@ Scope {
                             text: said
                             textFormat: Text.PlainText
                             // A mode's word is never cut; a count or an ex
-                            // line longer than the room keeps its last letters.
-                            elide: counted !== "" ? Text.ElideLeft : Text.ElideNone
+                            // line longer than the room keeps its last letters,
+                            // and what the place says its first.
+                            elide: counted !== "" ? Text.ElideLeft
+                                : said === root.placeSays ? Text.ElideRight : Text.ElideNone
                             color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
                         }
@@ -5852,6 +6195,9 @@ Scope {
             rowLines: root.rowLines
             out: root.drawerOut
             given: root.drawerShows
+            // Its frame says the keys are here while they're in it, gone in
+            // with Space and the right arrow.
+            keys: prompt.mode === "page"
         }
     }
 }

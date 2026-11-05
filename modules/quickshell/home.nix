@@ -110,6 +110,9 @@ let
     "CommandMenu.qml"
     "Commands.js"
     "Editing.js"
+    "SetWords.js"
+    "Ex.js"
+    "CommandBinding.js"
     "ListedKeys.js"
     "Typing.js"
     "Search.js"
@@ -117,6 +120,7 @@ let
     "Confirm.js"
     "KeyHints.qml"
     "Drawer.qml"
+    "DrawerPage.js"
     "Launcher.qml"
     "Choice.qml"
     "ReadsOn.qml"
@@ -1780,6 +1784,9 @@ in
           ${lib.concatLines (
             lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") colours
           )}
+              // Light text on dark or dark on light, as Vim's background
+              // says, set when the system is built.
+              readonly property string appearance: "${config.jitsusama.theme.appearance}"
               readonly property var mono: ${face font.mono.family type.mono}
               // The voice's face, set by its variable axes (font.variableAxes)
               // with its weight among them, each step sized by capitals. There's

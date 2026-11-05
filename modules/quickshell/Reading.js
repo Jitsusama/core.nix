@@ -63,40 +63,85 @@ function wholeItems(items, room, width) {
     return joined();
 }
 
-// Room shared among the path's steps, each given its whole `wanted` width
-// where it fits, else an even share of what the shorter leave. The steps
-// `yielding`, a folder's path, give way first, each down to `least`, so
-// the program's ask and the place he's in are cut only once the paths can
-// give no more (VKCF3Z, 2026-11-04).
-function sharedSteps(wanted, yielding, room, least) {
-    const given = wanted.slice();
-    const soft = [];
-    const hard = [];
-    for (let index = 0; index < wanted.length; index += 1) {
-        (yielding[index] ? soft : hard).push(index);
+// What stands for whatever a crumb leaves out.
+const FOLDED = "\u2026";
+
+// The ways a folder's path reads, longest first, each shorter than the
+// one before and each of whole folder names: whole, its middle folders
+// as one mark, all but its last folder as one, and the mark alone, but
+// for the place Joel is in, which keeps its last folder's name.
+function pathWays(path, width, here) {
+    const parts = path.split("/").filter((part, at) => part !== "" || at === 0);
+    const last = parts[parts.length - 1];
+    const ways = [path];
+    const candidates = parts.length > 2 ? [`${parts[0]}/${FOLDED}/${last}`] : [];
+    candidates.push(`${FOLDED}/${last}`);
+    if (!here) {
+        candidates.push(FOLDED);
     }
-    const firm = hard.reduce((sum, index) => sum + wanted[index], 0);
-    const softLeast = soft.reduce((sum, index) => sum + Math.min(wanted[index], least), 0);
-    if (firm + softLeast <= room) {
-        shareAmong(given, soft, room - firm);
-    } else {
-        for (const index of soft) {
-            given[index] = Math.min(wanted[index], least);
+    for (const way of candidates) {
+        if (width(way) < width(ways[ways.length - 1])) {
+            ways.push(way);
         }
-        shareAmong(given, hard, room - softLeast);
     }
-    return given;
+    return ways;
 }
 
-// Shares `room` out among the steps at `among`, in place in `given`: the
-// shortest first, each its whole or an even share of what's left.
-function shareAmong(given, among, room) {
-    let left = Math.max(0, room);
-    const order = among.slice().sort((one, other) => given[one] - given[other]);
-    order.forEach((index, done) => {
-        given[index] = Math.min(given[index], Math.floor(left / (order.length - done)));
-        left -= given[index];
-    });
+// The field's path, its steps given way at whole names so it fits `room`
+// with `between` beside each step after the first, never a piece of a
+// name (VKCF3Z, 2026-11-05: "~\u2026e"). A folder's path, a step that
+// `yields`, gives way first, a folder at a time; then the steps between
+// the first and the last fold into one mark, those nearest the first
+// going first; then the first says fewer words, or joins the mark. The
+// last, where Joel is, is said whole, or a folder's path there down to
+// its last folder. Gives what each drawn step
+// `said`, and whether each step is said `whole`.
+function crumbs(steps, room, width, between) {
+    if (steps.length === 0) {
+        return { said: [], whole: [] };
+    }
+    const wide = said => said.reduce((sum, text) => sum + width(text), 0)
+        + Math.max(0, said.length - 1) * between;
+    const ways = steps.map((step, at) => (step.yields
+        ? pathWays(step.text, width, at === steps.length - 1) : [step.text]));
+    const deepest = Math.max(...ways.map(way => way.length));
+    // Each step as it reads at `depth`, then with `folded` steps after the
+    // first folded into one mark, merged with a mark beside it.
+    const read = (depth, folded, first) => {
+        const texts = ways.map(way => way[Math.min(depth, way.length - 1)]);
+        if (first !== undefined) {
+            texts[0] = first;
+        }
+        const said = [];
+        const whole = [];
+        texts.forEach((text, at) => {
+            const fold = text === FOLDED || (at > 0 && at <= folded && at < texts.length - 1);
+            whole.push(!fold && text === steps[at].text);
+            if (!(fold && said[said.length - 1] === FOLDED)) {
+                said.push(fold ? FOLDED : text);
+            }
+        });
+        return { said, whole };
+    };
+    for (let depth = 0; depth < deepest; depth += 1) {
+        const tried = read(depth, 0);
+        if (wide(tried.said) <= room) {
+            return tried;
+        }
+    }
+    const least = deepest - 1;
+    for (let folded = 1; folded < steps.length - 1; folded += 1) {
+        const tried = read(least, folded);
+        if (wide(tried.said) <= room) {
+            return tried;
+        }
+    }
+    // The first step in fewer words, in the room the rest leave it.
+    const rest = read(least, steps.length - 2, "");
+    const others = rest.said.slice(1);
+    const left = room - wide(others) - (others.length > 0 ? between : 0);
+    const fewer = steps.length > 1 ? wholeWords(steps[0].text, left, width) : steps[0].text;
+    return read(least, steps.length - 2, fewer === "" ? FOLDED : fewer);
 }
 
 // Words too long for their room, given way at the last whole word that
