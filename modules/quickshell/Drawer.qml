@@ -346,6 +346,11 @@ Floating {
     // the cursor: its line, its letter along it, and how far along the
     // line it wants to be, which j and k go back to.
     property var laid: []
+    // The tops its view may scroll to, none cutting a line, worked out once
+    // its lines are laid or its end moves rather than for each key, which
+    // on a long page would spend half a key's budget (DrawerPage.js).
+    readonly property var wholeTops: Page.tops({ lines: laid, pitch: drawer.pitch,
+        end: Math.max(0, view.contentHeight - view.height) })
     property var cursor: ({ line: 0, letter: 0, want: 0 })
     // The search being typed in it, as the launcher's line holds it, and
     // the last one run, { pattern, forward }, which n and N go on with, as
@@ -596,6 +601,7 @@ Floating {
             end: Math.max(0, view.contentHeight - view.height),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
+            tops: wholeTops,
             xOf: (line, letter) => xOf(page[line], letter),
             letterAt: (line, x) => letterAt(page[line], x)
         });
@@ -646,6 +652,7 @@ Floating {
             end: Math.max(0, view.contentHeight - view.height),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
+            tops: wholeTops,
             xOf: (line, letter) => xOf(lettered[line], letter),
             letterAt: (line, x) => letterAt(lettered[line], x)
         };
@@ -663,6 +670,12 @@ Floating {
         return landed === null ? null : { at: landed.at, of: landed.of };
     }
 
+    // Whether the view's top cuts one of its lines partway, for the
+    // launcher to report; only lines laid while it holds the keys count.
+    function topCut() {
+        return keys && Page.cut({ lines: laid, pitch: drawer.pitch }, view.contentY);
+    }
+
     // The cursor put at a place, wanting its letter's place across, and the
     // view following it as a move's does.
     function standOn(at) {
@@ -674,7 +687,8 @@ Floating {
             height: view.height,
             end: Math.max(0, view.contentHeight - view.height),
             pitch: drawer.pitch,
-            off: drawer.scrolloff
+            off: drawer.scrolloff,
+            tops: wholeTops
         });
     }
     // o: the cursor to where visual began, which becomes where it is, as

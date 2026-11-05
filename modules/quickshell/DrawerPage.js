@@ -8,10 +8,10 @@
 // them out, in order; the
 // cursor's line and letter, and `want`, how far along the line it wants to
 // be, as Vim's curswant keeps the column j and k go back to; the view's top
-// and height, and `end`, the furthest its top goes; the pitch every line
-// lies on, which the view moves by so the drawer's lines stay on the
-// card's; `off`, the lines kept about the cursor, his scrolloff; and
-// `xOf(line, letter)` and `letterAt(line, x)`, which ask the drawn lines
+// and height, and `end`, the furthest its top goes; the pitch its body's
+// lines lie on, which keeps them on the card's rows; `off`, the lines kept
+// about the cursor, his scrolloff; `tops`, if it has them, the tops its
+// view may scroll to (tops, below); and `xOf(line, letter)` and `letterAt(line, x)`, which ask the drawn lines
 // where a letter is and which letter is nearest a place.
 .pragma library
 .import "Search.js" as Search
@@ -104,9 +104,71 @@ function sought(page, pattern, forward, count) {
     };
 }
 
-// A view's top, held within the page and on the pitch.
-function within(top, page) {
-    return Math.max(0, Math.min(top, page.end));
+// Whether a view's top cuts a line partway, which Vim's never does, its
+// topline always a whole line. An eyebrow or a title isn't a pitch tall,
+// so a pitch can fall inside one (VKCF3Z, 2026-11-05: "Deploy log" as
+// slivers at the top). A line's box holds its letters' descenders and no
+// more, so a top even two pixels inside one shows their tips; only half a
+// pixel, a box's rounding, is let go.
+function cut(page, top) {
+    return page.lines.some(line => top > line.top + 0.5 && top < line.top + line.height - 0.5);
+}
+
+// The tops a view may have: each on the pitch, so the drawer's lines stay
+// on the card's rows, that cuts no line (as cut judges), up to the first
+// at or past the page's end, so the last line shows whole too. One pass
+// down the rows and the lines in step, carrying the furthest any line
+// begun above a row reaches: a row is cut just when that lies below it.
+// A page that brings its own, as the drawer's does, worked out once its
+// lines are laid, is taken at its word: on two thousand lines the pass
+// takes some 2 ms, half a key's budget, where a look takes nothing.
+function tops(page) {
+    if (page.tops) {
+        return page.tops;
+    }
+    // The drawer lays its lines down the page in order, so they're sorted
+    // only when they come otherwise.
+    const ordered = page.lines.every((line, at) => at === 0
+        || page.lines[at - 1].top <= line.top);
+    const lines = ordered ? page.lines : page.lines.slice().sort((one, other) => one.top
+        - other.top);
+    let bottom = 0;
+    for (const line of lines) {
+        bottom = Math.max(bottom, line.top + line.height);
+    }
+    const all = [];
+    let next = 0;
+    let reach = -Infinity;
+    for (let top = 0; top <= Math.max(page.end, bottom); top += page.pitch) {
+        for (; next < lines.length && lines[next].top + 0.5 < top; next++) {
+            reach = Math.max(reach, lines[next].top + lines[next].height - 0.5);
+        }
+        if (reach <= top) {
+            all.push(top);
+            if (top >= page.end) {
+                break;
+            }
+        }
+    }
+    return all.length === 0 ? [0] : all;
+}
+
+// A view's top on a whole line's: going down, the first at or past where
+// it would be; going up, the last at or before it.
+function onLine(top, page, down) {
+    const all = tops(page);
+    if (down) {
+        return all.find(one => one >= top) ?? all[all.length - 1];
+    }
+    return all.filter(one => one <= top).pop() ?? 0;
+}
+
+// The view's top so many lines on from where it is, or back, never past
+// either end, as Vim scrolls by lines.
+function stepped(page, steps) {
+    const all = tops(page);
+    const at = Math.max(0, all.filter(one => one <= page.top).length - 1);
+    return all[Math.max(0, Math.min(at + steps, all.length - 1))];
 }
 
 // The view's top once it shows a line with room kept about it, from where
@@ -114,11 +176,10 @@ function within(top, page) {
 function shown(line, top, page) {
     const room = margin(page);
     if (line.top - room < top) {
-        return within(Math.floor((line.top - room) / page.pitch) * page.pitch, page);
+        return onLine(line.top - room, page, false);
     }
     if (line.top + line.height + room > top + page.height) {
-        return within(Math.ceil((line.top + line.height + room - page.height) / page.pitch)
-            * page.pitch, page);
+        return onLine(line.top + line.height + room - page.height, page, true);
     }
     return top;
 }
@@ -190,9 +251,9 @@ function moved(act, count, page) {
         want: page.want, top: shown(lines[line], top, page) });
     // To a line's start, as gg and G go.
     const toStart = line => ({ line, letter: 0, want: 0, top: shown(lines[line], page.top, page) });
-    // The view moved by so many pitches, the cursor carried within it.
-    const scrolled = pitches => {
-        const top = within(page.top + pitches * page.pitch, page);
+    // The view moved by so many lines, the cursor carried within it.
+    const scrolled = steps => {
+        const top = stepped(page, steps);
         const line = kept(page.line, page, top);
         return line === page.line ? Object.assign(still, { top }) : Object.assign(toLine(line,
             top), { top });
@@ -221,18 +282,18 @@ function moved(act, count, page) {
     case "halfDown":
     case "halfUp": {
         const down = act === "halfDown";
-        const pitches = (count > 0 ? count : Math.max(1, Math.floor(viewLines / 2)))
+        const steps = (count > 0 ? count : Math.max(1, Math.floor(viewLines / 2)))
             * (down ? 1 : -1);
-        const top = within(page.top + pitches * page.pitch, page);
-        const line = kept(lineFrom(page, lines[page.line].top + pitches * page.pitch, down),
+        const top = stepped(page, steps);
+        const line = kept(lineFrom(page, lines[page.line].top + steps * page.pitch, down),
             page, top);
         return Object.assign(toLine(line, top), { top: shown(lines[line], top, page) });
     }
     case "pageDown":
     case "pageUp": {
         const down = act === "pageDown";
-        const pitches = times * Math.max(1, viewLines - 2) * (down ? 1 : -1);
-        const top = within(page.top + pitches * page.pitch, page);
+        const steps = times * Math.max(1, viewLines - 2) * (down ? 1 : -1);
+        const top = stepped(page, steps);
         if (top === page.top) {
             return toLine(down ? last : 0, top);
         }

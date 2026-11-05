@@ -4698,6 +4698,9 @@ Scope {
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
+                // Whether the view's top cuts a line partway, which it never
+                // should, as Vim's topline is always a whole line.
+                cut: drawerCard.topCut(),
                 // Whether it holds the keys, and its cursor while it does:
                 // its line, of how many, the letter along it, the words
                 // the line says and where the line is, down from the
