@@ -579,8 +579,8 @@ QtObject {
         for (const [what, keys, want] of doing)
             holds(`on a prompt's words, ${what}`, wordsTyped(keys).acts, want);
         holds("cw leaves the line in insert", wordsTyped(["Escape", "c", "w"]).mode, "insert");
-        holds("on a find, u brings back what was cleared", typed(["Escape", "u"]).acts,
-            ["normal", "restore"]);
+        holds("on a find, u undoes nothing, since h never clears", typed(["Escape", "u"]).acts,
+            ["normal"]);
         holds("and w and x do nothing", typed(["Escape", "w", "x"]).acts, ["normal"]);
         holds("Ctrl+H deletes back in insert", typed(["Ctrl+h"]).acts, ["deleteBack"]);
         for (const act of ["wordNext", "wordBack", "wordEnd"])
@@ -1238,7 +1238,7 @@ QtObject {
         holds("n, N, p and u mean nothing in normal, and say so",
             typed(["Escape", "n", "N", "p", "u"]).idle, ["n", "N", "p", "u"]);
         holds("a key that ends what was begun means nothing, and says so",
-            typed(["Escape", "g", "x"]).idle, ["x"]);
+            typed(["Escape", "]", "x"]).idle, ["x"]);
         holds("a count, a sequence begun and a move each mean something",
             typed(["Escape", "3", "g", "g", "Space", "?"]).idle, []);
         holds("a letter on the find types, meaning nothing idle", typed(["n"]).idle, []);
