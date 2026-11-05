@@ -57,10 +57,11 @@ QtObject {
             ["a count before an arrow", ["3", "Down"], ["3down"]],
             ["and an arrow is a motion an operator takes", ["d", "Down"],
                 ["pending:done", "done:down"]],
-            ["l steps in and h, Backspace and - out", ["l", "h", "Backspace", "-"],
-                ["into", "out", "out", "out"]],
-            // Left and Right are h and l, which will mean nothing on the
-            // cards once Return goes in; until then they step nowhere.
+            // A card's acts are commands, never a row stepped into, so h, l,
+            // Backspace and - step nowhere (Joel, 2026-11-05: "where in vi
+            // does that step into shit?"), and Left and Right are h and l.
+            ["h, l, Backspace and - mean nothing on the cards", ["l", "h", "Backspace", "-"],
+                ["notHere", "notHere", "notHere", "notHere"]],
             ["and the side arrows say not here", ["Right", "Left"], ["notHere", "notHere"]],
             ["Return opens, as Enter", ["Return", "Enter"], ["open", "open"]],
             ["gg and G go to the newest and the oldest", ["g", "g", "G"], ["first", "last"]],
