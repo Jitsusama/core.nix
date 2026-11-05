@@ -563,7 +563,9 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     desktop.type_in("stop", selecting="Stop Recording")
     assert desktop.showing()["selected"]["side"] == "a video from the camera"
     since = desktop.mark()
-    # It stops as Return would, and the viewfinder takes the camera back.
+    # From the find, Return lands on it, since stopping changes how things stand, and the
+    # second stops it as Return would; the viewfinder takes the camera back.
+    desktop.land()
     with desktop.told("shows card Video saved", timeout=WAKING):
         machine.send_key("ret")
     machine.wait_until_fails(f"test -e {state}", timeout=timedelta(seconds=10))
