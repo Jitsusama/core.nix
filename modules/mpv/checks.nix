@@ -86,6 +86,7 @@ onLinux {
           launcher
           pkgs.jq
           pkgs.socat
+          (pkgs.callPackage ./command.nix { })
         ];
       }
       ''

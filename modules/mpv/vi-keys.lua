@@ -223,3 +223,73 @@ for key in pairs(bound) do
     pressed(key)
   end, { repeatable = held[key] or false })
 end
+
+-- A time as the command line takes it, 12:30 or 750, in seconds.
+local function seconds(time)
+  local n = '[%d.]+'
+  local whole = '^' .. n .. '$'
+  if not (time:match(whole) or time:match('^' .. n .. ':' .. n .. '$')
+    or time:match('^' .. n .. ':' .. n .. ':' .. n .. '$')) then
+    return nil
+  end
+  local total = 0
+  for part in time:gmatch('[^:]+') do
+    total = total * 60 + (tonumber(part) or 0)
+  end
+  return total
+end
+
+-- :set as Vim's is: a name to turn it on, no before it to turn it off, !
+-- after it to turn it over, and name=value, so :set pause and :set
+-- volume=40 are mpv's own properties.
+local function set(rest)
+  local name, value = rest:match('^([%w-]+)=(.*)$')
+  if rest == '' then
+    mp.osd_message(':set needs a name')
+  elseif name then
+    mp.commandv('set', name, value)
+  elseif rest:match('!$') then
+    mp.commandv('cycle', rest:sub(1, -2))
+  elseif rest:match('^no') and mp.get_property(rest) == nil then
+    mp.commandv('set', rest:sub(3), 'no')
+  else
+    mp.commandv('set', rest, 'yes')
+  end
+end
+
+-- What the launcher's command line asks of the video, by the command's
+-- whole name, whichever short form was typed, and the rest of what was
+-- typed: :set, a time to go to, as :12:30, :y and :q.
+local commands = {
+  set = set,
+  ['goto'] = function(rest)
+    local at = seconds(rest)
+    if at then
+      mp.commandv('seek', tostring(at), 'absolute')
+    else
+      mp.osd_message('No time ' .. rest)
+    end
+  end,
+  yank = function()
+    mp.command('script-binding copy_frame/copy')
+  end,
+  quit = close,
+}
+
+-- mpv-command (command.sh) carries each over mpv's socket, as a message
+-- to this script.
+mp.register_script_message('command', function(name, rest)
+  if commands[name] then
+    commands[name](rest or '')
+  else
+    mp.osd_message('No command ' .. name)
+  end
+end)
+
+-- The command line reaches this mpv over its socket: the one it was given,
+-- or one of its own, named for its process, so every mpv has one.
+local runtime = os.getenv('XDG_RUNTIME_DIR')
+if mp.get_property('input-ipc-server', '') == '' and runtime then
+  local pid = require('mp.utils').getpid()
+  mp.set_property('input-ipc-server', runtime .. '/mpv-' .. pid .. '.sock')
+end
