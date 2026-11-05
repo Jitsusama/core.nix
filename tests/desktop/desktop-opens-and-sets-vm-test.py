@@ -393,8 +393,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("Volume", "100%"))
     # Muted is one switch keeping its name: Return mutes the stream, the
     # launcher staying, and it says yes; the program's Sound says muted.
+    # Typed on the find, Return lands on it first.
     desktop.launcher_until(reads("Muted", "no"))
     desktop.type_in("muted", selecting="Muted")
+    desktop.land()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["open"] and reads("Muted", "yes")(shown))
     desktop.close_launcher()
@@ -1163,7 +1165,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("wifi off", selecting="Wi-Fi Off")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "turn off"))
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "off"))
     desktop.held_still(timedelta(seconds=2))
     machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
     machine.send_key("ret")

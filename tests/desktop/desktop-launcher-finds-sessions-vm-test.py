@@ -423,8 +423,7 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
-    # Talking sends words that can't be taken back, so from the find Return lands on it.
-    desktop.land()
+    # Stepping in left the find for normal, where Return talks at once.
     machine.send_key("ret")
     # The question goes to its inbox with what was answered, and the
     # launcher lands inside Lighthouse, where its talks say how each went.
