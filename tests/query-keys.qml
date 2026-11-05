@@ -508,6 +508,14 @@ QtObject {
             [Operators.heldFrom(named(["a", "c"]), "b", 1, keyOf),
                 Operators.heldFrom(named(["a"]), "b", 1, keyOf)], [1, 0]);
         holds("and none begun stays none", Operators.heldFrom(named(["a"]), "", -1, keyOf), -1);
+        // gv's last selection is held by its rows too, both ends, so rows
+        // changing between choosing and gv never hand d other rows.
+        const chosen = Operators.marked(named(["a", "b", "c"]), 1, 2, keyOf);
+        holds("gv brings back the rows chosen, a row having arrived above them",
+            Operators.reselected(named(["new", "a", "b", "c"]), chosen, keyOf),
+            { from: 2, at: 3 });
+        holds("and where one has gone, what's left of them",
+            Operators.reselected(named(["a", "c"]), chosen, keyOf), { from: 1, at: 1 });
 
         // Return over the selection opens the rows it can, and says how
         // many of how many where it couldn't open them all.
