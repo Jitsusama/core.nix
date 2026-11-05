@@ -10,7 +10,7 @@
 # Each wtype adds a keyboard of its own and takes it away as it ends, so
 # each one waits before typing for the reader to take the new keyboard.
 #
-# usage: reader-takes-its-keys.sh <file> <photo> <heading colour> <cursor> <cursor text>
+# usage: reader-takes-its-keys.sh <file> <photo> <heading colour> <cursor> <cursor text> <accent>
 #
 # The markdown a copy is held to holds backticks and dollars, meant as
 # themselves, so it's quoted whole in single quotes.
@@ -22,6 +22,7 @@ photo=$2
 strong=$3
 cursor=$4
 cursor_text=$5
+accent=$6
 : > said
 
 READER_KEYS_LOG=1 reader "$file" > said 2>&1 &
@@ -49,6 +50,12 @@ logged() {
 
 # Where the view's top was after the last key, in points.
 heading() { grep -a -E '^key ' said | tail -n 1 | sed -E 's/.*heading ([0-9.]+) pt/\1/'; }
+
+# Where the cursor was after the last key, in points.
+cursor() { grep -a -E '^cursor: ' said | tail -n 1 | sed -E 's/cursor: ([0-9.]+) pt/\1/'; }
+
+# Whether two places are a point apart at most.
+near() { awk "BEGIN { exit !($1 - $2 < 1 && $2 - $1 < 1) }"; }
 
 # Presses keys after the reader has taken wtype's keyboard. wtype puts a
 # space between separate words, so a sequence is one word: gg, not g g.
@@ -110,10 +117,28 @@ until grim "$photo" \
 done
 cp "$photo" at-rest.png
 
-# Copying at rest, and selecting. The page has no cursor, so y y copies
-# the first block wholly in view, the title, and y i p its paragraph, the
-# title and the lede after it with no blank line between, each as the
-# file's markdown, onto the clipboard, and flashes it for 200 ms.
+# How many pixels of a photo, left of the title's words, are `colour`.
+left_of_words() {
+  local box left
+  box=$(magick "$1" -fill black +opaque "$strong" -fill white -opaque "$strong" \
+    -format '%@' info:)
+  left=${box#*+}
+  left=${left%%+*}
+  magick "$1" -crop "${left}x100000+0+0" +repage -fill black +opaque "$2" \
+    -fill white -opaque "$2" -format '%[fx:round(mean*w*h)]' info:
+}
+
+# The cursor's line, at the top after gg, is marked by a rule in the
+# accent in the margin left of the words, where nothing else is.
+[ "$(left_of_words at-rest.png "$accent")" -gt 10 ] \
+  || fail "the margin holds $(left_of_words at-rest.png "$accent") pixels of the accent, not a rule"
+
+# Copying at rest, and selecting. The cursor is on the eyebrow over the
+# title, so y y copies the block it's over, the title, and y i p its
+# paragraph, the title and the lede after it with no blank line between,
+# each as the file's markdown, onto the clipboard, and flashes it for
+# 200 ms. y a p takes the blank line after it too, and y } the same
+# paragraph to its end.
 keys=$(how_many '^key ')
 act 1 yy
 copied '"# Every Key Neovim Has\n"'
@@ -126,6 +151,20 @@ until [ "$(wl-paste -n 2> /dev/null)" = '# Every Key Neovim Has' ]; do
 done
 act 1 yip
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
+act 1 yap
+copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n\n"'
+act 1 'y}'
+copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
+# j moves the cursor and not the view: two rows down, past the title, y y
+# copies the lede alone, a block of its own, and k and gg go back.
+act 1 2j
+act 1 yy
+copied '"Some of it is on [the second page](second.md).\n"'
+near "$(heading)" 0 || fail "j moved the view to $(heading) pt"
+act 1 k
+act 1 yy
+copied '"# Every Key Neovim Has\n"'
+act 1 gg
 
 # v starts on the first of the file's words in view, the title's, past
 # the eyebrow over it, and } goes on by paragraphs, to the line of words
@@ -158,10 +197,15 @@ shows '"bold"'
 act 1 y
 copied '"**bold**"'
 shows 'nothing'
+# Ending a selection leaves the cursor on its line, as Neovim's does, so
+# v starts there again, and each selection after starts from gg.
+act 1 v
+shows '"A"'
+act 1 -k Escape
 # m while selecting marks the cursor's line and keeps the selection, as
 # his Neovim's does, so ' and its letter at rest go to that line rather
 # than the view's top, where the page still is.
-act 4 'v}wiw'
+act 5 'ggv}wiw'
 act 1 ma
 shows '"bold"'
 act 1 -k Escape
@@ -174,7 +218,7 @@ shows '"bold start"'
 act 1 -M ctrl c -m ctrl
 copied '"**bold** start"'
 # $ goes to the line's end, b back by words, 0 to the line's start.
-act 4 'v}$iw'
+act 5 'ggv}$iw'
 shows '"."'
 act 1 b
 shows '"sentence."'
@@ -186,38 +230,38 @@ act 1 y
 copied '"A **bold** start, then `code` in a line. A second sentence."'
 # o swaps the ends, so 0 moves the other; { goes back to the
 # paragraph's start; Escape ends the selection.
-act 6 'v}wiwo0'
+act 7 'ggv}wiwo0'
 shows '"A bold"'
 act 1 -k Escape
 shows 'nothing'
-act 5 'v}wiw{'
+act 6 'ggv}wiw{'
 shows '"A b"'
 act 1 -k Escape
 # A count goes with a motion; i` takes a code span's words, and a` its
 # backticks and the space after them too, which the page doesn't show.
-act 3 'v}5w'
+act 4 'ggv}5w'
 act 1 'i`'
 shows '"code"'
 act 1 y
 copied '"code"'
-act 3 'v}5w'
+act 4 'ggv}5w'
 act 1 'a`'
 shows '"code "'
 act 1 y
 copied '"`code` "'
 # is and as take a sentence, as without and with the space after it; aw
 # a word with its space.
-act 4 'v}wis'
+act 5 'ggv}wis'
 shows '"A bold start, then code in a line."'
 act 1 as
 shows '"A bold start, then code in a line. "'
 act 1 y
 copied '"A **bold** start, then `code` in a line. "'
-act 4 'v}waw'
+act 5 'ggv}waw'
 shows '"bold "'
 act 1 -k Escape
 # The arrows extend as h, j, k and l do, the arrow first.
-act 4 'v}wiw'
+act 5 'ggv}wiw'
 act 1 -k Right
 shows '"bold "'
 act 1 l
@@ -236,16 +280,16 @@ act 1 -k Escape
 # V takes whole blocks, here the title to the line of words, as the
 # file's lines; on the code, a line of it; ip the code's paragraph, its
 # fences with it, and ap the blank line after it too.
-act 2 'V}'
+act 3 'ggV}'
 act 1 y
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n\nA **bold** start, then `code` in a line. A second sentence.\n"'
-act 5 'v}}iwV'
+act 6 'ggv}}iwV'
 act 1 y
 copied '"echo one\n"'
-act 4 'V}}ip'
+act 5 'ggV}}ip'
 act 1 y
 copied '"```sh\necho one\necho two\n```\n"'
-act 4 'v}}ap'
+act 5 'ggv}}ap'
 act 1 y
 copied '"```sh\necho one\necho two\n```\n\n"'
 # v again ends it, and V makes it a selection of blocks.
@@ -260,13 +304,13 @@ shows 'nothing'
 # one: $ stops where the page broke it, and 22e goes past the break to
 # its last word. Five } pass the title's paragraph, the one after it,
 # two code blocks and Part 1's heading.
-act 7 'v}}}}}iw'
+act 8 'ggv}}}}}iw'
 shows '"Paragraph"'
 act 1 '$'
 said=$(grep -a -E '^selected: ' said | tail -n 1)
 [[ $said != *somewhere* ]] || fail "the paragraph fits a line, so nothing wraps: $said"
 act 1 -k Escape
-act 8 'v}}}}}iw22e'
+act 9 'ggv}}}}}iw22e'
 whole='Paragraph 1 says enough to take a line or two of the page, so that every key here has somewhere to go'
 shows "\"$whole\""
 act 1 y
@@ -321,11 +365,21 @@ awk "BEGIN { exit !($(heading) < 100) }" || fail "the link went to $(heading) pt
 
 # The link near the top to another markdown file sets it in this window,
 # and Ctrl+O comes back to the place it left on the first, Ctrl+I goes on
-# to it again, and the file shown and its saves move with it. One line
-# down leaves a place to come back to while the link, the page's first
-# line under its heading, stays in view on any line the page is set on.
-press j
-logged '^key Down None' $((downs + 2))
+# to it again, and the file shown and its saves move with it. Ctrl+E
+# takes the view a line down, leaving a place to come back to while the
+# link, the page's first line under its heading, stays in view on any
+# line the page is set on, and Ctrl+Y back up and down again prove they
+# move the view alone, a line each.
+linked=$(heading)
+press -M ctrl e -m ctrl
+logged '^key ScrollDown None' 1
+lower=$(heading)
+awk "BEGIN { exit !($lower > $linked) }" || fail "Ctrl+E left the view at $lower pt"
+press -M ctrl y -m ctrl
+logged '^key ScrollUp None' 1
+near "$(heading)" "$linked" || fail "Ctrl+Y took the view to $(heading) pt, not $linked"
+press -M ctrl e -m ctrl
+logged '^key ScrollDown None' 2
 left=$(heading)
 press gx
 logged '^links: 1 in view' 2
@@ -346,12 +400,6 @@ logged '^saved: ' 1
 
 # How many lines the log holds matching `pattern`.
 seen() { grep -c -a -E "$1" said || true; }
-
-# Where the cursor was after the last key, in points.
-cursor() { grep -a -E '^cursor: ' said | tail -n 1 | sed -E 's/cursor: ([0-9.]+) pt/\1/'; }
-
-# Whether two places are a point apart at most.
-near() { awk "BEGIN { exit !($1 - $2 < 1 && $2 - $1 < 1) }"; }
 
 # [b goes back to the markdown file before this one in the folder, and ]b
 # on to the next, round its ends.
@@ -390,12 +438,9 @@ press '[['
 logged '^key HeadingBack None' 1
 
 # H, M and L put the cursor on the view's top, middle and bottom lines,
-# and zt puts the bottom one at the top; zz and zb place it too. The page
-# draws no cursor, so each flashes the line it's on.
-flashes=$(seen '^flash: 1 lines for 200 ms')
+# and zt puts the bottom one at the top; zz and zb place it too.
 press H
 logged '^key ViewTop None' 1
-logged '^flash: 1 lines for 200 ms' $((flashes + 1))
 high=$(cursor)
 press M
 logged '^key ViewMiddle None' 1

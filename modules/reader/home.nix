@@ -8,20 +8,25 @@
 # they were, and opens a file where it was last closed, marks and all.
 #
 # Its keys are Neovim's own, from the key language every surface of ours
-# speaks (../keys/language.toml), which the reader reads as it builds: j
-# and k a line, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen,
+# speaks (../keys/language.toml), which the reader reads as it builds. The
+# page has a cursor, as a help buffer has, its line marked by a thin rule
+# in the accent in the left margin: j and k move it a line as shown, the
+# view following four lines from its edge, Ctrl+E and Ctrl+Y move the view
+# alone, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a screen,
 # gg and G, { and } a paragraph, ]] and [[ a heading, H, M and L and zt, zz
 # and zb, % and N%, counts, / and ? to search with n and N, * and # for the
 # word here, marks, '' and Ctrl+O and Ctrl+I through the jumps, which a
 # move longer than a screen joins, g x to follow a link by its label and
 # Ctrl+] the one here, gf for the file a line names, ]b and [b to the
 # folder's next markdown file, gO for the headings as a list, :{n}, :q and
-# :noh, ZZ, Space w or :q to close, and Space ? or F1 for every key. v and
-# V select, from the first word in view, with the terminal's cursor, moved
+# :noh, ZZ, Space w or :q to close, and Space ? or F1 for every key. Each
+# search, heading, mark or jump puts the cursor on the line it lands on. v
+# and V select, from the cursor's line, with the terminal's cursor, moved
 # by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap
 # and i` for text objects and o for the other end; y or Ctrl+C copies the
-# selection as the file's markdown through wl-copy, and at rest y y and
-# y i p copy the first block in view, or its paragraph, each flashing what
+# selection as the file's markdown through wl-copy, and at rest y y, y i p,
+# y a p and y } copy the block the cursor is in, its paragraph, that and
+# the blank line after it, or on to the paragraph's end, each flashing what
 # it took for 200 ms, as his Neovim's yank does. q does nothing, since
 # nothing records. A link to another markdown
 # file sets it in the same window, as Neovim's gf, keeping the place on the
@@ -129,10 +134,10 @@ let
   keys = [
     (moving "down" "Down" "Down a line")
     (moving "down" "j" "Down a line")
-    (moving "scroll-down" "Ctrl+E" "Down a line")
+    (moving "scroll-down" "Ctrl+E" "The view down a line")
     (moving "up" "Up" "Up a line")
     (moving "up" "k" "Up a line")
-    (moving "scroll-up" "Ctrl+Y" "Up a line")
+    (moving "scroll-up" "Ctrl+Y" "The view up a line")
     (moving "half-down" "Ctrl+D" "Down half a screen")
     (moving "half-up" "Ctrl+U" "Up half a screen")
     (moving "screen-down" "Ctrl+F" "Down a screen")
@@ -172,7 +177,7 @@ let
     (searching "search-backward" "?" "Search up the page")
     (searching "next" "n" "On to the next match")
     (searching "previous" "N" "Back to the match before")
-    (selecting "select" "v" "Select from the first word in view")
+    (selecting "select" "v" "Select from the cursor's line")
     (selecting "select-lines" "V" "Select whole paragraphs, items and lines")
     (selecting "left" "Left" "A character left")
     (selecting "left" "h" "A character left")
@@ -194,8 +199,10 @@ let
     (objects "a-code" "a `" "The code, its backticks and a space")
     (copying "copy-selection" "y" "Copy the selection as markdown")
     (copying "copy-selection" "Ctrl+C" "Copy the selection as markdown")
-    (copying "copy" "y y" "Copy the first block in view")
-    (copying "copy-paragraph" "y i p" "Copy the paragraph in view")
+    (copying "copy" "y y" "Copy the block here")
+    (copying "copy-paragraph" "y i p" "Copy the paragraph here")
+    (copying "" "y a p" "Copy the paragraph and the blank line after it")
+    (copying "" "y }" "Copy to the paragraph's end")
     (page "" "Ctrl+Equal" "Larger")
     (page "" "Ctrl+Plus" "Larger")
     (page "" "Ctrl+Minus" "Smaller")

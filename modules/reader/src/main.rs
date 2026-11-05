@@ -128,8 +128,8 @@ fn cursor_marks() -> ([f32; 3], [f32; 3]) {
 /// How long a copy flashes what it took, as his Neovim's yank does
 /// (`vim.highlight.on_yank({ timeout = 200 })`).
 const FLASH: Duration = Duration::from_millis(200);
-/// Lines kept between a selection's cursor and the view's edge, as his
-/// Neovim's scrolloff.
+/// Lines kept between the cursor and the view's edge, as his Neovim's
+/// scrolloff.
 const SCROLL_OFF_LINES: f64 = 4.0;
 /// Bands asked for and not yet back, at most.
 const ASKED_AT_ONCE: usize = 8;
@@ -178,19 +178,21 @@ struct Incoming {
     opens: Option<std::path::PathBuf>,
 }
 
-/// A place on the jump list: a file, and how far down it, in points.
+/// A place on the jump list: a file, how far down it the view's top was,
+/// and the top of the cursor's line, in points.
 #[derive(Clone, Debug, PartialEq)]
 struct Spot {
     file: std::path::PathBuf,
     pt: f64,
+    aim: f64,
 }
 
 /// Where the view lands on a file opened in the window's place.
 enum Landing {
     /// A heading on it, by its anchor, as a link names one.
     Heading(String),
-    /// A place on the jump list, in points.
-    At(f64),
+    /// A place on the jump list: the view's top and the cursor's line's.
+    At(f64, f64),
     /// Where he was when he last left it, as the reader opens a file.
     Kept,
 }
@@ -377,7 +379,7 @@ struct App {
     jumps: Vec<Spot>,
     jump_at: usize,
     /// Where the last jump left from, for ''.
-    last_jump: Option<f64>,
+    last_jump: Option<Spot>,
     /// The page's lines, read off its frames for search; none until read.
     words: Option<Vec<text::Line>>,
     /// The file as last saved, drawing until it can take the page's place.
@@ -446,11 +448,14 @@ struct App {
     flash: Option<(Vec<text::Piece>, Instant)>,
     /// The selection's mark, then the cursor's, which is drawn over it.
     chosen: Option<[gl::Mark; 2]>,
-    /// The cursor's line's top, in points: a line the page never draws, as
-    /// vi keeps a cursor, where H, M and L, a landing or a match left it,
-    /// for zt, %, * and gf to act on. Until then, and once it's out of
-    /// view, it's the view's nearest line (moves.rs).
+    /// The cursor's line's top, in points, as a help buffer keeps a cursor:
+    /// where j and k, H, M and L, a landing or a match left it, for yy,
+    /// v, zt, %, * and gf to act on, and marked by a rule in the margin.
+    /// Until then, and once it's out of view, it's the view's nearest line
+    /// (moves.rs).
     aim: Option<f64>,
+    /// The rule's swatch, in the accent.
+    rule: Option<gl::Texture>,
     /// Whether the key being done put where it left from on the jump list,
     /// so a move longer than a screen that didn't is put there after.
     leapt: bool,
@@ -469,8 +474,13 @@ struct App {
     word_search: bool,
 }
 
-/// One line of the page's body text, what j and k move by.
+/// One line of the page's body text, what Ctrl+E and Ctrl+Y move by.
 const LINE_PT: f64 = page::PITCH_PT;
+
+/// A key's count as lines to move by: one when none was typed.
+fn count_of(count: Option<u32>) -> isize {
+    isize::try_from(count.unwrap_or(1)).unwrap_or(isize::MAX)
+}
 
 struct Measure {
     start: Option<Instant>,
@@ -756,15 +766,24 @@ impl App {
         self.jump_to(to);
     }
 
-    /// Puts a place, in points, on the jump list as the last jump's start.
+    /// Puts a place, in points, on the jump list as the last jump's start,
+    /// with the cursor's line where it is now.
     fn remember(&mut self, here: f64) {
-        self.jumps.truncate(self.jump_at);
-        self.jumps.push(Spot {
+        self.remember_at(here, self.cursor_pt());
+    }
+
+    /// Puts a place and the cursor's line there on the jump list as the
+    /// last jump's start.
+    fn remember_at(&mut self, here: f64, aim: f64) {
+        let spot = Spot {
             file: self.file.clone(),
             pt: here,
-        });
+            aim,
+        };
+        self.jumps.truncate(self.jump_at);
+        self.jumps.push(spot.clone());
         self.jump_at = self.jumps.len();
-        self.last_jump = Some(here);
+        self.last_jump = Some(spot);
         self.leapt = true;
     }
 
@@ -801,6 +820,58 @@ impl App {
             .map_or(pt, |(i, lines)| moves::top_of(&lines[i]));
         self.aim = Some(to);
         self.jump_to(to * self.px_per_pt());
+    }
+
+    /// j and k: the cursor `by` lines down, or up, by the lines shown, and
+    /// the view after it, keeping four lines between it and the edge it
+    /// goes toward, as his Neovim's scrolloff. Before the page's lines are
+    /// read there's no line to move to, so the view moves as they would.
+    fn step_cursor(&mut self, by: isize) {
+        let (top, _) = self.view_pt();
+        let Some((from, lines)) = self.words.as_deref().and_then(|lines| {
+            let shown = self
+                .cursor()
+                .or_else(|| lines.iter().position(|line| moves::top_of(line) >= top))?;
+            Some((shown, lines))
+        }) else {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "a count of lines, a few thousand at most"
+            )]
+            let by_px = by as f64 * LINE_PT * self.px_per_pt();
+            self.step_to(self.heading() + by_px);
+            return;
+        };
+        let to = &lines[moves::line_by(lines, from, by)];
+        let (top, foot) = (moves::top_of(to), moves::foot_of(to));
+        self.aim = Some(top);
+        self.follow_line(top, foot, Some(by > 0));
+    }
+
+    /// After the view moved without the cursor, as Ctrl+E, Ctrl+D and
+    /// Ctrl+F move it: the cursor, from its line `from_pt`, keeps to the
+    /// view, four lines inside each edge the page goes on past.
+    fn keep_cursor(&mut self, from_pt: f64) {
+        let Some(lines) = self.words.as_deref() else {
+            return;
+        };
+        let (top, foot) = self.view_pt();
+        let room = SCROLL_OFF_LINES * LINE_PT;
+        let top = if self.heading() > 0.5 {
+            top + room
+        } else {
+            top
+        };
+        let foot = if self.heading() < self.most() - 1.0 {
+            foot - room
+        } else {
+            foot
+        };
+        let kept = moves::kept_in(lines, top, foot, from_pt)
+            .or_else(|| moves::kept_in(lines, self.view_pt().0, self.view_pt().1, from_pt));
+        if let Some(i) = kept {
+            self.aim = Some(moves::top_of(&lines[i]));
+        }
     }
 
     /// Puts the cursor on a line: the view stays where the line shows
@@ -1584,9 +1655,10 @@ impl App {
     /// as a jump, or on another file, set in this one's place.
     fn revisit(&mut self, spot: Spot) {
         if !links::same(&spot.file, &self.file) {
-            self.open(spot.file, Landing::At(spot.pt));
+            self.open(spot.file, Landing::At(spot.pt, spot.aim));
             return;
         }
+        self.aim = Some(spot.aim);
         // Back on the file shown before another took its place: the other
         // is let go, and the reloader set on this one again.
         if self.following.take().is_some() {
@@ -1650,7 +1722,7 @@ impl App {
     /// Does what a key asks, `count` times where a count means anything.
     fn act(&mut self, act: keys::Act, count: Option<u32>) {
         use keys::Act;
-        let from_pt = self.heading() / self.px_per_pt();
+        let from = (self.heading() / self.px_per_pt(), self.cursor_pt());
         let screen_pt = self.screen_px() / self.px_per_pt();
         self.leapt = false;
         // The prompt stays while n and N go on, as Neovim's search count.
@@ -1683,7 +1755,7 @@ impl App {
                 self.after_view_moved(matches!(act, Act::Next | Act::Previous));
             }
         }
-        self.acted(act, count, from_pt, screen_pt);
+        self.acted(act, count, from, screen_pt);
     }
 
     /// Does what a key asks of the view, at rest or of one it moves while
@@ -1694,35 +1766,58 @@ impl App {
         let screen = self.screen_px();
         let line = LINE_PT * self.px_per_pt();
         let at = self.heading();
+        let here = self.cursor_pt();
+        // Ctrl+D and Ctrl+U take the cursor as far as the view, as vi's
+        // scroll option has it; Ctrl+E, Ctrl+Y, Ctrl+F and Ctrl+B leave it on
+        // its line while that stays in view.
+        let half = n * screen / 2.0;
         match act {
-            Act::Down | Act::ScrollDown => self.step_to(at + n * line),
-            Act::Up | Act::ScrollUp => self.step_to(at - n * line),
-            Act::HalfDown => self.jump_to(at + n * screen / 2.0),
-            Act::HalfUp => self.jump_to(at - n * screen / 2.0),
-            Act::ScreenDown => self.jump_to(at + n * screen),
-            Act::ScreenUp => self.jump_to(at - n * screen),
+            Act::Down => self.step_cursor(count_of(count)),
+            Act::Up => self.step_cursor(-count_of(count)),
+            Act::ScrollDown | Act::ScrollUp | Act::ScreenDown | Act::ScreenUp => {
+                let by = match act {
+                    Act::ScrollDown => n * line,
+                    Act::ScrollUp => -n * line,
+                    Act::ScreenDown => n * screen,
+                    _ => -n * screen,
+                };
+                if matches!(act, Act::ScrollDown | Act::ScrollUp) {
+                    self.step_to(at + by);
+                } else {
+                    self.jump_to(at + by);
+                }
+                self.keep_cursor(here);
+            }
+            Act::HalfDown | Act::HalfUp => {
+                let by = if act == Act::HalfDown { half } else { -half };
+                self.jump_to(at + by);
+                self.keep_cursor(here + by / self.px_per_pt());
+            }
             // gg and a count's G take the cursor to the view's top line, and G
             // alone to its bottom one, as vi's go to a line and to the last.
             Act::First => {
-                self.aim = None;
                 self.leap(count.map_or(0.0, |n| f64::from(n.saturating_sub(1)) * line));
+                self.aim = None;
             }
             Act::Last => {
-                self.aim = count.is_none().then_some(f64::INFINITY);
                 self.leap(count.map_or(f64::MAX, |n| f64::from(n.saturating_sub(1)) * line));
+                self.aim = count.is_none().then_some(f64::INFINITY);
             }
+            // A mark is the cursor's line, as vi's is, and going to it lands
+            // that line at the view's top, as a heading's link does.
             Act::SetMark(letter) => {
-                let here = at / self.px_per_pt();
                 self.marks.insert(letter, here);
             }
             Act::GoToMark(letter) => {
                 if let Some(&pt) = self.marks.get(&letter) {
-                    self.leap(pt * self.px_per_pt());
+                    self.remember(at / self.px_per_pt());
+                    self.land(pt);
                 }
             }
             Act::LastJump => {
-                if let Some(pt) = self.last_jump {
-                    self.leap(pt * self.px_per_pt());
+                if let Some(spot) = self.last_jump.clone() {
+                    self.leap(spot.pt * self.px_per_pt());
+                    self.aim = Some(spot.aim);
                 }
             }
             Act::JumpBack => {
@@ -1731,6 +1826,7 @@ impl App {
                         self.jumps.push(Spot {
                             file: self.file.clone(),
                             pt: at / self.px_per_pt(),
+                            aim: here,
                         });
                     }
                     self.jump_at -= 1;
@@ -1785,14 +1881,18 @@ impl App {
             | Act::Object(_)
             | Act::Copy
             | Act::CopyPiece
-            | Act::CopyParagraph => {}
+            | Act::CopyParagraph
+            | Act::CopyAParagraph
+            | Act::CopyToParagraphEnd => {}
             other => self.act_as_vi(other, count),
         }
     }
 
-    /// After a key: a move longer than a screen kept as a jump, and what
-    /// it did logged for the tests.
-    fn acted(&mut self, act: keys::Act, count: Option<u32>, from_pt: f64, screen_pt: f64) {
+    /// After a key: a move longer than a screen kept as a jump, from where
+    /// the view's top and the cursor's line were, and what it did logged for
+    /// the tests.
+    fn acted(&mut self, act: keys::Act, count: Option<u32>, from: (f64, f64), screen_pt: f64) {
+        let (from_pt, from_aim) = from;
         use keys::Act;
         // A move longer than a screen is a jump, as vi's are, however it
         // was made; going through the jumps never adds to them.
@@ -1804,16 +1904,17 @@ impl App {
             )
             && (to_pt - from_pt).abs() > screen_pt + 0.5
         {
-            self.remember(from_pt);
+            self.remember_at(from_pt, from_aim);
         }
         if keys_logged() {
-            // What it selected goes first, so it's there once the key is.
+            // What it selected and where the cursor is go first, so they're
+            // there once the key is.
             self.log_selection();
+            eprintln!("cursor: {:.1} pt", self.cursor_pt());
             eprintln!(
                 "key {act:?} {count:?}: heading {:.1} pt",
                 self.heading() / self.px_per_pt()
             );
-            eprintln!("cursor: {:.1} pt", self.cursor_pt());
             if matches!(
                 act,
                 Act::Next
@@ -1895,7 +1996,6 @@ impl App {
                     && let Some(i) = moves::line_in_view(lines, top, foot, which(act), times)
                 {
                     self.aim = Some(moves::top_of(&lines[i]));
-                    self.flash_cursor();
                 }
             }
             // With a count, zt goes to that line of the file, as vi's.
@@ -1927,7 +2027,6 @@ impl App {
                 };
                 if let Some(i) = line {
                     self.reach(i);
-                    self.flash_cursor();
                 }
             }
             Act::SameWordOn | Act::SameWordBack => self.same_word(act == Act::SameWordOn, times),
@@ -2628,6 +2727,7 @@ impl App {
         // over that, then the prompt over its foot.
         self.draw_marks(gl, screen);
         self.draw_selection(gl, screen);
+        self.draw_cursor_line(gl, screen);
         self.draw_labels();
         self.draw_over(screen);
         let Some(gl) = self.gl.as_ref() else { return };
@@ -2737,7 +2837,7 @@ impl App {
                 eprintln!("reader: no heading in {} is #{anchor}", file.display());
                 0.0
             }),
-            Landing::At(pt) => *pt,
+            Landing::At(pt, _) => *pt,
             Landing::Kept => match place::read(file) {
                 Some(kept) if kept.at_end => most_pt,
                 Some(kept) => place::pt_of(&place::starts(&page.frame), kept.block, kept.into_pt)
@@ -2833,7 +2933,8 @@ impl App {
         self.painter.take(incoming.page, incoming.version);
         if let Some(before) = before {
             let after = place::starts(&self.painter.page().frame);
-            for pt in self.marks.values_mut() {
+            // The cursor's line goes with its block too.
+            for pt in self.marks.values_mut().chain(self.aim.as_mut()) {
                 let (block, into_pt) = place::at(&before, *pt);
                 *pt = place::pt_of(&after, block, into_pt).unwrap_or(*pt);
             }
@@ -2849,8 +2950,17 @@ impl App {
             );
         }
         self.words = Some(incoming.lines);
+        // A jump back to another file puts the cursor back on its line.
+        let landed = self
+            .following
+            .as_ref()
+            .and_then(|following| match following.landing {
+                Landing::At(_, aim) => Some(aim),
+                _ => None,
+            });
         if let Some(file) = incoming.opens {
             self.shown_now(file);
+            self.aim = landed;
         }
         self.read_layout();
         self.refind();
@@ -3505,6 +3615,7 @@ impl WindowHandler for App {
                         .ok()
                         .zip(gl.chosen(selection_marks(), cursor_marks()).ok())
                         .map(|(a, b)| [a, b]);
+                    self.rule = gl.swatch(theme::get().accent.gl()).ok();
                     self.gl = Some(gl);
                 }
                 Err(error) => {
@@ -4068,6 +4179,7 @@ impl App {
             selection: None,
             flash: None,
             chosen: None,
+            rule: None,
             aim: None,
             leapt: false,
             commanding: None,
