@@ -387,6 +387,21 @@ grep -a -q -E '^search .*[1-9][0-9]* found' said || fail "/ found nothing"
 press n
 logged '^key Next None' 1
 
+# v after a search starts at its match, as Neovim's starts at the cursor's
+# character, which the search put there: here the page's one sentence,
+# halfway along its line.
+searches=$(how_many '^search Done ')
+press /sentence
+press -k Return
+logged '^search Done ' $((searches + 1))
+selected=$(how_many '^selected: ')
+press v
+logged '^selected: ' $((selected + 1))
+shows '"s"'
+press -k Escape
+logged '^selected: ' $((selected + 2))
+shows 'nothing'
+
 press ' ?'
 logged '^key ShowKeys None' 1
 rests=$(how_many '^key Rest None')
