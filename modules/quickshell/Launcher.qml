@@ -1926,16 +1926,17 @@ Scope {
         if (lands(choice))
             return [["\u21b5", ""]];
         // Going elsewhere keeps Return's own word, where it takes him.
-        const more = leadsElsewhere(choice) ? verbOf(choice) : "";
+        // Return going in says open, on the find and in normal alike, as
+        // oil's Return opens a folder, it being the one way in: stepping in
+        // has one word wherever it's done (1JQ9TO, 2026-11-05).
+        const more = leadsElsewhere(choice) ? verbOf(choice)
+            : ((Words.field.hints ?? {}).open ?? "");
         const stepping = stepsIn(choice) || stepsThing(choice);
         // Normal names its keys by letter and lowercase verb, from the
         // table that does them (the vi-paradigm spec's foot): - up, :
-        // commands and Space ?, the way to every key, always. Return going
-        // in says open there, as oil's Return opens a folder, it being the
-        // one way in; on the find its mark alone says it, so home's keys
-        // never take the battery's charge from the glance.
+        // commands and Space ?, the way to every key, always.
         if (prompt.modal && prompt.mode === "normal")
-            return normalKeys(choice, stepping, more || ((Words.field.hints ?? {}).open ?? ""));
+            return normalKeys(choice, stepping, more);
         // No arrow is named: where a line is typed they move its caret, and
         // nothing else steps by them (Joel, 2026-11-05). One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
