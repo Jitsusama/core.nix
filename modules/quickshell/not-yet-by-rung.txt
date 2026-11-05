@@ -9,5 +9,4 @@ quickshell/CommandMenu.qml
 quickshell/Drawer.qml
 quickshell/HeldNotices.qml
 quickshell/Launcher.qml
-quickshell/Notifications.qml
 quickshell/Prompt.qml
