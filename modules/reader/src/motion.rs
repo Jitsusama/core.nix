@@ -75,9 +75,28 @@ impl Jump {
     }
 }
 
+/// Whether a view at `view`, or the jump moving it, is at a page's end,
+/// the furthest down `most` its top may go. An empty page has no end to
+/// keep to. A jump on its way there counts, since that is where the keys
+/// sent the view, so a page that grows under it or a close before it lands
+/// still finds it at the end.
+pub fn at_end(view: f64, jump: Option<&Jump>, most: f64) -> bool {
+    most > 0.0 && jump.map_or(view, |jump| jump.to) >= most - 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_view_on_its_way_to_the_end_is_at_it() {
+        let down = Jump::new(0.0, 1000.0, 1800.0, Instant::now());
+        assert!(at_end(300.0, Some(&down), 1000.0));
+        let up = Jump::new(1000.0, 0.0, 1800.0, Instant::now());
+        assert!(!at_end(1000.0, Some(&up), 1000.0));
+        assert!(at_end(1000.0, None, 1000.0));
+        assert!(!at_end(0.0, None, 0.0));
+    }
 
     #[test]
     fn the_curve_starts_and_ends_where_it_should() {
