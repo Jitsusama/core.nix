@@ -273,23 +273,26 @@ fn source(ask: &Ask) -> String {
         Some((_, 0)) => String::new(),
         Some((at, all)) => format!("{at} of {all}"),
     };
+    // The cursor stands a fifth of an em under the baseline, as his
+    // terminal's block does, drawn in a box of no height, so it moves
+    // neither the line nor its baseline as it comes and goes.
     let cursor = if ask.cursor {
-        r"#box(width: 0.6em, height: 1.1em, baseline: 0.2em, fill: ink.strong)"
+        r"#box(width: 0.6em, place(left + bottom, dy: 0.2em, rect(width: 0.6em, height: 1.1em, fill: ink.strong, stroke: none)))"
     } else {
         ""
     };
     let width = ask.width_pt.max(290.0 + 72.0);
     // What's typed is his letters, at Figure, and raw, which Typst sets a
     // fifth smaller, so it's set back to its level's size; the count is a
-    // note.
+    // note. Both are one line, so they stand on one baseline, and the line
+    // is centred in the row by its largest capitals, the Figure's, as
+    // every line is (docs/design.md, The Ladder).
     format!(
         r#"{ink}#set page(width: {width}pt, height: {row}pt, margin: (x: {side}pt, y: 0pt), fill: ink.sunken)
 #let typing = (..level.figure.text, features: level.figure.text.features + ("calt",))
 #set text(..typing)
 #show raw: set text(..typing)
-#align(horizon, grid(columns: (1fr, auto),
-  [{lead}#raw({typed}){cursor}],
-  at(level.note, {count})))
+#align(horizon)[{lead}#raw({typed}){cursor}#h(1fr)#at(level.note, {count})]
 "#,
         ink = crate::theme::get().typst(),
         // Its words start where the page's measure does, as the window
@@ -789,6 +792,106 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// What a set page draws, in points from its top left: each run of
+    /// text as its left, baseline, advance and capitals' height, and each
+    /// rectangle as its left, top, width and height.
+    fn drawn(
+        frame: &typst::layout::Frame,
+        (dx, dy): (f64, f64),
+        texts: &mut Vec<[f64; 4]>,
+        rects: &mut Vec<[f64; 4]>,
+    ) {
+        for (place, item) in frame.items() {
+            let (x, y) = (dx + place.x.to_pt(), dy + place.y.to_pt());
+            match item {
+                typst::layout::FrameItem::Text(text) => texts.push([
+                    x,
+                    y,
+                    text.width().to_pt(),
+                    text.font.metrics().cap_height.at(text.size).to_pt(),
+                ]),
+                typst::layout::FrameItem::Shape(shape, _) => {
+                    if let typst::visualize::Geometry::Rect(size) = shape.geometry {
+                        rects.push([x, y, size.x.to_pt(), size.y.to_pt()]);
+                    }
+                }
+                typst::layout::FrameItem::Group(group) => drawn(
+                    &group.frame,
+                    (
+                        x + group.transform.tx.to_pt(),
+                        y + group.transform.ty.to_pt(),
+                    ),
+                    texts,
+                    rects,
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn the_prompts_row_sets_its_words_and_its_count_on_one_baseline() {
+        let ask = |mark: &'static str, typed: &str, cursor, count, note: &str| Ask {
+            serial: 1,
+            keys: false,
+            labels: Vec::new(),
+            outline: Vec::new(),
+            menu: None,
+            note: note.into(),
+            mark,
+            typed: typed.into(),
+            cursor,
+            count,
+            width_pt: 1080.0,
+            px_per_pt: 2.0,
+            page: crate::page::Width::WHOLE,
+        };
+        for (what, asked) in [
+            ("a search typed", ask("/", "stands", true, Some((1, 1)), "")),
+            (
+                "a search found",
+                ask("/", "stands", false, Some((1, 1)), ""),
+            ),
+            ("the command line", ask(":", "b", true, None, "Tab choose")),
+        ] {
+            let mut world = page::new_world();
+            world.set_main(&source(&asked));
+            let document = typst::compile::<PagedDocument>(&world)
+                .output
+                .unwrap_or_else(|errors| {
+                    panic!(
+                        "{:?}",
+                        errors
+                            .iter()
+                            .map(|e| e.message.to_string())
+                            .collect::<Vec<_>>()
+                    )
+                });
+            let (mut texts, mut rects) = (Vec::new(), Vec::new());
+            drawn(
+                &document.pages()[0].frame,
+                (0.0, 0.0),
+                &mut texts,
+                &mut rects,
+            );
+            assert!(texts.len() >= 2, "{what}: {texts:?}");
+            let baseline = texts[0][1];
+            assert!(
+                texts.iter().all(|[_, y, ..]| (y - baseline).abs() < 0.01),
+                "{what}: its words and count stand on {:?} pt, not one baseline",
+                texts.iter().map(|[_, y, ..]| *y).collect::<Vec<_>>()
+            );
+            // The largest level's capitals, the typed Figure's, are centred
+            // in the row.
+            let cap = texts.iter().map(|t| t[3]).fold(0.0, f64::max);
+            assert!(
+                (baseline - cap / 2.0 - ROW_PT / 2.0).abs() < 0.05,
+                "{what}: its capitals' middle is {} pt down a row of {ROW_PT}",
+                baseline - cap / 2.0
+            );
         }
     }
 
