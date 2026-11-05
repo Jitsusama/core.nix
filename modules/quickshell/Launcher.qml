@@ -1831,7 +1831,25 @@ Scope {
         return !!choice && prompt.modal && prompt.mode === "insert" && Catalogue.ends(choice);
     }
 
+    // The keys the foot names while the drawer holds them, where the row's
+    // Return and arrows do nothing: the way back to the rows (or, while
+    // choosing, back to the page), and the key list where it's bound there,
+    // each as the table first names it (VKCF3Z, 2026-11-05: a lone Return
+    // in the drawer named a key that did nothing).
+    function drawerKeys(mode) {
+        const words = Words.field.drawer ?? {};
+        const named = act => QueryKeys.table.find(one => one.act === act
+            && QueryKeys.inMode(one, mode));
+        const back = named(QueryKeys.chosen(mode) ? "back" : "rows");
+        const list = named("keys");
+        return [back ? [ListedKeys.sequenceFace(back.keys[0]), words.back ?? ""] : null,
+            list ? [ListedKeys.sequenceFace(list.keys[0]), words.keys ?? ""] : null]
+            .filter(key => key !== null);
+    }
+
     function keysFor(choice) {
+        if (QueryKeys.paged(prompt.mode))
+            return drawerKeys(prompt.mode);
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
@@ -1935,6 +1953,10 @@ Scope {
     function noteKeys() {
         const rows = asking ? matches.concat([asking]) : matches;
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
+        // Room for the drawer's own only once the keys have gone in, so
+        // the rows' foot never gives up room to keys they don't show.
+        if (QueryKeys.paged(prompt.mode))
+            said.push(drawerKeys(prompt.mode));
         const place = Math.max(footReturnWidest,
             ...said.map(keys => measure.advanceWidth(saidKey(keys[0]))));
         if (place > footReturnWidest)
@@ -2004,6 +2026,12 @@ Scope {
         noteFigures();
     }
     onAskingChanged: noteKeys()
+    Connections {
+        target: prompt
+        function onModeChanged() {
+            root.noteKeys();
+        }
+    }
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
@@ -2628,7 +2656,7 @@ Scope {
         // What went wrong is said where the line was, over a viewer too,
         // and from the drawer the keys stay in it, as an error leaves his
         // Neovim in the window it was typed in.
-        const drawn = opened.from === "page";
+        const drawn = QueryKeys.paged(opened.from);
         if (drawn)
             commandLeft(read.error || read.go !== undefined ? "page" : "normal");
         else
@@ -4424,8 +4452,8 @@ Scope {
     // and gives it back as they come out.
     readonly property bool drawerOver: !!screenHere
         && screenHere.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
-    // Whether the keys are in the drawer.
-    readonly property bool drawerHolds: prompt.mode === "page"
+    // Whether the keys are in the drawer, choosing in it or not.
+    readonly property bool drawerHolds: QueryKeys.paged(prompt.mode)
     // The room beside the card the surface holds for the drawer.
     readonly property real drawerBeside: drawerOver ? 0 : drawerGap + drawerWidth
     readonly property real drawerWidth: !screenHere ? 0 : drawerOver ? width
@@ -4660,6 +4688,25 @@ Scope {
                     top: Math.round(Theme.border + drawerCard.block.y - drawerCard.scrolled),
                     height: Math.round(drawerCard.block.height),
                     rule: drawerCard.rule()
+                },
+                // Its search: what's being typed, the last run, what's
+                // washed, and "wrapped" or "missing" for where it landed.
+                search: {
+                    typing: drawerCard.seeking,
+                    last: drawerCard.lastSought ? drawerCard.lastSought.pattern : "",
+                    washing: drawerCard.washing,
+                    landing: drawerCard.landing
+                },
+                // Its visual: what it chooses by, "letters" or "lines", or
+                // ""; each line it takes, [line, from, to]; how many the
+                // mode word counts; what y copied last, and whether it's
+                // flashing what it took.
+                chosen: {
+                    by: drawerCard.choosing,
+                    taken: drawerCard.taken.map(one => [one.line, one.from, one.to]),
+                    count: drawerCard.chosenCount,
+                    copied: drawerCard.copied,
+                    flashing: drawerCard.choosing === "" && drawerCard.flashing.length > 0
                 },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
                 cardWidth: Math.round(card.width),
@@ -5075,7 +5122,7 @@ Scope {
             y: reach
             width: root.width
             // Its frame says the keys are here, unless the drawer holds them.
-            keys: prompt.mode !== "page"
+            keys: !QueryKeys.paged(prompt.mode)
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
@@ -5110,7 +5157,7 @@ Scope {
                         // From the drawer, :{n} and :$ go to its lines,
                         // as they do in his Neovim's window.
                         onCommanded: range => root.commandLine(root.over
-                            ?? (prompt.mode === "page"
+                            ?? (QueryKeys.paged(prompt.mode)
                                 ? { go: to => drawerCard.go(to === "$" ? "last" : "first",
                                     to === "$" ? 0 : to) }
                                 : { range }))
@@ -5236,23 +5283,38 @@ Scope {
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
+                        // A search run in the drawer puts its cursor on
+                        // the match.
+                        onSought: (pattern, forward, count) =>
+                            drawerCard.seek(pattern, forward, count)
                         // The highest the selection goes: an answer's headline,
                         // or the row a step's line holds, sits above the rows,
                         // at -1.
                         readonly property int highest: (root.answer && !root.parted(root.answer))
                             || root.lineHeads ? -1 : 0
                         // The rows' keys, in either mode (QueryKeys.js).
-                        // Every one is a move, which QueryKeys.moved
+                        // Every one is a move, which Operators.moved
                         // says the end of from the rows in view, as the
                         // list has them. Ctrl+D and Ctrl+U scroll the rows
                         // as far as they move the selection, so it keeps
                         // its place in view, as Vim's do.
                         // In the drawer, every one is the drawer's: where
-                        // its cursor goes and its view with it.
+                        // its cursor goes and its view with it, n and N
+                        // going on with its search, and o, gv and y its
+                        // visual's, y's copy going on the clipboard.
                         onStepped: (act, count) => {
                             root.searchNow();
-                            if (mode === "page") {
-                                drawerCard.go(act, count);
+                            if (QueryKeys.paged(mode)) {
+                                if (act === "seekNext" || act === "seekPrevious")
+                                    drawerCard.seekOn(act, count);
+                                else if (act === "otherEnd")
+                                    drawerCard.otherEnd();
+                                else if (act === "reselect")
+                                    drawerCard.reselect();
+                                else if (act === "copy" || act === "copyLines")
+                                    Quickshell.clipboardText = drawerCard.copy(act === "copyLines");
+                                else
+                                    drawerCard.go(act, count);
                                 return;
                             }
                             switch (act) {
@@ -5282,7 +5344,7 @@ Scope {
                                 return;
                             }
                             const view = list.inView();
-                            const to = QueryKeys.moved(act, count, {
+                            const to = Operators.moved(act, count, {
                                 at: root.current,
                                 highest,
                                 last: root.matches.length - 1,
@@ -5316,11 +5378,13 @@ Scope {
                             menu: root.commanding?.menu ?? []
                             argued: (entry, arg) => root.commandArguments(entry, arg)
                             onRan: read => root.commandRan(read)
-                            // Let go from the drawer, the keys go back into
-                            // it however it was let go.
-                            onLetGo: how => root.commandLeft(how === "dropped"
-                                || root.commanding?.from === "page"
-                                ? root.commanding?.from ?? "normal" : "normal")
+                            // Let go from the drawer, the keys go back onto
+                            // its page however it was let go, choosing
+                            // nothing, as Vim's visual ends at its : line.
+                            onLetGo: how => root.commandLeft(
+                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                : how === "dropped" ? root.commanding?.from ?? "normal"
+                                : "normal")
                         }
                     }
 
@@ -5686,7 +5750,7 @@ Scope {
                                 // aren't here: a mark, not a selection.
                                 color: root.commandChosen
                                     ? Qt.alpha(Theme.raised, Theme.floating.opacity)
-                                    : Qt.alpha(prompt.mode === "page" ? Theme.raised
+                                    : Qt.alpha(QueryKeys.paged(prompt.mode) ? Theme.raised
                                         : Theme.selection, Theme.floating.selection)
                             }
 
@@ -5747,7 +5811,7 @@ Scope {
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
                                     // only what they move moves.
-                                    shown: card.opacity > 0 && prompt.mode !== "page"
+                                    shown: card.opacity > 0 && !QueryKeys.paged(prompt.mode)
                                     fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
@@ -5957,23 +6021,34 @@ Scope {
                         // moving anything else.
                         // In normal, a count typed before a move stands in
                         // its place until the move, as Neovim's showcmd
-                        // shows it, in the strong ink of what's typed, its
-                        // last figures where it's longer than the room. The
-                        // command line says its own, in the line's place.
+                        // shows it, and a drawer's search after its / or ?
+                        // until its Return, as Neovim's command line shows
+                        // one, each in the strong ink of what's typed, their
+                        // last letters where they're longer than the room.
+                        // The command line says its own, in the line's place.
                         Text {
                             id: modeWord
 
-                            readonly property string counted: prompt.standing.count
+                            readonly property string counted: prompt.standing.seek
+                                ? `${prompt.standing.seek.forward ? "/" : "?"}`
+                                    + prompt.standing.seek.pattern
+                                : prompt.standing.count
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
                             // viewer's : opens it from insert; VKCF3Z). In
                             // normal, which names none, the place stood in says
                             // how it stands, as the file picker's "2 gathered".
+                            // Visual in the drawer counts what it's chosen,
+                            // "visual line \u00b7 3", as the spec's mode word.
+                            readonly property string word: (Words.field.modes ?? {})[prompt.mode]
+                                ?? ""
                             readonly property string said: counted !== "" ? counted
                                 : !prompt.modal || root.commanding !== null ? ""
                                 : prompt.mode === "normal" && root.placeSays !== "" ? root.placeSays
-                                : (Words.field.modes ?? {})[prompt.mode] ?? ""
+                                : QueryKeys.chosen(prompt.mode)
+                                    ? `${word} \u00b7 ${drawerCard.chosenCount}`
+                                : word
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see
                             // what a call reads, so it reads the face itself,
@@ -5982,13 +6057,15 @@ Scope {
                             // insert showed as its last letters at scale 2.
                             readonly property real room: {
                                 void measure.font;
-                                const words = Object.values(Words.field.modes ?? {});
+                                const modes = Words.field.modes ?? {};
+                                const words = Object.values(modes);
                                 // What the place says widens it while it says
                                 // it, so it's read whole.
                                 let widest = root.placeSays === "" ? 0
                                     : measure.advanceWidth(root.placeSays);
-                                for (const word of words)
-                                    widest = Math.max(widest, measure.advanceWidth(word));
+                                for (const [mode, word] of Object.entries(modes))
+                                    widest = Math.max(widest, measure.advanceWidth(word
+                                        + (QueryKeys.chosen(mode) ? " \u00b7 999" : "")));
                                 return words.length === 0 ? 0
                                     : keys.spacing + Math.ceil(widest);
                             }
@@ -6162,7 +6239,13 @@ Scope {
             given: root.drawerShows
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.
-            keys: prompt.mode === "page"
+            keys: QueryKeys.paged(prompt.mode)
+            // The search being typed on the line, washed as it's typed.
+            seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
+            // Visual in it, by its kind, and y's flash, as long as the rows'.
+            choosing: prompt.mode === "pageVisual" ? "letters"
+                : prompt.mode === "pageVisualLine" ? "lines" : ""
+            flashFor: Options.keyTiming["yank-flash"]
         }
     }
 }

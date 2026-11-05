@@ -8,6 +8,10 @@
 //! eras and rokuyō. The Islamic calendar is Umm al-Qura's, Saudi Arabia's
 //! civil calendar, reckoned from its published months rather than from a
 //! sighting.
+//!
+//! The Hebrew and Islamic days begin at sunset, so where the day is asked
+//! from, it says when the sun sets there (sun.rs) and those calendars'
+//! dates from then, for the shell to say whichever is now's.
 
 use icu_calendar::cal::{ChineseTraditional, Hebrew, Hijri, Japanese};
 use icu_calendar::types::{LeapStatus, RataDie};
@@ -17,6 +21,8 @@ use icu_datetime::fieldsets::{D, M, MD, Y, YMD};
 use icu_locale::Locale;
 use serde::{Deserialize, Serialize};
 use zlink::introspect::CustomType;
+
+use crate::sun::{self, Sunset};
 
 /// Which calendar a date is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, CustomType)]
@@ -51,20 +57,45 @@ pub struct Calendar {
     pub latin: String,
     pub native: String,
     pub figures: Vec<Figure>,
+    /// Whether its day begins at sunset rather than at midnight, as the
+    /// Hebrew and the Islamic do.
+    pub from_sunset: bool,
 }
 
-/// A day, as an ISO date, in every calendar.
+/// A day, as an ISO date, in every calendar, and its evening where it's
+/// asked from.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
 #[serde(rename_all = "camelCase")]
 #[zlink(rename_all = "camelCase")]
+#[expect(
+    clippy::struct_field_names,
+    reason = "the shell reads a day's calendars by the name it says them by"
+)]
 pub struct Calendars {
     pub day: String,
     pub calendars: Vec<Calendar>,
+    /// When the day ends for the calendars whose days begin at sunset,
+    /// or none when it's asked from nowhere.
+    pub evening: Option<Evening>,
 }
 
-/// The day an ISO date names, in every calendar, or none if it names no
-/// day or one ICU4X can't write.
-pub fn on(day: &str) -> Option<Calendars> {
+/// The sunset that ends a day, and the dates that begin then.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Evening {
+    /// The sunset, in milliseconds since 1970 began in UTC, or none on a
+    /// day the sun doesn't set there, being up all day or down.
+    pub sunset: Option<i64>,
+    /// The calendars whose days begin at sunset, on the day that begins
+    /// then: none on a day with no sunset, which keeps its civil date.
+    pub calendars: Vec<Calendar>,
+}
+
+/// The day an ISO date names, in every calendar, and its evening where it's
+/// asked from, in degrees north and east; or none if it names no day or one
+/// ICU4X can't write.
+pub fn on(day: &str, here: Option<(f64, f64)>) -> Option<Calendars> {
     let mut parts = day.splitn(3, '-');
     let year = parts.next()?.parse().ok()?;
     let month = parts.next()?.parse().ok()?;
@@ -73,6 +104,36 @@ pub fn on(day: &str) -> Option<Calendars> {
     Some(Calendars {
         day: iso_day(iso),
         calendars: vec![chinese(iso)?, japanese(iso)?, hebrew(iso)?, islamic(iso)?],
+        evening: match here {
+            Some((latitude, longitude)) => Some(evening(iso, latitude, longitude)?),
+            None => None,
+        },
+    })
+}
+
+/// A day's sunset at a place, and the Hebrew and Islamic dates from then:
+/// the next civil day's.
+fn evening(iso: Date<Iso>, latitude: f64, longitude: f64) -> Option<Evening> {
+    let year = iso.year().extended_year();
+    let month = u32::from(iso.month().ordinal);
+    let date = u32::from(iso.day_of_month().0);
+    let Sunset::At(minutes) = sun::sets(year, month, date, latitude, longitude) else {
+        return Some(Evening {
+            sunset: None,
+            calendars: Vec::new(),
+        });
+    };
+    let days = iso.to_rata_die() - Date::try_new_iso(1970, 1, 1).ok()?.to_rata_die();
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "days since 1970 and a day's milliseconds are far within what both hold whole"
+    )]
+    let sunset = ((days as f64 * sun::DAY + minutes) * 60_000.0).round() as i64;
+    let next = Date::from_rata_die(iso.to_rata_die() + 1, Iso);
+    Some(Evening {
+        sunset: Some(sunset),
+        calendars: vec![hebrew(next)?, islamic(next)?],
     })
 }
 
@@ -288,6 +349,7 @@ fn chinese(iso: Date<Iso>) -> Option<Calendar> {
             figure("term", term_latin, term_native),
             reckoned_from("termBegan", Date::from_rata_die(began, Iso)),
         ],
+        from_sunset: false,
     })
 }
 
@@ -365,6 +427,7 @@ fn japanese(iso: Date<Iso>) -> Option<Calendar> {
             reckoned_from("eraBegan", Date::try_new_iso(*year, *month, *date).ok()?),
             figure("rokuyo", rokuyo_latin, rokuyo_native),
         ],
+        from_sunset: false,
     })
 }
 
@@ -403,6 +466,7 @@ fn hebrew(iso: Date<Iso>) -> Option<Calendar> {
                 day.months_in_year().to_string(),
             ),
         ],
+        from_sunset: true,
     })
 }
 
@@ -456,6 +520,7 @@ fn islamic(iso: Date<Iso>) -> Option<Calendar> {
                 "Umm al-Qura".to_owned(),
             ),
         ],
+        from_sunset: true,
     })
 }
 
@@ -464,7 +529,7 @@ mod tests {
     use super::*;
 
     fn calendar(day: &str, reckoning: Reckoning) -> Calendar {
-        on(day)
+        on(day, None)
             .and_then(|days| {
                 days.calendars
                     .into_iter()
@@ -484,11 +549,61 @@ mod tests {
         )
     }
 
+    /// The Royal Observatory's place, in degrees north and east, as NOAA's
+    /// tables give it.
+    const GREENWICH: (f64, f64) = (51.4769, -0.0005);
+
+    /// The shell's checks stand in for the reader with a day as it's seen
+    /// from Greenwich, so its plates say when that day ends.
     #[test]
     fn the_shells_stand_in_is_what_the_reader_says() {
         let stood_in: Calendars = serde_json::from_str(include_str!("../calendars-reading.json"))
             .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(on(&stood_in.day), Some(stood_in));
+        assert_eq!(on(&stood_in.day, Some(GREENWICH)), Some(stood_in));
+    }
+
+    #[test]
+    fn a_day_seen_from_somewhere_ends_at_its_sunset_there() {
+        let day = on("2026-11-05", Some(GREENWICH)).unwrap_or_else(|| panic!("no day"));
+        let evening = day.evening.unwrap_or_else(|| panic!("no evening"));
+        // 16:26 in Greenwich, as NOAA's 2026 table has it, to the minute.
+        let sunset = evening.sunset.unwrap_or_else(|| panic!("no sunset"));
+        assert!((sunset - 1_793_895_960_000).abs() <= 60_000, "{sunset}");
+        // From then it's the next day in the calendars whose days begin at
+        // sunset, and in no others.
+        assert_eq!(
+            evening.calendars,
+            vec![
+                calendar("2026-11-06", Reckoning::Hebrew),
+                calendar("2026-11-06", Reckoning::Islamic)
+            ]
+        );
+        let from_sunset: Vec<_> = day
+            .calendars
+            .iter()
+            .filter(|each| each.from_sunset)
+            .map(|each| each.reckoning)
+            .collect();
+        assert_eq!(from_sunset, [Reckoning::Hebrew, Reckoning::Islamic]);
+    }
+
+    #[test]
+    fn a_day_with_no_sunset_keeps_its_civil_date() {
+        // Tromsø's midnight sun, which NOAA's table leaves without a sunset.
+        let day = on("2026-06-21", Some((69.6492, 18.9553))).unwrap_or_else(|| panic!("no day"));
+        assert_eq!(
+            day.evening,
+            Some(Evening {
+                sunset: None,
+                calendars: Vec::new()
+            })
+        );
+    }
+
+    #[test]
+    fn a_day_asked_from_nowhere_has_no_evening() {
+        let day = on("2026-11-05", None).unwrap_or_else(|| panic!("no day"));
+        assert_eq!(day.evening, None);
     }
 
     /// The Hong Kong Observatory's English for each term, in TERMS' order.
@@ -529,7 +644,7 @@ mod tests {
         {
             let (day, name) = line.split_once(' ').unwrap_or_else(|| panic!("{line}"));
             let term = OBSERVED.iter().position(|each| *each == name);
-            let calendars = on(day).unwrap_or_else(|| panic!("{day}"));
+            let calendars = on(day, None).unwrap_or_else(|| panic!("{day}"));
             let began =
                 figure_of(&calendars.calendars[0], "termBegan").and_then(|it| it.day.clone());
             let said = figure_of(&calendars.calendars[0], "term").map(|it| it.native.clone());
@@ -544,8 +659,8 @@ mod tests {
 
     #[test]
     fn a_day_that_isnt_one_has_no_calendars() {
-        assert!(on("2026-02-30").is_none());
-        assert!(on("yesterday").is_none());
+        assert!(on("2026-02-30", None).is_none());
+        assert!(on("yesterday", Some(GREENWICH)).is_none());
     }
 
     #[test]

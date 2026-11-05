@@ -4,10 +4,51 @@
 // does what can't be put back. Read apart from the launcher so
 // tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
-.import "QueryKeys.js" as Keys
 
-// The rows an operator takes, from where the rows stand (as Keys.moved
-// takes them): over the row and count - 1 below it with no motion, as dd
+// Where a move takes the selection, from where the rows stand: the row
+// selected, the highest it may go (-1 where an answer's headline sits
+// above the rows) and the last, the first and last rows wholly in view,
+// and how many rows a screen holds. A count moves that many times, or,
+// with gg and G, goes to that row, counted from 1, as a line's number is.
+// H and L count from the view's top and bottom. Ctrl+D and Ctrl+U move
+// half the rows in view, or a count's rows, as Vim's 'scroll' takes it.
+// Every move stops at the first and last rows, never going round. The
+// moves' keys are QueryKeys.js's; it's here beside the operators that
+// take a move as their motion, QueryKeys.js having outgrown its room.
+function moved(act, count, place) {
+    const times = Math.max(1, count);
+    const within = at => Math.max(place.highest, Math.min(at, place.last));
+    const half = count > 0 ? count : Math.max(1, Math.floor((place.bottom - place.top + 1) / 2));
+    switch (act) {
+    case "next":
+        return within(place.at + times);
+    case "previous":
+        return within(place.at - times);
+    case "first":
+        return count > 0 ? within(count - 1) : place.highest;
+    case "last":
+        return count > 0 ? within(count - 1) : within(place.last);
+    case "viewTop":
+        return within(Math.min(place.top + times - 1, place.bottom));
+    case "viewMiddle":
+        return within(place.top + Math.floor((place.bottom - place.top) / 2));
+    case "viewBottom":
+        return within(Math.max(place.bottom - times + 1, place.top));
+    case "halfDown":
+        return within(place.at + half);
+    case "halfUp":
+        return within(place.at - half);
+    case "pageDown":
+        return within(place.at + times * place.screen);
+    case "pageUp":
+        return within(place.at - times * place.screen);
+    default:
+        return place.at;
+    }
+}
+
+// The rows an operator takes, from where the rows stand (as moved takes
+// them): over the row and count - 1 below it with no motion, as dd
 // and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
 // row to wherever the motion goes, whichever way, every row between
 // included, as a linewise motion takes lines. No rows span nothing.
@@ -18,7 +59,7 @@ function spanned(count, motion, place) {
     if (motion === null) {
         return { from: place.at, to: Math.min(place.last, place.at + Math.max(1, count) - 1) };
     }
-    const to = Keys.moved(motion.act, motion.count, place);
+    const to = moved(motion.act, motion.count, place);
     return { from: Math.min(place.at, to), to: Math.max(place.at, to) };
 }
 

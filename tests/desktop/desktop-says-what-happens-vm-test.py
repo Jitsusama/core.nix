@@ -10,6 +10,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import shlex
@@ -130,7 +131,7 @@ PITCH = 24
 SCROLLED = 3 * PITCH
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc right", "spc left", "Z Z", "g g"})
+WAITING = frozenset({"spc right", "spc left", "Z Z", "g g", "g v"})
 TRIES = 3
 TRIED = timedelta(seconds=10)
 
@@ -158,9 +159,11 @@ class InTheDrawer:
         """Send the notice, and open the launcher on its row."""
         self.desktop = desktop
         machine = desktop.machine
-        # A subtest that failed with the launcher open leaves it closed for this one.
+        # A subtest that failed with the launcher open, or at another scale, leaves it closed
+        # and at 1 for this one.
         if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
             desktop.close_launcher()
+        desktop.as_account("niri msg output winit scale 1")
         body = "\n".join(f"line {at} of the deploy went by" for at in range(1, 41))
         desktop.as_account(f"notify-send {shlex.quote(self.TITLE)} {shlex.quote(body)}")
         machine.wait_until_fails(
@@ -295,6 +298,33 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     desktop.close_launcher()
 
 
+def into_in_sight(desktop: Desktop, page: InTheDrawer, scale: str) -> Json:
+    """Take the keys into the drawer just opened at a scale, and return where its cursor is.
+
+    The card and the drawer are held in sight on the way: the card inside the screen however
+    small, its rows fewer, and at 2 the drawer taking the card's place once the keys go in,
+    its title on one line and the card's foot still under it (VKCF3Z, 2026-11-05).
+    """
+    card = desktop.showing()["card"]
+    assert card["top"] > 0, f"at {scale} it's off the top: {card}"
+    assert card["foot"] < card["screen"], f"at {scale} it's off the bottom: {card}"
+    assert card["left"] > 0, f"at {scale} it's off the left: {card}"
+    assert card["right"] < card["across"], f"at {scale} it's off the right: {card}"
+    rows = page.drawer()
+    assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
+    assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
+    at = page.into()
+    inside = page.drawer()
+    lines = inside["lines"]
+    assert lines["title"] == lines["titleLast"], f"at {scale} the title breaks: {inside}"
+    if inside["over"]:
+        assert inside["shown"], f"at {scale} the drawer isn't shown inside: {inside}"
+        assert inside["at"] == inside["cardAt"], f"at {scale} it's off the card: {inside}"
+        assert inside["width"] == inside["cardWidth"], f"at {scale} it's narrower: {inside}"
+        assert inside["height"] < inside["cardHeight"], f"at {scale} it hides the foot: {inside}"
+    return at
+
+
 def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_back(
     desktop: Desktop,
 ) -> None:
@@ -313,6 +343,9 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     came = page.into()
     assert came["says"] == page.TITLE, came
     assert came["letter"] == 0, came
+    # The foot names the way back, not the row's Return, which does nothing in the drawer.
+    told = desktop.showing()["selected"]["told"]
+    assert told == ["Space \u2190 back"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
     assert rule["top"] == came["top"], came
@@ -328,27 +361,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         desktop.close_launcher()
         desktop.as_account(f"niri msg output winit scale {scale}")
         page.open()
-        # The card stays inside the screen however small, its rows fewer (VKCF3Z, 2026-11-05).
-        card = desktop.showing()["card"]
-        assert card["top"] > 0, f"at {scale} it's off the top: {card}"
-        assert card["foot"] < card["screen"], f"at {scale} it's off the bottom: {card}"
-        assert card["left"] > 0, f"at {scale} it's off the left: {card}"
-        assert card["right"] < card["across"], f"at {scale} it's off the right: {card}"
-        rows = page.drawer()
-        assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
-        assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
-        at = page.into()
-        inside = page.drawer()
-        lines = inside["lines"]
-        assert lines["title"] == lines["titleLast"], f"at {scale} the title breaks: {inside}"
-        if inside["over"]:
-            assert inside["shown"], f"at {scale} the drawer isn't shown inside: {inside}"
-            assert inside["at"] == inside["cardAt"], f"at {scale} it's off the card: {inside}"
-            assert inside["width"] == inside["cardWidth"], f"at {scale} it's narrower: {inside}"
-            # The card's foot stays in sight under it, saying how to come back.
-            assert inside["height"] < inside["cardHeight"], (
-                f"at {scale} it hides the foot: {inside}"
-            )
+        at = into_in_sight(desktop, page, scale)
         named = scale.replace(".", "-")
         desktop.photograph(f"launcher-drawer-keys-at-{named}")
 
@@ -423,6 +436,147 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
             drawer["cursor"]["line"] == lines[-1] - 1 and drawer["scrolled"] == half["scrolled"]
         ),
     )
+    page.back("spc left")
+    desktop.close_launcher()
+
+
+def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: Desktop) -> None:
+    """In the drawer, / and ? type what to seek, and Return puts the cursor where it's found.
+
+    What's typed is washed as it's typed; Return puts the cursor on its first letter and the
+    view follows; n goes on to the next, N back to the one before, and a count as many; ? with
+    nothing typed seeks the last back; a capital asks for one, and the search goes round past
+    the last line to the title. Escape lets one being typed go, the keys staying in the drawer,
+    as Backspace does with nothing left; Ctrl+W takes the word before and Ctrl+C lets it go,
+    as on Vim's command line. Its pictures at both of Joel's scales show the matches
+    washed, for a person to judge the wash by.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+    page.press("/ l i n e spc 3 0")
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["washing"] == "line 30")
+    found = page.until("ret", lambda drawer: drawer["cursor"]["says"].startswith("line 30 "))
+    assert found["cursor"]["letter"] == 0, found
+    assert found["scrolled"] > 0, found
+    assert held(found), found
+    assert found["search"] == {
+        "typing": "",
+        "last": "line 30",
+        "washing": "line 30",
+        "landing": "",
+    }, found
+
+    def on(line: int) -> Callable[[Json], bool]:
+        said = f"line {line} of the "
+        return lambda drawer: (
+            drawer["cursor"]["says"].startswith(said) and drawer["cursor"]["letter"] == len(said)
+        )
+
+    # Its own line's deploy is after the cursor, on its first letter.
+    page.until("/ d e p l o y ret", on(30))
+    page.until("n", on(31))
+    page.until("shift-n", on(30))
+    page.until("3 n", on(33))
+    page.until("? ret", on(32))
+    # Smartcase: only the title holds a capital, so the search goes round to it.
+    came = page.until("/ shift-d e p l o y ret", lambda drawer: drawer["cursor"]["line"] == 1)
+    assert came["cursor"]["says"] == page.TITLE, came
+    assert came["search"]["landing"] == "wrapped", came
+    # A search let go moves nothing, and the keys stay: j moves from where it stood.
+    page.press("/ z z")
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "zz")
+    line = page.drawer()["cursor"]["line"]
+    page.until("esc j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    page.until("? backspace j", lambda drawer: drawer["cursor"]["line"] == line + 2)
+    # Its line edits as Vim's does: Ctrl+W takes the word before, and Ctrl+C lets it go.
+    page.press("/ l i n e spc z z ctrl-w")
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "line ")
+    page.until("ctrl-c j", lambda drawer: drawer["cursor"]["line"] == line + 3)
+
+    # The cursor stands on the title's own Deploy, so the first line's deploy comes next,
+    # without going round: where a narrow drawer breaks that line, it's on a line of its own.
+    def first(title: int, drawer: Json) -> bool:
+        cursor = drawer["cursor"]
+        return bool(
+            cursor["line"] > title
+            and str(cursor["says"])[cursor["letter"] :].startswith("deploy")
+            and drawer["search"]["landing"] == ""
+        )
+
+    for scale in (*JOELS_SCALES, "1"):
+        desktop.close_launcher()
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        page.open()
+        # The title's line, which is the first where no eyebrow is shown.
+        at = int(page.into()["line"])
+        page.until("/ d e p l o y ret", functools.partial(first, at))
+        desktop.photograph(f"launcher-drawer-search-at-{scale.replace('.', '-')}")
+    page.back("spc left")
+    desktop.close_launcher()
+
+
+def test_in_a_drawer_v_and_shift_v_choose_and_y_copies_what_they_chose(desktop: Desktop) -> None:
+    """In the drawer, v chooses letters from the cursor's and V lines, and y copies them.
+
+    The moves extend what's chosen, and it's counted as the mode word counts it; y puts it on
+    the clipboard as markdown, the title after its #, and goes back to the page with the
+    cursor at its start, the flash it gives what it took ending; o goes to its other end,
+    Escape lets it go, and gv brings it back. Its pictures at both of Joel's scales show
+    letters chosen over two lines, for a person to judge the selection's ground and the block.
+    """
+    page = InTheDrawer(desktop)
+    title = page.into()["line"]
+
+    def chose(by: str, count: int) -> Callable[[Json], bool]:
+        return lambda drawer: drawer["chosen"]["by"] == by and drawer["chosen"]["count"] == count
+
+    came = page.until("v", chose("letters", 1))
+    assert came["chosen"]["taken"] == [[title, 0, 1]], came
+    # Choosing, the foot names Escape, which lets the choice go and leaves the keys in.
+    told = desktop.showing()["selected"]["told"]
+    assert told == ["Esc back"], f"in visual the foot says {told}"
+    page.until("l l l l l", chose("letters", len("Deploy")))
+    page.pressed_until(
+        "y",
+        lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["copied"] == "# Deploy",
+    )
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("[ \"$(wl-paste --no-newline)\" = '# Deploy' ]"),
+        timeout=timedelta(seconds=10),
+    )
+    desktop.launcher_until(lambda shown: not shown["drawer"]["chosen"]["flashing"])
+    back = page.drawer()
+    assert back["cursor"]["line"] == title, back
+    assert back["cursor"]["letter"] == 0, back
+    # Lines below the title, so what's copied holds no "log" to be found ahead of the notice
+    # when the launcher next looks for its title.
+    page.until("j shift-v j", chose("lines", 2))
+    page.until("o", lambda drawer: drawer["cursor"]["line"] == title + 1)
+    page.pressed_until(
+        "esc", lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["by"] == ""
+    )
+    page.until("g v", chose("lines", 2))
+    page.pressed_until(
+        "y",
+        lambda shown: (
+            shown["drawer"]["chosen"]["copied"]
+            == "line 1 of the deploy went by\nline 2 of the deploy went by"
+        ),
+    )
+    # Y copies the whole line, however few of its letters are chosen, as Vim's v_Y.
+    page.until("v l", chose("letters", 2))
+    page.pressed_until(
+        "shift-y",
+        lambda shown: shown["drawer"]["chosen"]["copied"] == "line 1 of the deploy went by",
+    )
+    for scale in (*JOELS_SCALES, "1"):
+        desktop.close_launcher()
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        page.open()
+        page.into()
+        page.until("v l l l l l j", chose("letters", 2))
+        desktop.photograph(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
+    page.pressed_until("esc", lambda shown: shown["mode"] == "page")
     page.back("spc left")
     desktop.close_launcher()
 

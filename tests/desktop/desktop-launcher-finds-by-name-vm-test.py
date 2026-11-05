@@ -926,28 +926,53 @@ def photograph_the_calendars(desktop: Desktop) -> None:
     """Photograph each calendar's plate in its own script, its names whole and on one line.
 
     Its title is in the script's cut beside the serif and its figures in the one beside the mono.
+    Seen from nowhere, the Hebrew and Islamic say their day begins at sunset; seen from
+    Greenwich, the Hebrew says at what time, photographed again.
     """
     for calendar in ["Chinese", "Japanese", "Hebrew", "Islamic"]:
-        desktop.answer("date")
-        desktop.step_in()
-        desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
-        desktop.down_to("Calendars")
-        desktop.step_in()
-        desktop.launcher_until(lambda shown: calendar in shown["rows"])  # noqa: B023
-        desktop.down_to(calendar)
-        desktop.launcher_until(
-            lambda shown: (
-                shown["drawer"]["out"] is True
-                and (shown["selected"] or {}).get("name") == calendar  # noqa: B023
-                and len(shown["drawer"]["facts"]) > 1
-            )
+        photograph_a_calendar(desktop, calendar, f"launcher-date-{calendar.lower()}")
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    said = {"v": 2, "latitude": 51.4769, "longitude": -0.0005, "accuracy": 3000, "when": 1,
+            "place": None, "zone": None}  # fmt: skip
+    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+    try:
+        photograph_a_calendar(desktop, "Hebrew", "launcher-date-hebrew-sunset", timed=True)
+    finally:
+        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+
+
+def photograph_a_calendar(
+    desktop: Desktop, calendar: str, picture: str, *, timed: bool = False
+) -> None:
+    """Photograph one calendar's plate once it's drawn, its names whole and on one line.
+
+    Timed, it's photographed once the plate says at what time its day begins.
+    """
+
+    def drawn(shown: Json) -> bool:
+        drawer = shown["drawer"]
+        values = [str(value) for value in drawer.get("values") or []]
+        return (
+            drawer["out"] is True
+            and (shown["selected"] or {}).get("name") == calendar
+            and len(drawer["facts"]) > 1
+            and (not timed or any(re.fullmatch(r"\d{2}:\d{2}", value) for value in values))
         )
-        drawer = desktop.showing()["drawer"]
-        assert drawer["labelsWhole"], f"a {calendar} fact's name is broken: {drawer}"
-        assert drawer["besideOnOneLine"], f"a {calendar} value wraps beside its name: {drawer}"
-        assert drawer["digitsStandAsFigures"], f"{calendar} digits stand smaller: {drawer}"
-        desktop.photograph(f"launcher-date-{calendar.lower()}")
-        desktop.close_launcher()
+
+    desktop.answer("date")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
+    desktop.down_to("Calendars")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: calendar in shown["rows"])
+    desktop.down_to(calendar)
+    desktop.launcher_until(drawn)
+    drawer = desktop.showing()["drawer"]
+    assert drawer["labelsWhole"], f"a {calendar} fact's name is broken: {drawer}"
+    assert drawer["besideOnOneLine"], f"a {calendar} value wraps beside its name: {drawer}"
+    assert drawer["digitsStandAsFigures"], f"{calendar} digits stand smaller: {drawer}"
+    desktop.photograph(picture)
+    desktop.close_launcher()
 
 
 def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:

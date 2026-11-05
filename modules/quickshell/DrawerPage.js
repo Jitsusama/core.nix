@@ -3,8 +3,9 @@
 // takes the cursor and the view, read apart from the drawing (Drawer.qml)
 // so tests/query-keys.qml can hold it in Qt's own engine.
 //
-// A page is its lines, each { top, height, length } in pixels down the
-// drawer's content and letters along it, as Qt laid them out, in order; the
+// A page is its lines, each { top, height, length, text } in pixels down
+// the drawer's content, letters along it and the words it says, as Qt laid
+// them out, in order; the
 // cursor's line and letter, and `want`, how far along the line it wants to
 // be, as Vim's curswant keeps the column j and k go back to; the view's top
 // and height, and `end`, the furthest its top goes; the pitch every line
@@ -13,12 +14,75 @@
 // `xOf(line, letter)` and `letterAt(line, x)`, which ask the drawn lines
 // where a letter is and which letter is nearest a place.
 .pragma library
+.import "Search.js" as Search
+
+// What visual takes, from where it began to the cursor, either way round:
+// each line it touches in order, { line, from, to }, letters `from` up to
+// `to`. By "letters" it takes from the first end's letter through the
+// other's, both their own, as Vim's inclusive selection does, and every
+// letter of the lines between; by "lines", every letter of each.
+function chosen(began, cursor, kind, lines) {
+    const after = (one, other) => one.line > other.line
+        || (one.line === other.line && one.letter > other.letter);
+    const [first, last] = after(began, cursor) ? [cursor, began] : [began, cursor];
+    const taken = [];
+    for (let line = first.line; line <= last.line; line += 1) {
+        const { length } = lines[line];
+        const whole = kind === "lines";
+        const from = whole || line !== first.line ? 0 : Math.min(first.letter, length);
+        const to = whole || line !== last.line ? length : Math.min(last.letter + 1, length);
+        taken.push({ line, from, to });
+    }
+    return taken;
+}
 
 // How far from the view's edges the cursor keeps: `off` lines, but never
 // past the view's middle, so a short view still has a place for it.
 function margin(page) {
     const most = Math.floor((page.height - page.pitch) / 2 / page.pitch) * page.pitch;
     return Math.max(0, Math.min(page.off * page.pitch, most));
+}
+
+// Where a search lands, as { line, letter, want, top, wrapped }, or null
+// where nothing is sought or it's found nowhere: on the next match's first
+// letter past the cursor, or with `forward` false the one before it, a
+// count going on that many, round past either end as Vim's wrapscan does,
+// matched by smartcase as Search.js matches. Each line is searched as it's
+// shown, so a match never runs across a line's end, and the view follows
+// the cursor there as a move's does.
+function sought(page, pattern, forward, count) {
+    const matches = [].concat(...page.lines.map((line, at) => Search.found(pattern,
+        line.text ?? "").map(([start]) => ({ line: at, letter: start }))));
+    if (matches.length === 0) {
+        return null;
+    }
+    const past = match => match.line > page.line
+        || (match.line === page.line && match.letter > page.letter);
+    const before = match => match.line < page.line
+        || (match.line === page.line && match.letter < page.letter);
+    const times = Math.max(1, count) - 1;
+    let target;
+    if (forward) {
+        const first = matches.findIndex(past);
+        target = (first < 0 ? matches.length : first) + times;
+    } else {
+        let last = -1;
+        matches.forEach((match, at) => {
+            if (before(match)) {
+                last = at;
+            }
+        });
+        target = last - times;
+    }
+    const wrapped = target < 0 || target >= matches.length;
+    const landed = matches[((target % matches.length) + matches.length) % matches.length];
+    return {
+        line: landed.line,
+        letter: landed.letter,
+        want: page.xOf(landed.line, landed.letter),
+        top: shown(page.lines[landed.line], page.top, page),
+        wrapped
+    };
 }
 
 // A view's top, held within the page and on the pitch.

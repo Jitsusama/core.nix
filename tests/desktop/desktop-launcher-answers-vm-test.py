@@ -1047,8 +1047,41 @@ def time_inside(desktop: Desktop) -> None:
     desktop.launcher_until(kept_rows)
 
 
+def begins_at_sunset(drawer: Json) -> bool:
+    """Whether a plate says, just after its Day, at what time today's sunset begins its day."""
+    facts = cast("list[str]", drawer.get("drawnFacts") or [])
+    values = cast("list[str | None]", drawer.get("values") or [])
+    if "Day" not in facts:
+        return False
+    at = facts.index("Day") + 1
+    return (
+        at < len(facts)
+        and facts[at] in {"Day Begins", "Day Began"}
+        and re.fullmatch(r"\d{2}:\d{2}", values[at] or "") is not None
+    )
+
+
 def date_steps_into_its_calendars(desktop: Desktop) -> None:
     """Step Date into today in other calendars, once without the reader and once with it."""
+    # Seen from Greenwich, as whereabouts would say it, with no zone to move the clock to,
+    # so the Hebrew day says when the sun sets there to begin it. What was there before is
+    # put back after, or nowhere, since the shell can't see a removed file come back.
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    said = {"v": 2, "latitude": 51.4769, "longitude": -0.0005, "accuracy": 3000, "when": 1,
+            "place": None, "zone": None}  # fmt: skip
+    desktop.as_account(f"if test -e {fix}; then cp {fix} {fix}.kept; fi")
+    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+    try:
+        calendars_asked(desktop)
+    finally:
+        desktop.as_account(
+            f"if test -e {fix}.kept; then mv {fix}.kept {fix}; "
+            f"else echo '{{}}' > {fix}.new && mv {fix}.new {fix}; fi"
+        )
+
+
+def calendars_asked(desktop: Desktop) -> None:
+    """Ask Date's calendars without the reader, then with it, from where the laptop is."""
     # With the reader gone, Calendars says it isn't answering, and Return closes rather than
     # copying those words. It's asked first, since a day once answered is kept.
     try:
@@ -1084,6 +1117,7 @@ def date_steps_into_its_calendars(desktop: Desktop) -> None:
         lambda shown: (
             shown["drawer"]["out"] is True
             and any("\u0590" <= letter <= "\u05ff" for letter in shown["drawer"]["title"])
+            and begins_at_sunset(shown["drawer"])
         )
     )
     desktop.close_launcher()

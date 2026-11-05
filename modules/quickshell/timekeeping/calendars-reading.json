@@ -13,7 +13,8 @@
         { "id": "monthDays", "latin": "30", "native": "大月", "day": null },
         { "id": "term", "latin": "Shuāngjiàng", "native": "霜降", "day": null },
         { "id": "termBegan", "latin": "2026-10-23", "native": "2026-10-23", "day": "2026-10-23" }
-      ]
+      ],
+      "fromSunset": false
     },
     {
       "reckoning": "japanese",
@@ -24,7 +25,8 @@
         { "id": "eraYear", "latin": "8", "native": "8年", "day": null },
         { "id": "eraBegan", "latin": "2019-05-01", "native": "2019-05-01", "day": "2019-05-01" },
         { "id": "rokuyo", "latin": "Taian", "native": "大安", "day": null }
-      ]
+      ],
+      "fromSunset": false
     },
     {
       "reckoning": "hebrew",
@@ -36,7 +38,8 @@
         { "id": "day", "latin": "25", "native": "כ״ה", "day": null },
         { "id": "yearDays", "latin": "385", "native": "385", "day": null },
         { "id": "months", "latin": "13", "native": "13", "day": null }
-      ]
+      ],
+      "fromSunset": true
     },
     {
       "reckoning": "islamic",
@@ -49,7 +52,40 @@
         { "id": "monthDays", "latin": "30", "native": "30", "day": null },
         { "id": "yearDays", "latin": "355", "native": "355", "day": null },
         { "id": "reckoning", "latin": "Umm al-Qura", "native": "Umm al-Qura", "day": null }
-      ]
+      ],
+      "fromSunset": true
     }
-  ]
+  ],
+  "evening": {
+    "sunset": 1793895963816,
+    "calendars": [
+      {
+        "reckoning": "hebrew",
+        "latin": "26 Heshvan 5787",
+        "native": "כ״ו בחשוון ה׳תשפ״ז",
+        "figures": [
+          { "id": "year", "latin": "5787", "native": "ה׳תשפ״ז", "day": null },
+          { "id": "month", "latin": "Heshvan", "native": "חשוון", "day": null },
+          { "id": "day", "latin": "26", "native": "כ״ו", "day": null },
+          { "id": "yearDays", "latin": "385", "native": "385", "day": null },
+          { "id": "months", "latin": "13", "native": "13", "day": null }
+        ],
+        "fromSunset": true
+      },
+      {
+        "reckoning": "islamic",
+        "latin": "26 Jumada I 1448 AH",
+        "native": "٢٦ جمادى الأولى ١٤٤٨\u00a0هـ",
+        "figures": [
+          { "id": "year", "latin": "1448 AH", "native": "١٤٤٨\u00a0هـ", "day": null },
+          { "id": "month", "latin": "Jumada I", "native": "جمادى الأولى", "day": null },
+          { "id": "day", "latin": "26", "native": "٢٦", "day": null },
+          { "id": "monthDays", "latin": "30", "native": "30", "day": null },
+          { "id": "yearDays", "latin": "355", "native": "355", "day": null },
+          { "id": "reckoning", "latin": "Umm al-Qura", "native": "Umm al-Qura", "day": null }
+        ],
+        "fromSunset": true
+      }
+    ]
+  }
 }

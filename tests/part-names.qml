@@ -131,7 +131,85 @@ ShellRoot {
             clock.filter(name => calendar.includes(name)).join(", "));
         asNowShows();
         asKept();
+        const stoodIn = Calendars.reading;
+        // Its day as it is before sunset, whenever the check runs.
+        Calendars.reading = evening(stoodIn, Date.now() + 3600000);
         asReckoned();
+        asTheDayEnds(stoodIn);
+        Calendars.reading = stoodIn;
+    }
+
+    // A reading of the stood-in day whose sunset is at this moment, or
+    // asked from nowhere, or with no sunset at all.
+    function evening(reading, sunset) {
+        const asked = sunset === undefined ? null
+            : { sunset: sunset, calendars: sunset === null ? [] : reading.evening.calendars };
+        return Object.assign({}, reading, { evening: asked });
+    }
+
+    // The Hebrew and Islamic days begin at sunset where Date is seen from:
+    // each plate says so just after its Day, "Day Begins \u00b7 17:42" in
+    // the figures' face, and from sunset "Day Began" with the plate on the
+    // day begun then; with nowhere to see it from, "at sunset", and on a day
+    // with none, "no sunset today", each in the face words are read in
+    // with the civil day kept. The other calendars' days begin at midnight.
+    function asTheDayEnds(stoodIn) {
+        const said = Words.of("today:calendars").said ?? {};
+        const dayEnds = sunset => {
+            Calendars.reading = evening(stoodIn, sunset);
+            const held = today.answer("date").rows
+                .find(row => row.name === Words.name("today:calendars"));
+            return held.verbs().map(each => {
+                const plate = each.drawer();
+                const at = plate.facts.findIndex(fact => fact.label
+                    === Words.name("today:calendars:day"));
+                const fact = plate.facts[at + 1];
+                const begins = [Words.name("today:calendars:dayBegins"),
+                    Words.name("today:calendars:dayBegan")].includes(fact?.label);
+                const row = each.verbs()[at + 1];
+                return {
+                    side: `${each.name} ${each.side}`,
+                    title: plate.title,
+                    fact: begins ? `${fact.label} ${fact.value}` : "",
+                    words: begins && fact.words === true,
+                    row: begins ? `${row.name} ${row.side} ${row.copiesNothing === true}` : ""
+                };
+            });
+        };
+        const sides = days => days.map(day => day.side).join(", ");
+        const facts = days => days.map(day => day.fact).join(", ");
+        const clock = ms => Qt.formatTime(new Date(ms), "HH:mm");
+        const later = Date.now() + 3600000;
+        const before = dayEnds(later);
+        expect("before sunset, each day that begins then says when",
+            facts(before) === `, , ${Words.name("today:calendars:dayBegins")} ${clock(later)}, `
+                + `${Words.name("today:calendars:dayBegins")} ${clock(later)}`, facts(before));
+        expect("its row says it too, copying the time",
+            before[2].row === `${Words.name("today:calendars:dayBegins")} ${clock(later)} false`,
+            before[2].row);
+        const earlier = Date.now() - 3600000;
+        const after = dayEnds(earlier);
+        expect("from sunset, the Hebrew and Islamic are on the day begun then",
+            sides(after) === "Chinese 27 Ninth Month, Japanese Reiwa 8, Hebrew 26 Heshvan 5787, "
+                + "Islamic 26 Jumada I 1448 AH", sides(after));
+        expect("its plate is titled so",
+            after[2].title === "\u05db\u05f4\u05d5 \u05d1\u05d7\u05e9\u05d5\u05d5\u05df "
+                + "\u05d4\u05f3\u05ea\u05e9\u05e4\u05f4\u05d6", after[2].title);
+        expect("and says the day began at sunset",
+            after[3].fact === `${Words.name("today:calendars:dayBegan")} ${clock(earlier)}`,
+            after[3].fact);
+        const nowhere = dayEnds(undefined);
+        expect("seen from nowhere, the day begins at sunset, the civil day kept",
+            nowhere[2].side === "Hebrew 25 Heshvan 5787" && nowhere[3].fact
+                === `${Words.name("today:calendars:dayBegins")} ${said.atSunset}`
+                && nowhere[3].words && nowhere[3].row.endsWith(" true"),
+            JSON.stringify(nowhere[3]));
+        const none = dayEnds(null);
+        expect("on a day with no sunset, it says so, the civil day kept",
+            none[3].side === "Islamic 25 Jumada I 1448 AH" && none[2].fact
+                === `${Words.name("today:calendars:dayBegins")} ${said.noSunset}`
+                && none[2].words && none[2].row.endsWith(" true"),
+            JSON.stringify(none[2]));
     }
 
     // The day in other calendars, from a reading as timekeeping gives it
