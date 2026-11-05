@@ -145,6 +145,12 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing: {card}"
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
+        # The mode's word is the one word saying where his keys go, so it never gives up a
+        # letter; the facts before it give way first.
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        mode = [word for word in foot if word["text"] == "insert"]
+        assert mode, f"at {scale} the foot names no mode in insert: {foot}"
+        assert not mode[0]["cut"], f"at {scale} insert's word is cut: {mode[0]}"
         # In normal the caret is a block on the last letter and the foot names no mode, the
         # row's words where insert left them.
         desktop.normal()
