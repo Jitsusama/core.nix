@@ -266,7 +266,9 @@ fn source(ask: &Ask) -> String {
         // The command line's : is in the accent, where his keys go, as
         // the spec has it; a search's / and ? are typed as they read.
         lead = if mark == ":" {
-            "#text(fill: ink.accent, raw(\":\"))"
+            // Its level's fill is the raw show rule's, so the accent is
+            // set over it rather than around it.
+            "#text(..(typing + (fill: ink.accent)), \":\")"
         } else {
             ""
         },
@@ -357,7 +359,7 @@ fn outline(ask: &Ask) -> String {
                 ("none", "ink.text")
             };
             format!(
-                "block(width: 100%, height: 18.75pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), align(horizon, pad(left: {indent}em, text(fill: {ink}, {words}))))",
+                "block(width: 100%, height: 18.75pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), align(horizon, pad(left: {indent}em, text(fill: {ink}, fit({words})))))",
                 indent = f64::from(level - highest) * 1.2,
                 words = quoted(words),
             )
@@ -367,6 +369,16 @@ fn outline(ask: &Ask) -> String {
     format!(
         r#"{ink}#set page(width: {width}pt, height: auto, margin: (x: {side}pt, y: 12pt), fill: ink.sunken)
 #set text(..level.note.text, features: level.note.text.features + ("calt",))
+// A row is one line: words too long for it end in an ellipsis, at the
+// last word that fits, as a long name does on the launcher's rows.
+#let fit(words) = layout(size => {{
+  if measure(words).width <= size.width {{ return words }}
+  let kept = words.split(" ")
+  while kept.len() > 1 and measure(kept.join(" ") + "\u{{2026}}").width > size.width {{
+    kept = kept.slice(0, -1)
+  }}
+  kept.join(" ") + "\u{{2026}}"
+}})
 #stack({rows})
 "#,
         ink = crate::theme::get().typst(),
