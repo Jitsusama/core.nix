@@ -1345,6 +1345,7 @@ onLinux {
     cp ${./launcher/Provider.qml} launcher/Provider.qml
     cp ${./launcher/Asking.js} launcher/Asking.js
     cp ${./launcher/Numbers.js} launcher/Numbers.js
+    cp ${./launcher/Moment.js} launcher/Moment.js
     cp ${./launcher/Weather.qml} launcher/Weather.qml
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
     cp ${./Words.qml} Words.qml

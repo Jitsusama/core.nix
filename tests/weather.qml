@@ -1,10 +1,13 @@
 // Drives the launcher's weather (modules/quickshell/launcher/Weather.qml)
 // through Quickshell itself, with what Open-Meteo would say already kept,
 // as if just asked, so nothing leaves the sandbox: "weather" answers what
-// it's like now, its parts Now, Rain, Wind, Today, Tomorrow and the day
-// after, all from the one request, which asks the hourly rain too; Rain
-// says when it next rains, with a spark of the next twelve hours, and Return
-// steps into them, an hour a row, each its chance, how much and a bar; the
+// it's like now, its parts Now, Rain, then seven days from today, all from
+// the one request, which asks every figure of now, each hour and each day;
+// Now steps into every figure of this moment; a day steps into its own
+// figures, then its hours, sharing none of them; an hour steps into its
+// figures, and is the same thing in Rain as in its day; Rain says when it
+// next rains, with a spark of the next twelve hours, and Return steps into
+// them, an hour a row, each its sky, its chance, how much and a bar; the
 // rain's own words answer with the next rain, here or "in" a place, and
 // say when it's raining now, might, or won't; the weather's one word asks
 // it, here or anywhere, and an old word doesn't; and with lookups off it
@@ -32,27 +35,65 @@ ShellRoot {
         return { results: [{ name: name, country: country, latitude: latitude, longitude: longitude }] };
     }
 
-    // What the forecast says, three days from midnight on Saturday 24
+    // What the forecast says, seven days from midnight on Saturday 24
     // October 2026, its clock at `now`, with the hourly chances and amounts
-    // given by hour of the first day and none after.
+    // given by hour of the first day and none after, an hour raining
+    // lightly where its chance is likely, and every other figure the same
+    // each hour but its warmth.
     function forecast(now, chances, amounts) {
-        const times = [];
-        const chance = [];
-        const falls = [];
-        for (let hour = 0; hour < 72; hour++) {
+        const hourly = { time: [], precipitation_probability: [], precipitation: [],
+            temperature_2m: [], apparent_temperature: [], relative_humidity_2m: [],
+            dew_point_2m: [], weather_code: [], is_day: [], cloud_cover: [], wind_speed_10m: [],
+            wind_direction_10m: [], wind_gusts_10m: [], uv_index: [], visibility: [],
+            pressure_msl: [] };
+        for (let hour = 0; hour < 168; hour++) {
             const day = 24 + Math.floor(hour / 24);
-            times.push(`2026-10-${day}T${String(hour % 24).padStart(2, "0")}:00`);
-            chance.push(chances[hour] ?? 0);
-            falls.push(amounts[hour] ?? 0);
+            const chance = chances[hour] ?? 0;
+            hourly.time.push(`2026-10-${day}T${String(hour % 24).padStart(2, "0")}:00`);
+            hourly.precipitation_probability.push(chance);
+            hourly.precipitation.push(amounts[hour] ?? 0);
+            hourly.temperature_2m.push(hour % 24 / 2);
+            hourly.apparent_temperature.push(hour % 24 / 2 - 3);
+            hourly.relative_humidity_2m.push(80);
+            hourly.dew_point_2m.push(3);
+            hourly.weather_code.push(chance >= 50 ? 61 : 2);
+            hourly.is_day.push(hour % 24 >= 7 && hour % 24 < 18 ? 1 : 0);
+            hourly.cloud_cover.push(60);
+            hourly.wind_speed_10m.push(12);
+            hourly.wind_direction_10m.push(180);
+            hourly.wind_gusts_10m.push(25);
+            hourly.uv_index.push(1.5);
+            hourly.visibility.push(16000);
+            hourly.pressure_msl.push(1009);
         }
+        const week = values => values.concat(values.slice(-1).concat(Array(4).fill(values[2])))
+            .slice(0, 7);
         return {
-            current: { time: now, temperature_2m: 12.4, weather_code: 1, is_day: 1, wind_speed_10m: 17.6 },
-            hourly: { time: times, precipitation_probability: chance, precipitation: falls },
+            current: { time: now, temperature_2m: 12.4, apparent_temperature: 9.6,
+                relative_humidity_2m: 71, dew_point_2m: 7.3, precipitation: 0, weather_code: 1,
+                is_day: 1, cloud_cover: 22, wind_speed_10m: 17.6, wind_direction_10m: 247.5,
+                wind_gusts_10m: 33.1, uv_index: 3.4, visibility: 24140, pressure_msl: 1013.2 },
+            current_units: { visibility: "m" },
+            hourly: hourly,
+            hourly_units: { visibility: "m" },
             daily: {
-                time: ["2026-10-24", "2026-10-25", "2026-10-26"],
-                weather_code: [61, 3, 0],
-                temperature_2m_max: [14.2, 9, 11],
-                temperature_2m_min: [6, 3.4, 2]
+                time: ["2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28",
+                    "2026-10-29", "2026-10-30"],
+                weather_code: week([61, 3, 0]),
+                temperature_2m_max: week([14.2, 9, 11]),
+                temperature_2m_min: week([6, 3.4, 2]),
+                apparent_temperature_max: week([12, 6, 9]),
+                apparent_temperature_min: week([2, 0, -1]),
+                precipitation_sum: week([4.86, 0, 0]),
+                precipitation_hours: week([3, 0, 0]),
+                precipitation_probability_max: week([90, 10, 0]),
+                wind_speed_10m_max: week([24, 15, 10]),
+                wind_gusts_10m_max: week([48, 30, 20]),
+                wind_direction_10m_dominant: week([200, 290, 10]),
+                uv_index_max: week([2.6, 3, 4]),
+                sunrise: week(["2026-10-24T07:39", "2026-10-25T07:40", "2026-10-26T07:41"]),
+                sunset: week(["2026-10-24T18:14", "2026-10-25T18:12", "2026-10-26T18:11"]),
+                daylight_duration: week([37500, 37380, 37260])
             }
         };
     }
@@ -67,11 +108,19 @@ ShellRoot {
     function forecastUrl(latitude, longitude) {
         return "https://api.open-meteo.com/v1/forecast"
             + `?latitude=${latitude}&longitude=${longitude}`
-            + "&current=temperature_2m,weather_code,is_day,wind_speed_10m"
-            + "&hourly=precipitation_probability,precipitation"
-            + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
-            + "&forecast_days=3&timezone=auto";
+            + `&current=${instant}&hourly=${instant},precipitation_probability`
+            + "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
+            + "apparent_temperature_max,apparent_temperature_min,precipitation_sum,"
+            + "precipitation_hours,precipitation_probability_max,wind_speed_10m_max,"
+            + "wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset,"
+            + "daylight_duration"
+            + "&forecast_days=7&timezone=auto";
     }
+
+    // Every figure of a moment, as now and each hour are asked for.
+    readonly property string instant: "temperature_2m,apparent_temperature,"
+        + "relative_humidity_2m,dew_point_2m,precipitation,weather_code,is_day,cloud_cover,"
+        + "wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,visibility,pressure_msl"
 
     function where(name) {
         return `https://geocoding-api.open-meteo.com/v1/search?count=1&name=${name}`;
@@ -145,17 +194,68 @@ ShellRoot {
         expect("what it's like now", here.headline === "12\u00b0 \u00b7 mostly clear",
             here.headline);
         expect("the parts, flat, in order",
-            names(here.rows) === "Now, Rain, Wind, Today, Tomorrow, Monday", names(here.rows));
+            names(here.rows) === "Now, Rain, Today, Tomorrow, Monday, Tuesday, Wednesday, "
+                + "Thursday, Friday", names(here.rows));
         expect("where it is, and how that was found",
             here.note === "Toronto, from your time zone \u00b7 Open-Meteo", here.note);
-        const [now, rain, wind, today, tomorrow] = here.rows;
-        expect("now copies itself",
-            now.side === "12\u00b0 \u00b7 mostly clear" && now.verb === "copy",
+        const [now, rain, today, tomorrow] = here.rows;
+        // Now is a thing, every figure of this moment a step in, each
+        // copied, and its drawer saying them all.
+        const sides = rows => rows.map(row => `${row.name} ${row.side}`).join(", ");
+        expect("now steps into what it's like",
+            now.side === "12\u00b0 \u00b7 mostly clear" && now.verb === "more" && now.thing,
             `${now.side} ${now.verb}`);
-        expect("the wind", wind.side === "18 km/h", wind.side);
-        expect("today", today.side === "6\u00b0 to 14\u00b0 \u00b7 light rain", today.side);
-        expect("tomorrow", tomorrow.side === "3\u00b0 to 9\u00b0 \u00b7 overcast", tomorrow.side);
-        expect("the next rain", rain.side === "from 15:00, 70%", rain.side);
+        expect("every figure of now", sides(now.verbs()) === "Temperature 12\u00b0, "
+            + "Feels Like 10\u00b0, Humidity 71%, Dew Point 7\u00b0, Precipitation 0 mm, "
+            + "Wind 18 km/h from the WSW, Gusts 33 km/h, Cloud Cover 22%, "
+            + "UV Index 3.4, moderate, Visibility 24.1 km, Pressure 1013 hPa",
+            sides(now.verbs()));
+        expect("a figure of now copies itself", now.verbs()[0].verb === "copy",
+            now.verbs()[0].verb);
+        expect("now's drawer says every figure", now.drawer().facts.length === 11,
+            JSON.stringify(now.drawer()));
+        expect("today", today.side === "6\u00b0 to 14\u00b0 \u00b7 light rain"
+            && today.note === "90% chance", `${today.side} ${today.note}`);
+        expect("tomorrow", tomorrow.side === "3\u00b0 to 9\u00b0 \u00b7 overcast"
+            && tomorrow.note === "", `${tomorrow.side} ${tomorrow.note}`);
+        // A day steps into its own figures, then its hours: today's from
+        // this one, tomorrow's every one. None of a day's figures is one
+        // its hours say.
+        const ownOf = day => day.verbs().filter(row => !/^\d\d:\d\d$/.test(row.name));
+        const hoursOf = day => day.verbs().filter(row => /^\d\d:\d\d$/.test(row.name));
+        expect("a day's own figures", sides(ownOf(today)) === "High 14\u00b0, Low 6\u00b0, "
+            + "Feels Like Range 2\u00b0 to 12\u00b0, Highest Chance 90%, "
+            + "Total Precipitation 4.9 mm, Strongest Wind 24 km/h from the SSW, "
+            + "Strongest Gust 48 km/h, Highest UV Index 2.6, low, Sunrise 07:39, "
+            + "Sunset 18:14, Daylight 10 h 25 min", sides(ownOf(today)));
+        expect("a day's figures lead its hours",
+            today.verbs().findIndex(row => /^\d\d:\d\d$/.test(row.name))
+                === ownOf(today).length, names(today.verbs()));
+        expect("today's hours, from this one", hoursOf(today).length === 11
+            && hoursOf(today)[0].name === "13:00" && hoursOf(today)[10].name === "23:00",
+            names(hoursOf(today)));
+        expect("tomorrow's hours, every one", hoursOf(tomorrow).length === 24
+            && hoursOf(tomorrow)[0].name === "00:00", names(hoursOf(tomorrow)));
+        const hourNames = hoursOf(today)[0].verbs().map(row => row.name);
+        expect("a day says none of its hours' figures",
+            !ownOf(today).some(row => hourNames.includes(row.name)),
+            ownOf(today).filter(row => hourNames.includes(row.name)).map(row => row.name)
+                .join(", "));
+        // An hour is a thing, its sky beside it and its rain under it,
+        // every figure a step in and in its drawer.
+        const three = hoursOf(today)[2];
+        expect("an hour's sky and rain", three.side === "8\u00b0 \u00b7 light rain"
+            && three.note === "70% \u00b7 1.2 mm", `${three.side} ${three.note}`);
+        expect("an hour steps into its figures", three.verb === "more" && three.thing
+            && sides(three.verbs()) === "Temperature 8\u00b0, Feels Like 5\u00b0, "
+            + "Humidity 80%, Dew Point 3\u00b0, Chance of Precipitation 70%, "
+            + "Precipitation 1.2 mm, Wind 12 km/h from the S, Gusts 25 km/h, "
+            + "Cloud Cover 60%, UV Index 1.5, low, Visibility 16 km, Pressure 1009 hPa",
+            sides(three.verbs()));
+        expect("an hour's drawer says when",
+            three.drawer().eyebrow === "Saturday 24 October \u00b7 15:00"
+                && three.drawer().facts.length === 12, JSON.stringify(three.drawer()));
+        expect("the next rain", rain.side === "from 15:00 \u00b7 70%", rain.side);
         expect("a spark of the next twelve hours",
             rain.graph.shape === "spark" && rain.graph.values.length === 12
                 && rain.graph.values[0] === 0.1 && rain.graph.values[3] === 0.9,
@@ -170,19 +270,21 @@ ShellRoot {
         expect("the next twelve hours, from this one",
             hours.length === 12 && hours[0].name === "13:00" && hours[11].name === "00:00",
             names(hours));
-        expect("an hour's chance and amount", hours[2].side === "70%, 1.2 mm", hours[2].side);
-        expect("a dry hour's", hours[0].side === "10%, 0 mm", hours[0].side);
+        expect("an hour's chance and amount", hours[2].note === "70% \u00b7 1.2 mm",
+            hours[2].note);
+        expect("a dry hour's", hours[0].note === "10% \u00b7 0 mm", hours[0].note);
         expect("an hour's bar",
             hours[3].graph.shape === "bar" && hours[3].graph.values.length === 1
                 && hours[3].graph.values[0] === 0.9, JSON.stringify(hours[3].graph));
-        expect("an hour is a figure, copying what it shows", hours[2].verb === "copy",
-            hours[2].verb);
+        expect("an hour in the rain is the hour in its day",
+            sides(hours[2].verbs()) === sides(three.verbs()) && hours[2].side === three.side,
+            sides(hours[2].verbs()));
 
         // The rain asked for itself, by its one word.
         for (const typed of ["rain", "Rain", "rain?"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the next rain`,
-                said?.headline === "rain from 15:00, 70%" && said.rows.length === 12
+                said?.headline === "rain from 15:00 \u00b7 70%" && said.rows.length === 12
                     && said.graph?.shape === "spark", said?.headline);
         }
         const asRain = weather.answer("rain");
@@ -192,24 +294,36 @@ ShellRoot {
         // Elsewhere, with its own clock and its own rain.
         const tokyo = weather.answer("weather in tokyo");
         expect("the time there", tokyo.rows[0].name === "Now There, 22:45 Saturday", tokyo.rows[0].name);
-        expect("its own rain", tokyo.rows[1].side === "none in the next 12 hours", tokyo.rows[1].side);
+        // No rain due there, so Rain gives up its place rather than say
+        // there's none (VKCF3Z, 2026-11-04).
+        expect("no rain, no Rain", !tokyo.rows.some(row => row.name === "Rain"),
+            names(tokyo.rows));
         expect("where it is", tokyo.note === "Tokyo, Japan \u00b7 Open-Meteo", tokyo.note);
         expect("its hours run into tomorrow",
-            tokyo.rows[1].verbs()[1].name === "23:00" && tokyo.rows[1].verbs()[2].name === "00:00",
-            names(tokyo.rows[1].verbs()));
+            hoursOf(tokyo.rows[1]).pop().name === "23:00"
+                && hoursOf(tokyo.rows[2])[0].name === "00:00",
+            `${names(hoursOf(tokyo.rows[1]))} | ${names(hoursOf(tokyo.rows[2]))}`);
         const dry = weather.answer("rain in tokyo");
         expect("no rain there", dry.headline === "no rain in the next 12 hours", dry.headline);
         const wet = weather.answer("rain in paris?");
-        expect("raining now", wet.headline === "rain now, 80%", wet.headline);
+        expect("raining now", wet.headline === "rain now \u00b7 80%", wet.headline);
         const maybe = weather.answer("rain for oslo");
         expect("might", maybe.headline === "rain unlikely, at most 40%", maybe.headline);
+        // Rain that only might come isn't due, so it has no row either.
+        expect("rain that might, no Rain",
+            !weather.answer("weather for oslo").rows.some(row => row.name === "Rain"),
+            names(weather.answer("weather for oslo").rows));
 
         // The weather's one word asks it, here or anywhere.
-        for (const typed of ["weather", "Weather", "weather tokyo", "weather for tokyo",
-                "tokyo weather"]) {
+        for (const typed of ["weather", "Weather"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the weather`,
-                said?.rows.length === 6 && said.rows[1].name === "Rain", said?.headline);
+                said?.rows.length === 9 && said.rows[1].name === "Rain", said?.headline);
+        }
+        for (const typed of ["weather tokyo", "weather for tokyo", "tokyo weather"]) {
+            const said = weather.answer(typed);
+            expect(`"${typed}" answers the weather`,
+                said?.rows.length === 8 && said.rows[1].name === "Today", said?.headline);
         }
         // And nothing else is read as rain, nor a place looked up by it.
         for (const typed of ["rainbow", "rain tomorrow", "train", "brain", "umbrella", "forecast"])
