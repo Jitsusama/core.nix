@@ -79,10 +79,12 @@ function actFor(entry, acts, wordsOf) {
 // act itself, as session:Lock names :lockscreen, the step it asks first,
 // as session:Power Off:sure, reading its row's. A state's words name the
 // command for that state, as Wi-Fi On's :set wifi, since the line says
-// what runs, never a toggle. Where no words name one, the act is named by
-// its verb (Commands.commandOf).
+// what runs, never a toggle. A row keyed so it never walks back to its
+// words, as a display's Warmth is displays:eDP-1:warmth, names them by their
+// id, its wordsId. Where no words name one, the act is named by its verb
+// (Commands.commandOf).
 function wordsFor(act, of) {
-    let id = String(act?.key ?? "");
+    let id = String(act?.wordsId ?? act?.key ?? "");
     while (id !== "") {
         const words = of(id, act.wordState ?? "");
         if (words.command !== undefined) {

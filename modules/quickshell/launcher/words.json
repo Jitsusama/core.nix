@@ -1666,6 +1666,8 @@
     },
     {
       "id": "keyboards:lights:to",
+      "command": "set",
+      "argument": "kbdlevel={n}",
       "in": "keyboards:lights",
       "name": "Light to {n} of {most}",
       "verb": "set",
@@ -2862,12 +2864,16 @@
     },
     {
       "id": "keyboard:release",
+      "command": "set",
+      "argument": "lock=",
       "in": "keyboard",
       "name": "Let {layer} Go",
       "verb": "release"
     },
     {
       "id": "keyboard:lock",
+      "command": "set",
+      "argument": "lock={layer}",
       "in": "keyboard",
       "name": "Lock {layer} On",
       "verb": "lock"
@@ -4157,6 +4163,8 @@
     },
     {
       "id": "displays:warmth",
+      "command": "set",
+      "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
       "verb": "turn off",
@@ -4165,7 +4173,8 @@
       ],
       "states": {
         "off": {
-          "verb": "turn on"
+          "verb": "turn on",
+          "argument": "warmth"
         }
       }
     },
