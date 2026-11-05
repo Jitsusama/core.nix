@@ -521,7 +521,9 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     last = page.until("G", lambda drawer: drawer["cursor"]["line"] == drawer["cursor"]["lines"] - 1)
     assert last["scrolled"] > 0, last
     assert held(last), last
-    assert last["cursor"]["says"] == page.LAST, last
+    # The words' last line, or its end where a narrow drawer wraps it, as at 1 here.
+    assert last["cursor"]["says"], last
+    assert page.LAST.endswith(last["cursor"]["says"]), last
     page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0 and drawer["scrolled"] == 0)
     page.until("ctrl-e", a_line_on)
     page.until("ctrl-y", lambda drawer: drawer["scrolled"] == 0)

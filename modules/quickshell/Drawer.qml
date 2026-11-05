@@ -1256,6 +1256,17 @@ Floating {
             .filter(paragraph => paragraph.trim() !== "");
         return shownAndHidden.hidden + paragraphs.length;
     }
+    // Whether the words are cut at the foot, so their reader is made to
+    // count their paragraphs. It's handed to the words once the cut is
+    // worked out, never bound: making the reader sets the words' text
+    // again, from which their lines and so the cut are worked out, which
+    // a binding reads as a loop though no letter moves.
+    readonly property bool wordsCut: shownAndHidden.wordsFrom >= 0
+    onWordsCutChanged: Qt.callLater(drawer.countWords)
+    Component.onCompleted: drawer.countWords()
+    function countWords() {
+        bodyText.counting = drawer.wordsCut;
+    }
     readonly property string moreSays: hiddenBelow === 0 ? ""
         : `${hiddenBelow} more` + (drawer.keys ? "" : " \u00b7 Ctrl+W l")
 
@@ -1880,7 +1891,6 @@ Floating {
                     PageText {
                         id: bodyText
                         sought: drawer.washing
-                        counting: drawer.shownAndHidden.wordsFrom >= 0
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         plain: drawer.body
