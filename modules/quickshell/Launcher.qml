@@ -5960,6 +5960,15 @@ Scope {
                             else
                                 root.open = false;
                         }
+                        // Escape at rest lets the key list go, and words
+                        // asked for, as it leaves what's begun, and closes
+                        // nothing (Joel, 2026-11-05: "fuck escape quitting").
+                        onRested: {
+                            if (root.listing)
+                                root.listing = false;
+                            else if (root.asking)
+                                root.back();
+                        }
                         // A key with no meaning here says so, until the next.
                         onIdled: key => root.say([[ListedKeys.face(key),
                             (Words.field.hints ?? {}).notHere ?? ""]])

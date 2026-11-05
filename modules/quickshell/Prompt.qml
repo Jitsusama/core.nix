@@ -243,6 +243,9 @@ Item {
     }
 
     signal cancelled
+    // Escape at rest in normal, which closes nothing but lets go what
+    // the launcher shows over the rows, as the key list (Launcher.qml).
+    signal rested
     // Normal's -: up to what holds this place. In a text line the arrows
     // only move the caret, and nothing steps in or out by one, since
     // Return goes in (the vi-paradigm spec, Normal).
@@ -443,6 +446,7 @@ Item {
             prompt.commanded("");
             return;
         }
+        const rested = key === "Escape" && mode === "normal" && !QueryKeys.pending(standing);
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -464,6 +468,10 @@ Item {
         if (!read.ours)
             return;
         event.accepted = true;
+        if (rested) {
+            prompt.rested();
+            return;
+        }
         if (read.idle) {
             prompt.idled(key);
             return;
