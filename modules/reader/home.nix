@@ -253,8 +253,8 @@ let
   # keys sit with the jumps, since two keys make no group of their own, and
   # moving is Scrolling there, since Moving is the picture viewer's. The
   # lines in view, and the links and files, are groups of their own, so
-  # none lists more than the launcher's thirteen rows. An arrow comes before
-  # its letter. Zoom is the reader's own, as Vim has none.
+  # none lists more than the launcher's thirteen rows. An arrow moves as its
+  # letter but is never listed. Zoom is the reader's own, as Vim has none.
   key = group: act: chord: does: {
     inherit
       group
@@ -285,10 +285,8 @@ let
   onCommand = on "on the command line";
   onFind = on "on the find line";
   keys = [
-    (moving "down" "Down" "Down a line")
     (moving "down" "j" "Down a line")
     (moving "scroll-down" "Ctrl+E" "The view down a line")
-    (moving "up" "Up" "Up a line")
     (moving "up" "k" "Up a line")
     (moving "scroll-up" "Ctrl+Y" "The view up a line")
     (moving "half-down" "Ctrl+D" "Down half a screen")
@@ -332,9 +330,7 @@ let
     (searching "previous" "N" "Back to the match before")
     (selecting "select" "v" "Select from the cursor's line")
     (selecting "select-lines" "V" "Select whole paragraphs, items and lines")
-    (selecting "left" "Left" "A character left")
     (selecting "left" "h" "A character left")
-    (selecting "right" "Right" "A character right")
     (selecting "right" "l" "A character right")
     (selecting "word-on" "w" "On to the next word")
     (selecting "word-back" "b" "Back to a word's start")
@@ -379,10 +375,8 @@ let
     (onLines "delete-to-start" "Ctrl+U" "Delete everything typed")
     (onCommand "run" "Return" "Run the command typed")
     (onFind "open" "Return" "Search for what's typed")
-    (onCommand "next-row" "Down" "Choose the next command in the menu")
     (onCommand "next-row" "Tab" "Choose the next command in the menu")
     (onCommand "next-row" "Ctrl+N" "Choose the next command in the menu")
-    (onCommand "previous-row" "Up" "Choose the command before in the menu")
     (onCommand "previous-row" "Shift+Tab" "Choose the command before in the menu")
     (onCommand "previous-row" "Ctrl+P" "Choose the command before in the menu")
     (onCommand "take-name" "Ctrl+Y" "Take the command chosen")

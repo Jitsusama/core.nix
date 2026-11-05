@@ -94,8 +94,7 @@ let
       ];
       says = "neovim: Space ? is its own (Something), but the language gives it to show-keys";
     }
-    # No arrow does anything in a modal layer's normal mode, and one kept
-    # for now comes off the list once it binds none.
+    # No arrow does anything in a modal layer's normal mode.
     {
       layers = keyMap "a-modal-layer-binds-an-arrow" [
         {
@@ -104,15 +103,6 @@ let
         }
       ];
       says = "swayimg: Down is an arrow in normal mode, where none does anything";
-    }
-    {
-      layers = keyMap "a-kept-layer-binds-none" [
-        {
-          name = "mpv";
-          binds = [ (bind "j" "j" "") ];
-        }
-      ];
-      says = "mpv binds no arrow now, so take it off STILL_ARROWED";
     }
   ];
 

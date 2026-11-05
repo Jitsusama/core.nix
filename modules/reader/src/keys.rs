@@ -847,6 +847,7 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
     let typed = table()
         .sequences
         .iter()
+        .filter(|(keys, _, _)| !an_arrow(keys))
         .map(|(keys, act, _)| (*act, shown_all(keys)));
     let slots = slots().map(|(act, key)| (act, format!("{} and a letter", shown(key))));
     let operators = operators().map(|(act, key)| (act, shown(key)));
@@ -859,7 +860,7 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
             None => rows.push((group, vec![keys], does)),
         }
     }
-    for (key, does, _) in line_keys() {
+    for (key, does, _) in line_keys().filter(|(key, _, _)| !an_arrow(&[*key])) {
         match rows
             .iter_mut()
             .find(|(g, _, d)| *g == "Command Line" && *d == does)
@@ -878,6 +879,13 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
             (group, mine.collect())
         })
         .collect()
+}
+
+/// Whether keys are an arrow alone. An arrow moves as its letter does, and
+/// on a line as a line's arrows do, but no list names one, as Joel asked:
+/// the letters are what's shown.
+fn an_arrow(keys: &[Key]) -> bool {
+    matches!(keys, [Key::Up | Key::Down | Key::Left | Key::Right])
 }
 
 /// A chord as the desktop's key map lists it.
@@ -899,6 +907,7 @@ pub fn chords() -> Vec<Listed> {
     table()
         .sequences
         .iter()
+        .filter(|(keys, _, _)| !an_arrow(keys))
         .map(|(keys, act, _)| {
             (
                 *act,
@@ -931,12 +940,16 @@ pub fn chords() -> Vec<Listed> {
                 act: spoken(act),
             })
         })
-        .chain(line_keys().map(|(key, does, act)| Listed {
-            group: "commands".to_string(),
-            chord: spelled(key),
-            does,
-            act,
-        }))
+        .chain(
+            line_keys()
+                .filter(|(key, _, _)| !an_arrow(&[*key]))
+                .map(|(key, does, act)| Listed {
+                    group: "commands".to_string(),
+                    chord: spelled(key),
+                    does,
+                    act,
+                }),
+        )
         .collect()
 }
 
@@ -1125,7 +1138,7 @@ mod tests {
             .iter()
             .find(|(_, does)| *does == "Down a line")
             .expect("a line down");
-        assert_eq!(down.0, ["Down", "j"], "the arrow before its letter");
+        assert_eq!(down.0, ["j"], "the letter alone, no arrow named");
         assert!(moving.iter().any(|(ways, _)| ways == &["Ctrl+E"]));
         assert!(moving.iter().any(|(ways, _)| ways == &["Ctrl+Y"]));
         assert!(rows_of("Jumping").iter().any(|(ways, _)| ways == &["gg"]));
@@ -1145,10 +1158,10 @@ mod tests {
     }
 
     #[test]
-    fn the_list_says_selecting_text_objects_and_copying_with_arrows_first() {
+    fn the_list_says_selecting_text_objects_and_copying_by_letters() {
         let selecting = rows_of("Selecting");
-        assert!(selecting.iter().any(|(ways, _)| ways == &["Left", "h"]));
-        assert!(selecting.iter().any(|(ways, _)| ways == &["Right", "l"]));
+        assert!(selecting.iter().any(|(ways, _)| ways == &["h"]));
+        assert!(selecting.iter().any(|(ways, _)| ways == &["l"]));
         assert!(selecting.iter().any(|(ways, _)| ways == &["v"]));
         assert!(selecting.iter().any(|(ways, _)| ways == &["V"]));
         let objects = rows_of("Text Objects");
@@ -1316,9 +1329,30 @@ mod tests {
     }
 
     #[test]
+    fn no_list_names_an_arrow() {
+        let named = |chord: &str| chords().iter().any(|c| c.chord == chord);
+        for arrow in ["Up", "Down", "Left", "Right"] {
+            assert!(!named(arrow), "the key map names {arrow}");
+        }
+        let shown = listing()
+            .into_iter()
+            .flat_map(|(_, rows)| rows)
+            .flat_map(|(ways, _)| ways)
+            .collect::<Vec<_>>();
+        for arrow in ["Up", "Down", "Left", "Right"] {
+            assert!(
+                !shown.iter().any(|way| way == arrow),
+                "Space ? shows {arrow}"
+            );
+        }
+    }
+
+    #[test]
     fn the_arrows_move_as_the_letters_do() {
         let mut machine = Machine::default();
         assert_eq!(machine.press(Key::Down, false), Some((Act::Down, None)));
+        assert!(typed(&mut machine, "3").is_empty(), "a count waits");
+        assert_eq!(machine.press(Key::Down, false), Some((Act::Down, Some(3))));
         assert_eq!(
             machine.press(Key::PageUp, false),
             Some((Act::ScreenUp, None))

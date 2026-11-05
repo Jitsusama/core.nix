@@ -94,9 +94,10 @@ MODAL = {"inlyne", "mpv", "neovim", "reader", "swayimg", "zathura"}
 # "neovim is a gold standard in general"). There an arrow is its letter.
 KEEPS_ITS_ARROWS = {"neovim"}
 # Those still binding a bare arrow in normal, each to come off as it drops
-# them: the reader's and the viewers'. It may only shrink, since one binding
-# no arrow is refused. There an arrow still stands for its letter.
-STILL_ARROWED = {"mpv", "reader", "zathura"}
+# them. None does now: the reader's and the viewers' arrows move as their
+# letters, but no list of their keys names one. It may only shrink, since
+# one binding no arrow is refused.
+STILL_ARROWED: set[str] = set()
 LETTERS = {"down": "j", "up": "k", "left": "h", "right": "l"}
 # Where Neovim's keys on the command line are bound, in the key map's words
 # (modules/neovim/home.nix, scopes).
