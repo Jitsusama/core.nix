@@ -205,13 +205,22 @@ let
       says = "stray takes left in visual mode, where no arrow does anything";
     }
     {
-      name = "an-arrow-in-a-chord";
+      name = "an-arrow-in-a-sequence";
       adds = ''
         [acts.stray]
-        keys = ["<Space><Right>"]
+        keys = ["g<Right>"]
         kinds = ["list"]
       '';
-      says = "stray takes space right in normal mode, where no arrow does anything";
+      says = "stray takes g right in normal mode, where no arrow does anything";
+    }
+    {
+      name = "an-arrow-held";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-Down>"]
+        kinds = ["list"]
+      '';
+      says = "stray takes ctrl+down in normal mode, where no arrow does anything";
     }
     {
       name = "a-mode-unnamed";
@@ -286,7 +295,8 @@ in
   # Neovim names otherwise, by what the machine's Neovim resolves each
   # name to, read once as a file of its own. No arrow does anything in a
   # surface's normal or visual mode, nor in a modal layer's normal but for
-  # those still keeping theirs, a list that may only shrink (Joel,
+  # his Neovim, kept as it is, and those still keeping theirs, a list that
+  # may only shrink; an arrow after the leader overlays Vim's keys (Joel,
   # 2026-11-05). So the check can't pass by
   # seeing nothing, each way of straying is shown to fail first, as is a
   # language that gives one key to two acts and the reader leaving out a
@@ -337,6 +347,17 @@ in
         ${keys} > unselecting.json
       strays ${./language.toml} unselecting.json \
         "reader: a page has word-on, which it leaves out"
+      # An arrow after the leader overlays Vim's own keys, as his Neovim's
+      # Space and an arrow do (Joel, 2026-11-05: "leader stuff can overlay
+      # default stuff"), so a surface's act may take one.
+      cat ${./language.toml} > leader.toml
+      printf '\n[acts.over]\nkeys = ["<Space><Right>"]\nkinds = ["list"]\n' >> leader.toml
+      ${check} leader.toml ${keys} neovim ${neovimCommands}
+      # His Neovim is kept as it is, bare arrows and all.
+      ${lib.getExe pkgs.jq} \
+        'map(if .name == "neovim" then .binds += [{chord: "Down", keys: "down", does: "Down",
+          when: "", run: [], act: "down"}] else . end)' ${keys} > neovim.json
+      ${check} ${./language.toml} neovim.json neovim ${neovimCommands}
       ${check} ${./language.toml} ${keys} neovim ${neovimCommands}
       touch $out
     '';
