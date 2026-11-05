@@ -363,18 +363,19 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     retry(halved, timeout=dt.timedelta(seconds=10))
 
 
-def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
+def test_q_closes_only_the_launcher_and_no_key_reaches_the_window_behind(
     desktop: Desktop,
 ) -> None:
-    """Escape closes only the launcher, and the window behind it never hears the key.
+    """:q closes only the launcher, and the window behind it never hears a key of it.
 
-    The first Escape puts the line in normal mode, and the next, at home, closes it; the
-    window hears neither.
+    Escape puts the line in normal mode, and :q there closes it; the window hears neither
+    Escape nor the Return that runs the line.
     """
     # Joel, 2026-10-26: "Escape closes only the launcher; the key never
-    # reaches the program behind it." wev says every key its window hears,
+    # reaches the program behind it", which holds for :q's Return now that
+    # Escape never closes (2026-11-05). wev says every key its window hears,
     # held as it gets the keyboard or pressed and let go after. The launcher
-    # goes on Escape's press, so the keyboard may come back to the window
+    # goes on Return's press, so the keyboard may come back to the window
     # with the key still down: it's then told the key is held, and told of
     # its release, which no program acts on. Only a press would reach it.
     machine = desktop.machine
@@ -408,7 +409,7 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
             timeout=dt.timedelta(seconds=10),
         )
         heard = machine.succeed(f"cat {log}")
-        assert not re.search(r"state: 1 \(pressed\)\s*\n\s*sym: Escape", heard), heard
+        assert not re.search(r"state: 1 \(pressed\)\s*\n\s*sym: (Escape|Return)", heard), heard
     finally:
         desktop.as_account("systemctl --user stop wev-escape")
 

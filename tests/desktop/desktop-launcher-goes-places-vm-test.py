@@ -61,10 +61,10 @@ def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: D
     assert " lock " in line, f"swayidle no longer locks when logind asks: {line}"
 
 
-def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Desktop) -> None:
-    """The launcher shows the volume's chords, and Escape closes it.
+def test_the_launcher_shows_the_volumes_chords_and_q_closes_it(desktop: Desktop) -> None:
+    """The launcher shows the volume's chords, and :q closes it.
 
-    The first Escape puts the line in normal mode, and the next, at home, closes it.
+    Escape puts the line in normal mode, and :q there closes it, as Escape never does.
     """
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
