@@ -95,6 +95,7 @@ let
     "Prompt.qml"
     "QueryKeys.js"
     "ListedKeys.js"
+    "Typing.js"
     "Search.js"
     "Operators.js"
     "KeyHints.qml"

@@ -31,6 +31,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "Reading.js" as Reading
 import "QueryKeys.js" as QueryKeys
+import "Typing.js" as Typing
 
 Item {
     id: prompt
@@ -420,7 +421,7 @@ Item {
             if (read.act === "change")
                 input.text = "";
             mode = next;
-            input.cursorPosition = QueryKeys.caretAfter(read.act, input.text, at);
+            input.cursorPosition = Typing.caretAfter(read.act, input.text, at);
             return;
         }
         switch (read.act) {
@@ -443,7 +444,7 @@ Item {
                 input.remove(at - 1, at);
             break;
         case "deleteWord":
-            input.remove(QueryKeys.wordStart(text, at), at);
+            input.remove(Typing.wordStart(text, at), at);
             break;
         case "deleteToStart":
             input.remove(0, at);
@@ -497,7 +498,7 @@ Item {
             return;
         keysTaken++;
         standing = read.standing;
-        const line = QueryKeys.typedInSearch(searching, read.act,
+        const line = Typing.typedInSearch(searching, read.act,
             read.act === "" ? event.text : "");
         const { forward, count } = searching;
         if (line.ends !== "") {
@@ -515,7 +516,7 @@ Item {
     // Normal's block rests on a letter, never past the last.
     function rest() {
         if (modal && mode === "normal") {
-            const at = QueryKeys.resting(input.text, input.cursorPosition);
+            const at = Typing.resting(input.text, input.cursorPosition);
             if (at !== input.cursorPosition)
                 input.cursorPosition = at;
         }

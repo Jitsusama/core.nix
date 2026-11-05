@@ -1,12 +1,13 @@
 // The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
-// check copies modules/quickshell/QueryKeys.js, ListedKeys.js, Search.js and
-// Operators.js beside this file and runs `qml -platform offscreen
-// query-keys.qml`.
+// check copies modules/quickshell/QueryKeys.js, Typing.js, ListedKeys.js,
+// Search.js and Operators.js beside this file and runs
+// `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "ListedKeys.js" as Listed
 import "QueryKeys.js" as Keys
+import "Typing.js" as Typing
 import "Search.js" as Search
 import "Operators.js" as Operators
 
@@ -65,7 +66,7 @@ QtObject {
             const read = Keys.read(standing, key, mode);
             standing = read.standing;
             if (mode === "search")
-                line = Keys.typedInSearch(line, read.act,
+                line = Typing.typedInSearch(line, read.act,
                     key === "Space" ? " " : key.length === 1 ? key : "");
             mode = Keys.modeAfter(read.act, mode);
         }
@@ -141,7 +142,7 @@ QtObject {
         for (const [what, keys, want] of lines)
             holds(`in a search, ${what}`, searchTyped(keys), want);
         holds("a control character types nothing",
-            Keys.typedInSearch({ pattern: "a", at: 1 }, "", "\u0001"),
+            Typing.typedInSearch({ pattern: "a", at: 1 }, "", "\u0001"),
             { pattern: "a", at: 1, ends: "" });
 
         // Rows by their words, as the launcher says them to Search.js.
@@ -722,7 +723,7 @@ QtObject {
             ["an accented word whole", "caf\u00e9 cr\u00e8me", 10, 5]
         ];
         for (const [what, text, at, want] of words)
-            holds(`Ctrl+W takes ${what}`, Keys.wordStart(text, at), want);
+            holds(`Ctrl+W takes ${what}`, Typing.wordStart(text, at), want);
 
         // [what, the act, the text, the caret, where it goes]
         const carets = [
@@ -735,9 +736,9 @@ QtObject {
             ["A, at the end", "appendEnd", "sound", 1, 5]
         ];
         for (const [what, act, text, at, want] of carets)
-            holds(`the caret ${what}`, Keys.caretAfter(act, text, at), want);
-        holds("normal's caret rests on the last letter", Keys.resting("sound", 5), 4);
-        holds("and on an empty line at its start", Keys.resting("", 0), 0);
+            holds(`the caret ${what}`, Typing.caretAfter(act, text, at), want);
+        holds("normal's caret rests on the last letter", Typing.resting("sound", 5), 4);
+        holds("and on an empty line at its start", Typing.resting("", 0), 0);
 
         searching(holds);
         operating(holds);
