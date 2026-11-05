@@ -225,12 +225,16 @@ QtObject {
             disconnect: { undoable: true, guarded: false } };
         const as = command => Object.assign({ command }, close);
         holds("what can't be undone asks once", Operators.asks([as("halt")], commands), true);
-        holds("what's undoable doesn't", Operators.asks([as("disconnect")], commands), false);
+        holds("what's undoable doesn't, once the row says how it's put back",
+            Operators.asks([Object.assign({ undo: run }, as("disconnect"))], commands), false);
+        holds("though it asks until the launcher can put it back",
+            Operators.asks([as("disconnect")], commands), true);
         holds("nor one guarded thing", Operators.asks([as("close")], commands), false);
         holds("though more than one guarded thing asks once",
             Operators.asks([as("close"), as("close")], commands), true);
         holds("as does any that can't be undone among undoable ones",
-            Operators.asks([as("disconnect"), as("halt")], commands), true);
+            Operators.asks([Object.assign({ undo: run }, as("disconnect")), as("halt")],
+                commands), true);
         holds("an action the language doesn't name asks", Operators.asks([close], commands),
             true);
         holds("unless it says how it's put back",
