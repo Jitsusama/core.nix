@@ -367,6 +367,9 @@ struct App {
     loop_handle: LoopHandle<'static, App>,
     keys: keys::Machine,
     ctrl: bool,
+    /// Whether Shift is held, which makes Tab Shift+Tab where the keymap
+    /// gives Tab with Shift rather than its own back tab.
+    shift: bool,
     /// Marks by letter, where the view's top was, in points down the page,
     /// so a mark holds across a zoom.
     marks: HashMap<char, f64>,
@@ -3752,7 +3755,7 @@ impl CompositorHandler for App {
 const ZOOM_LEAST: f64 = 0.5;
 const ZOOM_MOST: f64 = 3.0;
 
-fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
+fn key_of(event: &KeyEvent, ctrl: bool, shift: bool) -> Option<keys::Key> {
     Some(match event.keysym {
         Keysym::Escape => keys::Key::Escape,
         Keysym::Return | Keysym::KP_Enter => keys::Key::Return,
@@ -3764,6 +3767,7 @@ fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
         Keysym::Page_Up => keys::Key::PageUp,
         Keysym::Page_Down => keys::Key::PageDown,
         Keysym::F1 => keys::Key::F1,
+        Keysym::Tab if shift => keys::Key::BackTab,
         Keysym::Tab => keys::Key::Tab,
         Keysym::ISO_Left_Tab => keys::Key::BackTab,
         sym => {
@@ -3782,7 +3786,7 @@ impl App {
     /// command takes repeats as presses, as a held Backspace goes on; a
     /// link's label and a page's keys take only those that move.
     fn key(&mut self, event: &KeyEvent, held: bool) {
-        if let Some(key) = key_of(event, self.ctrl) {
+        if let Some(key) = key_of(event, self.ctrl, self.shift) {
             if self.labelling.is_some() {
                 if !held {
                     self.label_key(key);
@@ -3954,6 +3958,7 @@ impl KeyboardHandler for App {
         _: u32,
     ) {
         self.ctrl = modifiers.ctrl;
+        self.shift = modifiers.shift;
     }
 }
 
@@ -4552,6 +4557,7 @@ impl App {
             loop_handle,
             keys: keys::Machine::default(),
             ctrl: false,
+            shift: false,
             marks: HashMap::new(),
             start_pt: opening.start_pt,
             kept_marks: opening.kept_marks,
