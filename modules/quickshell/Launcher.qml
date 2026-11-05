@@ -2576,16 +2576,37 @@ Scope {
     }
     function follow(row) {
         const left = { held: held, here: here() };
-        if (row && !row.gone && row.landsIn) {
-            landInside(row, row.landsIn);
-            tagsBack = tagsBack.concat([left]);
-            return;
-        }
-        if (row && !row.gone && holdsParts(row) && enter(row)) {
+        if (row && !row.gone && followed(row)) {
             tagsBack = tagsBack.concat([left]);
             return;
         }
         say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
+    }
+    // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
+    // lost (Joel's rule): a found act into its program, a row into its
+    // parts, a found place to where it sits, and a spot or a collection
+    // that opens to where it leads. A command, which only fills the line,
+    // has no place, nor a notice, whose acts are commands.
+    function followed(row) {
+        if (row.lands) {
+            row.run();
+            return true;
+        }
+        if (row.landsIn) {
+            landInside(row, row.landsIn);
+            return true;
+        }
+        if (kindOf(row) === "notice")
+            return false;
+        if (row.inside && held.length === 0) {
+            goTo(row.inside);
+            return true;
+        }
+        if (leadsElsewhere(row) && row.start === undefined) {
+            run(row, false);
+            return true;
+        }
+        return enter(row);
     }
     function toLastPlace() {
         if (lastPlace === null)
