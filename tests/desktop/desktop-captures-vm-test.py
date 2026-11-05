@@ -590,7 +590,9 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
 
     The shell restarts with every switch, and a recording running through one once started
     again from nothing. The recording here is a process that has run since the desktop
-    started, named as a camera video's, as the camera's viewfinder names its own.
+    started, named as a camera video's, as the camera's viewfinder names its own. :set
+    recording? says it records and :set norecording asks it to stop, as Stop Recording
+    does; the process isn't a recorder's, so it's asked and never told.
     """
     state = "/run/user/1000/camera-recording.json"
     recorder = desktop.as_account("pgrep -o -x niri").strip()
@@ -615,6 +617,14 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
         after = ran()
         assert said is not None
         assert before - 1 <= said <= after + 1, (before, said, after)
+        desktop.normal()
+        desktop.machine.send_chars(":set recording?\n")
+        desktop.launcher_until(
+            lambda shown: shown["command"] is None and shown["commandSaid"] == "recording"
+        )
+        desktop.as_account("rm -f /tmp/stop")
+        desktop.machine.send_chars(":set norecording\n")
+        desktop.machine.wait_until_succeeds("test -e /tmp/stop", timeout=timedelta(seconds=10))
     finally:
         desktop.as_account(f"rm -f {state}")
     desktop.launcher_until(lambda shown: length(shown) is None)

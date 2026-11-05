@@ -498,6 +498,7 @@ QtObject {
             ["volume=40", "background=dark"]);
 
         holdMinutes(options);
+        holdSteps();
         holdRanges();
 
         for (const failure of failures)
@@ -612,6 +613,32 @@ QtObject {
             [{ to: false }, { to: false }]);
         holds("held for some minutes, it says how many are left",
             SetWords.shown("dnd", 45, options.dnd), "dnd=45");
+    }
+
+    // A level only stepped, as the keyboards' lights where only a board
+    // that can't be asked has them: kbdlevel+=1 steps it, kbdlevel=2 is
+    // refused, since nothing there takes a level, and kbdlevel? can't say,
+    // for the launcher to say so in its own words.
+    function holdSteps() {
+        const options = {
+            kbdlevel: { kind: "number", least: 0, stepsOnly: true, now: () => null },
+            level: { kind: "number", least: 0, most: 3, now: () => 2 }
+        };
+        const first = arg => (SetWords.setting(arg, options).changes ?? [])[0] ?? null;
+        const toward = (arg, now) => {
+            const change = first(arg);
+            return change === null ? null : SetWords.toward(change, now, options[change.option]);
+        };
+        holds("a level only stepped takes no =", SetWords.setting("kbdlevel=2", options),
+            { error: "E474: Invalid argument: kbdlevel=2" });
+        holds("but steps either way, from where it can't say",
+            [toward("kbdlevel+=1", null), toward("kbdlevel-=1", null)],
+            [{ to: null }, { to: null }]);
+        holds("a level read steps from where it stands", toward("level+=1", 2), { to: 3 });
+        holds("one that can't be read says nothing of itself",
+            SetWords.shown("kbdlevel", null, options.kbdlevel), null);
+        holds("nor where it stands in the list",
+            SetWords.setArguments("kb", options), [{ value: "kbdlevel", note: "" }]);
     }
 
     // What a line asks before it runs, once, by the rule d asks by

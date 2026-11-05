@@ -56,11 +56,12 @@ Scope {
     property var launcher: null
     property var things: []
     // The options :set takes from it, by name, as the command line reads
-    // them (Commands.setting): { kind: "switch" | "number" | "choice",
-    // takes, least, most, values, fixed, now: () => where it stands,
-    // choices: () => the values :set wifi= lists, set: to => "" or what to
-    // say }, so :set nowifi turns off what its
-    // Wi-Fi Off row does. Each is still found as a row.
+    // them (SetWords.setting): { kind: "switch" | "number" | "choice",
+    // takes, least, most, values, fixed, stepsOnly, now: () => where it
+    // stands or null where it can't be read, choices: () => the values
+    // :set wifi= lists, set: (to, change) => "" or what to say }, so
+    // :set nowifi turns off what its Wi-Fi Off row does. Each is still
+    // found as a row.
     property var setOptions: ({})
     // The desktop's actions its rows stand for, by what they do (Shortcuts'
     // `does`), each row drawing the action's chord, so the action is listed

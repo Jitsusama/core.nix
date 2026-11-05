@@ -21,6 +21,19 @@ Provider {
     // Tuple's desktop entry hides itself, so Programs lists it for these.
     hiddenPrograms: ["tuple"]
 
+    // :set nomic mutes Joel in the call he's in and :set mic lets him be
+    // heard, as its Muted row does, while Tuple says which he is.
+    setOptions: !Tuple.calling || Tuple.muted === null ? ({}) : ({
+        mic: {
+            kind: "switch",
+            now: () => Tuple.muted === false,
+            set: to => {
+                Tuple.mute(!to);
+                return "";
+            }
+        }
+    })
+
     things: Tuple.controls.map(control => thing(control))
     // So Programs › Tuple, held while a call starts or ends, is drawn again.
     onThingsChanged: changed()
