@@ -450,7 +450,11 @@ fn islamic(iso: Date<Iso>) -> Option<Calendar> {
             // publishes, since a sighting of the new moon may begin a month a
             // day either side. It's named as the shell names it, in Latin
             // letters, on the plate rather than in the place's head.
-            figure("reckoning", "Umm al-Qura".to_owned(), "Umm al-Qura".to_owned()),
+            figure(
+                "reckoning",
+                "Umm al-Qura".to_owned(),
+                "Umm al-Qura".to_owned(),
+            ),
         ],
     })
 }
