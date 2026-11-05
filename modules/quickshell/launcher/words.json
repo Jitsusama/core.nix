@@ -1331,7 +1331,7 @@
     {
       "id": "verb:warmer",
       "command": "set",
-      "argument": "deskwarmth+=500",
+      "argument": "deskwarmth-=500",
       "in": "light:desk:warmth",
       "name": "Warmer",
       "verb": "warmer"
@@ -1339,7 +1339,7 @@
     {
       "id": "verb:cooler",
       "command": "set",
-      "argument": "deskwarmth-=500",
+      "argument": "deskwarmth+=500",
       "in": "light:desk:warmth",
       "name": "Cooler",
       "verb": "cooler"
