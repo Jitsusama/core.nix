@@ -1035,16 +1035,13 @@ Floating {
         return standing.count;
     }
 
-    // How things stand: which line of how many, and what's found.
-    readonly property string facts: {
-        if (actsOn !== "" && mode === "command")
-            return actsOn;
-        const of = `${listed.length === 0 ? 0 : cursor + 1} of ${rows.length}`;
-        if (pattern !== "")
-            return mode === "find" ? `${listed.length} of ${rows.length}`
-                : `/${pattern} \u00b7 ${listed.length} of ${rows.length}`;
-        return of;
-    }
+    // How things stand: which line of how many are listed. What a find
+    // found is counted beside it in the head, as Vim's search count sits
+    // beside the search, so the foot keeps only the list's own facts
+    // (VKCF3Z, 2026-11-05).
+    readonly property string facts: actsOn !== "" && mode === "command" ? actsOn
+        : `${listed.length === 0 ? 0 : cursor + 1} of ${listed.length}`
+    readonly property string foundCount: `${listed.length} of ${rows.length}`
 
     // The hints for the cursor card in this mode, from the table.
     readonly property var hints: {
@@ -1301,21 +1298,49 @@ Floating {
                 font.weight: Theme.level.title.weight
             }
 
+            // What's sought, typed or kept once its line is left, and how
+            // many it found of how many, a mark each side of the dot, as
+            // the hints are joined; the count stays whole, the sought words
+            // giving way before it.
             Text {
                 id: sought
-                visible: held.mode === "find"
+                visible: held.pattern !== ""
                 x: place.x + place.implicitWidth + Theme.space.rung.items
-                width: Math.max(0, parent.width - x - Theme.space.rung.inset)
+                width: Math.max(0, Math.min(implicitWidth, parent.width - x
+                    - Theme.space.rung.inset - 2 * Theme.space.rung.mark - dot.implicitWidth
+                    - count.implicitWidth))
                 y: held.headBase - baselineOffset
-                text: held.findLine.text
+                text: held.pattern
                 textFormat: Text.PlainText
                 elide: Text.ElideLeft
-                color: Theme.strong
+                // Strong while it types, as every line being typed is; the
+                // text colour once kept, a fact like the count.
+                color: held.mode === "find" ? Theme.strong : Theme.text
                 font: figure.font
             }
 
-            Rectangle {
+            Text {
+                id: dot
                 visible: sought.visible
+                x: sought.x + sought.width + Theme.space.rung.mark
+                y: held.headBase - baselineOffset
+                text: "\u00b7"
+                color: Theme.muted
+                font: note.font
+            }
+
+            Text {
+                id: count
+                visible: sought.visible
+                x: dot.x + dot.implicitWidth + Theme.space.rung.mark
+                y: held.headBase - baselineOffset
+                text: held.foundCount
+                color: Theme.muted
+                font: note.font
+            }
+
+            Rectangle {
+                visible: held.mode === "find"
                 opacity: held.caretLight
                 x: sought.x + soughtBefore.advanceWidth
                 y: held.headBase - figure.ascent
