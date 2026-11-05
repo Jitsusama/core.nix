@@ -2317,8 +2317,8 @@
     at its prompt open the disk, lets the lock go for that one prompt, and boots anew after
   '';
   vm-idle-sleep-comes-only-on-battery = ''
-    a machine left idle on the charger stays awake, and sleeps once the charger is unplugged; on
-    battery a session still in use keeps it awake, and an idle one stays awake while a program
+    a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even
+    as the last of a burst of twenty power supply events; on battery a session still in use keeps it awake, and an idle one stays awake while a program
     holds logind's lock against idling and sleeps once it lets go
   '';
   vm-ir-camera-opens-for-readers = ''
