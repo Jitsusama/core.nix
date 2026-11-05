@@ -3871,6 +3871,7 @@ Scope {
                     eyebrow: root.hundredths(lines.eyebrow),
                     eyebrowMiddle: root.hundredths(lines.eyebrowMiddle),
                     title: root.hundredths(lines.title),
+                    titleLast: root.hundredths(lines.titleLast),
                     preview: root.hundredths(lines.preview),
                     previewLines: lines.previewLines.map(line => root.hundredths(line)),
                     words: root.hundredths(lines.words),
