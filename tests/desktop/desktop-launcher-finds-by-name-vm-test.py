@@ -637,14 +637,16 @@ def walk_the_rows_washed(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
 
     def washed() -> list[Json]:
-        return cast("list[Json]", json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"])
+        return cast(
+            "list[Json]", json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"]
+        )
 
     for mode in ["insert", "normal"]:
         if mode == "normal":
             desktop.normal()
         rows = washed()
         runs = [run for row in rows for run in row["washed"]]
-        assert runs, f"in {mode} no row drawn for \"s\" washed a letter: {rows}"
+        assert runs, f'in {mode} no row drawn for "s" washed a letter: {rows}'
         assert all(run.lower() == "s" for run in runs), f"in {mode} washed {runs}, not s"
         selected = next(row for row in rows if row["selected"])
         name = selected["reads"].split(" \u00b7 ")[0]

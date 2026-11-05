@@ -1745,7 +1745,10 @@ with its count: "/slack · 3 of 12".
 **The find line, `/`.** The launcher and the file picker open on it. It is
 a list's one way to find (Joel, 2026-11-04: "it is weird that the text box
 is a search, but i also have the / command"): the rows narrow as it's
-typed, the letters each row matched in Neovim's Search wash. What's typed is
+typed, the letters each row matched in Neovim's Search wash, the selected
+row's on rule, a shade past the selection, since raised sinks into it, and
+none on the accent, since a find has no match the cursor is on (Wash.qml).
+What's typed is
 the mono at Figure after the accent's `/`, with the mono's bar caret at
 every scale.
 
