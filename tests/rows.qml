@@ -516,7 +516,21 @@ ShellRoot {
             expect("typed in normal, the launcher's field names no key",
                 texts.length > 0 && !texts.some(t => t.text.includes("\u2190")
                     || t.text.includes("Ctrl+Y")), said(texts));
+            // A find narrowing the rows says so in normal, its count at
+            // Note after what's typed, as "/ne · 3 of 12"; on the find the
+            // rows themselves narrow as it's typed, so it says nothing.
+            typing.narrowed = "3 of 12";
+            texts = drawn(typing, []).sort((a, b) => a.from - b.from);
+            const typedAt = texts.find(t => t.text === "ne");
+            const counted = texts.find(t => t.text === "\u00b7 3 of 12");
+            expect("a narrowed find says its count after what's typed, in normal",
+                typedAt !== undefined && counted !== undefined && counted.from >= typedAt.to,
+                said(texts));
             typing.mode = "find";
+            texts = drawn(typing, []);
+            expect("and nothing of it on the find",
+                !texts.some(t => t.text.includes("3 of 12")), said(texts));
+            typing.narrowed = "";
             root.gutterHolds();
             turns.begin();
         } catch (error) {
