@@ -290,6 +290,14 @@ QtObject {
             holds(`${act} is once a press, so a held d never makes dd`, Keys.repeats(act), false);
         holds("the field says dd for ending", Keys.keyOf("ending", "normal"), "dd");
         holds("and yy for copying", Keys.keyOf("copy", "normal"), "yy");
+        // d's ask says the keys that answer it, as d2j, so a motion is
+        // said by Vim's letters rather than its first key, an arrow.
+        holds("a motion is said by its letters",
+            ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"]
+                .map(act => Keys.lettersOf(act, "normal")),
+            ["j", "k", "gg", "G", "H", "M", "L"]);
+        holds("and an act with no letters by its first key",
+            Keys.lettersOf("halfDown", "normal"), "Ctrl+d");
 
         // Twenty rows, the 5th to the 12th in view, the 7th selected, as
         // the moves' cases have them: [what, the count, the motion, the
