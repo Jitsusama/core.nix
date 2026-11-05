@@ -59,6 +59,16 @@ function disruptive(row) {
     return !!row.confirm || DISRUPTIVE.has(verbOf(row));
 }
 
+// Whether it ends something in use, as words.json marks it (Words.ending):
+// a row's ending action, as a window's Close or a network's Forget It, or
+// a disconnect, which Return typed in insert never does (Joel,
+// 2026-11-04: "it is quite dangerous how in insert mode i can type in a
+// name of a wifi network and then hitting enter disconnects from it").
+// Narrower than disruptive: a lock or a sleep is typed to be done.
+function ends(row) {
+    return row.act === "ending" || (row.ends ?? "") !== "";
+}
+
 // Whether it's a place, which is opened, or an action, which is done: a
 // part holding more is a place, though Return steps into it by running.
 function kindOf(row) {
