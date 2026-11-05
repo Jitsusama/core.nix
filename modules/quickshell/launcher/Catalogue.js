@@ -80,6 +80,45 @@ function opens(row) {
         && !ends(row) && !disruptive(row);
 }
 
+// What a row's verb says it does that changes nothing: it only shows,
+// copies or goes somewhere.
+const QUIET = new Set(["copy", "show", "see", "more", "open", "go"]);
+
+// Whether doing it changes how things stand (the vi-paradigm spec's Return):
+// it ends something or can't be taken back, as a disconnect, a lock or a
+// turning off does, or it's done and keeps the launcher, as a setting's
+// switch or a network's join is; never a row that only shows, copies, opens
+// or steps in. Return from the find line lands on such a row rather than
+// doing it, so typing a name and Return can only ever show it. It stands
+// for the key language's own flag until the launcher reads its acts from
+// there.
+function changesState(row) {
+    if (!row || row.gone) {
+        return false;
+    }
+    if (row.changes === true || ends(row) || disruptive(row)) {
+        return true;
+    }
+    const verb = verbOf(row).toLowerCase();
+    return row.stays === true && typeof row.run === "function" && !QUIET.has(verb)
+        && !row.spot && !row.from && !(row.verbs && row.targets);
+}
+
+// A step's rows with a quiet one first, where the first would change
+// something: the first row inside a thing never changes state (See It,
+// Copy, a part), so a Return that steps in and a second Return after it
+// only ever show. Where every row changes something, they keep their order.
+function quietFirst(inside) {
+    if (inside.length < 2 || !changesState(inside[0])) {
+        return inside;
+    }
+    const quiet = inside.findIndex(one => !changesState(one));
+    if (quiet < 0) {
+        return inside;
+    }
+    return [inside[quiet]].concat(inside.slice(0, quiet), inside.slice(quiet + 1));
+}
+
 // Whether it's a place, which is opened, or an action, which is done: a
 // part holding more is a place, though Return steps into it by running.
 function kindOf(row) {
@@ -153,8 +192,9 @@ function closingFirst(row, inside) {
     const verb = verbOf(row);
     const said = verb.toLowerCase();
     const already = said === "" ? -1 : inside.findIndex(one => saysAct(one, said));
+    // It no longer keeps the launcher, but it changes what the row did.
     const act = Object.assign({}, already >= 0 ? inside[already] : ownAct(row, verb),
-        { stays: false });
+        { stays: false, changes: true });
     return [act].concat(inside.filter((_one, at) => at !== already));
 }
 

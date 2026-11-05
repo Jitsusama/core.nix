@@ -37,7 +37,9 @@ const normal = [
     { name: "close", acts: ["close"], without: ["q"], also: [":q"] }
 ];
 
-const insert = [
+// The find's, the line the launcher opens on, whose keys a prompt's
+// insert shares.
+const find = [
     { name: "nextRow", acts: ["next"] },
     { name: "previousRow", acts: ["previous"] },
     { name: "screen", acts: ["pageDown", "pageUp"] },
@@ -79,8 +81,15 @@ const pageVisual = [
     { name: "copy", acts: ["copy", "copyLines"] }
 ];
 
-const sections = [{ mode: "normal", lines: normal }, { mode: "insert", lines: insert },
+const sections = [{ mode: "normal", lines: normal }, { mode: "find", lines: find },
     { mode: "page", lines: page }, { mode: "pageVisual", lines: pageVisual }];
+
+// Whether a table's row is pressed in a mode, as QueryKeys.inMode says:
+// "line" is the find's and insert's, "both" every mode's.
+function pressedIn(one, mode) {
+    return one.mode === mode || one.mode === "both"
+        || (one.mode === "line" && (mode === "find" || mode === "insert"));
+}
 
 // How a key is drawn, as the desktop draws one (modules/theme/keys.nix):
 // its glyph where it has one, its name where not, a letter with a
@@ -135,7 +144,7 @@ function keyLine(table, mode, line, words) {
     // Qt's engine has no flatMap, so each act's keys are joined by hand.
     const keys = [].concat(...line.acts.map(act => {
         const all = [].concat(...table
-            .filter(one => one.act === act && (one.mode === mode || one.mode === "both"))
+            .filter(one => one.act === act && pressedIn(one, mode))
             .map(one => one.keys));
         return line.firsts ? all.slice(0, 1) : firstRank(all);
     })).filter(key => !(line.without ?? []).includes(key));

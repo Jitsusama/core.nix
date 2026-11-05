@@ -46,9 +46,13 @@ Row {
             horizontalAlignment: hints.endsRight && index === hints.keys.length - 1
                 ? Text.AlignRight : Text.AlignLeft
             // A key Joel knows by its mark alone, as the arrows, says no word.
+            // A mark may have a hue of its own, and its word one too, as the
+            // act a second Return does after a landing is said in the accent.
             text: modelData[0] === "" ? ""
                 : `<font color="${modelData[2] ?? Theme.text}">${modelData[0]}</font>`
-                    + ((modelData[1] ?? "") === "" ? "" : ` ${modelData[1]}`)
+                    + ((modelData[1] ?? "") === "" ? ""
+                    : modelData[3] ? ` <font color="${modelData[3]}">${modelData[1]}</font>`
+                    : ` ${modelData[1]}`)
             textFormat: Text.StyledText
             color: Theme.muted
             font.family: hints.level.family

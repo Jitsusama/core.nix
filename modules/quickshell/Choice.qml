@@ -77,6 +77,10 @@ Rectangle {
     // is never cut mid-word or slid from its left (Reading.js's
     // wholeItems). Empty, `side` is said as it is, cut to its share.
     property var sideItems: []
+    // What a second Return does, said at its right in the accent in place
+    // of its kind or chord, once Return from the find landed on it rather
+    // than doing it ("\u21b5 turn off"), until the next key.
+    property string landed
     // A word after the name, muted: "here" beside a workspace.
     property string count
     // What kind of thing it is, for a noun; empty for an act or a set.
@@ -265,13 +269,16 @@ Rectangle {
         anchors.rightMargin: Theme.space.l
         y: monoLine.y + monoLine.baselineOffset
             - (right.chorded ? keys.baselineOffset : sideText.baselineOffset)
-        readonly property bool chorded: row.kind === "" && row.chord.length > 0
-        readonly property string said: row.kind !== "" ? row.kind
+        readonly property bool chorded: row.landed === "" && row.kind === ""
+            && row.chord.length > 0
+        readonly property string said: row.landed !== "" ? row.landed
+            : row.kind !== "" ? row.kind
             : itemised ? Reading.wholeItems(row.sideItems, room,
                 words => Math.ceil(sideFace.advanceWidth(words)) + 1)
             : row.side
         readonly property bool sided: !chorded && said !== ""
-        readonly property bool itemised: row.kind === "" && row.sideItems.length > 0
+        readonly property bool itemised: row.landed === "" && row.kind === ""
+            && row.sideItems.length > 0
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
         readonly property real room: row.width - Theme.space.l - nameBox.x
@@ -325,6 +332,7 @@ Rectangle {
             level: Theme.level.note
             // Muted reads under the Lc 60 any text needs on the selection.
             color: row.flashed ? row.flashInk
+                : row.landed !== "" ? Theme.accent
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth
