@@ -31,8 +31,8 @@
 # gg and G play the first and the last in the list, ]b and [b the next and
 # the one before, a number before a key does it that many times and before
 # G plays that one, and yy copies the frame as a picture (copy-frame.lua).
-# q closes nothing, as in all his programs, and says what does: ZZ, or a w
-# just after Space, as Space w closes everything of his. j and l were
+# q closes nothing, as in all his programs, and says what does: ZZ. Space
+# leads nothing here, so there's no Space w, as there is elsewhere. j and l were
 # mpv's subtitles and A-B loop, which go to J, where mpv cycles subtitles
 # already, and L; the digits no longer change the picture's contrast,
 # brightness, gamma and saturation, nor the loudness, as mpv has them.
@@ -244,14 +244,10 @@ let
         chord = "F1";
         does = "The player's keys";
       }
-      # As everywhere: q closes nothing, and a w just after Space closes,
-      # though Space has paused by then.
+      # As everywhere, q closes nothing; Space leads nothing here, so ZZ
+      # alone closes.
       {
         chord = "Z Z";
-        does = "Close the player";
-      }
-      {
-        chord = "Space w";
         does = "Close the player";
       }
     ];

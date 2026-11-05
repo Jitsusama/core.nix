@@ -3,7 +3,7 @@
 # back over its IPC socket what each did: Vim's beside the arrows that do as
 # they do, a number before them, 0 and $, gg G and a number before G through
 # the list, ]b and [b, yy, ? and F1, Space at once, Z alone, the keys j and
-# l displaced, and ZZ and Space w closing where q and Escape don't. mpv
+# l displaced, and ZZ closing where q, Escape and Space w don't. mpv
 # plays nothing to a screen here, so each key is pressed through mpv's own
 # keypress command, which goes through the same bindings a key on the
 # keyboard does.
@@ -223,8 +223,8 @@ closed() {
   done
   never "$1 to close"
 }
-# q, Q, Escape at rest, and a w a moment after Space, close nothing: a
-# second on, the player is still there.
+# q, Q, Escape at rest, and Space w, close nothing: a second on, the player
+# is still there, since Space leads nothing here.
 open_after() {
   keys "$@"
   sleep 1
@@ -233,30 +233,10 @@ open_after() {
 open_after q
 open_after Q
 open_after ESC
-keys SPACE
-sleep 1
-open_after w
+open_after SPACE w
 # ZZ closes it.
 keys Z Z
 closed ZZ
-
-# So does Space w, in one that's open afresh.
-mpv --config-dir="$config" --vo=null --ao=null --force-window=no --idle=yes \
-  --save-position-on-quit=no --load-stats-overlay=no --input-ipc-server="$PWD/mpv.sock" \
-  > said 2>&1 &
-mpv=$!
-# Once vi-keys.lua has bound Space, or the press would be mpv's own.
-space_bound() {
-  asked '["get_property","input-bindings"]' \
-    | jq -e '[.data // [] | .[] | select(.cmd | test("vi-SPACE"))] | length > 0' > /dev/null
-}
-for _ in $(seq 600); do
-  if space_bound; then break; fi
-  sleep 0.1
-done
-space_bound || never "vi-keys.lua to bind Space"
-keys SPACE w
-closed "Space w"
 
 # A program that runs mpv with Escape of its own, forced, as the camera's
 # viewfinder does, always gets it, whichever script mpv loads first: of

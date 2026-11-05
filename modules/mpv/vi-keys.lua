@@ -4,17 +4,18 @@
 -- start and $ to the end; gg plays the first in the list, G the last, and
 -- a number before either that one; ]b and [b the next and the one before,
 -- as Vim's go between buffers; yy copies the frame; ? and F1 open the
--- launcher's Shortcuts at the player's keys; ZZ closes it, and so does a
--- w just after Space; and a number before any of them does it that many
--- times. q closes nothing, as in all of Joel's programs, and says what
--- does. mpv has no numbers before keys, and does a key the moment it's
--- pressed even when another binding starts with it, so these are bound
--- here, ahead of mpv's own. A key that starts a pair waits 300 ms, his
--- Neovim's timeoutlen, for its second, and does what it does alone once
--- none comes: [ and ] change the speed, b smooths banding and Z delays
--- the subtitles, as mpv has them; y alone does nothing, as in Vim. Space
--- leads nothing and pauses at once, since waiting on a pause is felt
--- every time. Nothing shows what waits, as his Neovim has showcmd off.
+-- launcher's Shortcuts at the player's keys; ZZ closes it; and a number
+-- before any of them does it that many times. q closes nothing, as in
+-- all of Joel's programs, and says what does. mpv has no numbers before
+-- keys, and does a key the moment it's pressed even when another binding
+-- starts with it, so these are bound here, ahead of mpv's own. A key
+-- that starts a pair waits 300 ms, his Neovim's timeoutlen, for its
+-- second, and does what it does alone once none comes: [ and ] change
+-- the speed, b smooths banding and Z delays the subtitles, as mpv has
+-- them; y alone does nothing, as in Vim. Space leads nothing and pauses
+-- at once, since waiting on a pause is felt every time, so mpv has no
+-- Space w: a Space that paused and then closed on w would be half a
+-- leader. Nothing shows what waits, as his Neovim has showcmd off.
 local waiting = { count = '', first = nil, timer = nil }
 
 local function stop()
@@ -67,27 +68,6 @@ local function close()
   mp.command('quit')
 end
 
--- A w pressed this soon after Space closes the player, as Space w closes
--- every surface of Joel's; Space has paused or played on by then, which a
--- player closing makes no matter. Alone, w does what mpv's own w does.
--- w is always bound, and asks when Space came, rather than being bound
--- only after Space, since a binding made then may land after the w.
-local space_at = nil
-
-local function after_space()
-  space_at = mp.get_time()
-end
-
-local function w(count)
-  local after = space_at and mp.get_time() - space_at < 0.3
-  space_at = nil
-  if after then
-    close()
-  else
-    times(count, 'add panscan -0.1')
-  end
-end
-
 -- What each key does, given the number before it, if any.
 local alone = {
   h = seek(-5),
@@ -109,7 +89,6 @@ local alone = {
   G = end_or_nth(false),
   SPACE = function()
     mp.command('cycle pause')
-    after_space()
   end,
   ['['] = function(count)
     times(count, 'multiply speed 1/1.1')
@@ -123,7 +102,6 @@ local alone = {
   Z = function(count)
     times(count, 'add sub-delay +0.1')
   end,
-  w = w,
   ['?'] = shortcuts,
   F1 = shortcuts,
   -- Nothing closes by a key pressed in passing; what does is said, over

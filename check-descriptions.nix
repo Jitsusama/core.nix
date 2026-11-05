@@ -695,12 +695,12 @@
   '';
   mpv-keys-go-where-they-say = ''
     mpv's Left, Right, Down and Up seek where h, l, j and k do, a number before a key does it that
-    many times and alone chooses nothing, Escape stops one, 0 and $ go to the start and the end, [ and
-    ] alone change the speed, Z alone delays the subtitles, J and L do what j and l did, yy copies
-    the frame as a PNG and y alone nothing, ? and F1 ask the launcher for the keys, ]b and [b, gg, G
-    and a number before G go through the list, f and Escape go in and out of full screen, Space
-    pauses at once, even before a ?, q, Q and Escape close nothing, ZZ and Space w close it, and a
-    program running mpv with its own forced Escape always gets it
+    many times and alone chooses nothing, Escape stops one, 0 and $ go to the start and the end,
+    [ and ] alone change the speed, Z alone delays the subtitles, J and L do what j and l did, yy
+    copies the frame as a PNG and y alone nothing, ? and F1 ask the launcher for the keys, ]b and
+    [b, gg, G and a number before G go through the list, f and Escape go in and out of full
+    screen, Space pauses at once, even before a ?, q, Q, Escape and Space w close nothing, ZZ
+    closes it, and a program running mpv with its own forced Escape always gets it
   '';
   mpv-says-the-file-it-plays-now = ''
     mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
