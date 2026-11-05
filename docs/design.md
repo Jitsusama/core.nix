@@ -508,7 +508,9 @@ Title 32; Display 56.
   groups of lines. A group's heading sits a pitch above its first thing, its
   group's gap above it: a heading belongs to what follows.
 - **Regions** of a frame part at a hairline: the head over the rows and the
-  foot under them alike, the foot's baseline a row below the last row's. A
+  foot under them alike, the foot's baseline a row below the last row's. The
+  hairline runs inset to inset, the width of the ink, and never meets the
+  frame, since a rule that meets it cuts the card into boxes. A
   plate's head is a region of its own: its eyebrow a Title pitch above the
   title, the body two below it, back on the beat.
 - **A frame's bottom is set**, never what whole lines happen to leave.
@@ -2070,23 +2072,45 @@ the key that does it, "↵ open" and "- up".
 
 His other groups have nothing to act on here, and none is faked.
 
-**The foot, the mode mark, the mode word and the key list.** The foot
-starts with the mode's mark, three capitals at Label, NOR, FND, CMD, INS
+**The launcher and held notices are one family** (Joel, 2026-11-05: "we
+need for notifications and the laucnher to feel more similar ... i like the
+status line in notifications better"). Each is the same card: a head, a
+hairline, the rows, a hairline, the status line.
+
+- **The head** holds the find line, `/` at the card's inset and what's
+  typed after it, with the place's glyph and Title before what's typed where
+  there is one ("Notices", "Time › Servers"). A find's count sits
+  beside it, as Vim's search count sits beside the search; the head's right
+  end is the selection's note's.
+- **The rows** are the launcher's: the gutter, the glyph, the name and its
+  words, the side at the far end, the ground hugging its ink. A held
+  notice's card opens under its line, typed as the drawer's plate is.
+- **The command line** sits at the bottom, over the status line, with its
+  menu rising from it, as Vim's does: what's typed sits beside what it
+  offers.
+- **The status line** is one component both read (StatusLine.qml), below.
+
+**The foot, the mode mark, the mode word and the key list.** The foot is
+the status line, and it starts with the mode's mark, three capitals at Label, NOR, FND, CMD, INS
 or VIS: muted in normal and in the accent otherwise, first where the eye
 starts the line, as his status line starts with its mode, and every mark
 the same width, so nothing beside it moves. Pending, a prompt's normal and
-the key list are NOR. It then gives the status
-facts, the mode word's room, then the cursor row's keys in this mode by
-letter and lowercase verb, "d disconnect · Space ? keys · ↵ go to": Return
+the key list are NOR. It then gives its surface's own facts, the glance
+where the launcher has it and the position ("1 of 4") where held notices
+do, the mode word's room, then the cursor row's keys
+in this mode by letter and lowercase verb, each key in text and its word
+muted, joined by a muted dot a mark each side, "d disconnect · Space ?
+keys · ↵ go to": Return
 at the right end, as Joel chose, and Space ? just before it, so the way to
 the keys is always on screen. On the command line the foot names the
 line's own keys: "Tab choose" until a line is chosen or typed, then what
 Return runs. Its hints come from the table that handles the keys, filtered
 by mode and row, so none names a key that does nothing, and a check
 presses every hint drawn. The mode word's room is as wide as its widest
-word in its own font, set before the facts, which give way around it, so
-it's never cut (Joel, 2026-11-04: "the mode text is truncated so I only see
-...rt instead of insert"). While an operator waits no hint applies, so the
+word in its own font, set before the hints, which give way around it,
+so it's never cut (Joel, 2026-11-04: "the mode text is truncated so I
+only see ...rt instead of insert"). Room is held only for what this mode
+draws, never for keys another mode would show. While an operator waits no hint applies, so the
 mode word takes the hints' room too and names its target whole,
 "d · close Notes for Tuesday", cut only at a whole word with an ellipsis
 when even that won't hold it. A landing is normal, so its foot keeps
@@ -2392,7 +2416,7 @@ by them isn't done.
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
 | Dictation                                 | dictation, Quickshell    | monospace      | nothing | while it listens, at the bottom centre in a meter's frame: a person speaking in the voice colour, listening, a wave of what the microphone hears, and the time, counting down the last five of Whisper's thirty seconds with the glyph in the warning colour; typing, once it lasts long enough to see; then for a moment heard nothing, still writing, or, with the muted microphone, the microphone is muted | nothing | Super+D starts and stops it | nothing; it's never in the margin, and never a notice while the shell watches |
-| The launcher's foot and the margin mark   | Quickshell               | both           | the foot, when the selection says nothing: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
+| The launcher's glance and the margin mark | Quickshell               | both           | the status line after its mark: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by Return | the accent frame, a command line over a list split by a hairline, a quarter down | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
