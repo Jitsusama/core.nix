@@ -54,6 +54,7 @@ import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "QueryKeys.js" as QueryKeys
 import "SetWords.js" as SetWords
+import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -2636,23 +2637,23 @@ Scope {
 
     // The things a line acts on: those bound as : was pressed, or where a
     // range or :g is typed, the rows it names as they stood then
-    // (Commands.bound), so a row arriving after can't shift them.
+    // (CommandBinding.bound), so a row arriving after can't shift them.
     function commandBound(read, opened) {
         if ((read.range ?? null) === null && !read.global)
             return { things: opened.things };
-        const bound = Commands.bound(read, { names: opened.rows.map(row => String(row.name ?? "")),
+        const bound = CommandBinding.bound(read, { names: opened.rows.map(row => String(row.name ?? "")),
             cursor: opened.cursor, marks: opened.marks });
         return bound.error !== undefined ? bound
             : { things: bound.rows.map(at => opened.rows[at]) };
     }
 
     // A line run on several things, or on one a range or :g found: each
-    // thing's own act (Commands.actFor). Where only some have it, it says so
+    // thing's own act (CommandBinding.actFor). Where only some have it, it says so
     // and runs none; one that would ask, over more than one, runs only with
     // its !, until the ask lands on the line (MVL7F9's askOnce).
     function commandAcross(entry, read, things) {
         const words = Words.field.command ?? {};
-        const acts = things.map(thing => Commands.actFor(entry, actsOf(thing),
+        const acts = things.map(thing => CommandBinding.actFor(entry, actsOf(thing),
             act => commandWords(act.key ?? "")))
             .filter(act => act !== undefined);
         if (acts.length < things.length || acts.length === 0) {
@@ -4922,6 +4923,9 @@ Scope {
                             switch (act) {
                             case "close":
                                 root.open = false;
+                                return;
+                            case "commandAgain":
+                                root.commandAgain();
                                 return;
                             case "keys":
                                 root.listing = !root.listing;

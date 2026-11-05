@@ -80,6 +80,9 @@ const table = [
     // The row's file opened in its own program, as his oil's gx opens the
     // file under the cursor; a row that isn't a file does nothing.
     { act: "openOwn", mode: "normal", keys: [["g", "x"]] },
+    // @: runs the last command line again, as Vim's does (the language's
+    // again-command); @ alone waits for it.
+    { act: "commandAgain", mode: "normal", keys: [["@", ":"]] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
 
