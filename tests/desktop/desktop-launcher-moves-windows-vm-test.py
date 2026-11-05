@@ -534,15 +534,17 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     rows = desktop.showing()["rows"]
     taken, kept = rows[:2], rows[2]
     # V begins visual line on the cursor row, which it tints, saying so in
-    # the mode word's room; j takes the row below too, and the foot says
-    # how many Return opens.
+    # the mode word's room with how many it holds; j takes the row below
+    # too, and the foot says how many Return opens.
     machine.send_chars("V")
     desktop.launcher_until(
-        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "visual line"
+        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "visual line \u00b7 1"
     )
     assert desktop.showing()["tinted"] == [0], desktop.showing()
     machine.send_chars("j")
-    desktop.launcher_until(lambda shown: shown["tinted"] == [0, 1])
+    desktop.launcher_until(
+        lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "visual line \u00b7 2"
+    )
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 open 2"], desktop.showing()
     # y copies both titles, a line each, flashes them, and ends visual.
     since = desktop.mark()
