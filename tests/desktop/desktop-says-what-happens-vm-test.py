@@ -298,6 +298,33 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     desktop.close_launcher()
 
 
+def into_in_sight(desktop: Desktop, page: InTheDrawer, scale: str) -> Json:
+    """Take the keys into the drawer just opened at a scale, and return where its cursor is.
+
+    The card and the drawer are held in sight on the way: the card inside the screen however
+    small, its rows fewer, and at 2 the drawer taking the card's place once the keys go in,
+    its title on one line and the card's foot still under it (VKCF3Z, 2026-11-05).
+    """
+    card = desktop.showing()["card"]
+    assert card["top"] > 0, f"at {scale} it's off the top: {card}"
+    assert card["foot"] < card["screen"], f"at {scale} it's off the bottom: {card}"
+    assert card["left"] > 0, f"at {scale} it's off the left: {card}"
+    assert card["right"] < card["across"], f"at {scale} it's off the right: {card}"
+    rows = page.drawer()
+    assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
+    assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
+    at = page.into()
+    inside = page.drawer()
+    lines = inside["lines"]
+    assert lines["title"] == lines["titleLast"], f"at {scale} the title breaks: {inside}"
+    if inside["over"]:
+        assert inside["shown"], f"at {scale} the drawer isn't shown inside: {inside}"
+        assert inside["at"] == inside["cardAt"], f"at {scale} it's off the card: {inside}"
+        assert inside["width"] == inside["cardWidth"], f"at {scale} it's narrower: {inside}"
+        assert inside["height"] < inside["cardHeight"], f"at {scale} it hides the foot: {inside}"
+    return at
+
+
 def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_back(
     desktop: Desktop,
 ) -> None:
@@ -316,6 +343,9 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     came = page.into()
     assert came["says"] == page.TITLE, came
     assert came["letter"] == 0, came
+    # The foot names the way back, not the row's Return, which does nothing in the drawer.
+    told = desktop.showing()["selected"]["told"]
+    assert told == ["Space \u2190 back"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
     assert rule["top"] == came["top"], came
@@ -331,27 +361,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         desktop.close_launcher()
         desktop.as_account(f"niri msg output winit scale {scale}")
         page.open()
-        # The card stays inside the screen however small, its rows fewer (VKCF3Z, 2026-11-05).
-        card = desktop.showing()["card"]
-        assert card["top"] > 0, f"at {scale} it's off the top: {card}"
-        assert card["foot"] < card["screen"], f"at {scale} it's off the bottom: {card}"
-        assert card["left"] > 0, f"at {scale} it's off the left: {card}"
-        assert card["right"] < card["across"], f"at {scale} it's off the right: {card}"
-        rows = page.drawer()
-        assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
-        assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
-        at = page.into()
-        inside = page.drawer()
-        lines = inside["lines"]
-        assert lines["title"] == lines["titleLast"], f"at {scale} the title breaks: {inside}"
-        if inside["over"]:
-            assert inside["shown"], f"at {scale} the drawer isn't shown inside: {inside}"
-            assert inside["at"] == inside["cardAt"], f"at {scale} it's off the card: {inside}"
-            assert inside["width"] == inside["cardWidth"], f"at {scale} it's narrower: {inside}"
-            # The card's foot stays in sight under it, saying how to come back.
-            assert inside["height"] < inside["cardHeight"], (
-                f"at {scale} it hides the foot: {inside}"
-            )
+        at = into_in_sight(desktop, page, scale)
         named = scale.replace(".", "-")
         desktop.photograph(f"launcher-drawer-keys-at-{named}")
 
@@ -517,6 +527,9 @@ def test_in_a_drawer_v_and_shift_v_choose_and_y_copies_what_they_chose(desktop: 
 
     came = page.until("v", chose("letters", 1))
     assert came["chosen"]["taken"] == [[title, 0, 1]], came
+    # Choosing, the foot names Escape, which lets the choice go and leaves the keys in.
+    told = desktop.showing()["selected"]["told"]
+    assert told == ["Esc back"], f"in visual the foot says {told}"
     page.until("l l l l l", chose("letters", len("Deploy")))
     page.pressed_until(
         "y",
