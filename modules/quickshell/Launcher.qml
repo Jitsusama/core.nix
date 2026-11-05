@@ -2829,20 +2829,21 @@ Scope {
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;
         }
-        commandAsked(entry, [act], 1, read.bang, thing.name ?? "");
+        commandAsked(entry, [{ act, thing }], 1, read.bang);
     }
 
-    // Runs a line's acts on what it's bound to, asking once first where
-    // CommandBinding.asking says, through the one ask (askOnce), as the
-    // spec's Operators have it: y runs them past their own confirm, as a !
-    // does; n, Escape and Ctrl+C leave them be.
-    function commandAsked(entry, acts, all, bang, name) {
+    // Runs a line's acts on what it's bound to, `found` each act with its
+    // thing, asking once first where CommandBinding.asking says, by d's
+    // rule, through the one ask (askOnce), in d's words for one thing or
+    // many (Confirm.question), the rows it covers tinted: y runs them past
+    // their own confirm, as a ! does; n, Escape and Ctrl+C leave them be.
+    function commandAsked(entry, found, all, bang) {
         const words = Words.field.command ?? {};
-        const asked = CommandBinding.asking(entry, acts.length, all, bang);
+        const acts = found.map(one => one.act);
+        const asked = CommandBinding.asking(entry, acts, all, bang, Options.commands ?? {});
         const fill = template => {
             const said = String(template ?? "").replace(/\{command\}/g, entry.command)
-                .replace("{some}", acts.length).replace("{all}", all)
-                .replace("{count}", acts.length).replace("{name}", name);
+                .replace("{some}", acts.length).replace("{all}", all);
             return said.charAt(0).toUpperCase() + said.slice(1);
         };
         if (asked.none) {
@@ -2854,7 +2855,12 @@ Scope {
                 run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
         };
         if (asked.ask !== "") {
-            askOnce(fill(words[asked.ask]), sure, () => {});
+            const question = asked.ask === "some" ? fill(words.some)
+                : Confirm.question(found.map(one => ({ ends: entry.command,
+                    name: one.thing?.name ?? "", kind: kindOf(one.thing) })),
+                    Words.field.operators ?? {});
+            askOnce(question, sure, () => {}, found.map(one => matches.indexOf(one.thing))
+                .filter(at => at >= 0));
             return;
         }
         if (bang) {
@@ -2892,10 +2898,10 @@ Scope {
     // A line run on several things, or on one a range or :g found: each
     // thing's own act (CommandBinding.actFor), asked first where it asks.
     function commandAcross(entry, read, things) {
-        const acts = things.map(thing => CommandBinding.actFor(entry, actsOf(thing),
-            act => commandWords(act.key ?? "")))
-            .filter(act => act !== undefined);
-        commandAsked(entry, acts, things.length, read.bang, things[0]?.name ?? "");
+        const found = things.map(thing => ({ act: CommandBinding.actFor(entry, actsOf(thing),
+            act => commandWords(act.key ?? "")), thing }))
+            .filter(one => one.act !== undefined);
+        commandAsked(entry, found, things.length, read.bang);
     }
 
     // Where the launcher is now, for a step into something to keep.
