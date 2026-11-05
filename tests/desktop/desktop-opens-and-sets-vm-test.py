@@ -813,8 +813,10 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
+    # Joined, its Return typed in insert steps in too, rather than
+    # disconnecting it, so the foot says the two as one.
     told = desktop.showing()["selected"]["told"]
-    assert "\u2192" in told, told
+    assert told[:1] == ["\u21b5 \u2192"], told
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
