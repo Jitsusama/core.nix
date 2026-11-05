@@ -48,7 +48,8 @@ QtObject {
         disconnect: { act: "disconnect", short: "disc", changes: true, undoable: true,
             range: true },
         forget: { act: "forget", short: "forg", changes: true, range: true },
-        suspend: { act: "suspend", short: "sus", changes: true }
+        suspend: { act: "suspend", short: "sus", changes: true },
+        close: { act: "close-window", short: "clo", changes: true, guarded: true, range: true }
     })
 
     // A network's acts, as Wireless.qml makes them: Return's first, the
@@ -209,6 +210,9 @@ QtObject {
         holds("an act that changes nothing asks nothing, so takes no !",
             Commands.ran("ope!", menuOf([{ name: "Open It", verb: "open" }])).error,
             "E477: No ! allowed");
+        holds("a guarded act asks nothing on one thing, once on more, so takes !",
+            ["undoable", "guarded", "bang"].map(flag =>
+                menuOf([{ name: "Close It", verb: "close" }])[0][flag]), [false, true, true]);
         holds("what asks is what changes and can't be undone",
             menuOf([{ name: "Open It", verb: "open" }, { name: "Forget It", verb: "forget" },
                 { name: "Disconnect It", verb: "disconnect" }, { name: "See It", verb: "see" }])
