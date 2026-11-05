@@ -32,6 +32,33 @@ QtObject {
         holds("never past the last", List.viewTop(0, 19, 20), 12);
         holds("a short view keeps half itself", List.viewTop(0, 2, 20, 3), 1);
 
+        // The view scrolled as Vim's is, the cursor kept inside it by
+        // scrolloff (Joel, 2026-11-05: "I can't scroll up and down in a
+        // notices list now ... that is very vi like"): Ctrl+E and Ctrl+Y a
+        // line, the wheel three, zz zt zb about the cursor. Twenty lines,
+        // eight shown, three kept from the edge.
+        const twenty = { count: 20, top: 0, shown: 8 };
+        const scrolling = [
+            ["Ctrl+E scrolls a line, the cursor kept off the top", "lineDown", 0, 0,
+                twenty, { top: 1, cursor: 4 }],
+            ["3 Ctrl+E three, the cursor where it was", "lineDown", 6, 3, twenty,
+                { top: 3, cursor: 6 }],
+            ["never past the last", "lineDown", 0, 30, twenty, { top: 12, cursor: 15 }],
+            ["Ctrl+Y back a line, the cursor kept off the foot", "lineUp", 19, 0,
+                { count: 20, top: 12, shown: 8 }, { top: 11, cursor: 15 }],
+            ["and none at the top", "lineUp", 2, 0, twenty, { top: 0, cursor: 2 }],
+            ["zz puts the cursor in the middle", "viewCentre", 9, 0, twenty,
+                { top: 6, cursor: 9 }],
+            ["zt at the top, short of scrolloff", "viewAtTop", 10, 0, twenty,
+                { top: 7, cursor: 10 }],
+            ["zb at the foot", "viewAtBottom", 10, 0, twenty, { top: 6, cursor: 10 }],
+            ["a count names the line", "viewAtTop", 2, 11, twenty, { top: 7, cursor: 10 }],
+            ["a list that fits never scrolls", "lineDown", 1, 0,
+                { count: 5, top: 0, shown: 8 }, { top: 0, cursor: 1 }]
+        ];
+        for (const [what, motion, at, count, list, want] of scrolling)
+            holds(what, List.scrolled(motion, at, count, list), want);
+
         holds("the cursor line is its own number", List.number(3, 3, true), "4");
         holds("the rest how far from it", List.number(1, 3, true), "2");
         holds("absolute, each its own", List.number(1, 3, false), "2");

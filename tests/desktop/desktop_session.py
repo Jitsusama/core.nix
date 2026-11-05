@@ -963,6 +963,14 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             {"type": "abs", "data": {"axis": "y", "value": int(y * 32767)}},
         )
 
+    def wheel(self, x: float, y: float, notches: int) -> None:
+        """Turn the wheel there, as a fraction of the screen, down for a positive count."""
+        self.point(x, y)
+        button = "wheel-down" if notches > 0 else "wheel-up"
+        for _ in range(abs(notches)):
+            self.tablet({"type": "btn", "data": {"down": True, "button": button}})
+            self.tablet({"type": "btn", "data": {"down": False, "button": button}})
+
     def click(self, x: float, y: float) -> None:
         """Click there, as a fraction of the screen across and down."""
         self.point(x, y)

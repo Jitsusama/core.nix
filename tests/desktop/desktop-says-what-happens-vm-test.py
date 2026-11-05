@@ -1175,6 +1175,41 @@ def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
         machine.send_key("esc")
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    # Twelve, more than the eight lines held notices show, scroll as Vim's lines do (Joel,
+    # 2026-11-05: "I can't scroll up and down in a notices list now").
+    for number in range(1, 13):
+        with desktop.told(f"shows card Feed {number}"):
+            desktop.as_account(
+                f"notify-send --app-name=Feed --expire-time=60000 'Feed {number}' 'words'"
+            )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    pressed_and_told(desktop, HELD_SCROLLS)
+    with desktop.told("notice view from 5"):
+        desktop.wheel(0.85, 0.15, 3)
+    with desktop.told("notice view from 2"):
+        desktop.wheel(0.85, 0.15, -1)
+    with desktop.told("lets notices go"):
+        machine.send_key("esc")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+
+
+# Keys pressed on twelve held notices, eight shown with three kept from the view's edges: the
+# arrows as j and k, Ctrl+E and Ctrl+Y a line, and zz zt zb about the cursor, which a scroll
+# keeps in view. Feed 12 is line 1, and the cursor opens on Feed 1, the oldest.
+HELD_SCROLLS: list[tuple[str | tuple[str, ...], str]] = [
+    ("gg", "notice cursor Feed 12"),
+    ("G", "notice cursor Feed 1"),
+    ("gg", "notice cursor Feed 12"),
+    (("down",), "notice cursor Feed 11"),
+    (("up",), "notice cursor Feed 12"),
+    (("ctrl-e",), "notice view from 2"),
+    (("ctrl-y",), "notice view from 1"),
+    ("zt", "notice view from 2"),
+    ("zb", "notice view from 1"),
+    ("zz", "notice view from 2"),
+]
 
 
 # Keys pressed on the held notices of test_every_held_key_does_what_vims_does, each with what
@@ -1208,9 +1243,9 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     ("q", "notice says q does nothing \u00b7 :q closes"),
     ("n", "notice says not here"),
     ("c", "notice says not here"),
-    # No arrow does anything in normal (Joel, 2026-11-05: "rely only on vi right feeling
-    # things"), so one says so as any key with no meaning does.
-    (("down",), "notice says not here"),
+    # An arrow is its letter's motion (Joel, 2026-11-05), and Right's l steps into nothing
+    # here, so it says so as any key with no meaning does.
+    (("right",), "notice says not here"),
     (" ul", "notice numbers absolute"),
     (" ul", "notice numbers relative"),
     # Visual: o goes to its other end, Escape ends it, gv brings it back, x is done with it.
