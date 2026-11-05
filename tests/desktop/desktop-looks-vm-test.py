@@ -194,9 +194,14 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
         assert not arrowed, f"at {scale} the find's foot names an arrow: {arrowed}"
+        # Normal's foot names its keys by letter, as Vim's do, so no arrow either, and always
+        # the command line's and the key list's.
         desktop.normal()
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
+        arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
+        assert not arrowed, f"at {scale} normal's foot names an arrow: {arrowed}"
+        told = desktop.showing()["selected"]["told"]
+        assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
         desktop.on_find()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
@@ -218,6 +223,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
+        says_until_the_next_key(desktop, scale)
         # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         shows_the_command_line(desktop, scale)
@@ -244,6 +250,28 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
+    """Press a key with no meaning, then q, photographing what the foot says for each.
+
+    Each stands in the keys' place, the mark in text and its words muted, until the next key.
+    """
+    machine = desktop.machine
+    at = scale.replace(".", "-")
+    for chars, said, shot in [
+        ("z", ["z not here"], "not-here"),
+        ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
+    ]:
+        machine.send_chars(chars)
+        desktop.launcher_until(lambda shown: shown["saying"] == said)  # noqa: B023
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        cut = [word["text"] for word in foot if word["cut"]]
+        assert not cut, f"at {scale} the foot cuts what it says: {cut}"
+        desktop.photograph(f"launcher-{shot}-at-{at}")
+    # gg stays on the first row and lets the words go.
+    machine.send_chars("gg")
+    desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
