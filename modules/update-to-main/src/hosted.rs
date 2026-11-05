@@ -131,7 +131,10 @@ fn borrow(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fai
 }
 
 /// Fetches main into the checkout as the account, with its own git and
-/// logins, moving none of its branches.
+/// logins, moving none of its branches. Main lands in a ref of the ask's
+/// own, as the last ask's main is there: a git that checks only what a
+/// fetch adds to the refs it moves then walks back to that, not through
+/// every ref, which in a large repository took 2 minutes rather than 10 s.
 fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Failure> {
     let command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
     run::output(
@@ -142,7 +145,7 @@ fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fail
             "--quiet",
             "--no-tags",
             &config.repository,
-            &format!("refs/heads/{}", config.branch),
+            &format!("+refs/heads/{0}:refs/update-to-main/{0}", config.branch),
         ],
     )?;
     Ok(())

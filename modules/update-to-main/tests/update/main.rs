@@ -943,6 +943,30 @@ fn a_hosted_main_the_checkout_lacks_is_fetched_there_first() {
     assert_eq!(own, 0);
 }
 
+/// Main is fetched into a ref of the ask's own, so a git that checks only
+/// what a fetch adds to the refs it moves walks back to the last ask's main
+/// rather than through the whole repository: in a large one, 10 s rather
+/// than 2 minutes.
+#[test]
+fn a_hosted_main_is_fetched_into_a_ref_of_its_own() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let first = world.hosted_commit("one", None);
+    world.system(&first);
+    assert_eq!(world.update().1, done(&first));
+    assert_eq!(
+        git(&checkout, &["rev-parse", "refs/update-to-main/main"]).trim(),
+        first
+    );
+    let second = world.hosted_commit("two", None);
+    world.system(&second);
+    assert_eq!(world.update().1, done(&second));
+    assert_eq!(
+        git(&checkout, &["rev-parse", "refs/update-to-main/main"]).trim(),
+        second
+    );
+}
+
 #[test]
 fn a_hosted_checkout_only_its_accounts_git_reads_is_read_with_that_git() {
     let mut world = World::hosted_from(World::new(), counted_token);
