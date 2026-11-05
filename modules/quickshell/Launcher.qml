@@ -5130,11 +5130,19 @@ Scope {
                             readonly property string said: counted !== "" ? counted
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
-                            // held whichever shows.
+                            // held whichever shows. A binding doesn't see
+                            // what a call reads, so it reads the face itself,
+                            // to be measured again in the theme's face once
+                            // that arrives: measured in the face before it,
+                            // insert showed as its last letters at scale 2.
                             readonly property real room: {
+                                void measure.font;
                                 const words = Object.values(Words.field.modes ?? {});
-                                return words.length === 0 ? 0 : keys.spacing
-                                    + Math.max(...words.map(word => measure.advanceWidth(word)));
+                                let widest = 0;
+                                for (const word of words)
+                                    widest = Math.max(widest, measure.advanceWidth(word));
+                                return words.length === 0 ? 0
+                                    : keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
                             width: Math.max(0, room - keys.spacing)
@@ -5142,7 +5150,9 @@ Scope {
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
-                            elide: Text.ElideLeft
+                            // A mode's word is never cut; a count or an ex
+                            // line longer than the room keeps its last letters.
+                            elide: counted !== "" ? Text.ElideLeft : Text.ElideNone
                             color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
                         }
