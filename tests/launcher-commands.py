@@ -144,6 +144,36 @@ REFUSED: list[tuple[str, list[Entry]]] = [
         [{"id": "session:bad", "command": "set"}],
     ),
     (
+        "a :set toggling",
+        [{"id": "verb:bad", "in": "x", "command": "set", "argument": "wifi!"}],
+    ),
+    (
+        "a :set toggling as inv does",
+        [{"id": "session:bad", "command": "set", "argument": "invwifi"}],
+    ),
+    (
+        "a state's :set toggling",
+        [
+            {
+                "id": "session:bad",
+                "command": "set",
+                "argument": "nowifi",
+                "states": {"off": {"argument": "wifi!"}},
+            }
+        ],
+    ),
+    (
+        "a :set row whose state names nothing of its own",
+        [
+            {
+                "id": "session:bad",
+                "command": "set",
+                "argument": "nowifi",
+                "states": {"off": {"name": "Wi-Fi On"}},
+            }
+        ],
+    ),
+    (
         "two verbs alike on a row",
         [
             {"id": "verb:one", "in": "x", "command": "forget"},
@@ -175,7 +205,14 @@ ALLOWED: list[Entry] = [
     {"id": "verb:on:waiting:go", "in": ON, "command": "forget"},
     {"id": "verb:on:playing:go", "in": ON, "command": "forget"},
     {"id": "thing:not-a-verb", "in": "x"},
-    {"id": "session:good", "command": "set", "argument": "wifi!"},
+    {
+        "id": "session:good",
+        "command": "set",
+        "argument": "nowifi",
+        "states": {"off": {"argument": "wifi"}},
+    },
+    {"id": "session:invite", "command": "set", "argument": "invite=all"},
+    {"id": "verb:skip", "in": "x", "command": "forget", "bang": True, "argument": "all"},
 ]
 
 
