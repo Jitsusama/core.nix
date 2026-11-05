@@ -246,7 +246,12 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     says in the drawer what it acts on, and Escape puts the find line back in normal.
     """
     machine = desktop.machine
-    everywhere = ["quit Close the Launcher", "help List the Keys", "{n} Go to a Row"]
+    everywhere = [
+        "quit Close the Launcher",
+        "help List the Keys",
+        "set Set an Option",
+        "{n} Go to a Row",
+    ]
     machine.send_chars(":")
     desktop.launcher_until(
         lambda shown: (
