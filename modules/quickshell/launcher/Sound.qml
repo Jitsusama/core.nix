@@ -106,8 +106,34 @@ Provider {
                 out.audio.volume = to / 100;
                 out.audio.muted = false;
             })
-        }
+        },
+        // The output sound plays through and the input listened to, by the
+        // names their rows give them, as Play Sound Through It and Listen
+        // Through It choose them (VKCF3Z, 2026-11-05: choosing a default
+        // stays :set's, the machine's).
+        output: provider.chooser(() => provider.outputs, () => Pipewire.defaultAudioSink),
+        input: provider.chooser(() => provider.inputs, () => Pipewire.defaultAudioSource)
     })
+
+    // An option choosing one of the devices listed by its name, where it
+    // stands the one in use. They're read as the line asks, not bound, so
+    // the options aren't made again each time a device or its jack does.
+    function chooser(devices, using) {
+        const shown = () => devices().filter(node => provider.listed(node));
+        return {
+            kind: "choice",
+            get values() {
+                return shown().map(node => provider.named(node));
+            },
+            now: () => using() ? provider.named(using()) : "",
+            set: to => {
+                const node = shown().find(each => provider.named(each) === to);
+                if (node)
+                    provider.use(node);
+                return "";
+            }
+        };
+    }
 
     function toOut(change) {
         const out = Pipewire.defaultAudioSink;
@@ -360,6 +386,9 @@ Provider {
         const using = node.isSink ? "" : "input";
         const rows = chosen(node) ? [] : [thing({
             key: "verb:sound-use",
+            // Its line names the device, as :set output= or input= does.
+            fill: { name: named(node) },
+            wordState: using,
             verb: Words.verb("verb:sound-use", using),
             name: Words.name("verb:sound-use", using),
             glyph: glyph(kind(node)),
