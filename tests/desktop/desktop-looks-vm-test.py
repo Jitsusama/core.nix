@@ -323,8 +323,9 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("notes for")
+        # The windows lead, the title yy just copied below them.
         desktop.launcher_until(
-            lambda shown: sorted(shown["rows"]) == ["Notes for Tuesday", "Notes for Wednesday"]
+            lambda shown: sorted(shown["rows"][:2]) == ["Notes for Tuesday", "Notes for Wednesday"]
         )
         desktop.normal()
         machine.send_chars("gg")
