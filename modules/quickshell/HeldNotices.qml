@@ -1528,9 +1528,13 @@ Floating {
                     visible: line.atCursor && line.one !== null && held.mode !== "command"
                     x: held.nameAt
                     width: parent.width - x - Theme.space.rung.inset
-                    // A field ends it as a row does; else it leaves what a
-                    // row leaves under its last baseline.
+                    // A field ends it as a row does. Else it leaves what a
+                    // row leaves under its last baseline, so the hairline
+                    // under it stands as far off, less a beat where a row
+                    // follows: the next Name a row less a beat under the
+                    // card's last line, as VKCF3Z's family mocks set it.
                     height: field.visible ? field.y + field.height : lastBase + held.rowLeaves
+                        - (line.index < held.inView.length - 1 ? Theme.space.beat : 0)
 
                     Text {
                         id: body
@@ -1932,7 +1936,8 @@ Floating {
                 }
 
                 // The hints that fit: the middle ones give way first, then
-                // the first, so Space ? and Return's at the right end stay.
+                // the first, so Space ? and Return's at the right end stay,
+                // and the last stays alone before a hint is cut mid-word.
                 readonly property string all: {
                     if (held.said !== "")
                         return held.said;
@@ -1942,7 +1947,7 @@ Floating {
                         return "";
                     const said = held.hints.map(one => `${one.key} ${one.word}`);
                     let shown = said;
-                    while (shown.length > 2 && note.advanceWidth(shown.join(" \u00b7 ")) > fits) {
+                    while (shown.length > 1 && note.advanceWidth(shown.join(" \u00b7 ")) > fits) {
                         const going = shown.length > 3 ? 1 : 0;
                         shown = shown.slice(0, going).concat(shown.slice(going + 1));
                     }
