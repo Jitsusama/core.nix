@@ -259,7 +259,7 @@ Floating {
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
-    readonly property bool more: view.contentHeight > drawer.viewTop + drawer.viewRoom + 1
+    readonly property bool more: view.natural > drawer.viewTop + drawer.viewRoom + 1
     // How far it's scrolled from its rest, which its keys set and the
     // launcher reports.
     property real scrolled: 0
@@ -1317,10 +1317,12 @@ Floating {
         clip: true
         interactive: false
         contentWidth: width
-        // Never ending between two lines (viewEnd).
         readonly property real natural: drawer.moment ? momentShown.ends : flow.y + flow.height
-        contentHeight: natural <= drawer.viewTop + drawer.viewRoom ? natural
-            : drawer.viewEnd + drawer.viewRoom
+        // Room past every top the keys scroll to (viewEnd), however short
+        // the page, never its own height: a Flickable whose content changes
+        // pulls contentY back inside its bounds, which would leave the view
+        // resting at the page's top rather than viewTop until the next key.
+        contentHeight: drawer.viewTop + drawer.viewEnd + drawer.tall
 
         Item {
             id: column
