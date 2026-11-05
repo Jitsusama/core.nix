@@ -4,7 +4,8 @@
 // write in, and what Return runs, or the error it says, as Vim's command
 // line would, and how its :set reads and sets the launcher's options. The
 // `the-command-line-lists-every-command` check copies
-// modules/quickshell/Commands.js and SetWords.js beside this file and runs
+// modules/quickshell/Commands.js, SetWords.js, Ex.js, CommandBinding.js and
+// Operators.js beside this file and runs
 // `qml -platform offscreen command-line.qml`.
 import QtQuick
 import "Commands.js" as Commands
@@ -215,13 +216,30 @@ QtObject {
         holds("an act that changes nothing asks nothing, so takes no !",
             Commands.ran("ope!", menuOf([{ name: "Open It", verb: "open" }])).error,
             "E477: No ! allowed");
+        // A window's Close, whose words name it :close, the language's
+        // close-window.
+        const closing = Commands.listed({ acts: [{ name: "Close It", verb: "close" }],
+            table: commands, said: said, called: () => ({ command: "close" }) });
         holds("a guarded act asks nothing on one thing, once on more, so takes !",
-            ["undoable", "guarded", "bang"].map(flag =>
-                menuOf([{ name: "Close It", verb: "close" }])[0][flag]), [false, true, true]);
-        holds("what asks is what changes and can't be undone",
+            ["undoable", "guarded", "bang"].map(flag => closing[0][flag]), [false, true, true]);
+        // As d asks (Operators.asks): what changes asks unless the launcher
+        // can put it back, the language's undoable or not.
+        const back = { name: "Disconnect It", verb: "disconnect", undo: () => {} };
+        holds("what asks is what changes and nothing puts back",
             menuOf([{ name: "Open It", verb: "open" }, { name: "Forget It", verb: "forget" },
                 { name: "Disconnect It", verb: "disconnect" }, { name: "See It", verb: "see" }])
-                .slice(0, 4).map(entry => entry.undoable), [true, false, true, true]);
+                .slice(0, 4).map(entry => entry.undoable), [true, false, false, true]);
+        holds("so an undoable act takes ! until it says how it's put back",
+            [ran("disc!"), Commands.ran("disc!", menuOf([back])).error],
+            ["disconnect!", "E477: No ! allowed"]);
+        // A bare close, its words naming no command, only closes the
+        // launcher, as Provider's row with nothing to copy does: it's :quit,
+        // never the language's close-window (1JQ9TO's finding, 2026-11-05),
+        // and stands for the :q every surface has.
+        const quitting = menuOf([{ name: "Close", verb: "close" }]);
+        holds("a bare close is the launcher's :quit, listed once",
+            lines(quitting).filter(line => line[0] === "q[uit]"), [["q[uit]", "Close", "\u21b5"]]);
+        holds("and asks nothing", [quitting[0].undoable, quitting[0].bang], [true, true]);
         holds("a surface's command takes what follows it", ran("sort name"), "sort name");
 
         // Ctrl+W deletes the word before the caret, as Vim's command line's.
@@ -566,34 +584,41 @@ QtObject {
         holdAsking();
     }
 
-    // What a line asks before it runs, once, as the spec's Operators have it:
-    // nothing where its act can be undone; where it can't, once, on one
-    // thing or many, unless a ! says don't; a guarded one only over more
-    // than one; and where only some of what it's bound to have the act,
-    // once, naming how many can, ! or not. None that can says so.
+    // What a line asks before it runs, once, by the rule d asks by
+    // (Operators.asks), so d, the line and the menu are one: an act that
+    // changes asks unless the launcher can put it back (its undo) or it's
+    // guarded and alone; once, on one thing or many, unless a ! says don't;
+    // and where only some of what it's bound to have the act, once, naming
+    // how many can, ! or not. None that can says so; what changes nothing
+    // asks nothing.
     function holdAsking() {
         const menu = menuOf(network());
         const entry = typed => Commands.ran(typed, menu).entry;
-        const guarded = { command: "close", undoable: false, guarded: true };
-        holds("an act that can be undone asks nothing, on one or many",
-            [CommandBinding.asking(entry("disc"), 1, 1, false),
-                CommandBinding.asking(entry("disc"), 3, 3, false)],
+        const acts = (count, act) => Array.from({ length: count }, () => act ?? {});
+        const asking = (typed, count, all, bang, act) =>
+            CommandBinding.asking(entry(typed), acts(count, act), all, bang, commands);
+        const back = { undo: () => {} };
+        holds("an act that changes asks, the language's undoable or not, on one or many",
+            [asking("disc", 1, 1, false), asking("disc", 3, 3, false)],
+            [{ ask: "one" }, { ask: "many" }]);
+        holds("unless the launcher can put it back",
+            [asking("disc", 1, 1, false, back), asking("disc", 3, 3, false, back)],
             [{ ask: "" }, { ask: "" }]);
         holds("one that can't asks once, on one or many, unless its ! says don't",
-            [CommandBinding.asking(entry("forg"), 1, 1, false),
-                CommandBinding.asking(entry("forg"), 3, 3, false),
-                CommandBinding.asking(entry("forg"), 3, 3, true)],
+            [asking("forg", 1, 1, false), asking("forg", 3, 3, false),
+                asking("forg", 3, 3, true)],
             [{ ask: "one" }, { ask: "many" }, { ask: "" }]);
+        const guarded = { command: "close", undoable: false, guarded: true };
         holds("a guarded one asks only over more than one",
-            [CommandBinding.asking(guarded, 1, 1, false),
-                CommandBinding.asking(guarded, 2, 2, false)],
+            [CommandBinding.asking(guarded, acts(1), 1, false, commands),
+                CommandBinding.asking(guarded, acts(2), 2, false, commands)],
             [{ ask: "" }, { ask: "many" }]);
+        holds("what changes nothing asks nothing", asking("see", 3, 3, false), { ask: "" });
         holds("where only some have it, it asks once, naming how many, ! or not",
-            [CommandBinding.asking(entry("disc"), 2, 3, false),
-                CommandBinding.asking(entry("forg"), 2, 3, true)],
+            [asking("disc", 2, 3, false, back), asking("forg", 2, 3, true)],
             [{ ask: "some" }, { ask: "some" }]);
         holds("where none has it, it says so and asks nothing",
-            CommandBinding.asking(entry("disc"), 0, 3, false), { ask: "", none: true });
+            asking("disc", 0, 3, false), { ask: "", none: true });
     }
 
     // Earlier lines, as Vim's :his lists them: each line Return ran
