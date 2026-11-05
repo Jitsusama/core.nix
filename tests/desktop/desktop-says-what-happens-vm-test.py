@@ -131,7 +131,7 @@ PITCH = 24
 SCROLLED = 3 * PITCH
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc right", "spc left", "Z Z", "g g"})
+WAITING = frozenset({"spc right", "spc left", "Z Z", "g g", "g v"})
 TRIES = 3
 TRIED = timedelta(seconds=10)
 
@@ -496,6 +496,63 @@ def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: 
         at = int(page.into()["line"])
         page.until("/ d e p l o y ret", functools.partial(first, at))
         desktop.photograph(f"launcher-drawer-search-at-{scale.replace('.', '-')}")
+    page.back("spc left")
+    desktop.close_launcher()
+
+
+def test_in_a_drawer_v_and_shift_v_choose_and_y_copies_what_they_chose(desktop: Desktop) -> None:
+    """In the drawer, v chooses letters from the cursor's and V lines, and y copies them.
+
+    The moves extend what's chosen, and it's counted as the mode word counts it; y puts it on
+    the clipboard as markdown, the title after its #, and goes back to the page with the
+    cursor at its start, the flash it gives what it took ending; o goes to its other end,
+    Escape lets it go, and gv brings it back. Its pictures at both of Joel's scales show
+    letters chosen over two lines, for a person to judge the selection's ground and the block.
+    """
+    page = InTheDrawer(desktop)
+    title = page.into()["line"]
+
+    def chose(by: str, count: int) -> Callable[[Json], bool]:
+        return lambda drawer: drawer["chosen"]["by"] == by and drawer["chosen"]["count"] == count
+
+    came = page.until("v", chose("letters", 1))
+    assert came["chosen"]["taken"] == [[title, 0, 1]], came
+    page.until("l l l l l", chose("letters", len("Deploy")))
+    page.pressed_until(
+        "y",
+        lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["copied"] == "# Deploy",
+    )
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("[ \"$(wl-paste --no-newline)\" = '# Deploy' ]"),
+        timeout=timedelta(seconds=10),
+    )
+    desktop.launcher_until(lambda shown: not shown["drawer"]["chosen"]["flashing"])
+    back = page.drawer()
+    assert back["cursor"]["line"] == title, back
+    assert back["cursor"]["letter"] == 0, back
+    # Lines below the title, so what's copied holds no "log" to be found ahead of the notice
+    # when the launcher next looks for its title.
+    page.until("j shift-v j", chose("lines", 2))
+    page.until("o", lambda drawer: drawer["cursor"]["line"] == title + 1)
+    page.pressed_until(
+        "esc", lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["by"] == ""
+    )
+    page.until("g v", chose("lines", 2))
+    page.pressed_until(
+        "y",
+        lambda shown: (
+            shown["drawer"]["chosen"]["copied"]
+            == "line 1 of the deploy went by\nline 2 of the deploy went by"
+        ),
+    )
+    for scale in (*JOELS_SCALES, "1"):
+        desktop.close_launcher()
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        page.open()
+        page.into()
+        page.until("v l l l l l j", chose("letters", 2))
+        desktop.photograph(f"launcher-drawer-chosen-at-{scale.replace('.', '-')}")
+    page.pressed_until("esc", lambda shown: shown["mode"] == "page")
     page.back("spc left")
     desktop.close_launcher()
 
