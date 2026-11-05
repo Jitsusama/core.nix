@@ -232,23 +232,29 @@ ShellRoot {
                 Lifted {
                     anchors.horizontalCenter: parent.horizontalCenter
 
+                    // As the lock's: the time at Display, at the size it
+                    // stands alone on the wallpaper at, and the day at
+                    // Words, in text.
                     Column {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Qt.formatDateTime(clock.date, "HH:mm")
-                            color: Theme.text
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.hero
-                            font.features: { "tnum": 1 }
+                            color: Theme.level.display.colour
+                            font.family: Theme.level.display.family
+                            font.pointSize: Theme.level.display.wallpaper.pointSize
+                            font.weight: Theme.level.display.weight
+                            font.letterSpacing: Theme.level.display.wallpaper.letterSpacing
+                            font.features: Theme.level.display.features
                         }
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Qt.formatDateTime(clock.date, "dddd d MMMM")
                             color: Theme.text
-                            font.family: Theme.serif.family
-                            font.pointSize: Theme.serif.large
-                            font.variableAxes: Theme.serif.upright.large
+                            font.family: Theme.level.words.family
+                            font.pointSize: Theme.level.words.pointSize
+                            font.weight: Theme.level.words.weight
+                            font.variableAxes: Theme.level.words.variableAxes
                         }
                     }
                 }
@@ -273,19 +279,23 @@ ShellRoot {
                                 y: x
                                 width: parent.width - 2 * x
                                 textFormat: Text.RichText
-                                // Their name strong, at the serif's semibold:
-                                // a span can't set the weight axis.
+                                // At Words, in text, their name a strong
+                                // span: the line takes the face's weight
+                                // rather than its axis, since a span can't
+                                // set the axis.
                                 readonly property string called: "<span style=\""
-                                    + `color:${Theme.strong};font-weight:600">`
+                                    + `color:${Theme.strong};`
+                                    + `font-weight:${Theme.level.words.spans.strong}">`
                                     + `${root.account.called}</span>`
                                 text: `${root.greeting(clock.date.getHours())}, ${called}`
                                 color: Theme.text
                                 elide: Text.ElideRight
                                 lineHeight: root.line
                                 lineHeightMode: Text.FixedHeight
-                                font.family: Theme.serif.family
-                                font.pointSize: Theme.serif.large
-                                font.variableAxes: Theme.serif.unweighted.large
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
+                                font.weight: Theme.level.words.spans.weight
+                                font.variableAxes: Theme.level.words.spans.variableAxes
                             }
                         }
 
@@ -347,14 +357,16 @@ ShellRoot {
                                 anchors.verticalCenter: parent.verticalCenter
                                 textFormat: Text.StyledText
                                 text: `into <font color="${Theme.text}">${root.into}</font>`
-                                color: Theme.muted
+                                color: Theme.level.note.colour
                                 elide: Text.ElideRight
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                                font.weight: Theme.level.note.weight
                             }
 
                             KeyHints {
                                 id: keys
+                                size: Theme.level.note.pointSize
                                 anchors.right: parent.right
                                 anchors.rightMargin: Theme.inset + Theme.space.l
                                 anchors.verticalCenter: parent.verticalCenter
@@ -378,9 +390,11 @@ ShellRoot {
                         elide: Text.ElideRight
                         text: root.said
                         color: Theme.text
-                        font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.large
-                        font.variableAxes: Theme.serif.upright.large
+                        font.family: Theme.level.voice.family
+                        font.pointSize: Theme.level.voice.pointSize
+                        font.weight: Theme.level.voice.weight
+                        font.italic: Theme.level.voice.italic
+                        font.variableAxes: Theme.level.voice.variableAxes
                     }
                 }
             }
@@ -390,12 +404,14 @@ ShellRoot {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Theme.space.xl
 
+                // At Note, but in text, since muted is too faint on the
+                // wallpaper.
                 Text {
                     text: root.booted
                     color: Theme.text
-                    font.family: Theme.mono.family
-                    font.pointSize: Theme.mono.small
-                    font.features: { "tnum": 1 }
+                    font.family: Theme.level.note.family
+                    font.pointSize: Theme.level.note.pointSize
+                    font.weight: Theme.level.note.weight
                 }
             }
         }

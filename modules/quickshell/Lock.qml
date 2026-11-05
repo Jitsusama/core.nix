@@ -236,23 +236,29 @@ Scope {
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     Column {
+                        // At Display, at the size it stands alone on the
+                        // wallpaper at.
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Qt.formatDateTime(clock.date, "HH:mm")
-                            color: Theme.text
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.hero
-                            font.features: { "tnum": 1 }
+                            color: Theme.level.display.colour
+                            font.family: Theme.level.display.family
+                            font.pointSize: Theme.level.display.wallpaper.pointSize
+                            font.weight: Theme.level.display.weight
+                            font.letterSpacing: Theme.level.display.wallpaper.letterSpacing
+                            font.features: Theme.level.display.features
                         }
 
-                        // Nothing else is on screen to say the day.
+                        // Nothing else is on screen to say the day, at
+                        // Words, in text since it stands alone.
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Qt.formatDateTime(clock.date, "dddd d MMMM")
                             color: Theme.text
-                            font.family: Theme.serif.family
-                            font.pointSize: Theme.serif.large
-                            font.variableAxes: Theme.serif.upright.large
+                            font.family: Theme.level.words.family
+                            font.pointSize: Theme.level.words.pointSize
+                            font.weight: Theme.level.words.weight
+                            font.variableAxes: Theme.level.words.variableAxes
                         }
                     }
                 }
@@ -294,6 +300,8 @@ Scope {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: root.width
 
+                    // In the voice, since it's the lock speaking, in text
+                    // as it does.
                     Text {
                         width: root.width
                         height: Theme.space.xl
@@ -301,9 +309,11 @@ Scope {
                         elide: Text.ElideRight
                         text: root.said
                         color: Theme.text
-                        font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.large
-                        font.variableAxes: Theme.serif.upright.large
+                        font.family: Theme.level.voice.family
+                        font.pointSize: Theme.level.voice.pointSize
+                        font.weight: Theme.level.voice.weight
+                        font.italic: Theme.level.voice.italic
+                        font.variableAxes: Theme.level.voice.variableAxes
                     }
                 }
             }

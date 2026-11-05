@@ -103,19 +103,20 @@ Scope {
                         textFormat: Text.RichText
                         readonly property string asker:
                             `<span style="font-family:'${Theme.mono.family}'">${root.asker}</span>`
-                        // Its owner strong, and heavier at the face's
-                        // semibold, the nearest of its own weights past
-                        // regular: a span can't set the weight axis.
-                        readonly property string owner:
-                            `<span style="color:${Theme.strong};font-weight:600">${root.who}</span>`
+                        // At Words, in text, its owner a strong span: the
+                        // line takes the face's weight rather than its
+                        // axis, since a span can't set the axis.
+                        readonly property string owner: `<span style="color:${Theme.strong};`
+                            + `font-weight:${Theme.level.words.spans.strong}">${root.who}</span>`
                         text: `${asker} needs ${owner}'s password`
                         color: Theme.text
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.large
-                        font.variableAxes: Theme.serif.unweighted.large
+                        font.family: Theme.level.words.family
+                        font.pointSize: Theme.level.words.pointSize
+                        font.weight: Theme.level.words.spans.weight
+                        font.variableAxes: Theme.level.words.spans.variableAxes
                     }
 
                     Text {
@@ -123,13 +124,14 @@ Scope {
                         // A line that belongs with who asks, above.
                         topPadding: Theme.space.xs
                         text: root.failed ? root.flow.supplementaryMessage : root.why
-                        color: root.failed ? Theme.alert : Theme.muted
+                        color: root.failed ? Theme.alert : Theme.level.words.colour
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.large
-                        font.variableAxes: Theme.serif.upright.large
+                        font.family: Theme.level.words.family
+                        font.pointSize: Theme.level.words.pointSize
+                        font.weight: Theme.level.words.weight
+                        font.variableAxes: Theme.level.words.variableAxes
                     }
                 }
 
@@ -175,6 +177,7 @@ Scope {
                     height: Theme.space.xxl + 2 * Theme.inset
 
                     KeyHints {
+                        size: Theme.level.note.pointSize
                         anchors.right: parent.right
                         anchors.rightMargin: Theme.inset + Theme.space.l
                         anchors.verticalCenter: parent.verticalCenter
