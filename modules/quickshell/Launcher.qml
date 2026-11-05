@@ -1990,7 +1990,7 @@ Scope {
         // A row that opens on Return but holds parts says Ctrl+] goes into
         // them, furthest from Return, so it gives way first when room runs
         // short (VKCF3Z, 2026-11-05).
-        if (!stepping && !choice.still && (holdsMore(choice) || !!choice.landsIn))
+        if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             keys.push([hintKey("follow"), hints.in ?? ""]);
         return keys;
     }
@@ -2568,6 +2568,12 @@ Scope {
     // stack keeps it, and on the jump list, as any place left does. A row
     // holding nothing says so.
     property var tagsBack: []
+    // Whether Ctrl+] goes into a row's own parts. A notice's acts are
+    // commands under its card's words, not parts (VKCF3Z, 2026-11-05), so
+    // Ctrl+] leaves it to where it lives instead.
+    function holdsParts(row) {
+        return holdsMore(row) && kindOf(row) !== "notice";
+    }
     function follow(row) {
         const left = { held: held, here: here() };
         if (row && !row.gone && row.landsIn) {
@@ -2575,7 +2581,7 @@ Scope {
             tagsBack = tagsBack.concat([left]);
             return;
         }
-        if (row && !row.gone && holdsMore(row) && enter(row)) {
+        if (row && !row.gone && holdsParts(row) && enter(row)) {
             tagsBack = tagsBack.concat([left]);
             return;
         }

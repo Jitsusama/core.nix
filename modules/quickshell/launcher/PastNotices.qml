@@ -1,7 +1,7 @@
 // The session's notifications, a collection: everything that arrived,
 // newest first, from the shell's own history (Notices.qml), so nothing is
-// asked of another program. A search with a match adds one row; the right
-// arrow, or its row at home, shows them all, and its row at home says how
+// asked of another program. A search with a match adds one row; Return
+// on it, or on its row at home, shows them all, and its row at home says how
 // many were missed until it's opened. Return on one still open, on screen
 // or resting off it once its time there was up (Notices.qml), does what its
 // sender does when it's chosen, as clicking it does, which takes Joel to
@@ -9,8 +9,8 @@
 // the program that sent it, its window if it has one open, or copies what
 // it said when nothing sent it that can be gone to. Whatever a sender is
 // asked to do runs while the launcher holds the keys, since that's what
-// lets it bring its window forward. The right arrow steps into what else
-// can be done: copying what it said, marking it read or unread, and while
+// lets it bring its window forward. What else can be done is a command
+// on the : line, as on its card: copying what it said, marking it read or unread, and while
 // it's still open, its own actions (Reply, Mark as read) and letting it go,
 // so a notice is driven by the keys as well as by the pointer. Each says
 // whether it's unread beside its age; acting on one reads it, and the
@@ -56,8 +56,8 @@ Provider {
         const said = notice.body === "" ? notice.summary : `${notice.summary}\n${notice.body}`;
         const from = source(notice.app);
         const opened = opens(notice) !== null;
-        // With nothing to open or go to, Return steps in, as the right
-        // arrow does, rather than copying: copying is never first (Joel,
+        // With nothing to open or go to, Return steps in rather than
+        // copying: copying is never first (Joel,
         // 2026-10-28: "having the separate copy option at the top is very
         // confusing"). Its verbs and targets both make it a row holding
         // rows, which Return's own act never leads (Catalogue.js's leading).
