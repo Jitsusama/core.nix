@@ -108,10 +108,9 @@ const table = [
     // @: runs the last command line again, as Vim's does (the language's
     // again-command); @ alone waits for it.
     { act: "commandAgain", mode: "normal", keys: [["@", ":"]] },
-    // Space and the right arrow go into the drawer beside the rows, as his
-    // Space and the arrows go to the window that way (the language's
-    // window-right): its keys are then a page's, below.
-    { act: "drawer", mode: "normal", keys: [["Space", "Right"]] },
+    // Vim's Ctrl+W l and w go into the drawer, the window right, and no
+    // arrow does (Joel, 2026-11-05: "rely only on vi right feeling things").
+    { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"]] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
 
@@ -150,20 +149,20 @@ const table = [
 
     // The drawer, gone into: the preview window, a page in normal with a
     // cursor on its lines (DrawerPage.js), as the reader's page and his
-    // Neovim's windows have them. j k and the arrows move it a line and h l along one, the
+    // Neovim's windows have them. j k move it a line and h l along one, the
     // view kept about it; Ctrl+E and Ctrl+Y scroll the view a line, Ctrl+D
     // and Ctrl+U half the view, Ctrl+F and Ctrl+B a view, with Page Down
     // and Page Up (both modes', above); gg G and H M L as on the rows, each
-    // taking a count. Space and the left arrow go back to the rows, as his
-    // window-left does, and so do ZZ, Space w and :q, as his Neovim
-    // closes a window. Escape only lets a count or a waiting key go, as
-    // it does nothing at rest in a window, and q alone does nothing, as
+    // taking a count. Ctrl+W h and w go back to the rows, the foot naming
+    // h, and so do ZZ, Space w and :q, as his Neovim closes a window; no
+    // arrow does anything. Escape only lets a count or a waiting key go,
+    // as it does nothing at rest in a window, and q alone does nothing, as
     // Joel asked of every modal surface (2026-11-04). Return does the row
     // the drawer's about.
-    { act: "next", mode: "page", keys: ["Down", "j"] },
-    { act: "previous", mode: "page", keys: ["Up", "k"] },
-    { act: "left", mode: "page", keys: ["Left", "h"] },
-    { act: "right", mode: "page", keys: ["Right", "l"] },
+    { act: "next", mode: "page", keys: ["j"] },
+    { act: "previous", mode: "page", keys: ["k"] },
+    { act: "left", mode: "page", keys: ["h"] },
+    { act: "right", mode: "page", keys: ["l"] },
     { act: "scrollDown", mode: "page", keys: ["Ctrl+e"] },
     { act: "scrollUp", mode: "page", keys: ["Ctrl+y"] },
     { act: "halfDown", mode: "page", keys: ["Ctrl+d"] },
@@ -175,7 +174,8 @@ const table = [
     { act: "viewTop", mode: "page", keys: ["H"] },
     { act: "viewMiddle", mode: "page", keys: ["M"] },
     { act: "viewBottom", mode: "page", keys: ["L"] },
-    { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] },
+    { act: "rows", mode: "page",
+        keys: [["Ctrl+w", "h"], ["Ctrl+w", "w"], ["Z", "Z"], ["Space", "w"]] },
     // The leader's list of keys is his everywhere (VKCF3Z), so the drawer
     // lists its own; not while choosing, where Space leads nothing and ?
     // searches back.

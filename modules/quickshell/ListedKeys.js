@@ -28,7 +28,9 @@ const normal = [
     { name: "ending", acts: ["ending"], also: ["dj"] },
     { name: "copyRow", acts: ["copy"], also: ["yG"] },
     { name: "restore", acts: ["restore"] },
-    { name: "intoDrawer", acts: ["drawer"] },
+    // Vim's Ctrl+W l alone, as the way back names Ctrl+W h alone, so the
+    // line sits whole at Joel's scale.
+    { name: "intoDrawer", acts: ["drawer"], firsts: true },
     { name: "keys", acts: ["keys"] },
     // q isn't listed, since Joel wants it to do nothing by itself and :q
     // to quit (2026-11-05); his respec takes its binding out.
@@ -49,8 +51,8 @@ const insert = [
 ];
 
 // In the drawer, which the keys go into as a window, its page's moves.
-// Its way back is Space with the left arrow alone, the first of its keys,
-// and :q, since ZZ and Space w make the line too long to sit whole.
+// Its way back is Ctrl+W h alone, the first of its keys, and :q, since the
+// rest make the line too long to sit whole.
 const page = [
     { name: "lines", acts: ["next", "previous"] },
     { name: "along", acts: ["left", "right"] },

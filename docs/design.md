@@ -1395,7 +1395,7 @@ works the same way everywhere.
   for the drawer beside it, so the card never moves and never changes
   size for what's selected. A screen without room for even the
   drawer's least beside the card shows it only once the keys go in
-  with Space →, in the card's place and at its width, as Vim's preview
+  with Ctrl+W l, in the card's place and at its width, as Vim's preview
   opens in the one window there is, never squeezed until a word breaks.
   It's out only while the selected row is a thing (a program, a session, a
   quest, a mail, a meeting, a person, a file, a folder, a notice, a
@@ -1417,8 +1417,8 @@ works the same way everywhere.
   view following at his scrolloff by whole lines, its eyebrow and title
   among them, so no line is ever shown cut at its top or foot. It stops
   above the card's foot, which stays and, while the drawer has the keys,
-  reads "Space ? keys · Space ← back", the way out at the right end as
-  Return is on the card. Space and the left arrow, :q, ZZ or Space w bring
+  reads "Ctrl+W h back · Space ? keys", the way out at the right end as
+  Return is on the card. Ctrl+W h or w, :q, ZZ or Space w bring
   them back, and Escape and q do nothing there. Shift and
   the arrows no longer scroll it, since an arrow is its letter. Another
   program's words are shown plain, never as markup.
@@ -1925,7 +1925,6 @@ the letter, "l in" and "h out", and the key list shows both.
 | Space Space | a fresh find across everything |
 | Space / | the reader's and the drawer's lines and headings |
 | Space . | the launcher on its last place and find |
-| Space ← → | into the drawer and back |
 | Space Return | a terminal in this folder |
 | Space f r, Space f Space | files opened lately, and finding a file |
 | Space s h | earlier finds |
@@ -1994,8 +1993,9 @@ fits whole on the laptop's plate.
   Ctrl+Y scroll the view alone. /, n N, ]] [[, { }, gO, marks, jumps and
   :{n} put the cursor where they land, so / and then yip copies the
   paragraph found. Escape at rest and q do nothing.
-- **The drawer** is the preview window: Space → goes in and the reader's
-  keys work there, and Space ← or :q comes back.
+- **The drawer** is the preview window: Ctrl+W l goes in and the reader's
+  keys work there, and Ctrl+W h or :q comes back, Ctrl+W w either way, as
+  Vim goes between windows; no arrow does anything in normal.
 - **The viewers** close on :q and ZZ, swayimg and zathura on Space w too
   (mpv's Space pauses at once and leads nothing), never on Escape or q, and
   their arrows are their letters, each with one meaning. swayimg's and mpv's
