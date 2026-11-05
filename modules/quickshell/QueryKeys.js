@@ -65,6 +65,12 @@ const table = [
     // Space alone begins these and does nothing, waiting as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
     { act: "restore", mode: "normal", keys: ["u"] },
+    // Vim's operators on the rows as lines: d does each row's ending
+    // action (Forget It, Close It) and y its copy, over the row again as
+    // dd and yy, or as far as a motion goes (operated, below), so these
+    // rows name only the doubled keys, for saying them.
+    { act: "ending", mode: "normal", keys: [["d", "d"]] },
+    { act: "copy", mode: "normal", keys: [["y", "y"]] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
     { act: "insert", mode: "normal", keys: ["i"] },
@@ -127,15 +133,63 @@ function repeats(act) {
 }
 
 // Where the keys stand between presses: the count typed so far, as
-// digits, and the keys of a sequence begun.
+// digits, and the keys of a sequence begun. An operator waiting for its
+// motion stands as `operator`, { key, count }, its key and the count
+// typed before it, the count after it being the standing's own.
 function rest() {
     return { count: "", typed: [] };
 }
 
-// Whether anything's begun: a count, a sequence's first keys or an ex
-// line.
+// Whether anything's begun: a count, a sequence's first keys, an
+// operator or an ex line.
 function pending(standing) {
-    return standing.count !== "" || standing.typed.length > 0 || standing.ex !== undefined;
+    return standing.count !== "" || standing.typed.length > 0 || standing.ex !== undefined
+        || standing.operator !== undefined;
+}
+
+// The operators, by their key, and the act each does over the rows it
+// takes.
+const operators = { d: "ending", y: "copy" };
+
+// The moves an operator takes as its motion, each linewise on the rows,
+// as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
+// scroll rather than move, so Vim takes none of them as a motion.
+const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"];
+
+// Two counts as one, as Vim multiplies the count before an operator and
+// the one after it: 2d3j goes six rows. Either alone is itself, and
+// neither is no count.
+function multiplied(before, after) {
+    if (before === "" && after === "") {
+        return 0;
+    }
+    return Number(before === "" ? 1 : before) * Number(after === "" ? 1 : after);
+}
+
+// A key while an operator waits: the operator's own key again does it
+// over the row and those below, as dd does; a motion does it as far as
+// that goes, as dj does, with the counts multiplied; a sequence's first
+// key (gg's g) waits for the rest; anything else lets it go. It waits as
+// long as it takes for its motion, as Vim's does.
+function operated(standing, key) {
+    const { operator } = standing;
+    const act = operators[operator.key];
+    const count = multiplied(operator.count, standing.count);
+    if (standing.typed.length === 0 && key === operator.key) {
+        return { act, count, motion: null, standing: rest(), ours: true };
+    }
+    // Another operator's key lets this one go, as dy does in Vim.
+    const typed = standing.typed.concat([key]);
+    const matched = key in operators ? { act: "", begun: false } : matching(typed, "normal");
+    if (motions.includes(matched.act)) {
+        return { act, count: 0, motion: { act: matched.act, count }, standing: rest(),
+            ours: true };
+    }
+    if (matched.act === "" && matched.begun) {
+        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
+            ours: true };
+    }
+    return { act: "", count: 0, standing: rest(), ours: true };
 }
 
 // The ex line, Vim's command line after a colon, which waits for its
@@ -210,6 +264,31 @@ function matching(typed, mode) {
     return { act: "", begun };
 }
 
+// What normal reads before its table, or null for a key it doesn't. A
+// colon at rest opens the ex line, a count before it let go, since the
+// rows take no ranges. A count is typed where nothing types: 0 alone is
+// Vim's first column, which rows haven't, so it counts only after another
+// digit, and one after an operator is its motion's. An operator's key at
+// rest begins it, with the count before it.
+function beforeTable(standing, key) {
+    const atRest = standing.typed.length === 0;
+    if (key === ":" && atRest && standing.operator === undefined) {
+        return { act: "", count: 0, standing: { count: "", typed: [], ex: "" }, ours: true };
+    }
+    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
+        return { act: "", count: 0, standing: Object.assign({}, standing,
+            { count: standing.count + key, typed: [] }), ours: true };
+    }
+    if (standing.operator !== undefined) {
+        return operated(standing, key);
+    }
+    if (atRest && key in operators) {
+        const operator = { key, count: standing.count };
+        return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
+    }
+    return null;
+}
+
 // What a key does in a mode from where the keys stand: the act, if one's
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
@@ -224,21 +303,12 @@ function read(standing, key, mode) {
     if (standing.ex !== undefined) {
         return exRead(standing, key);
     }
-    // A colon at rest in normal opens the ex line; a count before it is
-    // let go, since the rows take no ranges.
-    if (mode === "normal" && key === ":" && standing.typed.length === 0) {
-        return { act: "", count: 0, standing: { count: "", typed: [], ex: "" }, ours: true };
-    }
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
-    // A count before a move, in normal, where nothing types: 0 alone is
-    // Vim's first column, which rows haven't, so it counts only after
-    // another digit.
-    if (mode === "normal" && standing.typed.length === 0 && digit.test(key)
-        && (standing.count !== "" || key !== "0")) {
-        return { act: "", count: 0, standing: { count: standing.count + key, typed: [] },
-            ours: true };
+    const before = mode === "normal" ? beforeTable(standing, key) : null;
+    if (before !== null) {
+        return before;
     }
     const typed = standing.typed.concat([key]);
     const count = standing.count === "" ? 0 : Number(standing.count);
@@ -305,7 +375,9 @@ function typedInSearch(line, act, letters) {
 // the rest: its keys let go, and a count typed before them kept, since a
 // count waits for its move as long as it takes, as Vim's does.
 function waited(standing) {
-    return { count: standing.count, typed: [] };
+    const kept = { count: standing.count, typed: [] };
+    return standing.operator === undefined ? kept
+        : Object.assign(kept, { operator: standing.operator });
 }
 
 // Where a move takes the selection, from where the rows stand: the row

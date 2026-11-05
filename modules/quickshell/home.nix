@@ -96,6 +96,7 @@ let
     "QueryKeys.js"
     "ListedKeys.js"
     "Search.js"
+    "Operators.js"
     "KeyHints.qml"
     "Drawer.qml"
     "Launcher.qml"
