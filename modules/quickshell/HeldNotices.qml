@@ -78,10 +78,13 @@ Floating {
     }
     readonly property var current: notice(listed[cursor])
     // Where it was is kept once the binding's settled, since the cursor
-    // reads it.
+    // reads it, and the cursor's bound to the card it came to, as a find
+    // narrowing the lines leaves it on what was found, as Vim's / does.
     onCursorChanged: Qt.callLater(remember)
     function remember() {
         cursorAt = cursor;
+        if (listed[cursor] !== undefined)
+            cursorId = listed[cursor];
         follow();
     }
     onCurrentChanged: {

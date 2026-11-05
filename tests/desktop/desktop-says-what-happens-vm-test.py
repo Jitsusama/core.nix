@@ -283,20 +283,9 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
     machine = desktop.machine
     desktop.as_account(f"niri msg output winit scale {scale}")
     named = scale.replace(".", "-")
-    # The cursor on the oldest, Build log, line 3, by way of the newest, so it moves.
+    found_among_them(desktop, named)
     with desktop.told("notice cursor Build log"):
-        machine.send_chars("ggG", delay=KEY_PACE)
-    desktop.photograph(f"notice-lines-at-{named}")
-    with desktop.told("notice finds Deploy in 1"), desktop.told("notice cursor Deploy log"):
-        machine.send_chars("/Deploy", delay=KEY_PACE)
-    desktop.photograph(f"notice-find-at-{named}")
-    with desktop.told("notice mode normal"):
-        machine.send_key("esc")
-    desktop.photograph(f"notice-found-at-{named}")
-    # A fresh find, left empty, lists them all again, the cursor where it stood.
-    with desktop.told("notice mode normal"), desktop.told("notice cursor Build log"):
-        machine.send_chars("/")
-        machine.send_key("esc")
+        machine.send_chars("G")
     with desktop.told("notice selects 1"):
         machine.send_chars("V")
     with desktop.told("notice selects 3"):
@@ -336,6 +325,28 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
         machine.send_chars(" ?", delay=KEY_PACE)
     desktop.photograph(f"notice-keys-at-{named}")
     with desktop.told("notice hides keys"):
+        machine.send_key("esc")
+
+
+def found_among_them(desktop: Desktop, named: str) -> None:
+    """Show the lines, then find Deploy among them, photographed at the scale named.
+
+    / narrows the lines as it's typed, Escape keeps what was found, and a fresh / left empty
+    lists them all again, the cursor staying on what was found, as Vim's / leaves it.
+    """
+    machine = desktop.machine
+    # The cursor on the oldest, Build log, line 3, by way of the newest, so it moves.
+    with desktop.told("notice cursor Build log"):
+        machine.send_chars("ggG", delay=KEY_PACE)
+    desktop.photograph(f"notice-lines-at-{named}")
+    with desktop.told("notice finds Deploy in 1"), desktop.told("notice cursor Deploy log"):
+        machine.send_chars("/Deploy", delay=KEY_PACE)
+    desktop.photograph(f"notice-find-at-{named}")
+    with desktop.told("notice mode normal"):
+        machine.send_key("esc")
+    desktop.photograph(f"notice-found-at-{named}")
+    with desktop.told("notice mode normal"):
+        machine.send_chars("/")
         machine.send_key("esc")
 
 
