@@ -756,7 +756,7 @@ mod tests {
     #[test]
     fn a_request_is_padded_to_its_replys_length() {
         let asked = request(Command::Tracking, 7);
-        assert_eq!(asked.len(), 28 + 80);
+        assert_eq!(asked.len(), 28 + 76);
         assert_eq!(&asked[..8], &[6, 1, 0, 0, 0, 33, 0, 0]);
         assert_eq!(&asked[8..12], &7_u32.to_be_bytes());
         let named = request(
@@ -790,6 +790,25 @@ mod tests {
         assert_eq!(reply(Command::Sources, 4, &answer), Err(Refused::NotOurs));
         assert_eq!(reply(Command::Tracking, 3, &answer), Err(Refused::NotOurs));
         assert_eq!(reply(Command::Sources, 3, &answer).map(sources), Ok(4),);
+    }
+
+    /// A tracking reply as chronyd 4.9 wrote it, 104 bytes, to a request
+    /// numbered 7, keeping the clock by its own local reference at stratum 3.
+    const TRACKED: &str = "060200000021000500000000000000000000000700000000000000007f7f0101\
+        000000000000000000000000000000000000000000030000000000006aebe015\
+        3270844a00000000000000000000000000000000000000000000000000000000\
+        0000000000000000";
+
+    #[test]
+    fn a_tracking_reply_as_chronyd_writes_it_is_taken() {
+        let bytes: Vec<u8> = (0..TRACKED.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(&TRACKED[at..at + 2], 16).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        assert_eq!(bytes.len(), 104);
+        let read = reply(Command::Tracking, 7, &bytes).map(tracking);
+        assert_eq!(read.as_ref().map(|it| it.stratum), Ok(3));
+        assert_eq!(read.map(|it| reference(it.reference)), Ok("7F7F0101".to_owned()));
     }
 
     #[test]
