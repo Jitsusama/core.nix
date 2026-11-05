@@ -1393,7 +1393,11 @@ works the same way everywhere.
   The card's room and the drawer's are worked out for the screen as
   the launcher opens, the card centred unless the screen is too narrow
   for the drawer beside it, so the card never moves and never changes
-  size for what's selected. It's out only while the selected row is a thing (a program, a session, a
+  size for what's selected. A screen without room for even the
+  drawer's least beside the card shows it only once the keys go in
+  with Space →, in the card's place and at its width, as Vim's preview
+  opens in the one window there is, never squeezed until a word breaks.
+  It's out only while the selected row is a thing (a program, a session, a
   quest, a mail, a meeting, a person, a file, a folder, a notice, a
   window, a device, a network, a copy, a value with a history) and the
   drawer holds something the row doesn't already say: facts, a picture,
