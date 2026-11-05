@@ -1388,6 +1388,13 @@
   the-colour-camera-says-it-is-upside-down = ''
     the XPS 14's camera bridge reports its colour sensor rotated 180 degrees
   '';
+  the-command-line-lists-every-command = ''
+    the launcher's : line lists the cursor row's acts, Return's first, then the surface's commands
+    and :q :help :{n}, each in Vim's help notation with its title and key; typing narrows it by the
+    command's start, then the act's words; Tab and the arrows choose and write a line in, round to
+    what was typed; Return runs exactly what's typed, a short form or more, saying E492, E477 or
+    E488 otherwise, each key's work under 2 ms over 400 commands
+  '';
   the-console-greets-the-account = ''
     a console greets the account by its description's first word, or its name, with the keys back to
     the desktop, and keeps NixOS's banner with no account
