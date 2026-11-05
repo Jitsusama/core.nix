@@ -427,6 +427,13 @@ QtObject {
         holds("and what it opened, where not all", Operators.openedSaid(2, 3, words),
             "2 of 3 open");
         holds("and nothing where it opened every one", Operators.openedSaid(3, 3, words), "");
+        // The mode word counts the rows chosen, as the spec's "visual line
+        // \u00b7 3", the one row among them.
+        const counting = { counted: "{mode} \u00b7 {count}" };
+        holds("the mode word counts what's chosen",
+            [Operators.visualSaid("visual line", { from: 2, to: 4 }, counting),
+                Operators.visualSaid("visual line", { from: 5, to: 5 }, counting)],
+            ["visual line \u00b7 3", "visual line \u00b7 1"]);
     }
 
     // The keys typed from a line's opening in insert, on a prompt's words.
