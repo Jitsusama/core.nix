@@ -12,11 +12,11 @@ let
   cfg = config.jitsusama.nix-offload;
   offload = pkgs.callPackage ./offload/package.nix { };
   time = lib.types.strMatching "[0-2][0-9]:[0-5][0-9]";
-  builders =
-    name: list:
-    pkgs.writeText name (lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n") list);
-  standing = builders "nix-offload-standing" cfg.standing;
-  beside = builders "nix-offload-beside" cfg.beside;
+  builders = lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n");
+  # The lender reads these again as it names its builders, so a switch
+  # that changes who they are changes no unit, and is taken up at once
+  # rather than once the lent builder goes idle.
+  listed = name: "${config.xdg.configHome}/nix-offload/${name}";
   builder = lib.types.submodule {
     options = {
       address = lib.mkOption {
@@ -368,6 +368,10 @@ in
   config = lib.mkIf (cfg.helper != null || names || sendsElsewhere) {
     home.packages = [ offload ];
 
+    xdg.configFile."nix-offload/standing" = lib.mkIf names { text = builders cfg.standing; };
+
+    xdg.configFile."nix-offload/beside" = lib.mkIf names { text = builders cfg.beside; };
+
     xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
       text = lib.concatMapStrings (
         machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.owners}\n"
@@ -405,8 +409,7 @@ in
             else
               serving ++ [ "--prefix ${cfg.prefix}" ]
           )
-          ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
-          ++ lib.optional (cfg.beside != [ ]) "--beside ${beside}"
+          ++ lib.optional names "--standing ${listed "standing"} --beside ${listed "beside"}"
         );
         Environment = zoned;
       }

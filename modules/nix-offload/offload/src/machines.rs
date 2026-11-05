@@ -260,6 +260,9 @@ pub struct Machines {
     lending: File,
     standing: Vec<Standing>,
     beside: Vec<Standing>,
+    /// The files `standing` and `beside` are read again from, once
+    /// `read_from` gives them.
+    lists: [Option<PathBuf>; 2],
     /// Where the builders beside that answer are named alone, once
     /// `beside` gives it.
     alone: Option<File>,
@@ -287,6 +290,7 @@ impl Machines {
             lending: file(lending),
             standing,
             beside: Vec::new(),
+            lists: [None, None],
             alone: None,
             anything: None,
         }
@@ -324,6 +328,34 @@ impl Machines {
         }
     }
 
+    /// With the files the standing builders and those beside are read
+    /// from, read again each time it names who answers, so a switch that
+    /// changes who they are is taken up at once. A lender superseded waits
+    /// for its builder to go idle before it starts again, which under load
+    /// on 4 November kept a switch's new builders unnamed 2 h 41 min. One
+    /// that can't be read leaves its builders as they were.
+    #[must_use]
+    pub fn read_from(self, standing: Option<PathBuf>, beside: Option<PathBuf>) -> Self {
+        Self {
+            lists: [standing, beside],
+            ..self
+        }
+    }
+
+    fn reread(&mut self) {
+        let [standing, beside] = self.lists.each_ref().map(|path| {
+            fs::read_to_string(path.as_ref()?)
+                .ok()
+                .map(|text| self::standing(&text))
+        });
+        if let Some(standing) = standing {
+            self.standing = standing;
+        }
+        if let Some(beside) = beside {
+            self.beside = beside;
+        }
+    }
+
     /// Say the builder being made, a line of its own, or nothing once it
     /// stands or won't.
     pub fn asking(&mut self, name: Option<&str>) {
@@ -336,6 +368,7 @@ impl Machines {
     /// answer to a build that asks for them; and its store, a line of its
     /// own, or nothing.
     pub fn show(&mut self, lending: Option<Lending>) {
+        self.reread();
         self.store.say(
             lending
                 .and_then(|lending| lending.store)
@@ -587,6 +620,44 @@ mod tests {
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&alone), "");
+    }
+
+    #[test]
+    fn builders_standing_and_beside_are_read_again_each_time_they_are_named() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let asked = dir.path().join("machines-with-standing");
+        let alone = dir.path().join("machines-beside");
+        let (standing, beside) = (dir.path().join("standing"), dir.path().join("beside"));
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        fs::write(&standing, format!("{address} ssh-ng://home\n")).expect("write");
+        fs::write(&beside, "").expect("write");
+        let mut machines = Machines::new(
+            dir.path().join("machines"),
+            asked.clone(),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![],
+        )
+        .beside(alone.clone(), vec![])
+        .read_from(Some(standing.clone()), Some(beside.clone()));
+        let read = |path| fs::read_to_string(path).expect("read");
+        machines.show(None);
+        assert_eq!(read(&asked), "ssh-ng://home\n");
+        assert_eq!(read(&alone), "");
+        // A switch puts new lists in place, with the lender still running.
+        fs::write(&standing, "").expect("write");
+        fs::write(&beside, format!("{address} ssh-ng://work\n")).expect("write");
+        machines.show(None);
+        assert_eq!(read(&asked), "");
+        assert_eq!(read(&alone), "ssh-ng://work\n");
+        fs::remove_file(&beside).expect("remove");
+        machines.show(None);
+        assert_eq!(
+            read(&alone),
+            "ssh-ng://work\n",
+            "one unread stays as it was"
+        );
     }
 
     // A build that may go anywhere public, such as a machine's update
