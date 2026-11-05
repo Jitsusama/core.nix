@@ -9,7 +9,8 @@
 # guard in the machine and in every account takes what regenerates before the
 # disk fills. A device that stops working, or a disk that reports a fault, is
 # named to whoever is signed in. The ErgoDox's devices are open to Joel, so it
-# can be flashed. Each account keeps a watch on what its AI use costs, and its
+# can be flashed, and its keys and the laptop's are counted, never what's
+# typed, to weigh the layout against what he presses. Each account keeps a watch on what its AI use costs, and its
 # administrators, agents included, switch it without a password.
 { nixosModules, homeModules }:
 {
@@ -21,6 +22,7 @@
     nixosModules.device-check
     nixosModules.disk-guard
     nixosModules.ergodox
+    nixosModules.key-counts
     nixosModules.libvirt
     nixosModules.linux-id
     nixosModules.memory

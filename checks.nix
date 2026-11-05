@@ -1038,6 +1038,7 @@ gather (
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
     ./modules/kernel/checks.nix
+    ./modules/key-counts/checks.nix
     ./modules/keys/checks.nix
     ./modules/kitty/checks.nix
     ./modules/kmscon/checks.nix

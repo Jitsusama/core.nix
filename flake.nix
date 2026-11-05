@@ -290,6 +290,7 @@
         inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
+        key-counts = ./modules/key-counts/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
         kmscon = ./modules/kmscon/nixos.nix;
