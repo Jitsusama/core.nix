@@ -58,7 +58,8 @@ Scope {
     // The options :set takes from it, by name, as the command line reads
     // them (Commands.setting): { kind: "switch" | "number" | "choice",
     // takes, least, most, values, fixed, now: () => where it stands,
-    // set: to => "" or what to say }, so :set nowifi turns off what its
+    // choices: () => the values :set wifi= lists, set: to => "" or what to
+    // say }, so :set nowifi turns off what its
     // Wi-Fi Off row does. Each is still found as a row.
     property var setOptions: ({})
     // The desktop's actions its rows stand for, by what they do (Shortcuts'

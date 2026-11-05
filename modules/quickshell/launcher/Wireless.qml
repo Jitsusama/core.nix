@@ -46,6 +46,8 @@ Provider {
             kind: "switch",
             takes: true,
             now: () => !provider.on ? false : Wifi.joined?.network ?? true,
+            // :set wifi= lists the networks saved, which it can join.
+            choices: () => Wifi.saved.map(network => network.name),
             set: to => provider.setTo(to)
         }
     })

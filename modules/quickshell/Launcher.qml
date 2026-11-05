@@ -53,6 +53,7 @@ import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "QueryKeys.js" as QueryKeys
+import "SetWords.js" as SetWords
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -2440,18 +2441,26 @@ Scope {
             now: () => Theme.appearance }
     }, ...sources.map(source => source.setOptions ?? {}))
 
+    // A named command's arguments, as a space after it lists them: :set's
+    // options, a surface command's own, or null for one that has none.
+    function commandArguments(entry, arg) {
+        if (entry.kind === "set")
+            return SetWords.setArguments(arg, setOptions);
+        return entry.kind === "surface" ? Commands.ownArguments(entry, arg) : null;
+    }
+
     // :set's words, each set as its option's row would, or said as Vim's
     // :set volume? says it; :set all says every one, in name order. The
     // first word it can't take says Vim's error and none of them changes.
     function commandSet(arg) {
         const options = setOptions;
-        const read = Commands.setting(arg, options);
+        const read = SetWords.setting(arg, options);
         if (read.error !== undefined) {
             commandSay(read.error, true);
             return;
         }
         const steps = read.changes.map(change => change.how === "show" ? { change }
-            : { change, to: Commands.toward(change, options[change.option].now(),
+            : { change, to: SetWords.toward(change, options[change.option].now(),
                 options[change.option]) });
         const refused = steps.find(step => step.to?.error !== undefined);
         if (refused) {
@@ -2467,7 +2476,7 @@ Scope {
             const names = change.option === "all" ? Object.keys(options).sort()
                 : [change.option];
             for (const name of names)
-                said.push(Commands.shown(name, options[name].now(), options[name]));
+                said.push(SetWords.shown(name, options[name].now(), options[name]));
         }
         commandSay(said.filter(words => words !== "").join("  "), false);
     }
@@ -4819,6 +4828,7 @@ Scope {
 
                         sourceComponent: CommandLine {
                             menu: root.commanding?.menu ?? []
+                            argued: (entry, arg) => root.commandArguments(entry, arg)
                             onRan: read => root.commandRan(read)
                             onLetGo: how => root.commandLeft(how === "dropped"
                                 ? root.commanding?.from ?? "normal" : "normal")

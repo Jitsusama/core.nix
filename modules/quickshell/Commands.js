@@ -123,8 +123,9 @@ function listed(from) {
 
 // What's typed, read as Vim's command line reads it: the colons and spaces
 // before it passed over, then a number, or a name and a ! after it, then
-// what follows, { line, name, bang, arg, spaced }, spaced saying whether a
-// space came after the name.
+// what follows, { line, name, bang, arg, rest, spaced }, arg what follows
+// trimmed and rest as typed, spaced saying whether a space came after the
+// name.
 const leading = /^[\s:]*/;
 const counting = /^[0-9$]/;
 const number = /^[0-9]+$/;
@@ -136,10 +137,10 @@ function parts(typed) {
     const line = typed.replace(leading, "");
     const found = line.match(named);
     if (!found) {
-        return { line, name: "", bang: false, arg: "", spaced: false };
+        return { line, name: "", bang: false, arg: "", rest: "", spaced: false };
     }
     return { line, name: found[1], bang: found[2] === "!", arg: found[4].trim(),
-        spaced: found[3] !== "" };
+        rest: found[4], spaced: found[3] !== "" };
 }
 
 // Whether a word names a command, as Vim's do: its full name, or its short
@@ -156,9 +157,11 @@ function names(word, entry) {
 
 // The menu narrowed to what's typed: by the command's start, then by a word
 // of the act's that starts as typed, each line once, case ignored as his
-// ignorecase has it. A number shows :{n}'s line, and a name with a space or
-// a ! after it shows its own line alone.
-function narrowed(menu, typed) {
+// ignorecase has it. A number shows :{n}'s line, and a name with a ! after
+// it shows its own line alone, as does a space where `argued` (entry, arg)
+// says it has no arguments (null); where it has, they're its lines, each
+// written in place of the word being typed.
+function narrowed(menu, typed, argued) {
     const read = parts(typed);
     if (read.line === "") {
         return menu;
@@ -170,7 +173,7 @@ function narrowed(menu, typed) {
         return [];
     }
     if (read.spaced || read.bang) {
-        return menu.filter(entry => names(read.name, entry));
+        return namedLines(menu.filter(entry => names(read.name, entry)), read, typed, argued);
     }
     const word = read.name.toLowerCase();
     const starting = [];
@@ -185,6 +188,19 @@ function narrowed(menu, typed) {
     return starting.concat(worded);
 }
 
+// The lines for a command named: its own line, or after a space the
+// arguments `argued` gives it, each written in place of the word typed.
+function namedLines(own, read, typed, argued) {
+    const args = read.spaced && own.length > 0 && own[0].takes && argued
+        ? argued(own[0], read.rest) : null;
+    if (args === null) {
+        return own;
+    }
+    const before = typed.slice(0, typed.length - lastWord(typed).length);
+    return args.map(one => ({ command: one.value, short: one.value, title: one.note ?? "",
+        key: "", kind: "argument", line: before + one.value }));
+}
+
 // How choosing stands: what was typed, the line chosen (-1 for none) and
 // what the line holds, which is what was typed until a line is chosen.
 function typing(typed) {
@@ -196,6 +212,9 @@ function typing(typed) {
 function written(entry, typed) {
     if (entry.kind === "row") {
         return String(entry.row);
+    }
+    if (entry.kind === "argument") {
+        return entry.line;
     }
     const read = parts(typed);
     const bang = read.bang && entry.bang ? "!" : "";
@@ -281,169 +300,32 @@ function ran(typed, menu) {
     return { entry, bang: read.bang, arg: read.arg };
 }
 
-// :set's words, split at spaces as Vim splits them, a backslash keeping
-// the letter after it, so :set wifi=Home\ 5G names one network.
-function setWords(arg) {
-    const said = [];
-    let word = "";
-    let escaped = false;
-    for (const letter of arg) {
-        if (escaped) {
-            word += letter;
-            escaped = false;
-        } else if (letter === "\\") {
-            escaped = true;
-        } else if (space.test(letter)) {
-            if (word !== "") {
-                said.push(word);
-            }
-            word = "";
-        } else {
-            word += letter;
+// The word being typed at the end of what follows a name: from the last
+// space Vim doesn't escape, "" just after one.
+function lastWord(arg) {
+    let start = 0;
+    let at = 0;
+    while (at < arg.length) {
+        if (arg[at] === "\\") {
+            at += 1;
+        } else if (space.test(arg[at])) {
+            start = at + 1;
         }
+        at += 1;
     }
-    return word === "" ? said : said.concat([word]);
-}
-
-const setWord = /^(no|inv)?([a-z]+)(!|\?|\+=|-=|=)?([\s\S]*)$/;
-
-// One of :set's words split into what it says: no or inv, the option's
-// name, how it's set and the value, or null where it names no option. An
-// option whose own name starts with no or inv is that option.
-function setRead(word, options) {
-    const found = word.match(setWord);
-    if (!found) {
-        return null;
-    }
-    const [, said = "", called, how = "", value = ""] = found;
-    const whole = said !== "" && options[said + called] !== undefined;
-    const name = whole ? said + called : called;
-    const option = options[name];
-    const given = how === "=" || how === "+=" || how === "-=";
-    if (!option || (!given && value !== "")) {
-        return null;
-    }
-    return { prefix: whole ? "" : said, name, how, value, option };
-}
-
-// A value given an option with =, += or -=: a change, or Vim's error.
-function setValue(word, read) {
-    const { name, how, value, option } = read;
-    const invalid = { error: `E474: Invalid argument: ${word}` };
-    const numbered = option.kind === "number";
-    if ((how !== "=" && !numbered) || (option.kind === "switch" && !option.takes)) {
-        return invalid;
-    }
-    if (!numbered) {
-        const choices = option.values ?? null;
-        return choices !== null && !choices.includes(value) ? invalid
-            : { option: name, how: "set", value };
-    }
-    if (!number.test(value)) {
-        return { error: `E521: Number required after =: ${word}` };
-    }
-    const by = Number(value);
-    if (how === "=" && (by < (option.least ?? 0) || by > (option.most ?? by))) {
-        return invalid;
-    }
-    const moved = { "=": "set", "+=": "add", "-=": "subtract" };
-    return { option: name, how: moved[how], value: by };
-}
-
-// One of :set's words, against the option it names: a change, or Vim's
-// error for it.
-function setOne(word, options) {
-    const read = setRead(word, options);
-    if (read === null) {
-        return { error: `E518: Unknown option: ${word}` };
-    }
-    const { prefix, name, how } = read;
-    const switches = read.option.kind === "switch";
-    const flipped = prefix !== "" || how === "!";
-    if (flipped && (!switches || (how !== "" && how !== "!"))) {
-        return { error: `E474: Invalid argument: ${word}` };
-    }
-    if (flipped) {
-        const off = prefix === "no" && how === "";
-        return { option: name, how: off ? "off" : "toggle", value: "" };
-    }
-    if (how === "?" || (how === "" && !switches)) {
-        return { option: name, how: "show", value: "" };
-    }
-    return how === "" ? { option: name, how: "on", value: "" } : setValue(word, read);
-}
-
-// What :set's words ask (:help :set), read against `options`, each an
-// option's kind: a switch (on, off, or with `takes` a value, as
-// :set wifi=Home-5G joins a network), a number between its least and
-// most, or a choice among its values. Each word is on, off, toggle, set,
-// add, subtract or show; all, or nothing after :set, shows every one.
-// { changes: [{ option, how, value }] }, or { error } in Vim's words for
-// the first word it can't take, so none of them changes.
-function setting(arg, options) {
-    const words = setWords(arg);
-    if (words.length === 0) {
-        return { changes: [{ option: "all", how: "show", value: "" }] };
-    }
-    const changes = [];
-    for (const word of words) {
-        const change = word === "all" ? { option: "all", how: "show", value: "" }
-            : setOne(word, options);
-        if (change.error !== undefined) {
-            return change;
-        }
-        changes.push(change);
-    }
-    return { changes };
-}
-
-// What a change sets the option to, from where it stands now: { to }, or
-// { error } for one that can't change while the shell runs (`fixed`), as
-// the theme's background, which a switch of the system sets. A switch
-// stands as true, false, or with `takes` the value it holds, as the
-// network joined; a number is held within its least and most.
-function toward(change, now, option) {
-    if (option.fixed) {
-        const said = change.how === "set" ? `${change.option}=${change.value}` : change.option;
-        return { error: `E519: Option not supported: ${said}` };
-    }
-    const within = to => Math.max(option.least ?? to, Math.min(option.most ?? to, to));
-    switch (change.how) {
-    case "on":
-        return { to: true };
-    case "off":
-        return { to: false };
-    case "toggle":
-        return { to: now === false };
-    case "add":
-        return { to: within(Number(now) + change.value) };
-    case "subtract":
-        return { to: within(Number(now) - change.value) };
-    default:
-        return { to: change.value };
-    }
-}
-
-// :set's arguments, as a space after it lists them: the options, with
-// where each stands, or after one's = the values it takes.
-function setArguments(arg, options) {
-    return [];
+    return arg.slice(start);
 }
 
 // A surface command's own arguments, a list or what it gives for what's
-// typed after it.
+// typed after it, each { value, note } or a plain word, narrowed to those
+// starting as the word typed does; null for one that has none.
 function ownArguments(entry, arg) {
-    return [];
-}
-
-// One option as Vim's :set volume? says it: a switch its name or its no,
-// or its value where it holds one, as the network it's joined.
-function shown(name, now, option) {
-    if (option.kind !== "switch") {
-        return `${name}=${now}`;
+    const args = entry.own?.args;
+    if (args === undefined) {
+        return null;
     }
-    if (now === false) {
-        return `no${name}`;
-    }
-    return now === true ? name : `${name}=${now}`;
+    const given = typeof args === "function" ? args(arg) : args;
+    const word = lastWord(arg).toLowerCase();
+    return given.map(one => typeof one === "string" ? { value: one, note: "" } : one)
+        .filter(one => one.value.toLowerCase().startsWith(word));
 }

@@ -3018,8 +3018,8 @@ onLinux {
 
   # The launcher's command line lists every command it can take, the cursor
   # row's acts first, narrows as it's typed, chooses as his cmp does and
-  # runs exactly what's typed, as tests/command-line.qml holds
-  # Commands.js to.
+  # runs exactly what's typed, and reads :set as Vim does, as
+  # tests/command-line.qml holds Commands.js and SetWords.js to.
   the-command-line-lists-every-command =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3027,6 +3027,7 @@ onLinux {
     pkgs.runCommandLocal "the-command-line-lists-every-command" { } ''
       cp ${../../tests/command-line.qml} command-line.qml
       cp ${./Commands.js} Commands.js
+      cp ${./SetWords.js} SetWords.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

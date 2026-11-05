@@ -47,7 +47,8 @@ Item {
     }
 
     // The commands' column, as wide as the widest command the menu holds.
-    readonly property real commandsWide: menu.all.reduce((widest, entry) =>
+    // An argument listed after a space may be wider than every command.
+    readonly property real commandsWide: menu.all.concat(menu.lines).reduce((widest, entry) =>
         Math.max(widest, note.advanceWidth(menu.written(entry))), 0)
 
     // A line's command as written: its notation and what follows it.

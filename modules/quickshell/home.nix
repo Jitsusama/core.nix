@@ -110,6 +110,7 @@ let
     "CommandMenu.qml"
     "Commands.js"
     "Editing.js"
+    "SetWords.js"
     "ListedKeys.js"
     "Search.js"
     "KeyHints.qml"

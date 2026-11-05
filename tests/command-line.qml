@@ -2,11 +2,13 @@
 // engine, the one the shell runs it in: what its menu lists for a row and
 // a surface, how typing narrows it, what Tab and the arrows choose and
 // write in, and what Return runs, or the error it says, as Vim's command
-// line would. The `the-command-line-lists-every-command` check copies
-// modules/quickshell/Commands.js beside this file and runs
+// line would, and how its :set reads and sets the launcher's options. The
+// `the-command-line-lists-every-command` check copies
+// modules/quickshell/Commands.js and SetWords.js beside this file and runs
 // `qml -platform offscreen command-line.qml`.
 import QtQuick
 import "Commands.js" as Commands
+import "SetWords.js" as SetWords
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -243,7 +245,7 @@ QtObject {
             brightness: { kind: "number", least: 0, most: 100 },
             background: { kind: "choice", values: ["light", "dark"] }
         };
-        const set = arg => Commands.setting(arg, options);
+        const set = arg => SetWords.setting(arg, options);
         const first = arg => (set(arg).changes ?? [])[0] ?? null;
         holds(":set wifi turns it on", first("wifi"), { option: "wifi", how: "on", value: "" });
         holds(":set nowifi turns it off", first("nowifi"),
@@ -288,7 +290,7 @@ QtObject {
         // What a change sets, from where the option stands now.
         const toward = (arg, now) => {
             const change = first(arg);
-            return Commands.toward(change, now, options[change.option]);
+            return SetWords.toward(change, now, options[change.option]);
         };
         holds("on and off set a switch", [toward("wifi", false), toward("nowifi", true)],
             [{ to: true }, { to: false }]);
@@ -303,7 +305,7 @@ QtObject {
         holds("= sets it", toward("volume=40", 70), { to: 40 });
         holds("a choice is set", toward("background=light", "dark"), { to: "light" });
         holds("an option that can't be set says E519",
-            Commands.toward(first("background=light"), "dark",
+            SetWords.toward(first("background=light"), "dark",
                 { kind: "choice", values: ["light", "dark"], fixed: true }),
             { error: "E519: Option not supported: background=light" });
 
@@ -321,7 +323,7 @@ QtObject {
             background: Object.assign({}, options.background, { now: () => "dark" })
         });
         const argued = (entry, arg) => entry.kind === "set"
-            ? Commands.setArguments(arg, standing) : Commands.ownArguments(entry, arg);
+            ? SetWords.setArguments(arg, standing) : Commands.ownArguments(entry, arg);
         const listedAs = typed => Commands.narrowed(menu, typed, argued)
             .map(line => [line.command, line.title]);
         holds(":set and a space lists every option and where it stands", listedAs("set "), [
@@ -353,13 +355,13 @@ QtObject {
 
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",
-            [Commands.shown("quiet", true, options.quiet),
-                Commands.shown("quiet", false, options.quiet)], ["quiet", "noquiet"]);
-        holds("a network joined says its name", Commands.shown("wifi", "Home-5G", options.wifi),
+            [SetWords.shown("quiet", true, options.quiet),
+                SetWords.shown("quiet", false, options.quiet)], ["quiet", "noquiet"]);
+        holds("a network joined says its name", SetWords.shown("wifi", "Home-5G", options.wifi),
             "wifi=Home-5G");
         holds("a number and a choice say theirs",
-            [Commands.shown("volume", 40, options.volume),
-                Commands.shown("background", "dark", options.background)],
+            [SetWords.shown("volume", 40, options.volume),
+                SetWords.shown("background", "dark", options.background)],
             ["volume=40", "background=dark"]);
 
         for (const failure of failures)
