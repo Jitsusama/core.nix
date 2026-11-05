@@ -6054,7 +6054,7 @@
       "verb": "choose",
       "glyph": "order",
       "said": {
-        "name": "alphabetical",
+        "name": "A to Z",
         "changed": "newest first",
         "size": "largest first"
       }
@@ -6062,7 +6062,7 @@
     {
       "id": "command:file-chooser:sort",
       "in": "path:folder",
-      "name": "Sort the Folders"
+      "name": "Sort the Files"
     },
     {
       "id": "command:file-chooser:set",
