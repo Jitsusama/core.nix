@@ -57,8 +57,9 @@ def test_the_clock_sets_from_the_machines_own_server(syncing: BaseMachine, silen
     syncing.wait_until_succeeds(
         "timedatectl show -p NTPSynchronized --value | grep -qx yes", timeout=SYNCING
     )
-    # The server chosen is the machine's own; the network's is out of reach.
-    sources = syncing.succeed("chronyc -c sources").splitlines()
+    # The server chosen is the machine's own, by the name it was given, which chronyc says
+    # only when asked to; the network's is out of reach.
+    sources = syncing.succeed("chronyc -c -N sources").splitlines()
     chosen = [line.split(",")[2] for line in sources if line.split(",")[1] == "*"]
     assert chosen == ["server"], sources
     unheard = [line for line in sources if line.split(",")[2] == silent]
