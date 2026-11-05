@@ -18,6 +18,8 @@ use std::process::{Command, Output};
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
 /// beside it, when there is one, and nothing else, and a dry run of a
 /// build prints the `plans` file, when there is one, and nothing else.
+/// What it's asked to fetch goes in the `fetched` file, and once a test
+/// writes `refuses-fetch`, the fetch fails.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -33,6 +35,7 @@ case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
   *--dry-run*) cat "$here/plans" 2>/dev/null; exit 0 ;;
+  *"--realise >"*) cat > "$here/fetched"; [ -f "$here/refuses-fetch" ] && exit 1 ;;
 esac
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
@@ -66,8 +69,9 @@ fn executable(path: &Path, script: &str) {
 /// nix as it builds here: it records its arguments, each call's after the
 /// last in `nix-calls`, and exits 0, or as the `nix-status` file beside it
 /// says. While the `nix-fails` file counts above 0, a call fails with 1
-/// and counts it down. `derivation show` prints the `derivations` file and
-/// `path-info --json` the `held` file, when there is one.
+/// and counts it down. `derivation show` prints the `derivations` file,
+/// `path-info --json` the `held` file and `path-info --recursive` the
+/// `closure` file, when there is one.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
@@ -76,6 +80,7 @@ echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
 case "$1 $2" in
   "derivation show") cat "$here/derivations" 2>/dev/null ;;
   "path-info --json") cat "$here/held" 2>/dev/null ;;
+  "path-info --recursive") cat "$here/closure" 2>/dev/null ;;
 esac
 fails=$(cat "$here/nix-fails" 2>/dev/null || echo 0)
 if [ "$fails" -gt 0 ]; then
@@ -511,6 +516,94 @@ fn what_the_builder_would_build_and_this_machine_holds_goes_up_instead() {
     assert!(
         calls.lines().all(|call| !call.starts_with("copy --to")),
         "{calls}"
+    );
+}
+
+#[test]
+fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
+    // A VM test's system referenced a model's 14 GB of downloads, which
+    // no cache holds, and sending it went on for a day on 4 November.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(
+        folder.path().join("plans"),
+        "these 3 derivations will be built:\n\
+         \x20 /nix/store/aaaa-system.drv\n\
+         \x20 /nix/store/bbbb-model.drv\n\
+         \x20 /nix/store/cccc-weights.drv\n",
+    )
+    .unwrap();
+    // The weights are fixed, so they show no path of their own.
+    fs::write(
+        folder.path().join("derivations"),
+        r#"{"version": 4, "derivations": {
+            "aaaa-system.drv": {
+                "outputs": {"out": {"path": "aaaa-system"}},
+                "inputs": {"drvs": {"bbbb-model.drv": {"outputs": ["out"]}}}},
+            "bbbb-model.drv": {
+                "outputs": {"out": {"path": "bbbb-model"}},
+                "inputs": {"drvs": {"cccc-weights.drv": {"outputs": ["out"]}}}},
+            "cccc-weights.drv": {
+                "outputs": {"out": {"hash": "sha256-AAAA", "method": "flat"}},
+                "inputs": {"drvs": {}}}}}"#,
+    )
+    .unwrap();
+    fs::write(
+        folder.path().join("held"),
+        r#"{"/nix/store/aaaa-system": {"narSize": 1000000}}"#,
+    )
+    .unwrap();
+    fs::write(
+        folder.path().join("closure"),
+        r#"{"/nix/store/aaaa-system": {"narSize": 1000000, "ca": null,
+                                    "deriver": "/nix/store/aaaa-system.drv"},
+            "/nix/store/bbbb-model": {"narSize": 5000, "ca": null,
+                                   "deriver": "/nix/store/bbbb-model.drv"},
+            "/nix/store/dddd-weights": {"narSize": 14000000000, "ca": "fixed:sha256:00",
+                                     "deriver": "/nix/store/cccc-weights.drv"}}"#,
+    )
+    .unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "the builder fetches 1 download of 14.0 GB from their source itself, rather than \
+             have this machine send them"
+        ),
+        "{said}"
+    );
+    assert_eq!(
+        fs::read_to_string(folder.path().join("fetched")).unwrap(),
+        "/nix/store/cccc-weights.drv\n"
+    );
+    // The model goes up with the system: the builder can't fetch it.
+    assert!(
+        said.contains("sending 1 output of 1.0 MB this machine holds rather than building it"),
+        "{said}"
+    );
+    let commands = fs::read_to_string(folder.path().join("ssh-commands")).unwrap();
+    let fetch = commands
+        .lines()
+        .position(|command| command.contains("--realise >"));
+    assert_eq!(
+        fetch,
+        Some(2),
+        "fetched after the plan, before the build: {commands}"
+    );
+
+    // A builder that can't fetch them is sent them, and says how much.
+    fs::write(folder.path().join("refuses-fetch"), "").unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("the builder couldn't fetch them, so they go up from here")
+            && said.contains("sending 1 output of 14.0 GB"),
+        "{said}"
     );
 }
 
