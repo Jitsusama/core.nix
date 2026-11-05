@@ -1016,13 +1016,27 @@ def time_inside(desktop: Desktop) -> None:
     desktop.launcher_until(kept_rows)
 
 
-def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
-    """The time here says how chrony keeps the clock, each server a thing to dig into.
-
-    The same reader reckons the date in other calendars, which Date steps into.
-    """
-    # Today in the Chinese, Japanese, Hebrew and Islamic calendars, each a thing whose
-    # plate is titled with its date in its own script.
+def date_steps_into_its_calendars(desktop: Desktop) -> None:
+    """Step Date into today in other calendars, once without the reader and once with it."""
+    # With the reader gone, Calendars says it isn't answering, and Return closes rather than
+    # copying those words. It's asked first, since a day once answered is kept.
+    try:
+        desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
+        desktop.answer("date")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: any(
+                str(thing["reads"]).startswith("Calendars \u00b7 not answering")
+                for thing in shown["things"]
+            )
+        )
+        desktop.down_to("Calendars")
+        assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
+        desktop.close_launcher()
+    finally:
+        desktop.as_account("systemctl --user start timekeeping.socket")
+    # Asked again, today in the Chinese, Japanese, Hebrew and Islamic calendars, each a
+    # thing whose plate is titled with its date in its own script.
     desktop.answer("date")
     desktop.step_in()
     desktop.launcher_until(
@@ -1042,6 +1056,14 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         )
     )
     desktop.close_launcher()
+
+
+def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
+    """The time here says how chrony keeps the clock, each server a thing to dig into.
+
+    The same reader reckons the date in other calendars, which Date steps into.
+    """
+    date_steps_into_its_calendars(desktop)
     kept_by_the_stand_in(desktop)
     time_inside(desktop)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
@@ -1102,6 +1124,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             )
         )
         assert "Servers" not in desktop.showing()["rows"], desktop.showing()["rows"]
+        desktop.down_to("Clock")
+        assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
         desktop.close_launcher()
     finally:
         desktop.machine.succeed("systemctl start chronyd")
