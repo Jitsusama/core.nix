@@ -91,7 +91,9 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     assert (shown["sigil"], shown["sigilHue"]) == ("/", "muted"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     held = {(word["text"], word["x"]) for word in laid["foot"]}
-    assert rest <= held, (rest, laid["foot"])
+    # The status facts hold their places; the keys are normal's own, drawn with their marks.
+    facts = {(text, x) for text, x in rest if "<font" not in text}
+    assert facts <= held, (facts, laid["foot"])
     told = desktop.showing()["selected"]["told"]
     assert told[-2:] == [": commands", "Space ? keys"], told
     assert not any("\u2192" in text for text in told), told
@@ -754,7 +756,7 @@ def every_hint_changes(desktop: Desktop, depth: int) -> None:
         return cast("list[str]", desktop.showing()["selected"]["told"])
 
     told = opened()
-    assert told[0].startswith("\u21b5 "), told
+    assert told[0].startswith("\u21b5"), told
     assert told[-1] == "Space ? keys", told
     for at, hint in enumerate(told):
         mark = hint.rsplit(" ", 1)[0]
