@@ -503,7 +503,10 @@ fn there(arguments: &[String]) -> ExitCode {
 /// The VM tests `vm` split between the VM builder and a second, those
 /// past the first's room going to the second while a lender runs in
 /// `vm_more_dir` to make one, counting what other runs still going have
-/// sent each. With no lender, all go to the first.
+/// sent each and wait to send it. With no lender, all go to the first.
+/// Those waiting count, since a run sent where others wait goes only
+/// after them: on 4 November ten runs waited 51 minutes on the first
+/// builder, with 2 of its 4 claimed, while the second sat idle.
 fn overflowed(
     vm: Option<there::Asked>,
     vm_dir: &Path,
@@ -516,12 +519,12 @@ fn overflowed(
     if !there::lends(vm_more_dir) {
         return (vm, None);
     }
-    let busy = [there::claimed(vm_dir), there::claimed(vm_more_dir)];
+    let busy = [vm_dir, vm_more_dir].map(|dir| there::claimed(dir) + there::waiting(dir));
     let (first, second) = there::overflow(part, busy, builds);
     if let Some(second) = &second {
         eprintln!(
-            "nix-offload: the VM builder has {} VM tests of runs here and runs {builds} at \
-             once, so {} go to a second VM builder",
+            "nix-offload: the VM builder has {} VM tests sent or waiting from runs here and \
+             runs {builds} at once, so {} go to a second VM builder",
             busy[0],
             there::count(second)
         );

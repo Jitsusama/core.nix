@@ -2001,7 +2001,7 @@ pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
             return claimed;
         }
         if place.is_none() {
-            place = queued(dir);
+            place = queued(dir, wants);
         }
         drop(lock);
         if !said {
@@ -2022,8 +2022,9 @@ pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
 
 /// A place among the runs waiting for room in `dir`, after every run
 /// already there: named by when it was taken, then this run's pid, so
-/// they sort in the order they came and one whose run ended is seen.
-fn queued(dir: &Path) -> Option<Claim> {
+/// they sort in the order they came and one whose run ended is seen. It
+/// holds how many VM tests the run `wants`, which [`waiting`] counts.
+fn queued(dir: &Path, wants: usize) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let waiting = dir.join("waiting");
@@ -2037,8 +2038,29 @@ fn queued(dir: &Path) -> Option<Claim> {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    fs::write(&path, "").ok()?;
+    fs::write(&path, format!("{wants}\n")).ok()?;
     Some(Claim(path))
+}
+
+/// How many VM tests runs still going wait to send the builder `dir`'s
+/// lender lends, as their places in its `waiting` say. A place whose run
+/// ended is left to [`ahead`] to take away.
+pub fn waiting(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.split('.').nth(1)?.parse().ok())
+                .is_some_and(runs)
+        })
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .filter_map(|wants| wants.trim().parse::<usize>().ok())
+        .sum()
 }
 
 /// How many runs still going wait for room in `dir` ahead of the one at
