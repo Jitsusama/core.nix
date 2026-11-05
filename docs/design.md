@@ -1745,8 +1745,7 @@ one table, `QueryKeys.js`.
   opens an ex line, shown in the mode word's room until its Return, where
   Vim's other ways of quitting (:wq, :x, :qa) close it too and :12 goes
   to the 12th row, as it goes to Vim's 12th line. The rows are a buffer, moved through as Vim's
-  lines are: j k ↓ ↑ (and Tab and Shift+Tab, until the place used last
-  takes Tab), gg and G to the first and last, H M L to the top, middle
+  lines are: j k ↓ ↑, gg and G to the first and last, H M L to the top, middle
   and bottom row wholly in view, Ctrl+D and Ctrl+U half the rows in view,
   keeping the selection's place in view, and Ctrl+F and Ctrl+B, as Page
   Down and Page Up, a screen. A count goes before any of them, 3j or 12G,
@@ -1757,8 +1756,14 @@ one table, `QueryKeys.js`.
   line first. ]b and [b go to the place beside this one, the next and the
   one before, as Vim's next buffer does, where the place has neighbours:
   in the file picker, the folders its holder lists, in the order in use,
-  round from the last to the first. Leaving insert puts the caret one
-  left, as Vim does.
+  round from the last to the first. Tab and Space Tab go back to the
+  place used last, what was typed and selected there as it was left, and
+  again come back, as his Space Tab goes to the file used last; Shift+Tab
+  does nothing, as in Vim. Space ? and F1 list every key here in the
+  drawer, in place of the row's plate, until Space ? again or Escape, as
+  the notices' Space ? does; Space w closes, as it closes his split; and
+  Space alone waits for its second key, as gg's g does, and lets go.
+  Leaving insert puts the caret one left, as Vim does.
 - **Search,** from normal: / searches forward and ? back, typed on the
   line in place of what's typed, as his command line takes one, with
   insert's keys for editing it; what's typed and its rows stand as they
@@ -1789,7 +1794,8 @@ one table, `QueryKeys.js`.
   until its move, as an ex line does until its Return.
 - **The Escape ladder.** Each Escape takes one step back: it cancels a
   count, an ex line or a key waiting for its second (cc's first c, gg's
-  first g), a search being typed, or leaves insert for normal; at
+  first g, a Space), a search being typed, hides the keys listed, or
+  leaves insert for normal; at
   rest in normal it steps out a level, and at the level the launcher
   opened on, home or a collection a chord opened it into, it closes it.
   Opening always puts the line in insert, and the mode stays as it is

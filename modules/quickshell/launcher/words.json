@@ -6087,6 +6087,29 @@
       "fromTop": "from the top",
       "fromBottom": "from the bottom",
       "none": "nothing searched yet"
+    },
+    "listed": {
+      "eyebrow": "Keys",
+      "title": "The rows in normal",
+      "lines": {
+        "rows": "Down and up",
+        "ends": "The first and last",
+        "view": "Top, middle and bottom",
+        "half": "Half a screen",
+        "screen": "A screen",
+        "count": "So many times",
+        "row": "To that row",
+        "inOut": "Into it and out",
+        "run": "Do it",
+        "lastPlace": "The place used last",
+        "beside": "The place beside",
+        "insert": "Type",
+        "change": "Clear it and type",
+        "restore": "Bring it back",
+        "drawer": "Scroll the drawer",
+        "keys": "These keys",
+        "close": "Close"
+      }
     }
   },
   "meant": [

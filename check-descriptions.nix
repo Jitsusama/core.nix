@@ -1748,9 +1748,10 @@
     Ctrl+W and Ctrl+U, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I A, cc and
     S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c or a
     count begun before it steps back, normal's moves through the rows as Vim's, with counts:
-    j k, gg G, H M L and Ctrl+D U F B, its - out, its q and ZZ closing, an ex line whose :q
-    closes and :12 goes to the 12th row, and / ? n N, a search typed on the line and landed on
-    rows within half a key's 4 ms for 400 of them
+    j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and Space w closing, an ex line whose
+    :q closes and :12 goes to the 12th row, Tab to the place used last, Space ? and F1 listing
+    every key, and / ? n N, a search typed on the line and landed on rows within half a key's
+    4 ms for 400 of them
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's

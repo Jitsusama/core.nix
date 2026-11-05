@@ -2223,6 +2223,46 @@ Scope {
     // thing and its verbs, then a verb and its targets.
     property var held: []
 
+    // The place used last, as Vim's alternate file: what was held there and
+    // where it was left, which Tab goes back to, the place it leaves taking
+    // its turn, so Tab again comes back. A place is what's held, so a step
+    // in, out or beside makes the one left the last; what a held step
+    // says of itself changing, as its rows are found, never does. It's
+    // let go as the launcher opens, since the places before were left.
+    property var lastPlace: null
+    property var placeHeld: []
+    function placeOf(steps) {
+        return steps.map(step => `${step.row?.key ?? ""}\u0000${step.row?.name ?? ""}`)
+            .join("\u0001");
+    }
+    // Called as held changes, before the field is set for the new place,
+    // so where the launcher is still says where the place left was left.
+    onHeldChanged: {
+        const left = placeHeld;
+        placeHeld = held;
+        if (open && placeOf(left) !== placeOf(held))
+            lastPlace = { held: left, here: here() };
+    }
+    function toLastPlace() {
+        if (lastPlace === null)
+            return;
+        const to = lastPlace;
+        traces.began("lastPlace", { from: held.length, to: to.held.length });
+        held = to.held;
+        restart(to.here.typed);
+        reselect(to.here);
+    }
+
+    // Every key here, as normal's Space ? lists them in the drawer, in
+    // place of what the selected row has, until Space ? again or Escape.
+    property bool listing: false
+    readonly property var listedPlate: {
+        const words = Words.field.listed ?? {};
+        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "",
+            facts: QueryKeys.keyList(words.lines ?? {}) };
+    }
+    onListingChanged: drawerSettled()
+
     // Where the launcher is now, for a step into something to keep.
     function here() {
         const row = selected;
@@ -3681,7 +3721,8 @@ Scope {
 
     // What the selected row has for the drawer, or null: typed to nothing,
     // nothing is selected, and it has none.
-    readonly property var drawerWanted: open && selected ? drawerOf(selected) : null
+    readonly property var drawerWanted: !open ? null : listing ? listedPlate
+        : selected ? drawerOf(selected) : null
     property bool drawerOut: false
     property var drawerShows: null
     onDrawerWantedChanged: {
@@ -3801,6 +3842,10 @@ Scope {
                 washing: root.washing,
                 said: foot.searchWord
             },
+            // Whether Space ? lists the keys in the drawer, and whether
+            // there's a place used last for Tab to go back to.
+            listing: root.listing,
+            lastPlace: root.lastPlace !== null,
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4005,6 +4050,8 @@ Scope {
     // into() does, as the file chooser does into its folder, says so too.
     function openedHere() {
         homeDepth = held.length;
+        // A place it never showed on the way is none to go back to.
+        lastPlace = null;
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -4037,6 +4084,8 @@ Scope {
             figuresStep = "";
             held = [];
             homeDepth = 0;
+            lastPlace = null;
+            listing = false;
             prompt.forget();
             often = picks.counts();
             spotsLater.stop();
@@ -4432,7 +4481,9 @@ Scope {
                         // rungs (docs/design.md, Vi's Keys): a step back out,
                         // or, at the level it opened on, closing it.
                         onCancelled: {
-                            if (root.held.length > root.homeDepth)
+                            if (root.listing)
+                                root.listing = false;
+                            else if (root.held.length > root.homeDepth)
                                 root.back();
                             else
                                 root.open = false;
@@ -4469,6 +4520,12 @@ Scope {
                             switch (act) {
                             case "close":
                                 root.open = false;
+                                return;
+                            case "keys":
+                                root.listing = !root.listing;
+                                return;
+                            case "lastPlace":
+                                root.toLastPlace();
                                 return;
                             case "drawerUp":
                                 drawerCard.scroll(-1);

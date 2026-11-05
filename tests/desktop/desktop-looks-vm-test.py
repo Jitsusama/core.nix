@@ -157,7 +157,29 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         # and an ex line until its Return, as Neovim's command line does.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         stands_in_the_mode_words_room(desktop, ":q", f"launcher-ex-at-{scale}")
+        lists_every_key(desktop, scale)
         desktop.close_launcher()
+
+
+def lists_every_key(desktop: Desktop, scale: str) -> None:
+    """Show every key normal takes with Space ?, as a plate in the drawer, and photograph it.
+
+    Each key's name is whole, and what won't fit above the foot waits for Shift and the arrows.
+    """
+    desktop.machine.send_chars(" ?")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["listing"]
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "The rows in normal"
+        )
+    )
+    drawer = plate_shown(desktop, scale)
+    assert drawer["labelsWhole"], f"at {scale} a key's name is broken: {drawer}"
+    assert drawer["more"] or drawer["lines"]["facts"][-1] < drawer["foot"], drawer
+    desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
 
 
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:

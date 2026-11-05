@@ -33,13 +33,12 @@ const table = [
     { act: "normal", mode: "insert", keys: ["Escape"] },
 
     // Normal, over the rows as a buffer: Vim's moves, each taking a count
-    // typed before it (3j). Tab goes on as in insert until the place used
-    // last takes it. gg and {n}G go to the first row and the nth, G to the
-    // last; H M L to the top, middle and bottom row in view; Ctrl+D and
-    // Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page Up, a
-    // screen (moved, below).
-    { act: "next", mode: "normal", keys: ["Down", "j", "Tab"] },
-    { act: "previous", mode: "normal", keys: ["Up", "k", "Shift+Tab"] },
+    // typed before it (3j). gg and {n}G go to the first row and the nth, G
+    // to the last; H M L to the top, middle and bottom row in view; Ctrl+D
+    // and Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page
+    // Up, a screen (moved, below).
+    { act: "next", mode: "normal", keys: ["Down", "j"] },
+    { act: "previous", mode: "normal", keys: ["Up", "k"] },
     { act: "first", mode: "normal", keys: [["g", "g"]] },
     { act: "last", mode: "normal", keys: ["G"] },
     { act: "viewTop", mode: "normal", keys: ["H"] },
@@ -54,9 +53,17 @@ const table = [
     // cleared first, and u brings it back, as vi's undo does.
     { act: "into", mode: "normal", keys: ["Right", "l"] },
     { act: "out", mode: "normal", keys: ["Left", "h", "-", "Backspace"] },
-    // q closes, as his Neovim closes help and its plugin windows, and ZZ
-    // as it closes a buffer; :q is the ex line's (exRead, below).
-    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"]] },
+    // q closes, as his Neovim closes help and its plugin windows, ZZ as it
+    // closes a buffer and Space w as his leader closes a split; :q is the
+    // ex line's (exRead, below).
+    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"], ["Space", "w"]] },
+    // Tab goes back to the place used last, and again to the one before
+    // that, as his Space Tab goes back to the file used last (docs/
+    // design.md, Vi's Keys: Tab stays ours, and Space Tab does it too).
+    { act: "lastPlace", mode: "normal", keys: ["Tab", ["Space", "Tab"]] },
+    // Every key here, as his leader's Space ? lists them, and F1 as help.
+    // Space alone begins these and does nothing, waiting as gg's g does.
+    { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
     { act: "restore", mode: "normal", keys: ["u"] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
@@ -131,6 +138,84 @@ function pending(standing) {
     return standing.count !== "" || standing.typed.length > 0 || standing.ex !== undefined;
 }
 
+// The keys as Space ? lists them, in the table's order of use: each line
+// what it does, named in words.json by its `name`, and the acts whose keys
+// it shows in normal, the first alone where `firsts` says, since Return's
+// with Shift and Ctrl are told apart where they're done. A line's `also`
+// are keys no act's row holds, as a count and the ex line's. Escape isn't
+// listed, since it always steps back.
+const listed = [
+    { name: "rows", acts: ["next", "previous"] },
+    { name: "ends", acts: ["first", "last"] },
+    { name: "view", acts: ["viewTop", "viewMiddle", "viewBottom"] },
+    { name: "half", acts: ["halfDown", "halfUp"] },
+    { name: "screen", acts: ["pageDown", "pageUp"] },
+    { name: "count", acts: [], also: ["3j", "12G"] },
+    { name: "row", acts: [], also: [":12"] },
+    { name: "inOut", acts: ["into", "out"] },
+    { name: "run", acts: ["run"], firsts: true },
+    { name: "lastPlace", acts: ["lastPlace"] },
+    { name: "beside", acts: ["nextFile", "previousFile"] },
+    { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
+    { name: "change", acts: ["change"] },
+    { name: "restore", acts: ["restore"] },
+    { name: "drawer", acts: ["drawerDown", "drawerUp"] },
+    { name: "keys", acts: ["keys"] },
+    { name: "close", acts: ["close"], also: [":q"] }
+];
+
+// How a key is drawn, as the desktop draws one (modules/theme/keys.nix):
+// its glyph where it has one, its name where not, a letter with a
+// modifier as a capital, joined by +.
+const faces = {
+    Shift: "\u21e7", Return: "\u21b5", Up: "\u2191", Down: "\u2193", Left: "\u2190",
+    Right: "\u2192", Escape: "Esc", PageUp: "PgUp", PageDown: "PgDn"
+};
+
+function face(key) {
+    const parts = key.split("+");
+    const last = parts.pop();
+    const letter = parts.length > 0 && last.length === 1 ? last.toUpperCase() : last;
+    return parts.map(part => faces[part] ?? part).concat([faces[letter] ?? letter]).join("+");
+}
+
+// A sequence of letters reads as Vim writes it, gg; any other a space
+// apart, Space ?. Keys that do the same are two spaces apart, so a
+// sequence's space never reads as between two of them.
+function sequenceFace(keys) {
+    const sequence = Array.isArray(keys) ? keys : [keys];
+    return sequence.map(face).join(sequence.every(key => key.length === 1) ? "" : " ");
+}
+
+// Vim's own keys first, as his Neovim's help gives them, then those with
+// Ctrl, then the named keys beside them: j k \u2193 \u2191, not \u2193 j \u2191 k.
+function rank(keys) {
+    const sequence = Array.isArray(keys) ? keys : [keys];
+    if (sequence.every(key => key.length === 1)) {
+        return 0;
+    }
+    return sequence[0].startsWith("Ctrl+") ? 1 : 2;
+}
+
+// Every line Space ? lists, as the drawer's facts: the keys as the name,
+// muted, since a chord says how, and what they do, from `words`, as the
+// value.
+function keyList(words) {
+    return listed.map(line => {
+        // Qt's engine has no flatMap, so each act's keys are joined by hand.
+        const keys = [].concat(...line.acts.map(act => {
+            const all = [].concat(...table
+                .filter(one => one.act === act && inMode(one, "normal"))
+                .map(one => one.keys));
+            return line.firsts ? all.slice(0, 1) : all;
+        }));
+        const ranked = keys.map((key, at) => ({ key, at, rank: rank(key) }))
+            .sort((a, b) => a.rank - b.rank || a.at - b.at);
+        const said = ranked.map(one => sequenceFace(one.key)).concat(line.also ?? []);
+        return { label: said.join("  "), value: words[line.name] ?? "" };
+    });
+}
+
 // The ex line, Vim's command line after a colon, which waits for its
 // Return as long as it takes: what's typed after the colon, held in how
 // the keys stand as `ex` while it's open. A line of digits goes to that
@@ -150,7 +235,8 @@ function exRan(line) {
 }
 
 // A key typed on the ex line: Return runs it, Escape lets it go, as
-// Backspace does on an empty line, and anything printable is typed.
+// Backspace does on an empty line, and anything printable is typed, as a
+// space is.
 function exRead(standing, key) {
     const line = standing.ex;
     const open = ex => ({ act: "", count: 0, standing: { count: "", typed: [], ex },
@@ -163,6 +249,9 @@ function exRead(standing, key) {
     }
     if (key === "Backspace") {
         return open(line.slice(0, -1));
+    }
+    if (key === "Space") {
+        return open(`${line} `);
     }
     return open(printable.test(key) ? line + key : line);
 }

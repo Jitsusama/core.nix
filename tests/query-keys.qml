@@ -256,8 +256,18 @@ QtObject {
             ["Backspace takes its letters, then lets it go",
                 ["Escape", ":", "q", "Backspace", "Backspace", "j"], ["normal", "next"]],
             ["a colon in insert is the field's to type", [":", "q", "Return"], ["run"]],
-            ["normal's rows keep the arrows and Tab", ["Escape", "Down", "Tab", "Up", "Shift+Tab"],
-                ["normal", "next", "next", "previous", "previous"]],
+            ["normal's rows keep the arrows", ["Escape", "Down", "Up"],
+                ["normal", "next", "previous"]],
+            ["normal's Tab and Space Tab go to the place used last",
+                ["Escape", "Tab", "Space", "Tab"], ["normal", "lastPlace", "lastPlace"]],
+            ["Space ? and F1 show every key here", ["Escape", "Space", "?", "F1"],
+                ["normal", "keys", "keys"]],
+            ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
+                ["normal", "close"]],
+            ["Space alone begins, and a key it doesn't lead lets it go",
+                ["Escape", "Space", "j", "j"], ["normal", "next"]],
+            ["Escape cancels a Space waiting, then steps back",
+                ["Escape", "Space", "Escape", "Escape"], ["normal", "back"]],
             ["normal's j and k go down and up", ["Escape", "j", "k"],
                 ["normal", "next", "previous"]],
             ["gg and G go to the first and the last", ["Escape", "g", "g", "G"],
@@ -331,13 +341,39 @@ QtObject {
             typed(["Escape", ":", "q"]).standing, { count: "", typed: [], ex: "q" });
         holds("and is let go with Escape", typed(["Escape", ":", "q", "Escape"]).standing,
             { count: "", typed: [] });
+        holds("a space on the ex line is typed", typed(["Escape", ":", "q", "Space"]).standing,
+            { count: "", typed: [], ex: "q " });
+        holds("and Return reads past it",
+            typed(["Escape", ":", "q", "Space", "Return"]).acts, ["normal", "close"]);
+        holds("insert's Space is the field's to type", typed(["Space"]).ours, false);
+        holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
+            { count: "", typed: [] });
+        // Space ? lists the keys by what each line says, its keys as the
+        // desktop draws them, Vim's letters first.
+        const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
+            lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends" };
+        const list = Keys.keyList(lines);
+        const keyed = value => (list.find(line => line.value === value) ?? {}).label;
+        holds("the list's rows", keyed("rows"), "j  k  \u2193  \u2191");
+        holds("the list's ends, a sequence as Vim writes it", keyed("ends"), "gg  G");
+        holds("the list's screens, with Ctrl before the named keys", keyed("screen"),
+            "Ctrl+F  Ctrl+B  PgDn  PgUp");
+        holds("the list's in and out", keyed("in and out"),
+            "l  h  -  \u2192  \u2190  Backspace");
+        holds("the list's Return, once", keyed("run"), "\u21b5");
+        holds("the list's place used last", keyed("last"), "Tab  Space Tab");
+        holds("the list's own keys", keyed("keys"), "Space ?  F1");
+        holds("the list's closing, :q among them", keyed("close"), "q  ZZ  Space w  :q");
+        holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
+        holds("every line the list gives has its keys",
+            Keys.keyList({}).filter(line => line.label === "").length, 0);
         holds("a g waiting its timeoutlen lets go, keeping the count",
             Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
-        for (const act of ["run", "into", "out", "back", "close", "insert", "change",
-            "restore", ""])
+        for (const act of ["run", "into", "out", "back", "close", "lastPlace", "keys",
+            "insert", "change", "restore", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
