@@ -1112,12 +1112,13 @@ mod tests {
         // Each level stays wider than the one inside it: a tight list's
         // items a line apart and the list one and a half from the words
         // round it; a wrapped list's items one and a half apart, as
-        // paragraphs are, and the list two off.
+        // paragraphs are, and the list two off. The opening's own lines
+        // come first, as many as its face wraps it to.
         assert_eq!(
-            steps,
-            [100, 100, 150, 100, 100, 150, 200, 100, 150, 200],
-            "the opening's lines, a tight list a line a step and one and a half off, a \
-             wrapped list one and a half a step and two off: {steps:?}"
+            steps[steps.len() - 8..],
+            [150, 100, 100, 150, 200, 100, 150, 200],
+            "a tight list a line a step and one and a half off, a wrapped list one and a \
+             half a step and two off: {steps:?}"
         );
     }
 
