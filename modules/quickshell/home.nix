@@ -94,6 +94,7 @@ let
     "shell.qml"
     "Prompt.qml"
     "QueryKeys.js"
+    "ListedKeys.js"
     "Search.js"
     "KeyHints.qml"
     "Drawer.qml"

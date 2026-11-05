@@ -2937,9 +2937,9 @@ onLinux {
   # The launcher's query line takes vi's two modes from one table, as
   # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
   # ways back into insert, its moves through the rows with counts and
-  # where each lands, its closing keys and ex line, sequences, and where
-  # the caret goes; and Search.js to where / ? n N land on the rows, and
-  # how soon.
+  # where each lands, its closing keys and ex line, its place used last,
+  # sequences, and where the caret goes; ListedKeys.js to the keys Space ?
+  # lists; and Search.js to where / ? n N land on the rows, and how soon.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2947,6 +2947,7 @@ onLinux {
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../tests/query-keys.qml} query-keys.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Search.js} Search.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

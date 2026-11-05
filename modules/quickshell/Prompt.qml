@@ -335,7 +335,12 @@ Item {
         [Qt.Key_PageDown]: "PageDown",
         [Qt.Key_Tab]: "Tab",
         // Qt names Shift+Tab a key of its own.
-        [Qt.Key_Backtab]: "Tab"
+        [Qt.Key_Backtab]: "Tab",
+        // Space by its name, since it types nothing a name could tell from
+        // another key's, so normal's leader begins with it; insert's is
+        // still the field's to type, the table giving it nothing there.
+        [Qt.Key_Space]: "Space",
+        [Qt.Key_F1]: "F1"
     })
     function named(event: KeyEvent): string {
         const control = (event.modifiers & Qt.ControlModifier) !== 0;

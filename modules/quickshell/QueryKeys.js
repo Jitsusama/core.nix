@@ -33,13 +33,12 @@ const table = [
     { act: "normal", mode: "insert", keys: ["Escape"] },
 
     // Normal, over the rows as a buffer: Vim's moves, each taking a count
-    // typed before it (3j). Tab goes on as in insert until the place used
-    // last takes it. gg and {n}G go to the first row and the nth, G to the
-    // last; H M L to the top, middle and bottom row in view; Ctrl+D and
-    // Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page Up, a
-    // screen (moved, below).
-    { act: "next", mode: "normal", keys: ["Down", "j", "Tab"] },
-    { act: "previous", mode: "normal", keys: ["Up", "k", "Shift+Tab"] },
+    // typed before it (3j). gg and {n}G go to the first row and the nth, G
+    // to the last; H M L to the top, middle and bottom row in view; Ctrl+D
+    // and Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page
+    // Up, a screen (moved, below).
+    { act: "next", mode: "normal", keys: ["Down", "j"] },
+    { act: "previous", mode: "normal", keys: ["Up", "k"] },
     { act: "first", mode: "normal", keys: [["g", "g"]] },
     { act: "last", mode: "normal", keys: ["G"] },
     { act: "viewTop", mode: "normal", keys: ["H"] },
@@ -54,9 +53,17 @@ const table = [
     // cleared first, and u brings it back, as vi's undo does.
     { act: "into", mode: "normal", keys: ["Right", "l"] },
     { act: "out", mode: "normal", keys: ["Left", "h", "-", "Backspace"] },
-    // q closes, as his Neovim closes help and its plugin windows, and ZZ
-    // as it closes a buffer; :q is the ex line's (exRead, below).
-    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"]] },
+    // q closes, as his Neovim closes help and its plugin windows, ZZ as it
+    // closes a buffer and Space w as his leader closes a split; :q is the
+    // ex line's (exRead, below).
+    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"], ["Space", "w"]] },
+    // Tab goes back to the place used last, and again to the one before
+    // that, as his Space Tab goes back to the file used last (docs/
+    // design.md, Vi's Keys: Tab stays ours, and Space Tab does it too).
+    { act: "lastPlace", mode: "normal", keys: ["Tab", ["Space", "Tab"]] },
+    // Every key here, as his leader's Space ? lists them, and F1 as help.
+    // Space alone begins these and does nothing, waiting as gg's g does.
+    { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
     { act: "restore", mode: "normal", keys: ["u"] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
@@ -150,7 +157,8 @@ function exRan(line) {
 }
 
 // A key typed on the ex line: Return runs it, Escape lets it go, as
-// Backspace does on an empty line, and anything printable is typed.
+// Backspace does on an empty line, and anything printable is typed, as a
+// space is.
 function exRead(standing, key) {
     const line = standing.ex;
     const open = ex => ({ act: "", count: 0, standing: { count: "", typed: [], ex },
@@ -163,6 +171,9 @@ function exRead(standing, key) {
     }
     if (key === "Backspace") {
         return open(line.slice(0, -1));
+    }
+    if (key === "Space") {
+        return open(`${line} `);
     }
     return open(printable.test(key) ? line + key : line);
 }

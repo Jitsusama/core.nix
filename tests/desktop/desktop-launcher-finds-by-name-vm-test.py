@@ -466,13 +466,14 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     assert len(kept) - len(absent) >= fewest, absent
 
 
-def waits_then_lets_go(desktop: Desktop, key: str) -> None:
+def waits_then_lets_go(desktop: Desktop, key: str, typed: str | None = None) -> None:
     """Type a key that begins a pair, and wait until it's waited for its second and let go.
 
-    It's heard from before the key, since the wait can be over before one begun after it starts.
+    The key is as the launcher names it, typed as its own text unless told what to type. It's
+    heard from before the key, since the wait can be over before one begun after it starts.
     """
     before = desktop.mark()
-    desktop.machine.send_chars(key)
+    desktop.machine.send_chars(key if typed is None else typed)
     begun: list[str] = []
 
     def let_go(said: str) -> bool:
@@ -687,11 +688,59 @@ def walk_the_rows_searches(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+def walk_the_rows_keys(desktop: Desktop) -> None:
+    """Press normal's Tab, Space ?, F1 and Space w on a search's rows, through niri.
+
+    Tab goes to the place used last and back, as his Space Tab goes to the file used last;
+    Space ? and F1 list every key in the drawer until Escape or again; Space alone waits for a
+    second key and lets go; and Space w closes the launcher.
+    """
+    machine = desktop.machine
+    desktop.answer("emoji")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    desktop.normal()
+    machine.send_chars("l")
+    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+    machine.send_chars("-")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
+    machine.send_key("tab")
+    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+    machine.send_key("tab")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
+
+    # What the drawer draws, since its facts keep the last plate as it goes back in.
+    def listed(listing: bool) -> None:
+        desktop.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown.get("listing") == listing
+                and ("Space ?  F1" in shown["drawer"]["drawnFacts"]) == listing
+                and ("Insert" in shown["drawer"]["drawnFacts"]) == listing
+            )
+        )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["labelsWhole"], f"a key's name is broken: {drawer}"
+
+    machine.send_chars(" ?")
+    listed(listing=True)
+    machine.send_key("esc")
+    listed(listing=False)
+    machine.send_key("f1")
+    listed(listing=True)
+    machine.send_key("f1")
+    listed(listing=False)
+    waits_then_lets_go(desktop, "Space", " ")
+    assert desktop.showing()["open"], "a Space alone closed the launcher"
+    machine.send_chars(" w")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
     """A search lists each thing once, and normal's keys move, act and search on it as Vim's do."""
     walk_the_rows_moves(desktop)
     walk_the_rows_acts(desktop)
     walk_the_rows_searches(desktop)
+    walk_the_rows_keys(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;
