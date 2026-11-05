@@ -9,6 +9,9 @@ pub struct Run {
     pub x_pt: f64,
     pub baseline_pt: f64,
     pub size_pt: f64,
+    /// How tall its face's capitals stand at its size, which a line's
+    /// ground is centred on.
+    pub cap_pt: f64,
     /// Each character and where it starts and ends across the page.
     pub chars: Vec<(char, f64, f64)>,
 }
@@ -21,6 +24,8 @@ pub struct Line {
     pub tail_x_pt: f64,
     pub baseline_pt: f64,
     pub size_pt: f64,
+    /// Its tallest run's capitals.
+    pub cap_pt: f64,
     pub text: String,
     /// For each character of `text`, by its place among them, where it
     /// starts and ends across the page.
@@ -36,6 +41,8 @@ pub struct Line {
 pub struct Piece {
     pub baseline_pt: f64,
     pub size_pt: f64,
+    /// Its line's capitals.
+    pub cap_pt: f64,
     pub from_pt: f64,
     pub to_pt: f64,
 }
@@ -105,6 +112,7 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Run>) {
                     x_pt: here.x.to_pt(),
                     baseline_pt: here.y.to_pt(),
                     size_pt: size,
+                    cap_pt: text.font.metrics().cap_height.at(text.size).to_pt(),
                     chars,
                 });
             }
@@ -155,10 +163,12 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
                 tail_x_pt: starts_at,
                 baseline_pt: run.baseline_pt,
                 size_pt: 0.0,
+                cap_pt: 0.0,
                 text: String::new(),
                 spans: Vec::new(),
             });
             open.size_pt = open.size_pt.max(run.size_pt);
+            open.cap_pt = open.cap_pt.max(run.cap_pt);
             open.tail_x_pt = starts_at;
             for (c, from, to) in run.chars {
                 open.text.push(c);
@@ -277,6 +287,7 @@ pub fn find_as(lines: &[Line], query: &str, smartcase: bool) -> Vec<Found> {
                     _ => pieces.push(Piece {
                         baseline_pt: line.baseline_pt,
                         size_pt: line.size_pt,
+                        cap_pt: line.cap_pt,
                         from_pt: from,
                         to_pt: to,
                     }),
@@ -311,6 +322,7 @@ mod tests {
             x_pt: x,
             baseline_pt: baseline,
             size_pt: 13.1,
+            cap_pt: 9.2,
             chars,
         }
     }

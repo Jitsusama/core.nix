@@ -88,21 +88,32 @@ impl Selection {
     }
 }
 
+/// The cell a line of the page stands in, its top and foot down the page
+/// in points: the page's pitch tall, or the line's size and a fifth where
+/// that is taller, as the title's is, centred on its capitals, so it
+/// stands as far over them as under the baseline. A selection's ground
+/// and the cursor are each line's cell, so a paragraph's lines, a pitch
+/// apart, join into one ground as Vim's Visual does (VKCF3Z, 2026-11-05).
+pub fn line_cell(baseline_pt: f64, cap_pt: f64, size_pt: f64) -> (f64, f64) {
+    let tall = crate::page::pitch_pt().max(size_pt * 1.2);
+    let top = baseline_pt - cap_pt - (tall - cap_pt) / 2.0;
+    (top, top + tall)
+}
+
 /// Each piece of a selection as the ground drawn behind it: its top and
 /// foot down the page and its ends across, in points. A line's ground is
-/// its words' room, as search's marks are, reaching down to the next
-/// line's where the two lines are a paragraph's, so a selection across
-/// them is one ground, as a terminal's is, and apart across a gap
+/// its cell, reaching down to the next line's where the two are nearly
+/// touching, as a larger line's beside a smaller one is, so a selection
+/// across them is one ground, as a terminal's is, and apart across a gap
 /// between paragraphs.
 pub fn grounds(pieces: &[Piece]) -> Vec<(f64, f64, f64, f64)> {
     pieces
         .iter()
         .enumerate()
         .map(|(i, piece)| {
-            let top = piece.baseline_pt - piece.size_pt * 0.92;
-            let mut foot = top + piece.size_pt * 1.2;
+            let (top, mut foot) = line_cell(piece.baseline_pt, piece.cap_pt, piece.size_pt);
             if let Some(next) = pieces.get(i + 1) {
-                let next_top = next.baseline_pt - next.size_pt * 0.92;
+                let (next_top, _) = line_cell(next.baseline_pt, next.cap_pt, next.size_pt);
                 if next_top > foot && next_top - foot < piece.size_pt * 0.5 {
                     foot = next_top;
                 }
@@ -1231,6 +1242,7 @@ impl Layout {
         Piece {
             baseline_pt: line.baseline_pt,
             size_pt: line.size_pt,
+            cap_pt: line.cap_pt,
             from_pt: line.spans[from].0,
             to_pt: line.spans[to].1,
         }
@@ -1511,6 +1523,7 @@ mod tests {
             tail_x_pt: 0.0,
             baseline_pt: baseline,
             size_pt: 13.0,
+            cap_pt: 9.1,
             text: text.to_string(),
             spans,
         }
@@ -2071,6 +2084,81 @@ mod tests {
             .expect("its paragraph");
         assert_eq!(page.copied(&whole), "```sh\necho one\necho two\n```\n");
         assert_eq!(page.pieces(&whole).len(), 2, "both lines of code show it");
+    }
+
+    #[test]
+    fn a_selection_grounds_each_lines_cell_and_joins_a_paragraphs_lines() {
+        let words = "Words that run on past the measure. ".repeat(12);
+        let markdown = format!("# A Title\n\n## A Section\n\n{words}\n\nThe next paragraph.\n");
+        let page = set("cells", &markdown);
+        let (title, first, next) = (
+            holding(&page, "A Title"),
+            holding(&page, "Words"),
+            holding(&page, "The next"),
+        );
+        assert!(next > first + 1, "the paragraph wraps");
+        let theme = crate::theme::get();
+        let world = crate::page::new_world();
+        let pitch = crate::page::pitch_pt();
+        let cell = |selection: &Selection, family: &str| {
+            let pieces = page.pieces(selection);
+            let grounds = grounds(&pieces);
+            for (piece, ground) in pieces.iter().zip(&grounds) {
+                let (top, foot, from, to) = *ground;
+                // The face the line is set in, whose capitals the run
+                // carries: a title's weight stands shorter than its
+                // family's regular, so the family's are only a check.
+                let cap = piece.cap_pt;
+                let regular = world.capitals_pt(family, piece.size_pt);
+                assert!(
+                    (cap - regular).abs() < regular * 0.1,
+                    "its capitals, {cap} pt, are its face's, near {regular} pt"
+                );
+                let (over, under) = (piece.baseline_pt - cap - top, foot - piece.baseline_pt);
+                assert!(
+                    (over - under).abs() < 0.05,
+                    "{ground:?} stands {over} pt over the capitals and {under} pt under the baseline at {}",
+                    piece.baseline_pt
+                );
+                assert_eq!(
+                    (from, to),
+                    (piece.from_pt, piece.to_pt),
+                    "its sides are its characters' edges"
+                );
+            }
+            (pieces, grounds)
+        };
+        let mut paragraph = Selection::new(Kind::Chars, Pos { line: first, ch: 0 });
+        paragraph.cursor = Pos { line: next, ch: 3 };
+        let (pieces, grounds) = cell(&paragraph, &theme.levels.words.family);
+        for (i, ground) in grounds.iter().enumerate() {
+            assert!(
+                (ground.1 - ground.0 - pitch).abs() < 0.01,
+                "a line of words is grounded the page's pitch, {pitch} pt, tall, not {ground:?}"
+            );
+            if let Some(below) = grounds.get(i + 1) {
+                if i + 2 < grounds.len() {
+                    assert!(
+                        (below.0 - ground.1).abs() < 0.01,
+                        "a paragraph's lines are one ground: {ground:?} then {below:?}"
+                    );
+                } else {
+                    assert!(
+                        below.0 > ground.1 + 1.0,
+                        "two paragraphs' are apart: {ground:?} then {below:?}"
+                    );
+                }
+            }
+        }
+        assert_eq!(pieces.len(), next - first + 1);
+        let titled = Selection::new(Kind::Chars, Pos { line: title, ch: 0 });
+        let (pieces, grounds) = cell(&titled, &theme.levels.title.family);
+        let tall = pitch.max(pieces[0].size_pt * 1.2);
+        assert!(
+            (grounds[0].1 - grounds[0].0 - tall).abs() < 0.01,
+            "the title is grounded its size and a fifth, {tall} pt, tall, not {:?}",
+            grounds[0]
+        );
     }
 
     #[test]

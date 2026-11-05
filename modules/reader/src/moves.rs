@@ -382,6 +382,7 @@ mod tests {
             tail_x_pt: 0.0,
             baseline_pt,
             size_pt: 10.0,
+            cap_pt: 7.0,
             text: text.into(),
             spans: text.chars().map(|_| (0.0, 1.0)).collect(),
         }
