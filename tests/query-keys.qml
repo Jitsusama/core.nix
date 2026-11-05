@@ -462,6 +462,10 @@ QtObject {
                 "normal"],
             ["a colon opens the command line, the selection standing", ["Escape", "V", ":"],
                 ["normal", "selectLines", "command"], "visual"],
+            // Space leads in visual as in normal (the vi-paradigm spec's
+            // Leader), so the foot's Space ? there is a key that works.
+            ["and Space ? and F1 list the keys", ["Escape", "V", "Space", "?", "F1"],
+                ["normal", "selectLines", "keys", "keys"], "visual"],
             ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A"],
                 ["normal", "selectLines"], "visual"],
             ["on the find, V types", ["V"], [], "find"],
