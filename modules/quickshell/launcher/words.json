@@ -4763,13 +4763,13 @@
     },
     {
       "id": "verb:wifi-password",
-      "command": "pair",
+      "command": "password",
       "in": "wifi",
       "name": "Connect It with a New Password"
     },
     {
       "id": "verb:wifi-account",
-      "command": "pair",
+      "command": "signin",
       "argument": "{method}",
       "in": "wifi",
       "name": "Connect It with an Account Over {method}"
@@ -6003,7 +6003,7 @@
     },
     {
       "id": "verb:file-chooser:marked",
-      "command": "args",
+      "act": "do",
       "in": "path:folder",
       "name": "Open the Marked",
       "verb": "open",

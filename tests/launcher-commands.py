@@ -37,6 +37,8 @@ Commands = dict[str, bool]
 ON = "on"
 # The range of every row, as :%d is.
 EVERY_ROW = "%"
+# The key language's act for Return, which a verb it alone does names.
+RETURN = "do"
 
 
 def commands_of(language: Entry) -> Commands:
@@ -67,6 +69,10 @@ def line_of(verb: Entry) -> str:
 def strays(verb: Entry, commands: Commands) -> list[str]:
     """Say how one verb's command strays."""
     name = verb["id"]
+    if verb.get("act") == RETURN:
+        if "command" in verb:
+            return [f"{name} is Return's alone, yet names :{verb['command']}."]
+        return []
     if "command" not in verb:
         return [f"{name} names no command."]
     command = verb["command"]
