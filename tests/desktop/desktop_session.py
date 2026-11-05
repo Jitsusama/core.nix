@@ -585,7 +585,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             was = where(self.showing())
             if not was[0]:
                 return
-            if str(was[1]).startswith("page"):
+            if str(was[2]).startswith("page"):
                 self.machine.send_chars(":q\n")
                 self.launcher_until(functools.partial(moved, was))
                 continue

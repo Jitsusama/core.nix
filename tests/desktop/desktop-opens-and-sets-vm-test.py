@@ -340,6 +340,9 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
             desktop.normal()
             machine.send_chars("cc")
             desktop.launcher_until(lambda shown: shown["typed"] == "")
+            # cc leaves it on the find; back in normal, a changing row's
+            # Return does it rather than landing.
+            desktop.normal()
         else:
             desktop.launcher_until(lambda shown: becomes in shown["rows"])
             desktop.close_launcher()
@@ -527,7 +530,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     # the part reads it.
     for key, profile, name, was in [
         ("ret", "balanced", "Balanced", "Power Saver"),
-        ("right", "power-saver", "Power Saver", "Balanced"),
+        ("l", "power-saver", "Power Saver", "Balanced"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()

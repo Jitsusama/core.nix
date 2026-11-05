@@ -318,6 +318,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.on_find()
     machine.send_key("backspace")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
+    # Back in normal, where a changing row's Return does it rather than
+    # landing, as main's clearing left arrow left it.
+    desktop.normal()
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
     desktop.down_to("Light")
