@@ -159,11 +159,13 @@ Scope {
                     Text {
                         width: parent.width
                         textFormat: Text.RichText
-                        // As polkit's: programs in the monospace face, the
-                        // thing asked for strong, at the serif's semibold.
+                        // As polkit's: at Words, in text, programs in the
+                        // monospace face and the thing asked for a strong
+                        // span.
                         readonly property var styles: ({
                             program: `font-family:'${Theme.mono.family}'`,
-                            thing: `color:${Theme.strong};font-weight:600`
+                            thing: `color:${Theme.strong};`
+                                + `font-weight:${Theme.level.words.spans.strong}`
                         })
                         text: root.read === null ? "" : root.read.title.map(part => {
                             const words = root.escaped(part.text);
@@ -174,9 +176,10 @@ Scope {
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.large
-                        font.variableAxes: Theme.serif.unweighted.large
+                        font.family: Theme.level.words.family
+                        font.pointSize: Theme.level.words.pointSize
+                        font.weight: Theme.level.words.spans.weight
+                        font.variableAxes: Theme.level.words.spans.variableAxes
                     }
 
                     Text {
@@ -185,16 +188,20 @@ Scope {
                         // A line that belongs with the title, above.
                         topPadding: Theme.space.xs
                         text: root.read === null ? "" : root.read.detail
+                        // What it's for, at Words in muted, or in the mono
+                        // at Figure when it's a path or programs, plain
+                        // beside the strong thing above.
+                        readonly property var level: root.read !== null && root.read.mono
+                            ? Theme.level.figure : Theme.level.words
                         color: Theme.muted
                         wrapMode: Text.Wrap
                         lineHeight: root.line
                         lineHeightMode: Text.FixedHeight
-                        font.family: root.read !== null && root.read.mono ? Theme.mono.family
-                            : Theme.serif.family
-                        font.pointSize: root.read !== null && root.read.mono ? Theme.mono.large
-                            : Theme.serif.large
-                        font.variableAxes: root.read !== null && root.read.mono ? ({})
-                            : Theme.serif.upright.large
+                        font.family: level.family
+                        font.pointSize: level.pointSize
+                        font.weight: level.weight
+                        font.variableAxes: level.variableAxes
+                        font.features: level.features
                     }
                 }
 
@@ -237,6 +244,7 @@ Scope {
                     visible: root.holds
 
                     KeyHints {
+                        size: Theme.level.note.pointSize
                         anchors.right: parent.right
                         anchors.rightMargin: Theme.inset + Theme.space.l
                         anchors.verticalCenter: parent.verticalCenter

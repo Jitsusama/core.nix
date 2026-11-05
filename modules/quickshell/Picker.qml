@@ -284,9 +284,10 @@ Singleton {
                         id: labelText
                         anchors.centerIn: parent
                         text: parent.label
-                        color: parent.leads ? Theme.strong : Theme.muted
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.body
+                        color: parent.leads ? Theme.strong : Theme.level.note.colour
+                        font.family: Theme.level.note.family
+                        font.pointSize: Theme.level.note.pointSize
+                        font.weight: Theme.level.note.weight
                     }
                 }
             }
@@ -307,8 +308,10 @@ Singleton {
                 Column {
                     width: parent.width
 
-                    // What's being picked for, the letters typed, and the
-                    // box's size.
+                    // What's being picked for, as a launcher place's head
+                    // names it, at Title in text; the letters typed, as
+                    // the query is, at Figure, or the voice's hint before
+                    // any are; and the box's size, a figure too.
                     Item {
                         width: parent.width
                         height: Theme.space.xxxl + 2 * Theme.inset
@@ -316,59 +319,67 @@ Singleton {
                         Text {
                             id: glyph
                             x: Theme.inset + Theme.space.l
-                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.baseline: title.baseline
                             text: root.asked ? root.asked.glyph : ""
                             color: Theme.action
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
-                        }
-
-                        Rectangle {
-                            id: chip
-                            x: Theme.inset + Theme.space.l + Theme.space.xxl
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: chipText.implicitWidth + 2 * Theme.space.m
-                            height: Theme.space.xxl
-                            radius: Theme.inner
-                            color: Theme.raised
-
-                            Text {
-                                id: chipText
-                                anchors.centerIn: parent
-                                text: root.asked ? root.asked.title : ""
-                                color: Theme.strong
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
-                            }
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                            font.weight: Theme.level.figure.weight
                         }
 
                         Text {
-                            x: chip.x + chip.width + Theme.space.m
+                            id: title
+                            x: Theme.inset + Theme.space.l + Theme.space.xxl
                             anchors.verticalCenter: parent.verticalCenter
+                            text: root.asked ? root.asked.title : ""
+                            color: Theme.text
+                            font.family: Theme.level.title.family
+                            font.pointSize: Theme.level.title.pointSize
+                            font.weight: Theme.level.title.weight
+                            font.letterSpacing: Theme.level.title.letterSpacing
+                            font.variableAxes: Theme.level.title.variableAxes
+                        }
+
+                        Text {
+                            id: letters
+                            x: title.x + title.width + Theme.space.l
+                            anchors.baseline: title.baseline
                             readonly property string corner: root.first === null ? "" : "\u2192 "
-                            text: `<font color="${Theme.strong}">${corner}${root.typed}</font>`
-                                + (root.typed === ""
-                                    ? (root.first === null ? "a cell's letters" : "the other's")
-                                    : "")
-                            textFormat: Text.StyledText
-                            color: Theme.muted
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
-                            font.weight: Font.Medium
+                            text: `${corner}${root.typed}`
+                            textFormat: Text.PlainText
+                            color: Theme.strong
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                            font.weight: Theme.level.figure.weight
+                            font.features: Theme.level.figure.features
+                        }
+
+                        Text {
+                            x: letters.x + letters.width
+                            anchors.baseline: title.baseline
+                            visible: root.typed === ""
+                            text: root.first === null ? "a cell's letters" : "the other's"
+                            color: Theme.level.voice.colour
+                            font.family: Theme.level.voice.family
+                            font.pointSize: Theme.level.voice.pointSize
+                            font.weight: Theme.level.voice.weight
+                            font.italic: Theme.level.voice.italic
+                            font.variableAxes: Theme.level.voice.variableAxes
                         }
 
                         Text {
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.inset + Theme.space.l
-                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.baseline: title.baseline
                             readonly property var measured: window.shown ?? root.box
                             text: `${measured.width}<font color="${Theme.muted}"> \u00d7 </font>`
                                 + measured.height
                             textFormat: Text.StyledText
                             color: Theme.text
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
-                            font.features: { "tnum": 1 }
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                            font.weight: Theme.level.figure.weight
+                            font.features: Theme.level.figure.features
                         }
                     }
 
@@ -385,6 +396,7 @@ Singleton {
 
                         KeyHints {
                             id: hints
+                            size: Theme.level.note.pointSize
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.inset + Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter

@@ -27,11 +27,11 @@
 //
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
 // the accent's while the stack holds the keys, or the alert's when
-// critical; and three groups at the launcher's size, the same room from
-// the frame to the ink on every side: who or what first, strong in
-// monospace, then the message in the reading face, and a signature in
-// muted monospace saying what sent it, its mark in a column of its own,
-// and when.
+// critical; and three groups on the launcher's line, the same room from
+// the frame to the ink on every side, each at its type's level (Type):
+// who or what first, at Name in strong, then the message at Words, and a
+// signature a size smaller, at Note, saying what sent it, its mark in a
+// column of its own, and when.
 //
 // What's playing (Music.qml) is a notice too, for a moment when a track
 // changes or a media key is pressed, at the top of the same column so the
@@ -68,9 +68,9 @@ Scope {
     // above is measured to its top rather than to its line's.
     TextMetrics {
         id: capital
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
-        font.weight: Font.Medium
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+        font.weight: Theme.level.name.weight
         text: "H"
     }
 
@@ -1113,9 +1113,9 @@ Scope {
                                 elide: Text.ElideRight
                                 lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
-                                font.weight: Font.Medium
+                                font.family: Theme.level.name.family
+                                font.pointSize: Theme.level.name.pointSize
+                                font.weight: Theme.level.name.weight
                             }
 
                             Text {
@@ -1127,9 +1127,10 @@ Scope {
                                 elide: Text.ElideRight
                                 lineHeight: root.pitch
                                 lineHeightMode: Text.FixedHeight
-                                font.family: Theme.serif.family
-                                font.pointSize: Theme.serif.large
-                                font.variableAxes: Theme.serif.upright.large
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
+                                font.weight: Theme.level.words.weight
+                                font.variableAxes: Theme.level.words.variableAxes
                             }
                         }
                     }
@@ -1148,8 +1149,9 @@ Scope {
                             lineHeightMode: Text.FixedHeight
                             text: root.song.mark
                             color: Theme.program
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
+                            font.family: Theme.level.note.family
+                            font.pointSize: Theme.level.note.pointSize
+                            font.weight: Theme.level.note.weight
                         }
 
                         Text {
@@ -1161,9 +1163,10 @@ Scope {
                             lineHeightMode: Text.FixedHeight
                             text: root.song.from
                             elide: Text.ElideRight
-                            color: Theme.muted
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
+                            color: Theme.level.note.colour
+                            font.family: Theme.level.note.family
+                            font.pointSize: Theme.level.note.pointSize
+                            font.weight: Theme.level.note.weight
                         }
 
                         Text {
@@ -1173,10 +1176,10 @@ Scope {
                             lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
                             text: root.song.where
-                            color: Theme.muted
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
-                            font.features: { "tnum": 1 }
+                            color: Theme.level.note.colour
+                            font.family: Theme.level.note.family
+                            font.pointSize: Theme.level.note.pointSize
+                            font.weight: Theme.level.note.weight
                         }
                     }
                 }
@@ -1286,10 +1289,14 @@ Scope {
 
                     // Three groups, as Joel reads a notice: who or what
                     // it's about, what it says, and the signature of what
-                    // sent it with when, all at the launcher's size (Joel,
-                    // 2026-10-24: "the differing font sizes, and too much
-                    // information on lines really felt gross and
-                    // unrefined"). The frame stands as far from the ink on
+                    // sent it with when, each at its level and every line
+                    // on the one pitch, so the sizes rank rather than
+                    // jostle: who and what at the launcher's size, the
+                    // signature a step smaller (Joel, 2026-10-24: "the
+                    // differing font sizes, and too much information on
+                    // lines really felt gross and unrefined"; 2026-11-04:
+                    // "we are not levraging different weights and sizes
+                    // enough"). The frame stands as far from the ink on
                     // every side, to the capital's top and the
                     // signature's baseline (Joel, 2026-11-03: "feeling
                     // quite cluttered").
@@ -1332,9 +1339,9 @@ Scope {
                             wrapMode: Text.Wrap
                             lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
-                            font.weight: Font.Medium
+                            font.family: Theme.level.name.family
+                            font.pointSize: Theme.level.name.pointSize
+                            font.weight: Theme.level.name.weight
                         }
 
                         Text {
@@ -1353,9 +1360,10 @@ Scope {
                             textFormat: card.washed ? Text.RichText : Text.StyledText
                             lineHeight: root.pitch
                             lineHeightMode: Text.FixedHeight
-                            font.family: Theme.serif.family
-                            font.pointSize: Theme.serif.large
-                            font.variableAxes: Theme.serif.upright.large
+                            font.family: Theme.level.words.family
+                            font.pointSize: Theme.level.words.pointSize
+                            font.weight: Theme.level.words.weight
+                            font.variableAxes: Theme.level.words.variableAxes
                         }
 
                         // What sent it, a step below: its mark in a column
@@ -1378,8 +1386,9 @@ Scope {
                                 lineHeightMode: Text.FixedHeight
                                 text: String.fromCodePoint(card.from.glyph)
                                 color: Theme[card.from.hue]
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                                font.weight: Theme.level.note.weight
                             }
 
                             // Its sender's name, or the search being typed,
@@ -1401,10 +1410,11 @@ Scope {
                                 // A long search loses its start, so what's
                                 // being typed stays in sight.
                                 elide: card.moded ? Text.ElideLeft : Text.ElideRight
-                                color: !card.moded ? Theme.muted
+                                color: !card.moded ? Theme.level.note.colour
                                     : root.typing ? Theme.strong : Theme.accent
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                                font.weight: Theme.level.note.weight
                             }
 
                             // The bar that types, a quarter of a letter
@@ -1461,10 +1471,10 @@ Scope {
                                 // say so.
                                 onCopiedChanged: if (copied)
                                     Report.say(`copied card ${card.modelData.summary}`)
-                                color: Theme.muted
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
-                                font.features: { "tnum": 1 }
+                                color: Theme.level.note.colour
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                                font.weight: Theme.level.note.weight
                             }
                         }
 
@@ -1473,11 +1483,12 @@ Scope {
                         // somewhere for the right arrow to go without a
                         // line of hints; stepping in, through and out then
                         // only moves the band (Joel, 2026-10-26: no size
-                        // jump). A launcher row's shape at its size: the
-                        // name, the key that does it straight away on the
-                        // right, muted, and once stepped in, the chosen one
-                        // filled out to an inset inside the frame, with
-                        // Return's mark where its key was.
+                        // jump). A launcher row's shape at the signature's
+                        // level, Note: the name, the key that does it
+                        // straight away on the right, muted, and once
+                        // stepped in, the chosen one filled out to an inset
+                        // inside the frame, with Return's mark where its
+                        // key was.
                         Column {
                             x: -Theme.space.l
                             width: parent.width + 2 * Theme.space.l
@@ -1540,10 +1551,14 @@ Scope {
                                         text: verb.modelData.name
                                         textFormat: Text.PlainText
                                         elide: Text.ElideRight
+                                        // At Note, in text, since it's a
+                                        // thing to do rather than a hint;
+                                        // chosen, strong on the fill, its
+                                        // weight the same.
                                         color: verb.chosen ? Theme.strong : Theme.text
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.large
-                                        font.weight: verb.chosen ? Font.Medium : Font.Normal
+                                        font.family: Theme.level.note.family
+                                        font.pointSize: Theme.level.note.pointSize
+                                        font.weight: Theme.level.note.weight
                                     }
 
                                     // What a switch is, at its right, as a
@@ -1556,9 +1571,10 @@ Scope {
                                         visible: text !== ""
                                         text: verb.modelData.side ?? ""
                                         textFormat: Text.PlainText
-                                        color: Theme.muted
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.large
+                                        color: Theme.level.note.colour
+                                        font.family: Theme.level.note.family
+                                        font.pointSize: Theme.level.note.pointSize
+                                        font.weight: Theme.level.note.weight
                                     }
 
                                     Chord {
@@ -1568,7 +1584,7 @@ Scope {
                                         anchors.verticalCenter: parent.verticalCenter
                                         keys: verb.chosen ? [{ text: "\u21b5" }]
                                             : verb.modelData.chord
-                                        size: Theme.mono.large
+                                        size: Theme.level.note.pointSize
                                     }
 
                                     MouseArea {

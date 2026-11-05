@@ -4,8 +4,6 @@
 # on a file listed here that no longer needs to be, so the list only
 # shrinks; the last piece empties it.
 dictation/Speaking.qml
-greetd/greeter.qml
-quickshell/Askpass.qml
 quickshell/Choice.qml
 quickshell/Chord.qml
 quickshell/Drawer.qml
@@ -13,11 +11,7 @@ quickshell/Graph.qml
 quickshell/KeyboardMap.qml
 quickshell/KeyHints.qml
 quickshell/Launcher.qml
-quickshell/Lock.qml
 quickshell/Margin.qml
 quickshell/Meter.qml
-quickshell/Notifications.qml
-quickshell/Picker.qml
-quickshell/Polkit.qml
 quickshell/Prompt.qml
 quickshell/ReadsOn.qml
