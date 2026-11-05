@@ -801,6 +801,9 @@ Item {
 
     implicitWidth: 480
     implicitHeight: Theme.space.xxxl
+    // The line's baseline, the typed letters', which the field's keys and
+    // aside sit on and the launcher's drawer sets its eyebrow on.
+    baselineOffset: input.y + input.baselineOffset
 
     Text {
         id: glyphText

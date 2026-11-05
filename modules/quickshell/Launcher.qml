@@ -4687,6 +4687,7 @@ Scope {
     // field's centre, the prompt an inset inside the frame, and the first
     // row's, below the field, its hairline and the list's inset.
     readonly property real fieldLine: Theme.border + Theme.inset + prompt.height / 2
+    readonly property real fieldBase: Theme.border + Theme.inset + prompt.baselineOffset
     readonly property real rowLine: Theme.border + prompt.height + 2 * Theme.inset
         + Theme.border + Theme.inset + rowTall / 2
     // How tall a row is, a step of the scale; its middle is a centre, half
@@ -4939,6 +4940,9 @@ Scope {
                 } : null,
                 cardLines: {
                     field: root.hundredths(root.fieldLine),
+                    // The field's baseline, which the drawer's eyebrow
+                    // sits on.
+                    fieldBase: root.hundredths(root.fieldBase),
                     // Each of the first twenty rows' names' baselines,
                     // null for one not drawn.
                     rows: root.matches.slice(0, 20)
@@ -6631,7 +6635,7 @@ Scope {
             y: card.reach
             width: root.drawerWidth
             tall: root.drawerOver ? root.rowsEnd : card.height
-            fieldLine: root.fieldLine
+            fieldBase: root.fieldBase
             rowLine: root.rowLine
             rowLines: root.rowLines
             out: root.drawerOut && (!root.drawerOver || root.drawerHolds)
