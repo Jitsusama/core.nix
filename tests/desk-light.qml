@@ -181,7 +181,35 @@ ShellRoot {
         expect("off", light.answer("desk light").headline === "the desk light is off",
             light.answer("desk light").headline);
         light.answer("desk light on").run();
-        root.step("lit by the launcher", () => DeskLight.light !== null && DeskLight.light.on, root.unplugged);
+        root.step("lit by the launcher", () => DeskLight.light !== null && DeskLight.light.on,
+            root.optioned);
+    }
+
+    // Its options, which :set sets as its rows do: desklight, deskbrightness
+    // and deskwarmth, the warmth in kelvin, so Warmer's line takes from it
+    // as Warmer's row does.
+    function optioned() {
+        const options = light.setOptions ?? {};
+        const names = Object.keys(options).sort().join(" ");
+        expect("its options", names === "deskbrightness desklight deskwarmth", names);
+        expect("each as it stands", [options.desklight.now(), options.deskbrightness.now(),
+            options.deskwarmth.now()].join(" ") === "true 70 4100",
+            [options.desklight.now(), options.deskbrightness.now(), options.deskwarmth.now()]);
+        expect("its warmth from the warmest to the coolest it takes",
+            `${options.deskwarmth.least} ${options.deskwarmth.most}`
+                === `${DeskLight.warmest} ${DeskLight.coolest}`,
+            `${options.deskwarmth.least} ${options.deskwarmth.most}`);
+        const warmer = Words.of("verb:warmer").argument;
+        expect("Warmer's line lowers its kelvin", warmer === "deskwarmth-=500", warmer);
+        options.deskbrightness.set(50, { option: "deskbrightness", how: "set", value: 50 });
+        options.deskwarmth.set(3500, { option: "deskwarmth", how: "set", value: 3500 });
+        root.step("set by its options", () => root.lit(50, 3500), root.optionedOut);
+    }
+
+    function optionedOut() {
+        light.setOptions.desklight.set(false);
+        root.step("put out by nodesklight", () => DeskLight.light !== null && !DeskLight.light.on,
+            root.unplugged);
     }
 
     function unplugged() {
@@ -191,6 +219,8 @@ ShellRoot {
 
     function none() {
         expect("no light, no answer", light.answer("desk light") === null, JSON.stringify(light.answer("desk light")));
+        expect("and no options", Object.keys(light.setOptions ?? {}).length === 0,
+            Object.keys(light.setOptions ?? {}).join(" "));
         Qt.exit(0);
     }
 
