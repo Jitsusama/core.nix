@@ -1,17 +1,20 @@
--- Vim's keys in mpv, as Joel's Vim has them: h and l seek back and on 5
--- seconds, j on a minute and k back, as j goes on through a file; 0 goes
--- to the start and $ to the end; gg plays the first in the list, G the
--- last, and a number before either that one; ]b and [b the next and the
--- one before, as Vim's go between buffers; yy copies the frame; ? and
--- Space ? open the launcher's Shortcuts at the player's keys; and a
--- number before any of them does it that many times. The arrows stay
--- mpv's own. mpv has no numbers before keys, and does a key the moment
--- it's pressed even when another binding starts with it, so these are
--- bound here, ahead of mpv's own. A key that starts a pair waits 300 ms,
--- his Neovim's timeoutlen, for its second, and does what it does alone
--- once none comes: Space pauses, [ and ] change the speed, and b smooths
--- banding, as mpv has them; y alone does nothing, as in Vim. Nothing
--- shows what waits, as his Neovim has showcmd off.
+-- Vim's keys in mpv, as Joel's Vim has them, each with one meaning: h and
+-- l seek back and on 5 seconds, j on a minute and k back, as j goes on
+-- through a file, and each arrow does what its letter does; 0 goes to the
+-- start and $ to the end; gg plays the first in the list, G the last, and
+-- a number before either that one; ]b and [b the next and the one before,
+-- as Vim's go between buffers; yy copies the frame; ? and F1 open the
+-- launcher's Shortcuts at the player's keys; ZZ closes it, and so does a
+-- w just after Space; and a number before any of them does it that many
+-- times. q closes nothing, as in all of Joel's programs, and says what
+-- does. mpv has no numbers before keys, and does a key the moment it's
+-- pressed even when another binding starts with it, so these are bound
+-- here, ahead of mpv's own. A key that starts a pair waits 300 ms, his
+-- Neovim's timeoutlen, for its second, and does what it does alone once
+-- none comes: [ and ] change the speed, b smooths banding and Z delays
+-- the subtitles, as mpv has them; y alone does nothing, as in Vim. Space
+-- leads nothing and pauses at once, since waiting on a pause is felt
+-- every time. Nothing shows what waits, as his Neovim has showcmd off.
 local waiting = { count = '', first = nil, timer = nil }
 
 local function stop()
@@ -47,20 +50,50 @@ local function end_or_nth(first)
   end
 end
 
+local function seek(seconds)
+  return function(count)
+    times(count, 'seek ' .. seconds)
+  end
+end
+
+-- The launcher's Shortcuts, at the player's keys, as the picture and
+-- document viewers' keys open it, rather than mpv's own page of every
+-- binding, in mpv's words, which runs off the window.
+local function shortcuts()
+  mp.commandv('run', 'launcher-say', 'collection', 'shortcuts')
+end
+
+local function close()
+  mp.command('quit')
+end
+
+-- A w pressed this soon after Space closes the player, as Space w closes
+-- every surface of Joel's; Space has paused or played on by then, which a
+-- player closing makes no matter. Only then is w ours: alone it stays
+-- mpv's own.
+local space_w = { timer = nil }
+
+local function after_space()
+  if space_w.timer then
+    space_w.timer:kill()
+  end
+  mp.add_key_binding('w', 'vi-space-w', close)
+  space_w.timer = mp.add_timeout(0.3, function()
+    space_w.timer = nil
+    mp.remove_key_binding('vi-space-w')
+  end)
+end
+
 -- What each key does, given the number before it, if any.
 local alone = {
-  h = function(count)
-    times(count, 'seek -5')
-  end,
-  l = function(count)
-    times(count, 'seek 5')
-  end,
-  j = function(count)
-    times(count, 'seek 60')
-  end,
-  k = function(count)
-    times(count, 'seek -60')
-  end,
+  h = seek(-5),
+  LEFT = seek(-5),
+  l = seek(5),
+  RIGHT = seek(5),
+  j = seek(60),
+  DOWN = seek(60),
+  k = seek(-60),
+  UP = seek(-60),
   -- A 0 after a number is part of it, so 0 alone is only ever alone.
   ['0'] = function()
     mp.command('seek 0 absolute')
@@ -72,6 +105,7 @@ local alone = {
   G = end_or_nth(false),
   SPACE = function()
     mp.command('cycle pause')
+    after_space()
   end,
   ['['] = function(count)
     times(count, 'multiply speed 1/1.1')
@@ -82,11 +116,18 @@ local alone = {
   b = function()
     mp.command('cycle deband')
   end,
-  -- The launcher's Shortcuts, at the player's keys, as the picture and
-  -- document viewers' ? opens it, rather than mpv's own page of every
-  -- binding, in mpv's words, which runs off the window.
-  ['?'] = function()
-    mp.commandv('run', 'launcher-say', 'collection', 'shortcuts')
+  Z = function(count)
+    times(count, 'add sub-delay +0.1')
+  end,
+  ['?'] = shortcuts,
+  F1 = shortcuts,
+  -- Nothing closes by a key pressed in passing; what does is said, over
+  -- the picture, until it goes.
+  q = function()
+    mp.osd_message('q does nothing · ZZ closes')
+  end,
+  Q = function()
+    mp.osd_message('Q does nothing · ZZ closes')
   end,
 }
 
@@ -108,7 +149,7 @@ local paired = {
       mp.command('script-binding copy_frame/copy')
     end,
   },
-  SPACE = { ['?'] = alone['?'] },
+  Z = { Z = close },
 }
 
 local pressed
@@ -153,6 +194,8 @@ pressed = function(key)
     waiting.first = key
     wait()
   elseif key == 'ESC' then
+    -- At rest Escape closes nothing, and only takes the player out of
+    -- full screen, as everywhere.
     mp.command('set fullscreen no')
   else
     stop()
@@ -176,13 +219,22 @@ end
 for digit = 0, 9 do
   bound[tostring(digit)] = true
 end
--- A seek held down goes on seeking, as mpv's arrows do.
-local held = { h = true, j = true, k = true, l = true }
+-- A seek held down goes on seeking, as mpv's arrows did.
+local held = {
+  h = true,
+  j = true,
+  k = true,
+  l = true,
+  LEFT = true,
+  RIGHT = true,
+  UP = true,
+  DOWN = true,
+}
 -- Bound ahead of mpv's own keys but not forced, so the input.conf beside
 -- this script, which binds none of these, and any program that runs mpv
--- with keys of its own forced, as the camera's viewfinder takes Escape,
--- always win. Every mpv loads this script, and of two forced bindings on
--- one key the last loaded wins, which took Escape from the viewfinder.
+-- with keys of its own forced, as the camera's viewfinder takes Escape and
+-- q, always win. Every mpv loads this script, and of two forced bindings
+-- on one key the last loaded wins, which took Escape from the viewfinder.
 for key in pairs(bound) do
   mp.add_key_binding(key, 'vi-' .. key, function()
     pressed(key)
