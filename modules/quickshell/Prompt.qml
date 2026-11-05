@@ -521,13 +521,14 @@ Item {
             event.accepted = true;
             return;
         }
-        // The find's first colon opens the command line, as normal's does.
+        // The find's first colon opens the command line, as normal's does,
+        // from normal, where its Escape gives the line back.
         if (QueryKeys.opensCommands(key, mode, input.text)) {
-            keysTaken++;
             event.accepted = true;
             input.deselect();
             mode = "normal";
-            standing = QueryKeys.read(QueryKeys.rest(), key, mode).standing;
+            standing = QueryKeys.rest();
+            prompt.commanded("");
             return;
         }
         const read = QueryKeys.read(standing, key, mode, editsWords);

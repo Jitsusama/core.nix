@@ -731,7 +731,7 @@ def standing(shown: dict[str, Any]) -> tuple[object, ...]:
         shown["open"],
         shown["mode"],
         shown["held"],
-        shown["ex"],
+        (shown["command"] or {}).get("line"),
         shown.get("listing"),
         shown["typed"],
         shown["current"],
@@ -837,7 +837,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars(":q")
-    desktop.launcher_until(lambda shown: (shown["mode"], shown["ex"]) == ("normal", "q"))
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
 

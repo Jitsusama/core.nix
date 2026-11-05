@@ -259,7 +259,13 @@ class Shell:
         """
 
         def where(shown: Json) -> tuple[object, ...]:
-            return (shown["open"], shown["mode"], len(shown["held"]))
+            return (
+                shown["open"],
+                shown["mode"],
+                len(shown["held"]),
+                shown.get("listing"),
+                shown.get("command") is not None,
+            )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
             return where(shown) != was
