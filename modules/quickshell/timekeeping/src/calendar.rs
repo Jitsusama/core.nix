@@ -541,5 +541,9 @@ mod tests {
         assert_eq!(day.native, "١٩ رمضان ١٤٤٤ هـ");
         assert_eq!(said(&day, "month"), ("Ramadan".into(), "رمضان".into()));
         assert_eq!(said(&day, "day").1, "١٩");
+        // The era's letter is kept beside its year, so a wrapped date never
+        // leaves it alone on a line.
+        assert!(day.native.ends_with("١٤٤٤\u{a0}هـ"), "{}", day.native);
+        assert!(said(&day, "year").1.contains('\u{a0}'), "{:?}", said(&day, "year"));
     }
 }
