@@ -2605,6 +2605,10 @@
     zathura opens a page with the account's settings and stays open without a warning, its bar in
     the monospaced face, and PDFs open in it
   '';
+  zathura-escape-closes-no-contents = ''
+    zathura's contents close on none of Escape, Ctrl+[ and Ctrl+C, which are unmapped there, and ZZ
+    closes them as a window
+  '';
   zathura-keys-go-where-they-say = ''
     every key zathura lists lands where it says: J, K and the page keys turn the pages, Home, End,
     gg, G and a count before G go to that page, the arrows scroll as j, k, h and l do, Ctrl+D,
