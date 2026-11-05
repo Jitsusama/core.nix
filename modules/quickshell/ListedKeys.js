@@ -17,8 +17,6 @@ const normal = [
     { name: "screen", acts: ["pageDown", "pageUp"] },
     { name: "count", acts: [], also: ["3j", "12G"] },
     { name: "row", acts: [], also: [":12"] },
-    { name: "search", acts: ["searchForward", "searchBack"] },
-    { name: "found", acts: ["searchNext", "searchPrevious"] },
     { name: "inOut", acts: ["into", "out"] },
     { name: "run", acts: ["run"], firsts: true },
     { name: "lastPlace", acts: ["lastPlace"] },

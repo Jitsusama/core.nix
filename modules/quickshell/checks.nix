@@ -2935,7 +2935,7 @@ onLinux {
   # The notices' stack takes vi's keys beside the arrows, from one table,
   # as tests/notice-keys.qml holds NoticeKeys.js to: sequences, counts, and
   # an Escape that cancels what's begun before it steps out; and Search.js,
-  # which their / shares with the launcher's, to what it finds and washes.
+  # which their / searches through, to what it finds and washes.
   the-notices-take-vi-keys =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2955,8 +2955,8 @@ onLinux {
   # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
   # ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
-  # sequences, and where the caret goes; ListedKeys.js to the keys Space ?
-  # lists; and Search.js to where / ? n N land on the rows, and how soon.
+  # sequences, and where the caret goes; and ListedKeys.js to the keys
+  # Space ? lists.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2965,7 +2965,6 @@ onLinux {
       cp ${../../tests/query-keys.qml} query-keys.qml
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./ListedKeys.js} ListedKeys.js
-      cp ${./Search.js} Search.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
