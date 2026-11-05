@@ -708,10 +708,24 @@ onLinux {
   the-launcher-catalogues-what-it-does =
     let
       qt = pkgs.qt6.qtdeclarative;
+      # The key language's commands by their whole names, each with whether
+      # it changes things, as the shell's Options.commands holds them.
+      named = lib.filterAttrs (_: about: about ? command) (
+        builtins.fromTOML (builtins.readFile ../keys/language.toml)
+      ).acts;
+      commands = pkgs.writeText "commands.json" (
+        builtins.toJSON (
+          lib.mapAttrs' (
+            _: about: lib.nameValuePair about.command { changes = about.changes or false; }
+          ) named
+        )
+      );
     in
     pkgs.runCommandLocal "the-launcher-catalogues-what-it-does" { } ''
       cp ${../../tests/catalogue.qml} catalogue.qml
       cp ${./launcher/Catalogue.js} Catalogue.js
+      cp ${commands} commands.json
+      export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

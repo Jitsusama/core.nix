@@ -2,7 +2,7 @@
 // tells what's asked of it from outside apart, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The
 // `the-launcher-catalogues-what-it-does` check copies Catalogue.js beside
-// this file and runs `qml -platform offscreen catalogue.qml`. Each case is
+// this file, with the key language's commands as commands.json, and runs `qml -platform offscreen catalogue.qml`. Each case is
 // a promise pi-ask's tool leans on: a place opens and an action is done,
 // one that ends something is only offered, and what's only a figure, a
 // copy or a command's start isn't listed at all. A step into a row, as the
@@ -27,6 +27,16 @@ QtObject {
             console.warn(`FAIL ${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(wanted)}`);
             failed += 1;
         }
+    }
+
+    // The key language's commands by their whole names, as the shell's
+    // Options.commands holds them, which the check writes beside this file
+    // from modules/keys/language.toml.
+    function commands() {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("commands.json"), false);
+        request.send();
+        return JSON.parse(request.responseText);
     }
 
     function run() {
@@ -74,27 +84,49 @@ QtObject {
         expect("nor a place", Catalogue.opens({ verb: "more", run: does }), false);
         expect("nor a row with nothing to run", Catalogue.opens({ verb: "open" }), false);
         // What Return from the find lands on rather than doing: whatever
-        // changes how things stand, and never what only shows or opens.
+        // changes how things stand, as the key language flags the command a
+        // row is named by (modules/keys/language.toml's changes), so d and
+        // Return agree, and never what only shows or opens. Each row is
+        // given its command as the launcher resolves it, and that command's
+        // flags where the language names it.
+        const language = commands();
+        // A row's command, as Commands.js's commandOf reads one from its
+        // verb where its words give it none: the verb's first word.
+        const named = row => {
+            const command = row.command
+                ?? (String(row.verb ?? "").trim().toLowerCase().match(/^[a-z]+/) ?? [""])[0];
+            return { command, flags: language[command] };
+        };
+        const changes = row => Catalogue.changesState(row, named(row));
         const changing = [
             ["an ending action", { verb: "forget", act: "ending", ends: "forgets", run: does }],
             ["a disconnect", { verb: "disconnect", ends: "disconnects", run: does }],
-            ["a lock", { verb: "lock", run: does }],
-            ["a turning off", { verb: "turn off", stays: true, run: does }],
-            ["a setting's switch", { verb: "keep", stays: true, run: does }],
-            ["a network's join", { verb: "connect", stays: true, run: does, verbs: opens }],
+            ["a setting's switch, by :set", { verb: "keep", command: "set", run: does }],
+            ["a window moved, by :move", { verb: "move", run: does }],
             ["one asked to be sure of", { verb: "reboot", confirm: true, run: does }],
             ["a setting's act, closing", { verb: "hold", changes: true, run: does }],
-            ["a session's pause, closing", { verb: "pause", changes: true, run: does }]
+            ["a session's pause", { verb: "pause", run: does }],
+            // The verbs the language names no command for yet keep the
+            // guess from how the row is made.
+            ["a lock, guessed", { verb: "lock", run: does }],
+            ["a turning off, guessed", { verb: "turn off", stays: true, run: does }],
+            ["a network's join, guessed", { verb: "connect", stays: true, run: does,
+                verbs: opens }],
+            ["Wi-Fi Off, guessed", { verb: "off", stays: true, run: does }]
         ];
         for (const [what, row] of changing)
-            expect(`${what} changes how things stand`, Catalogue.changesState(row), true);
+            expect(`${what} changes how things stand`, changes(row), true);
         const quietly = [
             ["a program", { verb: "open", run: does }],
+            ["a program opened that stays, as the table says :open changes nothing",
+                { verb: "open", stays: true, run: does }],
             ["a window", { verb: "go", run: does, verbs: opens }],
-            ["a copy", { verb: "copy", stays: true, run: does }],
+            ["a copy", { verb: "copy", command: "yank", stays: true, run: does }],
             ["a See It", { verb: "see", stays: true, run: does }],
+            ["a verb the language names nothing for and the guess doesn't hold",
+                { verb: "say", stays: true, run: does }],
             ["a place", { category: {}, verbs: opens }],
-            ["a spot to go to", { verb: "keep", stays: true, spot: "x", run: does }],
+            ["a spot to go to", { verb: "start", stays: true, spot: "x", run: does }],
             ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
                 targets: opens }],
             ["one gone", { verb: "disconnect", ends: "disconnects", gone: true, run: does }],
@@ -105,7 +137,18 @@ QtObject {
             ["a search tried again", { verb: "retry", stays: true, run: does }]
         ];
         for (const [what, row] of quietly)
-            expect(`${what} changes nothing`, Catalogue.changesState(row), false);
+            expect(`${what} changes nothing`, changes(row), false);
+        // The guess stands in for the verbs the language names no command
+        // for, and only those, so it can only shrink: a verb joining it
+        // fails here, and so does one the language has come to name, whose
+        // rows the table decides.
+        expect("the verbs that take the guess", Catalogue.guessed, ["brighten", "brighter",
+            "choose", "connect", "dim", "dimmer", "expect", "flash", "gather", "hold", "join",
+            "leave", "lock", "log", "mute", "off", "on", "record", "share", "sign", "sleep",
+            "start", "stop", "take", "thaw", "tile", "turn", "unmute", "unread", "unstar",
+            "use"]);
+        expect("none of which the language names as a command",
+            Catalogue.guessed.filter(verb => language[verb] !== undefined), []);
         // The first row inside a thing never changes anything.
         const seen = { name: "See It", verb: "see", run: does };
         const cut = { name: "Disconnect It", verb: "disconnect", ends: "disconnects",
@@ -113,11 +156,11 @@ QtObject {
         const forget = { name: "Forget It", verb: "forget", act: "ending", run: does };
         expect("a disconnect first goes after the first quiet row",
             names(Catalogue.quietFirst([cut, forget, seen, { name: "Copy", verb: "copy",
-                run: does }])), "See It, Disconnect It, Forget It, Copy");
-        expect("a quiet first row stays first", names(Catalogue.quietFirst([seen, cut])),
+                run: does }], named)), "See It, Disconnect It, Forget It, Copy");
+        expect("a quiet first row stays first", names(Catalogue.quietFirst([seen, cut], named)),
             "See It, Disconnect It");
         expect("rows that all change something keep their order",
-            names(Catalogue.quietFirst([cut, forget])), "Disconnect It, Forget It");
+            names(Catalogue.quietFirst([cut, forget], named)), "Disconnect It, Forget It");
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
             false);
@@ -217,7 +260,7 @@ QtObject {
         const closing = Catalogue.closingFirst(awake, []);
         expect("a setting holding nothing holds its act", [names(closing), closing[0].stays],
             ["Keep", false]);
-        expect("which changes what the setting did", Catalogue.changesState(closing[0]), true);
+        expect("which changes what the setting did", changes(closing[0]), true);
         closing[0].run();
         expect("which does what Return does", kept, 1);
         const quiet = { name: "Do Not Disturb", verb: "hold", stays: true, run: does };
