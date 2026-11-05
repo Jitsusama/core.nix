@@ -808,6 +808,41 @@ QtObject {
         holds("the view comes down to show a line below it",
             Page.shown(lines[12], 0, page({})), 216);
         holds("and up to show one above", Page.shown(lines[2], 288, page({})), 0);
+
+        // A page whose eyebrow and title aren't a pitch tall, as a plate's
+        // are: the view's top is always on a whole line, as Vim's topline is,
+        // never a pitch partway through the title (VKCF3Z, 2026-11-05), here
+        // 48. The body's lines lie on the pitch a pixel short of it, as the
+        // drawer lays them.
+        const titled = [{ top: 4, height: 16, length: 10 }, { top: 28, height: 40, length: 10 }]
+            .concat(Array.from({ length: 20 }, (_, at) => ({ top: 72 + at * 24, height: 23,
+                length: 10 })));
+        const onTitled = from => page(from, { lines: titled, end: 336 });
+        const titledMoves = [
+            ["5j from the title, down to the first body line", { line: 1 }, "next", 5,
+                [6, 0, 0, 72]],
+            ["k up to the title shows it whole", { line: 6, top: 96 }, "previous", 0,
+                [5, 0, 0, 24]]
+        ];
+        for (const [what, from, act, count, want] of titledMoves)
+            holds(`a titled page: ${what}`, where(Page.moved(act, count, onTitled(from))), want);
+        holds("a titled page: Ctrl+E puts the title at the top",
+            Page.moved("scrollDown", 0, onTitled({ line: 6, top: 0 })).top, 24);
+        holds("a titled page: and again the first body line, past the title whole",
+            Page.moved("scrollDown", 0, onTitled({ line: 6, top: 24 })).top, 72);
+        holds("a titled page: Ctrl+Y back to the title",
+            Page.moved("scrollUp", 0, onTitled({ line: 12, top: 72 })).top, 24);
+        holds("a titled page: G stops at the end, on a line",
+            Page.moved("last", 0, onTitled({})).top, 336);
+        // A title whose descenders reach two pixels past a pitch, as the
+        // drawer's did at 2 (scrolled 96, the title's box ending at 98):
+        // that pitch would show their tips, so the view goes on past it.
+        const descended = [{ top: 4, height: 16, length: 10 },
+            { top: 28, height: 46, length: 10 }].concat(Array.from({ length: 20 },
+            (_, at) => ({ top: 96 + at * 24, height: 23, length: 10 })));
+        holds("a title two pixels past a pitch: Ctrl+E goes on past it",
+            Page.moved("scrollDown", 0, page({ line: 6, top: 24 },
+                { lines: descended, end: 360 })).top, 96);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",

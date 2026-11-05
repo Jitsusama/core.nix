@@ -124,11 +124,18 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.close_launcher()
 
 
-# The drawer's line pitch, which Ctrl+E and Ctrl+Y scroll it by, so what it shows stays on the
-# card's lines (vm-desktop-looks measures them).
+# The drawer's line pitch, whose multiples its view's top lies on, so what it shows stays on the
+# card's lines (vm-desktop-looks measures them). Ctrl+E and Ctrl+Y scroll it a whole line, as
+# Vim's do, so past a title a pitch and a half tall they scroll two pitches.
 PITCH = 24
-# How far three Ctrl+E scroll it.
-SCROLLED = 3 * PITCH
+
+
+def a_line_on(drawer: Json, past: int = 0) -> bool:
+    """Say whether the drawer is scrolled past a point to a whole line on the pitch."""
+    scrolled = int(drawer["scrolled"])
+    return scrolled > past and scrolled % PITCH == 0 and held(drawer)
+
+
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
 WAITING = frozenset({"spc right", "spc left", "spc ?", "Z Z", "g g", "g v"})
@@ -271,17 +278,21 @@ class InTheDrawer:
 
 
 def held(drawer: Json) -> bool:
-    """Say whether the drawer's cursor is wholly inside its view."""
+    """Say whether the drawer's cursor is wholly inside its view, whose top cuts no line.
+
+    Vim's topline is always a whole line, so a view scrolled to a pitch partway through the
+    title shows it as slivers (VKCF3Z, 2026-11-05).
+    """
     top, height = int(drawer["cursor"]["top"]), int(drawer["cursor"]["height"])
-    return top >= 0 and top + height <= int(drawer["height"])
+    return top >= 0 and top + height <= int(drawer["height"]) and not drawer["cut"]
 
 
 def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Desktop) -> None:
     """A notice's drawer says who sent it and when, and gone into, its keys scroll it.
 
     The foot names no Shift with the arrows, which scroll nothing now: Space and the right arrow
-    go in, three Ctrl+E scroll it three of its lines, and Space and the left arrow come back,
-    the selection where it was.
+    go in, three Ctrl+E scroll it three of its lines, each whole, and Space and the left arrow
+    come back, the selection where it was.
     """
     page = InTheDrawer(desktop)
     drawer = page.drawer()
@@ -292,8 +303,10 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     desktop.photograph("launcher-plate")
     title = drawer["lines"]["title"]
     page.into()
-    scrolled = page.until("ctrl-e ctrl-e ctrl-e", lambda drawer: drawer["scrolled"] == SCROLLED)
-    assert round(title - scrolled["lines"]["title"]) == SCROLLED, scrolled
+    one = int(page.until("ctrl-e", a_line_on)["scrolled"])
+    two = int(page.until("ctrl-e", lambda drawer: a_line_on(drawer, one))["scrolled"])
+    scrolled = page.until("ctrl-e", lambda drawer: a_line_on(drawer, two))
+    assert round(title - scrolled["lines"]["title"]) == scrolled["scrolled"], scrolled
     page.back("spc left")
     desktop.close_launcher()
 
@@ -371,7 +384,11 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         def five_down(drawer: Json, below: int = int(at["line"]) + 5) -> bool:
             return bool(drawer["cursor"]["line"] == below)
 
-        page.until("5 j", five_down)
+        down = page.until("5 j", five_down)
+        # The title scrolled away whole, and the foot names no Return, which does nothing here.
+        assert held(down), f"at {scale} five down cuts a line: {down}"
+        told = desktop.showing()["selected"]["told"]
+        assert told == ["Space \u2190 back", "Space ? keys"], f"at {scale} the foot says {told}"
         # Four along, or the line's last letter where a narrow drawer wraps it shorter.
         page.until(
             "l l l l",
@@ -455,7 +472,7 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     assert held(last), last
     assert last["cursor"]["says"] == page.LAST, last
     page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0 and drawer["scrolled"] == 0)
-    page.until("ctrl-e", lambda drawer: drawer["scrolled"] == PITCH and held(drawer))
+    page.until("ctrl-e", a_line_on)
     page.until("ctrl-y", lambda drawer: drawer["scrolled"] == 0)
     half = page.until("ctrl-d", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
     page.until("ctrl-u", lambda drawer: drawer["scrolled"] == 0)
