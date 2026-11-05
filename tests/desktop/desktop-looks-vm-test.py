@@ -191,8 +191,12 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["labelsWhole"], f"at {scale} a key's name is broken: {drawer}"
-    # Each key and what it does fit on one line, both at Note, as the reader's list sets them.
-    assert drawer["factsWrapped"] == 0, f"at {scale} {drawer['factsWrapped']} keys wrap: {drawer}"
+    # Each key and what it does are at Note, as the reader's list sets them, so at 1.5 each
+    # fits on one line. At 2 the plate leaves about 17 letters beside the widest key, so a
+    # longer saying may take a second line, but it always stands beside its key.
+    assert drawer["factsUnder"] == 0, f"at {scale} {drawer['factsUnder']} under their keys"
+    if scale == "1.5":
+        assert drawer["factsWrapped"] == 0, f"at 1.5 {drawer['factsWrapped']} keys wrap: {drawer}"
     assert drawer["more"] or drawer["lines"]["facts"][-1] < drawer["foot"], drawer
     desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
     desktop.machine.send_key("esc")

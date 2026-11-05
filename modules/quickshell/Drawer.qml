@@ -267,6 +267,17 @@ Floating {
         }
         return wrapped;
     }
+    // How many of its values stand under their names rather than beside
+    // them, for the launcher to report: a key list's never do.
+    function factsUnder() {
+        let under = 0;
+        for (let at = 0; at < factRows.count; at++) {
+            const row = factRows.itemAt(at);
+            if (row && !row.heading && row.under)
+                under += 1;
+        }
+        return under;
+    }
     // Whether every name fits its column on one line, for the launcher to
     // report when asked.
     function labelsWhole() {

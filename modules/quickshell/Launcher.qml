@@ -3986,6 +3986,7 @@ Scope {
                 },
                 labelsWhole: drawerCard.labelsWhole(),
                 factsWrapped: drawerCard.factsWrapped(),
+                factsUnder: drawerCard.factsUnder(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
