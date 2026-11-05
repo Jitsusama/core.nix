@@ -126,6 +126,10 @@ QtObject {
             ["a verb the language names nothing for and the guess doesn't hold",
                 { verb: "say", stays: true, run: does }],
             ["a place", { category: {}, verbs: opens }],
+            // A figure only says a value, so Return copies it, or closes
+            // the launcher where it has nothing to copy yet, which isn't
+            // the :close of a window that its verb would name.
+            ["a figure with nothing to copy yet", { verb: "close", figure: true, run: does }],
             ["a spot to go to", { verb: "start", stays: true, spot: "x", run: does }],
             ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
                 targets: opens }],
