@@ -261,9 +261,23 @@ def test_a_refresh_leaves_the_list_where_it_was_scrolled(desktop: Desktop) -> No
         desktop.close(window)
 
 
+def closed_from_normal(desktop: Desktop) -> None:
+    """Open the launcher and close it from normal, as Joel leaves it, before it's measured.
+
+    Every opening but the first follows a close from normal, and the foot once kept normal's
+    room from it on the find, which cut the glance's date and charge; a subtest run alone opened
+    on a launcher never closed, and passed.
+    """
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    desktop.close_launcher()
+
+
 def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) -> None:
     """A fact in the foot that reads shorter keeps its room, so nothing after it slides."""
     machine = desktop.machine
+    closed_from_normal(desktop)
     # The kernel's stand-in battery, whose charge UPower reads as it changes.
     capacity = "/sys/module/test_power/parameters/battery_capacity"
     was = machine.succeed(f"cat {capacity}").strip()
@@ -605,6 +619,7 @@ def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
 def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:
     """Nothing on the launcher moves unless it changes, as letters, erasures and arrows go."""
     machine = desktop.machine
+    closed_from_normal(desktop)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     before = laid_out(desktop)
