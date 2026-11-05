@@ -234,6 +234,18 @@ QtObject {
                 failures.push(`"${item.text}" starts its words differently said alone`);
         if (unstarted === 0)
             failures.push("no thing was passed over by its word starts");
+        // The letters after an apostrophe are the word's own, as in
+        // "what's" or "you'll", so they're never a word typed whole: "s"
+        // lands on the S that starts "Show what's on" or "Settings", which
+        // the find washes, not on the s of "what's" or "Joel's". They still
+        // start a word to be found by, so "roll" finds "rock'n'roll".
+        for (const [query, text, at] of [["s", "Show what's on", 0],
+            ["s", "Joel's Settings", 7], ["roll", "Play rock'n'roll", 12]]) {
+            const landed = Fuzzy.match(Fuzzy.prepare(text), Fuzzy.words(query), true).positions;
+            if ((landed ?? [])[0] !== at)
+                failures.push(`"${query}" landed at ${quoted(landed)} in "${text}", not at ${at}`);
+        }
+
         // A text kept ready is made once while it reads the same, and
         // matches as one made afresh does.
         const once = Fuzzy.kept("Open a terminal");
