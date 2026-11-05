@@ -473,10 +473,22 @@ def name_line(desktop: Desktop, held: int) -> None:
     for key, caret in [("h", 2), ("l", 3)]:
         machine.send_chars(key)
         says("kept.md", caret, "normal")
-    # j goes down from the name into the folders, where l steps into one
-    # rather than moving the name's caret, the name kept, leading.
+    # The name is the line's row, above the rows, never listed among them;
+    # j goes down from it into the folders and k back up to it, where h and l
+    # move its caret again. In a folder, l steps in rather than moving the
+    # name's caret, the name kept on the line.
     rows = desktop.showing()["rows"]
-    machine.send_chars("j" * rows.index("inner"))
+    assert "kept.md" not in rows, rows
+    down = "j" * (rows.index("inner") + 1)
+    machine.send_chars(down)
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "inner")
+    machine.send_chars("k" * len(down))
+    desktop.launcher_until(
+        lambda shown: shown["current"] == -1 and (shown["selected"] or {}).get("name") == "kept.md"
+    )
+    machine.send_chars("h")
+    says("kept.md", 2, "normal")
+    machine.send_chars(down)
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "inner")
     machine.send_chars("l")
     desktop.launcher_until(
@@ -580,7 +592,7 @@ def test_the_launchers_picker_saves_into_google_drive_for_the_portal(
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["My Drive", "Shared Drives"])
         desktop.down_to("My Drive")
         desktop.step_in("ret")
-        # My Drive leads with the name given, saved by Return.
+        # My Drive's line is the name given, saved by Return.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "draft.md")
         desktop.photograph("file-chooser-drive-save")
         machine.send_key("ret")

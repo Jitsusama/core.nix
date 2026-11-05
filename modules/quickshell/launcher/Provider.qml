@@ -313,10 +313,13 @@ Scope {
     // has a Return act, and one that only shows a value copies it): what
     // it says to copy, or else its value as it reads when Return comes,
     // so a live figure copies what it shows. One still being read copies
-    // nothing yet.
+    // nothing yet, and nor does one whose side says how things stand
+    // rather than a value (`copiesNothing`, as a reader not answering):
+    // pasted, those words would be no use anywhere, so Return only closes.
     function copyRow(fields) {
         const valueOf = side => typeof side === "string" && side !== "\u2026" ? side : "";
-        const textOf = from => (from.copy ?? from.name) === "" ? valueOf(from.side)
+        const textOf = from => fields.copiesNothing === true ? ""
+            : (from.copy ?? from.name) === "" ? valueOf(from.side)
             : from.copy ?? from.name;
         const row = thing(Object.assign({
             verb: textOf(fields) === "" ? "close" : "copy",

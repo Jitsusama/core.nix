@@ -4,10 +4,98 @@
 // does what can't be put back. Read apart from the launcher so
 // tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
-.import "QueryKeys.js" as Keys
 
-// The rows an operator takes, from where the rows stand (as Keys.moved
-// takes them): over the row and count - 1 below it with no motion, as dd
+// The operators, by their key, and the act each does over the rows it
+// takes.
+const operators = { d: "ending", y: "copy" };
+
+// The moves an operator takes as its motion, each linewise on the rows,
+// as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
+// scroll rather than move, so Vim takes none of them as a motion.
+const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"];
+
+// Two counts as one, as Vim multiplies the count before an operator and
+// the one after it: 2d3j goes six rows. Either alone is itself, and
+// neither is no count.
+function multiplied(before, after) {
+    if (before === "" && after === "") {
+        return 0;
+    }
+    return Number(before === "" ? 1 : before) * Number(after === "" ? 1 : after);
+}
+
+// A key while an operator waits: the operator's own key again does it
+// over the row and those below, as dd does; a motion does it as far as
+// that goes, as dj does, with the counts multiplied; a sequence's first
+// key (gg's g) waits for the rest; anything else lets it go. It waits as
+// long as it takes for its motion, as Vim's does. What normal's table
+// makes of the keys typed (`matching`) and how the keys stand at rest
+// (`rested`) are QueryKeys.js's, which reads every other key.
+function operated(standing, key, matching, rested) {
+    const { operator } = standing;
+    const act = operators[operator.key];
+    const count = multiplied(operator.count, standing.count);
+    if (standing.typed.length === 0 && key === operator.key) {
+        return { act, count, motion: null, standing: rested, ours: true };
+    }
+    // Another operator's key lets this one go, as dy does in Vim.
+    const typed = standing.typed.concat([key]);
+    const matched = key in operators ? { act: "", begun: false } : matching(typed);
+    if (motions.includes(matched.act)) {
+        return { act, count: 0, motion: { act: matched.act, count }, standing: rested,
+            ours: true };
+    }
+    if (matched.act === "" && matched.begun) {
+        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
+            ours: true };
+    }
+    return { act: "", count: 0, standing: rested, ours: true };
+}
+
+// Where a move takes the selection, from where the rows stand: the row
+// selected, the highest it may go (-1 where an answer's headline sits
+// above the rows) and the last, the first and last rows wholly in view,
+// and how many rows a screen holds. A count moves that many times, or,
+// with gg and G, goes to that row, counted from 1, as a line's number is.
+// H and L count from the view's top and bottom. Ctrl+D and Ctrl+U move
+// half the rows in view, or a count's rows, as Vim's 'scroll' takes it.
+// Every move stops at the first and last rows, never going round. The
+// moves' keys are QueryKeys.js's; it's here beside the operators that
+// take a move as their motion, QueryKeys.js having outgrown its room.
+function moved(act, count, place) {
+    const times = Math.max(1, count);
+    const within = at => Math.max(place.highest, Math.min(at, place.last));
+    const half = count > 0 ? count : Math.max(1, Math.floor((place.bottom - place.top + 1) / 2));
+    switch (act) {
+    case "next":
+        return within(place.at + times);
+    case "previous":
+        return within(place.at - times);
+    case "first":
+        return count > 0 ? within(count - 1) : place.highest;
+    case "last":
+        return count > 0 ? within(count - 1) : within(place.last);
+    case "viewTop":
+        return within(Math.min(place.top + times - 1, place.bottom));
+    case "viewMiddle":
+        return within(place.top + Math.floor((place.bottom - place.top) / 2));
+    case "viewBottom":
+        return within(Math.max(place.bottom - times + 1, place.top));
+    case "halfDown":
+        return within(place.at + half);
+    case "halfUp":
+        return within(place.at - half);
+    case "pageDown":
+        return within(place.at + times * place.screen);
+    case "pageUp":
+        return within(place.at - times * place.screen);
+    default:
+        return place.at;
+    }
+}
+
+// The rows an operator takes, from where the rows stand (as moved takes
+// them): over the row and count - 1 below it with no motion, as dd
 // and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
 // row to wherever the motion goes, whichever way, every row between
 // included, as a linewise motion takes lines. No rows span nothing.
@@ -18,7 +106,7 @@ function spanned(count, motion, place) {
     if (motion === null) {
         return { from: place.at, to: Math.min(place.last, place.at + Math.max(1, count) - 1) };
     }
-    const to = Keys.moved(motion.act, motion.count, place);
+    const to = moved(motion.act, motion.count, place);
     return { from: Math.min(place.at, to), to: Math.max(place.at, to) };
 }
 
@@ -135,7 +223,7 @@ function pending(standing) {
     }
     return {
         typed: operator.count + operator.key + standing.count + standing.typed.join(""),
-        count: Keys.multiplied(operator.count, standing.count)
+        count: multiplied(operator.count, standing.count)
     };
 }
 

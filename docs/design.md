@@ -1393,7 +1393,11 @@ works the same way everywhere.
   The card's room and the drawer's are worked out for the screen as
   the launcher opens, the card centred unless the screen is too narrow
   for the drawer beside it, so the card never moves and never changes
-  size for what's selected. It's out only while the selected row is a thing (a program, a session, a
+  size for what's selected. A screen without room for even the
+  drawer's least beside the card shows it only once the keys go in
+  with Space →, in the card's place and at its width, as Vim's preview
+  opens in the one window there is, never squeezed until a word breaks.
+  It's out only while the selected row is a thing (a program, a session, a
   quest, a mail, a meeting, a person, a file, a folder, a notice, a
   window, a device, a network, a copy, a value with a history) and the
   drawer holds something the row doesn't already say: facts, a picture,
@@ -1476,10 +1480,12 @@ works the same way everywhere.
   prompt's words in insert rather than a find, the caret before its
   extension so typing renames it; Ctrl+W, Ctrl+U and Ctrl+H edit it, and
   Escape gives normal on it, where h l w b e 0 $ x dw cw and u edit it
-  as Vim's do. The name leads every folder, its first row, and the rows
-  under it are never narrowed by it: j goes down into the folders,
-  Return on one opens it and - steps out, as oil's do, the name kept,
-  and Return on the name saves there. A name already there asks once in the line's place, "Replace
+  as Vim's do. The line is the row Return stands on, above every
+  folder's rows, as an answer's headline is, so the name is never said
+  again below it, and the rows are never narrowed by it: j goes down
+  into the folders and k back up to the name, Return on a folder opens
+  it and - steps out, as oil's do, the name kept, and Return on the name
+  saves there. A name already there asks once in the line's place, "Replace
   notes.md? (y/n)", as Vim's :w says E13: y saves over it, n, Escape or
   Ctrl+C let it go, and any other key, or one in its first 300 ms, does
   nothing. :w [name] and :x save from anywhere, asking the same, and :w!
@@ -1846,11 +1852,15 @@ characters. o goes to the other end, gv brings the last back, and : gives
 :'<,'>. The same operator pressed again within 300 ms of a visual
 operator is taken with it, so V j j d d acts on three. While a surface is
 in visual, operator-pending or on the command line, its rows hold still,
-and what arrives waits behind a "2 new" line.
+and what arrives waits until the mode ends. The foot counts it as "2 new",
+its last status fact before the mode word, which never gives way, so it
+shows on a full list too; then the rows come in at the end.
 
 **Operator-pending** follows d, y or c: a motion, a count, a text object
-or the operator again. On a list ip is the run of rows of one kind or one
-sender, and ap the run with its gap. The cursor row is tinted at once as
+or the operator again. On a list a paragraph is a run of rows that ends at
+a gap or where the kind or sender changes, and { } move by those runs. ip
+is the run, and ap the same rows, since a list has no blank rows to add, as
+ap in a file with no blank lines. The cursor row is tinted at once as
 visual tints it, and the mode word's room says what it will hit. Operators,
 ., u and Ctrl+R act only on a fresh press, never on a held key's repeats.
 

@@ -1530,6 +1530,15 @@ onLinux {
           property bool refused: false
           property var reading: (${builtins.readFile ../../tests/timekeeping-reading.json})
         ''} Timekeeping.qml
+        cp ${singleton "Calendars.qml" ''
+          property string asked: ""
+          property bool refused: false
+          // A day's reading as timekeeping gives it, said of today, whichever
+          // day the check runs on.
+          property var reading: Object.assign((${builtins.readFile ./timekeeping/calendars-reading.json}),
+            { day: Qt.formatDate(new Date(), "yyyy-MM-dd") })
+          function ask(day) { asked = day; }
+        ''} Calendars.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
@@ -2634,7 +2643,9 @@ onLinux {
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./Operators.js} Operators.js
       cp ${./Typing.js} Typing.js
+      cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
@@ -3082,6 +3093,8 @@ onLinux {
       cp ${./Operators.js} Operators.js
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
+      cp ${./Search.js} Search.js
+      cp ${./LineEditing.js} LineEditing.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

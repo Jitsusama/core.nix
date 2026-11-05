@@ -1503,6 +1503,118 @@
       "name": "Next New Moon"
     },
     {
+      "id": "today:calendars",
+      "in": "today",
+      "name": "Calendars",
+      "said": {
+        "atSunset": "at sunset",
+        "days": "{value} days",
+        "months": "{value} months",
+        "noSunset": "no sunset today",
+        "silent": "not answering"
+      }
+    },
+    {
+      "id": "today:calendars:chinese",
+      "in": "today:calendars",
+      "name": "Chinese"
+    },
+    {
+      "id": "today:calendars:japanese",
+      "in": "today:calendars",
+      "name": "Japanese"
+    },
+    {
+      "id": "today:calendars:hebrew",
+      "in": "today:calendars",
+      "name": "Hebrew"
+    },
+    {
+      "id": "today:calendars:islamic",
+      "in": "today:calendars",
+      "name": "Islamic"
+    },
+    {
+      "id": "today:calendars:year",
+      "in": "today:calendars",
+      "name": "Year"
+    },
+    {
+      "id": "today:calendars:animal",
+      "in": "today:calendars",
+      "name": "Animal"
+    },
+    {
+      "id": "today:calendars:month",
+      "in": "today:calendars",
+      "name": "Month"
+    },
+    {
+      "id": "today:calendars:day",
+      "in": "today:calendars",
+      "name": "Day"
+    },
+    {
+      "id": "today:calendars:dayBegins",
+      "in": "today:calendars",
+      "name": "Day Begins"
+    },
+    {
+      "id": "today:calendars:dayBegan",
+      "in": "today:calendars",
+      "name": "Day Began"
+    },
+    {
+      "id": "today:calendars:monthDays",
+      "in": "today:calendars",
+      "name": "Month Length"
+    },
+    {
+      "id": "today:calendars:yearDays",
+      "in": "today:calendars",
+      "name": "Year Length"
+    },
+    {
+      "id": "today:calendars:months",
+      "in": "today:calendars",
+      "name": "Months"
+    },
+    {
+      "id": "today:calendars:term",
+      "in": "today:calendars",
+      "name": "Solar Term"
+    },
+    {
+      "id": "today:calendars:termBegan",
+      "in": "today:calendars",
+      "name": "Term Began"
+    },
+    {
+      "id": "today:calendars:era",
+      "in": "today:calendars",
+      "name": "Era"
+    },
+    {
+      "id": "today:calendars:eraYear",
+      "in": "today:calendars",
+      "name": "Year of the Era"
+    },
+    {
+      "id": "today:calendars:eraBegan",
+      "in": "today:calendars",
+      "name": "Era Began"
+    },
+    {
+      "id": "today:calendars:rokuyo",
+      "in": "today:calendars",
+      "name": "Rokuy\u014d"
+    },
+    {
+      "id": "today:calendars:reckoning",
+      "in": "today:calendars",
+      "name": "Reckoning"
+    },
+    {
       "id": "keyboards",
       "name": "Keyboards",
       "term": "Keyboards/keyboard",
@@ -6024,7 +6136,7 @@
       "in": "verb:file-chooser:marked",
       "name": "Forget Them",
       "verb": "forget",
-      "glyph": "marked"
+      "glyph": "forget"
     },
     {
       "id": "verb:file-chooser:copy-marked",
@@ -6054,7 +6166,7 @@
       "verb": "choose",
       "glyph": "order",
       "said": {
-        "name": "alphabetical",
+        "name": "A to Z",
         "changed": "newest first",
         "size": "largest first"
       }
@@ -6062,7 +6174,7 @@
     {
       "id": "command:file-chooser:sort",
       "in": "path:folder",
-      "name": "Sort the Folders"
+      "name": "Sort the Files"
     },
     {
       "id": "command:file-chooser:set",
@@ -6519,12 +6631,18 @@
   "field": {
     "modes": {
       "insert": "insert",
-      "visual": "visual line"
+      "visual": "visual line",
+      "pageVisual": "visual",
+      "pageVisualLine": "visual line"
     },
     "keys": {
       "complete": "complete",
       "clear": "clear",
       "restore": "restore"
+    },
+    "drawer": {
+      "back": "back",
+      "keys": "keys"
     },
     "listed": {
       "eyebrow": "Keys",
@@ -6532,7 +6650,8 @@
       "modes": {
         "normal": "Normal",
         "insert": "Insert",
-        "page": "Drawer"
+        "page": "Drawer",
+        "pageVisual": "Choosing"
       },
       "lines": {
         "nextRow": "The next row",
@@ -6558,12 +6677,18 @@
         "insert": "Type",
         "change": "Clear it and type",
         "ending": "Close or forget it",
-        "copy": "Copy it",
+        "copyRow": "Copy it",
         "restore": "Bring it back",
         "intoDrawer": "Into the drawer",
         "lines": "Down and up a line",
         "along": "Along the line",
         "scroll": "Scroll a line",
+        "seek": "Search it",
+        "seekOn": "The next match",
+        "select": "Choose words",
+        "reselect": "The last choice",
+        "otherEnd": "Its other end",
+        "copy": "Copy as markdown",
         "back": "Back to the rows",
         "keys": "These keys",
         "close": "Close"

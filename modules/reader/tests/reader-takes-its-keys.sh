@@ -717,6 +717,17 @@ logged '^outline: [0-9]+ rows' $((lists + 1))
 press -k Escape
 logged '^outline: closed' $((closed + 3))
 
+# A row too long for the list reads on while it's chosen: its words
+# slide to show their end after a rest, as the launcher's long names do.
+press ':g/Paragraph 7 says/'
+press -k Return
+logged '^outline: 1 rows, chosen "Paragraph 7 says' 1
+logged '^outline: reads on [0-9]+ px past its room' 1
+logged '^outline: reading on' 1
+logged '^outline: read on to its end' 1
+press -k Escape
+logged '^outline: closed' $((closed + 4))
+
 # The menu shows the moment : is typed, every command the page has; a
 # letter narrows it, Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P choose
 # a line and come round through what was typed, Ctrl+E puts it away with
@@ -731,11 +742,12 @@ menu_is() {
   done
 }
 press ':'
-menu_is '11 lines, chosen None'
+menu_is '12 lines, chosen None'
+# e starts :e's name, then a word of List Earlier Lines, :his's.
 press e
-menu_is '1 lines, chosen None'
+menu_is '2 lines, chosen None'
 press -k Tab
-menu_is '1 lines, chosen Some("e[dit]")'
+menu_is '2 lines, chosen Some("e[dit]")'
 press -M ctrl e -m ctrl
 press -k Return
 logged '^command: "e" is Edit\(None\)' 1
@@ -766,6 +778,17 @@ press -M ctrl y -m ctrl
 menu_is '1 lines, chosen None'
 press -k Return
 logged '^command: "bnext" is File' 1
+
+# @: runs the last line again, and :his lists the lines run, the newest,
+# itself, chosen; k and Return run the one before it, bnext.
+press '@:'
+logged '^command: "bnext" is File' 2
+press ':his'
+press -k Return
+logged '^outline: [0-9]+ rows, chosen "[0-9]+  his"' 1
+press k
+press -k Return
+logged '^command: "bnext" is File' 3
 
 # :q closes it.
 press ':q'

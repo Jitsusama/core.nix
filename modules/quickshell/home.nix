@@ -160,6 +160,7 @@ let
     "Wifi.qml"
     "ProcessorTelemetry.qml"
     "Timekeeping.qml"
+    "Calendars.qml"
     "SignIn.qml"
     "Floating.qml"
     "Fuzzy.js"

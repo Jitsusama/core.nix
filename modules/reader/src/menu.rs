@@ -43,6 +43,7 @@ pub const TITLES: &[(&str, &str)] = &[
     ("nohlsearch", "Hide the Matches"),
     ("close", "Close the Page"),
     ("show-keys", "List the Keys"),
+    ("history", "List Earlier Lines"),
 ];
 
 /// The page's menu, from the key language's commands for the page in
@@ -349,6 +350,7 @@ mod tests {
                 "noh[lsearch] ",
                 "q[uit] ZZ",
                 "h[elp] Space ?",
+                "his[tory] ",
                 "{n} ",
             ]
         );

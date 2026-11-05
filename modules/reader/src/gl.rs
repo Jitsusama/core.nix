@@ -800,6 +800,33 @@ impl Gl {
         }
     }
 
+    /// Draws a texture as `draw` does, showing only what falls inside
+    /// `room`, a rectangle of left, top, width and height in device pixels
+    /// from the buffer's top left, as words slide inside their row.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a room is a few thousand pixels at most, rounded to whole ones"
+    )]
+    pub fn draw_within(
+        &self,
+        texture: &Texture,
+        (x, y, width, height): (f32, f32, f32, f32),
+        [left, top, wide, high]: [f32; 4],
+    ) {
+        // GL counts rows from the bottom, and the window shows the top.
+        let bottom = self.held.1 - self.height;
+        let (left, top) = (left.round() as i32, top.round() as i32);
+        let (wide, high) = (wide.round() as i32, high.round() as i32);
+        unsafe {
+            self.gl
+                .scissor(left, bottom + self.height - top - high, wide, high);
+        }
+        self.draw(texture, x, y, width, height);
+        unsafe {
+            self.gl.scissor(0, bottom, self.width, self.height);
+        }
+    }
+
     /// Ends a frame. The swap commits the surface.
     pub fn swap(&self) -> Result<(), String> {
         self.egl

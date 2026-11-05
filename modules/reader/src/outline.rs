@@ -28,6 +28,8 @@ pub enum To {
     /// A place on the jump list, on this file or another: the view's top
     /// and the cursor's line, as Ctrl+O goes back to it.
     Jump(std::path::PathBuf, f64, f64),
+    /// A line the command line ran, run again, as :his lists them.
+    Command(String),
 }
 
 pub struct Outline {

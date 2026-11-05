@@ -74,6 +74,34 @@ pub struct Set {
     pub pixels: Vec<u8>,
     /// Each label asked for, set on a page of its own, in the order asked.
     pub labels: Vec<Label>,
+    /// gO's chosen row's words whole, where they're too long for it, to
+    /// read on in place.
+    pub reading: Option<Strip>,
+}
+
+/// A chosen row's words on one line, as long as they run, on the
+/// selection's ground, and the room they read on in, all in device pixels:
+/// where it stands in the outline's set, how wide it is, and how wide a
+/// figure is, which sets the pace.
+pub struct Strip {
+    /// The words as asked for, so a set that arrives after another row
+    /// was chosen never reads on.
+    pub said: String,
+    pub words: Label,
+    pub left_px: f64,
+    pub top_px: f64,
+    pub room_px: f64,
+    pub figure_px: f64,
+}
+
+/// Where a chosen row's words stand in gO's outline, in points: from the
+/// set's left and top, and how wide their room is.
+#[derive(Debug, PartialEq)]
+struct Room {
+    said: String,
+    left_pt: f64,
+    top_pt: f64,
+    width_pt: f64,
 }
 
 /// One link's label, as pixels.
@@ -161,6 +189,7 @@ impl Prompt {
                         newest[at] = Some(newer);
                     }
                     for ask in newest.into_iter().flatten() {
+                        let room = outline_room(&ask);
                         let text = if !ask.labels.is_empty() {
                             labels(&ask.labels)
                         } else if !ask.outline.is_empty() {
@@ -194,6 +223,8 @@ impl Prompt {
                             let Some(first) = pages.next() else {
                                 continue;
                             };
+                            let reading =
+                                room.and_then(|room| strip(room, &mut pages, ask.px_per_pt));
                             Set {
                                 serial: ask.serial,
                                 keys: ask.keys,
@@ -202,6 +233,7 @@ impl Prompt {
                                 height: first.height,
                                 pixels: first.pixels,
                                 labels: Vec::new(),
+                                reading,
                             }
                         } else {
                             Set {
@@ -212,6 +244,7 @@ impl Prompt {
                                 height: 0,
                                 pixels: Vec::new(),
                                 labels: pages.collect(),
+                                reading: None,
                             }
                         };
                         if done.send(set).is_err() {
@@ -347,12 +380,7 @@ fn menu_source(ask: &Ask, menu: &Menu) -> String {
 /// text, as the launcher's chosen row and his `CursorLine` in a list. Its rows stand on the key list's
 /// 18.75 pt, the page's 25 px rhythm, with Space's l above and below.
 fn outline(ask: &Ask) -> String {
-    let highest = ask
-        .outline
-        .iter()
-        .map(|(level, _, _)| *level)
-        .min()
-        .unwrap_or(1);
+    let (width, side, highest) = outline_measure(ask);
     let rows: Vec<String> = ask
         .outline
         .iter()
@@ -363,15 +391,27 @@ fn outline(ask: &Ask) -> String {
                 ("none", "ink.text")
             };
             format!(
-                "block(width: 100%, height: 18.75pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), align(horizon, pad(left: {indent}em, text(fill: {ink}, fit({words})))))",
-                indent = f64::from(level - highest) * 1.2,
+                "block(width: 100%, height: {KEY_ROW_PT}pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), align(horizon, pad(left: {indent}pt, text(fill: {ink}, fit({words})))))",
+                indent = indent_pt(*level, highest),
                 words = quoted(words),
             )
         })
         .collect();
-    let width = ask.width_pt.max(290.0 + 72.0);
+    // Past the list, the chosen row's words whole on a page as wide as
+    // they run, and a figure, whose width sets the pace they read on at.
+    let whole = ask
+        .outline
+        .iter()
+        .find(|(_, _, chosen)| *chosen)
+        .map(|(_, words, _)| {
+            format!(
+                "#page(width: auto, height: {KEY_ROW_PT}pt, margin: 0pt, fill: ink.selection, align(horizon, text(fill: ink.strong, {words})))\n#page(width: auto, height: auto, margin: 0pt, fill: none, [0])",
+                words = quoted(words),
+            )
+        })
+        .unwrap_or_default();
     format!(
-        r#"{ink}#set page(width: {width}pt, height: auto, margin: (x: {side}pt, y: 12pt), fill: ink.sunken)
+        r#"{ink}#set page(width: {width}pt, height: auto, margin: (x: {side}pt, y: {OUTLINE_MARGIN_PT}pt), fill: ink.sunken)
 #set text(..level.note.text, features: level.note.text.features + ("calt",))
 // A row is one line: words too long for it end in an ellipsis, at the
 // last word that fits, as a long name does on the launcher's rows.
@@ -384,15 +424,74 @@ fn outline(ask: &Ask) -> String {
   kept.join(" ") + "\u{{2026}}"
 }})
 #stack({rows})
+{whole}
 "#,
         ink = crate::theme::get().typst(),
-        // The words start where the page's measure does, the chosen row's
-        // ground reaching past them on either side.
-        side = (((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt - SPREAD_PT)
-            .max(0.0),
         rows = rows.join(", "),
     )
 }
+
+/// gO's outline's measure, in points: its set's width, its side margin,
+/// where the words start where the page's measure does with the chosen
+/// row's ground reaching past them on either side, and the highest level
+/// among its rows.
+fn outline_measure(ask: &Ask) -> (f64, f64, u8) {
+    let highest = ask
+        .outline
+        .iter()
+        .map(|(level, _, _)| *level)
+        .min()
+        .unwrap_or(1);
+    let width = ask.width_pt.max(290.0 + 72.0);
+    let side =
+        (((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt - SPREAD_PT).max(0.0);
+    (width, side, highest)
+}
+
+/// How far a row is set in: two characters, as 1.2 of the note's ems, for
+/// each level below the outline's highest, as Neovim's gO sets them in.
+fn indent_pt(level: u8, highest: u8) -> f64 {
+    f64::from(level.saturating_sub(highest)) * 1.2 * crate::theme::get().levels.note.size
+}
+
+/// The room the chosen row's words stand in, when an outline is asked for
+/// and a row of it is chosen: past the margin, the ground's spread and the
+/// row's indent, and down the list's top margin and the rows above it.
+fn outline_room(ask: &Ask) -> Option<Room> {
+    let at = ask.outline.iter().position(|(_, _, chosen)| *chosen)?;
+    let (width, side, highest) = outline_measure(ask);
+    let indent = indent_pt(ask.outline[at].0, highest);
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "the outline shows ten rows at most"
+    )]
+    let above = at as f64;
+    Some(Room {
+        said: ask.outline[at].1.clone(),
+        left_pt: side + SPREAD_PT + indent,
+        top_pt: OUTLINE_MARGIN_PT + above * KEY_ROW_PT,
+        width_pt: width - 2.0 * (side + SPREAD_PT) - indent,
+    })
+}
+
+/// The chosen row's words whole and a figure, the outline's next two
+/// pages, as the strip that reads on in its room, when they run past it.
+fn strip(room: Room, pages: &mut impl Iterator<Item = Label>, px_per_pt: f64) -> Option<Strip> {
+    let words = pages.next()?;
+    let figure = pages.next()?;
+    let room_px = room.width_pt * px_per_pt;
+    (f64::from(words.width) > room_px + 0.5).then(|| Strip {
+        said: room.said,
+        words,
+        left_px: room.left_pt * px_per_pt,
+        top_px: room.top_pt * px_per_pt,
+        room_px,
+        figure_px: f64::from(figure.width),
+    })
+}
+
+/// The outline's margin above and below its rows: Space's l.
+const OUTLINE_MARGIN_PT: f64 = 12.0;
 
 /// How far a chosen row's ground reaches past its words on either side:
 /// Space's s, so its fill sits close round its ink.
@@ -713,6 +812,118 @@ mod tests {
         assert!(source(&ask("cat", Some((0, 0)))).contains("Nothing matches."));
         assert!(!source(&ask("", Some((0, 0)))).contains("Nothing matches."));
         assert!(source(&ask("cat", Some((2, 5)))).contains("2 of 5"));
+    }
+
+    /// Where each run of text stands on a set page, in points from its
+    /// top left.
+    fn texts_at(frame: &typst::layout::Frame, dx: f64, dy: f64, found: &mut Vec<(f64, f64)>) {
+        for (place, item) in frame.items() {
+            let (x, y) = (dx + place.x.to_pt(), dy + place.y.to_pt());
+            match item {
+                typst::layout::FrameItem::Text(_) => found.push((x, y)),
+                typst::layout::FrameItem::Group(group) => texts_at(
+                    &group.frame,
+                    x + group.transform.tx.to_pt(),
+                    y + group.transform.ty.to_pt(),
+                    found,
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn a_chosen_row_too_long_for_the_outline_sets_its_words_whole_where_its_room_is() {
+        let long = "A heading far too long for the outline's row, which goes on and on \
+                    past where the page's measure ends, so it reads on in place";
+        let ask = Ask {
+            serial: 1,
+            keys: false,
+            labels: Vec::new(),
+            outline: vec![(1, "Short".into(), false), (2, long.into(), true)],
+            menu: None,
+            note: String::new(),
+            mark: "",
+            typed: String::new(),
+            cursor: false,
+            count: None,
+            width_pt: 500.0,
+            px_per_pt: 2.0,
+            page: crate::page::Width::WHOLE,
+        };
+        let mut world = page::new_world();
+        world.set_main(&outline(&ask));
+        let document = typst::compile::<PagedDocument>(&world)
+            .output
+            .unwrap_or_else(|errors| {
+                panic!(
+                    "{:?}",
+                    errors
+                        .iter()
+                        .map(|e| e.message.to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        let pages = document.pages();
+        assert_eq!(
+            pages.len(),
+            3,
+            "the list, the chosen row's words whole, a figure"
+        );
+        let room = outline_room(&ask).expect("a chosen row's room");
+        assert_eq!(room.said, long);
+        assert!(
+            pages[1].frame.size().x.to_pt() > room.width_pt,
+            "its words run past it"
+        );
+        assert!((pages[1].frame.size().y.to_pt() - KEY_ROW_PT).abs() < 0.01);
+        let figure = pages[2].frame.size().x.to_pt();
+        assert!(figure > 2.0 && figure < 12.0, "a figure is {figure} pt");
+        let mut texts = Vec::new();
+        texts_at(&pages[0].frame, 0.0, 0.0, &mut texts);
+        let chosen = texts
+            .iter()
+            .filter(|(_, y)| *y > room.top_pt && *y < room.top_pt + KEY_ROW_PT)
+            .map(|(x, _)| *x)
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            (chosen - room.left_pt).abs() < 0.5,
+            "its words start at {chosen} pt, its room at {} pt",
+            room.left_pt
+        );
+        let mut whole = Vec::new();
+        texts_at(&pages[1].frame, 0.0, 0.0, &mut whole);
+        let row = texts
+            .iter()
+            .filter(|(_, y)| *y > room.top_pt)
+            .map(|(_, y)| y - room.top_pt)
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            (whole[0].1 - row).abs() < 0.5,
+            "the whole words stand on the row's baseline"
+        );
+    }
+
+    #[test]
+    fn only_a_chosen_row_has_a_room_to_read_on_in() {
+        let mut ask = Ask {
+            serial: 1,
+            keys: false,
+            labels: Vec::new(),
+            outline: vec![(1, "One".into(), false)],
+            menu: None,
+            note: String::new(),
+            mark: "",
+            typed: String::new(),
+            cursor: false,
+            count: None,
+            width_pt: 720.0,
+            px_per_pt: 2.0,
+            page: crate::page::Width::WHOLE,
+        };
+        assert_eq!(outline_room(&ask), None);
+        ask.outline = Vec::new();
+        assert_eq!(outline_room(&ask), None, "the menu's rows don't read on");
     }
 
     #[test]
