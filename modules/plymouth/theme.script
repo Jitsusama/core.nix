@@ -36,6 +36,22 @@ fun sprite_at(sprite, image, x, y, z)
     return sprite;
   }
 
+# Where each face's capitals stand in its line at each scale, in device
+# pixels from the line's top: the top of an H and the baseline under it,
+# measured as the pictures were drawn.
+@measured@
+
+fun measure(what)
+  {
+    return global.measured[what + "-" + global.scale];
+  }
+
+# How tall a face's capitals are.
+fun capitals(face)
+  {
+    return measure(face + "-baseline") - measure(face + "-top");
+  }
+
 Window.SetBackgroundTopColor(@deepest@);
 Window.SetBackgroundBottomColor(@deepest@);
 
@@ -49,7 +65,6 @@ scale = 0;
 fun drawn_at_scale()
   {
     global.pad = @pad@ * global.scale;
-    global.apart = @apart@ * global.scale;
 
     global.name.image = drawn("name");
     global.under.images["starting"] = drawn("starting");
@@ -57,7 +72,6 @@ fun drawn_at_scale()
     global.under.images["restarting"] = drawn("restarting");
     global.under.images["stopping"] = drawn("stopping");
     global.under.images["touching"] = drawn("touching");
-    global.under.height = global.under.images["starting"].GetHeight() - 2 * global.pad;
     global.about.image = drawn("about");
     global.about.numbered = drawn("about-generation");
 @digitImages@
@@ -93,9 +107,13 @@ fun says(what)
 
 # Everything placed for the screens there are now: the canvas, the shared
 # rectangle, the scale, then each picture from the bottom of that rectangle
-# up, as Lock.qml stacks its column: a line for what the boot says, the
-# prompt's panel, then the name over what's happening, each a step of space
-# apart, and what the boot is, small at the bottom left.
+# up, as Lock.qml stacks its column: the line for what the boot says, its
+# baseline a twelfth of the height over the foot but never nearer it than
+# a floating frame stands from an edge, its capitals a beat under the
+# prompt's panel; then what's happening, where the lock has the day, its
+# baseline three beats over the panel; and the name, where the lock has
+# the time, its baseline the apart rung over what's happening's capitals.
+# What the boot is goes small at the bottom left.
 fun lay_out()
   {
     global.width = Window.GetWidth();
@@ -144,12 +162,17 @@ fun lay_out()
       }
 
     global.middle = global.shared.left + Math.Int(across / 2);
-    global.bottom = global.shared.top + down - Math.Int(down / 12);
-    global.said.top = global.bottom - @said@ * global.scale;
-    global.panel.top = global.said.top - global.apart - @panelHeight@ * global.scale;
-    global.head.bottom = global.panel.top - global.apart;
-    global.under.top = global.head.bottom - global.under.height;
-    global.name.top = global.under.top - (global.name.image.GetHeight() - 2 * global.pad);
+    # The lock's field sits a line of its voice over the foot, so it never
+    # moves when PAM speaks, and so does this panel.
+    local.foot = global.shared.top + down - Math.Max(down / 12, @screen@ * global.scale);
+    global.panel.top = Math.Int(foot - capitals("voice") - @beat@ * global.scale
+                                - @panelHeight@ * global.scale + 0.5);
+    global.panel.bottom = global.panel.top + @panelHeight@ * global.scale;
+    global.said.top = global.panel.bottom + @beat@ * global.scale - measure("said-top");
+    local.happening = global.panel.top - 3 * @beat@ * global.scale;
+    global.under.top = happening - measure("under-baseline");
+    local.named = happening - capitals("under") - @apart@ * global.scale;
+    global.name.top = named - measure("name-baseline");
     global.name.sprite = sprite_at(global.name.sprite, global.name.image,
                                    global.middle - global.name.image.GetWidth() / 2,
                                    global.name.top - global.pad, 10);
@@ -163,6 +186,9 @@ fun lay_out()
     # The prompt's panel and what's inside it.
     global.panel.left = global.middle - @panelWidth@ * global.scale / 2;
     global.centre = global.panel.top + @panelHeight@ * global.scale / 2;
+    # The typed letters' baseline, which the hint sits on, as Prompt.qml's
+    # does, in a face whose line differs.
+    global.baseline = global.centre - global.dot.GetHeight() / 2 + measure("typed-baseline");
     if (global.panel.urging)
       local.frame = global.panel.urgent;
     else
@@ -171,15 +197,16 @@ fun lay_out()
                                     global.panel.left - global.panel.reach,
                                     global.panel.top - global.panel.reach, 20);
 
-    global.lock.x = global.panel.left + @glyphLeft@ * global.scale;
-    global.lock.sprite = sprite_at(global.lock.sprite, global.lock.image, global.lock.x,
+    # The padlock's picture keeps room round its cell on each side.
+    local.cell = global.panel.left + @markAt@ * global.scale;
+    local.room = @inkRoom@ * global.scale;
+    global.lock.sprite = sprite_at(global.lock.sprite, global.lock.image, cell - room,
                                    global.centre - global.lock.image.GetHeight() / 2, 21);
-    global.typed = global.lock.x + global.lock.image.GetWidth() + @glyphGap@ * global.scale;
+    global.typed = cell + global.lock.image.GetWidth() - 2 * room + @glyphGap@ * global.scale;
 
     local.hint = global.hints[global.hint.which];
-    global.hint.sprite = sprite_at(global.hint.sprite, hint,
-                                   global.typed + @hintGap@ * global.scale,
-                                   global.centre - hint.GetHeight() / 2, 21);
+    global.hint.sprite = sprite_at(global.hint.sprite, hint, global.typed,
+                                   global.baseline - measure("voice-baseline"), 21);
 
     for (index = 0; global.dots[index]; index++)
       {
@@ -195,7 +222,7 @@ fun lay_out()
     global.status.said = "";
     status_shown();
     if (global.said.text)
-      global.said.words = lifted(global.said.text, global.said.top + @said@ * global.scale / 2);
+      global.said.words = lifted(global.said.text, global.said.top);
   }
 
 # What the boot is, small at the bottom left, and once the boot says which
@@ -218,17 +245,17 @@ fun about_shown()
                                               global.about.top, 10);
   }
 
-# Words drawn as the boot goes, centred on a height, in the body face and
-# lifted as the pictures' words are: over the halo drawn with the theme
-# (./nixos.nix), stretched to their width, and a copy of them in the
+# Words drawn as the boot goes, their line's top at a height, in the body
+# face and lifted as the pictures' words are: over the halo drawn with the
+# theme (./nixos.nix), stretched to their width, and a copy of them in the
 # shadow's colour for the tight shadow.
-fun lifted(text, centre)
+fun lifted(text, line)
   {
     local.face = "@serifFamily@ " + @serifBody@ * global.scale;
     local.ink = Image.Text(text, @textColour@, 1, face);
     local.shade = Image.Text(text, @shadowColour@, 1, face);
     local.x = global.middle - ink.GetWidth() / 2;
-    local.y = centre - ink.GetHeight() / 2;
+    local.y = line;
 
     local.box = Math.Max(ink.GetWidth(), global.halo.inner + 1);
     local.left = global.middle - box / 2 + global.halo.inner / 2;
@@ -272,7 +299,8 @@ fun status_shown()
       }
     else if (text != global.status.said)
       {
-        global.status.words = lifted(text, global.panel.top + @panelHeight@ * global.scale / 2);
+        global.status.words = lifted(text, global.centre - capitals("said") / 2
+                                           - measure("said-top"));
         global.status.said = text;
       }
   }
@@ -425,7 +453,7 @@ fun message_callback(text)
         return;
       }
     global.said.text = text;
-    global.said.words = lifted(text, global.said.top + @said@ * global.scale / 2);
+    global.said.words = lifted(text, global.said.top);
   }
 
 fun hide_message_callback(text)

@@ -1956,6 +1956,11 @@
     patch reads, for less time than Plymouth takes to quit, so what the splash left stays on the
     screen until the desktop draws
   '';
+  the-splash-prompt-is-the-locks = ''
+    the splash's panel is the lock's field, a prompt's row inside its hairline, at each scale, its
+    padlock's cell the inset rung in from the frame, what's typed Prompt.qml's room after the
+    glyph's advance, and every face it places by its capitals measured at each scale
+  '';
   the-splash-reads-the-generation-from-the-entry = ''
     the splash is told the generation only from an entry whose name carries one
   '';

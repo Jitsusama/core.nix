@@ -47,16 +47,22 @@ let
     else
       "${wallpapers}/${name}";
 
-  # The prompt's place, as Lock.qml and Prompt.qml build it: a field a third
-  # of the large step tall, inset and framed, a large glyph a step in from
-  # its edge, what's typed a step after the glyph, and a hint just clear of
-  # the caret.
+  # The prompt's place, as Lock.qml and Prompt.qml build it: a field of one
+  # prompt's row inside its hairline, the padlock's cell the inset rung in
+  # from the frame's inside edge, what's typed the glyph's advance and
+  # Prompt.qml's room after it, and the hint where the first letter typed
+  # will be.
   inherit (theme) space;
-  frame = theme.shape.border + theme.shape.inset;
+  inherit (theme.shape) border;
   panel = {
     width = 400;
-    height = space.xxxl + 2 * frame;
+    # Prompt.qml's row, which it names by the step until it moves to the
+    # rungs.
+    height = space.xxxl + 2 * border;
   };
+  # Room round the padlock's ink as it's drawn, more than it reaches past
+  # its cell; none of it shows.
+  inkRoom = space.l;
   # How far a shadow can reach, its offset and twice its blur, past which a
   # blur's tail is too faint to see.
   farthest = lib.foldl' lib.max 0;
@@ -67,9 +73,21 @@ let
   points = face: step: number theme.type.${face}.${step};
   mono = theme.font.mono.family;
   # Words to read, the ask and what the boot says, in the serif upright,
-  # cut at its axes (../fonts/serif-text.nix), since neither pango's
-  # pictures nor Plymouth's own words take a variable font's axes.
+  # cut at its axes (../fonts/serif-text.nix), since Plymouth's own words
+  # can't take a variable font's axes, and the pictures' words are cut alike.
   serif = theme.font.serif.text.family;
+  # The voice, the field's hint, as Prompt.qml sets it: the serif's italic
+  # at its axes, which pango's pictures take after an @.
+  voice =
+    let
+      level = theme.type.levels.voice;
+      family = theme.font.serif.family + lib.optionalString level.italic " Italic";
+      size = toString (points "serif" level.step);
+      axes = lib.concatStringsSep "," (
+        lib.mapAttrsToList (tag: value: "${tag}=${toString value}") level.axes
+      );
+    in
+    "${family} ${size} @${axes}";
   serifText = import ../fonts/serif-text.nix {
     inherit pkgs;
     inherit (theme) font;
@@ -106,13 +124,29 @@ let
           sigma = toString (shadow.blur * scale / 2.0);
         in
         lib.optionalString (shadow.blur > 0) "-blur 0x${sigma}";
-      hint = key: text: words (file "hint-${key}") mono large colours.muted 0 text;
-      words = out: face: size: colour: margin: text: ''
+      hint = key: text: set (file "hint-${key}") voice colours.muted 0 text;
+      words =
+        out: face: size:
+        set out "${face} ${toString size}";
+      set = out: font: colour: margin: text: ''
         pango-view -q --no-display --dpi=${toString (96 * scale)} --margin=${at margin} \
           --antialias=gray --hinting=none --background=transparent \
           --foreground=${lib.escapeShellArg colour} \
-          --font=${lib.escapeShellArg "${face} ${toString size}"} \
+          --font=${lib.escapeShellArg font} \
           --output=${out} --text=${lib.escapeShellArg text}
+      '';
+      # Where a face's capitals stand in its line, in device pixels: the top
+      # of an H drawn as the pictures are, and the baseline it stands on,
+      # kept for the script by name and scale, since the script places
+      # words by their capitals and baselines as the lock does.
+      capitals = key: font: ''
+        ${set "capital.png" font "white" 0 "H"}
+        ink=$(magick capital.png -format %@ info:)
+        top=''${ink##*+}
+        tall=''${ink#*x}
+        tall=''${tall%%+*}
+        echo 'measured["${key}-top-${toString scale}"] = '$top';' >> measured
+        echo 'measured["${key}-baseline-${toString scale}"] = '$((top + tall))';' >> measured
       '';
       # Each shadow, the farthest first, under the words: their outline
       # blurred, darkened, coloured and moved.
@@ -158,6 +192,11 @@ let
         '';
     in
     ''
+      ${capitals "name" "${mono} ${toString (points "mono" "hero")}"}
+      ${capitals "under" "${serif} ${toString (points "serif" "large")}"}
+      ${capitals "said" "${serif} ${toString (points "serif" "body")}"}
+      ${capitals "voice" voice}
+      ${capitals "typed" "${mono} ${toString (points "mono" "large")}"}
       ${lifted (file "name") mono (points "mono" "hero") config.networking.hostName}
       ${lib.concatStrings (
         lib.mapAttrsToList (key: text: lifted (file key) serif (points "serif" "large") text) under
@@ -171,11 +210,11 @@ let
       ${framed (file "panel") colours.accent}
       ${framed (file "panel-urgent") colours.alert}
       # The lock's ink reaches past its cell, so it's drawn with room round
-      # it and cut to the line's height and its ink's width; drawn without,
-      # its right side would be cut away.
-      ${words "lock.png" mono large colours.machine space.l lockGlyph}
-      magick lock.png -shave 0x${at space.l} -define trim:edges=east,west -trim +repage \
-        ${file "lock"}
+      # it and cut to the line's height; drawn without, its right side would
+      # be cut away. The room is kept at its sides, so the script finds its
+      # cell, and the glyph's advance, a room in from each.
+      ${words "lock.png" mono large colours.machine inkRoom lockGlyph}
+      magick lock.png -shave 0x${at inkRoom} +repage ${file "lock"}
       ${lib.concatStrings (lib.mapAttrsToList hint hints)}
       ${halo scale}
       ${words (file "dot") mono large colours.strong 0 "●"}
@@ -254,13 +293,18 @@ let
         stages["${key}"] = "${text}";
       '') stages
     );
-    apart = space.xl;
-    said = space.xl;
+    # Measured as the pictures are drawn, and put in as they are.
+    measured = null;
+    inherit (space) beat;
+    inherit (space.rung) apart screen;
     panelWidth = panel.width;
     panelHeight = panel.height;
-    glyphLeft = frame + space.l;
+    # The padlock's cell, from the frame's outside edge.
+    markAt = border + space.rung.inset;
+    # Prompt.qml's glyphWidth, the glyph's advance and this, which it names
+    # by the step until it moves to the rungs.
     glyphGap = space.m;
-    hintGap = space.xs;
+    inherit inkRoom;
     # A fifth of the size between dots, as Prompt.qml spaces them.
     dotSpacing = toString (points "mono" "large" * 4 / 3 * 0.2);
     digitImages = lib.concatMapStrings (digit: ''
@@ -291,7 +335,7 @@ let
         ${drawnAt 1}
         ${drawnAt 2}
         ${lib.optionalString (picture != null) "magick ${picture} -strip $out/picture.png"}
-        cp ${script} $out/jitsusama.script
+        substitute ${script} $out/jitsusama.script --replace-fail @measured@ "$(cat measured)"
         cat > $out/jitsusama.plymouth <<EOF
         [Plymouth Theme]
         Name=jitsusama
