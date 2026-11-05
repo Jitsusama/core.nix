@@ -685,7 +685,11 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
 def commands_a_network(desktop: Desktop) -> None:
-    """Press every key the command line takes on Lantern's row, then disconnect it by :disc.
+    """Press every key the command line takes on Lantern's row, then disconnect it by :g.
+
+    A range on what takes none says E481; :%disc, which only Lantern can, says so and does
+    nothing, as the ask that would offer it hasn't landed; :g/Lant/disc finds Lantern by name
+    and disconnects it by its own act.
 
     : in normal opens it with Lantern's acts, Return's first; typing narrows it; Tab, Shift+Tab,
     the arrows, Ctrl+N and Ctrl+P choose a line and write it in, round to what was typed, the
@@ -757,7 +761,17 @@ def commands_a_network(desktop: Desktop) -> None:
         desktop.launcher_until(
             lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
         )
-    machine.send_chars(":disc\n")
+
+    def says(typed: str, said: str) -> None:
+        machine.send_chars(typed)
+        desktop.launcher_until(
+            lambda shown: shown["command"] is None and said in (shown["commandSaid"] or "")
+        )
+
+    says(":%q\n", "E481: No range allowed")
+    says(":%disc\n", "can disconnect")
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    machine.send_chars(":g/Lant/disc\n")
     machine.wait_until_succeeds(
         "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
     )
