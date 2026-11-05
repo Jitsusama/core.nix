@@ -4203,6 +4203,10 @@ Scope {
     readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
     readonly property real drawerRoom: !screenHere ? 0
         : screenHere.width - centred - width - drawerGap - Theme.space.xl
+    // Whether the screen can't give the drawer its least beside the card
+    // even with the card left of centre, as a 1080p screen at 2 can't.
+    readonly property bool drawerOver: !!screenHere
+        && screenHere.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
     readonly property real drawerWidth: !screenHere ? 0
         : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom)
         : Math.min(drawerLeast,
@@ -4332,6 +4336,10 @@ Scope {
             // where it and the card sit.
             drawer: {
                 out: root.drawerOut,
+                // Whether there's no room for it beside the card, and
+                // whether it's drawn.
+                over: root.drawerOver,
+                shown: drawerCard.out,
                 drawn: drawerCard.title,
                 title: root.drawerShows?.title ?? "",
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
@@ -4417,6 +4425,7 @@ Scope {
                     rule: drawerCard.rule()
                 },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
+                cardWidth: Math.round(card.width),
                 at: Math.round(drawerCard.mapToGlobal(0, 0).x),
                 width: Math.round(drawerCard.width),
                 height: Math.round(drawerCard.height),
