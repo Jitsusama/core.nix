@@ -2102,7 +2102,7 @@ Scope {
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
         ["\u21e7\u21b5", "below"], ["\u2192", ""]]
     // What normal says beside Return at home: the commands and the keys,
-    // kept once normal is taken rather than from the opening. Kept from
+    // kept while normal is taken rather than from the opening. Kept from
     // the start, it cut the battery's charge from the glance on the find,
     // which never gives way; - up is said only once a step is held, and
     // Ctrl+] in only on a row holding parts, whose rows grow the room as
@@ -2229,6 +2229,10 @@ Scope {
         target: prompt
         function onModeChanged() {
             root.readSelectedActions();
+            // The foot's room starts again for each mode, which changes
+            // what it draws, so the glance never gives way to keys a mode
+            // no longer shows, as normal's once back on the find (QIFT5D).
+            root.footReset();
             root.noteKeys();
         }
     }
