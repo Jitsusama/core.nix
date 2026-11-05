@@ -2051,21 +2051,16 @@ in
         # logging thread: two wakes a second of the locked shell's, for lines
         # nobody reads (2026-10-31). Without them its file keeps what's shown,
         # as the journal does.
-        # A throwaway probe: perf samples where the shell first touches
-        # memory, and Qt names its JIT's functions in /tmp/perf-<pid>.map,
-        # so the JavaScript that takes it is named. It starts the program
-        # the wrapper would, with the wrapper's paths.
+        # A throwaway probe: Qt's QML profiler records every JavaScript
+        # call and every allocation on its heap from the shell's first line,
+        # since the shell waits for it, and writes them when the shell ends.
         ExecStart = toString (
-          pkgs.writeShellScript "quickshell-sampled" ''
-            wrapper=${lib.getExe' pkgs.quickshell "quickshell"}
-            while read -r name value; do
-              export "$name=$value''${!name:+:''${!name}}"
-            done < <(grep -a -o "\-\-prefix '[A-Z_0-9]*' ':' '[^']*'" "$wrapper" \
-              | sed "s/--prefix '\([^']*\)' ':' '\([^']*\)'/\1 \2/")
-            export QV4_PROFILE_WRITE_PERF_MAP=1
-            exec ${lib.getExe' pkgs.perf "perf"} record -e page-faults:u -c 8 \
-              --call-graph dwarf,16384 -o "$XDG_RUNTIME_DIR/faults.data" -- \
-              "$(dirname "$wrapper")/.quickshell-wrapped" --no-detailed-logs
+          pkgs.writeShellScript "quickshell-profiled" ''
+            ${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs \
+              --debug 3768 --waitfordebug &
+            exec ${pkgs.qt6.qtdeclarative}/bin/qmlprofiler -a localhost -p 3768 \
+              --include javascript,memory,creating,binding,handlingsignal \
+              -o "$XDG_RUNTIME_DIR/trace.qtd"
           ''
         );
         # GTK's platform theme, which other Qt programs take, changes the
