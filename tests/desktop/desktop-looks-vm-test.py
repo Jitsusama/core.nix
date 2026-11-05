@@ -332,18 +332,21 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
     for scale in at_each_scale:
         at_scale(desktop, scale)
         named = scale.replace(".", "-")
+        # A row flashes as it's copied, and an answer with no rows, a
+        # sum, flashes its ghost in the field.
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("tuesday", selecting="Notes for Tuesday")
-        desktop.normal()
-        machine.send_chars("yy")
-        frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
-        desktop.launcher_until(lambda shown: shown["flashing"] == [])
-        after = desktop.settled_screen(f"launcher-yanked-at-{named}")
-        flashed = max(frames, key=partial(changed_from, after))
-        if desktop.values["photographs"]:
-            flashed.save(machine.out_dir / f"launcher-yank-flash-at-{named}.png")
-        desktop.close_launcher()
+        flashes_as_yy_copies(
+            desktop, [0], f"launcher-yank-flash-at-{named}", f"launcher-yanked-at-{named}"
+        )
+        desktop.answer("12*7")
+        flashes_as_yy_copies(
+            desktop,
+            [-1],
+            f"launcher-yank-ghost-flash-at-{named}",
+            f"launcher-yanked-ghost-at-{named}",
+        )
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("notes for")
@@ -384,6 +387,22 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
         assert after_ask["tinted"] == [], f"at {scale} {after_ask}"
         desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
+
+
+def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled: str) -> None:
+    """Copy what's selected with yy, see `rows` flash, and keep the frame furthest from after."""
+    machine = desktop.machine
+    desktop.normal()
+    since = desktop.mark()
+    machine.send_chars("yy")
+    frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
+    desktop.launcher_until(lambda shown: shown["flashing"] == [])
+    after = desktop.settled_screen(settled)
+    flashed = max(frames, key=partial(changed_from, after))
+    if desktop.values["photographs"]:
+        flashed.save(machine.out_dir / f"{flash}.png")
+    desktop.close_launcher()
 
 
 def changed_from(after: Image.Image, frame: Image.Image) -> float:
