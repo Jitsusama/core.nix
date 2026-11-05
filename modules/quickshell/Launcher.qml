@@ -3949,6 +3949,12 @@ Scope {
             Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
     readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
         Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
+    // A quarter down; over a viewer low, its foot a twelfth of the screen
+    // up, as the lock screen sits, so the picture or the video its line
+    // acts on stays in view above it, as Vim's command line sits at the
+    // bottom.
+    readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
+        ? screenHere.height * 11 / 12 - card.height : screenHere.height / 4)
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -3986,6 +3992,12 @@ Scope {
                 from: root.commanding?.from ?? "",
                 // What it's aimed at over a viewer, whose rows aren't drawn.
                 over: root.over ? root.commanding.things.map(thing => thing.name) : null
+            },
+            // Where the card's top and foot sit on a screen this tall.
+            card: {
+                top: root.cardTop,
+                foot: root.cardTop + card.height,
+                screen: root.screenHere ? root.screenHere.height : 0
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
@@ -4502,8 +4514,7 @@ Scope {
         anchors.top: true
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.open && screen // qmllint disable unqualified
-            ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
+        margins.top: root.open ? root.cardTop - card.reach : 0 // qmllint disable unqualified
         margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
         implicitWidth: root.open
             ? root.width + root.drawerGap + root.drawerWidth + 2 * card.reach : 1

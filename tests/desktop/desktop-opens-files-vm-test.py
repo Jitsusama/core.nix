@@ -581,7 +581,7 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
 
 
 def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desktop) -> None:
-    """: in swayimg opens the launcher's command line over the picture, and :q there closes it."""
+    """: in swayimg opens the launcher's command line low, under the picture, and :q closes it."""
     machine = desktop.machine
     looked = f"/home/{desktop.account}/commanded.png"
     desktop.as_account(f"cp {desktop.values['picture']} {looked}")
@@ -593,6 +593,9 @@ def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desk
             and {"rotate Turn it, by 90, 180 or 270 degrees", "{n} That picture, by its number"}
             <= set((shown["command"] or {}).get("menu", []))
             and (shown["command"] or {}).get("over") == ["commanded.png"]
+            # It sits low, its foot a twelfth of the screen up, so the
+            # picture stays in view above it.
+            and abs(shown["card"]["foot"] - shown["card"]["screen"] * 11 / 12) <= 1
         )
     )
     desktop.photograph("swayimg-command-line")
