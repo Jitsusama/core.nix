@@ -397,7 +397,10 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     j and k move it a line, after a count as many; h and l along the line; gg and G to its
     first and last line; Ctrl+E and Ctrl+Y scroll a line; Ctrl+D and Ctrl+U half the view;
     Ctrl+F, Ctrl+B, Page Down and Page Up nearly a whole one; and H, L and M to the view's top,
-    bottom and middle lines, the view staying. Shift and an arrow do nothing.
+    bottom and middle lines, the view staying. Shift and an arrow do nothing. Then its search
+    and its visual, each as a page's is in Vim (searched_as_vim_does,
+    chosen_and_copied_as_vim_does), kept in this subtest so the file holds to the pyramid's
+    twenty (docs/testing.md).
     """
     page = InTheDrawer(desktop)
     title = page.into()["line"]
@@ -438,9 +441,11 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     )
     page.back("spc left")
     desktop.close_launcher()
+    searched_as_vim_does(desktop)
+    chosen_and_copied_as_vim_does(desktop)
 
 
-def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: Desktop) -> None:
+def searched_as_vim_does(desktop: Desktop) -> None:
     """In the drawer, / and ? type what to seek, and Return puts the cursor where it's found.
 
     What's typed is washed as it's typed; Return puts the cursor on its first letter and the
@@ -515,7 +520,7 @@ def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: 
     desktop.close_launcher()
 
 
-def test_in_a_drawer_v_and_shift_v_choose_and_y_copies_what_they_chose(desktop: Desktop) -> None:
+def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     """In the drawer, v chooses letters from the cursor's and V lines, and y copies them.
 
     The moves extend what's chosen, and it's counted as the mode word counts it; y puts it on
