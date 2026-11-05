@@ -471,10 +471,15 @@ local acts = {
   restore = restore,
   escape = escape,
   -- The launcher's command line, over the picture, given this swayimg's
-  -- process for swayimg-command to carry what's chosen back to it.
-  command_line = function()
+  -- process for swayimg-command to carry what's chosen back to it, and
+  -- the picture's name, for the line to say what its commands act on.
+  command_line = function(mode)
+    local image = current(mode)
+    local name = image and image.path:match('[^/]*$') or ''
     if pid then
-      os.execute('launcher-say command-line swayimg ' .. pid .. ' >/dev/null 2>&1 &')
+      os.execute(
+        'launcher-say command-line swayimg ' .. pid .. ' ' .. quoted(name) .. ' >/dev/null 2>&1 &'
+      )
     end
   end,
   close = quit,

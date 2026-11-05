@@ -220,10 +220,10 @@ asks -k space
 rm -f "$ASKED"
 wtype -M shift -k colon -m shift
 for _ in $(seq 100); do
-  if grep -qx "command-line swayimg $viewer" "$ASKED" 2>/dev/null; then break; fi
+  if grep -qx "command-line swayimg $viewer z-tall.pgm" "$ASKED" 2>/dev/null; then break; fi
   sleep 0.1
 done
-grep -qx "command-line swayimg $viewer" "$ASKED" 2>/dev/null \
+grep -qx "command-line swayimg $viewer z-tall.pgm" "$ASKED" 2>/dev/null \
   || { echo ": asked the launcher for $(cat "$ASKED" 2>/dev/null || echo nothing)"; exit 1; }
 
 # [ and ] alone do nothing, since turning is :rotate: the tall picture is

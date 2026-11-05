@@ -2336,15 +2336,21 @@ Scope {
         };
     }
 
+    // The viewer the command line is open over, while it is, by the
+    // opening : gives it again: no rows are drawn behind it, since there's
+    // nothing in the launcher its commands act on, and leaving it closes
+    // the launcher, back to the viewer. Null over the launcher's own rows.
+    property var over: null
+
     // The command line opened over a viewer, as : in swayimg or mpv opens
-    // it (launcher-say command-line <viewer> <where>): the viewer's own
+    // it (launcher-say command-line <viewer> <where> <name>): the viewer's own
     // commands (Options.commandLines, from its module), each carried to it
     // by its program, given where the viewer is, its process or its
     // socket, the command's whole name and what was typed after it; :{n}
-    // and a time are its goto. It opens over the launcher's Shortcuts at
-    // the viewer's own keys, which :help returns to, as F1 opens them. A
-    // viewer with none opens nothing.
-    function viewerCommandLine(viewer, where) {
+    // and a time are its goto. It opens alone, aimed at what the viewer
+    // shows, by its name, and :help opens the launcher's Shortcuts at the
+    // viewer's own keys, as F1 does. A viewer with none opens nothing.
+    function viewerCommandLine(viewer, where, name) {
         const line = Options.commandLines[viewer];
         if (!line)
             return;
@@ -2367,32 +2373,46 @@ Scope {
             bang: false,
             run: () => into("shortcuts")
         }]);
-        into("shortcuts");
-        // Its commands act on the viewer, never on a row of the keys.
-        commandLine({
-            things: [],
+        // Its commands act on what the viewer shows, never on a row: a
+        // thing named for the drawer that holds the viewer's commands
+        // rather than being an act of its own (Catalogue.kindOf).
+        over = {
+            things: name ? [{ name, nested: true }] : [],
             surface,
             goes: line.goes ?? "",
             go: to => {
                 open = false;
                 carry("goto", String(to));
             }
-        });
+        };
+        open = true;
+        held = [];
+        restart("");
+        commandLine(over);
     }
 
     // The line let go, the keys back to the find line in the mode it was
     // in, or in normal.
     function commandLeft(to) {
         commanding = null;
-        prompt.resume(to);
+        if (over !== null && to !== "said") {
+            open = false;
+            return;
+        }
+        prompt.resume(to === "said" ? "normal" : to);
     }
 
     // What the drawer says while a line of the menu is chosen: what it
     // acts on, "on Home-5G".
     function commandPlate(line) {
-        if (!line || !commanding || (line.kind !== "act" && line.kind !== "surface"))
+        if (!commanding)
             return null;
         const names = commanding.things.map(thing => thing.name ?? "").filter(name => name);
+        // Over a viewer, with nothing chosen, it names what it's aimed at.
+        if (!line && over !== null && names.length > 0)
+            return { title: names.join(", "), body: "" };
+        if (!line || (line.kind !== "act" && line.kind !== "surface"))
+            return null;
         if (names.length === 0)
             return null;
         const on = ((Words.field.command ?? {}).on ?? "on {things}")
@@ -2403,7 +2423,8 @@ Scope {
     // Return on the line: exactly what's typed, as Commands.ran read it.
     function commandRan(read) {
         const opened = commanding;
-        commandLeft("normal");
+        // What went wrong is said where the line was, over a viewer too.
+        commandLeft(read.error ? "said" : "normal");
         if (read.error !== undefined) {
             if (read.error !== "") {
                 commandSaid = read.error;
@@ -3610,8 +3631,8 @@ Scope {
                         root.open = !root.open;
                     else if (words[0] === "collection")
                         root.pressed(words.slice(1).join(" "));
-                    else if (words[0] === "command-line" && words.length === 3)
-                        root.viewerCommandLine(words[1], words[2]);
+                    else if (words[0] === "command-line" && words.length >= 3)
+                        root.viewerCommandLine(words[1], words[2], words.slice(3).join(" "));
                     else
                         console.warn(`The launcher was told "${line}", which it doesn't know.`);
                 }
@@ -3631,9 +3652,10 @@ Scope {
             root.into(name);
         }
 
-        // The command line over a viewer, by its name and where it is.
-        function commandLine(viewer: string, where: string): void {
-            root.viewerCommandLine(viewer, where);
+        // The command line over a viewer, by its name, where it is and the
+        // name of what it shows.
+        function commandLine(viewer: string, where: string, name: string): void {
+            root.viewerCommandLine(viewer, where, name);
         }
 
         function showing(): string {
@@ -3959,7 +3981,9 @@ Scope {
                 caret: commandLoader.item.caret,
                 chosen: commandLoader.item.choosing.at,
                 menu: commandLoader.item.shown.map(line => `${line.command} ${line.title}`),
-                from: root.commanding?.from ?? ""
+                from: root.commanding?.from ?? "",
+                // What it's aimed at over a viewer, whose rows aren't drawn.
+                over: root.over ? root.commanding.things.map(thing => thing.name) : null
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
@@ -4210,6 +4234,9 @@ Scope {
     }
 
     onOpenChanged: {
+        // A viewer's line is over once the launcher closes (viewerCommandLine).
+        if (!open)
+            over = null;
         madeSince(open ? "opening" : "closing");
         // A question asked as it closed is let go, never asked again.
         if (!open && onceAsked)
@@ -4554,7 +4581,7 @@ Scope {
                         // open, and what it said went wrong for a key
                         // after; hidden by its light, so its focus stays.
                         opacity: root.commanding === null && !root.commandSays ? 1 : 0
-                        onCommanded: range => root.commandLine({ range })
+                        onCommanded: range => root.commandLine(root.over ?? { range })
                         steady: true
                         // Neovim's command line, opening in insert, but for
                         // a secret, which has no modes, as Vim's
@@ -4801,7 +4828,8 @@ Scope {
                     // came or went: the rows it doesn't fill are space.
                     Item {
                         width: parent.width
-                        height: root.tall
+                        // Over a viewer only the line's menu, as tall as it.
+                        height: root.over !== null ? commandMenu.height : root.tall
 
                         // The command line's menu rises over the rows'
                         // bottom, so the cursor row stays in view above
@@ -4829,6 +4857,7 @@ Scope {
                         ListView {
                             id: list
 
+                            visible: root.over === null
                             anchors.fill: parent
                             anchors.bottomMargin: commandMenu.height
                             // How many characters the widest of what graphed rows

@@ -193,10 +193,10 @@ reads pause true "Space to pause again"
 rm -f "$ASKED"
 keys :
 for _ in $(seq 600); do
-  if grep -qxF "command-line mpv $PWD/mpv.sock" "$ASKED" 2> /dev/null; then break; fi
+  if grep -qxF "command-line mpv $PWD/mpv.sock clip.mkv" "$ASKED" 2> /dev/null; then break; fi
   sleep 0.1
 done
-grep -qxF "command-line mpv $PWD/mpv.sock" "$ASKED" 2> /dev/null \
+grep -qxF "command-line mpv $PWD/mpv.sock clip.mkv" "$ASKED" 2> /dev/null \
   || never ": to ask the launcher for its command line"
 
 # Z alone, a moment on, delays the subtitles, as mpv has it.
