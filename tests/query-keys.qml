@@ -581,8 +581,9 @@ QtObject {
                 ["normal", "wordNext", "wordBack", "wordEnd"]],
             ["h l move by letters, and so do the arrows", ["Escape", "h", "l", "Left", "Right"],
                 ["normal", "letterBack", "letterNext", "letterBack", "letterNext"]],
-            ["- and Backspace still step out", ["Escape", "-", "Backspace"],
-                ["normal", "out", "out"]],
+            // Backspace is h, as Vim's is; - still goes up, as his oil's.
+            ["Backspace moves back a letter, as h, and - goes up", ["Escape", "Backspace", "-"],
+                ["normal", "letterBack", "out"]],
             ["0 and $ go to the line's ends", ["Escape", "$", "0"],
                 ["normal", "lineEnd", "lineStart"]],
             ["x, dw and cw change the words, cw into insert", ["Escape", "x", "d", "w", "c", "w"],
@@ -1183,10 +1184,14 @@ QtObject {
             // Normal).
             ["Escape gives normal, and then closes", ["Escape", "Escape"],
                 ["normal", "dismiss"]],
-            ["normal's h and l step out and in, and the arrows never step",
-                ["Escape", "Left", "h", "Right", "l"], ["normal", "out", "into"]],
-            ["normal's Backspace and - step out, as his oil's do", ["Escape", "Backspace", "-"],
-                ["normal", "out", "out"]],
+            // Return goes in and - up, as oil's; h and l move along a line,
+            // which a row hasn't, so they only say Vim's way in and out, and
+            // Backspace is h (the vi-paradigm spec, Normal).
+            ["normal's h and l say the way in and out, and the arrows nothing",
+                ["Escape", "Left", "h", "Right", "l"], ["normal", "outSaid", "intoSaid"]],
+            ["normal's - goes up, and Backspace says how, as h", ["Escape", "-", "Backspace"],
+                ["normal", "out", "outSaid"]],
+            ["Return goes in from normal", ["Escape", "Return"], ["normal", "run"]],
             ["q only says how to close, and ZZ closes", ["Escape", "q", "Z", "Z"],
                 ["normal", "quitSaid", "close"]],
             ["a Z with anything but Z after it lets go", ["Escape", "Z", "j", "Z", "Z"],
@@ -1341,7 +1346,7 @@ QtObject {
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
-        const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
+        const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in", run: "run",
             lastPlace: "last", jumps: "jumps", find: "find", keys: "keys", close: "close",
             numbers: "numbers", ends: "ends", nextRow: "next row", caret: "caret",
             word: "word", intoDrawer: "into the drawer", lines: "lines", along: "along",
@@ -1356,7 +1361,8 @@ QtObject {
         holds("the list's ends, a sequence as Vim writes it", keyed("ends"), "gg  G");
         holds("the list's screens, Ctrl's before the named keys", keyed("screen"),
             "Ctrl+F  Ctrl+B");
-        holds("the list's in and out, - among them", keyed("in and out"), "l  h  -");
+        holds("the list's way up, - alone, h and l stepping nowhere", keyed("up"), "-");
+        holds("and normal's Return, which opens or goes in", keyed("open in"), "\u21b5");
         holds("the list's places stepped into, back and forward", keyed("jumps"),
             "Ctrl+O  Ctrl+I");
         holds("the list's fresh find", keyed("find"), "/  ?");
@@ -1481,8 +1487,9 @@ QtObject {
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
-        for (const act of ["run", "into", "out", "dismiss", "close", "quitSaid", "lastPlace",
-            "jumpBack", "jumpForward", "freshFind", "keys", "numbers", "insert", "change", ""])
+        for (const act of ["run", "intoSaid", "outSaid", "out", "dismiss", "close", "quitSaid",
+            "lastPlace", "jumpBack", "jumpForward", "freshFind", "keys", "numbers", "insert",
+            "change", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
@@ -1542,8 +1549,9 @@ QtObject {
         holds("nothing begun is left after an act", typed(["Escape", "c", "c"]).standing,
             Keys.rest());
         holds("the field says Ctrl+Y for completing", Keys.keyOf("complete", "find"), "Ctrl+y");
-        holds("and h for stepping out, as the foot names it", Keys.keyOf("out", "normal"), "h");
-        holds("and l for stepping in", Keys.keyOf("into", "normal"), "l");
+        holds("and - for going up, as the foot names it", Keys.keyOf("out", "normal"), "-");
+        holds("and Return for going in", Keys.keyOf("run", "normal"), "Return");
+        holds("and no key steps in but Return", Keys.keyOf("into", "normal"), "");
 
         // [what, the text, the caret, where Ctrl+W deletes back to]
         const words = [
