@@ -231,6 +231,26 @@ ShellRoot {
                 id: column
                 anchors.fill: parent
 
+                // How far the said line's baseline stands above the
+                // screen's foot: a twelfth of the screen, at least a
+                // floating frame's distance, and, while the boot line
+                // shows, far enough that what PAM says ends a floating
+                // frame's distance above the boot line's capitals, since
+                // the two don't belong together.
+                readonly property real bootFloor: Theme.space.rung.inset
+                    + noteFace.tightBoundingRect("H").height + Theme.space.rung.screen
+                    + voiceFace.descent
+                readonly property real floor: Math.max(height / 12, Theme.space.rung.screen,
+                    bootShows ? bootFloor : 0)
+                // The boot line is the least of what's here, so on a screen
+                // too short for it and the rest, it gives way: it shows only
+                // while the time still stands a floating frame's distance
+                // from the screen's top with the card raised over it.
+                readonly property bool bootShows: root.booted.length > 0
+                    && height - Math.max(height / 12, bootFloor) - voiceFace.capitals
+                        - Theme.space.beat - card.height - 3 * Theme.space.beat
+                        - time.dayBaseline >= Theme.space.rung.screen
+
                 FontMetrics {
                     id: voiceFace
                     readonly property real capitals: tightBoundingRect("H").height
@@ -261,8 +281,8 @@ ShellRoot {
                     // What PAM says is about the field, so its capitals
                     // stand a beat under the card, nearer it than the time
                     // is.
-                    y: snap.whole(column.height - Math.max(column.height / 12,
-                        Theme.space.rung.screen) - voiceFace.capitals - Theme.space.beat - height)
+                    y: snap.whole(column.height - column.floor - voiceFace.capitals
+                        - Theme.space.beat - height)
                     width: root.width
                     keys: true
                     urgent: root.failed
@@ -373,7 +393,7 @@ ShellRoot {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Theme.space.rung.inset - (booted.height - noteFace.ascent)
-                visible: root.booted.length > 0
+                visible: column.bootShows
 
                 Item {
                     id: booted
