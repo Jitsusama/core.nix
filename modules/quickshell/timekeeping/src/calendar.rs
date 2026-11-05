@@ -321,7 +321,8 @@ fn term_at_end_of(day: RataDie) -> usize {
 /// The sun's apparent longitude in degrees at a Julian day, by Meeus's
 /// low-precision formula (Astronomical Algorithms, chapter 25), within
 /// about 0.01°, about fifteen minutes of the sun's path: a term that
-/// begins that near midnight may be put a day out.
+/// begins that near midnight may be put a day out, though none from 2025
+/// to 2030 is (solar-terms.txt, the Hong Kong Observatory's days).
 fn sun_longitude(julian_day: f64) -> f64 {
     let t = (julian_day - 2_451_545.0) / 36_525.0;
     let mean = 280.466_46 + 36_000.769_83 * t + 0.000_303_2 * t * t;
@@ -479,6 +480,34 @@ mod tests {
         let stood_in: Calendars = serde_json::from_str(include_str!("../calendars-reading.json"))
             .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(on(&stood_in.day), Some(stood_in));
+    }
+
+    /// The Hong Kong Observatory's English for each term, in TERMS' order.
+    const OBSERVED: [&str; 24] = [
+        "Vernal Equinox", "Bright & Clear", "Corn Rain", "Summer Commences", "Corn Forms",
+        "Corn on Ear", "Summer Solstice", "Moderate Heat", "Great Heat", "Autumn Commences",
+        "End of Heat", "White Dew", "Autumnal Equinox", "Cold Dew", "Frost", "Winter Commences",
+        "Light Snow", "Heavy Snow", "Winter Solstice", "Moderate Cold", "Severe Cold",
+        "Spring Commences", "Spring Showers", "Insects Waken",
+    ];
+
+    #[test]
+    fn every_term_begins_on_the_day_the_observatory_says() {
+        let mut wrong = Vec::new();
+        let mut read = 0;
+        for line in include_str!("solar-terms.txt").lines().filter(|line| !line.starts_with('#')) {
+            let (day, name) = line.split_once(' ').unwrap_or_else(|| panic!("{line}"));
+            let term = OBSERVED.iter().position(|each| *each == name);
+            let calendars = on(day).unwrap_or_else(|| panic!("{day}"));
+            let began = figure_of(&calendars.calendars[0], "termBegan").and_then(|it| it.day.clone());
+            let said = figure_of(&calendars.calendars[0], "term").map(|it| it.native.clone());
+            if term.map(|at| TERMS[at].1.to_owned()) != said || began.as_deref() != Some(day) {
+                wrong.push(format!("{line}: {said:?} from {began:?}"));
+            }
+            read += 1;
+        }
+        assert_eq!(read, 144, "six years of 24 terms");
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
     #[test]
