@@ -28,8 +28,8 @@ const table = [
     // lines; an arrow is its letter and nothing else.
     { act: "down", keys: ["j", "Down"], modes: moving, kind: "motion", does: "down a card" },
     { act: "up", keys: ["k", "Up"], modes: moving, kind: "motion", does: "up a card" },
-    { act: "first", keys: [["g", "g"]], modes: moving, kind: "motion", does: "the newest, or n" },
-    { act: "last", keys: ["G"], modes: moving, kind: "motion", does: "the oldest, or n" },
+    { act: "first", keys: [["g", "g"]], modes: moving, kind: "motion", does: "newest, or {n}th" },
+    { act: "last", keys: ["G"], modes: moving, kind: "motion", does: "oldest, or {n}th" },
     { act: "viewTop", keys: ["H"], modes: moving, kind: "motion", does: "the view's top" },
     { act: "viewMiddle", keys: ["M"], modes: moving, kind: "motion", does: "the view's middle" },
     { act: "viewBottom", keys: ["L"], modes: moving, kind: "motion", does: "the view's bottom" },
@@ -46,7 +46,7 @@ const table = [
     { act: "into", keys: ["l", "Right"], does: "into its acts" },
     { act: "out", keys: ["h", "Left", "Backspace", "-"], does: "out of its acts" },
     // Return goes to whoever sent it, or does the act it stands on.
-    { act: "open", keys: ["Return", "Enter"], hint: "open", does: "go to its sender" },
+    { act: "open", keys: ["Return", "Enter"], hint: "go to", does: "go to its sender" },
 
     // Operators: d is done, marked read where the sender offers Read and
     // then forgotten; y copies what it said. c changes nothing here, so
@@ -91,9 +91,13 @@ const table = [
     { act: "numbers", keys: [["Space", "u", "l"]], does: "relative numbers" },
     { act: "back", keys: ["Escape"], does: "let them go" },
     { act: "back", keys: ["Escape"], modes: ["visual"], does: "stop choosing" },
+    // While Space ? lists these, the foot says how to move through them
+    // and how to leave; the moves are normal's, so these only hint.
+    { act: "scroll", keys: ["j k"], modes: ["listing"], hint: "scroll" },
+    { act: "back", keys: ["Escape"], modes: ["listing"], hint: "back" },
 
     // The find line: what types is the line's, these its own.
-    { act: "open", keys: ["Return", "Enter"], modes: ["find"], hint: "open",
+    { act: "open", keys: ["Return", "Enter"], modes: ["find"], hint: "go to",
         does: "go to its sender" },
     { act: "choose", keys: ["Down", "Tab", "Ctrl+N"], modes: ["find", "command"],
         does: "the next" },
@@ -349,7 +353,8 @@ const groups = [
 
 // How a key is drawn: its glyph where Chord.qml has one by name, else its
 // name lowercase, as the foot says them.
-const faces = { Return: "\u21b5", Enter: "\u21b5", Escape: "esc", Space: "space" };
+// Faces as the launcher's foot draws them (ListedKeys.js).
+const faces = { Return: "\u21b5", Enter: "\u21b5", Escape: "Esc" };
 
 // One key or sequence as the foot and the list say it: a sequence's keys
 // a space apart, or none where it's two letters, as dd.
@@ -391,7 +396,8 @@ function helpAt(list, topic) {
 }
 
 // The hints the foot gives in a mode, from the table: each act with a hint
-// done there, its first key and its word, Space ? always last. `has` says
+// done there, its first key and its word, as the launcher's foot gives
+// them: Return's at the right end and Space ? just before it. `has` says
 // which acts the cursor card or the selection lacks (false), so a hint
 // never names a key that would do nothing; `words` gives a hint's word
 // where the card says it otherwise, as d's "read" or "forget".
@@ -403,11 +409,11 @@ function hints(mode, has, words) {
         }
         out.push({ act: row.act, key: spoken(row.keys[0]), word: words[row.act] ?? row.hint });
     }
-    const keys = out.findIndex(one => one.act === "keys");
-    if (keys >= 0) {
-        out.push(out.splice(keys, 1)[0]);
-    }
-    return out;
+    const last = one => (one.key === faces.Return ? 2 : 0) + (one.act === "keys" ? 1 : 0);
+    // Sorted by where each must stand, the rest kept in the table's order.
+    return out.map((one, at) => ({ one, at }))
+        .sort((a, b) => last(a.one) - last(b.one) || a.at - b.at)
+        .map(placed => placed.one);
 }
 
 // Where a list scrolled in a room is, as Neovim's ruler says it: All when

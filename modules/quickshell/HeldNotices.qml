@@ -516,9 +516,12 @@ Floating {
     readonly property var entries: {
         const one = current;
         const out = [];
-        const entry = (command, short, name, key, writes) => ({
-            command, short, name, key, writes: writes ?? command,
-            notation: NoticeList.notation(command, short)
+        // As the launcher's menu (CommandMenu.qml) reads a line: its command
+        // and short form, what follows them where the line names its
+        // argument, its title and its key; `writes` is what Tab writes.
+        const entry = (command, short, name, key, writes, after) => ({
+            command, short, name, title: name, key, writes: writes ?? command,
+            after: after ?? ""
         });
         if (one && (stack.opens(one) || Notices.senderWindow(one.appName)))
             out.push(entry("open", "ope", Words.name("verb:notice:open"), "\u21b5"));
@@ -529,18 +532,21 @@ Floating {
         out.push(entry("delete", "d", "Done", "dd"),
             entry("forget", "forg", Words.name("verb:notice:forget"), ""),
             entry("yank", "y", Words.name("verb:notice:copy"), "yy"),
-            entry("edit", "e", Words.name("verb:notices:all"), "", "e Notices"),
-            Object.assign(entry("global", "g", "On Each Found", "", "g/"),
-                { notation: "g[lobal]/pat/cmd" }),
+            entry("edit", "e", Words.name("verb:notices:all"), "", "e Notices", " Notices"),
+            entry("global", "g", "On Each Found", "", "g/", "/pat/cmd"),
             entry("undo", "u", "Bring Them Back", "u"),
-            entry("redo", "red", "Take Them Again", "ctrl+r"),
+            entry("redo", "red", "Take Them Again", "Ctrl+R"),
             entry("quit", "q", "Let Them Go", "ZZ"),
-            entry("help", "h", "These Keys", "space ?"),
-            Object.assign(entry("set", "se", "Relative Numbers", "space u l", "set rnu!"),
-                { notation: "se[t] rnu!" }),
-            Object.assign(entry("{n}", "{n}", "Go to Line n", "nG", ""), { notation: "{n}" }));
+            entry("help", "h", "These Keys", "Space ?"),
+            entry("set", "se", "Relative Numbers", "Space u l", "set rnu!", " rnu!"),
+            entry("{n}", "", "Go to Line n", "nG", ""));
         return out;
     }
+
+    // The cards the command line acts on: the selection it was opened from,
+    // or the cursor card.
+    readonly property var targets: commandFrom === "visual" && lastSelection
+        ? selectedOf(lastSelection) : [listed[cursor]]
 
     // What a chosen menu line acts on, as a drawer would name it.
     readonly property string actsOn: {
@@ -1124,7 +1130,16 @@ Floating {
 
     // The hints for the cursor card in this mode, from the table.
     readonly property var hints: {
-        const hintMode = pending ? "pending" : mode;
+        // The command line names its own keys: Tab chooses until a line is
+        // chosen or typed, and then Return runs it.
+        if (mode === "command") {
+            if (commandLine.text === "" && menuChosen < 0)
+                return [{ act: "choose", key: "Tab", word: "choose" }];
+            const asked = Ex.parse(commandLine.text, commandNames);
+            const name = asked.global ? "global" : asked.name ?? "";
+            return [{ act: "run", key: "\u21b5", word: name === "" ? "run" : name }];
+        }
+        const hintMode = listing ? "listing" : pending ? "pending" : mode;
         const ids = mode === "visual" ? selected : [listed[cursor]];
         const one = current;
         const opens = one !== null && (stack.opens(one) !== null
@@ -1155,12 +1170,6 @@ Floating {
         id: keysColumn
         font: note.font
         text: "Shift+Tab Up  "
-    }
-
-    TextMetrics {
-        id: notationColumn
-        font: note.font
-        text: "g[lobal]/pat/cmd  "
     }
 
     FontMetrics {
@@ -1246,6 +1255,10 @@ Floating {
                 readonly property bool atCursor: at === held.cursor
                 readonly property bool chosenLine: held.selected.includes(modelData)
                     || atCursor && (held.mode === "normal" || held.pending)
+                // What the command line would act on, which keeps a ground
+                // while the menu's line takes the selection's.
+                readonly property bool targeted: held.mode === "command"
+                    && held.targets.includes(modelData)
                 readonly property var from: one ? Notices.sender(one.appName) : null
                 readonly property bool washed: held.pattern !== ""
 
@@ -1255,14 +1268,18 @@ Floating {
                     width: parent.width
                     height: held.rowHeight
 
-                    // Chosen in visual, the band runs behind the whole card,
-                    // so the cards chosen read as one run, as Vim's lines do.
+                    // Chosen in visual, or waiting on an operator, the band
+                    // runs behind the whole card, so the cards chosen read as
+                    // one run, as Vim's lines do, and d waiting reads apart
+                    // from rest. A command line's targets lie on raised.
                     Rectangle {
                         width: parent.width
-                        height: held.mode === "visual" ? line.height : parent.height
+                        height: held.mode === "visual" || held.pending ? line.height
+                            : parent.height
                         radius: Theme.inner
-                        visible: line.chosenLine
-                        color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                        visible: line.chosenLine || line.targeted
+                        color: Qt.alpha(line.targeted ? Theme.raised : Theme.selection,
+                            Theme.floating.selection)
                     }
 
                     // The gutter: the cursor line's own number in text, the
@@ -1559,59 +1576,16 @@ Floating {
             }
         }
 
-        // The menu, rising above the command line: each command in Vim's
-        // help notation, what it does, and its key, ten at most.
-        Repeater {
-            model: held.mode === "command" && !held.menuAway
-                ? held.menuFound.shown.slice(held.menuFirst, held.menuFirst + held.menuRoom) : []
-
-            Item {
-                id: entry
-
-                required property var modelData
-                required property int index
-                readonly property bool chosenEntry: held.menuFirst + index === held.menuChosen
-
-                width: sheet.width
-                height: held.rowHeight
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.inner
-                    visible: entry.chosenEntry
-                    color: Qt.alpha(Theme.selection, Theme.floating.selection)
-                }
-
-                Text {
-                    id: notation
-                    x: held.ink
-                    width: notationColumn.advanceWidth
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: entry.modelData.notation
-                    color: entry.chosenEntry ? Theme.strong : Theme.text
-                    font: note.font
-                }
-
-                Text {
-                    x: notation.x + notation.width
-                    width: keyOf.x - x - Theme.space.l
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: entry.modelData.name
-                    elide: Text.ElideRight
-                    color: entry.chosenEntry ? Theme.strong : Theme.text
-                    font: note.font
-                }
-
-                Text {
-                    id: keyOf
-                    anchors.right: parent.right
-                    anchors.rightMargin: held.ink
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: entry.modelData.key
-                    color: Theme.muted
-                    font: note.font
-                }
-            }
+        // The menu, rising above the command line: the launcher's own
+        // (CommandMenu.qml), one menu for every : line, as many lines as
+        // the screen has room for.
+        CommandMenu {
+            width: sheet.width
+            all: held.entries
+            lines: held.menuFound.shown
+            chosen: held.menuChosen
+            most: held.menuRoom
+            visible: held.mode === "command" && !held.menuAway && showing > 0
         }
 
         // The find line and the command line: the accent's sigil, what's
@@ -1681,12 +1655,6 @@ Floating {
                 text: "visual line \u00b7 999"
             }
 
-            TextMetrics {
-                id: widestFacts
-                font: note.font
-                text: "3 of 12"
-            }
-
             Text {
                 id: facts
                 x: held.ink
@@ -1714,10 +1682,26 @@ Floating {
             Text {
                 id: hinted
 
-                // The hints that fit, the first and Space ? kept as the
-                // middle ones give way, and Space ? alone at the last.
-                readonly property real fits: foot.width - 2 * held.ink - foot.wordRoom
-                    - Theme.space.l - widestFacts.advanceWidth - Theme.space.l
+                // The room the facts and the mode word leave as they stand,
+                // so at rest, with no mode word, the hints have it all.
+                readonly property real fits: foot.width - 2 * held.ink - factsNow.advanceWidth
+                    - Theme.space.l - (held.modeWord === "" ? 0
+                        : Math.max(foot.wordRoom, wordNow.advanceWidth) + Theme.space.l)
+
+                TextMetrics {
+                    id: factsNow
+                    font: note.font
+                    text: held.facts
+                }
+
+                TextMetrics {
+                    id: wordNow
+                    font: note.font
+                    text: held.modeWord
+                }
+
+                // The hints that fit: the middle ones give way first, then
+                // the first, so Space ? and Return's at the right end stay.
                 readonly property string all: {
                     if (held.said !== "")
                         return held.said;
@@ -1727,10 +1711,10 @@ Floating {
                         return "";
                     const said = held.hints.map(one => `${one.key} ${one.word}`);
                     let shown = said;
-                    while (shown.length > 1 && note.advanceWidth(shown.join(" \u00b7 ")) > fits)
-                        shown = shown.length > 2
-                            ? shown.slice(0, shown.length - 2).concat(shown.slice(-1))
-                            : shown.slice(-1);
+                    while (shown.length > 2 && note.advanceWidth(shown.join(" \u00b7 ")) > fits) {
+                        const going = shown.length > 3 ? 1 : 0;
+                        shown = shown.slice(0, going).concat(shown.slice(going + 1));
+                    }
                     return shown.join(" \u00b7 ");
                 }
 
@@ -1751,9 +1735,7 @@ Floating {
     // line being typed never falls off it; three at least.
     readonly property int screenRows: Math.floor((screenHeight - 2 * Theme.space.xxl) / rowHeight)
     readonly property int menuRoom: Math.max(3, Math.min(10, screenRows - inView.length - 3))
-    // The first menu line shown, so the chosen one's always among them.
-    readonly property int menuFirst: Math.max(0, Math.min(menuChosen - menuRoom + 1,
-        menuFound.shown.length - menuRoom))
+
 
     SystemClock {
         id: clock
