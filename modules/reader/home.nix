@@ -178,12 +178,17 @@ let
         colour = "text";
       }
     );
-    # The lede and a quote: the voice, a touch lighter, in the text.
+    # The lede and a quote: the voice, a touch lighter, in the text, and
+    # in the words' plainer italic. Voice's wonky cut leans its h and b,
+    # which is whimsy in the shell's short lines but in a paragraph reads
+    # 'shed' as 'sfied'.
     voice = set (
       voice
       // {
         axes = voice.axes // {
           wght = 360;
+          SOFT = 50;
+          WONK = 0;
         };
         colour = "text";
       }
