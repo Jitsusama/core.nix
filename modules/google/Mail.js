@@ -6,13 +6,11 @@
 // Times are milliseconds since 1970, as the program gives them.
 .pragma library
 .import "Calendar.js" as Calendar
+.import "When.js" as When
 
 // In milliseconds.
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
-const DAY = 86_400_000;
-// Within how many days mail is said by its day of the week: a week.
-const WEEK = 7;
 
 function sameYear(at, now) {
     return new Date(at).getFullYear() === new Date(now).getFullYear();
@@ -20,11 +18,12 @@ function sameYear(at, now) {
 
 // When mail came, as its row says it, in the launcher's one way to say
 // when (Y2YBTS's): "just now" within a minute, "12 min ago" within the
-// hour, its time earlier today, "yesterday", its weekday within the last
-// six days, else "28 Oct", with the year only when it isn't this one. A
-// moment ahead of now, from a wrong clock, says its time on its own day,
-// else its date. The words are `said`'s, the vocabulary's, and the names
-// the locale's, as `said.date` gives them, Qt's `formatDate` in the shell.
+// hour, its time earlier today, and before today its day as When.js says
+// any: "yesterday", its weekday within the last six days, else "28 Oct",
+// with the year only when it isn't this one. A moment ahead of now, from a
+// wrong clock, says its time on its own day, else its date. The words are
+// `said`'s, the vocabulary's, and the names the locale's, as `said.date`
+// gives them, Qt's `formatDate` in the shell.
 function came(at, now, said) {
     const since = now - at;
     if (since >= 0 && since < MINUTE) {
@@ -33,18 +32,8 @@ function came(at, now, said) {
     if (since >= 0 && since < HOUR) {
         return String(said.minutes).replace("{minutes}", Math.floor(since / MINUTE));
     }
-    const days = Math.round((Calendar.midnight(now) - Calendar.midnight(at)) / DAY);
-    const date = new Date(at);
-    if (days === 0) {
-        return Calendar.clock(date);
-    }
-    if (days === 1) {
-        return said.yesterday;
-    }
-    if (days > 1 && days < WEEK) {
-        return said.date(date, "dddd");
-    }
-    return said.date(date, sameYear(at, now) ? "d MMM" : "d MMM yyyy");
+    const day = When.day(at, now, said);
+    return day === "" ? Calendar.clock(new Date(at)) : day;
 }
 
 // What its row says beside it: who it's from and when it came, "Ada

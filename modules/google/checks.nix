@@ -92,6 +92,7 @@ onLinux {
       cp ${../../tests/drive.qml} drive.qml
       cp ${./Drive.js} Drive.js
       cp ${./Mail.js} Mail.js
+      cp ${../quickshell/When.js} When.js
       cp ${./Calendar.js} Calendar.js
       cp ${./Google.js} Google.js
       cp ${./Saves.js} Saves.js
@@ -113,6 +114,7 @@ onLinux {
       cp ${../../tests/mail.qml} mail.qml
       cp ${./Google.js} Google.js
       cp ${./Mail.js} Mail.js
+      cp ${../quickshell/When.js} When.js
       cp ${./Calendar.js} Calendar.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
