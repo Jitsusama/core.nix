@@ -708,14 +708,17 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     machine.send_key("tab")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
 
+    # What the drawer draws, since its facts keep the last plate as it goes back in.
     def listed(listing: bool) -> None:
         desktop.launcher_until(
             lambda shown: (
                 shown["open"]
                 and shown.get("listing") == listing
-                and ("Space ?  F1" in shown["drawer"]["facts"]) == listing
+                and ("Space ?  F1" in shown["drawer"]["drawnFacts"]) == listing
             )
         )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["labelsWhole"], f"a key's name is broken: {drawer}"
 
     machine.send_chars(" ?")
     listed(listing=True)
