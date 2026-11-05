@@ -107,7 +107,8 @@ Floating {
     readonly property real eyebrowDropped: eyebrowRuler.y + eyebrowRuler.baselineOffset
 
     // Where its lines' baselines are, down from its top, for the launcher
-    // to report: the eyebrow's and the middle of its line, the title's,
+    // to report: the eyebrow's and the middle of its line, the title's first
+    // and last lines',
     // each fact's first line's, the words' first line's, and the top of a
     // preview and its lines' baselines. Worked out
     // only when asked, since nothing drawn depends on them.
@@ -123,6 +124,10 @@ Floating {
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
+            // Its last line's, two of the pitch a line, which what follows
+            // stands one empty line below.
+            titleLast: titleText.visible ? flowed(titleText)
+                + (titleText.lineCount - 1) * 2 * drawer.pitch : null,
             preview: previewBox.visible ? contentTop + flow.y + previewBox.y : null,
             previewLines: previewLines.visible ? Array.from({ length: previewRows.count },
                 (_, at) => {
