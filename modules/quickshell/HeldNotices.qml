@@ -989,6 +989,18 @@ Floating {
         }
     }
 
+    // The view scrolled as Vim's is, the cursor kept in it (NoticeList's
+    // scrolled): Ctrl+E Ctrl+Y, zz zt zb and the wheel.
+    readonly property var scrolls: ["lineDown", "lineUp", "viewCentre", "viewAtTop",
+        "viewAtBottom"]
+    function scroll(motion, count) {
+        const to = NoticeList.scrolled(motion, cursor, count,
+            { count: listed.length, top: firstShown, shown: room });
+        firstShown = to.top;
+        cursorId = listed[to.cursor] ?? cursorId;
+    }
+    onFirstShownChanged: if (stack.holding) Report.say(`notice view from ${firstShown + 1}`)
+
     function act(read) {
         const count = read.count;
         const motions = ["down", "up", "first", "last", "viewTop", "viewMiddle", "viewBottom",
@@ -997,6 +1009,10 @@ Floating {
             const to = NoticeList.moved(read.act, cursor, count,
                 { count: listed.length, top: firstShown, senders: listed.map(id => senderOf(id)) });
             cursorId = listed[to] ?? cursorId;
+            return;
+        }
+        if (scrolls.includes(read.act)) {
+            scroll(read.act, count);
             return;
         }
         switch (read.act) {
@@ -1242,6 +1258,23 @@ Floating {
         width: parent.width - 2 * x
         topPadding: Theme.inset
         bottomPadding: Theme.inset
+
+        // The wheel scrolls three lines a notch, as his Neovim's mousescroll
+        // does, the cursor kept in view; over the key list, the list.
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: event => {
+                const notches = Math.round(-event.angleDelta.y / 120);
+                if (notches === 0)
+                    return;
+                if (held.listing) {
+                    held.listTop = Math.max(0, Math.min(held.listTop + 3 * notches,
+                        Math.max(held.keyList.length - held.room, 0)));
+                    return;
+                }
+                held.scroll(notches > 0 ? "lineDown" : "lineUp", 3 * Math.abs(notches));
+            }
+        }
 
         // The lines in view, or Space ?'s list in their place.
         Repeater {
