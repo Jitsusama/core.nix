@@ -339,6 +339,8 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
         print(f"clicked at {glyph} of the screen")
         print(desktop.as_account("niri msg layers; niri msg --json focused-output"))
         raise
+    # From the find, Return lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
@@ -377,6 +379,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.photograph("launcher-held")
     desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")
+    # From the find, Return lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     desktop.as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
