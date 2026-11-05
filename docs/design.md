@@ -1761,9 +1761,9 @@ one table, `QueryKeys.js`.
   again come back, as his Space Tab goes to the file used last; Shift+Tab
   does nothing, as in Vim. Space ? and F1 list every key here in the
   drawer, in place of the row's plate, until Space ? again or Escape, as
-  the notices' Space ? does: Vim's own where an act has them, j and k
-  rather than the arrows beside them, so each name sits whole beside what
-  it does. Space w closes, as it closes his split; and
+  the notices' Space ? does: Vim's own where an act has them and the
+  arrows he presses, j k ↓ ↑ without PgDn, Backspace or Space w beside
+  them, so each name sits whole beside what it does. Space w closes, as it closes his split; and
   Space alone waits for its second key, as gg's g does, and lets go.
   Leaving insert puts the caret one left, as Vim does.
 - **Search,** from normal: / searches forward and ? back, typed on the

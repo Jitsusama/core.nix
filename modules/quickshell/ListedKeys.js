@@ -54,7 +54,7 @@ function sequenceFace(keys) {
 }
 
 // Vim's own keys first, as his Neovim's help gives them, then those with
-// Ctrl, then the named keys: j k, not \u2193 j \u2191 k.
+// Ctrl, then the named keys: j k \u2193 \u2191, not \u2193 j \u2191 k.
 function rank(keys) {
     const sequence = Array.isArray(keys) ? keys : [keys];
     if (sequence.every(key => key.length === 1)) {
@@ -63,14 +63,18 @@ function rank(keys) {
     return sequence[0].startsWith("Ctrl+") ? 1 : 2;
 }
 
-// An act's keys as the list names them: only those of its first rank, so
-// a move reads as Vim's j rather than beside the arrow that does it too,
-// as the notices' list names each act's first key. The drawer's names
-// stay short enough to sit whole beside what they do in the narrowest
-// plate, and the named keys left out are the ones a keyboard shows.
+// The arrows, which Joel presses rather than hjkl ("support hjkl even
+// though i only use arrows"), so the list never hides them.
+const arrows = ["Up", "Down", "Left", "Right"];
+
+// An act's keys as the list names them: those of its first rank, as the
+// notices' list names each act's first key, and its arrow beside them.
+// The drawer's names stay short enough to sit whole beside what they do
+// in the narrowest plate, so PgDn, Backspace and Space w, which do what a
+// listed key does, are left out.
 function firstRank(keys) {
     const best = Math.min(...keys.map(rank));
-    return keys.filter(key => rank(key) === best);
+    return keys.filter(key => rank(key) === best || arrows.includes(key));
 }
 
 // Every line Space ? lists, as the drawer's facts, from QueryKeys' table:

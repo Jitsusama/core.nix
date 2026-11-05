@@ -352,17 +352,19 @@ QtObject {
         holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
-        // desktop draws them, Vim's own where an act has them.
+        // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
             lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends",
             search: "search", found: "found" };
         const list = Listed.keyList(Keys.table, lines);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
-        holds("the list's rows, without the arrows", keyed("rows"), "j  k");
+        holds("the list's rows, the arrows after Vim's", keyed("rows"),
+            "j  k  \u2193  \u2191");
         holds("the list's ends, a sequence as Vim writes it", keyed("ends"), "gg  G");
         holds("the list's screens, Ctrl's before the named keys", keyed("screen"),
             "Ctrl+F  Ctrl+B");
-        holds("the list's in and out, - among them", keyed("in and out"), "l  h  -");
+        holds("the list's in and out, - among them", keyed("in and out"),
+            "l  h  -  \u2192  \u2190");
         holds("the list's Return, once", keyed("run"), "\u21b5");
         holds("the list's place used last", keyed("last"), "Tab  Space Tab");
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
@@ -372,6 +374,15 @@ QtObject {
         holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
         holds("every line the list gives has its keys",
             Listed.keyList(Keys.table, {}).filter(line => line.label === "").length, 0);
+        // Joel presses the arrows, so every act one does in normal lists it.
+        const arrowed = Keys.table.filter(one => (one.mode === "normal" || one.mode === "both")
+            && one.keys.some(key => ["Up", "Down", "Left", "Right"].includes(key)));
+        const drawn = Listed.keyList(Keys.table, {}).map(line => line.label).join("  ")
+            .split("  ");
+        holds("every act an arrow does lists its arrow", arrowed
+            .map(one => one.keys.filter(key => ["Up", "Down", "Left", "Right"].includes(key)))
+            .reduce((all, some) => all.concat(some), [])
+            .filter(key => !drawn.includes(Listed.face(key))), []);
         // The narrowest plate's names sit whole at 16 figures; 14 leaves a
         // glyph's room.
         holds("every line's keys are short enough to sit whole",
