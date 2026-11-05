@@ -939,6 +939,12 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
                     and shown["drawer"]["title"] == "time.harbour.test"
                 )
             )
+            # Each fact is its name and its value on one line, or its name with its value
+            # under it: no name broken, no value wrapping beside one, no word broken.
+            drawer = desktop.showing()["drawer"]
+            assert drawer["labelsWhole"], f"a fact's name is broken: {drawer}"
+            assert drawer["besideOnOneLine"], f"a value wraps beside its name: {drawer}"
+            assert drawer["valuesWhole"], f"a fact's value breaks a word: {drawer}"
         desktop.photograph(picture)
         desktop.close_launcher()
     # The time here counts each second while it's shown, and a tick never moves the

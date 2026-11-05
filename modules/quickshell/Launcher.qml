@@ -3854,6 +3854,8 @@ Scope {
                 factsUnder: drawerCard.factsUnder(),
                 // Whether every value keeps its words whole where it's drawn.
                 valuesWhole: drawerCard.valuesWhole(),
+                // Whether every value beside its name takes one line there.
+                besideOnOneLine: drawerCard.besideOnOneLine(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),

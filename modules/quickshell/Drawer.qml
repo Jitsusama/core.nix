@@ -281,24 +281,36 @@ Floating {
         }
         return under;
     }
-    // Whether every name fits its column on one line, for the launcher to
+    // The facts' rows drawn, each a fact row's item.
+    function drawnRows() {
+        const rows = [];
+        for (let at = 0; at < factRows.count; at += 1) {
+            const row = factRows.itemAt(at);
+            if (row !== null)
+                rows.push(row);
+        }
+        return rows;
+    }
+    // Whether every name is drawn on one line, the moment's in their
+    // column and the facts' where each is drawn, for the launcher to
     // report when asked.
     function labelsWhole() {
-        return allFacts.every(fact => factFace.advanceWidth(fact.label ?? "") <= labelsWide);
+        const moment = [].concat(...groups.map(group => group.facts));
+        return moment.every(fact => factFace.advanceWidth(fact.label ?? "") <= labelsWide)
+            && drawnRows().every(row => row.nameWhole);
     }
     // Whether every value drawn keeps each of its words whole, none so
     // wide where it's drawn that it breaks partway, for the launcher to
     // report when asked.
     function valuesWhole() {
-        for (let at = 0; at < factRows.count; at += 1) {
-            const row = factRows.itemAt(at);
-            if (row === null || !row.known)
-                continue;
-            const words = unbroken(row.modelData.value).split(" ");
-            if (words.some(word => factFace.advanceWidth(word) > row.valueWide))
-                return false;
-        }
-        return true;
+        return drawnRows().every(row => !row.known || unbroken(row.modelData.value).split(" ")
+            .every(word => valueFace.advanceWidth(word) <= row.valueWide));
+    }
+    // Whether every value beside its name takes one line there, so the
+    // facts are each beside or under and never a mix, for the launcher
+    // to report when asked.
+    function besideOnOneLine() {
+        return drawnRows().every(row => row.oneLineBeside);
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
@@ -706,6 +718,12 @@ Floating {
                                 : drawer.labelsWide + drawer.labelsGap
                             // How wide its value may run where it's drawn.
                             readonly property real valueWide: width - valueFrom
+                            // Whether its name is drawn on one line, and
+                            // its value, beside the name, on one too, but
+                            // for a key's saying, which may take two.
+                            readonly property bool nameWhole: heading || label.lineCount <= 1
+                            readonly property bool oneLineBeside: heading || under || !known
+                                || drawer.listsKeys || value.lineCount <= 1
 
                             width: parent.width
                             height: heading ? headingRoom + drawer.pitch

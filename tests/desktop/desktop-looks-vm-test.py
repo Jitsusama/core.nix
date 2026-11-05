@@ -312,8 +312,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # and what doesn't fit above the foot's inset waits for Shift and the arrows.
         assert "Name" not in drawer["drawnFacts"], drawer
         assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
-        # A value too wide beside its name for one of its words, as an address, goes under
-        # it rather than breaking the word.
+        # Each fact is its name and its value on one line, or its name with its value under
+        # it, so a value too long beside its name, as an address or a reach, never wraps
+        # there or breaks a word.
+        assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
         assert drawer["more"] or facts[-1] < drawer["foot"], (
             f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
@@ -323,8 +325,8 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         )
         desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
-        # The zone's plate, under its eyebrow: a value that won't sit beside its name in two
-        # lines, as "none before 2046", takes the plate's width under it instead, so no fact
+        # The zone's plate, under its eyebrow: a value that won't sit beside its name on one
+        # line, as "none before 2046", takes the plate's width under it instead, so no fact
         # stands taller than two lines and none reads a word a line.
         desktop.answer("time")
         desktop.step_in()
@@ -343,6 +345,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         assert all(later - earlier <= 2 * PITCH + NEAR for earlier, later in pairwise(facts)), (
             f"at {scale} a value stands a word a line beside its name: {drawer}"
         )
+        assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
