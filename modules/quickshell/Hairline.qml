@@ -11,7 +11,11 @@ import QtQuick.Window
 Rectangle {
     id: rule
 
-    readonly property real ratio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    // The window's own ratio, which a fractional scale sets, rather than
+    // the screen's: under Wayland the screen says its output's whole scale,
+    // 2 where the window draws at 1.5.
+    readonly property real ratio: Window.window?.devicePixelRatio
+        ?? (Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1)
 
     // A length rounded to whole device pixels, for a band beside a rule.
     function whole(length: real): real {
