@@ -1208,11 +1208,11 @@ Item {
             id: hintText
             readonly property bool voiced: input.text === "" && prompt.cleared === ""
             readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
-            // With nothing typed, past the caret where one is drawn, an s
+            // With nothing typed, past the caret where one is drawn, a mark
             // after it, so the caret never covers the hint's first letter
             // (VKCF3Z's space audit of the picker, fault 11).
             x: input.text !== "" ? input.contentWidth
-                : prompt.caretShown ? prompt.caretWidth + Theme.space.s : 0
+                : prompt.caretShown ? prompt.caretWidth + Theme.space.rung.mark : 0
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
@@ -1228,9 +1228,10 @@ Item {
             font.variableAxes: hintText.level.variableAxes
         }
 
-        // The narrowed find's count, at Note after what's typed.
+        // The narrowed find's count, at Note, apart from what's typed, as
+        // the ladder sets typed text and its count (docs/design.md).
         Text {
-            x: input.contentWidth + Theme.space.m
+            x: input.contentWidth + Theme.space.rung.apart
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline

@@ -6056,7 +6056,7 @@ Scope {
                             id: rowsGutter
                             height: parent.height
                             clip: true
-                            slots: Math.ceil(height / Theme.space.xxxl) + 1
+                            slots: Math.ceil(height / root.rowTall) + 1
                             current: root.current
                             relative: root.numbersRelative
                             shown: root.numbered

@@ -25,9 +25,10 @@ Item {
     // How many numbers it has made, now: its slots while shown, else none.
     readonly property int made: numbers.count
 
-    // Three digits' room, so a long list never widens it, and a space
-    // before the rows.
-    width: widest("000") + Theme.space.m
+    // Three digits' room, so a long list never widens it, and a mark
+    // before the rows, as a key stands from its word (docs/design.md,
+    // The Ladder).
+    width: widest("000") + Theme.space.rung.mark
 
     function widest(text) {
         metrics.text = text;
@@ -72,7 +73,7 @@ Item {
                 && number.row.at === gutter.current
 
             visible: number.row !== null
-            width: gutter.width - Theme.space.m
+            width: gutter.width - Theme.space.rung.mark
             horizontalAlignment: Text.AlignRight
             y: (number.row?.base ?? 0) - number.baselineOffset
             text: number.row === null ? "" : gutter.numberOf(number.row.at)

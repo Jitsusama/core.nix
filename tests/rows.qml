@@ -465,7 +465,7 @@ ShellRoot {
             const letters = line.mapToItem(null, 0, 0).x;
             const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
             expect("a hint starts past the caret", hinting !== undefined
-                && hinting.from >= letters + voicedField.caretWidth + Theme.space.s - 0.5,
+                && hinting.from >= letters + voicedField.caretWidth + Theme.space.rung.mark - 0.5,
                 `hint at ${hinting?.from}, letters at ${letters}`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
