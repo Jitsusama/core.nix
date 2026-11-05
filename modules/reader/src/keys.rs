@@ -874,7 +874,7 @@ impl Machine {
     /// moves goes on; a repeat neither starts a sequence nor ends one, so
     /// a held y copies once, from its press, and leaves nothing waiting.
     pub fn held(&mut self, key: Key, selecting: bool) -> Option<(Act, Option<u32>)> {
-        if self.count.is_some() || !self.pending.is_empty() {
+        if self.waiting() {
             return None;
         }
         let done = self.press(key, selecting).filter(|(act, _)| act.repeats());
@@ -1043,6 +1043,12 @@ mod tests {
         assert!(typed(&mut machine, "g").is_empty());
         assert_eq!(machine.held(Char('g'), false), None, "nor ends a sequence");
         assert_eq!(typed(&mut machine, "g"), [(Act::First, None)]);
+        assert!(typed(&mut machine, "d").is_empty());
+        assert_eq!(machine.held(Char('d'), false), None, "nor ends an operator");
+        assert_eq!(
+            typed(&mut machine, "j"),
+            [(Act::Change(Edit::DeleteMotion), None)]
+        );
         assert_eq!(machine.held(Char('v'), false), None);
         assert_eq!(machine.held(Char('5'), false), None);
         assert_eq!(typed(&mut machine, "j"), [(Act::Down, None)]);
