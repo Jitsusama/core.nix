@@ -56,6 +56,16 @@ end
 -- but a mouse's.
 vim.fn.writefile({ 'local function hello()', 'end' }, 'probe.lua')
 vim.cmd('edit probe.lua')
+-- q closes nothing anywhere, as Joel asked: :q closes a window, and
+-- Escape a float.
+local function quiet(where)
+  if vim.fn.maparg('q', 'n') ~= '' then
+    say(where .. ' binds q, which closes nothing')
+  end
+end
+vim.cmd('help')
+quiet('help')
+vim.cmd('helpclose')
 local function window(scope, filetype, open, theirs)
   open()
   if not vim.wait(DEADLINE, function()
@@ -86,6 +96,7 @@ local function window(scope, filetype, open, theirs)
       end
     end
   end
+  quiet(scope)
 end
 window('outline', 'aerial', function()
   require('aerial').open({ focus = true })
