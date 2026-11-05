@@ -138,6 +138,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} home's rows say nothing: {card}"
         )
         desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
+        # No key is named in a mode where it does nothing: in insert the arrows move the caret,
+        # so home's first row, a place, says Return alone, and in normal its arrow as well.
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
+        assert not arrowed, f"at {scale} insert's foot names an arrow: {arrowed}"
+        desktop.normal()
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
+        desktop.insert()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
         card = desktop.showing()["drawer"]["cardLines"]
