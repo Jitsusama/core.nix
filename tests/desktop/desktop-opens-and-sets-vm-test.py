@@ -776,6 +776,13 @@ def commands_a_network(desktop: Desktop) -> None:
         )
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # :setl trust trusts the network the cursor is on, as its Trust It row
+    # does, which turns on mDNS there, and notrust stops.
+    for typed, mdns in [("trust", "+mDNS"), ("notrust", "-mDNS")]:
+        machine.send_chars(f":setl {typed}\n")
+        machine.wait_until_succeeds(
+            f"resolvectl status wlan1 | grep -qF -- {mdns}", timeout=timedelta(seconds=30)
+        )
     for key in ["esc", "ctrl-c", "backspace"]:
         machine.send_chars(":")
         desktop.launcher_until(lambda shown: line(shown).get("line") == "")
