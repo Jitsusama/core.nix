@@ -1746,8 +1746,9 @@
   the-query-field-takes-vi-modes = ''
     the launcher's field reads its keys from one table in two modes: insert's caret moves,
     Ctrl+W and Ctrl+U, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I A, cc and
-    S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c begun
-    before it steps back
+    S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c or a
+    count begun before it steps back, and normal's moves through the rows as Vim's, with counts:
+    j k, gg G, H M L and Ctrl+D U F B
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
