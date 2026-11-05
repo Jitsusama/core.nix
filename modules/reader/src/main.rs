@@ -822,6 +822,31 @@ impl App {
         self.jump_to(to * self.px_per_pt());
     }
 
+    /// Puts the cursor on the line at or below `pt`, as Vim moves its
+    /// cursor to a paragraph, a heading, a mark or a line's number: the
+    /// view stays while the line shows four lines inside its edges, moves
+    /// just enough to keep them when the line is less than half a screen
+    /// past one, and else sets the line in its middle. Without the page's
+    /// lines, or past its last, it lands as a heading's link does.
+    fn bring(&mut self, pt: f64) {
+        let Some((top, foot)) = self
+            .line_from(pt)
+            .zip(self.words.as_deref())
+            .map(|(i, lines)| (moves::top_of(&lines[i]), moves::foot_of(&lines[i])))
+        else {
+            self.land(pt);
+            return;
+        };
+        self.aim = Some(top);
+        let (view_top, view_foot) = self.view_pt();
+        let half = (view_foot - view_top) / 2.0;
+        if top < view_top - half || foot > view_foot + half {
+            self.jump_to(((top + foot) / 2.0 - half) * self.px_per_pt());
+        } else {
+            self.follow_line(top, foot, None);
+        }
+    }
+
     /// j and k: the cursor `by` lines down, or up, by the lines shown, and
     /// the view after it, keeping four lines between it and the edge it
     /// goes toward, as his Neovim's scrolloff. Before the page's lines are
@@ -875,8 +900,8 @@ impl App {
     }
 
     /// Puts the cursor on a line: the view stays where the line shows
-    /// whole, as vi's cursor moves within the screen, and else the line
-    /// lands at its top.
+    /// whole, as vi's cursor moves within the screen, and else the view
+    /// brings it in, as Vim's does.
     fn reach(&mut self, line: usize) {
         let Some(lines) = self.words.as_deref() else {
             return;
@@ -886,7 +911,7 @@ impl App {
         if top >= view_top - 0.5 && foot <= view_foot {
             self.aim = Some(top);
         } else {
-            self.land(top);
+            self.bring(top);
         }
     }
 
@@ -987,7 +1012,7 @@ impl App {
                         let blocks = place::blocks(&self.painter.page().frame);
                         let to = moves::source_line(&blocks, *n).unwrap_or(0.0);
                         self.remember(here);
-                        self.land(to);
+                        self.bring(to);
                     }
                     ex::Command::Last => {
                         self.remember(here);
@@ -1820,15 +1845,15 @@ impl App {
                 self.leap(count.map_or(f64::MAX, |n| f64::from(n.saturating_sub(1)) * line));
                 self.aim = count.is_none().then_some(f64::INFINITY);
             }
-            // A mark is the cursor's line, as vi's is, and going to it lands
-            // that line at the view's top, as a heading's link does.
+            // A mark is the cursor's line, as vi's is, and going to it puts
+            // the cursor back on that line.
             Act::SetMark(letter) => {
                 self.marks.insert(letter, here);
             }
             Act::GoToMark(letter) => {
                 if let Some(&pt) = self.marks.get(&letter) {
                     self.remember(at / self.px_per_pt());
-                    self.land(pt);
+                    self.bring(pt);
                 }
             }
             Act::LastJump => {
@@ -2005,7 +2030,7 @@ impl App {
                     matches!(act, Act::ParagraphOn | Act::HeadingOn),
                     matches!(act, Act::HeadingOn | Act::HeadingBack),
                 );
-                self.land(to);
+                self.bring(to);
             }
             Act::ViewTop | Act::ViewMiddle | Act::ViewBottom => {
                 let (top, foot) = self.view_pt();

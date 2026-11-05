@@ -136,7 +136,14 @@ impl App {
                     Act::CopyAParagraph => layout.paragraph_of(unit, Object::AParagraph),
                     _ => layout.to_paragraph_end(unit, times),
                 });
+                // As Vim's yank, the cursor goes to the start of what it
+                // took when that's above it, as y i p's is from inside.
                 if let Some(taken) = taken {
+                    let (top, foot) = layout.line_extent(taken.ends().0.line);
+                    if top < here - 0.5 {
+                        self.aim = Some(top);
+                        self.follow_line(top, foot, None);
+                    }
                     self.copy(&layout, taken);
                 }
                 return true;
@@ -170,9 +177,13 @@ impl App {
                 self.follow_cursor();
                 return true;
             }
+            // y leaves the cursor at the selection's start, as Vim's does.
             Act::Copy => {
                 let taken = selection.clone();
                 self.end_selection();
+                let (top, foot) = layout.line_extent(taken.ends().0.line);
+                self.aim = Some(top);
+                self.follow_line(top, foot, None);
                 self.copy(&layout, taken);
                 return true;
             }
@@ -228,9 +239,9 @@ impl App {
     /// Moves the view to keep a line from `top` to `foot` in it, four lines
     /// from its edge as his Neovim's scrolloff: from the edge it went
     /// toward, down for `Some(true)` and up for `Some(false)`, or either.
-    /// A landing leaves its line at the view's top, so a j after it keeps
-    /// the view where it is. At once for a step, as a jump for further than
-    /// half a screen.
+    /// A heading's link leaves its line at the view's top, so a j after it
+    /// keeps the view where it is. At once for a step, as a jump for
+    /// further than half a screen.
     pub(crate) fn follow_line(&mut self, top: f64, foot: f64, toward: Option<bool>) {
         let (view_top, view_foot) = self.view_pt();
         let room = SCROLL_OFF_LINES * LINE_PT;
