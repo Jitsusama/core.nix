@@ -27,6 +27,15 @@ Item {
     property bool reading: false
     // How wide a figure's character is, so the pace is in characters.
     property real figure: 0
+    // The runs of letters a find matched in the words, washed beneath them
+    // (Wash.qml), and the words as they read, without the markup styled
+    // words carry, to measure them in.
+    property var finds: []
+    property string plain: text
+    // Whether the words lie on the selection, whose wash is a shade past it.
+    property bool washedSelected: false
+    // Where it's washed in the words, each run's start, width and ground.
+    readonly property var washed: wash.item ? (wash.item as Wash).laid : []
     // Said each time the words are back at their start, so a row with two
     // cut can hand the turn to the other.
     signal through
@@ -67,6 +76,21 @@ Item {
         font.weight: room.level.weight
         font.variableAxes: room.level.variableAxes
         font.features: room.level.features
+
+        // Made only while there's a find to wash, beneath the letters.
+        Loader {
+            id: wash
+            anchors.fill: parent
+            z: -1
+            active: room.finds.length > 0
+            sourceComponent: Wash {
+                text: room.plain
+                runs: room.finds
+                font: words.font
+                cut: words.truncated
+                selected: room.washedSelected
+            }
+        }
     }
 
     // Animators, which move the words on the render thread, so the slide
