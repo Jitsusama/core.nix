@@ -95,11 +95,14 @@ Item {
     property bool editsWords: words
     property var changes: []
     onWordsChanged: changes = []
-    // The mode it's in: "insert", "normal", or "page" while the launcher's
-    // drawer holds the keys, gone into with Space and the right arrow, as
-    // his Neovim goes to the window beside, and "pageVisual" or
-    // "pageVisualLine" while choosing there. It opens in insert (take()).
+    // The mode it's in: "insert", "normal", "visual" while visual line
+    // chooses rows, or "page" while the launcher's drawer holds the keys,
+    // gone into with Space and the right arrow, as his Neovim goes to the
+    // window beside, and "pageVisual" or "pageVisualLine" while choosing
+    // there. It opens in insert (take()).
     property string mode: "insert"
+    // Whether the keys are on the rows, in normal and visual alike.
+    readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
     // The kind the drawer last chose by, for gv to choose by again, let go
     // once the keys leave it, as the drawer lets what it chose go.
     property string lastChosen: ""
@@ -308,7 +311,9 @@ Item {
     signal stepped(string act, int count)
     // An operator done: "ending" for d and "copy" for y, with the count
     // typed before it, 0 for none, and the motion it took, { act, count },
-    // or null for dd and yy (QueryKeys.spanned takes them).
+    // or null for dd and yy (QueryKeys.spanned takes them); in visual, d, y
+    // or "run" for Return, with the motion { act: "visual" }, over the
+    // selection.
     signal operated(string act, int count, var motion)
     // : in normal, which opens the command line in the line's place
     // (CommandLine.qml), with the range a count before it gives, as 3:
@@ -489,9 +494,14 @@ Item {
         const next = read.act === "reselect" && lastChosen !== "" ? lastChosen
             : QueryKeys.modeAfter(read.act, mode);
         if (next !== mode) {
+            // Visual's d, y and Return take the selection before it ends,
+            // as Vim's visual operators do (Launcher.qml's operated, which
+            // the file picker's takes(rows) hooks for Return).
+            if (mode === "visual" && QueryKeys.takesSelection(read.act))
+                prompt.operated(read.act, 0, { act: "visual", count: 0 });
             // y copies what the drawer chose and gv brings the last back
             // before the mode moves, while it still holds what they act on.
-            if (["copy", "copyLines", "reselect"].includes(read.act))
+            else if (["copy", "copyLines", "reselect"].includes(read.act))
                 prompt.stepped(read.act, read.count);
             input.deselect();
             // Going into insert on a prompt's words is a change u takes
@@ -573,7 +583,7 @@ Item {
             prompt.operated(read.act, read.count, read.motion);
             break;
         case "command":
-            prompt.commanded(QueryKeys.counted(read.count));
+            prompt.commanded(QueryKeys.rangeFor(read.count, mode));
             break;
         case "letterBack":
         case "letterNext":
@@ -701,10 +711,10 @@ Item {
     readonly property real caretWidth: modal ? Math.max(1, Math.round(letterWidth / 4)) : 2
     // Whether the field draws its caret: not in normal, where the keys are
     // on the rows. A block there sat on the hint's first letter, in the
-    // hint's face, before anything was typed (Joel, 2026-11-04). Nor while
-    // the drawer holds the keys, as Neovim draws one cursor, in the window
-    // the keys are in.
-    readonly property bool caretShown: !(modal && (mode === "normal" || QueryKeys.paged(mode)))
+    // hint's face, before anything was typed (Joel, 2026-11-04). Nor in
+    // visual, nor while the drawer holds the keys, as Neovim draws one
+    // cursor, in the window the keys are in.
+    readonly property bool caretShown: !(modal && QueryKeys.still(mode))
 
     FontMetrics {
         id: typedFace

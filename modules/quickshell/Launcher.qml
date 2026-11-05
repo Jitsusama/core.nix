@@ -55,6 +55,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
+import "Reading.js" as Reading
 import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
@@ -1853,6 +1854,10 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
+        // In visual, Return opens the selection's rows it can, by count.
+        if (visual)
+            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row))
+                .length, Words.field.visual ?? {})]];
         // One Return typed in insert leaves be says Return only where it
         // steps in, and no arrow, since insert's arrows move the caret.
         if (guarded(choice))
@@ -2021,6 +2026,11 @@ Scope {
     property int rowsDrawn: 0
 
     onMatchesChanged: {
+        // The selection's start keeps to the row it began on, as the
+        // cursor does (compose's Rank.pinned), so rows arriving above it
+        // never move what d would take from what's tinted.
+        if (visualFrom >= 0)
+            visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
         rowsMade += 1;
         noteKeys();
         noteFigures();
@@ -3770,6 +3780,28 @@ Scope {
         operatorSaidFor = prompt.keysTaken;
     }
 
+    // What a pending d or y will take, for the mode word's room, said at
+    // once so d is never pressed blind: the keys typed, then the cursor
+    // row's ending verb or copy and its name, or the count's rows ("d \u00b7
+    // disconnect Home-5G", "3d \u00b7 close 3"); "" with none waiting. Only
+    // the one row's actions are read, and only while an operator waits.
+    readonly property string pendingSaid: {
+        const hit = Operators.pending(prompt.standing);
+        const row = current >= 0 ? matches[current] : headline;
+        if (hit === null || !row)
+            return "";
+        const words = Words.field.operators ?? {};
+        const act = QueryKeys.operators[prompt.standing.operator.key];
+        const actions = actionsOf(row);
+        const copy = act === "copy"
+            && Operators.copyOf(row, actions, one => verbOf(one) === "copy" && !!one.run);
+        const ending = act === "ending" ? Operators.endingOf(row, actions) : null;
+        const verb = copy ? words.copies ?? ""
+            : ending !== null ? ending.ends || (words.ends ?? "") : null;
+        return Operators.pendingSays(Object.assign(hit, { act, verb, name: row.name ?? "" }),
+            words);
+    }
+
     // A row's actions that d and y may take: its operands, where it says
     // them, plain fields a place of hundreds makes in well under the 4 ms
     // a key has; else its actions as the right arrow lists them, each a
@@ -3783,8 +3815,68 @@ Scope {
 
     // d or y (Prompt.qml's operated), over the rows from the selection to
     // where the motion goes, or as many as the count says.
+    // Visual line's selection: the row it began on, -1 outside it, and the
+    // first and last rows it takes, as places in the rows. It begins on the
+    // cursor row as V is pressed, and outlives the command line its colon
+    // opens, which gives it back on Escape.
+    property int visualFrom: -1
+    readonly property bool visual: prompt.mode === "visual"
+    readonly property var visualSpan: Operators.selection(visualFrom, current)
+    readonly property int visualTop: visualSpan.from
+    readonly property int visualBottom: visualSpan.to
+    onVisualChanged: visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current
+    // What the row it began on is, to find it again as the rows change.
+    property string visualId: ""
+    onVisualFromChanged: visualId = visualFrom >= 0 && matches[visualFrom]
+        ? Rank.identity(matches[visualFrom]) : ""
+
+    // The rows the selection takes.
+    function visualRows() {
+        return matches.slice(Math.max(0, visualTop), visualBottom + 1);
+    }
+
+    // Whether a row wears the selection's ground: visual's, or what a
+    // pending operator will take.
+    function tints(at) {
+        if (asked !== null) {
+            return askedOver.includes(at);
+        }
+        return visualFrom >= 0 ? at >= visualTop && at <= visualBottom
+            : at === current && pendingSaid !== "";
+    }
+
+    // Return over the selection: the place stepped into takes the rows
+    // itself where it says so (takes(rows) true, as the file picker's
+    // marks them); else every row Return takes somewhere is opened, never
+    // one that changes something, and what couldn't be is said once
+    // ("2 of 3 open"), the cursor left on the first row taken.
+    function ranOver(taken) {
+        const rows = taken.map(one => one.row);
+        const place = held.length > 0 ? held[held.length - 1].row : null;
+        if (place && typeof place.takes === "function" && place.takes(rows) === true)
+            return;
+        const opening = rows.filter(row => Catalogue.opens(row));
+        const said = Operators.openedSaid(opening.length, rows.length,
+            Words.field.visual ?? {});
+        if (said !== "")
+            operatorSays(said);
+        Report.say(`opened ${opening.length} of ${rows.length}`);
+        for (const row of opening)
+            run(row, false);
+    }
+
     function operated(act, count, motion) {
         searchNow();
+        if (motion?.act === "visual") {
+            const taken = Operators.taken(matches, visualSpan, headline);
+            if (act === "copy")
+                yanked(taken);
+            else if (act === "ending")
+                ended(taken);
+            else
+                ranOver(taken);
+            return;
+        }
         const view = list.inView();
         const span = Operators.spanned(count, motion, {
             at: current,
@@ -4533,6 +4625,10 @@ Scope {
                     ? `${line.command} ${line.title}`
                     : `${line.command} ${line.argument} ${line.title}`),
                 from: root.commanding?.from ?? "",
+                // The range it was opened with, as visual's '<,'>, and
+                // how many rows its acts act on.
+                range: root.commanding?.range ?? "",
+                things: root.commanding?.things.length ?? 0,
                 // What it's aimed at over a viewer, whose rows aren't drawn.
                 over: root.over ? root.commanding.things.map(thing => thing.name) : null
             },
@@ -4558,8 +4654,12 @@ Scope {
             operated: foot.operatorWord === null ? ""
                 : `${foot.operatorWord[0]} ${foot.operatorWord[1]}`,
             flashing: Object.keys(root.flashing).map(Number),
-            // The rows that wear visual's tint: those an ask covers.
-            tinted: root.asked !== null ? root.askedOver.slice() : [],
+            // The mode word's room as it reads, and the rows that wear
+            // visual's tint, by their place: visual's, what a pending
+            // operator will take, and what an ask covers.
+            modeWord: modeWord.visible ? modeWord.said : "",
+            tinted: Array.from({ length: root.matches.length }, (_, at) => at)
+                .filter(at => root.tints(at)),
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4618,6 +4718,8 @@ Scope {
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
+            // The keys the foot says now, each its mark and its word.
+            hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
@@ -5191,11 +5293,13 @@ Scope {
                         // after; hidden by its light, so its focus stays.
                         opacity: root.commanding === null && !root.commandSays ? 1 : 0
                         // From the drawer, :{n} and :$ go to its lines,
-                        // as they do in his Neovim's window.
+                        // as they do in his Neovim's window; from visual,
+                        // the line takes the rows chosen.
                         onCommanded: range => root.commandLine(root.over
                             ?? (QueryKeys.paged(prompt.mode)
                                 ? { go: to => drawerCard.go(to === "$" ? "last" : "first",
                                     to === "$" ? 0 : to) }
+                                : root.visual ? { range, things: root.visualRows() }
                                 : { range }))
                         steady: true
                         // Neovim's command line, opening in insert, but for
@@ -5844,7 +5948,7 @@ Scope {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
                                     flashed: root.flashing[entry.index] === true
-                                    tinted: covered
+                                    tinted: root.tints(entry.index)
                                     // Seen until the closing card has faded, and
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
@@ -5951,11 +6055,14 @@ Scope {
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,
-                        // its own (y/n) saying how it's answered.
+                        // its own (y/n) saying how it's answered, and nor
+                        // does an operator waiting, since no key of the
+                        // row's does what it says until it's done: what it
+                        // will take has their room (modeWord's pending).
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : prompt.asking !== "" ? []
+                            : prompt.asking !== "" || root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
                             : root.keysFor(choice)
                         // As the card last showed them, while it's closed
@@ -6077,10 +6184,24 @@ Scope {
                             readonly property var sought: prompt.standing.seek
                                 ?? (prompt.mode === "page" && found !== null
                                     ? drawerCard.lastSought : null)
-                            readonly property string counted: prompt.standing.count !== ""
-                                && !prompt.standing.seek ? prompt.standing.count
+                            // A pending operator's count is in what it says.
+                            readonly property string counted: root.pendingSaid !== ""
+                                && !prompt.standing.seek ? ""
+                                : prompt.standing.count !== "" && !prompt.standing.seek
+                                    ? prompt.standing.count
                                 : sought ? `${sought.forward ? "/" : "?"}${sought.pattern}${ofAll}`
                                 : ""
+                            // A pending operator and what it will take, in
+                            // the accent as a mode's word is, the row's name
+                            // whole in the keys' room as well as its own
+                            // (VKCF3Z and Y2YBTS, 2026-11-05: "d \u00b7 close
+                            // Notes" read as a whole name where two windows
+                            // began so), and given way at a whole word, an
+                            // ellipsis after it, only where even that's too
+                            // little, as everything cut is.
+                            readonly property string pending: root.pendingSaid === "" ? ""
+                                : Reading.wholeWords(root.pendingSaid, width,
+                                    text => measure.advanceWidth(text))
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
@@ -6092,8 +6213,11 @@ Scope {
                             readonly property string word: (Words.field.modes ?? {})[prompt.mode]
                                 ?? ""
                             readonly property string said: counted !== "" ? counted
+                                : pending !== "" ? pending
                                 : !prompt.modal || root.commanding !== null ? ""
                                 : prompt.mode === "normal" && root.placeSays !== "" ? root.placeSays
+                                : root.visual ? Operators.visualSaid(word, root.visualSpan,
+                                    Words.field.visual ?? {})
                                 : QueryKeys.chosen(prompt.mode)
                                     ? `${word} \u00b7 ${drawerCard.chosenCount}`
                                 : word
@@ -6103,6 +6227,10 @@ Scope {
                             // to be measured again in the theme's face once
                             // that arrives: measured in the face before it,
                             // insert showed as its last letters at scale 2.
+                            // Visual's word is held with a count of three
+                            // figures, "visual line \u00b7 999", as the spec
+                            // sizes the room, so a count or an operator's
+                            // words never move the facts beside it.
                             readonly property real room: {
                                 void measure.font;
                                 const modes = Words.field.modes ?? {};
@@ -6112,13 +6240,16 @@ Scope {
                                 let widest = root.placeSays === "" ? 0
                                     : measure.advanceWidth(root.placeSays);
                                 for (const [mode, word] of Object.entries(modes))
-                                    widest = Math.max(widest, measure.advanceWidth(word
-                                        + (QueryKeys.chosen(mode) ? " \u00b7 999" : "")));
+                                    widest = Math.max(widest, measure.advanceWidth(
+                                        mode === "visual" ? Operators.visualSaid(word,
+                                            { from: 1, to: 999 }, Words.field.visual ?? {})
+                                        : word + (QueryKeys.chosen(mode) ? " \u00b7 999" : "")));
                                 return words.length === 0 ? 0
                                     : keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
-                            width: Math.max(0, room - keys.spacing)
+                            width: Math.max(0, root.pendingSaid !== ""
+                                ? foot.width - Theme.space.l - x : room - keys.spacing)
                             anchors.verticalCenter: parent.verticalCenter
                             visible: said !== ""
                             text: said

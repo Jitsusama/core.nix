@@ -282,6 +282,8 @@ QtObject {
             ["nothing", "nothing", "nothing", "nothing"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
+        pending(holds);
+        visual(holds);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
@@ -335,6 +337,109 @@ QtObject {
             + `dG in ${ending.toFixed(3)} ms`);
         holds(`yG over ${count} rows in under ${under} ms`, yanking < under, true);
         holds(`and dG over ${count}`, ending < under, true);
+    }
+
+    // An operator waiting for what it acts on, as the mode word's room says
+    // it: the keys typed so far, and what the cursor row would take.
+    function pending(holds) {
+        const standing = keys => typed(["Escape", ...keys]).standing;
+        holds("nothing pending at rest", Operators.pending(Keys.rest()), null);
+        holds("nor with a count alone", Operators.pending(standing(["3"])), null);
+        holds("the keys an operator waits after, and its count", ["d", "3d", "d2", "2d3",
+            "dg", "y"].map(keys => Operators.pending(standing(keys.split(""))))
+            .map(hit => `${hit.typed} ${hit.count}`),
+        ["d 0", "3d 3", "d2 2", "2d3 6", "dg 0", "y 0"]);
+
+        // The verb is the row's: its ending's for d, copy for y, or none
+        // where it has nothing d or y takes.
+        const words = { pending: "{typed} \u00b7 {what}", hit: "{verb} {name}",
+            hits: "{verb} {count}", nothing: "nothing to end", noCopy: "nothing to copy" };
+        const says = (typedSoFar, act, verb, count) => Operators.pendingSays({
+            typed: typedSoFar, act, verb, name: "Home-5G", count }, words);
+        holds("d says the cursor row's end", says("d", "ending", "disconnect", 0),
+            "d \u00b7 disconnect Home-5G");
+        holds("a count says how many it takes", says("3d", "ending", "close", 3),
+            "3d \u00b7 close 3");
+        holds("a count of one is the row", says("1d", "ending", "close", 1),
+            "1d \u00b7 close Home-5G");
+        holds("y says copy", says("y", "copy", "copy", 0), "y \u00b7 copy Home-5G");
+        holds("a row d can't end says so", says("d", "ending", null, 0),
+            "d \u00b7 nothing to end");
+        holds("and one y can't copy", says("y", "copy", null, 0), "y \u00b7 nothing to copy");
+    }
+
+    // Visual line, Vim's V over the rows: its keys, the rows it takes and
+    // what Return over them says.
+    function visual(holds) {
+        const doing = [
+            ["V begins visual line", ["Escape", "V"], ["normal", "selectLines"], "visual"],
+            ["V again ends it", ["Escape", "V", "V"], ["normal", "selectLines",
+                "selectLines"], "normal"],
+            ["and so does Escape", ["Escape", "V", "Escape"], ["normal", "selectLines",
+                "normal"], "normal"],
+            ["and Ctrl+C, as Vim's", ["Escape", "V", "Ctrl+c"], ["normal", "selectLines",
+                "normal"], "normal"],
+            ["Escape cancels a count first", ["Escape", "V", "3", "Escape"],
+                ["normal", "selectLines"], "visual"],
+            ["normal's moves extend it, with counts", ["Escape", "V", "j", "3", "k", "g", "g",
+                "G", "Ctrl+d", "Down"], ["normal", "selectLines", "next", "3 previous", "first",
+                "last", "halfDown", "next"], "visual"],
+            ["d takes the selection at once, and ends it", ["Escape", "V", "j", "d"],
+                ["normal", "selectLines", "next", "ending"], "normal"],
+            ["and y", ["Escape", "V", "y"], ["normal", "selectLines", "copy"], "normal"],
+            ["and Return", ["Escape", "V", "Return"], ["normal", "selectLines", "run"],
+                "normal"],
+            ["a colon opens the command line, the selection standing", ["Escape", "V", ":"],
+                ["normal", "selectLines", "command"], "visual"],
+            ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A", "x"],
+                ["normal", "selectLines"], "visual"],
+            ["in insert, V types", ["V"], [], "insert"]
+        ];
+        for (const [what, keys, want, mode] of doing) {
+            const got = typed(keys);
+            holds(what, [got.counted, got.mode], [want, mode]);
+        }
+        holds("a letter in visual is the line's, never typed",
+            typed(["Escape", "V", "x"]).ours, true);
+        holds("d in visual waits for no motion",
+            typed(["Escape", "V", "d"]).standing.operator, undefined);
+        holds("V is once a press", Keys.repeats("selectLines"), false);
+        holds("the command line takes the selection's range", [Keys.rangeFor(0, "visual"),
+            Keys.rangeFor(3, "visual"), Keys.rangeFor(3, "normal"), Keys.rangeFor(0, "normal")],
+        ["'<,'>", "'<,'>", ".,.+2", ""]);
+
+        // The rows the selection takes, from where it began to the cursor,
+        // either way; none where it hasn't begun.
+        holds("down from where it began", Operators.selection(2, 5), { from: 2, to: 5 });
+        holds("or up", Operators.selection(5, 2), { from: 2, to: 5 });
+        holds("or the one row", Operators.selection(4, 4), { from: 4, to: 4 });
+        holds("and none before it begins", Operators.selection(-1, 3), { from: 0, to: -1 });
+        // Where it began is held by that row, as the cursor is, so rows
+        // arriving or leaving above it never move what it takes.
+        const named = keys => keys.map(key => ({ key }));
+        const keyOf = row => row.key;
+        holds("a row arriving above keeps it on the row it began on",
+            Operators.heldFrom(named(["new", "a", "b", "c"]), "b", 1, keyOf), 2);
+        holds("and one leaving above", Operators.heldFrom(named(["b", "c"]), "b", 1, keyOf), 0);
+        holds("its row gone, it stays where it was, within the rows",
+            [Operators.heldFrom(named(["a", "c"]), "b", 1, keyOf),
+                Operators.heldFrom(named(["a"]), "b", 1, keyOf)], [1, 0]);
+        holds("and none begun stays none", Operators.heldFrom(named(["a"]), "", -1, keyOf), -1);
+
+        // Return over the selection opens the rows it can, and says how
+        // many of how many where it couldn't open them all.
+        const words = { opens: "open {count}", opened: "{open} of {count} open" };
+        holds("the foot says how many Return opens", Operators.opensSaid(3, words), "open 3");
+        holds("and what it opened, where not all", Operators.openedSaid(2, 3, words),
+            "2 of 3 open");
+        holds("and nothing where it opened every one", Operators.openedSaid(3, 3, words), "");
+        // The mode word counts the rows chosen, as the spec's "visual line
+        // \u00b7 3", the one row among them.
+        const counting = { counted: "{mode} \u00b7 {count}" };
+        holds("the mode word counts what's chosen",
+            [Operators.visualSaid("visual line", { from: 2, to: 4 }, counting),
+                Operators.visualSaid("visual line", { from: 5, to: 5 }, counting)],
+            ["visual line \u00b7 3", "visual line \u00b7 1"]);
     }
 
     // The keys typed from a line's opening in insert, on a prompt's words.

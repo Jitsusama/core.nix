@@ -69,6 +69,17 @@ function ends(row) {
     return row.act === "ending" || (row.ends ?? "") !== "";
 }
 
+// Whether Return over visual's selection opens it: a row Return takes
+// somewhere, as a program's or a window's, and never one that changes
+// something, as one that stays to show its new state does (Joel,
+// 2026-10-26), nor one that ends or disrupts, nor a place, which Return
+// steps into, since Return in visual never changes anything (Y2YBTS's
+// yes, 2026-11-04).
+function opens(row) {
+    return typeof row.run === "function" && kindOf(row) === "action" && !row.stays
+        && !ends(row) && !disruptive(row);
+}
+
 // Whether it's a place, which is opened, or an action, which is done: a
 // part holding more is a place, though Return steps into it by running.
 function kindOf(row) {

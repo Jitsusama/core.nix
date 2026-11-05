@@ -999,6 +999,20 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     desktop.close_launcher()
+    # In normal, dd on the network ends it by disconnecting it, never by
+    # forgetting it, and asks first; Escape says no, and it stays.
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.normal()
+    machine.send_chars("d")
+    desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
+    with desktop.told("ask ready"), desktop.told("asked Disconnect Lantern? (y/n)"):
+        machine.send_chars("d")
+    with desktop.told("answered no"):
+        machine.send_key("esc")
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    desktop.close_launcher()
     commands_a_network(desktop)
     # The Office asks for an account: met for the first time, it asks
     # the account's name, its server's domain and its password in

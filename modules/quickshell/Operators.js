@@ -5,6 +5,53 @@
 // tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
 
+// The operators, by their key, and the act each does over the rows it
+// takes.
+const operators = { d: "ending", y: "copy" };
+
+// The moves an operator takes as its motion, each linewise on the rows,
+// as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
+// scroll rather than move, so Vim takes none of them as a motion.
+const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"];
+
+// Two counts as one, as Vim multiplies the count before an operator and
+// the one after it: 2d3j goes six rows. Either alone is itself, and
+// neither is no count.
+function multiplied(before, after) {
+    if (before === "" && after === "") {
+        return 0;
+    }
+    return Number(before === "" ? 1 : before) * Number(after === "" ? 1 : after);
+}
+
+// A key while an operator waits: the operator's own key again does it
+// over the row and those below, as dd does; a motion does it as far as
+// that goes, as dj does, with the counts multiplied; a sequence's first
+// key (gg's g) waits for the rest; anything else lets it go. It waits as
+// long as it takes for its motion, as Vim's does. What normal's table
+// makes of the keys typed (`matching`) and how the keys stand at rest
+// (`rested`) are QueryKeys.js's, which reads every other key.
+function operated(standing, key, matching, rested) {
+    const { operator } = standing;
+    const act = operators[operator.key];
+    const count = multiplied(operator.count, standing.count);
+    if (standing.typed.length === 0 && key === operator.key) {
+        return { act, count, motion: null, standing: rested, ours: true };
+    }
+    // Another operator's key lets this one go, as dy does in Vim.
+    const typed = standing.typed.concat([key]);
+    const matched = key in operators ? { act: "", begun: false } : matching(typed);
+    if (motions.includes(matched.act)) {
+        return { act, count: 0, motion: { act: matched.act, count }, standing: rested,
+            ours: true };
+    }
+    if (matched.act === "" && matched.begun) {
+        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
+            ours: true };
+    }
+    return { act: "", count: 0, standing: rested, ours: true };
+}
+
 // Where a move takes the selection, from where the rows stand: the row
 // selected, the highest it may go (-1 where an answer's headline sits
 // above the rows) and the last, the first and last rows wholly in view,
@@ -164,3 +211,78 @@ function asks(actions, commands) {
         return !(flags.guarded === true && alone);
     });
 }
+
+// An operator waiting for what it acts on, from how the keys stand: the
+// keys typed since its count, as 3d or d2 or dg, and the count its rows
+// would be as the two multiply, 0 where none was typed. Null with none
+// waiting.
+function pending(standing) {
+    const { operator } = standing;
+    if (operator === undefined) {
+        return null;
+    }
+    return {
+        typed: operator.count + operator.key + standing.count + standing.typed.join(""),
+        count: multiplied(operator.count, standing.count)
+    };
+}
+
+// What a pending operator will hit, as the mode word's room says it: the
+// keys typed, then the verb and the cursor row's name, or the count's
+// rows where it takes more than one, as "d · disconnect Home-5G" and
+// "3d · close 3"; where the row has nothing it takes, the operator's own
+// word for that. `hit` is { typed, act, verb, name, count }, its verb
+// null for nothing.
+function pendingSays(hit, words) {
+    const nothing = hit.act === "copy" ? words.noCopy : words.nothing;
+    const what = hit.verb === null ? nothing
+        : (hit.count > 1 ? words.hits : words.hit)
+            .replace("{verb}", hit.verb)
+            .replace("{name}", hit.name)
+            .replace("{count}", String(hit.count));
+    return words.pending.replace("{typed}", hit.typed).replace("{what}", what ?? "");
+}
+
+// The rows visual line takes, from where it began to the cursor, either
+// way; none before it begins, its start being -1.
+function selection(from, at) {
+    if (from < 0) {
+        return { from: 0, to: -1 };
+    }
+    return { from: Math.min(from, at), to: Math.max(from, at) };
+}
+
+// Where visual line's start goes as the rows change under it: onto the
+// row it began on, found by what it is (`id`, as `identity` reads a row),
+// else where it was, within the rows; -1, none begun, stays.
+function heldFrom(rows, id, from, identity) {
+    if (from < 0) {
+        return from;
+    }
+    const found = id === "" ? -1 : rows.findIndex(row => identity(row) === id);
+    return found >= 0 ? found : Math.max(0, Math.min(from, rows.length - 1));
+}
+
+// What the foot says Return does over a selection: open its rows, by
+// their count, as "open 3".
+// Visual's mode word, counting the rows chosen (`span`, as selection gives
+// it), as the spec's "visual line · 3".
+function visualSaid(mode, span, words) {
+    return (words.counted ?? "{mode}").replace("{mode}", mode)
+        .replace("{count}", String(span.to - span.from + 1));
+}
+
+function opensSaid(count, words) {
+    return (words.opens ?? "").replace("{count}", String(count));
+}
+
+// What's said once Return has opened a selection's rows where it couldn't
+// open them all, "2 of 3 open", and nothing where it opened every one.
+function openedSaid(open, count, words) {
+    if (open === count) {
+        return "";
+    }
+    return (words.opened ?? "").replace("{open}", String(open))
+        .replace("{count}", String(count));
+}
+

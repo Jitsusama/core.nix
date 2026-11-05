@@ -517,6 +517,99 @@ def asks_once_for_the_rest(desktop: Desktop, left: Callable[[], set[int]]) -> No
         machine.send_chars("y")
 
 
+def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
+    """V and j choose windows, y copies their titles, d closes them once asked, Return opens."""
+    machine = desktop.machine
+    opened = {
+        title: desktop.opened(title)["id"]
+        for title in ("Chosen first", "Chosen second", "Chosen third")
+    }
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("chosen")
+    desktop.launcher_until(lambda shown: set(shown["rows"][:3]) == set(opened))
+    desktop.normal()
+    # niri lists them in its own order, so the walk takes the first two
+    # rows as it finds them and leaves the third.
+    rows = desktop.showing()["rows"]
+    taken, kept = rows[:2], rows[2]
+    # Ctrl+C ends visual as Escape does, as in Vim, the launcher staying.
+    machine.send_chars("V")
+    desktop.launcher_until(lambda shown: shown["mode"] == "visual")
+    machine.send_key("ctrl-c")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["mode"] == "normal" and shown["tinted"] == []
+    )
+    # V begins visual line on the cursor row, which it tints, saying so in
+    # the mode word's room with how many it holds; j takes the row below
+    # too, and the foot says how many Return opens.
+    machine.send_chars("V")
+    desktop.launcher_until(
+        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "visual line \u00b7 1"
+    )
+    assert desktop.showing()["tinted"] == [0], desktop.showing()
+    machine.send_chars("j")
+    desktop.launcher_until(
+        lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "visual line \u00b7 2"
+    )
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 open 2"], desktop.showing()
+    # y copies both titles, a line each, flashes them, and ends visual.
+    since = desktop.mark()
+    machine.send_chars("y")
+    desktop.reported("yanked 2", lambda rest: rest == "", since)
+    assert desktop.as_account("wl-paste --no-newline") == "\n".join(taken)
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["tinted"] == [])
+    # A colon opens the command line on the selection, as Vim's '<,'>,
+    # and Escape gives the selection back, as it stood.
+    machine.send_chars("k")
+    desktop.launcher_until(lambda shown: shown["current"] == 0)
+    machine.send_chars("Vj:")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["command"] or {}).get("from") == "visual"
+            and shown["command"]["range"] == "'<,'>"
+            and shown["command"]["things"] == len(taken)
+        )
+    )
+    machine.send_key("esc")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["command"] is None and shown["mode"] == "visual" and shown["tinted"] == [0, 1]
+        )
+    )
+    # d asks once for both and y closes both, the third left.
+    with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
+        machine.send_chars("d")
+    with desktop.told("ended 2"):
+        machine.send_chars("y")
+
+    def closed(_: bool) -> bool:
+        """Say whether the two chosen windows have gone and the third stays."""
+        left = {window["id"] for window in desktop.windows()}
+        return not {opened[title] for title in taken} & left and opened[kept] in left
+
+    retry(closed, timeout=dt.timedelta(seconds=10))
+    # Return over the selection opens what it holds: the third window,
+    # going to it as its own Return does, which lets the launcher go. The
+    # closed rows stay in their place, gone, so it's gone to by its number.
+    shown = desktop.showing()
+    at = next(
+        at
+        for at, thing in enumerate(shown["things"])
+        if not thing["gone"] and thing["reads"].startswith(f"{kept} ")
+    )
+    machine.send_chars(f"{at + 1}G")
+    desktop.launcher_until(lambda shown: shown["current"] == at)
+    machine.send_chars("V")
+    desktop.launcher_until(lambda shown: shown["mode"] == "visual")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    retry(
+        lambda _: desktop.window_titled(kept)["is_focused"],
+        timeout=dt.timedelta(seconds=10),
+    )
+
+
 # A window closed while Super+Tab shows it stays in its place, gone, until
 # a key: rows closing up under the cursor was one of the ways the launcher
 # moved with nothing pressed.

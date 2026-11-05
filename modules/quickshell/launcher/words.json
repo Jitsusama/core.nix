@@ -4874,6 +4874,7 @@
       "command": "disconnect",
       "in": "wifi",
       "name": "Disconnect It",
+      "act": "ending",
       "ends": "disconnect"
     },
     {
@@ -4913,7 +4914,6 @@
       "command": "forget",
       "in": "wifi",
       "name": "Forget It",
-      "act": "ending",
       "ends": "forget"
     },
     {
@@ -5317,6 +5317,7 @@
       "command": "disconnect",
       "in": "bluetooth",
       "name": "Disconnect It",
+      "act": "ending",
       "ends": "disconnect"
     },
     {
@@ -5330,7 +5331,6 @@
       "command": "forget",
       "in": "bluetooth",
       "name": "Forget It",
-      "act": "ending",
       "ends": "forget"
     },
     {
@@ -6632,6 +6632,7 @@
     "found": "{at} of {all}",
     "modes": {
       "insert": "insert",
+      "visual": "visual line",
       "pageVisual": "visual",
       "pageVisualLine": "visual line"
     },
@@ -6708,7 +6709,16 @@
       },
       "ends": "end",
       "nothing": "nothing to end",
-      "noCopy": "nothing to copy"
+      "noCopy": "nothing to copy",
+      "pending": "{typed} \u00b7 {what}",
+      "hit": "{verb} {name}",
+      "hits": "{verb} {count}",
+      "copies": "copy"
+    },
+    "visual": {
+      "counted": "{mode} \u00b7 {count}",
+      "opens": "open {count}",
+      "opened": "{open} of {count} open"
     },
     "command": {
       "quit": "Close the Launcher",

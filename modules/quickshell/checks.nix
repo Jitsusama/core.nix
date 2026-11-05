@@ -2643,6 +2643,7 @@ onLinux {
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./Operators.js} Operators.js
       cp ${./Typing.js} Typing.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js

@@ -7,6 +7,7 @@
 // Letters go by what they type, wherever they sit on the layout.
 .pragma library
 .import "LineEditing.js" as LineEditing
+.import "Operators.js" as Operators
 
 // Each act, the mode it's done in and the keys that do it. A key is named as
 // the field names it (Prompt.qml, `named`): a modifier, then the letter it
@@ -71,6 +72,16 @@ const table = [
     // rows name only the doubled keys, for saying them.
     { act: "ending", mode: "normal", keys: [["d", "d"]] },
     { act: "copy", mode: "normal", keys: [["y", "y"]] },
+    // Visual line, Vim's V, the language's select-lines: the rows from
+    // where it began to the cursor, which normal's moves extend (inMode,
+    // below), and which d, y and Return take at once, as Vim's visual
+    // operators wait for no motion. V again ends it, and Escape, after a
+    // count begun; a colon hands the command line the selection.
+    { act: "selectLines", mode: "normal", keys: ["V"] },
+    { act: "selectLines", mode: "visual", keys: ["V"] },
+    { act: "ending", mode: "visual", keys: ["d"] },
+    { act: "copy", mode: "visual", keys: ["y"] },
+    { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
     { act: "insert", mode: "normal", keys: ["i"] },
@@ -213,54 +224,19 @@ function pending(standing) {
 }
 
 // The operators, by their key, and the act each does over the rows it
-// takes.
-const operators = { d: "ending", y: "copy" };
-
-// The moves an operator takes as its motion, each linewise on the rows,
-// as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
-// scroll rather than move, so Vim takes none of them as a motion.
-const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"];
-
-// Two counts as one, as Vim multiplies the count before an operator and
-// the one after it: 2d3j goes six rows. Either alone is itself, and
-// neither is no count.
-function multiplied(before, after) {
-    if (before === "" && after === "") {
-        return 0;
-    }
-    return Number(before === "" ? 1 : before) * Number(after === "" ? 1 : after);
-}
-
-// A key while an operator waits: the operator's own key again does it
-// over the row and those below, as dd does; a motion does it as far as
-// that goes, as dj does, with the counts multiplied; a sequence's first
-// key (gg's g) waits for the rest; anything else lets it go. It waits as
-// long as it takes for its motion, as Vim's does.
-function operated(standing, key) {
-    const { operator } = standing;
-    const act = operators[operator.key];
-    const count = multiplied(operator.count, standing.count);
-    if (standing.typed.length === 0 && key === operator.key) {
-        return { act, count, motion: null, standing: rest(), ours: true };
-    }
-    // Another operator's key lets this one go, as dy does in Vim.
-    const typed = standing.typed.concat([key]);
-    const matched = key in operators ? { act: "", begun: false } : matching(typed, "normal");
-    if (motions.includes(matched.act)) {
-        return { act, count: 0, motion: { act: matched.act, count }, standing: rest(),
-            ours: true };
-    }
-    if (matched.act === "" && matched.begun) {
-        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
-            ours: true };
-    }
-    return { act: "", count: 0, standing: rest(), ours: true };
-}
+// takes (Operators.js, which reads a key while one waits).
+const operators = Operators.operators;
 
 // The range a count before a colon gives the command line, as Vim's 3:
 // gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
 function counted(count) {
     return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
+}
+
+// The range a colon gives the command line in a mode: visual's selection,
+// as Vim's '<,'>, whatever was counted, or the count's in normal.
+function rangeFor(count, mode) {
+    return mode === "visual" ? "'<,'>" : counted(count);
 }
 
 // The field names a Ctrl chord by its letter as typed, and the line's
@@ -304,9 +280,9 @@ function begins(sequence, typed) {
 }
 
 // Whether a mode is one where nothing types, where counts and the command
-// line are taken: normal on the rows, and the drawer's page.
+// line are taken: normal and visual on the rows, and the drawer's page.
 function still(mode) {
-    return mode === "normal" || paged(mode);
+    return mode === "normal" || mode === "visual" || paged(mode);
 }
 
 // Whether the keys are in the drawer: on its page, or choosing on it by
@@ -320,11 +296,16 @@ function chosen(mode) {
 
 // Whether a row's keys are a mode's: "both" is the line's two modes,
 // insert and normal, and the drawer's page. Choosing on the page, by
-// letters or lines, has pageVisual's rows and the page's moves.
+// letters or lines, has pageVisual's rows and the page's moves; visual on
+// the rows has normal's moves besides its own, since every move extends
+// it.
 function inMode(row, mode) {
     if (chosen(mode)) {
         return row.mode === "pageVisual"
             || ((row.mode === "page" || row.mode === "both") && moves.includes(row.act));
+    }
+    if (mode === "visual" && row.mode === "normal") {
+        return moves.includes(row.act);
     }
     return row.mode === mode || row.mode === "both";
 }
@@ -353,22 +334,23 @@ function matching(typed, mode, words) {
     return { act: "", begun };
 }
 
-// What normal reads before its table, or null for a key it doesn't. A
-// count is typed where nothing types: 0 alone is Vim's first column,
-// which rows haven't, so it counts only after another digit, and one after
-// an operator is its motion's. An operator's key at rest begins it, with
-// the count before it, but on a prompt's words (`words`), where d and c
-// are the words' own, as dw and cw.
-function beforeTable(standing, key, words) {
+// What normal and visual read before their table, or null for a key they
+// don't. A count is typed where nothing types: 0 alone is Vim's first
+// column, which rows haven't, so it counts only after another digit, and
+// one after an operator is its motion's. An operator's key at rest in
+// normal begins it, with the count before it, but on a prompt's words
+// (`words`), where d and c are the words' own, as dw and cw; visual's
+// take no motion.
+function beforeTable(standing, key, mode, words) {
     const atRest = standing.typed.length === 0;
     if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: Object.assign({}, standing,
             { count: standing.count + key, typed: [] }), ours: true };
     }
     if (standing.operator !== undefined) {
-        return operated(standing, key);
+        return Operators.operated(standing, key, typed => matching(typed, "normal"), rest());
     }
-    if (atRest && !words && key in operators) {
+    if (mode === "normal" && atRest && !words && key in operators) {
         const operator = { key, count: standing.count };
         return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
     }
@@ -398,9 +380,9 @@ function read(standing, key, mode, words = false) {
     }
     // A colon at rest where nothing types opens the command line, which
     // takes the keys from here (CommandLine.qml): in normal with a count
-    // typed before it as its range of rows, and in the drawer with none,
-    // since a count there counts lines, not rows. One while an operator
-    // waits lets the operator go, as no motion.
+    // typed before it as its range of rows, in visual over the selection,
+    // and in the drawer with none, since a count there counts lines, not
+    // rows. One while an operator waits lets the operator go, as no motion.
     if (still(mode) && key === ":" && standing.typed.length === 0
         && standing.operator === undefined) {
         const count = mode === "normal" && standing.count !== "" ? Number(standing.count) : 0;
@@ -409,9 +391,10 @@ function read(standing, key, mode, words = false) {
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
-    // Normal's counts and operators, which keep an operator's count apart
-    // from its motion's.
-    const before = mode === "normal" ? beforeTable(standing, key, words) : null;
+    // Normal's and visual's counts and operators, which keep an operator's
+    // count apart from its motion's.
+    const before = mode === "normal" || mode === "visual"
+        ? beforeTable(standing, key, mode, words) : null;
     if (before !== null) {
         return before;
     }
@@ -432,9 +415,8 @@ function read(standing, key, mode, words = false) {
     if (begun) {
         return { act: "", count: 0, standing: { count: standing.count, typed }, ours: true };
     }
-    // In normal and the drawer nothing types, so a key that ends nothing
-    // is the line's and does nothing, letting what was begun go, as vi
-    // does.
+    // Where nothing types, a key that ends nothing is the line's and does
+    // nothing, letting what was begun go, as vi does.
     return { act: "", count: 0, standing: rest(), ours: still(mode) };
 }
 
@@ -461,9 +443,24 @@ function binds(act, key, mode) {
     return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
 }
 
+// Whether an act in visual takes its selection: d, y and Return.
+function takesSelection(act) {
+    return act === "ending" || act === "copy" || act === "run";
+}
+
 // The mode an act leaves the line in.
 function modeAfter(act, mode) {
     if (act === "normal" || act === "rows") {
+        return "normal";
+    }
+    // V on the rows begins visual line there and ends it; in the drawer
+    // it chooses the page's lines (below).
+    if (act === "selectLines" && !paged(mode)) {
+        return mode === "visual" ? "normal" : "visual";
+    }
+    // Visual's d, y and Return take the selection and end it, as Vim's
+    // visual operators do; its colon keeps it behind the command line.
+    if (mode === "visual" && takesSelection(act)) {
         return "normal";
     }
     if (act === "drawer") {
