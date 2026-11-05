@@ -1417,17 +1417,16 @@ works the same way everywhere.
   selection rests, so holding an arrow never flickers it. It's Vim's
   preview window, a split the keys go into: Ctrl+W l takes them in, or
   his Neovim's Space and the right arrow over it, where its frame takes
-  the accent, an accent rule in its left margin marks the cursor's line as the reader's does, and the
-  reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
+  the accent, an accent rule in its left margin marks the cursor's line
+  as the reader's does, and the reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
   view following at his scrolloff by whole lines, its eyebrow and title
   among them, so no line is ever shown cut at its top or foot. It stops
   above the card's foot, which stays and, while the drawer has the keys,
   reads "Space ? keys · Ctrl+W h back", the way out at the right end as
   Return is on the card. Ctrl+W h or w, Space and the left arrow, :q, ZZ
-  or Space w bring them back, and Escape and q do nothing there. Neither
-  the arrows nor Shift and the arrows scroll it, since no bare arrow does
-  anything in normal (Joel, 2026-11-05). Another
-  program's words are shown plain, never as markup.
+  or Space w bring them back, and Escape and q do nothing there. Inside,
+  the arrows move as j and k do, as in any Vim buffer (Joel, 2026-11-05),
+  and Shift with an arrow scrolls nothing. Another program's words are shown plain, never as markup.
 - **A file picked shows what it is** (Joel, 2026-11-03: "i see no
   previews for files ... no clue about sizes or when last updated"). In
   the file picker, a row in the folder shown says its size in SI units,
@@ -1929,12 +1928,14 @@ first only reached. Stepping in from the find line keeps the find line,
 empty, inside: "net", Return, "home", Return. No modified Return has an
 act; Vim's :sp opens below.
 
-**The arrows are their letters** (Joel, 2026-11-04: "i'm thinking arrow
-actions should probably go and we should use vi like interactions"). In
-normal and visual ↓ ↑ ← → are j k h l and nothing more, so they still move,
-since he presses them; on a line or in a prompt ← → move the caret and ↓ ↑
-choose. No arrow or Shift with an arrow has an act of its own. Hints name
-the key, "↵ open" and "- up", and the key list shows both.
+**The arrows move, as in a Vim buffer** (Joel, 2026-11-05: "In normal
+mode, in a buffer, arrows move the cursor"). In normal and visual, Down
+and Up are j and k and Left and Right are h and l, counts and all, so on
+a list Left and Right mean what h and l do: nothing. On a line or in a
+prompt Left and Right move the caret and Down and Up choose. No arrow
+steps in, acts or makes a chord, but for the leader's Space and an arrow
+into the drawer and back, and no hint or key list names one: hints name
+the key that does it, "↵ open" and "- up".
 
 **The leader** is Space, in normal and visual, as his Neovim's
 (`keys.nix`, "What every layer shares"):
@@ -2025,8 +2026,8 @@ fits whole on the laptop's plate.
 - **The drawer** is the preview window: Ctrl+W l goes in and the reader's
   keys work there, and Ctrl+W h or :q comes back, Ctrl+W w either way, as
   Vim goes between windows, with his Neovim's Space and an arrow over
-  them (Joel, 2026-11-05: "leader stuff can overlay default stuff"); no
-  bare arrow does anything in normal.
+  them (Joel, 2026-11-05: "leader stuff can overlay default stuff");
+  inside, the arrows move as j k h l do.
 - **The viewers** close on :q and ZZ, swayimg and zathura on Space w too
   (mpv's Space pauses at once and leads nothing), never on Escape or q, and
   their arrows are their letters, each with one meaning. swayimg's and mpv's
