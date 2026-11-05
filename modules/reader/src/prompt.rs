@@ -620,11 +620,38 @@ fn key_list(width_pt: f64) -> String {
 /// its keys a run in the text, a chord's keys the tie rung apart, as the
 /// drawer sets a chord.
 fn chord(way: &str) -> String {
-    let keys: Vec<String> = way
-        .split(' ')
+    let (keys, words) = keys_of(way);
+    let keys: Vec<String> = keys
+        .iter()
         .map(|key| format!("text(fill: ink.text, {})", quoted(key)))
         .collect();
-    format!("({},).join(h(rung.tie))", keys.join(", "))
+    let words = words.map_or(String::new(), |words| {
+        format!(" + text(fill: ink.text, {})", quoted(&format!(" {words}")))
+    });
+    format!("(({},).join(h(rung.tie)){words})", keys.join(", "))
+}
+
+/// A way to a key's action as its keys, in the order they're pressed,
+/// and the words after them, if any: the keys a space apart as
+/// `keys::listing` spells them, Page Up and Page Down one key each, and
+/// "and a letter" after a key that takes one words rather than keys.
+fn keys_of(way: &str) -> (Vec<&str>, Option<&str>) {
+    const WORDS: &str = "and a letter";
+    let (pressed, words) = match way.strip_suffix(WORDS) {
+        Some(pressed) => (pressed.trim_end(), Some(WORDS)),
+        None => (way, None),
+    };
+    let mut keys = Vec::new();
+    let mut rest = pressed;
+    while !rest.is_empty() {
+        let whole = ["Page Up", "Page Down"]
+            .into_iter()
+            .find(|name| rest.starts_with(name));
+        let end = whole.map_or_else(|| rest.find(' ').unwrap_or(rest.len()), str::len);
+        keys.push(&rest[..end]);
+        rest = rest[end..].trim_start();
+    }
+    (keys, words)
 }
 
 /// The inset rung, in points: round the key list's words and between it
@@ -759,6 +786,19 @@ mod tests {
                 "the key list is {width:.0} pt wide in a window {window} pt wide"
             );
         }
+    }
+
+    #[test]
+    fn a_way_to_a_key_splits_into_its_keys_and_keeps_names_and_words_whole() {
+        assert_eq!(keys_of("Space ?"), (vec!["Space", "?"], None));
+        assert_eq!(keys_of("gg"), (vec!["gg"], None));
+        assert_eq!(keys_of("Page Down"), (vec!["Page Down"], None));
+        assert_eq!(keys_of("Space Page Up"), (vec!["Space", "Page Up"], None));
+        assert_eq!(keys_of("m and a letter"), (vec!["m"], Some("and a letter")));
+        assert_eq!(
+            keys_of("Space m and a letter"),
+            (vec!["Space", "m"], Some("and a letter"))
+        );
     }
 
     /// The baselines runs stand on, each once, from the top down.
