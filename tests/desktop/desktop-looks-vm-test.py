@@ -1569,3 +1569,47 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         desktop.close_launcher()
     finally:
         unorchestrated(desktop)
+
+
+def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Photograph dictation, a meter above it, and a meter alone at its least and most.
+
+    Both are one frame at the bottom centre, the frame's inset from the ink on every side
+    (docs/design.md, The Ladder). A meter that shows while dictation listens stands the space
+    between frames above it rather than over it, and a shorter figure keeps its room after it,
+    so the bar's gap to it never grows. Each is kept for a person to measure.
+    """
+    machine = desktop.machine
+    dictation = desktop.in_session("niri msg layers | grep -q dictation")
+    volume = desktop.in_session("niri msg layers | grep -q 'Namespace: \"volume\"'")
+    was = desktop.as_account("wpctl get-volume @DEFAULT_AUDIO_SINK@").split()[1]
+    # A change is heard only once the shell has bound the speaker, which it says.
+    desktop.reported("hears volume ", bool, "", timeout=timedelta(seconds=60))
+
+    def metered(level: str, name: str) -> None:
+        machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
+        with desktop.told("drawn volume"):
+            desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {level}")
+        desktop.photograph(name)
+
+    try:
+        for scale in at_each_scale:
+            named = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            machine.wait_until_fails(dictation, timeout=timedelta(seconds=15))
+            since = desktop.mark()
+            desktop.as_account("dictation toggle")
+            desktop.reported("says dictation listening", lambda rest: rest == "", since)
+            desktop.wait_for_surface("dictation")
+            desktop.photograph(f"dictation-listening-at-{named}")
+            metered("0.5", f"meter-over-dictation-at-{named}")
+            # Stopped, the stand-in types a moment and says it heard nothing.
+            desktop.as_account("dictation toggle")
+            desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
+            machine.wait_until_fails(dictation, timeout=timedelta(seconds=10))
+            metered("0.05", f"meter-least-at-{named}")
+            metered("1", f"meter-most-at-{named}")
+    finally:
+        desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {was}")

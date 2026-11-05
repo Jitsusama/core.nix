@@ -1,8 +1,9 @@
 // What Volume.qml and Brightness.qml show for a moment at the bottom of the
 // screen while the level changes. It's the meter kind (docs/design.md, Shape
 // and Kinds): the edge frame, since it never takes the keys; the machine's
-// glyph; a hairline bar, square, as it's part of no thing of its own; and
-// the level in figures, which hold still as it changes. The bar goes muted
+// glyph; a bar, square, as it's part of no thing of its own, a stroke four
+// hairlines thick, kin to the frame's border rather than a space; and the
+// level in figures, which hold still as it changes. The bar goes muted
 // while what it measures is off.
 import Quickshell
 import Quickshell.Wayland
@@ -39,8 +40,10 @@ PanelWindow {
 
     anchors.bottom: true
     implicitWidth: length + 2 * Theme.floating.reach
-    // An overlay's distance from the edge, below it.
-    implicitHeight: card.height + Theme.space.huge + Theme.floating.reach
+    // A floating frame's distance from the screen's edge, below it, and
+    // above dictation's frame while that shows, so the two stack rather
+    // than overlap (docs/design.md, The Ladder).
+    implicitHeight: card.height + Theme.space.rung.screen + Meters.under + Theme.floating.reach
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     mask: card.area
@@ -52,35 +55,54 @@ PanelWindow {
         name: meter.name
     }
 
+    // The line's face, to measure its ink by: the glyph's, the figure's and
+    // a capital's, since the room round the line is measured to the ink.
+    FontMetrics {
+        id: ink
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+        font.features: { "tnum": 1 }
+    }
+
     Floating {
         id: card
         x: Theme.floating.reach
         y: Theme.floating.reach
         width: meter.length
 
-        // A launcher row's shape: a row of the large step an inset inside
-        // the frame, its letters a step inside the row.
+        // One line, the frame's inset from its ink on every side: above the
+        // capitals, below the baseline, before the glyph and after the
+        // widest figure. Dictation's frame is the same (Speaking.qml).
         Item {
+            id: line
+            readonly property rect capital: ink.tightBoundingRect("H")
+            readonly property rect mark: ink.tightBoundingRect(meter.glyph)
+            readonly property rect widest: ink.tightBoundingRect(meter.widestReading)
+            // Where the line's baseline rests: its capitals centred in it,
+            // so what rounding its height leaves is shared above and below.
+            readonly property real rests: (height + capital.height) / 2
+
             width: parent.width
-            height: Theme.space.xxxl + 2 * Theme.inset
+            // A whole number of pixels tall, so the frame's bottom is set.
+            height: 2 * Theme.space.rung.inset + Math.round(capital.height)
 
             Text {
                 id: mark
-                x: Theme.inset + Theme.space.l
-                anchors.verticalCenter: parent.verticalCenter
-                width: Theme.space.xxl
+                x: Theme.space.rung.inset - line.mark.x
+                y: line.rests - baselineOffset
                 text: meter.glyph
                 color: Theme.machine
-                font.family: Theme.level.note.family
-                font.pointSize: Theme.level.note.pointSize
+                font: ink.font
             }
 
+            // The bar, a mark from the glyph it's the level of and its
+            // runs apart from the figure, centred on the capitals, on whole
+            // pixels so its edges are drawn sharp.
             Rectangle {
-                anchors.left: mark.right
-                anchors.right: value.left
-                anchors.rightMargin: Theme.space.l
-                anchors.verticalCenter: parent.verticalCenter
-                height: Theme.space.xs
+                x: Math.round(mark.x + line.mark.x + line.mark.width + Theme.space.rung.mark)
+                width: Math.round(value.x + line.widest.x - Theme.space.rung.apart) - x
+                y: Math.round(line.rests - line.capital.height / 2 - height / 2)
+                height: 4 * Theme.border
                 color: Theme.edge
 
                 Rectangle {
@@ -90,25 +112,16 @@ PanelWindow {
                 }
             }
 
-            // The widest the figure gets, so the bar's length never moves.
-            TextMetrics {
-                id: widest
-                font: value.font
-                text: meter.widestReading
-            }
-
+            // Set from the left of the room the widest figure takes, so a
+            // shorter one leaves its room after it, at the line's far end,
+            // and the bar's gap to it never grows.
             Text {
                 id: value
-                width: Math.ceil(widest.advanceWidth)
-                horizontalAlignment: Text.AlignRight
-                anchors.right: parent.right
-                anchors.rightMargin: Theme.inset + Theme.space.l
-                anchors.verticalCenter: parent.verticalCenter
+                x: line.width - Theme.space.rung.inset - line.widest.x - line.widest.width
+                y: line.rests - baselineOffset
                 text: meter.figure
                 color: meter.off ? Theme.muted : Theme.text
-                font.family: Theme.level.note.family
-                font.pointSize: Theme.level.note.pointSize
-                font.features: { "tnum": 1 }
+                font: ink.font
             }
         }
     }
