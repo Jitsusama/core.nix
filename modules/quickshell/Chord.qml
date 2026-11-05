@@ -33,11 +33,13 @@ Flow {
             required property var modelData
             required property int index
 
-            // A part takes the room its glyph draws into past its advance,
-            // a tie's worth, and each + keeps the same distance from both
-            // its keys.
+            // An icon's advance and its ink rarely agree, one drawing past
+            // the other by a few pixels either way, so a wide part ends where
+            // its ink does, and each + keeps the same distance from both its
+            // keys.
+            readonly property rect ink: face.tightBoundingRect(text)
             leftPadding: index === 0 ? 0 : plus.width
-            rightPadding: modelData.wide ? Theme.space.rung.tie : 0
+            width: modelData.wide ? leftPadding + ink.x + ink.width : implicitWidth
             text: modelData.text
             color: chord.colour
             font.family: chord.level.family
