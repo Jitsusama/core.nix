@@ -5566,6 +5566,11 @@ Scope {
                 digitsStandAsFigures: drawerCard.digitsStandAsFigures(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
+                // What its last slot says of the things it hides below, and
+                // that slot's baseline, "" and -1 when it hides none.
+                moreSays: drawerCard.moreSays,
+                moreBase: drawerCard.moreSays === "" ? -1
+                    : root.hundredths(drawerCard.moreBase),
                 scrolled: Math.round(drawerCard.scrolled),
                 // Whether the view's top cuts a line partway, which it never
                 // should, as Vim's topline is always a whole line.

@@ -1200,13 +1200,50 @@ Floating {
     // cut). A list whose things wrap stands them a beat off the pitch the
     // room is counted on, so one may fall across it. A thing begun above
     // the view, taller than it shows, ends at its last whole line instead.
-    readonly property real shownTo: {
+    // Where anything is hidden below, the last line's slot says so, as
+    // Vim marks a line cut off, so a reader needn't remember the rest is
+    // there (VKCF3Z, 2026-11-05): the lowest of the card's beats the inset
+    // above the frame's inside bottom, a thing's step below the last
+    // thing shown, which ends a step sooner for it.
+    readonly property real moreBase: rowBaseline + Math.floor((tall - Theme.border
+        - Theme.space.rung.inset - rowBaseline) / Theme.space.beat + 0.001) * Theme.space.beat
+    readonly property var shownAndHidden: {
+        const spans = lineSpans();
         const top = view.contentY;
-        const end = top + viewRoom;
-        const across = lineSpans().filter(span => span.top < end - 0.5
+        const ending = end => Math.min(end, ...spans.filter(span => span.top < end - 0.5
             && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
-                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch);
-        return Math.min(end, ...across) - top;
+                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch));
+        const hiddenPast = end => spans.filter(span => span.bottom > end + 0.5).length;
+        const whole = ending(top + viewRoom);
+        if (hiddenPast(whole) === 0)
+            return { shown: whole - top, hidden: 0 };
+        const step = drawer.pitch + drawer.apartIn(drawer.anyWraps(factRows), false);
+        // A thing's box ends half a pitch, less the drop, under its last
+        // baseline, which stands a step over the slot's.
+        const short = ending(Math.min(top + viewRoom, top + moreBase - Theme.border - step
+            + drawer.pitch / 2 - drawer.dropped));
+        return { shown: short - top, hidden: hiddenPast(short) };
+    }
+    readonly property real shownTo: shownAndHidden.shown
+    // How many things it hides below, counted whole, and what its last
+    // slot says of them: in the drawer's own keys, how to go in and read
+    // them, which go once the keys are in.
+    readonly property int hiddenBelow: shownAndHidden.hidden
+    readonly property string moreSays: hiddenBelow === 0 ? ""
+        : `${hiddenBelow} more` + (drawer.keys ? "" : " \u00b7 Ctrl+W l")
+
+    Text {
+        id: moreText
+        x: column.x
+        width: column.width
+        y: drawer.moreBase - Theme.border - baselineOffset
+        visible: drawer.moreSays !== ""
+        text: drawer.moreSays
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        color: Theme.muted
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
     }
 
     Flickable {

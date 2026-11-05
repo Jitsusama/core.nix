@@ -154,20 +154,40 @@ def bottom_set(drawer: Json, lines: list[float]) -> bool:
     below, the next thing, with its heading if it opens a group, would not have fit whole there.
     These are each thing's first baselines, so a thing's last stands a step above the next's
     first: a pitch, a beat more where any thing in the list wraps, and two pitches before a
-    group's heading, a fact with no name. Past the last thing left, the test can't tell.
+    group's heading, a fact with no name. Past the last thing left, the test can't tell. Where
+    it hides any, the line saying so takes the lowest beat the inset above the frame's inside
+    edge, and the things end a step above it.
     """
     shown = [line for line in lines if line < drawer["foot"]]
     if not shown:
         return False
-    if drawer["height"] - BORDER - shown[-1] < INSET - NEAR:
-        return False
     headings = {at for at, name in enumerate(drawer["facts"]) if name == ""}
     step = PITCH + BEAT if drawer["factsWrapped"] else PITCH
+    floor = drawer["height"] - BORDER - INSET
+    if drawer["moreSays"]:
+        if not floor - BEAT < drawer["moreBase"] <= floor + NEAR:
+            return False
+        floor = drawer["moreBase"] - step
+    if shown[-1] > floor + NEAR:
+        return False
     thing = len(shown) + (len(shown) in headings)
     if not drawer["more"] or thing + 1 >= len(lines):
         return True
     last = lines[thing + 1] - (2 * PITCH if thing + 1 in headings else step)
-    return bool(last > drawer["height"] - BORDER - INSET + NEAR)
+    return bool(last > floor + NEAR)
+
+
+def says_what_it_hides(drawer: Json, lines: list[float]) -> bool:
+    """Say whether its last line counts the things hidden below and how to go in to them.
+
+    A thing is hidden when its first baseline lies past the foot; a heading isn't one.
+    """
+    hidden = sum(
+        1 for at, line in enumerate(lines) if line >= drawer["foot"] and drawer["facts"][at] != ""
+    )
+    if hidden == 0:
+        return bool(drawer["moreSays"] == "")
+    return bool(drawer["moreSays"] == f"{hidden} more \u00b7 Ctrl+W l")
 
 
 def room_beside_the_card(desktop: Desktop) -> int:
@@ -1015,6 +1035,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         )
         assert bottom_set(drawer, facts), (
             f"at {scale} the last line isn't the inset above the plate's foot: {drawer}"
+        )
+        # What it hides below, its last line counts, as Vim marks a line cut off.
+        assert says_what_it_hides(drawer, facts), (
+            f"at {scale} the last line doesn't count what's hidden: {drawer}"
         )
         desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
