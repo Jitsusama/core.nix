@@ -139,9 +139,11 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
 PITCH = 24
 # A box's rounding, which a baseline may be off its place by and still be on it.
 ROUNDING = 0.5
-# A length the report gives to the pixel, which two ways of reaching one place may round
-# apart by where the view sits on a half pixel, as it does under a row's half capitals.
-ROUNDED = 1
+# The cursor's rule stands a mark from the letters, which begin the inset from the frame's inside
+# edge, its hairline border left out (docs/design.md, the ladder).
+MARK = 8
+INSET = 24
+BORDER = 1
 
 
 def a_line_on(drawer: Json, past: int = 0) -> bool:
@@ -372,11 +374,12 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     told = desktop.showing()["selected"]["told"]
     assert told == ["Ctrl+W h back", "Space ? keys"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
+    # The rule is the drawer's pitch tall on every level, on its line's capitals, a mark from them.
     rule = came["rule"]
-    assert abs(rule["top"] - came["top"]) <= ROUNDED, came
-    assert rule["height"] == came["height"], came
-    assert rule["x"] > 0, came
+    assert rule["height"] == PITCH, came
+    assert came["top"] < rule["top"] + PITCH / 2 < came["top"] + came["height"], came
     assert rule["width"] > 0, came
+    assert rule["x"] + rule["width"] == BORDER + INSET - MARK, came
     drawer = page.drawer()
     assert drawer["scrolled"] == 0, drawer
     assert drawer["frame"] != page.rows["drawer"]["frame"], drawer
@@ -750,10 +753,11 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     assert back["cursor"]["letter"] == 0, back
     # Lines below the title, so what's copied holds no "log" to be found ahead of the notice
     # when the launcher next looks for its title.
-    # V grounds whole lines, each one band across the measure that meets the next.
+    # V grounds whole lines, each one band across the measure and a mark past each side, that
+    # meets the next.
     lines = page.until("j shift-v j", chose("lines", 2))["chosen"]
-    measure = lines["measure"]
-    assert [(band["x"], band["width"]) for band in lines["bands"]] == [(0, measure)] * 2, lines
+    measure = lines["measure"] + 2 * MARK
+    assert [(band["x"], band["width"]) for band in lines["bands"]] == [(-MARK, measure)] * 2, lines
     upper, lower = lines["bands"]
     assert upper["top"] + upper["height"] == lower["top"], lines
     page.until("o", lambda drawer: drawer["cursor"]["line"] == title + 1)

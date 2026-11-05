@@ -138,6 +138,12 @@ Floating {
                 }
                 readonly property string said: words.elides
                     ? cut.elidedText(words.plain, Qt.ElideRight, words.width) : words.plain
+                // How tall its capitals stand over its baseline, which a
+                // band and the cursor's rule are set by: a TextMetrics's
+                // bounds follow the face as it loads, where a FontMetrics
+                // asked in a binding answers once, before it has (HVD6O3,
+                // 2026-11-05: about 15% small in the shots).
+                readonly property real caps: capitals.tightBoundingRect.height
 
                 // Its letters where the Text's were, in their ink and the
                 // row's markup's colours, with what a search washes on its
@@ -176,6 +182,11 @@ Floating {
                 FontMetrics {
                     id: cut
                     font: words.font
+                }
+                TextMetrics {
+                    id: capitals
+                    font: words.font
+                    text: "H"
                 }
             }
         }
@@ -447,9 +458,11 @@ Floating {
     }
     onTakenChanged: paint()
     // Whole lines chosen, or flashing once copied, are grounded as V's are
-    // in his Neovim: a band for each across the measure, reaching down to
-    // the next so the gap between a key and its words, or between two
-    // texts, is grounded too, where v grounds only the letters it takes
+    // in his Neovim: a band for each, one width, the measure and a mark
+    // past it at each side, so the gap between a key and its words, or
+    // between two texts, is grounded too, where v grounds only the letters
+    // it takes. The first stands a mark over its capitals, the last a mark
+    // under its baseline, and each meets the next where the next's begins
     // (VKCF3Z, 2026-11-05). Each is { top, height } in the content.
     // How wide its letters' column is, which a band spans.
     readonly property real measure: column.width
@@ -474,10 +487,11 @@ Floating {
         if (!banded)
             return [];
         const lines = taken.filter(one => one.line < laid.length).map(one => laid[one.line]);
+        const mark = Theme.space.rung.mark;
+        const top = line => line.base - line.caps - mark;
         return lines.map((line, at) => ({
-            top: line.top,
-            height: (at + 1 < lines.length ? lines[at + 1].top : line.top + line.height)
-                - line.top
+            top: top(line),
+            height: (at + 1 < lines.length ? top(lines[at + 1]) : line.base + mark) - top(line)
         }));
     }
     Timer {
@@ -529,7 +543,7 @@ Floating {
                 pieces.push({ text, words, from, y,
                     length: words.getText(from, next).replace(/\s+$/, "").length,
                     x: place.x, top: place.y, height: box.height,
-                    base: place.y + words.baselineOffset });
+                    base: place.y + words.baselineOffset, caps: words.caps });
             }
         }
         pieces.sort((one, other) => one.base - other.base || one.x - other.x);
@@ -544,16 +558,18 @@ Floating {
                 continue;
             if (together && line.length === 0) {
                 found[found.length - 1] = { base: piece.base, top: piece.top,
-                    height: piece.height, length: piece.length, parts: [piece] };
+                    height: piece.height, caps: piece.caps, length: piece.length,
+                    parts: [piece] };
             } else if (together) {
                 const bottom = Math.max(line.top + line.height, piece.top + piece.height);
                 line.top = Math.min(line.top, piece.top);
                 line.height = bottom - line.top;
+                line.caps = Math.max(line.caps, piece.caps);
                 line.length += piece.length;
                 line.parts.push(piece);
             } else {
                 found.push({ base: piece.base, top: piece.top, height: piece.height,
-                    length: piece.length, parts: [piece] });
+                    caps: piece.caps, length: piece.length, parts: [piece] });
             }
         }
         return found;
@@ -841,7 +857,7 @@ Floating {
     // Where the cursor stands, in the content's terms: the letter as Qt
     // laid it, as wide as it is, or a space's width on an empty line or
     // past a line's end, with its baseline and face. The rule is drawn
-    // beside its line's height, and visual's block on the letter.
+    // beside its line, and visual's block on the letter.
     readonly property var block: {
         if (!keys || laid.length === 0)
             return null;
@@ -861,6 +877,9 @@ Floating {
             height: box.height,
             letter,
             base: found.part.base,
+            // Where the rule stands: the drawer's pitch tall on whatever
+            // level the line is set, centred on its capitals (roles.md).
+            ruleTop: line.base - line.caps / 2 - drawer.pitch / 2,
             font: words.font,
             line: cursor.line,
             said: line.parts.map(part => part.words.getText(part.from, part.from
@@ -876,12 +895,12 @@ Floating {
             return null;
         // From the block the rule is bound to, not the rule's own place,
         // since a binding on the block may run before the rule's has.
-        const at = column.mapToItem(drawer, ruleShown.x, drawer.block.y);
+        const at = column.mapToItem(drawer, ruleShown.x, drawer.block.ruleTop);
         return {
             x: Math.round(at.x),
             width: Math.round(ruleShown.width),
             top: Math.round(at.y),
-            height: Math.round(drawer.block.height)
+            height: Math.round(drawer.pitch)
         };
     }
 
@@ -1352,25 +1371,26 @@ Floating {
                 delegate: Rectangle {
                     required property var modelData
                     z: -1
+                    x: -Theme.space.rung.mark
                     y: modelData.top
-                    width: column.width
+                    width: column.width + 2 * Theme.space.rung.mark
                     height: modelData.height
                     color: drawer.choosing === "" ? Theme.accent
                         : Qt.alpha(Theme.selection, Theme.floating.selection)
                 }
             }
             // The cursor's line while it holds the keys: one rule in the
-            // accent, as thick as the frame, halfway across the margin
-            // between the frame and the letters, as tall as the line. It
-            // stays lit, as a cursor line does, rather than blinking as a
-            // caret.
+            // accent, a hairline, a mark from the letters, the drawer's
+            // pitch tall on its capitals' middle, one height on every level
+            // (VKCF3Z, 2026-11-05). It stays lit, as a cursor line does,
+            // rather than blinking as a caret.
             Rectangle {
                 id: ruleShown
                 visible: drawer.block !== null
-                x: -(Theme.space.l + width) / 2
-                y: drawer.block?.y ?? 0
+                x: -Theme.space.rung.mark - width
+                y: drawer.block?.ruleTop ?? 0
                 width: Theme.border
-                height: drawer.block?.height ?? 0
+                height: drawer.pitch
                 color: Theme.accent
             }
             // Visual's block, on the cursor's letter while it chooses, as his
