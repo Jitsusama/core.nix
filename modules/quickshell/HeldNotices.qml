@@ -1216,7 +1216,14 @@ Floating {
     }
 
     // A match's ink and ground, as Joel's Neovim draws a search's.
-    readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
+    // On a chosen line, which lies on the selection, its ground is the
+    // theme's for a selected row, so the match still shows.
+    function wash(chosen) {
+        return {
+            ink: `${Theme.wash.ink}`,
+            ground: `${chosen ? Theme.wash.selected : Theme.wash.ground}`
+        };
+    }
 
     Column {
         id: sheet
@@ -1288,7 +1295,8 @@ Floating {
                             * (first.text === "" ? 1 : 0.6))
                         anchors.verticalCenter: parent.verticalCenter
                         text: !line.one ? "" : line.washed
-                            ? Search.washed(line.one.summary, held.pattern, held.wash)
+                            ? Search.washed(line.one.summary, held.pattern,
+                                held.wash(line.chosenLine))
                             : line.one.summary
                         textFormat: line.washed ? Text.RichText : Text.PlainText
                         elide: Text.ElideRight
@@ -1309,7 +1317,7 @@ Floating {
                         visible: text !== ""
                         text: !line.one || line.atCursor ? ""
                             : line.washed ? Search.washed(held.stack.plain(line.one.body)
-                                .split("\n")[0], held.pattern, held.wash)
+                                .split("\n")[0], held.pattern, held.wash(line.chosenLine))
                             : held.stack.plain(line.one.body).split("\n")[0]
                         textFormat: line.washed ? Text.RichText : Text.PlainText
                         elide: Text.ElideRight
@@ -1359,7 +1367,7 @@ Floating {
                         visible: text !== ""
                         text: !line.one || !line.atCursor ? "" : line.washed
                             ? Search.washed(held.stack.plain(line.one.body), held.pattern,
-                                held.wash)
+                                held.wash(line.chosenLine && held.mode === "visual"))
                             : line.one.body
                         textFormat: line.washed ? Text.RichText : Text.StyledText
                         wrapMode: Text.Wrap
