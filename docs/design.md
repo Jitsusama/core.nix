@@ -451,7 +451,7 @@ shows and further apart as they grow:
 | m    | 3     | 12     | the apart rung, the beat, niri's gap between tiles |
 | l    | 4     | 16     | the items rung                                     |
 | xl   | 6     | 24     | the inset rung, the large pitch                    |
-| xxl  | 8     | 32     | the frames rung, a glyph's column in a list        |
+| xxl  | 8     | 32     | the frames rung                                    |
 | xxxl | 12    | 48     | the screen rung, a row of the launcher or a prompt |
 | huge | 16    | 64     | the bound past which empty room needs a reason     |
 
@@ -519,6 +519,10 @@ The rest follows from the ladder:
   above the bottom edge. Inside, a band meets the next across a hairline with
   what a row leaves round its centred capitals, so a foot comes out a little
   taller than a row, and the room round the whole frame stays equal.
+- **A glyph's column is its cell and a mark.** A mark sits in a square cell
+  one line pitch wide, its text the mark rung after it, so a list's names
+  start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
+  an indent is the same again, and the column follows the type.
 - **A stroke isn't a space.** A meter's bar, a wave's bars and the room in a
   texture are counted in hairlines, `4 * Theme.border`, never named by a rung,
   and each says in a comment that it's a stroke or a texture.
