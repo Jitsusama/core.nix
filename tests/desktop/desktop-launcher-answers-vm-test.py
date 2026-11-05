@@ -1054,6 +1054,14 @@ def time_inside(desktop: Desktop) -> None:
 
     desktop.answer("time")
     desktop.step_in()
+    # A step holds its rows still, so a row come after it was made goes last (Steady.js):
+    # where chrony's reading is back only once the step is made, Servers follows Copy, and
+    # stepping in afresh puts it after Clock.
+    desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
+    if not kept_rows(desktop.showing()):
+        desktop.machine.send_chars("h")
+        desktop.launcher_until(lambda shown: shown["held"] == [])
+        desktop.step_in()
     desktop.launcher_until(kept_rows)
 
 
