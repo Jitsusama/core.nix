@@ -51,9 +51,10 @@ Item {
     readonly property real commandsWide: menu.all.concat(menu.lines).reduce((widest, entry) =>
         Math.max(widest, note.advanceWidth(menu.written(entry))), 0)
 
-    // A line's command as written: its notation and what follows it.
+    // A line's command as written: as its words call it (Commands.called),
+    // and what follows it.
     function written(entry) {
-        return Commands.notation(entry.command ?? "", entry.short ?? "") + (entry.after ?? "");
+        return Commands.called(entry) + (entry.after ?? "");
     }
     readonly property real commandsAt: Theme.space.l + Theme.space.xxl
     readonly property real titlesAt: commandsAt + Math.ceil(commandsWide) + Theme.space.xl

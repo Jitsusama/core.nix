@@ -2335,7 +2335,8 @@ Scope {
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
                 table: Options.commands, row: current + 1,
-                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words })
+                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
+                called: act => Words.of(act.key ?? "") })
         };
     }
 
@@ -4041,7 +4042,9 @@ Scope {
                 line: commandLoader.item.text,
                 caret: commandLoader.item.caret,
                 chosen: commandLoader.item.choosing.at,
-                menu: commandLoader.item.shown.map(line => `${line.command} ${line.title}`),
+                menu: commandLoader.item.shown.map(line => (line.argument ?? "") === ""
+                    ? `${line.command} ${line.title}`
+                    : `${line.command} ${line.argument} ${line.title}`),
                 from: root.commanding?.from ?? "",
                 // What it's aimed at over a viewer, whose rows aren't drawn.
                 over: root.over ? root.commanding.things.map(thing => thing.name) : null

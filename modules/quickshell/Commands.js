@@ -69,21 +69,27 @@ function listed(from) {
     const menu = [];
     // Each line's title is lowered once, as it's listed, a space before it,
     // so narrowing as a key is typed only looks for a word's start in it.
+    // A name and its argument are listed once.
     const add = entry => {
-        if (entry.command === "" || seen.has(entry.command)) {
+        entry.argument = entry.argument ?? "";
+        const naming = `${entry.command} ${entry.argument}`;
+        if (entry.command === "" || seen.has(naming)) {
             return;
         }
-        seen.add(entry.command);
+        seen.add(naming);
         entry.lowered = ` ${entry.title.toLowerCase()}`;
         menu.push(entry);
     };
-    // An act takes a ! only where it would ask first, its ! saying don't.
+    // An act is named by the command its words give it, with the argument
+    // telling it from another of that name, or else by its verb; it takes
+    // a ! only where it would ask first, its ! saying don't.
     (from.acts ?? []).forEach((act, at) => {
-        const command = commandOf(act);
+        const words = from.called ? from.called(act) : {};
+        const command = words.command ?? commandOf(act);
         const undoable = !asks(command);
-        add({ command, short: short(command), title: String(act.name ?? ""),
-            key: keyOf(act, at === 0), kind: "act", act, bang: !undoable, takes: false,
-            undoable });
+        add({ command, argument: String(words.argument ?? ""), short: short(command),
+            title: String(act.name ?? ""), key: keyOf(act, at === 0), kind: "act", act,
+            bang: !undoable, takes: false, undoable });
     });
     for (const own of from.surface ?? []) {
         add({ command: own.command, short: own.short ?? short(own.command),
@@ -171,10 +177,11 @@ function narrowed(menu, typed, argued) {
 // The lines for a command named: its own line, or after a space the
 // arguments `argued` gives it, each written in place of the word typed.
 function namedLines(own, read, typed, argued) {
-    const args = read.spaced && own.length > 0 && own[0].takes && argued
-        ? argued(own[0], read.rest) : null;
+    const taker = own.find(one => one.takes);
+    const args = read.spaced && taker && argued ? argued(taker, read.rest) : null;
     if (args === null) {
-        return own;
+        return own.filter(one => one.takes || one.argument.startsWith(read.arg)
+            || (read.arg === "" && one.argument === ""));
     }
     const before = typed.slice(0, typed.length - lastWord(typed).length);
     return args.map(one => ({ command: one.value, short: one.value, title: one.note ?? "",
@@ -198,7 +205,8 @@ function written(entry, typed) {
     }
     const read = parts(typed);
     const bang = read.bang && entry.bang ? "!" : "";
-    return `${entry.command}${bang}${read.arg === "" ? "" : ` ${read.arg}`}`;
+    const arg = entry.argument === "" ? read.arg : entry.argument;
+    return `${entry.command}${bang}${arg === "" ? "" : ` ${arg}`}`;
 }
 
 // Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P: the next line or the one
@@ -267,9 +275,28 @@ function ran(typed, menu) {
     if (time.test(read.line.trim())) {
         return { go: read.line.trim() };
     }
-    const entry = read.name === "" ? undefined : menu.find(one => names(read.name, one));
-    if (!entry) {
+    const matching = read.name === "" ? [] : menu.filter(one => names(read.name, one));
+    if (matching.length === 0) {
         return { error: `E492: Not an editor command: ${read.line.trim()}` };
+    }
+    const holding = matching.find(one => one.argument !== "" && one.argument === read.arg);
+    return holding ? ranHolding(holding, read) : ranBare(matching, read);
+}
+
+// The act holding the argument typed, which runs ahead of the rest of its
+// name, as a row's :set bluetooth+= ahead of :set.
+function ranHolding(entry, read) {
+    return read.bang && !entry.bang ? { error: "E477: No ! allowed" }
+        : { entry, bang: read.bang, arg: "" };
+}
+
+// Else the one of its name holding no argument, which an act needing its
+// own goes without.
+function ranBare(matching, read) {
+    const entry = matching.find(one => one.argument === "");
+    if (!entry) {
+        return { error: read.arg === "" ? "E471: Argument required"
+            : `E488: Trailing characters: ${read.arg}` };
     }
     if (read.bang && !entry.bang) {
         return { error: "E477: No ! allowed" };
