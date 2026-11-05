@@ -804,6 +804,7 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ./recents.nix
+    ./command-lines.nix
     ../camera/home.nix
     # The brightness bar shows the picks the backlight daemon tells it of.
     ../backlight/home.nix
@@ -1705,6 +1706,9 @@ in
               // Every command the : line can name, by its whole name, with
               // its act, fixed short form and flags, from the key language.
               readonly property var commands: ${object commands}
+              // Each viewer's command line, which its : opens, from its
+              // module (command-lines.nix).
+              readonly property var commandLines: ${object launcher.commandLines}
               // Whether a shut lid suspends the machine on the charger.
               readonly property bool lidSleepsOnPower: ${lib.boolToString lidSleepsOnPower}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}

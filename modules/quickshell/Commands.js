@@ -126,6 +126,8 @@ function listed(from) {
 const leading = /^[\s:]*/;
 const counting = /^[0-9$]/;
 const number = /^[0-9]+$/;
+// A time, as a player goes to one: :12:30, or :1:02:03.
+const time = /^[0-9]+(:[0-9]+){1,2}$/;
 const named = /^([A-Za-z]+|\$|[0-9]+)(!?)(\s*)([\s\S]*)$/;
 
 function parts(typed) {
@@ -247,7 +249,8 @@ function wordStart(text, at) {
 // What Return runs: exactly what's typed, never what the menu shows. A name
 // that's no command says E492 with the whole line, as Vim does; a ! where
 // it isn't taken, E477; words after a command that takes none, E488. A
-// number goes to that row and $ to the last, as they go to a line.
+// number goes to that row and $ to the last, as they go to a line, and a
+// time, 12:30, goes there in a player, its go given it as it's typed.
 // { entry, bang, arg }, { go }, or { error }, which is "" for nothing typed.
 function ran(typed, menu) {
     const read = parts(typed);
@@ -259,6 +262,9 @@ function ran(typed, menu) {
     }
     if (read.name === "$" && !read.bang && read.arg === "") {
         return { go: "$" };
+    }
+    if (time.test(read.line.trim())) {
+        return { go: read.line.trim() };
     }
     const entry = read.name === "" ? undefined : menu.find(one => names(read.name, one));
     if (!entry) {

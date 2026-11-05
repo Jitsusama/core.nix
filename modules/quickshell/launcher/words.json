@@ -3542,6 +3542,11 @@
       "name": "In the List"
     },
     {
+      "id": "shortcuts:mpv:frame",
+      "in": "shortcuts",
+      "name": "The Frame"
+    },
+    {
       "id": "shortcuts:chrome:tabs",
       "in": "shortcuts",
       "name": "Tabs"

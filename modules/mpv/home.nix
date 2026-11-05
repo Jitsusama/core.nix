@@ -224,8 +224,9 @@ let
         does = "That one in the list, by its number";
       }
     ]
-    ++ [
-      # y alone waits for what it's to copy, as in Vim, and does nothing.
+    # The frame in view, as a picture; y alone waits for what it's to copy,
+    # as in Vim, and does nothing.
+    ++ grouped "frame" [
       {
         chord = "y y";
         does = "Copy the frame as a picture";
@@ -234,6 +235,12 @@ let
         chord = "s";
         does = "Save the frame as a picture";
       }
+      {
+        chord = "Shift+s";
+        does = "Save the frame without its subtitles";
+      }
+    ]
+    ++ [
       {
         chord = "Shift+slash";
         does = "The player's keys";
@@ -250,12 +257,17 @@ let
         chord = "Z Z";
         does = "Close the player";
       }
+      {
+        chord = "Shift+colon";
+        does = "A command for the video";
+      }
     ];
 in
 {
   imports = [
     ../keys/home.nix
     ../quickshell/recents.nix
+    ../quickshell/command-lines.nix
     ../theme/home.nix
     ../unlisted/home.nix
   ];
@@ -285,6 +297,30 @@ in
   # launcher lists a file only while its mpv has a window. Its other paths
   # stay the desktop's list of files opened lately.
   systemd.user.tmpfiles.rules = [ "d ${playing} 0700 - - -" ];
+  # : opens the launcher's command line over the video, with these
+  # commands, each by the key language's name (../keys/language.toml), and
+  # a time, :12:30, to go to it; mpv-command (command.sh) carries each.
+  jitsusama.quickshell.launcher.commandLines.mpv = {
+    commands = [
+      {
+        command = "set";
+        title = "Set a property, as :set pause or :set volume=40";
+      }
+      {
+        command = "yank";
+        title = "Copy the frame as a picture";
+        key = "yy";
+      }
+      {
+        command = "quit";
+        title = "Close the player";
+        key = "ZZ";
+      }
+    ];
+    goes = "To that time, as 12:30, or that many seconds in";
+    run = [ (lib.getExe (pkgs.callPackage ./command.nix { })) ];
+  };
+
   jitsusama.quickshell.launcher.recents = [
     {
       app = "mpv";

@@ -177,6 +177,10 @@ QtObject {
             ["help", "help dd"]);
         holds("a number goes to that row", ran("12"), 12);
         holds(":$ goes to the last", ran("$"), "$");
+        holds("a time goes there, as a player's does", [ran("12:30"), ran("1:02:03")],
+            ["12:30", "1:02:03"]);
+        holds("what only starts as a time is no command", ran("12:"),
+            "E492: Not an editor command: 12:");
         holds("nothing typed does nothing", ran(""), "");
         holds("! where it isn't taken says so", ran("see!"), "E477: No ! allowed");
         holds("words after an act that takes none say so", ran("disc now"),

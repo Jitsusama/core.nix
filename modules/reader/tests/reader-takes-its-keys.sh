@@ -156,21 +156,50 @@ copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\
 act 1 'y}'
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
 # j moves the cursor and not the view: two rows down, past the title, y y
-# copies the lede alone, a block of its own, y i p still the paragraph
-# round it, and y } only the lede, from it to the paragraph's end; then k
+# copies the lede alone, a block of its own, y } only the lede, from it
+# to the paragraph's end, and y i p the paragraph round it, which takes
+# the cursor to the paragraph's start, the title, as Vim's does; then k
 # and gg go back.
 act 1 2j
 act 1 yy
 copied '"Some of it is on [the second page](second.md).\n"'
-act 1 yip
-copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
 act 1 'y}'
 copied '"Some of it is on [the second page](second.md).\n"'
+lede=$(cursor)
+act 1 yip
+copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"'
+awk "BEGIN { exit !($(cursor) < $lede - 10) }" \
+  || fail "y i p left the cursor at $(cursor) pt, not the paragraph's start"
 near "$(heading)" 0 || fail "j moved the view to $(heading) pt"
 act 1 k
 act 1 yy
 copied '"# Every Key Neovim Has\n"'
 act 1 gg
+
+# The keyboard's repeats move and do nothing else: y and a held y copy
+# once, from the press, and a held j goes on down. g g after them is how
+# the test knows the repeats are all in. After a held key the reader can
+# read the next wtype's first keys by the keymap of the one before, whose
+# first key is wtype's Escape here, so a key misread does nothing, and g g
+# goes again until it's read as itself.
+flashes=$(how_many '^flash: [1-9]')
+downs=$(how_many '^key Down ')
+firsts=$(how_many '^key First ')
+press -k Escape y -P y -s 1500 -p y -P j -s 1500 -p j
+deadline=$((SECONDS + 30))
+until [ "$(how_many '^key First ')" -gt "$firsts" ]; do
+  ((SECONDS < deadline)) || fail "the reader never took g g after the held keys"
+  press gg
+  inotifywait -q -q -t 2 -e modify said || true
+done
+keys=$(how_many '^key ')
+copied '"# Every Key Neovim Has\n"'
+[ "$(how_many '^copied: ')" -eq "$copies" ] \
+  || fail "a held y copied $(($(how_many '^copied: ') - copies + 1)) times, not once"
+[ "$(how_many '^flash: [1-9]')" -eq $((flashes + 1)) ] \
+  || fail "a held y flashed $(($(how_many '^flash: [1-9]') - flashes)) times, not once"
+[ "$(how_many '^key Down ')" -gt $((downs + 2)) ] \
+  || fail "a held j moved $(($(how_many '^key Down ') - downs)) times, not on and on"
 
 # v starts on the first of the file's words in view, the title's, past
 # the eyebrow over it, and } goes on by paragraphs, to the line of words
@@ -209,14 +238,18 @@ act 1 v
 shows '"A"'
 act 1 -k Escape
 # m while selecting marks the cursor's line and keeps the selection, as
-# his Neovim's does, so ' and its letter at rest go to that line rather
-# than the view's top, where the page still is.
+# his Neovim's does, so ' and its letter at rest put the cursor back on
+# that line, and the view stays, since the line shows.
 act 5 'ggv}wiw'
 act 1 ma
 shows '"bold"'
 act 1 -k Escape
+marked=$(cursor)
+act 1 gg
+awk "BEGIN { exit !($(cursor) < $marked) }" || fail "gg left the cursor at $(cursor) pt"
 act 1 "'a"
-awk "BEGIN { exit !($(heading) > 0) }" || fail "'a went to $(heading) pt, not the marked line"
+near "$(cursor)" "$marked" || fail "'a put the cursor at $(cursor) pt, not $marked"
+near "$(heading)" 0 || fail "'a moved the view to $(heading) pt, though the line showed"
 act 1 gg
 # e takes the selection to a word's end, and Ctrl+C copies as y does.
 act 5 'v}wiwe'
@@ -289,6 +322,10 @@ act 1 -k Escape
 act 3 'ggV}'
 act 1 y
 copied '"# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n\nA **bold** start, then `code` in a line. A second sentence.\n"'
+# y leaves the cursor at the selection's start, as Vim's does, so y y
+# copies the title rather than the line the selection ended on.
+act 1 yy
+copied '"# Every Key Neovim Has\n"'
 act 6 'ggv}}iwV'
 act 1 y
 copied '"echo one\n"'
@@ -426,23 +463,28 @@ logged '^opened: (.*/)?page.md, ' 3
 tops=$(seen '^key First None')
 ons=$(seen '^key ParagraphOn None')
 backs=$(seen '^key ParagraphBack None')
+# Each puts the cursor on the line it goes to, as Vim's: the view stays
+# while the line shows, and a heading a screen on is set in its middle.
 press gg
 logged '^key First None' $((tops + 1))
-top=$(heading)
+top=$(cursor)
 press '}'
 logged '^key ParagraphOn None' $((ons + 1))
-paragraph=$(heading)
-awk "BEGIN { exit !($paragraph > $top) }" || fail "} stayed at $paragraph pt"
+paragraph=$(cursor)
+awk "BEGIN { exit !($paragraph > $top) }" || fail "} left the cursor at $paragraph pt"
+near "$(heading)" 0 || fail "} moved the view to $(heading) pt, though its line showed"
 press '{'
 logged '^key ParagraphBack None' $((backs + 1))
-awk "BEGIN { exit !($(heading) < $paragraph) }" || fail "{ stayed at $(heading) pt"
+awk "BEGIN { exit !($(cursor) < $paragraph) }" || fail "{ left the cursor at $(cursor) pt"
 press ']]'
 logged '^key HeadingOn None' 1
-part=$(heading)
-awk "BEGIN { exit !($part > $paragraph) }" || fail "]] went to $part pt"
+part=$(cursor)
+awk "BEGIN { exit !($part > $paragraph) }" || fail "]] put the cursor at $part pt"
+near "$(heading)" 0 || fail "]] moved the view to $(heading) pt, though its heading showed"
 press '2]]'
 logged '^key HeadingOn Some\(2\)' 1
-awk "BEGIN { exit !($(heading) > $part) }" || fail "2]] went to $(heading) pt"
+awk "BEGIN { exit !($(cursor) > $part && $(heading) > 0 && $(heading) < $(cursor)) }" \
+  || fail "2]] put the cursor at $(cursor) pt and the view at $(heading) pt"
 press '[['
 logged '^key HeadingBack None' 1
 
@@ -518,7 +560,7 @@ logged '^outline: closed' 2
 # A mark is kept with its file between openings.
 press ma
 logged '^key SetMark\(.a.\)' 1
-marked=$(heading)
+marked=$(cursor)
 press ']b'
 logged '^opened: (.*/)?second.md, ' 4
 press '[b'
@@ -527,7 +569,7 @@ press gg
 logged '^key First None' $((tops + 4))
 press "'a"
 logged '^key GoToMark\(.a.\)' 1
-near "$(heading)" "$marked" || fail "'a went to $(heading) pt, not $marked"
+near "$(cursor)" "$marked" || fail "'a put the cursor at $(cursor) pt, not $marked"
 
 # gf opens the file the top's link names, and Ctrl+] follows it.
 press gg

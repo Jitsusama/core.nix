@@ -6,7 +6,8 @@
 // splits the field from them, rather than a box of its own.
 //
 // Each line reads `disc[onnect]   Disconnect It   d`: the command in Vim's
-// help notation on the names' column, the act's title on a column of its
+// help notation on the names' column, with what its line names after it
+// where it takes an argument (`after`, as e[dit] Notices or g[lobal]/pat/cmd), the act's title on a column of its
 // own past the widest command, and its key flush right, all at Note in
 // muted, so the menu teaches all three ways. The chosen line takes the
 // selection's ground, its words in text, since muted isn't drawn there
@@ -27,6 +28,9 @@ Item {
     property int chosen: -1
     // How many lines show at most, as his pumheight.
     property int most: 10
+    // Whether rows lie behind it for its hairline to split it from; over a
+    // viewer none do, and the field's own hairline already sits above it.
+    property bool split: true
     // A line's pitch: a Note line and the room the space scale gives it.
     readonly property real pitch: Theme.space.xl
     readonly property int showing: Math.min(lines.length, most)
@@ -44,11 +48,17 @@ Item {
 
     // The commands' column, as wide as the widest command the menu holds.
     readonly property real commandsWide: menu.all.reduce((widest, entry) =>
-        Math.max(widest, note.advanceWidth(Commands.notation(entry.command, entry.short))), 0)
+        Math.max(widest, note.advanceWidth(menu.written(entry))), 0)
+
+    // A line's command as written: its notation and what follows it.
+    function written(entry) {
+        return Commands.notation(entry.command ?? "", entry.short ?? "") + (entry.after ?? "");
+    }
     readonly property real commandsAt: Theme.space.l + Theme.space.xxl
     readonly property real titlesAt: commandsAt + Math.ceil(commandsWide) + Theme.space.xl
 
     Rectangle {
+        visible: menu.split
         width: parent.width
         height: Theme.border
         color: Theme.edge
@@ -93,7 +103,7 @@ Item {
                 id: command
                 x: menu.commandsAt
                 anchors.verticalCenter: parent.verticalCenter
-                text: Commands.notation(entry.line.command ?? "", entry.line.short ?? "")
+                text: menu.written(entry.line)
                 textFormat: Text.PlainText
                 color: entry.ink
                 font.family: Theme.level.note.family
