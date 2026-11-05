@@ -57,6 +57,20 @@ def test_memory_probe(desktop: Desktop) -> None:
         " $(grep -E '^Pss_Anon' /proc/$p/smaps_rollup | tr -s ' ' ' ');"
         " echo PROBE MALLOC_CONF=$(tr '\\0' '\\n' < /proc/$p/environ | grep MALLOC_CONF)"
     )
+    # As many quests as Joel's store holds, each a README as pi writes one.
+    seed = (
+        "q=$HOME/.local/share/pi/agentic-harness.pi/quest-workflow/quests\n"
+        "for i in $(seq -w 1 881); do\n"
+        "  d=$q/QEST-20261001-P$i; mkdir -p $d\n"
+        "  cat > $d/README.md <<EOF\n"
+        "---\nid: QEST-20261001-P$i\ntitle: A Quest Numbered $i\nkind: quest\n"
+        "status: active\npriority: queued\nstarted: 2026-10-01\nupdated: 2026-11-04\n"
+        "---\n\n# A Quest Numbered $i\n\n## Summary\n\n"
+        "Words about the work, enough to read as a summary would.\nEOF\n"
+        "done\n"
+    )
+    machine.succeed(f"cat > /tmp/seed.sh <<'SEED'\n{seed}SEED\nchmod 755 /tmp/seed.sh")
+    desktop.as_account("bash /tmp/seed.sh")
     machine.succeed("sleep 20")
     print(machine.succeed(desktop.in_session(read)))
     for _ in range(3):
@@ -71,24 +85,19 @@ def test_memory_probe(desktop: Desktop) -> None:
     print(machine.succeed(desktop.in_session(read)))
     machine.succeed("sleep 45")
     print(machine.succeed(desktop.in_session(read)))
+    pid = machine.succeed("pgrep -x '.quickshell-wra' | head -1").strip()
+    machine.succeed(f"cp /tmp/perf-{pid}.map /tmp/jit.map || true")
     desktop.as_account("systemctl --user stop quickshell.service")
     machine.succeed("sleep 30")
-    print(
-        machine.succeed(
-            desktop.in_session(
-                "ls -la $XDG_RUNTIME_DIR/heap*;"
-                " h=$(ls -d /nix/store/*-heaptrack-1*/bin | head -1);"
-                " $h/heaptrack_print -f $(ls $XDG_RUNTIME_DIR/heap* | head -1)"
-                " --print-leaks 0 --print-peaks 1 --print-allocators 0"
-                " --print-temporary 0"
-                " --peak-limit 25 --sub-peak-limit 0"
-                " | sed 's/^/HEAP /' | head -300"
-            ),
-            timeout=600,
-        )
+    print(machine.succeed("ls -la /run/user/1000/faults.data /tmp/perf-*.map || true"))
+    machine.succeed(
+        "cd /tmp && perf script -i /run/user/1000/faults.data"
+        " -F comm,pid,tid,ip,sym --no-inline > /tmp/faults.txt 2> /tmp/faults.err;"
+        " tail -3 /tmp/faults.err; wc -l /tmp/faults.txt",
+        timeout=1800,
     )
-    machine.succeed("cp /run/user/1000/heap.zst /tmp/heap.zst")
-    machine.copy_from_vm("/tmp/heap.zst", "heap")
+    machine.copy_from_vm("/tmp/faults.txt", "faults")
+    machine.copy_from_vm("/tmp/jit.map", "faults")
 
 
 def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_things_stand(

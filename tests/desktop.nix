@@ -749,7 +749,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           }"
         ];
       };
+      # The throwaway memory probe's perf: room to write every sample.
+      boot.kernel.sysctl."kernel.perf_event_mlock_kb" = 262144;
+      boot.kernel.sysctl."kernel.perf_event_paranoid" = 1;
       environment.systemPackages = [
+        pkgs.perf
         reports
         rewrites
         piStandIn

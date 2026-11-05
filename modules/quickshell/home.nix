@@ -2051,16 +2051,20 @@ in
         # logging thread: two wakes a second of the locked shell's, for lines
         # nobody reads (2026-10-31). Without them its file keeps what's shown,
         # as the journal does.
-        # A throwaway probe: heaptrack traces only the process it starts, so
-        # it starts the program the wrapper would, with the wrapper's paths.
+        # A throwaway probe: perf samples where the shell first touches
+        # memory, and Qt names its JIT's functions in /tmp/perf-<pid>.map,
+        # so the JavaScript that takes it is named. It starts the program
+        # the wrapper would, with the wrapper's paths.
         ExecStart = toString (
-          pkgs.writeShellScript "quickshell-heaptracked" ''
+          pkgs.writeShellScript "quickshell-sampled" ''
             wrapper=${lib.getExe' pkgs.quickshell "quickshell"}
             while read -r name value; do
               export "$name=$value''${!name:+:''${!name}}"
             done < <(grep -a -o "\-\-prefix '[A-Z_0-9]*' ':' '[^']*'" "$wrapper" \
               | sed "s/--prefix '\([^']*\)' ':' '\([^']*\)'/\1 \2/")
-            exec ${lib.getExe' pkgs.heaptrack "heaptrack"} -o "$XDG_RUNTIME_DIR/heap" \
+            export QV4_PROFILE_WRITE_PERF_MAP=1
+            exec ${lib.getExe' pkgs.perf "perf"} record -e page-faults:u -c 8 \
+              --call-graph dwarf,16384 -o "$XDG_RUNTIME_DIR/faults.data" -- \
               "$(dirname "$wrapper")/.quickshell-wrapped" --no-detailed-logs
           ''
         );
