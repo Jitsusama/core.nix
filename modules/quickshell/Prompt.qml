@@ -17,9 +17,9 @@
 // The launcher's line is modal, as Neovim's command line is: it opens in
 // insert, where letters type, and Escape gives normal, where nothing types
 // and the keys act (QueryKeys.js holds which do what). The caret says which:
-// a bar a quarter of a letter wide in insert and a block on a letter in
-// normal, as his Neovim's guicursor draws them, blinking as his kitty
-// blinks them. In normal, / and ? take a search on the line, as his
+// a bar a quarter of a letter wide in insert, as his Neovim's guicursor
+// draws it, blinking as his kitty blinks it, and none in normal, where the
+// keys are on the rows. In normal, / and ? take a search on the line, as his
 // command line does: it's typed in place of what the field holds, which
 // it puts back as it ends, so what's typed and the rows it found never
 // change under a search.
@@ -511,7 +511,8 @@ Item {
     // it steady throughout.
     property int fade: 800
     property int stopsAfter: 15000
-    readonly property bool blinks: modal && awake && fade > 0
+    // Only a caret drawn blinks, so normal asks for no frames.
+    readonly property bool blinks: modal && awake && fade > 0 && caretShown
     property real caretLight: 1
     function woken() {
         blinking.stop();
@@ -554,11 +555,19 @@ Item {
         }
     }
 
-    // How wide a letter is in the typed face, which normal's block covers
-    // and a quarter of which insert's bar is, as guicursor's ver25 says.
-    readonly property real letterWidth: typedFace.advanceWidth("M")
-    readonly property real caretWidth: modal && mode === "normal" ? letterWidth
-        : modal ? Math.max(1, Math.round(letterWidth / 4)) : 2
+    // How wide a letter is in the typed face, the mono's, a quarter of
+    // which insert's bar is, as guicursor's ver25 says. A binding doesn't
+    // see what a call reads, so it reads the face itself, to be measured
+    // again once the theme's face arrives.
+    readonly property real letterWidth: {
+        void typedFace.font;
+        return typedFace.advanceWidth("M");
+    }
+    readonly property real caretWidth: modal ? Math.max(1, Math.round(letterWidth / 4)) : 2
+    // Whether the field draws its caret: not in normal, where the keys are
+    // on the rows. A block there sat on the hint's first letter, in the
+    // hint's face, before anything was typed (Joel, 2026-11-04).
+    readonly property bool caretShown: !(modal && mode === "normal")
 
     FontMetrics {
         id: typedFace
@@ -896,26 +905,12 @@ Item {
         // blinking to a caret drawn as its own delegate, so this one holds
         // steady and a launcher left still draws nothing (the launcher
         // audit's finding 34, held by goes-places' frame count).
-        // In a modal line its shape says the mode, and it blinks: normal's
-        // block wears the letter it's on in the ground's colour, as a
-        // terminal's cursor does, or the hint's first where nothing's typed.
+        // In a modal line it blinks, and only insert draws it.
         cursorDelegate: Rectangle {
-            id: caretDrawn
             width: prompt.caretWidth
             color: Theme.accent
             opacity: prompt.caretLight
-            visible: input.cursorVisible
-
-            Text {
-                readonly property bool typedOn: input.text !== ""
-                visible: prompt.modal && prompt.mode === "normal"
-                text: typedOn ? input.text.charAt(input.cursorPosition) : hintText.text.charAt(0)
-                textFormat: Text.PlainText
-                color: Theme.background
-                font: typedOn ? input.font : hintText.font
-                y: (typedOn ? input.baselineOffset : hintText.y + hintText.baselineOffset)
-                    - caretDrawn.y - baselineOffset
-            }
+            visible: input.cursorVisible && prompt.caretShown
         }
 
         // A hint starts where the first letter typed will, on the names'

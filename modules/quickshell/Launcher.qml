@@ -3865,9 +3865,11 @@ Scope {
             // headline, and the first and last rows wholly in view.
             current: root.current,
             inView: list.inView(),
-            // How wide its caret is drawn: a block or a bar. How lit it is
-            // as it blinks isn't said, since this is said on every change.
+            // How wide its caret is drawn, and whether it's drawn: not in
+            // normal. How lit it is as it blinks isn't said, since this is
+            // said on every change.
             caretWidth: root.hundredths(prompt.caretWidth),
+            caretShown: prompt.caretShown,
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
             // What the field asks while nothing's typed.
