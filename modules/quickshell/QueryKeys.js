@@ -66,12 +66,13 @@ const table = [
     // Space alone begins these and does nothing, waiting as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
     { act: "restore", mode: "normal", keys: ["u"] },
-    // Vim's operators on the rows as lines: d does each row's ending
-    // action (Forget It, Close It) and y its copy, over the row again as
-    // dd and yy, or as far as a motion goes (operated, below), so these
-    // rows name only the doubled keys, for saying them.
+    // Vim's operators on rows as lines: d each row's ending action, y its
+    // copy, as dd and yy or over a motion (operated), these rows naming the
+    // doubled keys; Ctrl+R does again what u took back, and . the last d.
     { act: "ending", mode: "normal", keys: [["d", "d"]] },
     { act: "copy", mode: "normal", keys: [["y", "y"]] },
+    { act: "redoChange", mode: "normal", keys: ["Ctrl+r"] },
+    { act: "again", mode: "normal", keys: ["."] },
     // Visual line, Vim's V: the rows from where it began to the cursor,
     // extended by normal's moves (inMode) and taken at once by d, y and
     // Return; a colon hands them to the command line. On rows v is V, a row

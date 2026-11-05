@@ -54,6 +54,7 @@ import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
+import "Changes.js" as Changes
 import "QueryKeys.js" as QueryKeys
 import "Reading.js" as Reading
 import "SetWords.js" as SetWords
@@ -3801,6 +3802,62 @@ Scope {
         operatorSaidFor = prompt.keysTaken;
     }
 
+    // What's done, and how to take it back, in the success colour until the
+    // next key, as the spec's "3 done \u00b7 u brings them back".
+    function operatorTells(word) {
+        operatorSaid = [Theme.glyph.done, word, Theme.success];
+        operatorSaidFor = prompt.keysTaken;
+    }
+
+    // The changes d made that u can take back and Ctrl+R do again, each the
+    // undoable actions of one d (Operators.undoable), for as long as the
+    // launcher stays open, as the spec has every surface keep them; and
+    // the last d, its count and motion, for . to do again.
+    property var rowChanges: Changes.changes()
+    property var lastChange: null
+
+    // u: the last change taken back, or as many as counted, each action put
+    // back by its own undo; with none, Vim's word for it.
+    function undoChange(count) {
+        const words = Words.field.operators ?? {};
+        const back = Changes.undo(rowChanges, count);
+        if (back.moved === null) {
+            operatorSays(words.oldest);
+            return;
+        }
+        rowChanges = back.history;
+        const entries = [].concat(...back.moved);
+        for (const entry of entries)
+            entry.undo();
+        operatorTells((words.undone ?? "").replace("{count}", String(entries.length)));
+        Report.say(`undid ${entries.length}`);
+    }
+
+    // Ctrl+R: what u took back done again, as many changes as counted.
+    function redoChange(count) {
+        const words = Words.field.operators ?? {};
+        const again = Changes.redo(rowChanges, count);
+        if (again.moved === null) {
+            operatorSays(words.newest);
+            return;
+        }
+        rowChanges = again.history;
+        const entries = [].concat(...again.moved);
+        for (const entry of entries)
+            entry.redo();
+        operatorTells((words.redone ?? "").replace("{count}", String(entries.length)));
+        Report.say(`redid ${entries.length}`);
+    }
+
+    // .: the last d again from the cursor, as Vim's . repeats a change, with
+    // the count typed before it in its own's place; with none yet, nothing.
+    function doAgain(count) {
+        if (lastChange === null)
+            return;
+        const next = Operators.again(lastChange, count);
+        operated("ending", next.count, next.motion);
+    }
+
     // What a pending d or y will take, for the mode word's room, said at
     // once so d is never pressed blind: the keys typed, then the cursor
     // row's ending verb or copy and its name, or the count's rows ("d \u00b7
@@ -3931,6 +3988,10 @@ Scope {
         searchNow();
         if (motion?.act === "visual") {
             const taken = Operators.taken(matches, visualSpan, headline);
+            // Visual's d is done again by . over as many rows as it took,
+            // from the cursor, as Vim's is.
+            if (act === "ending")
+                lastChange = { count: visualSpan.to - visualSpan.from + 1, motion: null };
             if (act === "copy")
                 yanked(taken);
             else if (act === "ending")
@@ -3952,8 +4013,10 @@ Scope {
         const taken = Operators.taken(matches, span, headline);
         if (act === "copy")
             yanked(taken);
-        else
+        else {
+            lastChange = { count, motion };
             ended(taken);
+        }
     }
 
     // y: every copy over the rows joined a line each and put on the
@@ -3991,9 +4054,16 @@ Scope {
             return;
         }
         const actions = endings.map(ending => ending.action);
+        // What can be put back is kept for u; where all of it can, the
+        // foot says so until the next key.
         const doing = () => {
             for (const action of actions)
                 Operators.doing(action)();
+            const undoable = Operators.undoable(actions);
+            if (undoable.length > 0)
+                rowChanges = Changes.changed(rowChanges, undoable);
+            if (undoable.length === actions.length)
+                operatorTells(Operators.doneSaid(actions.length, words));
             Report.say(`ended ${actions.length}`);
         };
         if (!Operators.asks(actions, Options.commands ?? {})) {
@@ -5011,6 +5081,8 @@ Scope {
         if (!open) {
             over = null;
             lastVisual = null;
+            rowChanges = Changes.changes();
+            lastChange = null;
         }
         madeSince(open ? "opening" : "closing");
         if (open)
@@ -5531,6 +5603,15 @@ Scope {
                             switch (act) {
                             case "xit":
                                 root.xit();
+                                return;
+                            case "undoChange":
+                                root.undoChange(count);
+                                return;
+                            case "redoChange":
+                                root.redoChange(count);
+                                return;
+                            case "again":
+                                root.doAgain(count);
                                 return;
                             case "close":
                                 root.open = false;

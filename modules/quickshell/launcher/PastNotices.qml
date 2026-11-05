@@ -230,14 +230,21 @@ Provider {
     function operands(notice, said) {
         const copy = Object.assign({ key: "verb:notice:copy",
             verb: Words.verb("verb:notice:copy") }, copying(notice, said));
-        if (!Notices.live[notice.id])
+        const still = Notices.live[notice.id] ?? null;
+        if (!still || parting.includes(notice.id))
             return [copy];
+        // d reads it where its sender offers Read, and only forgets it
+        // where not, so it says which, as the held notices' d does.
+        const read = Notice.readOffer(still.actions) !== null
+            ? { ends: Words.field.operators?.read ?? "" } : {};
         return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
-            done(notice)), copy];
+            read, done(notice)), copy];
     }
 
-    // d's done, as the held notices' is (HeldNotices.qml's finish): read,
-    // at its sender too where it offers Read, then taken away.
+    // d's done, as the held notices' is (HeldNotices.qml's finish): read at
+    // once, at its sender too where it offers Read, and taken away as the
+    // launcher closes, a dismissed notice being gone for good, so u brings
+    // it back until then, its read state staying, as the spec's notices do.
     function done(notice) {
         return {
             run: () => {
@@ -246,12 +253,29 @@ Provider {
                     return;
                 Notices.mark(notice.id, true);
                 Notice.readOffer(still.actions)?.invoke();
-                // A sender's action closes a notice it doesn't keep, so
-                // only one still open is taken away.
-                if (Notices.live[notice.id])
-                    still.dismiss();
+                provider.parting = provider.parting.concat([notice.id]);
+            },
+            undo: () => {
+                provider.parting = provider.parting.filter(id => id !== notice.id);
             }
         };
+    }
+
+    // The notices d is done with, by id, taken away as the launcher closes.
+    property var parting: []
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                return;
+            // A sender's Read closes a notice it doesn't keep, so only one
+            // still open is taken away.
+            for (const id of provider.parting)
+                Notices.live[id]?.dismiss();
+            provider.parting = [];
+        }
     }
 
     function forgetting(notice) {

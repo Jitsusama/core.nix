@@ -634,7 +634,10 @@ Provider {
             glyph: Theme.glyph.disconnect,
             hue: "action",
             stays: true,
-            run: () => device.disconnect()
+            run: () => device.disconnect(),
+            // A device connected was paired, so joining it again is how u
+            // puts it back.
+            undo: () => provider.join(device)
         }, Words.ending("verb:bluetooth-disconnect"))) : thing({
             key: "verb:bluetooth-connect",
             verb: device.paired ? "connect" : "pair",
