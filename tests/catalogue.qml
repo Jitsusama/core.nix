@@ -335,9 +335,11 @@ QtObject {
         const lock = row("session:Lock");
         const kitty = row("program:kitty");
         const window = row("window:kitty");
+        const cpu = row("machine:cpu", { parted: true });
         const inside = {
             "collection:on": [quiet, lock],
-            "category:desktop": [emoji, quiet, row("category:energy", { category: {} })],
+            "category:desktop": [emoji, quiet, row("category:energy", { category: {} }), cpu],
+            "machine:cpu": [row("machine:cpu:cores")],
             "category:energy": [lock],
             "collection:emoji": [smile],
             "collection:applications": [kitty],
@@ -346,7 +348,11 @@ QtObject {
         const home = [row("collection:on", { opens: "on" }),
             row("collection:applications", { opens: "applications" }),
             row("category:desktop", { category: {} })];
-        const ways = { idOf: one => one.key, holds: one => inside[one.key] ?? [] };
+        const asked = [];
+        const ways = { idOf: one => one.key, holds: one => {
+            asked.push(one.key);
+            return inside[one.key] ?? [];
+        } };
         const at = key => {
             const path = Catalogue.livesAt(home, key, ways);
             return path === null ? null : path.map(one => one.key);
@@ -363,6 +369,13 @@ QtObject {
         expect("what a long list holds isn't walked", at("emoji:smile"), null);
         expect("nor what a program holds", at("window:kitty"), null);
         expect("what lives only in Now lives nowhere else", at("on:waitingOnYou"), null);
+        // A measured figure's parts are read as they're made, a CPU's
+        // listing the processes, so a follow that finds no parts doesn't
+        // make them on its way.
+        expect("a figure lives where it's measured", at("machine:cpu"),
+            ["category:desktop", "machine:cpu"]);
+        expect("but what it measures isn't walked", at("machine:cpu:cores"), null);
+        expect("nor made", asked.includes("machine:cpu"), false);
         // Where Ctrl+] goes from where the launcher stands: the place that
         // holds it and the row there, or nowhere when it's held here.
         expect("found from home, it goes into its place, onto it",

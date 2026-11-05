@@ -1096,6 +1096,18 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
     machine.send_key("ctrl-t")
     desktop.launcher_until(lambda shown: shown["saying"] == ["E73: Tag stack empty"])
     desktop.close_launcher()
+    # Each Ctrl+] with no parts to go into walks home's places for the row, its own place or
+    # none: the trace holds how long each walk took, said here for the reviewer to read.
+    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+    opening = [span for span in spans if span["name"] == "open"][-1]
+    walks = [
+        span["about"]["walked"]
+        for span in spans
+        if span["trace"] == opening["trace"] and span["name"] == "follow"
+    ]
+    print(f"Ctrl+] walked for its place in {walks} ms")
+    assert len(walks) == len(["there", "there again", "not here"]), walks
+    assert all(isinstance(walked, int) for walked in walks), walks
 
 
 def walk_a_found_program_follows(desktop: Desktop) -> None:
