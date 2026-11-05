@@ -191,7 +191,7 @@ Provider {
             name: Words.name(key, state),
             glyph: Words.glyph(key, state),
             hue: "action"
-        }, fields));
+        }, Words.ending(key), fields));
     }
 
     // A figure inside a part, whose name, side and any graph are read as
@@ -710,6 +710,7 @@ Provider {
             key: `verb:recent:site:link:${address}`,
             hue: "action",
             copy: address,
+            copies: address,
             run: () => Quickshell.clipboardText = address
         })]);
         return thing({

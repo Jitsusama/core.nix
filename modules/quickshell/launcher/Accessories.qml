@@ -641,14 +641,14 @@ Provider {
                 run: () => Niri.spawn(["kitty", "bluetoothctl"])
             }));
         if (device.paired)
-            rows.push(thing({
+            rows.push(thing(Object.assign({
                 key: "verb:bluetooth-forget",
                 name: Words.name("verb:bluetooth-forget"),
                 glyph: Theme.glyph.forget,
                 hue: "action",
                 stays: true,
                 run: () => device.forget()
-            }));
+            }, Words.ending("verb:bluetooth-forget"))));
         return rows.concat(deviceParts(device));
     }
 

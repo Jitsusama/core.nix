@@ -752,7 +752,7 @@ Provider {
 
     // An act on a network, named by the vocabulary.
     function act(id, state, fields) {
-        return Object.assign(fields, {
+        return Object.assign(fields, Words.ending(`verb:${id}`), {
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`, state, fields.fill),
             hue: "action"

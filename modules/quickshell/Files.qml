@@ -130,6 +130,7 @@ Singleton {
             glyph: Words.glyph(key),
             hue: "action",
             copy: path,
+            copies: path,
             run: () => Quickshell.clipboardText = path
         });
     }

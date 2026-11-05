@@ -67,6 +67,15 @@ Singleton {
         return of(id, state).verb;
     }
 
+    // What an action is to the key language, as words.json marks it: an
+    // ending action, the one d does (the key language's act ending),
+    // carries { act: "ending", ends } where `ends` is what the foot's ask
+    // says it does, "closes" or "forgets"; any other carries nothing.
+    function ending(id) {
+        const entry = of(id);
+        return entry.act === "ending" ? { act: entry.act, ends: entry.ends ?? "" } : {};
+    }
+
     // The words that ask its answer, typed whole, best first, as a
     // provider's questions are (Provider.qml), then the names it had, so a
     // rename never loses it: "ram" still asks Memory.

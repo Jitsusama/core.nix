@@ -148,12 +148,12 @@ Provider {
             return still ? still.actions.find(a => a.identifier === identifier) ?? null : null;
         };
         // As the vocabulary names it.
-        const named = id => ({
+        const named = id => Object.assign({
             key: id,
             name: Words.name(id),
             glyph: Words.glyph(id),
             hue: "action"
-        });
+        }, Words.ending(id));
         switch (act.act) {
         case "open":
             return thing(Object.assign(named("verb:notice:open"), {
@@ -222,6 +222,7 @@ Provider {
             // Copying what it said, always last.
             return thing(Object.assign(named("verb:notice:copy"), {
                 now: true,
+                copies: said,
                 run: () => {
                     Notices.mark(notice.id, true);
                     Quickshell.clipboardText = said;

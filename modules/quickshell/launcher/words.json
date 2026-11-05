@@ -3734,7 +3734,9 @@
       "in": "notices",
       "name": "Forget It",
       "verb": "forget",
-      "glyph": "dismiss"
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forgets"
     },
     {
       "id": "verb:notices:forget",
@@ -4548,7 +4550,9 @@
     {
       "id": "verb:wifi-forget",
       "in": "wifi",
-      "name": "Forget It"
+      "name": "Forget It",
+      "act": "ending",
+      "ends": "forgets"
     },
     {
       "id": "verb:wifi-sign-in",
@@ -4936,7 +4940,9 @@
     {
       "id": "verb:bluetooth-forget",
       "in": "bluetooth",
-      "name": "Forget It"
+      "name": "Forget It",
+      "act": "ending",
+      "ends": "forgets"
     },
     {
       "id": "verb:copy:paste",
@@ -5359,7 +5365,9 @@
       "name": "Quit",
       "verb": "quit",
       "glyph": "close",
-      "sure": "Quit Now"
+      "sure": "Quit Now",
+      "act": "ending",
+      "ends": "quits"
     },
     {
       "id": "program:media",
@@ -5506,7 +5514,9 @@
       "in": "recent:site",
       "name": "Close It",
       "verb": "close",
-      "glyph": "close"
+      "glyph": "close",
+      "act": "ending",
+      "ends": "closes"
     },
     {
       "id": "verb:recent:site:link",
@@ -5555,7 +5565,9 @@
       "in": "path:file",
       "name": "Close It",
       "verb": "close",
-      "glyph": "close"
+      "glyph": "close",
+      "act": "ending",
+      "ends": "closes"
     },
     {
       "id": "verb:path:folder:window",
@@ -5780,7 +5792,9 @@
       "in": "windows",
       "name": "Close",
       "verb": "close",
-      "glyph": "close"
+      "glyph": "close",
+      "act": "ending",
+      "ends": "closes"
     },
     {
       "id": "verb:agent:switch",
@@ -6124,6 +6138,13 @@
         "keys": "These keys",
         "close": "Close"
       }
+    },
+    "operators": {
+      "ask": "again {ends} it",
+      "asks": "again {ends} {count}",
+      "ends": "ends",
+      "nothing": "nothing to end",
+      "noCopy": "nothing to copy"
     }
   },
   "meant": [

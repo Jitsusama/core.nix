@@ -122,7 +122,10 @@ Provider {
                 now: true,
                 run: run
             });
-            const copy = act("verb:copy:copy", copied);
+            // What y joins with other rows' copies: the text, for a copy
+            // that's one, and nothing for a picture, which y copies alone.
+            const copy = Object.assign(act("verb:copy:copy", copied),
+                { copies: row.text ?? "" });
             return Pasting.under() === null ? [copy]
                 : [act("verb:copy:paste", () => Pasting.paste(copied)), copy];
         };

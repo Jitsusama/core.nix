@@ -259,7 +259,7 @@ Provider {
             name: Words.name(key, state),
             glyph: Words.glyph(key, state),
             hue: "action"
-        }, fields));
+        }, Words.ending(key), fields));
     }
 
     // What can be done to a window, as its own row holds it, for the same
@@ -330,6 +330,7 @@ Provider {
                 // Said while the launcher still holds the keys, which a
                 // Wayland program needs to set the clipboard.
                 now: true,
+                copies: () => window.title ?? title,
                 run: () => Quickshell.clipboardText = window.title ?? title
             }),
             act("verb:close", "", {
