@@ -1195,6 +1195,12 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         assert "Servers" not in desktop.showing()["rows"], desktop.showing()["rows"]
         desktop.down_to("Clock")
         assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
+        # Once chronyd answers again, the Clock that said nothing keeps the time
+        # is the one that says how it's kept, in its place: Time stepped into
+        # before chronyd answers never shows Clock twice.
+        desktop.machine.succeed("systemctl start chronyd")
+        desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
+        assert desktop.showing()["rows"].count("Clock") == 1, desktop.showing()["rows"]
         desktop.close_launcher()
     finally:
         desktop.machine.succeed("systemctl start chronyd")
