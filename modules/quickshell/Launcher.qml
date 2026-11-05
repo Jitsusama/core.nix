@@ -4173,7 +4173,8 @@ Scope {
     // always opened it, and the drawer takes what's left on its right, up
     // to drawerMost. Only where that's less than drawerLeast, too narrow to
     // hold a line of mail, does the card sit left of centre, the drawer
-    // given drawerLeast or what the screen has. Both are worked out for the
+    // given drawerLeast, or where the screen hasn't that, the card's place
+    // (drawerOver). Both are worked out for the
     // screen alone, never for what's shown, so the card never moves.
     readonly property int drawerMost: 520
     // The least holds a screenshot's name, "2026-11-03 00-10-41.png", on one
@@ -4214,12 +4215,22 @@ Scope {
     readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
     readonly property real drawerRoom: !screenHere ? 0
         : screenHere.width - centred - width - drawerGap - Theme.space.xl
-    readonly property real drawerWidth: !screenHere ? 0
-        : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom)
-        : Math.min(drawerLeast,
-            Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
+    // Whether the screen can't give the drawer its least beside the card
+    // even with the card left of centre, as a 1080p screen at 2 can't.
+    // There it isn't squeezed until a word breaks (VKCF3Z, 2026-11-05:
+    // "Depl/oy/log"): it waits until the keys go in, then takes the card's
+    // place and width, as Vim's preview opens in the one window there is,
+    // and gives it back as they come out.
+    readonly property bool drawerOver: !!screenHere
+        && screenHere.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
+    // Whether the keys are in the drawer.
+    readonly property bool drawerHolds: prompt.mode === "page"
+    // The room beside the card the surface holds for the drawer.
+    readonly property real drawerBeside: drawerOver ? 0 : drawerGap + drawerWidth
+    readonly property real drawerWidth: !screenHere ? 0 : drawerOver ? width
+        : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom) : drawerLeast
     readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
-        Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
+        Math.min(centred, screenHere.width - Theme.space.xl - drawerBeside - width))
     // A quarter down; over a viewer low, its foot a twelfth of the screen
     // up, as the lock screen sits, so the picture or the video its line
     // acts on stays in view above it, as Vim's command line sits at the
@@ -4343,6 +4354,10 @@ Scope {
             // where it and the card sit.
             drawer: {
                 out: root.drawerOut,
+                // Whether there's no room for it beside the card, and
+                // whether it's drawn.
+                over: root.drawerOver,
+                shown: drawerCard.out,
                 drawn: drawerCard.title,
                 title: root.drawerShows?.title ?? "",
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
@@ -4430,6 +4445,7 @@ Scope {
                     rule: drawerCard.rule()
                 },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
+                cardWidth: Math.round(card.width),
                 at: Math.round(drawerCard.mapToGlobal(0, 0).x),
                 width: Math.round(drawerCard.width),
                 height: Math.round(drawerCard.height),
@@ -4812,8 +4828,7 @@ Scope {
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.open ? root.cardTop - card.reach : 0 // qmllint disable unqualified
         margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.open
-            ? root.width + root.drawerGap + root.drawerWidth + 2 * card.reach : 1
+        implicitWidth: root.open ? root.width + root.drawerBeside + 2 * card.reach : 1
         implicitHeight: root.open ? card.height + 2 * card.reach : 1
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -4879,6 +4894,17 @@ Scope {
 
             Column {
                 width: parent.width
+                // Its words give way to the drawer where it takes their
+                // place, fading on the drawer's own curve as it comes.
+                opacity: root.drawerOver && root.drawerHolds ? 0 : 1
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: root.drawerHolds ? Theme.motion.medium : Theme.motion.short
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.motion.curve
+                    }
+                }
 
                 // What's typed, an inset inside the frame.
                 Item {
@@ -5905,14 +5931,15 @@ Scope {
         // its lines set on the card's.
         Drawer {
             id: drawerCard
-            x: card.reach + root.width + root.drawerGap
+            x: card.reach + (root.drawerOver ? 0 : root.width + root.drawerGap)
             y: card.reach
             width: root.drawerWidth
             tall: card.height
             fieldLine: root.fieldLine
             rowLine: root.rowLine
             rowLines: root.rowLines
-            out: root.drawerOut
+            out: root.drawerOut && (!root.drawerOver || root.drawerHolds)
+            waits: root.drawerOut && root.drawerOver && !root.drawerHolds
             given: root.drawerShows
             // Its frame says the keys are here while they're in it, gone in
             // with Space and the right arrow.

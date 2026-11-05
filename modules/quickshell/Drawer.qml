@@ -146,6 +146,14 @@ Floating {
         if (out && given)
             shown = given;
     }
+    // Whether it's kept from showing only until the keys go in, where it
+    // takes the card's place: what it shows is kept, so it has lines for
+    // the keys to go into.
+    property bool waits: false
+    onWaitsChanged: {
+        if (waits && given)
+            shown = given;
+    }
     // How tall it is, the card's height.
     property real tall: 0
     // The card's lines it's set on, down from the card's top as from its
@@ -499,12 +507,14 @@ Floating {
 
     height: tall
     opacity: out ? 1 : 0
-    visible: opacity > 0
+    // Kept visible while it waits, though drawn in no ink, since a text
+    // that isn't visible gives no lines for the keys to go into.
+    visible: opacity > 0 || waits
     // Gone once it has faded away, so what it showed is let go: a picture
     // kept while hidden would be read again as the screen's scale changes,
     // after its file may be gone.
     onVisibleChanged: {
-        if (!visible && !out)
+        if (!visible && !out && !waits)
             shown = null;
     }
     // It fades in where it rests and out again, on the one curve, never
