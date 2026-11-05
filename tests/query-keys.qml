@@ -611,6 +611,21 @@ QtObject {
         const far = Page.sought(page(0, 0), "filler 8", true, 0);
         holds("the view follows it, keeping four lines below", [far.line, far.top], [12, 168]);
         holds("and its letter is where it wants to be", far.want, 0);
+        // Which match it lands on, of how many, as the foot counts them
+        // ("/deploy \u00b7 2 of 3"), going round too.
+        const counted = landed => [landed.at, landed.of];
+        holds("the drawer's search counts the match it lands on",
+            counted(Page.sought(page(0, 0), "deploy", true, 0)), [2, 3]);
+        holds("and counts round past the last",
+            counted(Page.sought(page(0, 0), "deploy", true, 3)), [1, 3]);
+        holds("and back", counted(Page.sought(page(0, 0), "deploy", false, 0)), [3, 3]);
+        // Where the cursor stands on a match, which of them it is, else null.
+        holds("the cursor on a match says which", Page.found(lines, "deploy", 2, 14),
+            { at: 3, of: 3 });
+        holds("the title's own counts first", Page.found(lines, "deploy", 0, 0),
+            { at: 1, of: 3 });
+        holds("the cursor off a match says none", Page.found(lines, "deploy", 1, 0), null);
+        holds("nor where nothing's sought", Page.found(lines, "", 0, 0), null);
     }
 
     // Visual in the drawer, as on a page (VKCF3Z's spec v2): v chooses

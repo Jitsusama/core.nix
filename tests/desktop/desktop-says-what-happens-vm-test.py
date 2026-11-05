@@ -494,13 +494,16 @@ def searched_as_vim_does(desktop: Desktop) -> None:
     nothing typed seeks the last back; a capital asks for one, and the search goes round past
     the last line to the title. Escape lets one being typed go, the keys staying in the drawer,
     as Backspace does with nothing left; Ctrl+W takes the word before and Ctrl+C lets it go,
-    as on Vim's command line. Its pictures at both of Joel's scales show the matches
+    as on Vim's command line. The foot counts the match it would land on, and the one the
+    cursor stands on, of how many. Its pictures at both of Joel's scales show the matches
     washed, for a person to judge the wash by.
     """
     page = InTheDrawer(desktop)
     page.into()
     page.press("/ l i n e spc 3 0")
     desktop.launcher_until(lambda shown: shown["drawer"]["search"]["washing"] == "line 30")
+    typed = desktop.showing()["modeSays"]
+    assert typed == "/line 30 \u00b7 1 of 1", f"typing, the foot says {typed}"
     found = page.until("ret", lambda drawer: drawer["cursor"]["says"].startswith("line 30 "))
     assert found["cursor"]["letter"] == 0, found
     assert found["scrolled"] > 0, found
@@ -510,6 +513,7 @@ def searched_as_vim_does(desktop: Desktop) -> None:
         "last": "line 30",
         "washing": "line 30",
         "landing": "",
+        "found": [1, 1],
     }, found
 
     def on(line: int) -> Callable[[Json], bool]:
@@ -519,8 +523,17 @@ def searched_as_vim_does(desktop: Desktop) -> None:
         )
 
     # Its own line's deploy is after the cursor, on its first letter.
-    page.until("/ d e p l o y ret", on(30))
+    landed = page.until("/ d e p l o y ret", on(30))
+    at, of = landed["search"]["found"]
+    # The next is counted one on, of as many, until the cursor leaves a match.
     page.until("n", on(31))
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["found"] == [at + 1, of])
+    counted = desktop.showing()["modeSays"]
+    assert counted == f"/deploy \u00b7 {at + 1} of {of}", f"on a match, the foot says {counted}"
+    # A letter on, it stands on none, and the foot counts nothing.
+    page.until("l", lambda drawer: drawer["search"]["found"] is None)
+    desktop.launcher_until(lambda shown: shown["modeSays"] == "")
+    page.until("h", on(31))
     page.until("shift-n", on(30))
     page.until("3 n", on(33))
     page.until("? ret", on(32))
@@ -567,7 +580,8 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     The moves extend what's chosen, and it's counted as the mode word counts it; y puts it on
     the clipboard as markdown, the title after its #, and goes back to the page with the
     cursor at its start, the flash it gives what it took ending; o goes to its other end,
-    Escape lets it go, and gv brings it back. Its pictures at both of Joel's scales show
+    Escape lets it go, and gv brings it back. V grounds each line whole, a band across the
+    measure, where v grounds only the letters. Its pictures at both of Joel's scales show
     letters chosen over two lines, for a person to judge the selection's ground and the block.
     """
     page = InTheDrawer(desktop)
@@ -578,6 +592,8 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
 
     came = page.until("v", chose("letters", 1))
     assert came["chosen"]["taken"] == [[title, 0, 1]], came
+    # Letters are grounded as they're chosen, with no band.
+    assert came["chosen"]["bands"] == [], came
     # Choosing, the foot names Escape, which lets the choice go and leaves the keys in.
     told = desktop.showing()["selected"]["told"]
     assert told == ["Esc back"], f"in visual the foot says {told}"
@@ -596,7 +612,12 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     assert back["cursor"]["letter"] == 0, back
     # Lines below the title, so what's copied holds no "log" to be found ahead of the notice
     # when the launcher next looks for its title.
-    page.until("j shift-v j", chose("lines", 2))
+    # V grounds whole lines, each one band across the measure that meets the next.
+    lines = page.until("j shift-v j", chose("lines", 2))["chosen"]
+    measure = lines["measure"]
+    assert [(band["x"], band["width"]) for band in lines["bands"]] == [(0, measure)] * 2, lines
+    upper, lower = lines["bands"]
+    assert upper["top"] + upper["height"] == lower["top"], lines
     page.until("o", lambda drawer: drawer["cursor"]["line"] == title + 1)
     page.pressed_until(
         "esc", lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["by"] == ""
