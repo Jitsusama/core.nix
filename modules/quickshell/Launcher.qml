@@ -2283,11 +2283,12 @@ Scope {
     onListingChanged: drawerSettled()
 
     // The command line, the : line (CommandLine.qml), while it's open:
-    // { from, range, things, menu }, the mode : was pressed in, which
-    // Escape gives back, the range typed before it, the rows its acts act
-    // on, bound as : was pressed so a row arriving can't shift them, and
-    // its menu (Commands.js). Null while it's shut, so nothing of it is
-    // made until : is typed.
+    // { from, range, things, go, menu, options }, the mode : was pressed
+    // in, which Escape gives back, the range typed before it, the rows its
+    // acts act on, bound as : was pressed so a row arriving can't shift
+    // them, what :{n} does, its menu (Commands.js) and :set's options as
+    // they stood (standingOptions). Null while it's shut, so nothing of it
+    // is made until : is typed.
     property var commanding: null
     // What Return on the line said, standing in the line's place for the
     // key that ran it alone: what went wrong, as Vim's command line says
@@ -2336,7 +2337,8 @@ Scope {
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
                 table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
-                called: act => Words.of(act.key ?? "") })
+                called: act => Words.of(act.key ?? "") }),
+            options: standingOptions()
         };
     }
 
@@ -2466,11 +2468,25 @@ Scope {
             now: () => Theme.appearance }
     }, ...sources.map(source => source.setOptions ?? {}))
 
+    // The options as they stand as : is pressed, each read once, so the menu
+    // says where each stands without reading it again on every key: a
+    // display's brightness is read from a file, which moves the reader it
+    // shares, and read while the menu was worked out, that looped its
+    // binding.
+    function standingOptions() {
+        const standing = {};
+        for (const [name, option] of Object.entries(setOptions)) {
+            const now = option.now();
+            standing[name] = Object.assign({}, option, { now: () => now });
+        }
+        return standing;
+    }
+
     // A named command's arguments, as a space after it lists them: :set's
     // options, a surface command's own, or null for one that has none.
     function commandArguments(entry, arg) {
         if (entry.kind === "set")
-            return SetWords.setArguments(arg, setOptions);
+            return SetWords.setArguments(arg, commanding?.options ?? {});
         return entry.kind === "surface" ? Commands.ownArguments(entry, arg) : null;
     }
 
