@@ -22,8 +22,10 @@
 # or :q to close, and Space ? or F1 for every key. The command line takes
 # Vim's ranges and names: :{n} and :$, :noh, :y with a range, :%y the
 # whole file and :'<,'>y the last selection's lines, as the file's
-# markdown, :e for another file, :bn and :bp, and :h for the keys, saying
-# Vim's error of anything else, E492 for a command it hasn't. Each
+# markdown, :e for another file, :bn and :bp, :h for the keys, and
+# :g/pat/, :marks and :ju, which list the lines they name in gO's place,
+# Return going to one, saying Vim's error of anything else, E492 for a
+# command it hasn't. Each
 # search, heading, mark or jump puts the cursor on the line it lands on. v
 # and V select, from the cursor's line, with the terminal's cursor, moved
 # by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap

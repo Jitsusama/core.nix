@@ -113,7 +113,9 @@ onLinux {
   # E21, Return a line, gO lists the headings and Return in it goes
   # to one, a mark is kept with its file between openings, gf and Ctrl+]
   # open the second file, :bp, :e and :bn go between the two, :e of a
-  # file that isn't is E484, :h lists the keys, and :q closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
+  # file that isn't is E484, :h lists the keys, :g/Part/ lists the four
+  # sections and Return goes to one, :marks and :ju list theirs, and :q
+  # closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =
     let

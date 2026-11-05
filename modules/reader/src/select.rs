@@ -704,6 +704,37 @@ impl Layout {
         Some((selection, !lines.is_empty()))
     }
 
+    /// Each piece of the file from line `from` to `to` that `query`
+    /// matches, as :g/pat/ lists them: where the page's line holding its
+    /// first match starts, and that line's words, matched as / matches
+    /// them.
+    #[expect(
+        clippy::float_cmp,
+        reason = "a match's baseline is its line's, copied, never computed"
+    )]
+    pub fn matching(&self, query: &str, from: usize, to: usize) -> Vec<(f64, String)> {
+        self.unit_lines
+            .iter()
+            .zip(&self.units)
+            .filter(|(_, unit)| unit.first <= to && unit.last >= from)
+            .filter_map(|(lines, _)| {
+                let (first, last) = (*lines)?;
+                let found = crate::text::find_as(&self.lines[first..=last], query, true);
+                let baseline = found.first()?.pieces.first()?.baseline_pt;
+                let line = (first..=last).find(|&l| self.lines[l].baseline_pt == baseline)?;
+                Some((self.line_extent(line).0, self.lines[line].text.clone()))
+            })
+            .collect()
+    }
+
+    /// The words of the page's line starting at `top_pt`, or the first
+    /// after it, as :marks and :jumps say a place by its line.
+    pub fn words_at(&self, top_pt: f64) -> Option<&str> {
+        (0..self.lines.len())
+            .find(|&line| self.line_extent(line).0 >= top_pt - 0.5)
+            .map(|line| self.lines[line].text.as_str())
+    }
+
     /// The lines of the file a selection took, from 1, as Neovim's '< and
     /// '> keep them once visual mode ends.
     pub fn file_lines_of(&self, selection: &Selection) -> Option<(usize, usize)> {
@@ -1838,6 +1869,30 @@ mod tests {
         assert_eq!(page.file_lines_of(&s), Some((3, 4)));
         page.object(&mut s, Object::AParagraph);
         assert_eq!(page.file_lines_of(&s), Some((3, 5)), "its blank line too");
+    }
+
+    #[test]
+    fn g_lists_each_piece_by_its_first_matching_line_and_a_mark_by_its_line() {
+        let page = page();
+        let every = |query| page.matching(query, 1, usize::MAX);
+        let more = every("more");
+        assert_eq!(
+            more,
+            [(page.line_extent(2).0, "link here. Then more.".to_string())]
+        );
+        let items: Vec<String> = every("item").into_iter().map(|(_, w)| w).collect();
+        assert_eq!(items, ["first item", "second code item"]);
+        assert!(every("Item").is_empty(), "a capital matches its case");
+        assert_eq!(page.matching("item", 7, 7).len(), 1, "within its range");
+        assert_eq!(
+            page.words_at(page.line_extent(1).0),
+            Some("Some bold words and a")
+        );
+        assert_eq!(
+            page.words_at(page.line_extent(1).0 + 1.0),
+            Some("link here. Then more.")
+        );
+        assert_eq!(page.words_at(10_000.0), None);
     }
 
     #[test]
