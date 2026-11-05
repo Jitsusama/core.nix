@@ -1144,6 +1144,25 @@ Floating {
         font.weight: Theme.level.note.weight
     }
 
+    // The columns' widths, by the widest each holds.
+    TextMetrics {
+        id: twoFigures
+        font: note.font
+        text: "99"
+    }
+
+    TextMetrics {
+        id: keysColumn
+        font: note.font
+        text: "Shift+Tab Up  "
+    }
+
+    TextMetrics {
+        id: notationColumn
+        font: note.font
+        text: "g[lobal]/pat/cmd  "
+    }
+
     FontMetrics {
         id: figure
         font.family: Theme.level.figure.family
@@ -1229,8 +1248,11 @@ Floating {
                     width: parent.width
                     height: held.rowHeight
 
+                    // Chosen in visual, the band runs behind the whole card,
+                    // so the cards chosen read as one run, as Vim's lines do.
                     Rectangle {
-                        anchors.fill: parent
+                        width: parent.width
+                        height: held.mode === "visual" ? line.height : parent.height
                         radius: Theme.inner
                         visible: line.chosenLine
                         color: Qt.alpha(Theme.selection, Theme.floating.selection)
@@ -1241,7 +1263,7 @@ Floating {
                     Text {
                         id: gutter
                         x: held.ink
-                        width: note.advanceWidth("99")
+                        width: twoFigures.advanceWidth
                         anchors.baseline: who.baseline
                         horizontalAlignment: Text.AlignRight
                         text: NoticeList.number(line.at, held.cursor, held.relative)
@@ -1325,7 +1347,9 @@ Floating {
                 // The cursor card whole under its line: what it says, who
                 // sent it, its acts once stepped into, and a reply's prompt.
                 Column {
-                    visible: line.atCursor && line.one !== null
+                    // Folded while the command line's menu is up, which
+                    // takes its room.
+                    visible: line.atCursor && line.one !== null && held.mode !== "command"
                     x: who.x
                     width: parent.width - x - held.ink
                     bottomPadding: Theme.space.m
@@ -1506,7 +1530,7 @@ Floating {
                 Text {
                     id: listedKeys
                     x: held.ink
-                    width: note.advanceWidth("Shift+Tab Up  ")
+                    width: keysColumn.advanceWidth
                     anchors.verticalCenter: parent.verticalCenter
                     visible: listedKey.modelData.heading === ""
                     text: listedKey.modelData.keys
@@ -1529,7 +1553,7 @@ Floating {
         // help notation, what it does, and its key, ten at most.
         Repeater {
             model: held.mode === "command" && !held.menuAway
-                ? held.menuFound.shown.slice(held.menuFirst, held.menuFirst + 10) : []
+                ? held.menuFound.shown.slice(held.menuFirst, held.menuFirst + held.menuRoom) : []
 
             Item {
                 id: entry
@@ -1551,7 +1575,7 @@ Floating {
                 Text {
                     id: notation
                     x: held.ink
-                    width: note.advanceWidth("g[lobal]/pat/cmd  ")
+                    width: notationColumn.advanceWidth
                     anchors.verticalCenter: parent.verticalCenter
                     text: entry.modelData.notation
                     color: entry.chosenEntry ? Theme.strong : Theme.text
@@ -1634,7 +1658,24 @@ Floating {
             width: sheet.width
             height: held.rowHeight
 
-            readonly property real wordRoom: note.advanceWidth("visual line \u00b7 999")
+            // The mode word's room, kept for the widest it says often, so
+            // the hints never shift as the mode changes; an operator's
+            // word, naming its card, may take more where the hints leave
+            // it. TextMetrics, since a binding follows a property and never
+            // what a call measured before the face loaded.
+            readonly property real wordRoom: widestWord.advanceWidth
+
+            TextMetrics {
+                id: widestWord
+                font: note.font
+                text: "visual line \u00b7 999"
+            }
+
+            TextMetrics {
+                id: widestFacts
+                font: note.font
+                text: "3 of 12"
+            }
 
             Text {
                 id: facts
@@ -1651,7 +1692,8 @@ Floating {
             Text {
                 id: modeWord
                 x: facts.x + facts.width + (facts.width > 0 ? Theme.space.l : 0)
-                width: foot.wordRoom
+                width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
+                    - 2 * held.ink - facts.width - hinted.width - 2 * Theme.space.l))
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.modeWord
                 elide: Text.ElideRight
@@ -1663,16 +1705,22 @@ Floating {
                 id: hinted
 
                 // The hints that fit, the first and Space ? kept as the
-                // middle ones give way.
+                // middle ones give way, and Space ? alone at the last.
                 readonly property real fits: foot.width - 2 * held.ink - foot.wordRoom
-                    - Theme.space.l - note.advanceWidth("3 of 12") - Theme.space.l
+                    - Theme.space.l - widestFacts.advanceWidth - Theme.space.l
                 readonly property string all: {
                     if (held.said !== "")
                         return held.said;
+                    // Read, so what's measured below follows the face.
+                    const face = note.font;
+                    if (face.family === "")
+                        return "";
                     const said = held.hints.map(one => `${one.key} ${one.word}`);
                     let shown = said;
-                    while (shown.length > 2 && note.advanceWidth(shown.join(" \u00b7 ")) > fits)
-                        shown = shown.slice(0, shown.length - 2).concat(shown.slice(-1));
+                    while (shown.length > 1 && note.advanceWidth(shown.join(" \u00b7 ")) > fits)
+                        shown = shown.length > 2
+                            ? shown.slice(0, shown.length - 2).concat(shown.slice(-1))
+                            : shown.slice(-1);
                     return shown.join(" \u00b7 ");
                 }
 
@@ -1688,9 +1736,14 @@ Floating {
         }
     }
 
-    // The first menu line shown, so the chosen one's always among the ten.
-    readonly property int menuFirst: Math.max(0, Math.min(menuChosen - 9,
-        menuFound.shown.length - 10))
+    // How many menu lines show: ten at most, and no more than the screen
+    // has rows for below the lines, the command line and the foot, so the
+    // line being typed never falls off it; three at least.
+    readonly property int screenRows: Math.floor((screenHeight - 2 * Theme.space.xxl) / rowHeight)
+    readonly property int menuRoom: Math.max(3, Math.min(10, screenRows - inView.length - 3))
+    // The first menu line shown, so the chosen one's always among them.
+    readonly property int menuFirst: Math.max(0, Math.min(menuChosen - menuRoom + 1,
+        menuFound.shown.length - menuRoom))
 
     SystemClock {
         id: clock
