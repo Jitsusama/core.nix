@@ -47,13 +47,6 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
-def field_key(field: list[Json], mark: str, word: str) -> Json:
-    """Give the field's word for a key, its mark then what it does, failing if it isn't there."""
-    said = [one for one in field if mark in one["text"] and one["text"].endswith(f" {word}")]
-    assert len(said) == 1, (mark, word, field)
-    return said[0]
-
-
 def the_modes_look_as_vims(desktop: Desktop) -> None:
     """See the line on the find, then in normal by Escape, then on the find again by A.
 
@@ -69,12 +62,12 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     field = laid["field"]
     assert not any(word["text"] in ("insert", "find") for word in laid["foot"]), laid["foot"]
     rest = {(word["text"], word["x"]) for word in laid["foot"]}
-    complete = field_key(field, "Ctrl+Y", "complete")
-    # It isn't flush against what's typed, and it's the field's one key in
-    # insert: clearing is normal's.
-    typed = next(word for word in field if word["text"] == "batt")
-    assert typed["x"] < complete["x"], field
-    assert not any(word["text"].endswith(" clear") for word in field), field
+    # The line holds only the find and how far it narrows: Ctrl+Y's completing is said in
+    # the foot, by its key and lowercase word, with every other hint, and no key is on the
+    # line.
+    keyed = [word["text"] for word in field if word["text"].endswith((" complete", " clear"))]
+    assert not keyed, field
+    assert "Ctrl+Y complete" in desktop.showing()["selected"]["told"], desktop.showing()
     assert desktop.showing()["caretShown"] is True, desktop.showing()
     # Escape gives normal: the caret one left and not drawn, since the
     # keys are on the rows, no word for the mode with the rest of the foot

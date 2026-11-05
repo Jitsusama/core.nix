@@ -14,7 +14,7 @@
 // ellipsis rather than cut through a letter. What the shell says in its voice,
 // a quiet row's words and a field's hint, is drawn in the serif face
 // on the baseline the mono's would take. The launcher's modal field says
-// Ctrl+Y on the find and no key in normal, its caret a bar a quarter of a
+// no key, its hints the foot's, its caret a bar a quarter of a
 // letter wide on the find and none in normal, resting on the last letter,
 // and a modal caret fades and then, with no key, holds steady. The letters
 // a find matched in a row's name are washed beneath them, run by run, a
@@ -420,14 +420,12 @@ ShellRoot {
                 asked.text === root.asked && !asked.truncated, said(drawn(opened, [])));
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);
             const counted = texts.findIndex(t => t.text === "1 of 2");
-            expect("typed, the launcher's note stands before the field's keys",
-                counted >= 0 && counted < texts.length - 1
+            // A modal line holds only the find and how far it narrows: its
+            // hints, Ctrl+Y's completing among them, are the foot's (VKCF3Z,
+            // 2026-11-05).
+            expect("typed on the find, the launcher's note ends the field, no key after it",
+                counted >= 0 && counted === texts.length - 1
                     && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
-            expect("typed in insert, the launcher's field says Ctrl+Y completes",
-                texts.length > 1 && texts[texts.length - 2].text === "Ctrl+Y", said(texts));
-            // A key stands a mark from its word, nearer than one hint is
-            // to the next, so the two read as one hint (docs/design.md,
-            // The Ladder).
             // Each gap in the keys is its rung (docs/design.md, The Ladder):
             // a chord's keys tie, a key stands a mark from its word, a hint
             // an item from the next, and a place held wider keeps its room
