@@ -3190,8 +3190,11 @@ Scope {
     // changes, and kept by nothing but the row drawing it, so a list of
     // matches holds no more.
     function matchedIn(choice) {
-        return choice.byWord || choice.plain ? []
-            : Fuzzy.match(choice.prepared, words, true).positions ?? [];
+        if (choice.byWord || choice.answered)
+            return [];
+        const drawn = choice.prepared?.text === choice.name ? choice.prepared
+            : Fuzzy.prepare(choice.name);
+        return Fuzzy.match(drawn, words, true).positions ?? [];
     }
 
     // A name with the letters that matched in Search's ink, as styled
