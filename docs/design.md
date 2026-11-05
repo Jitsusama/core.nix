@@ -1851,8 +1851,10 @@ in visual, operator-pending or on the command line, its rows hold still,
 and what arrives waits behind a "2 new" line.
 
 **Operator-pending** follows d, y or c: a motion, a count, a text object
-or the operator again. On a list ip is the run of rows of one kind or one
-sender, and ap the run with its gap. The cursor row is tinted at once as
+or the operator again. On a list a paragraph is a run of rows that ends at
+a gap or where the kind or sender changes, and { } move by those runs. ip
+is the run, and ap the same rows, since a list has no blank rows to add, as
+ap in a file with no blank lines. The cursor row is tinted at once as
 visual tints it, and the mode word's room says what it will hit. Operators,
 ., u and Ctrl+R act only on a fresh press, never on a held key's repeats.
 
