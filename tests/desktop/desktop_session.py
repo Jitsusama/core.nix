@@ -111,6 +111,8 @@ CAP_SYS_NICE = 23
 
 # The launcher's surface is always listed, so whether it's open is what it says of itself.
 LAUNCHER_OPEN = """qs ipc call launcher showing | grep -q '"open":true'"""
+# The modes the launcher's line types in: the find, and insert while a row asks for words.
+TYPING = ("find", "insert")
 # The window the launcher's window subtests find by its title.
 NOTES = "Notes for Tuesday"
 
@@ -234,6 +236,16 @@ def changed_at_the_top(before: Image.Image, after: Image.Image) -> tuple[float, 
     assert top, "nothing changed along the top"
     xs, ys = [x for x, _ in top], [y for _, y in top]
     return (min(xs) + max(xs)) / 2 / width, (min(ys) + max(ys)) / 2 / height
+
+
+def keyed(name: str, *, down: bool) -> Json:
+    """Give QEMU's input event for a key going down or up, by its name or its number."""
+    key = (
+        {"type": "number", "data": int(name, 16)}
+        if name.startswith("0x")
+        else {"type": "qcode", "data": name}
+    )
+    return {"type": "key", "data": {"down": down, "key": key}}
 
 
 def started(machine: BaseMachine, values: Values) -> Desktop:
@@ -510,21 +522,34 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.wait_until_fails(self.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     def normal(self) -> None:
-        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        """Put the launcher's line in normal mode, by Escape from the find, and wait for it."""
         if self.showing()["mode"] == "normal":
             return
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal")
 
-    def insert(self) -> None:
-        """Put the launcher's query line in insert mode, by A from normal, and wait for it.
+    def land(self) -> None:
+        """Press Return on a row that changes how things stand, from the find, and wait.
 
-        A puts the caret at the end of what's typed, so what's typed next goes after it.
+        Return there only lands on it, in normal, the row saying what a second Return does,
+        so a test presses Return again for it to be done, once a Return no longer comes so soon
+        after the landing that the launcher takes it for the same press doubled.
         """
-        if self.showing()["mode"] == "insert":
+        self.machine.send_key("ret")
+        self.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+        fresh = "qs ipc call launcher showing | grep -qF '\"landedFresh\":false'"
+        self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
+
+    def on_find(self) -> None:
+        """Put the launcher's line back to typing, by A from normal, and wait for it.
+
+        It types on the find, or in insert while a row asks for words, as a password. A puts
+        the caret at the end of what's typed, so what's typed next goes after it.
+        """
+        if self.showing()["mode"] in TYPING:
             return
         self.machine.send_chars("A")
-        self.launcher_until(lambda shown: shown["mode"] == "insert")
+        self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
     def notices_history(self) -> None:
         """From the held notices, open every notice in the launcher, as :e Notices does."""
@@ -564,11 +589,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter with Return's row settled.
 
-        In normal mode it goes into insert first, at the end of what's typed. An answer still
+        In normal mode it goes back to typing first, at the end of what's typed. An answer still
         being looked up closes the launcher without copying. A row that comes from something
         found later, such as a window or a copy, can be named to wait for too.
         """
-        self.insert()
+        self.on_find()
         self.machine.send_chars(text, delay=KEY_PACE)
 
         def holds(shown: Json) -> object:
@@ -901,8 +926,28 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         assert card, "the shell says no card is in front"
         return (card["left"] + card["right"]) / 2, (card["top"] + card["bottom"]) / 2
 
+    def press_at_once(self, keys: str) -> None:
+        """Press each key named, a letter by its character and any other by QEMU's name.
+
+        Every key goes down and up in one batch of QEMU's input events, so the guest reads them
+        all at once, as two keys pressed closer together than a person can are. Sent one
+        sendkey at a time, a loaded builder let niri draw the first key's frame before it read
+        the second, and a waiting key's 300 ms ran out between them.
+        """
+        events: list[Json] = []
+        for key in keys.split():
+            *held, pressed = test_driver.machine.CHAR_TO_KEY.get(key, key).split("-")
+            chord = [*held, pressed]
+            events += [keyed(name, down=True) for name in chord]
+            events += [keyed(name, down=False) for name in reversed(chord)]
+        self.input_events(*events)
+
     def tablet(self, *events: Json) -> None:
-        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767.
+        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767."""
+        self.input_events(*events)
+
+    def input_events(self, *events: Json) -> None:
+        """Send QEMU these input events, a key's or the tablet's, as one batch.
 
         The driver says a command's arguments are strings, so the events go through JSON to
         reach it as they are.

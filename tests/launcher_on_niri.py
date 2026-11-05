@@ -38,6 +38,8 @@ WAITING = timedelta(seconds=30)
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
 KEY_PACE_MS = 50
+# The modes the launcher's line types in: the find, and insert while a row asks for words.
+TYPING = ("find", "insert")
 
 # QEMU's names for the keys the desktop's tests press, as wtype's arguments.
 KEYS = {
@@ -233,18 +235,21 @@ class Shell:
             self.launcher_closed()
 
     def normal(self) -> None:
-        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        """Put the launcher's line in normal mode, by Escape from the find, and wait for it."""
         if self.showing()["mode"] == "normal":
             return
         self.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal")
 
-    def insert(self) -> None:
-        """Put the launcher's query line in insert mode, by A, at the end of what's typed."""
-        if self.showing()["mode"] == "insert":
+    def on_find(self) -> None:
+        """Put the launcher's line back to typing, by A, at the end of what's typed.
+
+        It types on the find, or in insert while a row asks for words, as a password.
+        """
+        if self.showing()["mode"] in TYPING:
             return
         self.send_chars("A")
-        self.launcher_until(lambda shown: shown["mode"] == "insert")
+        self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
     def close_launcher(self) -> None:
         """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
@@ -272,9 +277,9 @@ class Shell:
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter, Return's row settled.
 
-        In normal mode it goes into insert first, at the end of what's typed.
+        In normal mode it goes back to typing first, at the end of what's typed.
         """
-        self.insert()
+        self.on_find()
         self.send_chars(text)
 
         def holds(shown: Json) -> object:

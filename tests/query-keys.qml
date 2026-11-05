@@ -8,6 +8,7 @@
 import QtQuick
 import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
+import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as Keys
 import "Typing.js" as Typing
 import "Operators.js" as Operators
@@ -31,15 +32,17 @@ QtObject {
         }
     }
 
-    // What the keys do, typed one after another from the line's opening, in
-    // insert: each act done, the mode it's left in, and whether the last key
-    // was the line's rather than the field's to type.
+    // What the keys do, typed one after another from the line's opening, on
+    // the find, or in insert where the line holds a prompt's words (`words`):
+    // each act done, the mode it's left in, and whether the last key was the
+    // line's rather than the field's to type.
     // Each act done is said with the count typed before it, as "3 next",
     // in `counted`, an operator's with the motion it took, as "ending 6
     // next", and each search run with what it sought, in `sought`.
-    function typed(keys) {
+    function typed(keys, words = false) {
+        const typing = words ? "insert" : "find";
         let standing = Keys.rest();
-        let mode = "insert";
+        let mode = typing;
         const acts = [];
         const counted = [];
         const sought = [];
@@ -48,7 +51,7 @@ QtObject {
             const read = Keys.read(standing, key, mode);
             standing = read.standing;
             ours = read.ours;
-            mode = Keys.modeAfter(read.act, mode);
+            mode = Keys.modeAfter(read.act, mode, typing);
             if (read.act !== "") {
                 acts.push(read.act);
                 const motion = !read.motion ? "" : read.motion.count > 0
@@ -432,7 +435,7 @@ QtObject {
                 ["normal", "selectLines", "command"], "visual"],
             ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A"],
                 ["normal", "selectLines"], "visual"],
-            ["in insert, V types", ["V"], [], "insert"],
+            ["on the find, V types", ["V"], [], "find"],
             // On a list v is V, as the spec has it: rows have no letters
             // to choose among, so either begins visual line and ends it.
             ["v begins visual line on the rows", ["Escape", "v"], ["normal", "selectLines"],
@@ -541,7 +544,7 @@ QtObject {
         for (const key of keys) {
             const read = Keys.read(standing, key, mode, true);
             standing = read.standing;
-            mode = Keys.modeAfter(read.act, mode);
+            mode = Keys.modeAfter(read.act, mode, "insert");
             if (read.act !== "")
                 acts.push(read.count > 0 ? `${read.count} ${read.act}` : read.act);
         }
@@ -1062,17 +1065,20 @@ QtObject {
 
         // [what, the keys typed from the opening, the acts done]
         const doing = [
-            ["insert's arrows, Home and End move the caret", ["Left", "Right", "Home", "End"],
+            ["the find's arrows, Home and End move the caret",
+                ["Left", "Right", "Home", "End"],
                 ["caretLeft", "caretRight", "caretStart", "caretEnd"]],
-            ["insert's Backspace, Ctrl+W and Ctrl+U delete", ["Backspace", "Ctrl+w", "Ctrl+u"],
+            ["the find's Backspace, Ctrl+W and Ctrl+U delete", ["Backspace", "Ctrl+w", "Ctrl+u"],
                 ["deleteBack", "deleteWord", "deleteToStart"]],
-            ["insert's next row, as his completion menu's", ["Down", "Tab", "Ctrl+n"],
+            ["Ctrl+H deletes back, as Backspace", ["Ctrl+h"], ["deleteBack"]],
+            ["the find's next row, as his completion menu's", ["Down", "Tab", "Ctrl+n"],
                 ["next", "next", "next"]],
-            ["insert's row before", ["Up", "Shift+Tab", "Ctrl+p"],
+            ["the find's row before", ["Up", "Shift+Tab", "Ctrl+p"],
                 ["previous", "previous", "previous"]],
             ["Ctrl+Y completes", ["Ctrl+y"], ["complete"]],
-            ["Return does the row in insert, and in normal", ["Return", "Escape", "Return"],
+            ["Return does the row on the find, and in normal", ["Return", "Escape", "Return"],
                 ["run", "normal", "run"]],
+            ["Ctrl+C leaves the find for normal", ["Ctrl+c"], ["normal"]],
             ["Escape gives normal, and then steps back", ["Escape", "Escape"], ["normal", "back"]],
             ["normal's arrows and h l step out and in", ["Escape", "Left", "h", "Right", "l"],
                 ["normal", "out", "out", "into", "into"]],
@@ -1082,7 +1088,7 @@ QtObject {
             ["a Z with anything but Z after it lets go", ["Escape", "Z", "j", "Z", "Z"],
                 ["normal", "close"]],
             [": in normal opens the command line", ["Escape", ":"], ["normal", "command"]],
-            ["a colon in insert is the field's to type", [":", "q", "Return"], ["run"]],
+            ["a colon on the find is the field's to type", [":", "q", "Return"], ["run"]],
             ["normal's rows keep the arrows", ["Escape", "Down", "Up"],
                 ["normal", "next", "previous"]],
             ["normal's Tab and Space Tab go to the place used last",
@@ -1106,14 +1112,15 @@ QtObject {
             ["Ctrl+F and Ctrl+B go a screen, as Page Down and Up",
                 ["Escape", "Ctrl+f", "Ctrl+b", "PageDown", "PageUp"],
                 ["normal", "pageDown", "pageUp", "pageDown", "pageUp"]],
-            ["insert's Ctrl+U still deletes to the start", ["Ctrl+u"], ["deleteToStart"]],
+            ["the find's Ctrl+U still deletes to the start", ["Ctrl+u"], ["deleteToStart"]],
             ["a g with anything but g after it lets go", ["Escape", "g", "j", "g", "g"],
                 ["normal", "first"]],
             ["u brings the query back", ["Escape", "u"], ["normal", "restore"]],
-            ["i a I A go into insert", ["Escape", "i", "Escape", "a", "Escape", "I", "Escape", "A"],
+            ["i a I A go back to the find",
+                ["Escape", "i", "Escape", "a", "Escape", "I", "Escape", "A"],
                 ["normal", "insert", "normal", "append", "normal", "insertStart", "normal",
                     "appendEnd"]],
-            ["cc and S clear the line into insert", ["Escape", "c", "c", "Escape", "S"],
+            ["cc and S clear the line onto the find", ["Escape", "c", "c", "Escape", "S"],
                 ["normal", "change", "normal", "change"]],
             ["]b and [b go to the place beside, the next and the one before",
                 ["Escape", "]", "b", "[", "b"], ["normal", "nextFile", "previousFile"]],
@@ -1130,11 +1137,35 @@ QtObject {
                 ["Shift+Down", "Escape", "Shift+Up"], ["normal"]],
             ["Page Up and Down page the rows in either mode",
                 ["PageDown", "Escape", "PageUp"], ["pageDown", "normal", "pageUp"]],
-            ["Return with Shift or Ctrl is Return", ["Escape", "Shift+Return", "Ctrl+Return"],
-                ["normal", "run", "run"]]
+            ["Return with Shift, Ctrl or Alt does nothing, on the find and in normal",
+                ["Shift+Return", "Ctrl+Return", "Alt+Return", "Shift+Enter", "Escape",
+                    "Shift+Return", "Ctrl+Return", "Alt+Return", "Ctrl+Enter"], ["normal"]],
+            ["a prompt's words take the find's keys",
+                ["Left", "Ctrl+h", "Ctrl+w", "Ctrl+y", "Return", "Escape"],
+                ["caretLeft", "deleteBack", "deleteWord", "complete", "run", "normal"], true]
         ];
         for (const [what, keys, want] of doing)
             holds(what, typed(keys).acts, want);
+        // A press named as the table names keys (nameOf): Alt with a letter
+        // it typed as the key's own is Vim's M- key, never the letter, so
+        // Alt+d never begins d's operator; a letter Alt shifts to another
+        // on the layout goes by what it typed, and one it types beyond the
+        // table's marks is the field's.
+        const press = (fields, text, letter, named) => Object.assign({ control: false,
+            shift: false, alt: false, text, letter, named: named ?? "" }, fields);
+        const names = [
+            ["a letter", press({}, "d", "d"), "d"],
+            ["a capital", press({ shift: true }, "D", "d"), "D"],
+            ["Alt with a letter", press({ alt: true }, "d", "d"), "Alt+d"],
+            ["Alt with a capital", press({ alt: true, shift: true }, "D", "d"), "Alt+D"],
+            ["Alt with Return", press({ alt: true }, "\r", "", "Return"), "Alt+Return"],
+            ["Ctrl with a letter", press({ control: true }, "\u0017", "w"), "Ctrl+w"],
+            ["Alt shifting a letter to a mark", press({ alt: true }, "@", "q"), "@"],
+            ["Alt typing beyond the marks", press({ alt: true }, "\u00f0", "d"), ""],
+            ["Shift with Tab", press({ shift: true }, "", "", "Tab"), "Shift+Tab"]
+        ];
+        for (const [what, pressed, want] of names)
+            holds(`${what} is named ${want}`, KeyNames.nameOf(pressed), want);
 
         // [what, the keys typed from the opening, each act with its count]
         const counting = [
@@ -1161,7 +1192,7 @@ QtObject {
         ];
         for (const [what, keys, want] of counting)
             holds(what, typed(keys).counted, want);
-        holds("a digit in insert is the field's to type", typed(["3"]).ours, false);
+        holds("a digit on the find is the field's to type", typed(["3"]).ours, false);
         holds("and counts nothing", typed(["3", "Escape", "j"]).counted, ["normal", "next"]);
         holds("a count typed is the line's", typed(["Escape", "4"]).ours, true);
         holds("and stands until its move", typed(["Escape", "4", "2"]).standing,
@@ -1170,7 +1201,8 @@ QtObject {
             [Keys.counted(0), Keys.counted(1), Keys.counted(3)], ["", ".", ".,.+2"]);
         holds("and the keys stand at rest once it opens",
             typed(["Escape", "3", ":"]).standing, { count: "", typed: [] });
-        holds("insert's Space is the field's to type", typed(["Space"]).ours, false);
+        holds("the find's Space is the field's to type", typed(["Space"]).ours, false);
+        holds("a prompt's letters are its own to type", typed(["x"], true).ours, false);
         // The rows have no search of their own: the find line is the list's
         // one way to find (VKCF3Z's vi-paradigm spec, The Find Line).
         holds("/ ? n N search nothing in normal", typed(["Escape", "/", "?", "n", "N"]).acts,
@@ -1186,7 +1218,7 @@ QtObject {
             lines: "lines", along: "along", scroll: "scroll", back: "back", ending: "ending",
             seek: "seek", seekOn: "seek on", select: "select", reselect: "reselect",
             otherEnd: "other end", copy: "copy", copyRow: "copy row" };
-        const modes = { normal: "Normal", insert: "Insert", page: "Drawer",
+        const modes = { normal: "Normal", find: "Find", page: "Drawer",
             pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
@@ -1247,17 +1279,18 @@ QtObject {
         });
         holds("the list's sections, normal's where it's opened first",
             list.filter(line => line.heading !== undefined).map(line => line.heading),
-            ["Normal", "Insert", "Drawer", "Choosing"]);
+            ["Normal", "Find", "Drawer", "Choosing"]);
         holds("the drawer's moves, as normal's on the rows",
             ["gg  G", "H  M  L", "Ctrl+D  Ctrl+U", "Ctrl+F  Ctrl+B", "3j  12G"]
                 .filter(keys => !sections.Drawer.includes(keys.split("  ")[0])), []);
-        holds("insert's next row, Ctrl+N with the arrow", keyed("next row"), "Ctrl+N  \u2193");
-        holds("insert's caret", keyed("caret"), "\u2190  \u2192");
-        holds("insert's word deleted", keyed("word"), "Ctrl+W");
-        holds("normal's keys aren't listed in insert, where they type",
-            ["j", "k", "gg", "ZZ", "Tab"].filter(key => sections.Insert.includes(key)),
+        holds("the find's next row, Ctrl+N with the arrow", keyed("next row"),
+            "Ctrl+N  \u2193");
+        holds("the find's caret", keyed("caret"), "\u2190  \u2192");
+        holds("the find's word deleted", keyed("word"), "Ctrl+W");
+        holds("normal's keys aren't listed on the find, where they type",
+            ["j", "k", "gg", "ZZ", "Tab"].filter(key => sections.Find.includes(key)),
             []);
-        holds("insert's keys aren't listed in normal, where they do nothing",
+        holds("the find's keys aren't listed in normal, where they do nothing",
             ["Ctrl+W", "Ctrl+N", "Ctrl+Y", "Home"].filter(key => sections.Normal.includes(key)),
             []);
         const facts = list.filter(line => line.heading === undefined);
@@ -1269,7 +1302,8 @@ QtObject {
         const arrows = ["Up", "Down", "Left", "Right"];
         holds("every act an arrow does lists its arrow", Keys.table
             .filter(one => one.mode !== "words")
-            .map(one => ({ in: one.mode === "both" ? ["Normal", "Insert"] : [modes[one.mode]],
+            .map(one => ({ in: one.mode === "both" ? ["Normal", "Find"]
+                : one.mode === "line" ? ["Find"] : [modes[one.mode]],
                 arrows: one.keys.filter(key => arrows.includes(key)) }))
             .filter(one => one.arrows.some(key => one.in.some(mode =>
                 !sections[mode].includes(Listed.face(key)))))
@@ -1325,18 +1359,25 @@ QtObject {
         holds("M in a view of three rows, the second", Operators.moved("viewMiddle", 0,
             Object.assign({}, place, { top: 0, bottom: 2, last: 2 })), 1);
 
-        holds("the line opens in insert", typed([]).mode, "insert");
-        holds("a letter in insert is the field's to type", typed(["x"]).ours, false);
-        holds("a letter in insert types, never acts", typed(["i", "a", "c", "c", "u"]).acts, []);
-        holds("a ] in insert is the field's to type", typed(["]"]).ours, false);
+        holds("the line opens on the find", typed([]).mode, "find");
+        holds("a letter on the find is the field's to type", typed(["x"]).ours, false);
+        holds("a letter on the find types, never acts", typed(["i", "a", "c", "c", "u"]).acts,
+            []);
+        holds("a ] on the find is the field's to type", typed(["]"]).ours, false);
+        holds("a prompt opens in insert", typed([], true).mode, "insert");
+        holds("and Escape and i go back to it, not the find",
+            typed(["Escape", "i"], true).mode, "insert");
         holds("a letter in normal is the line's, typing nothing", typed(["Escape", "x"]).ours,
             true);
-        holds("Escape leaves insert for normal", typed(["Escape"]).mode, "normal");
-        holds("cc leaves normal for insert", typed(["Escape", "c", "c"]).mode, "insert");
+        holds("Escape leaves the find for normal", typed(["Escape"]).mode, "normal");
+        holds("Ctrl+C leaves it for normal too", typed(["Ctrl+c"]).mode, "normal");
+        holds("cc leaves normal for the find", typed(["Escape", "c", "c"]).mode, "find");
+        holds("i, a, I and A each go back to the find", ["i", "a", "I", "A"]
+            .map(key => typed(["Escape", key]).mode), ["find", "find", "find", "find"]);
         holds("a c begun is the line's", typed(["Escape", "c"]).ours, true);
         holds("nothing begun is left after an act", typed(["Escape", "c", "c"]).standing,
             Keys.rest());
-        holds("the field says Ctrl+Y for completing", Keys.keyOf("complete", "insert"), "Ctrl+y");
+        holds("the field says Ctrl+Y for completing", Keys.keyOf("complete", "find"), "Ctrl+y");
         holds("and the left arrow for clearing", Keys.keyOf("out", "normal"), "Left");
 
         // [what, the text, the caret, where Ctrl+W deletes back to]

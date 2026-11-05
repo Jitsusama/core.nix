@@ -28,6 +28,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "Reading.js" as Reading
 import "Editing.js" as Editing
+import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
@@ -40,6 +41,13 @@ Item {
     // Room between the glyph and what's typed: the launcher lines what's
     // typed up with its results' column, and a secret sits close by its lock.
     property int glyphWidth: glyphText.implicitWidth + Theme.space.m
+    // A glyph after the first, leading the path: a held thing's, where the
+    // find's / leads the line.
+    property string lead
+    property color leadHue: Theme.muted
+    readonly property real leadWidth: lead === "" ? 0 : leadText.implicitWidth + Theme.space.m
+    // Where what follows the glyphs starts, from the line's own inset.
+    readonly property real ledWidth: glyphWidth + leadWidth
     property bool secret: false
     // How what's typed could end, drawn after it in muted type.
     property string ghost
@@ -85,8 +93,19 @@ Item {
     // Whether the line has vi's modes, as the launcher's does; the lock's
     // and a password's prompts are only typed in.
     property bool modal: false
-    // Whether the line holds a prompt's words, as a save's name, rather
-    // than a find: normal edits them as Vim edits a line (QueryKeys.js, the
+    // The mode it's in: "find", the / line whose letters narrow the rows,
+    // "insert" while it holds a prompt's words (`words`), "normal", "visual"
+    // while visual line chooses rows, or "page" while the launcher's drawer holds the keys, gone into with
+    // Space and the right arrow, as his Neovim goes to the window beside,
+    // and "pageVisual" or "pageVisualLine" while choosing there. It opens
+    // on the find (take()), or in insert where it opens on words.
+    property string mode: "find"
+    // The kind the drawer last chose by, for gv to choose by again, let go
+    // once the keys leave it, as the drawer lets what it chose go.
+    property string lastChosen: ""
+    // Whether the line holds a prompt's words rather than a find, as a
+    // save's name, a password or a code a row asks for: they're typed in
+    // insert, normal edits them as Vim edits a line (QueryKeys.js, the
     // words' rows), and u takes back each change, the newest first, kept in
     // `changes` as the words and the caret before it.
     property bool words: false
@@ -95,13 +114,6 @@ Item {
     // everywhere else.
     property bool editsWords: words
     property var changes: []
-    onWordsChanged: changes = []
-    // The mode it's in: "insert", "normal", "visual" while visual line
-    // chooses rows, or "page" while the launcher's drawer holds the keys,
-    // gone into with Space and the right arrow, as his Neovim goes to the
-    // window beside, and "pageVisual" or "pageVisualLine" while choosing
-    // there. It opens in insert (take()).
-    property string mode: "insert"
     // Visual's operator just done, its key and when, for the same pressed
     // again to be taken with it (Operators.takenWith); null after any key.
     property var visualOperated: null
@@ -110,9 +122,6 @@ Item {
     property bool reselectable: false
     // Whether the keys are on the rows, in normal and visual alike.
     readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
-    // The kind the drawer last chose by, for gv to choose by again, let go
-    // once the keys leave it, as the drawer lets what it chose go.
-    property string lastChosen: ""
     // Whether there's a drawer to go into: out, with lines to sit on. Gone
     // while it holds the keys, they come back to the rows.
     property bool drawerHere: false
@@ -120,6 +129,19 @@ Item {
         if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
+    // The mode typing goes back to: the find, or insert on words.
+    readonly property string typingMode: words ? "insert" : "find"
+    // Words handed over or left go back to the find, never to an insert
+    // with nothing asking, and words come on a find typed in insert.
+    onWordsChanged: {
+        changes = [];
+        if (!words && mode === "insert")
+            mode = "find";
+        else if (words && mode === "find")
+            mode = "insert";
+    }
+    // Whether letters type in the mode it's in.
+    readonly property bool typingNow: mode === "find" || mode === "insert"
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
@@ -157,7 +179,7 @@ Item {
     // What's typed with its completion comes before the aside too, so
     // "weather tokyo" keeps "= no forecast" whole and the aside says less.
     property real asideMost: Math.max(0, width - 2 * Theme.space.l
-        - glyphWidth - Theme.space.m - pathWanted - Math.max(typingRoom, typedWidest)
+        - ledWidth - Theme.space.m - pathWanted - Math.max(typingRoom, typedWidest)
         - Theme.space.xl - keysRoom)
     // The widest what's typed has been with its completion since forget(),
     // so the aside gives way once as it grows, not back and forth with
@@ -216,9 +238,16 @@ Item {
     // A modal line says no key for putting back what was cleared, since
     // normal's u is vi's own way back.
     // A question asked once takes no key of the field's, so none is said.
-    // Nor do a prompt's words, which nothing clears or brings back.
-    readonly property bool keysHeld: keyed && asking === "" && !words && (typed
+    // Nor do a prompt's words, which nothing clears or brings back. Where
+    // even the keys alone would cut the path, they give way, since a key
+    // Joel learns once never costs him where he is.
+    readonly property bool keysHeld: keyed && asking === "" && !words && keysFit && (typed
         || (!modal && input.text === "" && cleared !== ""))
+    readonly property real keysBare: keySlots.reduce((sum, slot) => sum + slotWidth(slot, false),
+        0) + (keySlots.length - 1) * fieldKeys.spacing
+    readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.l - ledWidth
+        - Theme.space.m - pathWanted - Math.max(typingRoom, typedWanted) - Theme.space.xl
+        >= keysBare + Theme.space.xl
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
     // what's typed with its completion, and the aside, each whole. Where
@@ -231,7 +260,7 @@ Item {
     // moves as the mode changes; otherwise Tab's place, then the left
     // arrow's and the right's.
     readonly property string completeKey: modal
-        ? prompt.drawn(QueryKeys.keyOf("complete", "insert")) : "\u21e5"
+        ? prompt.drawn(QueryKeys.keyOf("complete", "find")) : "\u21e5"
     readonly property string clearKey: modal
         ? prompt.drawn(QueryKeys.keyOf("out", "normal")) : "\u2190"
     readonly property var keySlots: modal
@@ -246,7 +275,7 @@ Item {
     readonly property real keysWordedWidth: keysWorded.reduce((sum, wide) => sum + wide, 0)
         + (keysWorded.length - 1) * fieldKeys.spacing
     readonly property real asideWanted: asideWhole
-    readonly property bool wordsFit: width - 2 * Theme.space.l - glyphWidth - Theme.space.m
+    readonly property bool wordsFit: width - 2 * Theme.space.l - ledWidth - Theme.space.m
         - pathWanted - Math.max(typingRoom, typedWanted)
         - Theme.space.xl - (asideWanted > 0 ? asideWanted + Theme.space.xl : 0)
         >= keysWordedWidth + Theme.space.xl
@@ -275,7 +304,7 @@ Item {
     // left arrow while it clears what's typed or the right while it puts
     // back what the left took.
     readonly property var keysSaid: modal
-        ? [mode === "insert" && typed && ghost !== ""
+        ? [typingNow && typed && ghost !== ""
             ? [completeKey, keyWord(keyWords.complete)]
             : mode === "normal" && typed ? [clearKey, keyWord(keyWords.clear)] : ["", ""]]
         : [typed && ghost !== "" ? [completeKey, keyWord(keyWords.complete)] : ["", ""],
@@ -292,8 +321,9 @@ Item {
             ? part.toUpperCase() : part)).join("+");
     }
 
-    // Return, or Shift+Return, which asks for it below the focused window.
-    signal accepted(bool below)
+    // Return. A modal line hears it only bare: with Shift, Ctrl or Alt it
+    // does nothing (QueryKeys.js).
+    signal accepted
     // Tab, which takes the ghost.
     signal completed
 
@@ -301,7 +331,7 @@ Item {
     // for a repeat.
     function returned(event: KeyEvent) {
         if (!event.isAutoRepeat)
-            prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0);
+            prompt.accepted();
     }
 
     signal cancelled
@@ -345,12 +375,12 @@ Item {
 
     // Takes the keys back from whatever else in its window had them, as it
     // opens, so nothing cleared before is offered back, and a modal line
-    // opens in insert, so typing finds at once.
+    // opens on the find, so typing finds at once.
     function take() {
         cleared = "";
         changes = [];
         standing = QueryKeys.rest();
-        mode = "insert";
+        mode = typingMode;
         input.forceActiveFocus();
         woken();
     }
@@ -371,6 +401,18 @@ Item {
             mode = "insert";
             input.cursorPosition = input.text.length;
         }
+    }
+
+    // Off the line into normal, as Escape leaves it, for a Return from the
+    // find that lands on a row rather than doing it.
+    function toNormal() {
+        standing = QueryKeys.rest();
+        if (mode === "normal")
+            return;
+        input.deselect();
+        const at = input.cursorPosition;
+        mode = "normal";
+        input.cursorPosition = Typing.caretAfter("normal", input.text, at);
     }
 
     // Where the caret is, between letters in insert or on one in normal.
@@ -408,19 +450,17 @@ Item {
         [Qt.Key_Space]: "Space",
         [Qt.Key_F1]: "F1"
     })
+    // A key as the table names it (KeyNames.js).
     function named(event: KeyEvent): string {
-        const control = (event.modifiers & Qt.ControlModifier) !== 0;
-        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-        const bare = !control && /^[!-~]$/.test(event.text);
-        // With Ctrl a letter types a control character, so it goes by its
-        // key, which is the layout's letter.
-        const letter = bare ? event.text
-            : control && event.key >= Qt.Key_A && event.key <= Qt.Key_Z
-                ? String.fromCharCode(event.key + 32) : "";
-        const name = letter || (keyNames[event.key] ?? "");
-        if (name === "")
-            return "";
-        return (control ? "Ctrl+" : "") + (shift && !bare ? "Shift+" : "") + name;
+        return KeyNames.nameOf({
+            control: (event.modifiers & Qt.ControlModifier) !== 0,
+            shift: (event.modifiers & Qt.ShiftModifier) !== 0,
+            alt: (event.modifiers & Qt.AltModifier) !== 0,
+            text: event.text,
+            letter: event.key >= Qt.Key_A && event.key <= Qt.Key_Z
+                ? String.fromCharCode(event.key + 32) : "",
+            named: keyNames[event.key] ?? ""
+        });
     }
 
     // A secret's keys, as Vim's inputsecret() takes them: Ctrl+C gives it
@@ -444,9 +484,9 @@ Item {
             event.accepted = true;
         }
     }
-    // Whichever way the line's modes come and go, it comes back in insert,
-    // as a line asking for words wants.
-    onModalChanged: mode = "insert"
+    // Whichever way the line's modes come and go, it comes back typing: on
+    // the find, or in insert where it holds a prompt's words.
+    onModalChanged: mode = typingMode
 
     // A modal line's key: what the table says it does in this mode, done
     // here, or left to the field to type.
@@ -459,7 +499,8 @@ Item {
     }
 
     // How many keys the line has taken, so what a key said, as the command
-    // line's E492, stands until the next one.
+    // line's E492 or the act a landing's second Return does, stands until
+    // the next one.
     property int keysTaken: 0
 
     function modalKey(event: KeyEvent) {
@@ -516,8 +557,12 @@ Item {
                 return;
             prompt.stepped(read.act, read.count);
         }
-        const next = read.act === "reselect" && !onRows && lastChosen !== "" ? lastChosen
-            : QueryKeys.modeAfter(read.act, mode);
+        // Backspace with nothing on the find leaves it for normal, as on
+        // Vim's / line.
+        const emptied = read.act === "deleteBack" && mode === "find" && text === "";
+        const next = emptied ? "normal"
+            : read.act === "reselect" && !onRows && lastChosen !== "" ? lastChosen
+            : QueryKeys.modeAfter(read.act, mode, typingMode);
         if (next !== mode) {
             // Visual's d, y and Return take the selection before it ends,
             // as Vim's visual operators do (Launcher.qml's operated, which
@@ -549,7 +594,8 @@ Item {
                 return;
             }
             mode = next;
-            input.cursorPosition = Typing.caretAfter(read.act, input.text, at);
+            input.cursorPosition = Typing.caretAfter(emptied ? "normal" : read.act,
+                input.text, at);
             return;
         }
         switch (read.act) {
@@ -766,6 +812,17 @@ Item {
         font.pointSize: Theme.level.figure.pointSize
     }
 
+    Text {
+        id: leadText
+        x: Theme.space.l + prompt.glyphWidth
+        anchors.verticalCenter: parent.verticalCenter
+        visible: prompt.lead !== ""
+        text: prompt.lead
+        color: prompt.leadHue
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+    }
+
     KeyHints {
         id: fieldKeys
         anchors.right: parent.right
@@ -863,7 +920,7 @@ Item {
     // then the middle steps folded into one mark, so no name is cut.
     readonly property var crumbsShown: {
         void titleFace.font;
-        const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom - pathGap);
+        const room = Math.max(0, end - Theme.space.l - ledWidth - typingRoom - pathGap);
         const stretch = titleStretch;
         // A step's whole words as their Text draws them, and words given
         // way as the face measures them, stretched as the title's axes do.
@@ -927,7 +984,7 @@ Item {
     // growing it, so the card is one height in a place and out of it.
     Item {
         id: held
-        x: Theme.space.l + prompt.glyphWidth
+        x: Theme.space.l + prompt.ledWidth
         visible: prompt.chips.length > 0
         width: visible ? path.width : 0
         height: parent.height
@@ -1003,7 +1060,7 @@ Item {
 
     TextInput {
         id: input
-        x: Theme.space.l + prompt.glyphWidth
+        x: Theme.space.l + prompt.ledWidth
             + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
         width: prompt.end - x
         anchors.verticalCenter: parent.verticalCenter

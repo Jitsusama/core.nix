@@ -114,6 +114,8 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.photograph("launcher-home-awake")
     desktop.type_in("let it sleep")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
@@ -337,6 +339,8 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
         print(f"clicked at {glyph} of the screen")
         print(desktop.as_account("niri msg layers; niri msg --json focused-output"))
         raise
+    # From the find, Return lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
@@ -375,6 +379,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.photograph("launcher-held")
     desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")
+    # From the find, Return lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     desktop.as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
@@ -493,6 +499,9 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
             thing["reads"].startswith("Microphone Muted \u00b7 yes") for thing in shown["things"]
         )
     )
+    # A switch changes how things stand, so from the find Return lands on it, and the
+    # second flips it.
+    desktop.land()
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))

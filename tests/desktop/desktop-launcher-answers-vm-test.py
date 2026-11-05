@@ -205,11 +205,13 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.answer("brightness")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == share)
     desktop.close_launcher()
-    # With a number, Return sets it, as the brightness keys do.
+    # With a number, Return sets it, as the brightness keys do: from the find
+    # it lands on it, since it changes how things stand, and a second does it.
     desktop.answer("brightness 30")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%"
     )
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
@@ -234,6 +236,8 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Brightness to 40%" in shown["rows"])
     desktop.type_in("40", selecting="Brightness to 40%")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
@@ -298,16 +302,16 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
-    # A path this long leaves no room for the field's words for its keys,
-    # so a letter typed in insert, then normal, brings the left arrow's key
-    # alone, and the path is never cut to make room for them.
-    desktop.insert()
+    # A path this long leaves no room for the field's keys beside the / and
+    # the thing's glyph, so a letter typed on the find, then normal, brings
+    # no key: a key never costs the path its words, whatever the / does.
+    desktop.on_find()
     machine.send_chars("l")
     desktop.launcher_until(lambda shown: shown["typed"] == "l")
     desktop.normal()
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert not any(word["cut"] for word in field if board in word["text"]), field
-    assert any("\u2190" in word["text"] for word in field), field
+    desktop.photograph("launcher-keyboard-path-normal")
+    assert not any("\u2190" in word["text"] for word in field), field
     assert not any(word["text"].endswith(" clear") for word in field), field
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
@@ -1194,6 +1198,25 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         desktop.close_launcher()
     finally:
         desktop.machine.succeed("systemctl start chronyd")
+    keeps_one_clock(desktop)
+
+
+def keeps_one_clock(desktop: Desktop) -> None:
+    """Step into Time before its reader answers, and see one Clock once it does.
+
+    Time waits on a Clock, and the Clock the answer brings takes its place, never beside it.
+    The reader is held back until the step is in, and Time asks it again each second.
+    """
+    try:
+        desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Clock" in shown["rows"])
+    finally:
+        desktop.as_account("systemctl --user start timekeeping.socket")
+    desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
+    assert desktop.showing()["rows"].count("Clock") == 1, desktop.showing()["rows"]
+    desktop.close_launcher()
 
 
 def firmware_reads(shown: Json) -> str:

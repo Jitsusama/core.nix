@@ -274,6 +274,8 @@ Provider {
         return said(key, "", {
             targets: () => [provider.thing({
                 key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
                 verb: Words.verb(key),
                 name: `${Words.of(key).sure}, Closing ${closing}`,
                 glyph: Words.glyph(key),
@@ -1003,12 +1005,15 @@ Provider {
         row.weight = provider.weight / 2;
         // One that asks, as Join by Code does, goes to its ask inside the
         // program on Return and the right arrow alike, since what it asks
-        // for is typed there.
+        // for is typed there. Going there changes nothing yet, so Return
+        // from the find goes at once rather than landing, though its verb,
+        // as join, may be one Catalogue.js guesses at.
         if (act.given)
             return Object.assign(row, {
                 trail: trail.concat([act.key]),
                 spot: "",
                 stays: true,
+                changes: false,
                 run: () => provider.launcher?.goTo(row)
             });
         return Object.assign(row, { inside: { trail: trail, spot: act.key }, run: act.run });

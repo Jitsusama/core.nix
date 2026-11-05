@@ -6652,7 +6652,7 @@
       "drawerTitle": "The Drawer's Keys",
       "modes": {
         "normal": "Normal",
-        "insert": "Insert",
+        "find": "Find",
         "page": "Drawer",
         "pageVisual": "Choosing"
       },

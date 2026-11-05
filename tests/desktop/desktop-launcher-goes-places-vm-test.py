@@ -103,6 +103,7 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" to 40%")
     )
+    desktop.land()
     machine.send_key("ret")
     # Exactly that, and no longer muted.
     machine.wait_until_succeeds(
@@ -721,6 +722,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let It Sleep")
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
     desktop.close_launcher()

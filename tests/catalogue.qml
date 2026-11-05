@@ -2,7 +2,7 @@
 // tells what's asked of it from outside apart, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The
 // `the-launcher-catalogues-what-it-does` check copies Catalogue.js beside
-// this file and runs `qml -platform offscreen catalogue.qml`. Each case is
+// this file, with the key language's commands as commands.json, and runs `qml -platform offscreen catalogue.qml`. Each case is
 // a promise pi-ask's tool leans on: a place opens and an action is done,
 // one that ends something is only offered, and what's only a figure, a
 // copy or a command's start isn't listed at all. A step into a row, as the
@@ -29,9 +29,20 @@ QtObject {
         }
     }
 
+    // The key language's commands by their whole names, as the shell's
+    // Options.commands holds them, which the check writes beside this file
+    // from modules/keys/language.toml.
+    function commands() {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("commands.json"), false);
+        request.send();
+        return JSON.parse(request.responseText);
+    }
+
     function run() {
         const opens = () => [];
         const does = () => {};
+        const names = rows => rows.map(row => row.name).join(", ");
         // What each is.
         expect("a place", Catalogue.kindOf({ category: {}, verbs: opens }), "place");
         expect("a collection", Catalogue.kindOf({ opens: "windows", verbs: opens }), "place");
@@ -72,6 +83,108 @@ QtObject {
         expect("nor a lock", Catalogue.opens({ verb: "lock", run: does }), false);
         expect("nor a place", Catalogue.opens({ verb: "more", run: does }), false);
         expect("nor a row with nothing to run", Catalogue.opens({ verb: "open" }), false);
+        // The key language decides as Return's landing does (changesState),
+        // so Return on one row and over a selection never disagree.
+        expect("nor one whose command the language says changes", Catalogue.opens(
+            { verb: "move", run: does }, { command: "move", flags: { changes: true } }), false);
+        expect("nor one that says it changes", Catalogue.opens({ verb: "go", changes: true,
+            run: does }), false);
+        expect("while one it says changes nothing opens", Catalogue.opens(
+            { verb: "go", run: does }, { command: "go", flags: { changes: false } }), true);
+        // What Return from the find lands on rather than doing: whatever
+        // changes how things stand, as the key language flags the command a
+        // row is named by (modules/keys/language.toml's changes), so d and
+        // Return agree, and never what only shows or opens. Each row is
+        // given its command as the launcher resolves it, and that command's
+        // flags where the language names it.
+        const language = commands();
+        // A row's command, from its words (`command` here) or else as
+        // Commands.js's commandOf reads one: its verb's first word, or its
+        // name's where it has no verb.
+        const verbal = row => {
+            const verb = String(row.verb ?? "").trim().toLowerCase();
+            const said = verb === "" ? String(row.name ?? "").trim().toLowerCase() : verb;
+            return (said.match(/^[a-z]+/) ?? [""])[0];
+        };
+        const named = row => Catalogue.named(row.command, verbal(row), language);
+        const changes = row => Catalogue.changesState(row, named(row));
+        const changing = [
+            ["an ending action", { verb: "forget", act: "ending", ends: "forgets", run: does }],
+            ["a disconnect", { verb: "disconnect", ends: "disconnects", run: does }],
+            ["a setting's switch, by :set", { verb: "keep", command: "set", run: does }],
+            ["a window moved, by :move", { verb: "move", run: does }],
+            ["one asked to be sure of", { verb: "reboot", confirm: true, run: does }],
+            ["a setting's act, closing", { verb: "hold", changes: true, run: does }],
+            ["a session's pause", { verb: "pause", run: does }],
+            // A command the language doesn't name yet keeps the guess from
+            // how the row is made, whatever its verb or name says, since a
+            // row's command is read from its name where it has no verb.
+            ["a lock, guessed", { verb: "lock", run: does }],
+            ["a turning off, guessed", { verb: "turn off", stays: true, run: does }],
+            ["a network's join, guessed", { verb: "connect", stays: true, run: does,
+                verbs: opens }],
+            ["Wi-Fi Off, guessed", { verb: "off", stays: true, run: does }],
+            ["Do Not Disturb ended, guessed", { verb: "end", stays: true, run: does }],
+            ["a track skipped, guessed", { verb: "next", stays: true, run: does }],
+            ["a brightness set, guessed from its name", { name: "Brightness to 40%",
+                stays: true, run: does }]
+        ];
+        for (const [what, row] of changing)
+            expect(`${what} changes how things stand`, changes(row), true);
+        expect("a window's Close It, by its words' :close, changes how things stand",
+            changes({ verb: "close", command: "close", run: does }), true);
+        const quietly = [
+            ["a program", { verb: "open", run: does }],
+            ["a program opened that stays, as the table says :open changes nothing",
+                { verb: "open", stays: true, run: does }],
+            ["a window", { verb: "go", run: does, verbs: opens }],
+            ["a copy", { verb: "copy", command: "yank", stays: true, run: does }],
+            ["a See It", { verb: "see", stays: true, run: does }],
+            ["a verb the language names nothing for and the guess doesn't hold",
+                { verb: "say", run: does }],
+            ["a place", { category: {}, verbs: opens }],
+            // A figure only says a value, so Return copies it, or closes
+            // the launcher where it has nothing to copy yet, which isn't
+            // the :close of a window that its verb would name.
+            ["a figure with nothing to copy yet", { verb: "close", figure: true, run: does }],
+            // A row whose verb alone says close only closes the launcher,
+            // as :quit does, where a window's Close It is its words' :close.
+            ["a row that only closes the launcher", { verb: "close", run: does }],
+            // Return on a row that asks for words first only asks, whatever
+            // the words then do, as a network's new password.
+            ["a row asking its words first", { verb: "connect", command: "password",
+                given: does, run: does }],
+            ["a spot to go to", { verb: "start", stays: true, spot: "x", run: does }],
+            ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
+                targets: opens }],
+            ["one gone", { verb: "disconnect", ends: "disconnects", gone: true, run: does }],
+            ["a question asked", { verb: "ask", changes: false, stays: true, run: does }],
+            ["a picker's mark, which only picks", { verb: "mark", changes: false, stays: true,
+                run: does }],
+            ["a place found again", { verb: "find", stays: true, run: does }],
+            ["a search tried again", { verb: "retry", stays: true, run: does }]
+        ];
+        for (const [what, row] of quietly)
+            expect(`${what} changes nothing`, changes(row), false);
+        // The verbs the guess holds quiet, the language naming no command
+        // for them yet, can only shrink: one joining fails here, and so does
+        // one the language has come to name, whose rows the table decides.
+        expect("the verbs the guess holds quiet", Catalogue.quiet,
+            ["copy", "find", "go", "more", "see", "show"]);
+        expect("none of which the language names as a command",
+            Catalogue.quiet.filter(verb => language[verb] !== undefined), []);
+        // The first row inside a thing never changes anything.
+        const seen = { name: "See It", verb: "see", run: does };
+        const cut = { name: "Disconnect It", verb: "disconnect", ends: "disconnects",
+            run: does };
+        const forget = { name: "Forget It", verb: "forget", act: "ending", run: does };
+        expect("a disconnect first goes after the first quiet row",
+            names(Catalogue.quietFirst([cut, forget, seen, { name: "Copy", verb: "copy",
+                run: does }], named)), "See It, Disconnect It, Forget It, Copy");
+        expect("a quiet first row stays first", names(Catalogue.quietFirst([seen, cut], named)),
+            "See It, Disconnect It");
+        expect("rows that all change something keep their order",
+            names(Catalogue.quietFirst([cut, forget], named)), "Disconnect It, Forget It");
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
             false);
@@ -117,7 +230,6 @@ QtObject {
             words: "Talk", in: "", disruptive: false, says: "listening",
             args: [{ name: "words", words: "what to say?" }] });
         // A step into a row leads with what Return does, unless it's there.
-        const names = rows => rows.map(row => row.name).join(", ");
         let opened = 0;
         const notice = { name: "Build done", verb: "open", glyph: "n", run: () => {
             opened += 1;
@@ -172,6 +284,7 @@ QtObject {
         const closing = Catalogue.closingFirst(awake, []);
         expect("a setting holding nothing holds its act", [names(closing), closing[0].stays],
             ["Keep", false]);
+        expect("which changes what the setting did", changes(closing[0]), true);
         closing[0].run();
         expect("which does what Return does", kept, 1);
         const quiet = { name: "Do Not Disturb", verb: "hold", stays: true, run: does };

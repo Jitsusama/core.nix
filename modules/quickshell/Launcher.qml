@@ -1,11 +1,12 @@
 // The launcher on Super+Space, the desktop's command palette: type what you
 // want, a window, an application, an action or what a key does, pick it
-// with the arrows, and Return runs it, or Shift+Return opens it below the
-// focused window. The command line is modal, as Neovim's is (Prompt.qml,
-// QueryKeys.js): it opens in insert, where letters type and Ctrl+Y takes
-// the grey completion it shows, and Escape gives normal, where nothing
-// types and the keys move through the rows as Vim's do through a buffer,
-// with counts. Each action shows its chord, so keys are learned by use.
+// with the arrows, and Return opens it, or lands on it where it would
+// change something. The line is modal, as Vim's / line is (Prompt.qml,
+// QueryKeys.js): it opens on the find, where letters narrow the rows and
+// Ctrl+Y takes the grey completion it shows, and Escape gives normal, where
+// nothing types and the keys move through the rows as Vim's do through a
+// buffer, with counts. Each action shows its chord, so keys are learned by
+// use.
 //
 // It opens as fast as niri can hand it the keys. Super+Space says "toggle"
 // down a socket the shell keeps open (launcher-say, in home.nix), not
@@ -391,6 +392,8 @@ Scope {
             // One whose doing takes a while keeps the launcher open, as
             // asking a question does, its whole words below the rows.
             stays: said.stays ?? false,
+            // Whether it says it changes nothing, as asking a question.
+            changes: said.changes,
             reads: said.reads ?? "",
             note: said.note ?? "",
             copies: said.run ? "" : said.copy ?? said.headline,
@@ -1822,14 +1825,82 @@ Scope {
         return !!choice.confirm && (held.length === 0 || collecting);
     }
 
-    // Whether Return typed in insert leaves a row be, for ending something
-    // in use (Catalogue.js's ends), as a connected network's Return
-    // disconnects it: it steps in instead, to what can be done to it, or
-    // does nothing (Joel, 2026-11-04: "it is quite dangerous how in insert
-    // mode i can type in a name of a wifi network and then hitting enter
-    // disconnects from it"). Normal's Return does it, as ever.
-    function guarded(choice) {
-        return !!choice && prompt.modal && prompt.mode === "insert" && Catalogue.ends(choice);
+    // Whether Return on a row changes how things stand (Catalogue.js's
+    // changesState), as the key language flags the command the row is
+    // named by, so Return lands where d asks.
+    function changesState(choice) {
+        return !!choice && Catalogue.changesState(choice, commandNamed(choice));
+    }
+
+    // The command a row is named by (Catalogue.js's named), from its words
+    // or its verb, as the command line names its act, and the key
+    // language's flags for it.
+    function commandNamed(row) {
+        return Catalogue.named(commandWords(row.key ?? "").command, Commands.commandOf(row),
+            Options.commands);
+    }
+
+    // Whether Return steps into a thing whose own act changes something, as
+    // a network or a device is, from the find and from normal alike, where
+    // its act is only done from inside it (the vi-paradigm spec's Return):
+    // a name typed and Return never joins, disconnects or forgets. Only the
+    // thing's own row, found from the top or in its collection: a part
+    // inside one, as an output's Muted, is a switch that Return switches.
+    function stepsThing(choice) {
+        const kind = kindOf(choice);
+        return !!choice && prompt.modal && changesState(choice)
+            && (kind === "network" || kind === "device") && (held.length === 0 || collecting)
+            && holdsMore(choice) && !stepsIn(choice);
+    }
+
+    // Whether Return from the find lands on a row rather than doing it: one
+    // that changes something, which leaves the line for normal on it, saying
+    // what a second Return does (Joel, 2026-11-04: "it is quite dangerous
+    // how in insert mode i can type in a name of a wifi network and then
+    // hitting enter disconnects from it"). Normal's Return does it.
+    // One that asks for words first asks, as Join by Code does, and one
+    // asking Joel to be sure is done, since stepping in was the second press.
+    function lands(choice) {
+        return !!choice && prompt.modal && prompt.mode === "find" && changesState(choice)
+            && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !choice.sure
+            && !sureOf();
+    }
+
+    // Whether the step Joel is in asks him to be sure, as Power Off's does.
+    function sureOf() {
+        return held.length > 0 && !!held[held.length - 1].row?.confirm;
+    }
+
+    // What the last Return did ("ran", "landed", "entered", "gave", or ""
+    // for one doubled), and when it was pressed, heard and done, in
+    // milliseconds of the monotonic clock, so a test sees that a name and
+    // one Return opens with no wait between.
+    property var returned: ({})
+
+    // The row Return last landed on, by its steady id, and the keys the
+    // line had taken then, so what it says lasts only until the next key.
+    property string landedKey: ""
+    property int landedKeys: -1
+    property real landedAt: 0
+
+    function land(choice) {
+        prompt.toNormal();
+        landedKey = steadyId(choice);
+        landedKeys = prompt.keysTaken;
+        landedAt = Date.now();
+    }
+
+    // Whether a row is the one landed on, until the next key.
+    function landedOn(choice) {
+        return !!choice && landedKey !== "" && prompt.keysTaken === landedKeys
+            && steadyId(choice) === landedKey;
+    }
+
+    // Whether Return comes so soon after a landing that it's the same
+    // Return doubled, a key bounced or pressed twice for one, which does
+    // nothing, as a confirm's second Return waits the same while.
+    function landedJustNow() {
+        return landedKey !== "" && Date.now() - landedAt < Options.keyTiming.wait;
     }
 
     // The keys the foot names while the drawer holds them, where the row's
@@ -1856,12 +1927,17 @@ Scope {
             return [];
         // In visual, Return opens the selection's rows it can, by count.
         if (visual)
-            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row))
-                .length, Words.field.visual ?? {})]];
-        // One Return typed in insert leaves be says Return only where it
-        // steps in, and no arrow, since insert's arrows move the caret.
-        if (guarded(choice))
-            return holdsMore(choice) ? [["\u21b5", ""]] : [];
+            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
+                commandNamed(row))).length, Words.field.visual ?? {})]];
+        // The row landed on says the act a second Return does, in the
+        // accent, since it's the one key that changes something now.
+        if (choice === selected && landedOn(choice))
+            return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent]];
+        // One Return lands on from the find says Return with no act, since
+        // Return there does nothing of its own, and no arrow, since the
+        // find's arrows move the caret.
+        if (lands(choice))
+            return [["\u21b5", ""]];
         // The arrows are said by their marks alone, which Joel knows: the
         // right arrow steps in and the left one steps back wherever they
         // work, so their words only took room from the marks beside them
@@ -1869,7 +1945,7 @@ Scope {
         // as possible"). Going elsewhere keeps Return's own word, where it
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
-        const stepping = stepsIn(choice);
+        const stepping = stepsIn(choice) || stepsThing(choice);
         // An arrow is named only in a mode where it steps: in insert they
         // move the caret, so naming them there named keys that did nothing
         // of what was said (Joel, 2026-11-04). A secret's line has no
@@ -1883,8 +1959,6 @@ Scope {
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
         const keys = choice.still ? []
             : [stepping ? [into ? "\u21b5 \u2192" : "\u21b5", more] : ["\u21b5", verbOf(choice)]];
-        if (choice.below)
-            keys.push(["\u21e7\u21b5", "below"]);
         if (into && !stepping && holdsMore(choice))
             keys.push(["\u2192", ""]);
         if (out && typed === "" && held.length > 0)
@@ -2937,14 +3011,30 @@ Scope {
     // same way when a step is made again, so a refresh never finds the
     // act it led with gone.
     function stepRows(row, things) {
-        // One that keeps the launcher leads with its act, which closes it,
-        // so the right arrow then Return does it and closes.
+        // One that keeps the launcher holds its act, which closes it, so
+        // the right arrow then Return on it does it and closes.
         if (keepsOpen(row) && (things || !row.targets))
             return closingLed(row, things && row.verbs ? row.verbs() : []);
         const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
         // A row that would only copy gains its copy inside wherever it's
         // stepped into, so the copy is never lost to Return stepping in.
         return made && (things || copiesOnly(row)) ? led(row, made) : made;
+    }
+
+    // What a step into a row holds: its own rows, then a thing's parts
+    // after what can be done to it. Inside a network or a device whose own
+    // act changes something, which Return steps into rather than doing,
+    // the first is never one that changes anything, so a Return that steps
+    // in and a second after it only ever show (Catalogue.js's quietFirst).
+    // Anywhere else its own order stands: a setting's act still leads its
+    // step, a sound output's use, and an answer's levels its copy. Null
+    // where it holds nothing.
+    function inside(row, things) {
+        const own = stepRows(row, things);
+        const parts = things ? partsIn(row) : [];
+        const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
+        return into && things && stepsThing(row)
+            ? Catalogue.quietFirst(into, one => root.commandNamed(one)) : into;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
@@ -2971,10 +3061,7 @@ Scope {
             return true;
         }
         const things = asThing(row, held.length === 0 || collecting);
-        const own = stepRows(row, things);
-        // A thing's parts come after what can be done to it.
-        const parts = things ? partsIn(row) : [];
-        const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
+        const into = inside(row, things);
         // A collection with nothing in it still holds the places its
         // vocabulary names, which a step into it shows: Agents with no
         // agent running still leads to its Quests and Orchestrators. A row
@@ -3201,9 +3288,7 @@ Scope {
             const thing = rows.find(row => sameRow(row, step.row))
                 ?? ((step.typed ?? "") !== "" ? step.row : undefined);
             const things = !!thing && asThing(thing, at === 0 || collects(steps[at - 1]));
-            const own = !thing ? null : stepRows(thing, things);
-            const parts = thing && things ? partsIn(thing) : [];
-            const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
+            const into = !thing ? null : inside(thing, things);
             if (!into)
                 return false;
             steps[at] = Object.assign({}, step, {
@@ -3917,7 +4002,7 @@ Scope {
         const place = held.length > 0 ? held[held.length - 1].row : null;
         if (place && typeof place.takes === "function" && place.takes(rows) === true)
             return;
-        const opening = rows.filter(row => Catalogue.opens(row));
+        const opening = rows.filter(row => Catalogue.opens(row, commandNamed(row)));
         const said = Operators.openedSaid(opening.length, rows.length,
             Words.field.visual ?? {});
         if (said !== "")
@@ -4661,9 +4746,20 @@ Scope {
             open: root.open,
             keys: root.open && prompt.Window.active,
             typed: root.typed,
-            // The query line's mode, insert or normal, and where its caret
-            // is, between letters in insert and on one in normal.
+            // The line's mode, find, insert or normal, and where its caret
+            // is, between letters on a line and on one in normal.
             mode: prompt.mode,
+            // What leads the line, the find's / at every depth, and its hue
+            // by the theme's role, and a held thing's glyph after it.
+            sigil: prompt.glyph,
+            sigilHue: Qt.colorEqual(prompt.hue, Theme.accent) ? "accent"
+                : Qt.colorEqual(prompt.hue, Theme.muted) ? "muted" : "",
+            lead: prompt.lead,
+            // The row Return landed on from the find, until the next key,
+            // and whether a Return now would come too soon after it.
+            landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
+            landedFresh: root.landedJustNow(),
+            returned: root.returned,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
@@ -5370,12 +5466,13 @@ Scope {
                                 : root.visual ? { range, things: root.visualRows() }
                                 : { range }))
                         steady: true
-                        // Neovim's command line, opening in insert, but for
-                        // a secret, which has no modes, as Vim's
-                        // inputsecret() has none (VKCF3Z's vi-paradigm
-                        // spec, Insert).
+                        // Vim's / line, opening on the find, but for a
+                        // secret, which has no modes, as Vim's inputsecret()
+                        // has none (VKCF3Z's vi-paradigm spec, Insert).
                         modal: !prompt.secret
-                        words: root.holdsWords
+                        // A step holding words, as a save's name, or a row
+                        // asking for them, is typed in insert.
+                        words: root.holdsWords || !!root.asking
                         editsWords: root.holdsWords && root.selected?.names === true
                         awake: root.open
                         fade: Options.caret.fade
@@ -5390,12 +5487,21 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
+                        // The find's / leads the line at every depth, in
+                        // the accent while it finds and muted in normal, as
+                        // Vim's / line is the one place letters go; a held
+                        // thing's glyph follows it, leading the path. Words
+                        // asked for are typed beside the thing's own glyph.
                         // An ask leads with nothing, since the line isn't a
                         // find while it stands, its words where the find's are.
+                        readonly property bool sigilLeads: !secret && !words && root.asked === null
                         glyph: root.asked !== null ? "" : secret ? Theme.glyph.secret
-                            : thing ? thing.lead ?? thing.glyph : Theme.glyph.launcher
+                            : !sigilLeads && thing ? thing.lead ?? thing.glyph : "/"
                         hue: secret ? Theme.machine
-                            : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
+                            : !sigilLeads && thing ? Theme[thing.leadHue ?? thing.hue]
+                            : mode === "find" ? Theme.accent : Theme.muted
+                        lead: sigilLeads && thing ? thing.lead ?? thing.glyph : ""
+                        leadHue: thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
                         // A folder's path gives way before any other step.
                         chips: root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
@@ -5422,16 +5528,34 @@ Scope {
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
                                 KeyTimes.pressed());
                         }
-                        onAccepted: below => {
+                        // Return, as the vi-paradigm spec's table has it:
+                        // words asked for are handed over; a thing whose
+                        // act changes something is stepped into; from the
+                        // find, a row that changes something is landed on,
+                        // leaving the line for normal; anything else opens
+                        // or is done, so a name and one Return opens it.
+                        onAccepted: {
+                            const heard = KeyTimes.now();
+                            const pressed = KeyTimes.pressed();
                             root.searchNow();
                             trials.pressed("returns");
-                            if (root.asking)
+                            const act = root.asking ? "gave" : root.landedJustNow() ? ""
+                                : root.stepsThing(root.selected) ? "entered"
+                                : root.lands(root.selected) ? "landed" : "ran";
+                            if (act === "gave")
                                 root.give();
-                            else if (root.guarded(root.selected)) {
-                                if (root.holdsMore(root.selected))
-                                    root.enter(root.selected);
-                            } else
-                                root.run(root.selected, below);
+                            else if (act === "entered")
+                                root.enter(root.selected);
+                            else if (act === "landed")
+                                root.land(root.selected);
+                            else if (act === "ran")
+                                root.run(root.selected, false);
+                            // A doubled Return is the landing's own press,
+                            // so the landing still says what a second does.
+                            else
+                                root.landedKeys = prompt.keysTaken;
+                            root.returned = { act: act, pressed: pressed > 0 ? pressed : null,
+                                heard: heard, done: KeyTimes.now() };
                         }
                         // Ctrl+Y on an answer puts the answer in place of
                         // the question, so a sum can be carried on; one
@@ -6069,6 +6193,8 @@ Scope {
                                     sideItems: entry.modelData.sideItems ?? []
                                     count: entry.modelData.count ?? ""
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
+                                    landed: selected && root.landedOn(entry.modelData)
+                                        ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).

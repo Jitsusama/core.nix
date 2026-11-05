@@ -75,12 +75,15 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
             lambda shown: shown["current"] > 1, "moved more than a row at a held j"
         )
         machine.send_chars("i")
-        screens.launcher_until(lambda shown: shown["mode"] == "insert", "went back to insert")
+        screens.launcher_until(lambda shown: shown["mode"] == "find", "went back to the find")
         machine.send_chars("keep awake")
         screens.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake",
             "found 'Keep Awake'",
         )
+        # Return from the find only lands on a setting, so it's held in normal, which does it.
+        machine.send_key("esc")
+        screens.launcher_until(lambda shown: shown["mode"] == "normal", "went to normal")
         machine.send_monitor_command(f"sendkey ret {int(held * 1000)}")
         deadline = time.monotonic() + 10
         while not screens.awake():

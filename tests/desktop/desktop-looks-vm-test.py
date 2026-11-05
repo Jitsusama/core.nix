@@ -173,15 +173,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} home's rows say nothing: {card}"
         )
         desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
-        # No key is named in a mode where it does nothing: in insert the arrows move the caret,
-        # so home's first row, a place, says Return alone, and in normal its arrow as well.
+        # No key is named in a mode where it does nothing: on the find the arrows move the
+        # caret, so home's first row, a place, says Return alone, and in normal its arrow too.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
-        assert not arrowed, f"at {scale} insert's foot names an arrow: {arrowed}"
+        assert not arrowed, f"at {scale} the find's foot names an arrow: {arrowed}"
         desktop.normal()
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
-        desktop.insert()
+        desktop.on_find()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
         card = desktop.showing()["drawer"]["cardLines"]
@@ -189,14 +189,13 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing: {card}"
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
-        # The mode's word is the one word saying where his keys go, so it never gives up a
-        # letter; the facts before it give way first.
+        # The find is a line, no mode of Vim's, so the foot names none; a prompt's insert,
+        # which does, is seen whole in finds-sessions' Talk.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        mode = [word for word in foot if word["text"] == "insert"]
-        assert mode, f"at {scale} the foot names no mode in insert: {foot}"
-        assert not mode[0]["cut"], f"at {scale} insert's word is cut: {mode[0]}"
+        named = [word for word in foot if word["text"] in ("insert", "find", "normal")]
+        assert not named, f"at {scale} the find's foot names a mode: {named}"
         # In normal the field draws no caret and the foot names no mode, the
-        # row's words where insert left them.
+        # row's words where the find left them.
         desktop.normal()
         card = desktop.showing()["drawer"]["cardLines"]
         assert words_on_their_names(card, scale, serif) > 0, (
@@ -206,6 +205,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         shows_the_command_line(desktop, scale)
+        lands_on_a_setting(desktop, scale)
         lists_every_key(desktop, scale)
         desktop.close_launcher()
         washes_what_it_finds(desktop, scale)
@@ -304,6 +304,24 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["command"] is None and shown["mode"] == "normal"
     )
+
+
+def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
+    """Find Keep Awake and Return, which lands on it in normal, and photograph it there.
+
+    Its side and the foot say what a second Return does, in the accent, and nothing is done.
+    """
+    machine = desktop.machine
+    desktop.on_find()
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    desktop.type_in("keep awake", selecting="Keep Awake")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+    shown = desktop.showing()
+    told = shown["selected"]["told"]
+    assert told[:1] == [f"\u21b5 {shown['landed']}"], f"at {scale} the landed foot says {told}"
+    desktop.photograph(f"launcher-landed-at-{scale.replace('.', '-')}")
 
 
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:

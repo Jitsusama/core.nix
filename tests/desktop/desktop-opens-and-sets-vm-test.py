@@ -49,10 +49,11 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
-        # Return steps in, as on every device, its use first, so Return
-        # twice plays sound through it.
+        # Return steps in, as on every device, its use first; from the find
+        # Return lands on it, and a second plays sound through it.
         desktop.step_in("ret")
         desktop.launcher_until(sound_selected("Play Sound Through It"))
+        desktop.land()
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
@@ -149,6 +150,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.photograph("launcher-sound-volume")
     desktop.type_in("50", selecting="Volume to 50%")
     desktop.launcher_until(lambda shown: "-18.1 dB" in shown["footer"])
+    desktop.land()
     machine.send_key("ret")
     sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
     machine.wait_until_succeeds(desktop.in_session(sink), timeout=timedelta(seconds=10))
@@ -321,13 +323,17 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
             desktop.type_in(part.lower(), selecting=part)
             desktop.step_in()
 
-    def press(name: str, then: str = "", becomes: str = "") -> None:
+    def press(name: str, then: str = "", becomes: str = "", *, lands: bool = True) -> None:
         """Press Return on a row by its name: it stays, saying so or becoming its opposite.
 
         Each changes how the program plays, so the launcher stays. One that says where it is
         now has what was typed cleared for the next; one that becomes its opposite is closed.
+        Each but a skip is landed on first; a skip is pressed again and again, and the key
+        language says it changes nothing, so one Return from the find does it.
         """
         desktop.type_in(name.lower(), selecting=name)
+        if lands:
+            desktop.land()
         machine.send_key("ret")
         if then:
             desktop.launcher_until(lambda shown: shown["footer"] == then)
@@ -353,10 +359,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("First tone", "Test tones"))
     # Next and Previous keep the launcher, saying what's on now, and what's
     # playing follows.
-    press("Next", then="Second tone, Test tones")
+    press("Next", then="Second tone, Test tones", lands=False)
     playing("Playing", "Second tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "Second tone")
-    press("Previous", then="First tone, Test tones")
+    press("Previous", then="First tone, Test tones", lands=False)
     playing("Playing", "First tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "First tone")
     # Paused from elsewhere, as a media key does, Pause says Play.
@@ -390,8 +396,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("Volume", "100%"))
     # Muted is one switch keeping its name: Return mutes the stream, the
     # launcher staying, and it says yes; the program's Sound says muted.
+    # Typed on the find, Return lands on it first.
     desktop.launcher_until(reads("Muted", "no"))
     desktop.type_in("muted", selecting="Muted")
+    desktop.land()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["open"] and reads("Muted", "yes")(shown))
     desktop.close_launcher()
@@ -529,6 +537,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.step_in(key)
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
         desktop.type_in(name.split()[0][:3].lower(), selecting=name)
+        desktop.land()
         machine.send_key("ret")
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
@@ -592,6 +601,7 @@ def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) 
     now_reads("Power Profile \u00b7 Power Saver")
     desktop.down_to("Power Profile")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "use")
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "powerprofilesctl get | grep -qx balanced", timeout=timedelta(seconds=10)
@@ -659,6 +669,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             desktop.type_in(str(percent))
         else:
             desktop.type_in(f"scale {percent}")
+        desktop.land()
         machine.send_key("ret")
 
         def scaled(_: bool, wanted: float = wanted) -> bool:  # As retry calls it.
@@ -905,6 +916,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["asking"] and shown["modal"] is False)
     foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
     assert not any(word["text"] == "insert" for word in foot), foot
+    # Its padlock leads the line, never the find's /.
+    assert desktop.showing()["sigil"] != "/", desktop.showing()
     machine.send_chars("not the pass")
     desktop.launcher_until(lambda shown: shown["caret"] == len("not the pass"))
     machine.send_key("ctrl-h")
@@ -987,18 +1000,44 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(window), timeout=timedelta(seconds=60))
     machine.succeed(f'{described} | grep -qF \'"reach":"online"\'')
-    # Its name typed and Return, in insert, never disconnects it: Return
-    # steps in, to what can be done to it, and it stays connected (Joel,
-    # 2026-11-04: "it is quite dangerous").
+    # Its name typed and Return, on the find, never disconnects it: Return
+    # steps in, to what can be done to it, onto a row that changes nothing,
+    # and it stays connected (Joel, 2026-11-04: "it is quite dangerous").
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
-    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    desktop.launcher_until(lambda shown: shown["mode"] == "find")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["open"] and "Disconnect It" in shown["rows"])
+    first = desktop.showing()["selected"]["name"]
+    assert first not in ("Disconnect It", "Forget It"), desktop.showing()["rows"]
+    # The network's glyph follows the find's /, leading the path.
+    assert (desktop.showing()["sigil"], desktop.showing()["lead"] != "") == ("/", True)
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Disconnect It found and Return only lands on it, in normal, its side and the foot
+    # saying what a second Return does, until the next key.
+    desktop.type_in("disc", selecting="Disconnect It")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["mode"], shown["landed"]) == ("normal", "disconnect")
+    )
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == ["\u21b5 disconnect"], told
+    desktop.photograph("launcher-landed")
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Shift, Ctrl and Alt with Return do nothing at all.
+    for chord in ("shift-ret", "ctrl-ret", "alt-ret"):
+        machine.send_key(chord)
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    shown = desktop.showing()
+    assert (shown["open"], shown["landed"]) == (True, ""), shown
+    # Let go of, it's still joined, for the command line to disconnect it; Wi-Fi Off below
+    # is landed on and done by a second Return.
     desktop.close_launcher()
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # In normal, dd on the network ends it by disconnecting it, never by
     # forgetting it, and asks first; Escape says no, and it stays.
     desktop.as_account("qs ipc call launcher collection wifi")
@@ -1045,8 +1084,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
-    # Joined, its Return typed in insert steps in too, rather than
-    # disconnecting it, so the foot says Return alone: insert's arrows
+    # Joined, its Return typed on the find steps in too, rather than
+    # disconnecting it, so the foot says Return alone: the find's arrows
     # move the caret, so no arrow is named there.
     told = desktop.showing()["selected"]["told"]
     assert told[:1] == ["\u21b5"], told
@@ -1122,10 +1161,19 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.close_launcher()
     says_how_wi_fi_is_set(desktop)
-    # Turning Wi-Fi off is an action like any, found by name from the top.
+    # Turning Wi-Fi off is an action like any, found by name from the top,
+    # where Return lands on it, saying a second Return turns it off, and
+    # only that second Return does. Two Returns closer together than Joel
+    # presses two, as a key bounced, are the landing's one press doubled,
+    # so they only land too.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("wifi off")
+    desktop.type_in("wifi off", selecting="Wi-Fi Off")
+    desktop.press_at_once("ret ret")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "off"))
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
+    assert desktop.showing()["returned"]["act"] == "", desktop.showing()["returned"]
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)

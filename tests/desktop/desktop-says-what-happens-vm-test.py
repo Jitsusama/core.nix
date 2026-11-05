@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, retry
-from test_driver.machine import CHAR_TO_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -143,16 +142,6 @@ TRIES = 3
 TRIED = timedelta(seconds=10)
 
 
-def keyed(name: str, *, down: bool) -> Json:
-    """Give QEMU's input event for a key going down or up, by its name or its number."""
-    key = (
-        {"type": "number", "data": int(name, 16)}
-        if name.startswith("0x")
-        else {"type": "qcode", "data": name}
-    )
-    return {"type": "key", "data": {"down": down, "key": key}}
-
-
 class InTheDrawer:
     """The launcher holding a long notice's drawer, and the keys that go into it and move there.
 
@@ -196,23 +185,8 @@ class InTheDrawer:
         assert self.rows["drawer"]["cursor"] is None, self.rows["drawer"]
 
     def press(self, keys: str) -> None:
-        """Press each key named, a letter by its character and any other by QEMU's name.
-
-        Every key goes down and up in one batch of QEMU's input events, so the guest reads them
-        all at once. Sent one sendkey at a time, a loaded builder let niri draw the first key's
-        frame before it read the second, and a waiting key's 300 ms ran out between them.
-        """
-        events: list[Json] = []
-        for key in keys.split():
-            *held, pressed = CHAR_TO_KEY.get(key, key).split("-")
-            chord = [*held, pressed]
-            events += [keyed(name, down=True) for name in chord]
-            events += [keyed(name, down=False) for name in reversed(chord)]
-        client = self.desktop.machine.qmp_client
-        assert client is not None
-        # The driver says a command's arguments are strings, so the events go through JSON to
-        # reach it as they are.
-        client.send("input-send-event", json.loads(json.dumps({"events": events})))
+        """Press each key named, all in one batch, as Desktop.press_at_once does."""
+        self.desktop.press_at_once(keys)
 
     def pressed_until(
         self, keys: str, test: Callable[[Json], object], again: Callable[[], None] | None = None

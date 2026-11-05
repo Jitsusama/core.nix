@@ -424,7 +424,7 @@ ShellRoot {
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);
             expect("typed in normal, the launcher's field says the left arrow clears",
                 texts.length > 0 && texts[texts.length - 1].text.includes("clear"), said(texts));
-            typing.mode = "insert";
+            typing.mode = "find";
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
