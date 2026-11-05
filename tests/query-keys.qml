@@ -366,17 +366,6 @@ QtObject {
         holds("a row d can't end says so", says("d", "ending", null, 0),
             "d \u00b7 nothing to end");
         holds("and one y can't copy", says("y", "copy", null, 0), "y \u00b7 nothing to copy");
-
-        // Cut at a whole word to the room, as the spec's "d \u00b7
-        // disconnect", by however the room measures it.
-        const fits = room => text => text.length <= room;
-        const said = "d \u00b7 disconnect Home-5G";
-        holds("what fits is whole", Operators.wholeWords(said, fits(40)), said);
-        holds("what doesn't loses its last words", Operators.wholeWords(said, fits(18)),
-            "d \u00b7 disconnect");
-        holds("never ending on the dot", Operators.wholeWords(said, fits(4)), "d");
-        holds("and its first word stands, though it's wider",
-            Operators.wholeWords(said, fits(0)), "d");
     }
 
     // Visual line, Vim's V over the rows: its keys, the rows it takes and

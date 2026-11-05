@@ -286,16 +286,3 @@ function openedSaid(open, count, words) {
         .replace("{count}", String(count));
 }
 
-// A word that's only a mark, as the dot between the keys and the verb.
-const LONE_MARK = /^[\u00b7\u2022:,.-]*$/;
-
-// Words cut at a whole word to what fits, as `fits` measures them, never
-// ending on a lone mark; the first word stands, however wide.
-function wholeWords(text, fits) {
-    const words = text.split(" ");
-    const lone = word => LONE_MARK.test(word);
-    while (words.length > 1 && (!fits(words.join(" ")) || lone(words[words.length - 1]))) {
-        words.pop();
-    }
-    return words.join(" ");
-}

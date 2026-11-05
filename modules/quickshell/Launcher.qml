@@ -55,6 +55,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
+import "Reading.js" as Reading
 import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
@@ -6016,11 +6017,14 @@ Scope {
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,
-                        // its own (y/n) saying how it's answered.
+                        // its own (y/n) saying how it's answered, and nor
+                        // does an operator waiting, since no key of the
+                        // row's does what it says until it's done: what it
+                        // will take has their room (modeWord's pending).
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : prompt.asking !== "" ? []
+                            : prompt.asking !== "" || root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
                             : root.keysFor(choice)
                         // As the card last showed them, while it's closed
@@ -6137,12 +6141,17 @@ Scope {
                                     + prompt.standing.seek.pattern
                                 : root.pendingSaid !== "" ? ""
                                 : prompt.standing.count
-                            // A pending operator and what it will take, cut
-                            // at a whole word to the room, in the accent as
-                            // a mode's word is.
+                            // A pending operator and what it will take, in
+                            // the accent as a mode's word is, the row's name
+                            // whole in the keys' room as well as its own
+                            // (VKCF3Z and Y2YBTS, 2026-11-05: "d \u00b7 close
+                            // Notes" read as a whole name where two windows
+                            // began so), and given way at a whole word, an
+                            // ellipsis after it, only where even that's too
+                            // little, as everything cut is.
                             readonly property string pending: root.pendingSaid === "" ? ""
-                                : Operators.wholeWords(root.pendingSaid,
-                                    text => measure.advanceWidth(text) <= width)
+                                : Reading.wholeWords(root.pendingSaid, width,
+                                    text => measure.advanceWidth(text))
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
@@ -6189,7 +6198,8 @@ Scope {
                                     : keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
-                            width: Math.max(0, room - keys.spacing)
+                            width: Math.max(0, root.pendingSaid !== ""
+                                ? foot.width - Theme.space.l - x : room - keys.spacing)
                             anchors.verticalCenter: parent.verticalCenter
                             visible: said !== ""
                             text: said
