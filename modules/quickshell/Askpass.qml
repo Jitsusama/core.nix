@@ -244,7 +244,6 @@ Scope {
                     visible: root.holds
 
                     KeyHints {
-                        size: Theme.level.note.pointSize
                         anchors.right: parent.right
                         anchors.rightMargin: Theme.inset + Theme.space.l
                         anchors.verticalCenter: parent.verticalCenter

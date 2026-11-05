@@ -20,10 +20,10 @@ Row {
     // set against the right edge: what it says ends there however wide the
     // place has grown.
     property bool endsRight: false
-    // The type's level (Theme.level): Note in the launcher, whose foot and
-    // field say their keys a step under the rows, and Figure in a prompt
-    // not yet set by level; the space between them follows its size.
-    property var level: Theme.level.figure
+    // The type's level (Theme.level): Note, a step under what they're
+    // keys for, wherever they're said; the space between them follows its
+    // size.
+    property var level: Theme.level.note
 
     spacing: level.pointSize < Theme.level.figure.pointSize ? Theme.space.l : Theme.space.xl
     // On its words' baseline, so a line can set it on its own.

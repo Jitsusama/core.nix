@@ -5201,7 +5201,6 @@ Scope {
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
                             keys: foot.shown
-                            level: Theme.level.note
                             endsRight: true
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
                                 ? foot.returnPlace : 0)

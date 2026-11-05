@@ -582,7 +582,6 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.baseline: input.baseline
-        level: Theme.level.note
         visible: prompt.keysHeld
         widths: prompt.keyPlaces
         endsRight: true
