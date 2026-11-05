@@ -29,6 +29,43 @@ Provider {
     readonly property var levels: [100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
     readonly property var warmths: [2700, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500]
 
+    // Whether a light is plugged in, which changes only as one comes or
+    // goes, so its options aren't made again at every report it gives.
+    readonly property bool plugged: DeskLight.light !== null
+
+    // Its options, which :set sets as its rows do (Provider.qml's
+    // setOptions): desklight lights it or puts it out, deskbrightness is
+    // its share and deskwarmth its warmth in kelvin, as its Warmth row
+    // says it, so Warmer takes from it. There are none with no light.
+    setOptions: !plugged ? ({}) : ({
+        desklight: {
+            kind: "switch",
+            now: () => DeskLight.light?.on ?? false,
+            set: to => provider.done(() => DeskLight.turn(to))
+        },
+        deskbrightness: {
+            kind: "number",
+            least: 1,
+            most: 100,
+            now: () => DeskLight.light?.percent ?? 0,
+            set: to => provider.done(() => DeskLight.brighten(to))
+        },
+        deskwarmth: {
+            kind: "number",
+            least: DeskLight.warmest,
+            most: DeskLight.coolest,
+            now: () => DeskLight.light?.kelvin ?? DeskLight.warmest,
+            set: to => provider.done(() => DeskLight.warm(to))
+        }
+    })
+
+    // Does what an option's set asks, which says nothing, since the light's
+    // own report says how it's lit.
+    function done(change) {
+        change();
+        return "";
+    }
+
     function answer(typed) {
         const text = typed.trim().toLowerCase();
         const desk = /^(?:desk (?:light|lamp)|lamp|litra)\s+(?:to\s+)?(?:(\d{1,3})\s*%?|(\d{4})\s*k|(on|off))$/
