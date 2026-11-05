@@ -531,7 +531,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # buffer, and it says it drives itself, over any node.driver it's
       # given. With PipeWire 1.6.9 a reader stopped for 10 s no longer stops
       # a tone that drives, so no subtest can show this; when the sound did
-      # stop, captures-and-locks's recordings failed ("video 1 never grew").
+      # stop, the captures area's recordings failed ("video 1 never grew").
       services.pipewire.extraConfig.pipewire."91-stand-in-microphone" = {
         "context.spa-libs".audiotestsrc = "audiotestsrc/libspa-audiotestsrc";
         "context.objects" = [

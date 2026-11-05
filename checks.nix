@@ -360,9 +360,13 @@ let
       inherit self pkgs;
       area = "takes-calls";
     };
-    vm-desktop-captures-and-locks = import ./tests/desktop.nix {
+    vm-desktop-captures = import ./tests/desktop.nix {
       inherit self pkgs;
-      area = "captures-and-locks";
+      area = "captures";
+    };
+    vm-desktop-locks-and-asks = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "locks-and-asks";
     };
     vm-desktop-keeps-pace = import ./tests/desktop.nix {
       inherit self pkgs;
@@ -959,7 +963,6 @@ gather (
       every-vm-test-keeps-to-the-pyramid =
         let
           over = [
-            "tests/desktop/desktop-captures-and-locks-vm-test.py 22"
             # One machine's story, kept whole since a split would replay it
             # (docs/testing.md, Earning a Check).
             "tests/vm/guide/guide-install-vm-test.py 26"
