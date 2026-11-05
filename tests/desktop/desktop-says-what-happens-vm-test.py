@@ -863,35 +863,69 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
     """A notice is signed by the name Joel knows what sent it by, never its program's.
 
     Its pictures at both of Joel's scales, alone and held with its acts listed as commands, are
-    look 3's notice (2026-11-03), for a person to measure its room by.
+    look 3's notice (2026-11-03), for a person to measure its room by. So are three notices as
+    one stack, the front card whole and two edges beneath it, each starting on the hairline of
+    the card before it, and what's playing the frames rung above them (docs/design.md, The
+    Ladder).
     """
     machine = desktop.machine
-    for scale in JOELS_SCALES:
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-        with desktop.told("shows card Tokens Run Out in About an Hour"):
-            desktop.as_account(
-                "notify-send --app-name=tokens --expire-time=60000"
-                " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
-                " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
-                " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
-                " < /dev/null &"
-            )
-        signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
-        assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
-        # Named without the point, which the driver would take for where
-        # the name ends and its kind begins.
-        named = scale.replace(".", "-")
-        desktop.photograph(f"notice-at-{named}")
-        with desktop.told("keys notices"), desktop.told("notice offers :pause"):
-            machine.send_key("meta_l-n")
-        desktop.photograph(f"notice-held-at-{named}")
-        with desktop.told("lets notices go"):
-            machine.send_key("esc")
+    try:
+        for scale in JOELS_SCALES:
+            signed_and_stacked_at(desktop, scale)
+    finally:
+        desktop.as_account("systemctl --user stop player || true")
         desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.as_account("qs ipc call notices seen")
     desktop.as_account("niri msg output winit scale 1")
+
+
+def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
+    """Sign one notice and photograph it, held, as a stack of three, and under what's playing."""
+    machine = desktop.machine
+    desktop.as_account(f"niri msg output winit scale {scale}")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    with desktop.told("shows card Tokens Run Out in About an Hour"):
+        desktop.as_account(
+            "notify-send --app-name=tokens --expire-time=60000"
+            " --action=default='See What Spends' --action=pause='Pause the Orchestrator'"
+            " 'Tokens Run Out in About an Hour' 'At $300 an hour, 92% used. See what"
+            " spends them, or pause the session spending most.' > /tmp/answer 2>&1"
+            " < /dev/null &"
+        )
+    signed = json.loads(desktop.as_account("qs ipc call notices front")).get("signed")
+    assert signed == "AI Spend", f"the tokens' notice is signed {signed}"
+    # Named without the point, which the driver would take for where the
+    # name ends and its kind begins.
+    named = scale.replace(".", "-")
+    desktop.photograph(f"notice-at-{named}")
+    with desktop.told("keys notices"), desktop.told("notice offers :pause"):
+        machine.send_key("meta_l-n")
+    desktop.photograph(f"notice-held-at-{named}")
+    with desktop.told("lets notices go"):
+        machine.send_key("esc")
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    for summary, body in [
+        ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
+        ("Backup Finished", ""),
+        ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used."),
+    ]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(
+                f"notify-send --expire-time=60000 {shlex.quote(summary)} {shlex.quote(body)}"
+            )
+    desktop.photograph(f"notices-stacked-at-{named}")
+    # Collected once it ends, since a stopped player exits failed and would
+    # keep the unit's name from the next scale's.
+    with desktop.told("drawn notifications"):
+        desktop.as_account(
+            "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
+            f" --loop {desktop.values['track']}"
+        )
+    desktop.photograph(f"notices-playing-at-{named}")
+    desktop.as_account("systemctl --user stop player")
+    desktop.as_account("qs ipc call notices putAway")
 
 
 def test_a_notice_from_calls_is_signed_as_a_call_and_wears_a_calls_glyph(desktop: Desktop) -> None:
@@ -1342,49 +1376,6 @@ def test_super_shift_n_puts_the_notices_away(desktop: Desktop) -> None:
         desktop.in_session(kept + ' | grep -q \'"summary":"Standup"[^}]*"read":false\''),
         timeout=timedelta(seconds=10),
     )
-
-
-def test_a_stack_of_notices_and_whats_playing_are_photographed_at_each_scale(
-    desktop: Desktop,
-) -> None:
-    """Photograph three notices as one stack, and what's playing above them, at both scales.
-
-    The front card is whole and two edges show beneath it, each starting on the hairline of
-    the card before it; what's playing stands the frames rung above the stack (docs/design.md,
-    The Ladder). Each is kept for a person to measure.
-    """
-    machine = desktop.machine
-    try:
-        for scale in JOELS_SCALES:
-            desktop.as_account(f"niri msg output winit scale {scale}")
-            machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-            for summary, body in [
-                ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
-                ("Backup Finished", ""),
-                ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used."),
-            ]:
-                with desktop.told(f"shows card {summary}"):
-                    desktop.as_account(
-                        f"notify-send --expire-time=60000 {shlex.quote(summary)}"
-                        f" {shlex.quote(body)}"
-                    )
-            named = scale.replace(".", "-")
-            desktop.photograph(f"notices-stacked-at-{named}")
-            # Collected once it ends, since a stopped player exits failed and
-            # would keep the unit's name from the next scale's.
-            with desktop.told("drawn notifications"):
-                desktop.as_account(
-                    "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
-                    f" --loop {desktop.values['track']}"
-                )
-            desktop.photograph(f"notices-playing-at-{named}")
-            desktop.as_account("systemctl --user stop player")
-            desktop.as_account("qs ipc call notices putAway")
-    finally:
-        desktop.as_account("systemctl --user stop player || true")
-        desktop.as_account("qs ipc call notices putAway")
-        desktop.as_account("qs ipc call notices seen")
-        desktop.as_account("niri msg output winit scale 1")
 
 
 # A binding that throws or assigns the wrong type only warns, and
