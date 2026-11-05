@@ -3611,6 +3611,7 @@ Scope {
     function askOnce(question, yes, no, covering) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
         askedOver = covering ?? [];
+        askTaking = false;
         askReady.restart();
         Report.say(`asked ${question}`);
     }
@@ -3637,9 +3638,18 @@ Scope {
         id: askReady
         interval: Options.keyTiming.wait
         onTriggered: {
+            root.askTaking = root.asked !== null;
             if (root.asked !== null)
                 Report.say("ask ready");
         }
+    }
+    // Whether the ask standing takes an answer yet, once askReady has run:
+    // state rather than a binding on the clock, which no binding sees
+    // pass, so what the tests are shown turns as the ask does.
+    property bool askTaking: false
+    onAskedChanged: {
+        if (asked === null)
+            askTaking = false;
     }
     // An operator's word for the key it was said for, as a search's is:
     // [mark, word, colour], for d over nothing to end or y over nothing to
@@ -4390,7 +4400,7 @@ Scope {
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
             question: prompt.asking,
-            takesAnswer: prompt.asking !== "" && Date.now() - prompt.askedAt >= prompt.wait,
+            takesAnswer: prompt.asking !== "" && root.askTaking,
             questionWhole: prompt.askedWhole,
             placeSays: root.placeSays,
             // A count typed in normal, waiting for its move, and the keys
