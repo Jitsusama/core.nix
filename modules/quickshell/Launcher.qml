@@ -3260,21 +3260,22 @@ Scope {
     // says what each does to a row): d does each row's ending action, as
     // dd deletes a line, and y copies each, as yy yanks one. What d does
     // that can't be put back it asks about once, as Vim's ask_yesno asks
-    // (Confirm.js): the launcher's one ask, said in Return's place in the
-    // foot with the keys that asked it as its mark, or, asked by no keys,
-    // as the file picker's "Replace notes.md? (y/n)" is, in the line's
-    // place (Prompt.qml's asking). While it stands every key is its answer
-    // (Prompt.qml's confirming): after its first 300 ms, y does it, n,
-    // Escape or Ctrl+C lets it go, and any other key does nothing.
+    // (Confirm.js): the launcher's one ask, said whole on the line in the
+    // find's place (Prompt.qml's asking), as the file picker's "Replace
+    // notes.md? (y/n)" is, one place on every surface (VKCF3Z,
+    // 2026-11-05). While it stands every key is its answer (Prompt.qml's
+    // confirming): after its first 300 ms, y does it, n, Escape or Ctrl+C
+    // lets it go, and any other key does nothing.
     property var asked: null
-    property string askedBy: ""
+    // The rows it covers, by their places, which wear visual's tint while
+    // it stands, so every one it would end shows as included.
+    property var askedOver: []
 
     // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, or as the
-    // launcher closes, `mark` the keys that asked it, as "dd", or none. The
-    // command line will draw it in place of the foot, through the same call.
-    function askOnce(question, yes, no, mark) {
+    // launcher closes, `over` the places of the rows it covers, or none.
+    function askOnce(question, yes, no, over) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
-        askedBy = mark ?? "";
+        askedOver = over ?? [];
         askReady.restart();
         Report.say(`asked ${question}`);
     }
@@ -3353,14 +3354,14 @@ Scope {
         if (act === "copy")
             yanked(taken);
         else
-            ended(taken, Operators.typedAs(act, count, motion), false);
+            ended(taken, false);
     }
 
     // d and y over rows named rather than spanned, as the command line's
     // :d and :y with a range: d asks first unless `sure`, as :d! wouldn't,
     // and says "done", "asked" or "nothing".
     function endRows(rows, sure) {
-        return ended(takenOf(rows), "", sure);
+        return ended(takenOf(rows), sure);
     }
 
     function copyRows(rows) {
@@ -3398,7 +3399,7 @@ Scope {
 
     // d: every ending action over the rows, asked about once where any
     // can't be put back, the rows with none passed over.
-    function ended(taken, typed, sure) {
+    function ended(taken, sure) {
         const words = Words.field.operators ?? {};
         const endings = Operators.endings(taken, actionsOf);
         if (endings.length === 0) {
@@ -3415,9 +3416,10 @@ Scope {
             doing();
             return "done";
         }
+        const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
-            name: (ending.at === -1 ? headline : matches[ending.at])?.name ?? "" }));
-        askOnce(Confirm.question(named, words), doing, null, typed);
+            name: rowAt(ending.at)?.name ?? "", kind: kindOf(rowAt(ending.at)) }));
+        askOnce(Confirm.question(named, words), doing, null, endings.map(ending => ending.at));
         return "asked";
     }
 
@@ -4083,6 +4085,8 @@ Scope {
             operated: foot.operatorWord === null ? ""
                 : `${foot.operatorWord[0]} ${foot.operatorWord[1]}`,
             flashing: Object.keys(root.flashing).map(Number),
+            // The rows that wear visual's tint: those an ask covers.
+            tinted: root.asked !== null ? root.askedOver.slice() : [],
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4770,8 +4774,7 @@ Scope {
                         // The ask, while it stands, takes every key, and one
                         // no keys asked is said in the line's place.
                         confirming: root.asked !== null
-                        asking: root.asked !== null && root.askedBy === ""
-                            ? root.asked.question : ""
+                        asking: root.asked?.question ?? ""
                         onAnswered: key => root.answerAsk(key)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
@@ -5258,6 +5261,8 @@ Scope {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
                                     flashed: root.flashing[entry.index] === true
+                                    tinted: root.asked !== null
+                                        && root.askedOver.includes(entry.index)
                                     // Seen until the closing card has faded.
                                     shown: card.opacity > 0
                                     fills: false
@@ -5347,12 +5352,11 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
-                        // An operator's word, or d's ask while it stands; an
-                        // ask no keys asked is the line's to say.
+                        // An operator's word, for the key that did it; an
+                        // ask is the line's to say.
                         readonly property var operatorWord: root.operatorSaid !== null
                             && root.operatorSaidFor === prompt.keysTaken ? root.operatorSaid
-                            : root.asked !== null && root.askedBy !== ""
-                                ? [root.askedBy, root.asked.question, Theme.warning] : null
+                            : null
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,

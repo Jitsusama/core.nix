@@ -124,14 +124,6 @@ QtObject {
             holds(`${act} is once a press, so a held d never makes dd`, Keys.repeats(act), false);
         holds("the field says dd for ending", Keys.keyOf("ending", "normal"), "dd");
         holds("and yy for copying", Keys.keyOf("copy", "normal"), "yy");
-        // d's ask says the keys that answer it, as d2j, so a motion is
-        // said by Vim's letters rather than its first key, an arrow.
-        holds("a motion is said by its letters",
-            ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"]
-                .map(act => Keys.lettersOf(act, "normal")),
-            ["j", "k", "gg", "G", "H", "M", "L"]);
-        holds("and an act with no letters by its first key",
-            Keys.lettersOf("halfDown", "normal"), "Ctrl+d");
 
         // Twenty rows, the 5th to the 12th in view, the 7th selected, as
         // the moves' cases have them: [what, the count, the motion, the
@@ -285,15 +277,6 @@ QtObject {
             ["nothing", "nothing", "nothing", "nothing"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
-        // The ask's mark says the keys that asked it, as they were typed.
-        holds("the ask says the keys that asked it", [
-            Operators.typedAs("ending", 0, null),
-            Operators.typedAs("ending", 3, null),
-            Operators.typedAs("ending", 0, { act: "next", count: 0 }),
-            Operators.typedAs("ending", 0, { act: "next", count: 6 }),
-            Operators.typedAs("ending", 0, { act: "last", count: 0 }),
-            Operators.typedAs("copy", 0, { act: "first", count: 0 })
-        ], ["dd", "3dd", "dj", "d6j", "dG", "ygg"]);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each

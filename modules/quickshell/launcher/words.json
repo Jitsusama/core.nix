@@ -6513,7 +6513,15 @@
     },
     "operators": {
       "ask": "{ends} {name}? (y/n)",
-      "asks": "{ends} these {count}? (y/n)",
+      "asks": "{what}? (y/n)",
+      "part": "{ends} {count} {kind}",
+      "and": "and",
+      "thing": "thing",
+      "many": {
+        "copy": "copies",
+        "emoji": "emoji",
+        "person": "people"
+      },
       "ends": "end",
       "nothing": "nothing to end",
       "noCopy": "nothing to copy"

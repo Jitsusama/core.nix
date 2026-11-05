@@ -123,15 +123,3 @@ function asks(actions, commands) {
         return !(flags.guarded === true && alone);
     });
 }
-
-// The keys an operator was typed by, as the ask's mark says them: its count
-// before it doubled, as 3dd, or its motion's after it, as d6j, where 2d3j
-// is said as Vim counts it.
-function typedAs(act, count, motion) {
-    const key = Keys.keyOf(act, "normal");
-    if (motion === null) {
-        return (count > 0 ? String(count) : "") + key;
-    }
-    const times = motion.count > 0 ? String(motion.count) : "";
-    return key.slice(0, 1) + times + Keys.lettersOf(motion.act, "normal");
-}
