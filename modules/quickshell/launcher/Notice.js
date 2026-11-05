@@ -69,6 +69,15 @@ function offers(actions) {
         .map((action) => ({ identifier: action.identifier, text: action.text }));
 }
 
+// Its sender's own Read, where it offers one among its actions, by its
+// identifier or its words, else null: what d sends at once as it's done
+// with a notice, on its card and in the launcher alike.
+const READ_ACT = /^(mark[-_ ]?(as[-_ ]?)?)?read$/i;
+function readOffer(actions) {
+    return actions.find((action) => READ_ACT.test(action.identifier) || READ_ACT.test(action.text))
+        ?? null;
+}
+
 // Whether its sender opens what it's about, from its actions.
 function opens(actions) {
     return actions.some((action) => action.identifier === "default");
