@@ -55,6 +55,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
+import "SetWords.js" as SetWords
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -2286,15 +2287,18 @@ Scope {
     onListingChanged: drawerSettled()
 
     // The command line, the : line (CommandLine.qml), while it's open:
-    // { from, range, things, menu }, the mode : was pressed in, which
-    // Escape gives back, the range typed before it, the rows its acts act
-    // on, bound as : was pressed so a row arriving can't shift them, and
-    // its menu (Commands.js). Null while it's shut, so nothing of it is
-    // made until : is typed.
+    // { from, range, things, go, menu, options }, the mode : was pressed
+    // in, which Escape gives back, the range typed before it, the rows its
+    // acts act on, bound as : was pressed so a row arriving can't shift
+    // them, what :{n} does, its menu (Commands.js) and :set's options as
+    // they stood (standingOptions). Null while it's shut, so nothing of it
+    // is made until : is typed.
     property var commanding: null
-    // What Return on the line said went wrong, as Vim's command line says
-    // E492, standing in the line's place for the key that ran it alone.
+    // What Return on the line said, standing in the line's place for the
+    // key that ran it alone: what went wrong, as Vim's command line says
+    // E492, or what it asked, as :set volume? says volume=40.
     property string commandSaid: ""
+    property bool commandFailed: false
     property int commandSaidFor: -1
     readonly property bool commandSays: commandSaid !== ""
         && commandSaidFor === prompt.keysTaken
@@ -2335,8 +2339,10 @@ Scope {
             things: on,
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
-                table: Commands.standIn, row: current + 1,
-                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words })
+                table: Options.commands, row: current + 1,
+                said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
+                called: act => commandWords(act.key ?? ""), thing: one }),
+            options: standingOptions()
         };
     }
 
@@ -2408,6 +2414,30 @@ Scope {
         prompt.resume(to === "said" ? "normal" : to);
     }
 
+    // Whether a line of the menu is chosen, which takes the selection ground
+    // from the cursor row, raised beneath it, so the screen has one focal
+    // point (VKCF3Z, 2026-11-05); the row takes it back as the line closes.
+    readonly property bool commandChosen: (commandLoader.item?.chosenLine ?? null) !== null
+
+    // The command line's own keys, as the foot says them while it's open:
+    // Return and the command it runs, once one is typed or chosen, since
+    // Return on an empty line runs nothing, and Tab while nothing is chosen.
+    // Space ? isn't among them, since there Space types a space.
+    function commandKeys() {
+        const line = commandLoader.item;
+        if (!line)
+            return [];
+        const words = Words.field.command ?? {};
+        const keys = [];
+        if (line.text.trim() !== "") {
+            const read = Commands.ran(line.text, commanding?.menu ?? []);
+            keys.push(["\u21b5", read.entry?.command ?? words.run ?? ""]);
+        }
+        if (!commandChosen && line.shown.length > 0)
+            keys.push(["Tab", words.choose ?? ""]);
+        return keys;
+    }
+
     // What the drawer says while a line of the menu is chosen: what it
     // acts on, "on Home-5G".
     function commandPlate(line) {
@@ -2426,16 +2456,98 @@ Scope {
         return { title: line.title, body: on };
     }
 
+    function commandSay(words, failed) {
+        if (words === "")
+            return;
+        commandSaid = words;
+        commandFailed = failed;
+        commandSaidFor = prompt.keysTaken;
+    }
+
+    // The options :set takes, by name, as the providers give them (each
+    // Provider's setOptions), and the theme's background, which only a
+    // switch of the system sets.
+    readonly property var setOptions: Object.assign({
+        background: { kind: "choice", values: ["light", "dark"], fixed: true,
+            now: () => Theme.appearance }
+    }, ...sources.map(source => source.setOptions ?? {}))
+
+    // An act's words for the line (words.json's command, argument, bang and
+    // range), by its key: a verb's id, or one made from it for each of
+    // several, as verb:sound-port-2 or verb:on:waiting:go:<id>, which reads
+    // the verb's own. Only a verb names a command; any other key has none.
+    function commandWords(key) {
+        let id = key;
+        while (id.startsWith("verb:")) {
+            const words = Words.of(id);
+            if (words.command !== undefined)
+                return words;
+            id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-")));
+        }
+        return {};
+    }
+
+    // The options as they stand as : is pressed, each read once, so the menu
+    // says where each stands without reading it again on every key: a
+    // display's brightness is read from a file, which moves the reader it
+    // shares, and read while the menu was worked out, that looped its
+    // binding.
+    function standingOptions() {
+        const standing = {};
+        for (const [name, option] of Object.entries(setOptions)) {
+            const now = option.now();
+            standing[name] = Object.assign({}, option, { now: () => now });
+        }
+        return standing;
+    }
+
+    // A named command's arguments, as a space after it lists them: :set's
+    // options, a surface command's own, or null for one that has none.
+    function commandArguments(entry, arg) {
+        if (entry.kind === "set")
+            return SetWords.setArguments(arg, commanding?.options ?? {});
+        return entry.kind === "surface" ? Commands.ownArguments(entry, arg) : null;
+    }
+
+    // :set's words, each set as its option's row would, or said as Vim's
+    // :set volume? says it; :set all says every one, in name order. The
+    // first word it can't take says Vim's error and none of them changes.
+    function commandSet(arg) {
+        const options = setOptions;
+        const read = SetWords.setting(arg, options);
+        if (read.error !== undefined) {
+            commandSay(read.error, true);
+            return;
+        }
+        const steps = read.changes.map(change => change.how === "show" ? { change }
+            : { change, to: SetWords.toward(change, options[change.option].now(),
+                options[change.option]) });
+        const refused = steps.find(step => step.to?.error !== undefined);
+        if (refused) {
+            commandSay(refused.to.error, true);
+            return;
+        }
+        const said = [];
+        for (const { change, to } of steps) {
+            if (to !== undefined) {
+                said.push(options[change.option].set(to.to));
+                continue;
+            }
+            const names = change.option === "all" ? Object.keys(options).sort()
+                : [change.option];
+            for (const name of names)
+                said.push(SetWords.shown(name, options[name].now(), options[name]));
+        }
+        commandSay(said.filter(words => words !== "").join("  "), false);
+    }
+
     // Return on the line: exactly what's typed, as Commands.ran read it.
     function commandRan(read) {
         const opened = commanding;
         // What went wrong is said where the line was, over a viewer too.
         commandLeft(read.error ? "said" : "normal");
         if (read.error !== undefined) {
-            if (read.error !== "") {
-                commandSaid = read.error;
-                commandSaidFor = prompt.keysTaken;
-            }
+            commandSay(read.error, true);
             return;
         }
         if (read.go !== undefined && opened.go) {
@@ -2460,6 +2572,9 @@ Scope {
             return;
         case "help":
             listing = true;
+            return;
+        case "set":
+            commandSet(read.arg);
             return;
         case "surface":
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
@@ -4120,6 +4235,12 @@ Scope {
             Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
     readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
         Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
+    // A quarter down; over a viewer low, its foot a twelfth of the screen
+    // up, as the lock screen sits, so the picture or the video its line
+    // acts on stays in view above it, as Vim's command line sits at the
+    // bottom.
+    readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
+        ? screenHere.height * 11 / 12 - card.height : screenHere.height / 4)
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -4153,10 +4274,18 @@ Scope {
                 line: commandLoader.item.text,
                 caret: commandLoader.item.caret,
                 chosen: commandLoader.item.choosing.at,
-                menu: commandLoader.item.shown.map(line => `${line.command} ${line.title}`),
+                menu: commandLoader.item.shown.map(line => (line.argument ?? "") === ""
+                    ? `${line.command} ${line.title}`
+                    : `${line.command} ${line.argument} ${line.title}`),
                 from: root.commanding?.from ?? "",
                 // What it's aimed at over a viewer, whose rows aren't drawn.
                 over: root.over ? root.commanding.things.map(thing => thing.name) : null
+            },
+            // Where the card's top and foot sit on a screen this tall.
+            card: {
+                top: root.cardTop,
+                foot: root.cardTop + card.height,
+                screen: root.screenHere ? root.screenHere.height : 0
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
@@ -4665,8 +4794,7 @@ Scope {
         anchors.top: true
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.open && screen // qmllint disable unqualified
-            ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
+        margins.top: root.open ? root.cardTop - card.reach : 0 // qmllint disable unqualified
         margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
         implicitWidth: root.open
             ? root.width + root.drawerGap + root.drawerWidth + 2 * card.reach : 1
@@ -4942,16 +5070,18 @@ Scope {
 
                         sourceComponent: CommandLine {
                             menu: root.commanding?.menu ?? []
+                            argued: (entry, arg) => root.commandArguments(entry, arg)
                             onRan: read => root.commandRan(read)
                             onLetGo: how => root.commandLeft(how === "dropped"
                                 ? root.commanding?.from ?? "normal" : "normal")
                         }
                     }
 
-                    // What Return on the command line said went wrong,
-                    // in its place for the next key alone, as Vim's
-                    // command line says E492: the failed mark in the
-                    // alert, its words in text on the names' column.
+                    // What Return on the command line said, in its place
+                    // for the next key alone, as Vim's command line says
+                    // E492 or volume=40: its words in text on the names'
+                    // column, and for what went wrong the failed mark in
+                    // the alert.
                     Item {
                         x: Theme.inset
                         y: Theme.inset
@@ -4962,6 +5092,7 @@ Scope {
                         Text {
                             x: Theme.space.l
                             anchors.baseline: commandSaidText.baseline
+                            visible: root.commandFailed
                             text: Theme.glyph.failed
                             color: Theme.alert
                             font.family: Theme.level.figure.family
@@ -5299,7 +5430,9 @@ Scope {
                                 y: list.originY + list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 radius: Theme.inner
-                                color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                                color: root.commandChosen
+                                    ? Qt.alpha(Theme.raised, Theme.floating.opacity)
+                                    : Qt.alpha(Theme.selection, Theme.floating.selection)
                             }
 
                             delegate: Item {
@@ -5462,7 +5595,9 @@ Scope {
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : prompt.asking !== "" ? [] : root.keysFor(choice)
+                            : prompt.asking !== "" ? []
+                            : root.commanding !== null ? root.commandKeys()
+                            : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []

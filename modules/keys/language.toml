@@ -342,7 +342,7 @@ changes = true
 keys = ["dd"]
 command = "delete"
 short = "d"
-kinds = ["list"]
+kinds = ["list", "page"]
 changes = true
 undoable = true
 range = true
@@ -524,10 +524,39 @@ kinds = ["list", "prompt"]
 keys = ["A"]
 kinds = ["list", "prompt"]
 
-# A prompt's words cleared, and insert.
+# A prompt's words cleared, and insert; a page can't be changed, so there
+# it says Vim's E21, as every change below does.
 [acts.change-line]
 keys = ["cc", "S"]
-kinds = ["prompt"]
+kinds = ["prompt", "page"]
+
+# Vim's operators and its x and p, which a page has only to refuse, as a
+# buffer that can't be modified says E21: d and c wait for their motion,
+# or act on a selection at once.
+[acts.delete-motion]
+keys = ["d"]
+takes = "motion"
+modes = ["normal", "visual"]
+kinds = ["page"]
+changes = true
+
+[acts.change-motion]
+keys = ["c"]
+takes = "motion"
+modes = ["normal", "visual"]
+kinds = ["page"]
+changes = true
+
+[acts.delete-character]
+keys = ["x"]
+kinds = ["page"]
+changes = true
+
+[acts.put-after]
+keys = ["p"]
+modes = ["normal", "visual"]
+kinds = ["page"]
+changes = true
 
 # The command line, from normal: on a list it shows the menu of every
 # command the cursor row and the surface take, and on a page it takes a

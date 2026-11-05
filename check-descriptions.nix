@@ -1152,8 +1152,9 @@
     block in the terminal's cursor colours on a title's letter, copies each selection's markdown
     onto the clipboard with y and Ctrl+C, a paragraph the page wraps as its one line, and follows
     a link by g x's label, to a heading, putting the cursor on it, and to another markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
-    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, a mark kept between openings, and
-    closes on :q; markdown files open in it
+    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, keeps the search's marks on Escape
+    at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on a
+    selection), keeps a mark between openings, and closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
@@ -2254,9 +2255,9 @@
   vm-desktop-opens-files = ''
     the desktop opens files: a screenshot found by typing, the portal's chooser, its save's name
     edited on the line and a name taken asked once, and Google Drive through it, a picture in
-    swayimg, where : opens the launcher's command line alone, aimed at the picture by its name, and
-    :q there closes it, a document in zathura, markdown in the reader, and a folder from kitty's
-    Recent, while the launcher's home keeps its shape
+    swayimg, where : opens the launcher's command line alone and low, aimed at the picture by its
+    name, and :q there closes it, a document in zathura, markdown in the reader, and a folder from
+    kitty's Recent, while the launcher's home keeps its shape
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the

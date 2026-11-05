@@ -25,13 +25,16 @@ Item {
 
     // The menu's lines, as Commands.listed made them when : was pressed.
     property var menu: []
+    // A named command's arguments, listed after a space (Commands.narrowed):
+    // (entry, arg) => [{ value, note }], or null for one that has none.
+    property var argued: null
     // How choosing stands: what was typed, the line chosen and what the
     // line holds (Commands.typing).
     property var choosing: Commands.typing("")
     // Whether Ctrl+Y or Ctrl+E has put the menu away, until the next letter.
     property bool away: false
     // The menu as typed narrows it, which Tab and the arrows choose among.
-    readonly property var shown: away ? [] : Commands.narrowed(menu, choosing.typed)
+    readonly property var shown: away ? [] : Commands.narrowed(menu, choosing.typed, argued)
     // The line chosen, or null.
     readonly property var chosenLine: choosing.at >= 0 ? shown[choosing.at] ?? null : null
     readonly property string text: input.text

@@ -12,6 +12,8 @@ pub enum Command {
     Quit,
     /// :noh to :nohlsearch: the search's marks put away until n or N.
     NoHighlight,
+    /// :d to :delete, which a page that writes nothing refuses.
+    Change,
     /// Nothing typed, which does nothing, as in Neovim.
     Nothing,
     /// Anything else, as typed, for its message.
@@ -44,8 +46,14 @@ pub fn parse(typed: &str) -> Command {
     if abbreviates(name, "nohlsearch", 3) {
         return Command::NoHighlight;
     }
+    if abbreviates(name, "delete", 1) {
+        return Command::Change;
+    }
     Command::Unknown(command.to_string())
 }
+
+/// What a change is told, as Neovim tells one in a buffer it can't modify.
+pub const CANNOT_CHANGE: &str = "E21: Cannot make changes";
 
 /// What the command line says of a command it doesn't have, as Neovim does.
 pub fn unknown(command: &str) -> String {
@@ -72,6 +80,14 @@ mod tests {
             assert_eq!(parse(typed), Command::NoHighlight, "{typed}");
         }
         assert_eq!(parse("no"), Command::Unknown("no".into()));
+    }
+
+    #[test]
+    fn delete_is_read_to_be_refused() {
+        for typed in ["d", "de", "delete"] {
+            assert_eq!(parse(typed), Command::Change, "{typed}");
+        }
+        assert_eq!(parse("dx"), Command::Unknown("dx".into()));
     }
 
     #[test]
