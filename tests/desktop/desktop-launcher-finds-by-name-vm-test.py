@@ -702,7 +702,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     machine.send_chars("l")
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
     machine.send_chars("-")
-    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["lastPlace"])
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
     machine.send_key("tab")
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
     machine.send_key("tab")
@@ -712,7 +712,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
         desktop.launcher_until(
             lambda shown: (
                 shown["open"]
-                and shown["listing"] == listing
+                and shown.get("listing") == listing
                 and ("Space ?  F1" in shown["drawer"]["facts"]) == listing
             )
         )
