@@ -731,7 +731,7 @@ menu_is() {
   done
 }
 press ':'
-menu_is '11 lines, chosen None'
+menu_is '12 lines, chosen None'
 press e
 menu_is '1 lines, chosen None'
 press -k Tab
@@ -766,6 +766,17 @@ press -M ctrl y -m ctrl
 menu_is '1 lines, chosen None'
 press -k Return
 logged '^command: "bnext" is File' 1
+
+# @: runs the last line again, and :his lists the lines run, the newest,
+# itself, chosen; k and Return run the one before it, bnext.
+press '@:'
+logged '^command: "bnext" is File' 2
+press ':his'
+press -k Return
+logged '^outline: [0-9]+ rows, chosen "[0-9]+  his"' 1
+press k
+press -k Return
+logged '^command: "bnext" is File' 3
 
 # :q closes it.
 press ':q'
