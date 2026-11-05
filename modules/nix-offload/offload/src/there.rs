@@ -1053,6 +1053,8 @@ pub enum Source {
         /// The flake's folder in the repository, when not its top.
         dir: Option<String>,
         bundle: PathBuf,
+        /// The ref the bundle carries `commit` under, one per run.
+        tip: String,
     },
 }
 
@@ -1078,6 +1080,7 @@ impl Source {
                 commit,
                 dir,
                 bundle,
+                tip,
             } => {
                 let into = far_folder();
                 let flake = format!(
@@ -1092,7 +1095,7 @@ impl Source {
                      command -v git >/dev/null || \
                      git() {{ nix shell nixpkgs#git -c git \"$@\"; }}; \
                      git init -q; git fetch -q https://github.com/{github} {base}; \
-                     git fetch -q there.bundle {BUNDLED}:refs/heads/there; {}",
+                     git fetch -q there.bundle {tip}:refs/heads/there; {}",
                     asked.command_of(&flake)
                 );
                 Sending {
@@ -1123,8 +1126,19 @@ pub const TAKES: [&str; 10] = [
     "outlive",
 ];
 
-/// The ref a bundle carries its commit under, here only while it's made.
-pub const BUNDLED: &str = "refs/nix-offload/there";
+/// A ref for one bundle to carry its commit under, here only while it's
+/// made. Worktrees share their repository's refs, so runs from two of them
+/// sharing one name would each bundle whatever commit the other last put
+/// there, as happened on 5 November; each is named for its run instead.
+fn bundled() -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    format!(
+        "refs/nix-offload/there-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
 
 /// The GitHub repository a remote's URL names, `owner/name`.
 fn github_of(url: &str) -> Option<String> {
@@ -1257,7 +1271,8 @@ fn sourced(
     }
     let bundle = mine(scratch, "bundle");
     fs::create_dir_all(scratch).map_err(|_| "has no scratch to bundle it in")?;
-    let referenced = git(top, &["update-ref", BUNDLED, &commit], None).is_some();
+    let tip = bundled();
+    let referenced = git(top, &["update-ref", &tip, &commit], None).is_some();
     let bundled = referenced
         && git(
             top,
@@ -1267,12 +1282,12 @@ fn sourced(
                 "-q",
                 &bundle.to_string_lossy(),
                 &format!("^{base}"),
-                BUNDLED,
+                &tip,
             ],
             None,
         )
         .is_some();
-    let _ = git(top, &["update-ref", "-d", BUNDLED], None);
+    let _ = git(top, &["update-ref", "-d", &tip], None);
     if !bundled {
         return Err("couldn't be bundled");
     }
@@ -1282,6 +1297,7 @@ fn sourced(
         commit,
         dir,
         bundle,
+        tip,
     })
 }
 
