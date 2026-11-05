@@ -70,7 +70,7 @@ const page = [
 // the page's moves extending it as listed above.
 const pageVisual = [
     { name: "otherEnd", acts: ["otherEnd"] },
-    { name: "copy", acts: ["copy"] }
+    { name: "copy", acts: ["copy", "copyLines"] }
 ];
 
 const sections = [{ mode: "normal", lines: normal }, { mode: "insert", lines: insert },

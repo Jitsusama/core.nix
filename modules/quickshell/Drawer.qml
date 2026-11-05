@@ -630,19 +630,20 @@ Floating {
     // sharing a line a space apart and the rest a line each; flashed, and
     // given back for the launcher to put on the clipboard. The cursor goes
     // to its start, as Vim's y leaves it, once gv has what it chose.
-    function copy() {
-        const spans = spansOf(taken);
+    function copy(lines = false) {
+        const took = lines && began !== null ? Page.chosen(began, cursor, "lines", laid) : taken;
+        const spans = spansOf(took);
         copied = spans.map((span, at) => (at === 0 ? ""
             : spans[at - 1].last === span.line ? " " : "\n")
             + (span.start === 0 ? span.text.marked : "")
             + span.words.getText(span.start, span.end).replace(/[\u2028\u2029]/g, "\n")
                 .replace(/\u200b/g, "")).join("");
-        flashing = taken;
+        flashing = took;
         flash.restart();
         if (began !== null) {
             const at = { line: cursor.line, letter: cursor.letter };
             lastChosen = { began, at, by: choosing };
-            const first = taken.length > 0 ? { line: taken[0].line, letter: taken[0].from } : at;
+            const first = took.length > 0 ? { line: took[0].line, letter: took[0].from } : at;
             began = null;
             standOn(first);
         }

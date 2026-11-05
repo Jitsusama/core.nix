@@ -170,7 +170,9 @@ const table = [
     { act: "select", mode: "pageVisual", keys: ["v"] },
     { act: "selectLines", mode: "pageVisual", keys: ["V"] },
     { act: "otherEnd", mode: "pageVisual", keys: ["o"] },
-    { act: "copy", mode: "pageVisual", keys: ["y", "Y"] },
+    { act: "copy", mode: "pageVisual", keys: ["y"] },
+    // Y copies the whole lines it's on, however it chooses, as Vim's v_Y.
+    { act: "copyLines", mode: "pageVisual", keys: ["Y"] },
     { act: "back", mode: "pageVisual", keys: ["Escape", "Ctrl+c"] }
 ];
 
@@ -473,7 +475,7 @@ function modeAfter(act, mode) {
     if (act === "selectLines") {
         return mode === "pageVisualLine" ? "page" : "pageVisualLine";
     }
-    if ((act === "copy" || act === "back") && chosen(mode)) {
+    if (["copy", "copyLines", "back"].includes(act) && chosen(mode)) {
         return "page";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]

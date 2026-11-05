@@ -5135,8 +5135,8 @@ Scope {
                                     drawerCard.otherEnd();
                                 else if (act === "reselect")
                                     drawerCard.reselect();
-                                else if (act === "copy")
-                                    Quickshell.clipboardText = drawerCard.copy();
+                                else if (act === "copy" || act === "copyLines")
+                                    Quickshell.clipboardText = drawerCard.copy(act === "copyLines");
                                 else
                                     drawerCard.go(act, count);
                                 return;

@@ -481,7 +481,7 @@ Item {
         if (next !== mode) {
             // y copies what the drawer chose and gv brings the last back
             // before the mode moves, while it still holds what they act on.
-            if (read.act === "copy" || read.act === "reselect")
+            if (["copy", "copyLines", "reselect"].includes(read.act))
                 prompt.stepped(read.act, read.count);
             input.deselect();
             // Going into insert on a prompt's words is a change u takes
