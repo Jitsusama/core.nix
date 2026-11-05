@@ -1408,7 +1408,8 @@ QtObject {
         holds("nothing begun is left after an act", typed(["Escape", "c", "c"]).standing,
             Keys.rest());
         holds("the field says Ctrl+Y for completing", Keys.keyOf("complete", "find"), "Ctrl+y");
-        holds("and the left arrow for clearing", Keys.keyOf("out", "normal"), "Left");
+        holds("and h for stepping out, as the foot names it", Keys.keyOf("out", "normal"), "h");
+        holds("and l for stepping in", Keys.keyOf("into", "normal"), "l");
 
         // [what, the text, the caret, where Ctrl+W deletes back to]
         const words = [
