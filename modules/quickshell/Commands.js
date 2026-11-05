@@ -387,12 +387,40 @@ function setting(arg, options) {
 }
 
 // What a change sets the option to, from where it stands now: { to }, or
-// { error } for one that can't be set.
+// { error } for one that can't change while the shell runs (`fixed`), as
+// the theme's background, which a switch of the system sets. A switch
+// stands as true, false, or with `takes` the value it holds, as the
+// network joined; a number is held within its least and most.
 function toward(change, now, option) {
-    return { to: now };
+    if (option.fixed) {
+        const said = change.how === "set" ? `${change.option}=${change.value}` : change.option;
+        return { error: `E519: Option not supported: ${said}` };
+    }
+    const within = to => Math.max(option.least ?? to, Math.min(option.most ?? to, to));
+    switch (change.how) {
+    case "on":
+        return { to: true };
+    case "off":
+        return { to: false };
+    case "toggle":
+        return { to: now === false };
+    case "add":
+        return { to: within(Number(now) + change.value) };
+    case "subtract":
+        return { to: within(Number(now) - change.value) };
+    default:
+        return { to: change.value };
+    }
 }
 
-// One option as Vim's :set volume? says it.
+// One option as Vim's :set volume? says it: a switch its name or its no,
+// or its value where it holds one, as the network it's joined.
 function shown(name, now, option) {
-    return "";
+    if (option.kind !== "switch") {
+        return `${name}=${now}`;
+    }
+    if (now === false) {
+        return `no${name}`;
+    }
+    return now === true ? name : `${name}=${now}`;
 }
