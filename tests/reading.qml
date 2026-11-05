@@ -88,6 +88,23 @@ QtObject {
         // With no step yielding, it's an even share, the shortest first.
         const even = Reading.sharedSteps([100, 200, 60], [false, false, false], 240, 40);
         expect("none yielding, shared evenly", same(even, [90, 90, 60]), even);
+        // A side of items gives way whole, the least needed first, in the
+        // order they're said, the one needed most kept however little room
+        // (VKCF3Z, 2026-11-04: the tree, the address, then the state).
+        const items = [{ said: "TESTQD", keep: 2 }, { said: "working", keep: 3 },
+            { said: "$5.10 today", keep: 4 }, { said: "testqd-tree", keep: 0 }];
+        const kept = room => Reading.wholeItems(items, room, width);
+        const all = "TESTQD \u00b7 working \u00b7 $5.10 today \u00b7 testqd-tree";
+        expect("items whole where they fit", kept(450) === all, kept(450));
+        expect("the tree first", kept(430) === "TESTQD \u00b7 working \u00b7 $5.10 today",
+            kept(430));
+        expect("then the address", kept(290) === "working \u00b7 $5.10 today", kept(290));
+        expect("then the state", kept(200) === "$5.10 today", kept(200));
+        // The one needed most is said whole even where it doesn't fit: a
+        // name gives way to it then, never a piece of it.
+        expect("the cost whole", kept(50) === "$5.10 today", kept(50));
+        expect("no items, nothing", Reading.wholeItems([], 100, width) === "",
+            Reading.wholeItems([], 100, width));
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

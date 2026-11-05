@@ -45,11 +45,24 @@ function slide(over, pace) {
     };
 }
 
-// Words too long for their room, given way at the last whole word that
-// fits, an ellipsis after it, so what's said is never cut mid-word
-// (docs/design.md, Collapsing; VKCF3Z, 2026-11-02: "Open-Meteo didn't
-// a\u2026"). `width` measures a text in the face it's drawn in. Where not
-// even the first word fits, nothing is said, rather than a piece of one.
+// What a row says at its right, as items, given way whole: the least
+// needed first, by each one's `keep`, until what's left fits `room`, and
+// the rest said in their own order between dots. The one needed most is
+// said whole even where it doesn't fit, so a side is never cut mid-word
+// or slid from its left, and only then does the name give up letters
+// (VKCF3Z, 2026-11-04: a session's tree goes, then its address, then
+// its state, and what it cost stays).
+function wholeItems(items, room, width) {
+    const said = items.filter(item => item.said !== "");
+    const kept = said.slice();
+    const joined = () => kept.map(item => item.said).join(" \u00b7 ");
+    while (kept.length > 1 && width(joined()) > room) {
+        const least = kept.reduce((low, item) => (item.keep < low.keep ? item : low));
+        kept.splice(kept.indexOf(least), 1);
+    }
+    return joined();
+}
+
 // Room shared among the path's steps, each given its whole `wanted` width
 // where it fits, else an even share of what the shorter leave. The steps
 // `yielding`, a folder's path, give way first, each down to `least`, so
@@ -86,6 +99,11 @@ function shareAmong(given, among, room) {
     });
 }
 
+// Words too long for their room, given way at the last whole word that
+// fits, an ellipsis after it, so what's said is never cut mid-word
+// (docs/design.md, Collapsing; VKCF3Z, 2026-11-02: "Open-Meteo didn't
+// a\u2026"). `width` measures a text in the face it's drawn in. Where not
+// even the first word fits, nothing is said, rather than a piece of one.
 function wholeWords(words, room, width) {
     if (width(words) <= room) {
         return words;
