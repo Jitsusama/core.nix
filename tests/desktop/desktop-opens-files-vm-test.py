@@ -602,7 +602,7 @@ def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desk
         f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
     )
     desktop.launcher_until(lambda shown: not shown["open"])
-    desktop.as_account(f"rm {looked}")
+    machine.succeed(f"rm -f {looked}")
 
 
 def test_a_document_opens_in_zathura_beside_the_rest_and_zz_closes_it(desktop: Desktop) -> None:
