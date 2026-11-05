@@ -26,8 +26,6 @@ Scope {
 
     // As wide as polkit's prompt.
     readonly property int width: 560
-    // The large step's line, on the space grid.
-    readonly property int line: Theme.space.xl
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
 
     // Who's waiting, oldest first: { kind, asker, prompt, reply }.
@@ -148,81 +146,49 @@ Scope {
             Column {
                 width: parent.width
 
-                Column {
-                    x: Theme.inset + Theme.space.l
-                    width: parent.width - 2 * x
-                    // As polkit's: the letters an inset and a step from the
-                    // frame on every side.
-                    topPadding: x
-                    bottomPadding: x
-
-                    Text {
-                        width: parent.width
-                        textFormat: Text.RichText
-                        // As polkit's: at Words, in text, programs in the
-                        // monospace face and the thing asked for a strong
-                        // span.
-                        readonly property var styles: ({
-                            program: `font-family:'${Theme.mono.family}'`,
-                            thing: `color:${Theme.strong};`
-                                + `font-weight:${Theme.level.words.spans.strong}`
-                        })
-                        text: root.read === null ? "" : root.read.title.map(part => {
-                            const words = root.escaped(part.text);
-                            return part.as in styles
-                                ? `<span style="${styles[part.as]}">${words}</span>` : words;
-                        }).join("")
-                        color: Theme.text
-                        wrapMode: Text.Wrap
-                        lineHeight: root.line
-                        lineHeightMode: Text.FixedHeight
-                        font.family: Theme.level.words.family
-                        font.pointSize: Theme.level.words.pointSize
-                        font.weight: Theme.level.words.spans.weight
-                        font.variableAxes: Theme.level.words.spans.variableAxes
-                    }
-
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        // A line that belongs with the title, above.
-                        topPadding: Theme.space.xs
-                        text: root.read === null ? "" : root.read.detail
-                        // What it's for, at Words in muted, or in the mono
-                        // at Figure when it's a path or programs, plain
-                        // beside the strong thing above.
-                        readonly property var level: root.read !== null && root.read.mono
-                            ? Theme.level.figure : Theme.level.words
-                        color: Theme.muted
-                        wrapMode: Text.Wrap
-                        lineHeight: root.line
-                        lineHeightMode: Text.FixedHeight
-                        font.family: level.family
-                        font.pointSize: level.pointSize
-                        font.weight: level.weight
-                        font.variableAxes: level.variableAxes
-                        font.features: level.features
-                    }
-                }
-
-                Rectangle {
+                // As polkit's: programs in the monospace face and the thing
+                // asked for a strong span; then what it's for, at Words in
+                // muted, or in the mono at Figure when it's a path or
+                // programs, plain beside the strong thing above.
+                PromptHead {
                     width: parent.width
-                    height: Theme.border
-                    visible: field.visible
-                    color: Theme.edge
+                    readonly property var styles: ({
+                        program: `font-family:'${Theme.mono.family}'`,
+                        thing: `color:${Theme.strong};`
+                            + `font-weight:${Theme.level.words.spans.strong}`
+                    })
+                    readonly property var opening: root.read === null ? null
+                        : root.read.title.find(part => part.text !== "") ?? null
+                    asked: root.read === null ? "" : root.read.title.map(part => {
+                        const words = root.escaped(part.text);
+                        return part.as in styles
+                            ? `<span style="${styles[part.as]}">${words}</span>` : words;
+                    }).join("")
+                    askedOpens: opening === null ? "" : opening.text.charAt(0)
+                    askedOpensIn: opening !== null && opening.as === "program"
+                        ? Theme.mono.family : Theme.level.words.family
+                    reason: root.read === null ? "" : root.read.detail
+                    reasonLevel: root.read !== null && root.read.mono
+                        ? Theme.level.figure : Theme.level.words
+                    reasonColour: Theme.muted
                 }
 
+                Hairline {
+                    width: parent.width
+                    visible: field.visible
+                }
+
+                // The field, one row, its mark on the head's column.
                 Item {
                     id: field
                     width: parent.width
-                    height: prompt.height + 2 * Theme.inset
+                    height: prompt.height
                     visible: root.read !== null && root.read.field
 
                     Prompt {
                         id: prompt
-                        x: Theme.inset
-                        y: Theme.inset
-                        width: parent.width - 2 * Theme.inset
+                        x: Theme.space.rung.inset - markAt
+                        width: parent.width - 2 * x
                         glyph: Theme.glyph.secret
                         hue: Theme.machine
                         secret: root.read === null || !root.read.shows
@@ -231,24 +197,15 @@ Scope {
                     }
                 }
 
-                Rectangle {
+                Hairline {
                     width: parent.width
-                    height: Theme.border
                     visible: root.holds
-                    color: Theme.edge
                 }
 
-                Item {
+                PromptFoot {
                     width: parent.width
-                    height: Theme.space.xxl + 2 * Theme.inset
                     visible: root.holds
-
-                    KeyHints {
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.inset + Theme.space.l
-                        anchors.verticalCenter: parent.verticalCenter
-                        keys: root.read === null ? [] : root.read.keys
-                    }
+                    keys: root.read === null ? [] : root.read.keys
                 }
             }
         }

@@ -5,7 +5,6 @@
 # only shrinks; a new file names rungs from the start, never listed here.
 dictation/Speaking.qml
 greetd/greeter.qml
-quickshell/Askpass.qml
 quickshell/Choice.qml
 quickshell/Chord.qml
 quickshell/CommandLine.qml
@@ -18,5 +17,4 @@ quickshell/Lock.qml
 quickshell/Meter.qml
 quickshell/Notifications.qml
 quickshell/Picker.qml
-quickshell/Polkit.qml
 quickshell/Prompt.qml
