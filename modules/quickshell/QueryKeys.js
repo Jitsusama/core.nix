@@ -155,7 +155,22 @@ const table = [
     // other, each a move, so a held n repeats as j does; / and ? open the
     // search itself (seekRead).
     { act: "seekNext", mode: "page", keys: ["n"] },
-    { act: "seekPrevious", mode: "page", keys: ["N"] }
+    { act: "seekPrevious", mode: "page", keys: ["N"] },
+    // Visual on the page, the language's select and select-lines: v from
+    // the cursor's letter, V by whole lines, and gv the last chosen again.
+    // While choosing, its rows are pageVisual's, whose two kinds share them
+    // (inMode): the same key again ends it and the other changes its kind,
+    // as Vim's do; the page's moves extend it; o goes to its other end; y
+    // copies it and Escape lets it go, each back on the page. No way back
+    // to the rows is in it, as Vim's visual has no ZZ.
+    { act: "select", mode: "page", keys: ["v"] },
+    { act: "selectLines", mode: "page", keys: ["V"] },
+    { act: "reselect", mode: "page", keys: [["g", "v"]] },
+    { act: "select", mode: "pageVisual", keys: ["v"] },
+    { act: "selectLines", mode: "pageVisual", keys: ["V"] },
+    { act: "otherEnd", mode: "pageVisual", keys: ["o"] },
+    { act: "copy", mode: "pageVisual", keys: ["y", "Y"] },
+    { act: "back", mode: "pageVisual", keys: ["Escape", "Ctrl+c"] }
 ];
 
 // The acts that move through the rows, which repeat while their key is
@@ -229,12 +244,26 @@ function begins(sequence, typed) {
 // Whether a mode is one where nothing types, where counts and the command
 // line are taken: normal on the rows, and the drawer's page.
 function still(mode) {
-    return mode === "normal" || mode === "page";
+    return mode === "normal" || paged(mode);
+}
+
+// Whether the keys are in the drawer: on its page, or choosing on it by
+// letters or by lines.
+function paged(mode) {
+    return mode === "page" || chosen(mode);
+}
+function chosen(mode) {
+    return mode === "pageVisual" || mode === "pageVisualLine";
 }
 
 // Whether a row's keys are a mode's: "both" is the line's two modes,
-// insert and normal, and the drawer's page.
+// insert and normal, and the drawer's page. Choosing on the page, by
+// letters or lines, has pageVisual's rows and the page's moves.
 function inMode(row, mode) {
+    if (chosen(mode)) {
+        return row.mode === "pageVisual"
+            || ((row.mode === "page" || row.mode === "both") && moves.includes(row.act));
+    }
     return row.mode === mode || row.mode === "both";
 }
 
@@ -279,7 +308,7 @@ function read(standing, key, mode, words = false) {
     }
     // In the drawer, / and ? at rest open its search, the way it goes,
     // keeping a count typed before them for the match it lands on.
-    if (mode === "page" && (key === "/" || key === "?") && standing.typed.length === 0) {
+    if (paged(mode) && (key === "/" || key === "?") && standing.typed.length === 0) {
         return { act: "", count: 0, standing: { count: standing.count, typed: [],
             seek: { pattern: "", forward: key === "/" } }, ours: true };
     }
@@ -432,6 +461,17 @@ function modeAfter(act, mode) {
         return "normal";
     }
     if (act === "drawer") {
+        return "page";
+    }
+    // v and V choose by their kind, the same again ending it and the other
+    // changing it; a copy or Escape ends it on the page.
+    if (act === "select") {
+        return mode === "pageVisual" ? "page" : "pageVisual";
+    }
+    if (act === "selectLines") {
+        return mode === "pageVisualLine" ? "page" : "pageVisualLine";
+    }
+    if ((act === "copy" || act === "back") && chosen(mode)) {
         return "page";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]

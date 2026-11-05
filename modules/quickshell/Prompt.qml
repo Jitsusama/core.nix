@@ -93,13 +93,17 @@ Item {
     onWordsChanged: changes = []
     // The mode it's in: "insert", "normal", or "page" while the launcher's
     // drawer holds the keys, gone into with Space and the right arrow, as
-    // his Neovim goes to the window beside. It opens in insert (take()).
+    // his Neovim goes to the window beside, and "pageVisual" or
+    // "pageVisualLine" while choosing there. It opens in insert (take()).
     property string mode: "insert"
+    // The kind the drawer last chose by, for gv to choose by again, let go
+    // once the keys leave it, as the drawer lets what it chose go.
+    property string lastChosen: ""
     // Whether there's a drawer to go into: out, with lines to sit on. Gone
     // while it holds the keys, they come back to the rows.
     property bool drawerHere: false
     onDrawerHereChanged: {
-        if (!drawerHere && mode === "page")
+        if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
     // The keys of a sequence begun in normal, as cc's first c, and a count
@@ -472,8 +476,13 @@ Item {
         event.accepted = true;
         const text = input.text;
         const at = input.cursorPosition;
-        const next = QueryKeys.modeAfter(read.act, mode);
+        const next = read.act === "reselect" && lastChosen !== "" ? lastChosen
+            : QueryKeys.modeAfter(read.act, mode);
         if (next !== mode) {
+            // y copies what the drawer chose and gv brings the last back
+            // before the mode moves, while it still holds what they act on.
+            if (read.act === "copy" || read.act === "reselect")
+                prompt.stepped(read.act, read.count);
             input.deselect();
             // Going into insert on a prompt's words is a change u takes
             // back whole, as Vim's is, unless nothing's typed before it ends.
@@ -608,7 +617,13 @@ Item {
                 input.cursorPosition = at;
         }
     }
-    onModeChanged: rest()
+    onModeChanged: {
+        rest();
+        if (QueryKeys.chosen(mode))
+            lastChosen = mode;
+        else if (!QueryKeys.paged(mode))
+            lastChosen = "";
+    }
 
     // The caret's blink, as his kitty blinks a cursor (modules/kitty/
     // kitty.conf): a key shows it whole, it fades out and back in over
@@ -675,7 +690,7 @@ Item {
     // hint's face, before anything was typed (Joel, 2026-11-04). Nor while
     // the drawer holds the keys, as Neovim draws one cursor, in the window
     // the keys are in.
-    readonly property bool caretShown: !(modal && (mode === "normal" || mode === "page"))
+    readonly property bool caretShown: !(modal && (mode === "normal" || QueryKeys.paged(mode)))
 
     FontMetrics {
         id: typedFace

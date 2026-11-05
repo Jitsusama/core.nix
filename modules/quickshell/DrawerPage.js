@@ -16,6 +16,26 @@
 .pragma library
 .import "Search.js" as Search
 
+// What visual takes, from where it began to the cursor, either way round:
+// each line it touches in order, { line, from, to }, letters `from` up to
+// `to`. By "letters" it takes from the first end's letter through the
+// other's, both their own, as Vim's inclusive selection does, and every
+// letter of the lines between; by "lines", every letter of each.
+function chosen(began, cursor, kind, lines) {
+    const after = (one, other) => one.line > other.line
+        || (one.line === other.line && one.letter > other.letter);
+    const [first, last] = after(began, cursor) ? [cursor, began] : [began, cursor];
+    const taken = [];
+    for (let line = first.line; line <= last.line; line += 1) {
+        const { length } = lines[line];
+        const whole = kind === "lines";
+        const from = whole || line !== first.line ? 0 : Math.min(first.letter, length);
+        const to = whole || line !== last.line ? length : Math.min(last.letter + 1, length);
+        taken.push({ line, from, to });
+    }
+    return taken;
+}
+
 // How far from the view's edges the cursor keeps: `off` lines, but never
 // past the view's middle, so a short view still has a place for it.
 function margin(page) {

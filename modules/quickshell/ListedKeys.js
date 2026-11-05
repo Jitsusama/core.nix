@@ -61,11 +61,20 @@ const page = [
     // them.
     { name: "seek", acts: [], also: ["/", "?"] },
     { name: "seekOn", acts: ["seekNext", "seekPrevious"] },
+    { name: "select", acts: ["select", "selectLines"] },
+    { name: "reselect", acts: ["reselect"] },
     { name: "back", acts: ["rows"], firsts: true, also: [":q"] }
 ];
 
+// Choosing in the drawer, by letters or lines: what it has of its own,
+// the page's moves extending it as listed above.
+const pageVisual = [
+    { name: "otherEnd", acts: ["otherEnd"] },
+    { name: "copy", acts: ["copy"] }
+];
+
 const sections = [{ mode: "normal", lines: normal }, { mode: "insert", lines: insert },
-    { mode: "page", lines: page }];
+    { mode: "page", lines: page }, { mode: "pageVisual", lines: pageVisual }];
 
 // How a key is drawn, as the desktop draws one (modules/theme/keys.nix):
 // its glyph where it has one, its name where not, a letter with a

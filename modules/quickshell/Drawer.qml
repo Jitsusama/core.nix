@@ -91,6 +91,12 @@ Floating {
         // they find (Notifications.qml), drawn by the reader on the Text's
         // letters, which a search, only ever run in the drawer, has.
         readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
+        // Whether its share of what the drawer's visual chose is flashing,
+        // which its reader draws (below). Set by the drawer's paint(), since
+        // an inline component can't see it.
+        property bool flashed: false
+        // What a copy as markdown puts before it: a title's #, a heading's ##.
+        property string marked: ""
 
         text: plain
         textFormat: styled ? Text.StyledText : Text.PlainText
@@ -123,6 +129,15 @@ Floating {
                 selectByMouse: false
                 activeFocusOnPress: false
                 color: "transparent"
+                // Its share of what visual chose, drawn as Qt draws a
+                // selection, its letters over the Text's: on the selection's
+                // ground as his Neovim's Visual is, or the accent's under
+                // its own ink while y flashes it, as his on_yank does. Only
+                // fill and colour change, never weight.
+                persistentSelection: true
+                selectionColor: words.flashed ? Theme.accent
+                    : Qt.alpha(Theme.selection, Theme.floating.selection)
+                selectedTextColor: words.flashed ? Theme.on_accent : Theme.text
                 font: words.font
                 textFormat: TextEdit.RichText
                 wrapMode: words.wrapMode === Text.Wrap ? TextEdit.Wrap : TextEdit.NoWrap
@@ -334,6 +349,39 @@ Floating {
             landing = "";
         }
     }
+    // Visual, as on a page: what it chooses by, "letters" or "lines", or
+    // "" while it chooses nothing, which the launcher sets from its mode;
+    // where it began, the cursor being its other end; and the last chosen,
+    // { began, at, by }, for gv, let go as the keys go in again. What's
+    // taken is each line's letters (DrawerPage.chosen), or while y flashes
+    // what it copied, those it took, for the key timing's yank-flash.
+    property string choosing: ""
+    property string choseBy: ""
+    property var began: null
+    property var lastChosen: null
+    property int flashFor: 200
+    property var flashing: []
+    property string copied: ""
+    readonly property var taken: choosing !== "" && began !== null && began.line < laid.length
+        && cursor.line < laid.length ? Page.chosen(began, cursor, choosing, laid) : flashing
+    onChoosingChanged: {
+        if (choosing !== "" && began === null)
+            began = { line: cursor.line, letter: cursor.letter };
+        else if (choosing === "" && began !== null) {
+            lastChosen = { began, at: { line: cursor.line, letter: cursor.letter }, by: choseBy };
+            began = null;
+        }
+        if (choosing !== "")
+            choseBy = choosing;
+        // y's flash is drawn once it's let go, though what it took stays.
+        paint();
+    }
+    onTakenChanged: paint()
+    Timer {
+        id: flash
+        interval: drawer.flashFor
+        onTriggered: drawer.flashing = []
+    }
     onShownChanged: relay()
     onWidthChanged: relay()
     Connections {
@@ -445,6 +493,8 @@ Floating {
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
     function enter() {
+        lastChosen = null;
+        began = choosing !== "" ? began : null;
         laid = lines();
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = view.contentY;
@@ -528,10 +578,113 @@ Floating {
         view.contentY = landed.top;
     }
 
+    // The cursor put at a place, wanting its letter's place across, and the
+    // view following it as a move's does.
+    function standOn(at) {
+        const line = Math.max(0, Math.min(at.line, laid.length - 1));
+        const letter = Math.max(0, Math.min(at.letter, laid[line].length - 1));
+        cursor = { line, letter, want: xOf(laid[line], letter) };
+        view.contentY = Page.shown(laid[line], view.contentY, {
+            lines: laid,
+            height: view.height,
+            end: Math.max(0, view.contentHeight - view.height),
+            pitch: drawer.pitch,
+            off: drawer.scrolloff
+        });
+    }
+    // o: the cursor to where visual began, which becomes where it is, as
+    // Vim's o goes to the selection's other end.
+    function otherEnd() {
+        if (began === null || laid.length === 0)
+            return;
+        const was = { line: cursor.line, letter: cursor.letter };
+        standOn(began);
+        began = was;
+    }
+    // gv: the last chosen again, from where it began to where it ended,
+    // the launcher choosing by its kind once this has stood the cursor.
+    function reselect() {
+        if (lastChosen === null || laid.length === 0)
+            return;
+        began = lastChosen.began;
+        standOn(lastChosen.at);
+    }
+    // y: what's chosen as markdown, each text's letters in turn, a title
+    // taken from its start after its # and a heading after its ##, those
+    // sharing a line a space apart and the rest a line each; flashed, and
+    // given back for the launcher to put on the clipboard. The cursor goes
+    // to its start, as Vim's y leaves it, once gv has what it chose.
+    function copy() {
+        const spans = spansOf(taken);
+        copied = spans.map((span, at) => (at === 0 ? ""
+            : spans[at - 1].last === span.line ? " " : "\n")
+            + (span.start === 0 ? span.text.marked : "")
+            + span.words.getText(span.start, span.end).replace(/[\u2028\u2029]/g, "\n")
+                .replace(/\u200b/g, "")).join("");
+        flashing = taken;
+        flash.restart();
+        if (began !== null) {
+            const at = { line: cursor.line, letter: cursor.letter };
+            lastChosen = { began, at, by: choosing };
+            const first = taken.length > 0 ? { line: taken[0].line, letter: taken[0].from } : at;
+            began = null;
+            standOn(first);
+        }
+        return copied;
+    }
+    // Each text's share of what's taken, in order down the drawer: where it
+    // starts and ends in that text, and the first and last lines it's on.
+    function spansOf(chosen) {
+        const spans = [];
+        for (const one of chosen) {
+            let left = 0;
+            for (const part of laid[one.line]?.parts ?? []) {
+                const from = Math.max(one.from, left);
+                const to = Math.min(one.to, left + part.length);
+                left += part.length;
+                if (to <= from)
+                    continue;
+                const start = part.from + from - (left - part.length);
+                const end = start + to - from;
+                const span = spans.find(found => found.words === part.words);
+                if (span) {
+                    span.start = Math.min(span.start, start);
+                    span.end = Math.max(span.end, end);
+                    span.last = one.line;
+                } else {
+                    spans.push({ text: part.text, words: part.words, start, end,
+                        line: one.line, last: one.line });
+                }
+            }
+        }
+        return spans;
+    }
+    // What's taken drawn on its texts, each selecting its share, and every
+    // other text selecting nothing.
+    function paint() {
+        const spans = spansOf(taken);
+        const flashed = choosing === "" && flashing.length > 0;
+        for (const line of laid)
+            for (const part of line.parts) {
+                const span = spans.find(found => found.words === part.words);
+                part.text.flashed = flashed;
+                if (span)
+                    part.words.select(span.start, span.end);
+                else
+                    part.words.deselect();
+            }
+    }
+    // How many visual has chosen, for the mode word to count: lines where
+    // it takes more than one or takes them whole, else letters, as Vim's
+    // showcmd counts a selection.
+    readonly property int chosenCount: choosing === "" || taken.length === 0 ? 0
+        : choosing === "lines" || taken.length > 1 ? taken.length
+        : taken[0].to - taken[0].from
+
     // Where the cursor stands, in the content's terms: the letter as Qt
     // laid it, as wide as it is, or a space's width on an empty line or
-    // past a line's end. The rule is drawn beside its line's height, and
-    // visual's block will be drawn on the letter.
+    // past a line's end, with its baseline and face. The rule is drawn
+    // beside its line's height, and visual's block on the letter.
     readonly property var block: {
         if (!keys || laid.length === 0)
             return null;
@@ -550,6 +703,8 @@ Floating {
             width: after.y === box.y && after.x > box.x ? after.x - box.x : box.height / 2,
             height: box.height,
             letter,
+            base: found.part.base,
+            font: words.font,
             line: cursor.line,
             said: line.parts.map(part => part.words.getText(part.from, part.from
                 + part.length)).join(" ")
@@ -835,6 +990,27 @@ Floating {
                 height: drawer.block?.height ?? 0
                 color: Theme.accent
             }
+            // Visual's block, on the cursor's letter while it chooses, as his
+            // Neovim shows its cursor only there: the accent under the letter
+            // in the ground's ink, steady as the rule is.
+            Rectangle {
+                id: blockShown
+                z: 1
+                visible: drawer.block !== null && drawer.choosing !== ""
+                x: drawer.block?.x ?? 0
+                y: drawer.block?.y ?? 0
+                width: drawer.block?.width ?? 0
+                height: drawer.block?.height ?? 0
+                color: Theme.accent
+
+                Text {
+                    y: (drawer.block?.base ?? 0) - (drawer.block?.y ?? 0) - baselineOffset
+                    text: drawer.block?.letter ?? ""
+                    textFormat: Text.PlainText
+                    color: Theme.background
+                    font: drawer.block?.font ?? titleText.font
+                }
+            }
 
             // When or where, in capitals over the plate, on the field's
             // centre: a label, set apart by case and tracking rather than
@@ -1044,6 +1220,7 @@ Floating {
                     PageText {
                         id: titleText
                         sought: drawer.washing
+                        marked: "# "
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         // A name with no space, as a server's or a path,
@@ -1245,6 +1422,7 @@ Floating {
                             PageText {
                                 id: headingText
                                 sought: drawer.washing
+                                marked: "## "
                                 width: parent.width
                                 y: fact.base - baselineOffset
                                 visible: fact.heading
