@@ -2536,6 +2536,8 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
       cp ${./ReadsOn.qml} ReadsOn.qml
+      cp ${./Wash.qml} Wash.qml
+      cp ${./Search.js} Search.js
       cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
@@ -2566,6 +2568,8 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
       cp ${./ReadsOn.qml} ReadsOn.qml
+      cp ${./Wash.qml} Wash.qml
+      cp ${./Search.js} Search.js
       cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml

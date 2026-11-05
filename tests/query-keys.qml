@@ -149,6 +149,15 @@ QtObject {
             [0]);
         holds("nothing sought finds no rows", Search.holding(rows, ""), []);
 
+        // A row's words inked where they're found, as styled text, so a
+        // row cut to its room still ends in an ellipsis.
+        holds("each find takes the ink", Search.inked("Fire & fire", "fire", "#fff"),
+            '<font color="#fff">Fire</font> &amp; <font color="#fff">fire</font>');
+        holds("a capital inks only itself", Search.inked("fire Fire", "Fire", "#fff"),
+            'fire <font color="#fff">Fire</font>');
+        holds("what isn't found is only escaped", Search.inked("a<b", "z", "#fff"), "a&lt;b");
+        holds("nothing sought inks nothing", Search.inked("a<b", "", "#fff"), "a&lt;b");
+
         // The rows holding a match, by their places: [what, from, forward,
         // count, where it lands].
         const holding = [2, 5, 8];

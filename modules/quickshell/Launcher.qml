@@ -3079,9 +3079,14 @@ Scope {
     property var searchSaid: null
     property int searchSaidFor: -1
     // The rows' words as a search reads them, made once for each list of
-    // rows rather than for each letter, and the list they were made for.
-    property var searchRows: null
-    property var searchRowsOf: null
+    // rows rather than for each letter, and the list they were made for:
+    // kept in a plain object, so a binding reading them through
+    // searchable() changes no property as it reads.
+    readonly property var searchRows: ({ rows: null, of: null })
+    // The rows holding what's washed, in order, which the field's aside
+    // counts the selection among.
+    readonly property var washedRows: washing === "" ? []
+        : Search.holding(searchable(), washing)
 
     // What a row shows, as a search reads it: its name, its count, its
     // side and, at home, its kind, a line each so nothing is found across
@@ -3096,12 +3101,12 @@ Scope {
     }
 
     function searchable() {
-        if (searchRowsOf !== matches) {
-            searchRows = Search.searchable(matches.map(row => searchedWords(row, false)),
+        if (searchRows.of !== matches) {
+            searchRows.rows = Search.searchable(matches.map(row => searchedWords(row, false)),
                 matches.map(row => searchedWords(row, true)));
-            searchRowsOf = matches;
+            searchRows.of = matches;
         }
-        return searchRows;
+        return searchRows.rows;
     }
 
     // Where a search lands: { at, wrapped }, or null where no row holds it.
@@ -3252,11 +3257,16 @@ Scope {
         const escape = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
         const at = choice.byWord || choice.plain ? []
             : Fuzzy.match(choice.prepared, words, true).positions ?? [];
+        // What a search of the rows finds takes the wash's ink, its ground
+        // drawn behind it (Wash.qml).
+        const washed = Search.found(washing, choice.name);
         let out = "";
         for (let i = 0; i < choice.name.length; i++) {
             const letter = escape(choice.name[i]);
             out += at.includes(i)
                 ? `<font color="${Theme.strong}">${letter}</font>`
+                : washed.some(([start, end]) => i >= start && i < end)
+                    ? `<font color="${Theme.wash.ink}">${letter}</font>`
                 : letter;
         }
         // A command's form, what's typed after its start, is muted, so
@@ -3799,6 +3809,8 @@ Scope {
                     : (prompt.searching.forward ? "/" : "?") + prompt.searching.pattern,
                 last: root.finding.pattern,
                 washing: root.washing,
+                // How many rows hold what's washed.
+                washed: root.washedRows.length,
                 said: foot.searchWord
             },
             // Which row is selected, counted from 0, -1 for an answer's
@@ -4378,8 +4390,17 @@ Scope {
                         // What the selection has to say, since the foot
                         // always says how things stand; else where the
                         // selection is, once there's more than fits. The
-                        // row says what it is, so this doesn't.
+                        // row says what it is, so this doesn't. While a
+                        // search is washed, it says which of the rows
+                        // holding it the selection is, as his Neovim's
+                        // status line counts a search's matches while
+                        // hlsearch shows them: 0 before the first.
                         aside: foot.said !== "" ? foot.said
+                            : root.washedRows.length > 0
+                                ? ((Words.field.search ?? {}).found ?? "")
+                                    .replace("{at}", root.washedRows
+                                        .filter(at => at <= root.current).length)
+                                    .replace("{all}", root.washedRows.length)
                             : root.matches.length > root.rows && root.current >= 0
                                 ? `${root.current + 1} of ${root.matches.length}` : ""
                         // What's typed narrows a list, so the left arrow
@@ -4868,8 +4889,12 @@ Scope {
                                     warns: !!entry.modelData.warns
                                     figures: list.figures
                                     sides: list.sides
-                                    name: selected ? entry.modelData.name
+                                    // A quiet row's name is plain, so its
+                                    // marks would read as letters.
+                                    name: selected || quiet ? entry.modelData.name
                                         : root.marked(entry.modelData)
+                                    plainName: entry.modelData.name
+                                    washing: root.washing
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []

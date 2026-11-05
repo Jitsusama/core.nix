@@ -56,6 +56,21 @@ function washed(text, pattern, wash) {
     return html + escaped(text.slice(at));
 }
 
+// A line as styled text, each place the pattern's found in the wash's
+// ink, its ground left to be drawn behind it (Wash.qml): Qt elides styled
+// text, as a row cut to its room needs, but not rich text, and only rich
+// text draws a ground.
+function inked(text, pattern, ink) {
+    let at = 0;
+    let styled = "";
+    for (const [start, end] of found(pattern, text)) {
+        styled += escaped(text.slice(at, start))
+            + `<font color="${ink}">${escaped(text.slice(start, end))}</font>`;
+        at = end;
+    }
+    return styled + escaped(text.slice(at));
+}
+
 // The rows' words, each row's as one text, as they're searched: as they
 // are, for a pattern with a capital, and lowered, for one without, letter
 // for letter. Made once for a list of rows, so each letter of a search

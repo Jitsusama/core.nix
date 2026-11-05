@@ -27,6 +27,12 @@ Item {
     property bool reading: false
     // How wide a figure's character is, so the pace is in characters.
     property real figure: 0
+    // What a search washes in the words (Wash.qml), and the words as they
+    // read, without the markup styled words carry, to find it in.
+    property string washing: ""
+    property string plain: text
+    // Where it's washed in the words, each place's start and width.
+    readonly property var washed: wash.laid
     // Said each time the words are back at their start, so a row with two
     // cut can hand the turn to the other.
     signal through
@@ -67,6 +73,16 @@ Item {
         // The serif's weight is one of its axes.
         font.weight: room.voiced ? Font.Normal : room.weight
         font.variableAxes: room.voiced ? Theme.serif.axes : ({})
+
+        Wash {
+            id: wash
+            anchors.fill: parent
+            visible: room.washing !== ""
+            text: room.plain
+            pattern: room.washing
+            font: words.font
+            cut: words.truncated
+        }
     }
 
     // Animators, which move the words on the render thread, so the slide

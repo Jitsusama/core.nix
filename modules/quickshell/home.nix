@@ -100,6 +100,7 @@ let
     "Launcher.qml"
     "Choice.qml"
     "ReadsOn.qml"
+    "Wash.qml"
     "Reading.js"
     "Graph.qml"
     "Chord.qml"
@@ -1807,6 +1808,15 @@ in
                     inherit (s) offset blur;
                     opacity = builtins.fromJSON s.opacity;
                   }) floating.shadows;
+                }
+              }
+              // A search's find, its ink and ground, as Joel's Neovim draws one
+              // (modules/neovim/colors/jitsusama.lua, Search): the notices' /
+              // and the launcher's wash what they find with it.
+              readonly property var wash: ${
+                object {
+                  ink = colours.strong;
+                  ground = colours.raised;
                 }
               }
               readonly property var motion: ${

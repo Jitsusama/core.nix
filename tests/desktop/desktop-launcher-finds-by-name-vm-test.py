@@ -622,7 +622,8 @@ def walk_the_rows_searches(desktop: Desktop) -> None:
 
     They're his Neovim's, as QueryKeys.js and Search.js hold them (tests/query-keys.qml): this
     is that each reaches the rows through niri, that the search is typed on the line in place of
-    what's typed, and that the foot says where it went round or that it found nothing.
+    what's typed, that its rows are washed and counted, and that the foot says where it went
+    round or that it found nothing.
     """
     machine = desktop.machine
     desktop.answer("s")
@@ -657,7 +658,14 @@ def walk_the_rows_searches(desktop: Desktop) -> None:
     # Return runs it, and with nothing typed runs the last again.
     machine.send_chars(f"/{sought}", delay=desktop_session.KEY_PACE)
     machine.send_key("ret")
-    assert at(row)["search"]["last"] == sought
+    shown = at(row)
+    assert shown["search"]["last"] == sought
+    # Its rows stay washed, the field's note saying which of them the selection is, as his
+    # status line counts a search's matches.
+    washed = shown["search"]["washed"]
+    assert washed >= 1, shown["search"]
+    counted = f"1 of {washed}"
+    assert any(word["text"] == counted for word in laid()["field"]), (counted, laid()["field"])
     machine.send_chars("gg")
     at(0)
     machine.send_chars("/")

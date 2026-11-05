@@ -6086,7 +6086,8 @@
       "notFound": "not found",
       "fromTop": "from the top",
       "fromBottom": "from the bottom",
-      "none": "nothing searched yet"
+      "none": "nothing searched yet",
+      "found": "{at} of {all}"
     }
   },
   "meant": [

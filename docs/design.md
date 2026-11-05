@@ -1773,8 +1773,15 @@ one table, `QueryKeys.js`.
   last row goes on from the first, as wrapscan does. The foot says, in
   Return's place and for that key alone, "from the top" or "from the
   bottom" where it went round, and "not found" where no row holds it,
-  the selection staying where it was, as Neovim says them. The
-  notices' / searches the same way (`Search.js`).
+  the selection staying where it was, as Neovim says them. As his
+  hlsearch marks a buffer, each place a row says what's sought takes
+  the search wash, `Theme.wash`, Neovim's Search: its ink on the
+  theme's raised ground, the selected row's too, never the accent, and
+  in a cut row only the letters before its ellipsis. While it's washed,
+  the field's note says which of the rows holding it the selection is,
+  "3 of 12", as his status line counts a search's matches. The wash
+  goes as the launcher steps to another place or closes. The notices'
+  / searches the same way (`Search.js`), in the same wash.
 - **Where the keys go shows twice.** The caret is a bar a quarter of a
   letter wide in insert and a block on a letter in normal, the letter in
   the ground's colour, as his Neovim's guicursor draws them (`init.lua`).

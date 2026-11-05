@@ -21,6 +21,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "Reading.js" as Reading
+import "Search.js" as Search
 
 Rectangle {
     id: row
@@ -41,6 +42,17 @@ Rectangle {
     property string glyph
     property color hue
     property string name
+    // The name as it reads, when `name` carries the launcher's marks.
+    property string plainName: name
+    // What a search of the rows finds, washed wherever it shows in the
+    // row's words, as Joel's Neovim's hlsearch washes a buffer's: "" for
+    // none. The name's ink is the launcher's to give (Launcher.marked);
+    // its words after it and at its right take the wash's here.
+    property string washing: ""
+    // Where it's washed, each place's start and width in the name, its
+    // words after it and at its right.
+    readonly property var washed: ({ name: nameBox.washed, detail: detailWash.laid,
+        side: right.sided ? sideText.washed : [] })
     property var chord: []
     property string side
     // What it says at its right as items, each `{ said, keep }` in the
@@ -145,6 +157,8 @@ Rectangle {
         anchors.baseline: monoLine.baseline
         voiced: row.voiced
         text: row.name
+        plain: row.plainName
+        washing: row.washing
         format: row.selected || row.quiet ? Text.PlainText : Text.StyledText
         color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
         weight: row.selected ? Font.Medium : Font.Normal
@@ -182,11 +196,23 @@ Rectangle {
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
         visible: row.detail !== ""
-        text: row.detail
+        text: row.washing !== "" ? Search.inked(row.detail, row.washing, Theme.wash.ink)
+            : row.detail
+        textFormat: row.washing !== "" ? Text.StyledText : Text.AutoText
         color: row.selected ? Theme.text : Theme.muted
         font.family: Theme.serif.family
         font.pointSize: Theme.serif.large
         font.variableAxes: Theme.serif.upright.large
+
+        Wash {
+            id: detailWash
+            anchors.fill: parent
+            visible: row.washing !== ""
+            text: row.detail
+            pattern: row.washing
+            font: countText.font
+            cut: countText.truncated
+        }
     }
 
     Graph {
@@ -272,7 +298,11 @@ Rectangle {
             anchors.right: parent.right
             visible: right.sided
             width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
-            text: right.said
+            text: row.washing !== "" ? Search.inked(right.said, row.washing, Theme.wash.ink)
+                : right.said
+            format: row.washing !== "" ? Text.StyledText : Text.PlainText
+            plain: right.said
+            washing: row.washing
             color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
             figure: figureFace.advanceWidth
             reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)
