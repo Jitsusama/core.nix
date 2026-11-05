@@ -127,9 +127,9 @@ local hint = {
     .. '  pictures     '
     .. face('Return')
     .. '  all     '
-    .. face('Shift+slash')
+    .. face('space Shift+slash')
     .. '  keys',
-  [swayimg.gallery] = face('Return') .. '  open     ' .. face('Shift+slash') .. '  keys',
+  [swayimg.gallery] = face('Return') .. '  open     ' .. face('space Shift+slash') .. '  keys',
 }
 
 -- A number, or the first of a pair of keys, waiting for what comes after
