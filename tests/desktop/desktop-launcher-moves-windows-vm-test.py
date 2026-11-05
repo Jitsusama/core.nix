@@ -490,7 +490,8 @@ def asks_once_for_the_rest(desktop: Desktop, left: Callable[[], set[int]]) -> No
     asking = desktop.showing()
     assert asking["question"] == "Close 2 windows? (y/n)", asking
     tinted = [asking["things"][at] for at in asking["tinted"]]
-    assert len(tinted) == 2 and not any(row["gone"] for row in tinted), asking
+    assert len(tinted) == open_before, asking
+    assert not any(row["gone"] for row in tinted), asking
     with desktop.told("answered no"):
         machine.send_chars("n")
     desktop.launcher_until(unasked)
