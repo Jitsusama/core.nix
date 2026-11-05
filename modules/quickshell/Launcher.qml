@@ -56,6 +56,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
+import "ModeMarks.js" as ModeMarks
 import "Reading.js" as Reading
 import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
@@ -4995,8 +4996,10 @@ Scope {
             takesAnswer: prompt.asking !== "" && root.askTaking,
             questionWhole: prompt.askedWhole,
             placeSays: root.placeSays,
-            // What the mode word's room says: a mode, a count, a search.
+            // What the mode word's room says: a count, a search, what's
+            // chosen; and the foot's start, the mode in three capitals.
             modeSays: modeWord.visible ? modeWord.said : "",
+            modeMark: markText.visible ? markText.text : "",
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -6659,12 +6662,11 @@ Scope {
                         // facts side by side under one glyph (the day's
                         // AI spend and the agents, both AI's) wear it
                         // once.
-                        // The query line's mode, while it isn't normal, after
-                        // the facts, in the accent and lowercase, as his
-                        // Neovim's status line puts it after what's already
-                        // there (modules/neovim/status.lua): the one word
-                        // saying where his keys go. It comes and goes without
-                        // moving anything else.
+                        // What the mode is doing, after the facts, in the
+                        // accent, as his Neovim's status line puts its showcmd
+                        // after what's already there (modules/neovim/status.lua);
+                        // the mark at the foot's start names the mode itself.
+                        // It comes and goes without moving anything else.
                         // In normal, a count typed before a move stands in
                         // its place until the move, as Neovim's showcmd
                         // shows it, and a drawer's search after its / or ?
@@ -6703,50 +6705,41 @@ Scope {
                             readonly property string pending: root.pendingSaid === "" ? ""
                                 : Reading.wholeWords(root.pendingSaid, width,
                                     text => measure.advanceWidth(text))
-                            // A line with no modes, as a secret's, names none,
-                            // and nor does the command line, as his status line
-                            // shows none for it, whatever mode : came from (a
-                            // viewer's : opens it from insert; VKCF3Z). In
-                            // normal, which names none, the place stood in says
-                            // how it stands, as the file picker's "2 gathered".
-                            // Visual in the drawer counts what it's chosen,
-                            // "visual line \u00b7 3", as the spec's mode word.
-                            readonly property string word: (Words.field.modes ?? {})[prompt.mode]
-                                ?? ""
+                            // The mark names the mode, so this says only what
+                            // it's doing. A line with no modes, as a secret's,
+                            // says nothing, and nor does the command line, which
+                            // says its own in the line's place. In normal the
+                            // place stood in says how it stands, as the file
+                            // picker's "2 gathered"; visual, on the rows or the
+                            // drawer's page, how many it's chosen, "3 chosen".
                             readonly property string said: counted !== "" ? counted
                                 : pending !== "" ? pending
                                 : !prompt.modal || root.commanding !== null ? ""
                                 : prompt.mode === "normal" && root.placeSays !== "" ? root.placeSays
-                                : root.visual ? Operators.visualSaid(word, root.visualSpan,
+                                : root.visual ? Operators.chosenSaid(
+                                    root.visualSpan.to - root.visualSpan.from + 1,
                                     Words.field.visual ?? {})
                                 : QueryKeys.chosen(prompt.mode)
-                                    ? `${word} \u00b7 ${drawerCard.chosenCount}`
-                                : word
-                            // The widest of the modes' words and its gap,
-                            // held whichever shows. A binding doesn't see
-                            // what a call reads, so it reads the face itself,
-                            // to be measured again in the theme's face once
-                            // that arrives: measured in the face before it,
-                            // insert showed as its last letters at scale 2.
-                            // Visual's word is held with a count of three
-                            // figures, "visual line \u00b7 999", as the spec
-                            // sizes the room, so a count or an operator's
-                            // words never move the facts beside it.
+                                    ? Operators.chosenSaid(drawerCard.chosenCount,
+                                        Words.field.visual ?? {})
+                                : ""
+                            // The widest it says often and its gap, held
+                            // whatever shows: visual's count of three figures,
+                            // "999 chosen", as the spec sizes the room, so a
+                            // count or an operator's words never move the
+                            // facts beside it. A binding doesn't see what a
+                            // call reads, so it reads the face itself, to be
+                            // measured again in the theme's face once that
+                            // arrives.
                             readonly property real room: {
                                 void measure.font;
-                                const modes = Words.field.modes ?? {};
-                                const words = Object.values(modes);
                                 // What the place says widens it while it says
                                 // it, so it's read whole.
-                                let widest = root.placeSays === "" ? 0
-                                    : measure.advanceWidth(root.placeSays);
-                                for (const [mode, word] of Object.entries(modes))
-                                    widest = Math.max(widest, measure.advanceWidth(
-                                        mode === "visual" ? Operators.visualSaid(word,
-                                            { from: 1, to: 999 }, Words.field.visual ?? {})
-                                        : word + (QueryKeys.chosen(mode) ? " \u00b7 999" : "")));
-                                return words.length === 0 ? 0
-                                    : keys.spacing + Math.ceil(widest);
+                                const widest = Math.max(root.placeSays === "" ? 0
+                                    : measure.advanceWidth(root.placeSays),
+                                    measure.advanceWidth(Operators.chosenSaid(999,
+                                        Words.field.visual ?? {})));
+                                return keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
                             width: Math.max(0, root.pendingSaid !== ""
@@ -6762,6 +6755,37 @@ Scope {
                                 : said === root.placeSays ? Text.ElideRight : Text.ElideNone
                             color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
+                        }
+
+                        // The mode in three capitals at the foot's start, as
+                        // held notices' foot names it (Joel, 2026-11-05: "the
+                        // mode should be 3 letters, in caps, and in a place
+                        // where they are more obvious and not lost with other
+                        // things"): set as a label, muted in normal and in the
+                        // accent in every other mode, as his status line
+                        // names a mode. Every mark is three of the mono's
+                        // capitals, so the facts after it never move, and a
+                        // line with no modes, as a secret's, keeps its room
+                        // with none shown.
+                        Text {
+                            id: markText
+
+                            readonly property string mark: ModeMarks.mark(prompt.mode,
+                                root.commanding !== null)
+
+                            x: Theme.space.l
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: prompt.modal
+                            text: mark
+                            textFormat: Text.PlainText
+                            color: mark === ModeMarks.mark("normal", false) ? Theme.muted
+                                : Theme.accent
+                            font.family: Theme.level.label.family
+                            font.pointSize: Theme.level.label.pointSize
+                            font.weight: Theme.level.label.weight
+                            font.capitalization: Theme.level.label.capitalization
+                            font.letterSpacing: Theme.level.label.letterSpacing
+                            font.features: Theme.level.label.features
                         }
 
                         Row {
@@ -6853,7 +6877,13 @@ Scope {
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
 
-                            x: Theme.space.l
+                            // Past the mark, a group apart, as the facts are a
+                            // group of their own on the line. The label's
+                            // tracking follows its last capital too, so it's
+                            // taken off, leaving the rung from ink to ink:
+                            // with it the gap measured 24 where the rung is 20.
+                            x: markText.x + markText.implicitWidth - markText.font.letterSpacing
+                                + Theme.space.rung.groups
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: keys.spacing
 

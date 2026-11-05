@@ -10,6 +10,7 @@ import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
 import "KeyNames.js" as KeyNames
 import "QueryKeys.js" as Keys
+import "ModeMarks.js" as ModeMarks
 import "Typing.js" as Typing
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
@@ -534,13 +535,26 @@ QtObject {
         holds("and what it opened, where not all", Operators.openedSaid(2, 3, words),
             "2 of 3 open");
         holds("and nothing where it opened every one", Operators.openedSaid(3, 3, words), "");
-        // The mode word counts the rows chosen, as the spec's "visual line
-        // \u00b7 3", the one row among them.
-        const counting = { counted: "{mode} \u00b7 {count}" };
+        // The mode's word says only what it's doing, now the mark names the
+        // mode: how many are chosen, "3 chosen", the one row among them.
+        const counting = { counted: "{count} chosen" };
         holds("the mode word counts what's chosen",
-            [Operators.visualSaid("visual line", { from: 2, to: 4 }, counting),
-                Operators.visualSaid("visual line", { from: 5, to: 5 }, counting)],
-            ["visual line \u00b7 3", "visual line \u00b7 1"]);
+            [Operators.chosenSaid(3, counting), Operators.chosenSaid(1, counting)],
+            ["3 chosen", "1 chosen"]);
+        // Each mode in three capitals at the foot's start (Joel, 2026-11-05:
+        // "the mode should be 3 letters, in caps"): the find line, insert,
+        // visual on the rows or the drawer's page, the command line whatever
+        // mode : came from, and normal for the rest, the drawer's page too.
+        holds("each mode is named by its mark",
+            ["find", "insert", "normal", "page", "visual", "pageVisual", "pageVisualLine"]
+                .map(mode => ModeMarks.mark(mode, false)),
+            ["FND", "INS", "NOR", "NOR", "VIS", "VIS", "VIS"]);
+        holds("and the command line by its own", [ModeMarks.mark("normal", true),
+            ModeMarks.mark("page", true), ModeMarks.mark("insert", true)],
+            ["CMD", "CMD", "CMD"]);
+        holds("every mark is three capitals", ["find", "insert", "normal", "visual"]
+            .map(mode => ModeMarks.mark(mode, false)).concat([ModeMarks.mark("normal", true)])
+            .every(said => /^[A-Z]{3}$/.test(said)), true);
     }
 
     // The keys typed from a line's opening in insert, on a prompt's words.

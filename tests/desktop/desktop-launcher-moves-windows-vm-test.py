@@ -518,6 +518,22 @@ def asks_once_for_the_rest(desktop: Desktop, left: Callable[[], set[int]]) -> No
         machine.send_chars("y")
 
 
+def names_each_mode(desktop: Desktop) -> None:
+    """See the foot's start name the find, normal and the command line, ending in normal.
+
+    Each mode is three capitals there (Joel, 2026-11-05: "the mode should be 3 letters, in
+    caps"): the find's FND, normal's NOR and the command line's CMD.
+    """
+    machine = desktop.machine
+    desktop.launcher_until(lambda shown: shown["modeMark"] == "FND")
+    desktop.normal()
+    desktop.launcher_until(lambda shown: shown["modeMark"] == "NOR")
+    machine.send_chars(":")
+    desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["modeMark"] == "NOR")
+
+
 def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     """V and j choose windows, y copies their titles, d closes them once asked, Return opens."""
     machine = desktop.machine
@@ -529,7 +545,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     desktop.launcher_ready()
     desktop.type_in("chosen")
     desktop.launcher_until(lambda shown: set(shown["rows"][:3]) == set(opened))
-    desktop.normal()
+    names_each_mode(desktop)
     # niri lists them in its own order, so the walk takes the first two
     # rows as it finds them and leaves the third.
     rows = desktop.showing()["rows"]
@@ -541,17 +557,21 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: shown["open"] and shown["mode"] == "normal" and shown["tinted"] == []
     )
-    # V begins visual line on the cursor row, which it tints, saying so in
-    # the mode word's room with how many it holds; j takes the row below
-    # too, and the foot says how many Return opens.
+    # V begins visual line on the cursor row, which it tints, the mark saying VIS and the mode
+    # word's room how many it holds; j takes the row below too, and the foot says how many
+    # Return opens.
     machine.send_chars("V")
     desktop.launcher_until(
-        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "visual line \u00b7 1"
+        lambda shown: (
+            shown["mode"] == "visual"
+            and shown["modeMark"] == "VIS"
+            and shown["modeWord"] == "1 chosen"
+        )
     )
     assert desktop.showing()["tinted"] == [0], desktop.showing()
     machine.send_chars("j")
     desktop.launcher_until(
-        lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "visual line \u00b7 2"
+        lambda shown: shown["tinted"] == [0, 1] and shown["modeWord"] == "2 chosen"
     )
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 open 2"], desktop.showing()
     # y copies both titles, a line each, flashes them, and ends visual.
@@ -671,7 +691,7 @@ def chooses_and_brings_back(desktop: Desktop) -> None:
     machine = desktop.machine
     machine.send_chars("v")
     desktop.launcher_until(
-        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "visual line \u00b7 1"
+        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "1 chosen"
     )
     machine.send_chars("j")
     desktop.launcher_until(lambda shown: shown["current"] == 1 and shown["tinted"] == [0, 1])
@@ -686,7 +706,7 @@ def chooses_and_brings_back(desktop: Desktop) -> None:
     # ip takes the run the cursor's in: the three windows, one kind.
     machine.send_chars("ip")
     desktop.launcher_until(
-        lambda shown: shown["tinted"] == [0, 1, 2] and shown["modeWord"] == "visual line \u00b7 3"
+        lambda shown: shown["tinted"] == [0, 1, 2] and shown["modeWord"] == "3 chosen"
     )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["mode"] == "normal")
