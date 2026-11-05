@@ -2,7 +2,7 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Typing.js, ListedKeys.js,
-// Search.js and Operators.js beside this file and runs
+// Search.js, Operators.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "ListedKeys.js" as Listed
@@ -10,6 +10,7 @@ import "QueryKeys.js" as Keys
 import "Typing.js" as Typing
 import "Search.js" as Search
 import "Operators.js" as Operators
+import "Confirm.js" as Confirm
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -387,19 +388,33 @@ QtObject {
         holds("an ending action with no undo asks once", Operators.asks([close]), true);
         holds("one that's put back doesn't",
             Operators.asks([Object.assign({ undo: run }, close)]), false);
-        holds("a second dd over the same rows answers the ask",
-            Operators.answers({ act: "ending", from: 3, to: 5 }, "ending", { from: 3, to: 5 }),
-            true);
-        holds("over other rows it doesn't",
-            Operators.answers({ act: "ending", from: 3, to: 5 }, "ending", { from: 3, to: 4 }),
-            false);
-        holds("nor does a y",
-            Operators.answers({ act: "ending", from: 3, to: 3 }, "copy", { from: 3, to: 3 }),
-            false);
-        holds("nor anything with no ask", Operators.answers(null, "ending", { from: 3, to: 3 }),
-            false);
-        // The ask says the keys that answer it, as they were typed.
-        holds("the ask says the keys that answer it", [
+        // The ask, as Vim's confirm() asks: what it would end, by name for
+        // one row and by count for more, its verb the one they share.
+        const asking = { ask: "{ends} {name}? (y/n)", asks: "{ends} these {count}? (y/n)",
+            ends: "end" };
+        holds("the ask names the one row it ends",
+            Confirm.question([{ ends: "close", name: "Notes" }], asking), "Close Notes? (y/n)");
+        holds("and counts more, by the verb they share", Confirm.question([
+            { ends: "close", name: "Notes" }, { ends: "close", name: "Mail" }], asking),
+            "Close these 2? (y/n)");
+        holds("or by the word for any where they differ", Confirm.question([
+            { ends: "close", name: "Notes" }, { ends: "quit", name: "Firefox" }], asking),
+            "End these 2? (y/n)");
+        // Only y answers yes, and only after the ask has stood 300 ms, so
+        // a key typed on from what asked can't answer it; any other no.
+        const ask = Confirm.asked("Close Notes? (y/n)", run, run, 1000);
+        holds("the ask holds its question", ask.question, "Close Notes? (y/n)");
+        holds("a key in the ask's first 300 ms is let by", Confirm.answer(ask, "y", 1299, 300),
+            "early");
+        holds("y after it answers yes", Confirm.answer(ask, "y", 1300, 300), "yes");
+        holds("n answers no", Confirm.answer(ask, "n", 1400, 300), "no");
+        holds("and so does any other key, Y and Escape among them",
+            ["Y", "Escape", "d", "Return"].map(key => Confirm.answer(ask, key, 1400, 300)),
+            ["no", "no", "no", "no"]);
+        holds("and no key at all, as a modifier alone, is let by",
+            Confirm.answer(ask, "", 1400, 300), "early");
+        // The ask's mark says the keys that asked it, as they were typed.
+        holds("the ask says the keys that asked it", [
             Operators.typedAs("ending", 0, null),
             Operators.typedAs("ending", 3, null),
             Operators.typedAs("ending", 0, { act: "next", count: 0 }),

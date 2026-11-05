@@ -98,6 +98,7 @@ let
     "Typing.js"
     "Search.js"
     "Operators.js"
+    "Confirm.js"
     "KeyHints.qml"
     "Drawer.qml"
     "Launcher.qml"
