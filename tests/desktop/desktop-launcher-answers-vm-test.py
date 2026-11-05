@@ -66,8 +66,11 @@ def test_yy_copies_an_answer_and_dd_has_nothing_to_end(desktop: Desktop) -> None
     machine = desktop.machine
     desktop.answer("3c:22:fb:12:34:56")
     desktop.normal()
-    with desktop.told("yanked 1"):
-        machine.send_chars("yy")
+    # The answer is said in the field's ghost, which flashes in its place.
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == [-1], since)
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline") == "Apple, Inc."
     machine.send_chars("dd")
     desktop.launcher_until(
