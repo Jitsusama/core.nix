@@ -1671,8 +1671,12 @@ one table, `QueryKeys.js`.
   back what they took; ↓ ↑, Tab and Shift+Tab, Page Up and Page Down move
   through the rows, and Return does the row or steps into it, as it does
   from insert. i, a, I and A go into insert at the caret, after it, at the
-  line's start and at its end, and cc and S clear the line first. Leaving
-  insert puts the caret one left, as Vim does.
+  line's start and at its end, and cc and S clear the line first. ]b and
+  [b go to the place beside this one, the next and the one before, as
+  Vim's next buffer does, where the place has neighbours: in the file
+  picker, the folders its holder lists, in the order in use, round from
+  the last to the first. Leaving insert puts the caret one left, as Vim
+  does.
 - **Where the keys go shows twice.** The caret is a bar a quarter of a
   letter wide in insert and a block on a letter in normal, the letter in
   the ground's colour, as his Neovim's guicursor draws them (`init.lua`).

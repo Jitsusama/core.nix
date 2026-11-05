@@ -2660,6 +2660,13 @@ Scope {
         return holdings(category).some(id => (Words.of(id).provider ?? id) === name);
     }
 
+    // The place beside the one held deepest, the next (1) or the one before
+    // (-1), where that place says what's beside it (`beside`), as the file
+    // picker's folders do; anywhere else ]b and [b do nothing.
+    function beside(by) {
+        held[held.length - 1]?.row?.beside?.(by);
+    }
+
     function back() {
         if (held.length === 0)
             return;
@@ -4323,6 +4330,12 @@ Scope {
                                 root.arrowed(
                                     Math.min(root.current + root.rows, root.matches.length - 1),
                                     "page down");
+                                break;
+                            case "nextFile":
+                                root.beside(1);
+                                break;
+                            case "previousFile":
+                                root.beside(-1);
                                 break;
                             }
                         }

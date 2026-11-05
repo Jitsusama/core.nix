@@ -481,9 +481,41 @@ ShellRoot {
         expect("taking one file, the field asks for one, by the program's word, in every folder",
             fieldAsks() === "upload which file?"
                 && chooser.folderRow(`${notes}/sub`).ask === fieldAsks(), fieldAsks());
+        besides();
         // Picked once a.md's plate, drawn above, is previewed.
         picking = a;
         previewing = "a.md";
+    }
+
+    // ]b and [b go to the folder beside this one, as the folder holding it
+    // lists its folders, round from the last to the first, held where this
+    // one was; in a folder whose holder isn't read yet, once it's heard.
+    function besides() {
+        const depth = launcher.held.length;
+        const deepest = () => launcher.held[launcher.held.length - 1].row.key;
+        const around = rowsIn(home).map(row => row.key)
+            .filter(key => key.startsWith(`folder:${home}/`));
+        const next = around[(around.indexOf(`folder:${notes}`) + 1) % around.length];
+        launcher.held[depth - 1].row.beside(1);
+        expect("]b goes to the next folder its holder lists, held where this one was",
+            around.length > 1 && deepest() === next && launcher.held.length === depth,
+            `${deepest()} at ${launcher.held.length}, not ${next} at ${depth} of ${around}`);
+        launcher.held[depth - 1].row.beside(-1);
+        expect("[b goes to the one before", deepest() === `folder:${notes}`, deepest());
+        for (let pressed = 0; pressed < around.length; pressed += 1)
+            launcher.held[depth - 1].row.beside(1);
+        expect("]b goes round from the last to the first", deepest() === `folder:${notes}`,
+            deepest());
+        const deep = `${home}/elsewhere/deep`;
+        launcher.enter(chooser.folderRow(`${deep}/one`));
+        launcher.held[depth].row.beside(1);
+        expect("]b in a folder whose holder isn't read waits for it",
+            deepest() === `folder:${deep}/one`, deepest());
+        chooser.heard(deep, [{ name: "one", path: `${deep}/one`, folder: true },
+            { name: "two", path: `${deep}/two`, folder: true }]);
+        expect("and goes once it's heard", deepest() === `folder:${deep}/two`
+            && launcher.held.length === depth + 1, deepest());
+        launcher.back();
     }
 
     function save() {

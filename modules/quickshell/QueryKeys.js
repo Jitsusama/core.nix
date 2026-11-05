@@ -48,6 +48,12 @@ const table = [
     { act: "insertStart", mode: "normal", keys: ["I"] },
     { act: "appendEnd", mode: "normal", keys: ["A"] },
     { act: "change", mode: "normal", keys: [["c", "c"], "S"] },
+    // The place beside this one, the next and the one before, as vi's ]b
+    // and [b go to the next buffer: the language's next-file and
+    // previous-file (modules/keys/language.toml). A place says what's
+    // beside it, as the file picker's folders do; elsewhere they do nothing.
+    { act: "nextFile", mode: "normal", keys: [["]", "b"]] },
+    { act: "previousFile", mode: "normal", keys: [["[", "b"]] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
 
