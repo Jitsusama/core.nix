@@ -761,6 +761,14 @@ mod tests {
         }
     }
 
+    /// The baselines runs stand on, each once, from the top down.
+    fn lines_of<'a>(runs: impl Iterator<Item = &'a [f64; 4]>) -> Vec<f64> {
+        let mut lines: Vec<f64> = runs.map(|t| t[1]).collect();
+        lines.sort_by(f64::total_cmp);
+        lines.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+        lines
+    }
+
     #[test]
     fn the_key_list_sets_its_lines_on_the_pitch_and_its_spaces_by_rung() {
         let space = &crate::theme::get().space;
@@ -797,12 +805,6 @@ mod tests {
         // Lines by baseline, every one on the beat from the first, since
         // each column is a stack of its own whose groups stand a beat
         // apart, so one column's lines may fall a beat off the other's.
-        fn lines_of<'a>(runs: impl Iterator<Item = &'a [f64; 4]>) -> Vec<f64> {
-            let mut lines: Vec<f64> = runs.map(|t| t[1]).collect();
-            lines.sort_by(f64::total_cmp);
-            lines.dedup_by(|a, b| (*a - *b).abs() < 0.01);
-            lines
-        }
         let baselines = lines_of(texts.iter());
         for line in &baselines {
             let beats = (line - baselines[0]) / beat;
@@ -833,7 +835,11 @@ mod tests {
             .find(|t| near(t[1], last, 0.01))
             .expect("a last line")[3];
         assert!(
-            near(baselines[0], pt(rung.inset) + (pitch + cap) / 2.0, 0.01),
+            near(
+                baselines[0],
+                pt(rung.inset) + f64::midpoint(pitch, cap),
+                0.01
+            ),
             "its first baseline is {} pt down",
             baselines[0]
         );
@@ -846,11 +852,11 @@ mod tests {
         );
         let mut gaps = Vec::new();
         for &line in &baselines {
-            let mut runs: Vec<&[f64; 4]> =
+            let mut along: Vec<&[f64; 4]> =
                 texts.iter().filter(|t| near(t[1], line, 0.01)).collect();
-            runs.sort_by(|a, b| a[0].total_cmp(&b[0]));
+            along.sort_by(|a, b| a[0].total_cmp(&b[0]));
             // Runs that touch are one word's, set in two faces.
-            for pair in runs.windows(2) {
+            for pair in along.windows(2) {
                 let gap = pair[1][0] - (pair[0][0] + pair[0][2]);
                 if gap > 0.5 {
                     gaps.push(gap);
