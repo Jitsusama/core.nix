@@ -340,6 +340,18 @@ QtObject {
         holds("an ending action is its own", Operators.endingOf(close, []), close);
         holds("a verb of close alone ends nothing", Operators.endingOf(said, []), null);
         holds("nor does a row with no ending action", Operators.endingOf(bare, []), null);
+        // A program's Quit steps in to the row that quits on Return, so
+        // Return asks once; d's own ask stands for that, so d quits.
+        const quitting = () => "quit";
+        const quit = { key: "verb:program:quit", act: "ending",
+            targets: () => [{ key: "verb:program:quit:sure", run: quitting }] };
+        const program = { key: "program:notes", run, verbs: () => [quit] };
+        holds("a program's ending action is its Quit, which runs nothing itself",
+            Operators.endingOf(program, actions(program)), quit);
+        holds("so d does the row it steps in to", Operators.doing(quit)(), "quit");
+        holds("and a Close as it runs", Operators.doing(close), run);
+        holds("an ending action with nothing to do ends nothing",
+            Operators.endingOf({ key: "verb:close", act: "ending" }, []), null);
         holds("a window's copy is its Copy Title",
             Operators.copyOf(window, actions(window), copies), title);
         holds("an answer's row is its own copy", Operators.copyOf(answer, [], copies), answer);
