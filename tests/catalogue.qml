@@ -83,7 +83,8 @@ QtObject {
             ["a setting's switch", { verb: "keep", stays: true, run: does }],
             ["a network's join", { verb: "connect", stays: true, run: does, verbs: opens }],
             ["one asked to be sure of", { verb: "reboot", confirm: true, run: does }],
-            ["a setting's act, closing", { verb: "hold", changes: true, run: does }]
+            ["a setting's act, closing", { verb: "hold", changes: true, run: does }],
+            ["a session's pause, closing", { verb: "pause", changes: true, run: does }]
         ];
         for (const [what, row] of changing)
             expect(`${what} changes how things stand`, Catalogue.changesState(row), true);
