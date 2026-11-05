@@ -154,17 +154,28 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         )
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
         # A count typed stands where insert's word was until its move, as showcmd shows it,
-        # moving nothing else in the foot; Escape lets it go.
-        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        desktop.machine.send_chars("12")
-        desktop.launcher_until(lambda shown: shown["counted"] == "12")
-        counted = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        rest = sorted(word["x"] for word in counted if word["text"] != "12")
-        assert rest == sorted(word["x"] for word in laid), (laid, counted)
-        desktop.photograph(f"launcher-count-at-{scale.replace('.', '-')}")
-        desktop.machine.send_key("esc")
-        desktop.launcher_until(lambda shown: shown["counted"] == "")
+        # and an ex line until its Return, as Neovim's command line does.
+        stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
+        stands_in_the_mode_words_room(desktop, ":q", f"launcher-ex-at-{scale}")
         desktop.close_launcher()
+
+
+def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:
+    """Type keys normal holds in the mode word's room, photograph them there, and let them go.
+
+    They move nothing else in the foot, and Escape lets them go without a step back.
+    """
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    desktop.machine.send_chars(typed)
+    desktop.launcher_until(lambda shown: shown["counted"] == typed or f":{shown['ex']}" == typed)
+    held = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    rest = sorted(word["x"] for word in held if word["text"] != typed)
+    assert rest == sorted(word["x"] for word in laid), (laid, held)
+    desktop.photograph(shot.replace(".", "-"))
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["counted"] == "" and shown["ex"] is None
+    )
 
 
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(

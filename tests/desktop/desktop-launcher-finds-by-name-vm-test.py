@@ -569,9 +569,43 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+def walk_the_rows_acts(desktop: Desktop) -> None:
+    """Press every act normal takes on a search's rows besides its moves, through niri.
+
+    l steps into a row and - out of it, as his oil's do; :12 goes to the 12th row, its line
+    showing in the foot until its Return; and q, ZZ and :q each close the launcher.
+    """
+    machine = desktop.machine
+    desktop.answer("emoji")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    desktop.normal()
+    machine.send_chars("l")
+    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+    machine.send_chars("-")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
+    desktop.close_launcher()
+    desktop.answer("s")
+    desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+    desktop.normal()
+    row = 12
+    machine.send_chars(f":{row}")
+    desktop.launcher_until(lambda shown: shown["ex"] == str(row) and shown["counted"] == "")
+    foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    assert any(word["text"] == f":{row}" for word in foot), foot
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["current"] == row - 1 and shown["ex"] is None)
+    for keys in ["q", "ZZ", ":q\n"]:
+        machine.send_chars(keys)
+        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.answer("s")
+        desktop.normal()
+    desktop.close_launcher()
+
+
 def test_a_search_lists_each_thing_once_and_normal_moves_through_it(desktop: Desktop) -> None:
     """A search lists each thing once, and normal's keys move through it as Vim's do."""
     walk_the_rows_moves(desktop)
+    walk_the_rows_acts(desktop)
     # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;

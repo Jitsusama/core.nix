@@ -1738,9 +1738,13 @@ one table, `QueryKeys.js`.
   his Neovim's completion menu does (`modules/neovim/keys.nix`); Return
   does the row; Escape gives normal. At the line's ends the arrows and
   Backspace do nothing, since stepping in and out is normal's.
-- **Normal:** nothing types. → and l step into the selected row; ←, h and
-  Backspace take away what's typed, then step out a level, and u brings
-  back what they took. The rows are a buffer, moved through as Vim's
+- **Normal:** nothing types. → and l step into the selected row; ←, h, -
+  and Backspace take away what's typed, then step out a level, as his
+  oil's - does, and u brings back what they took. q and ZZ close the
+  launcher, as his Neovim's q closes help, and so does :q; the colon
+  opens an ex line, shown in the mode word's room until its Return, where
+  Vim's other ways of quitting (:wq, :x, :qa) close it too and :12 goes
+  to the 12th row, as it goes to Vim's 12th line. The rows are a buffer, moved through as Vim's
   lines are: j k ↓ ↑ (and Tab and Shift+Tab, until the place used last
   takes Tab), gg and G to the first and last, H M L to the top, middle
   and bottom row wholly in view, Ctrl+D and Ctrl+U half the rows in view,
@@ -1766,10 +1770,10 @@ one table, `QueryKeys.js`.
   what's already on its left (`status.lua`). Its room is kept in every
   mode, so nothing else in the foot moves as the mode changes, and a count
   typed in normal stands in that room, in the strong ink of what's typed,
-  until its move.
+  until its move, as an ex line does until its Return.
 - **The Escape ladder.** Each Escape takes one step back: it cancels a
-  count or a key waiting for its second (cc's first c, gg's first g), or
-  leaves insert for normal; at
+  count, an ex line or a key waiting for its second (cc's first c, gg's
+  first g), or leaves insert for normal; at
   rest in normal it steps out a level, and at the level the launcher
   opened on, home or a collection a chord opened it into, it closes it.
   Opening always puts the line in insert, and the mode stays as it is

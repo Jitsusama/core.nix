@@ -69,7 +69,24 @@ QtObject {
             ["Escape gives normal, and then steps back", ["Escape", "Escape"], ["normal", "back"]],
             ["normal's arrows and h l step out and in", ["Escape", "Left", "h", "Right", "l"],
                 ["normal", "out", "out", "into", "into"]],
-            ["normal's Backspace steps out", ["Escape", "Backspace"], ["normal", "out"]],
+            ["normal's Backspace and - step out, as his oil's do", ["Escape", "Backspace", "-"],
+                ["normal", "out", "out"]],
+            ["q and ZZ close", ["Escape", "q", "Z", "Z"], ["normal", "close", "close"]],
+            ["a Z with anything but Z after it lets go", ["Escape", "Z", "j", "Z", "Z"],
+                ["normal", "close"]],
+            [":q and its Return close", ["Escape", ":", "q", "Return"], ["normal", "close"]],
+            ["and so do Vim's other ways of quitting",
+                ["Escape", ":", "q", "a", "!", "Return", ":", "w", "q", "Return", ":", "x",
+                    "Return"], ["normal", "close", "close", "close"]],
+            ["an ex line it doesn't know does nothing", ["Escape", ":", "w", "Return", "j"],
+                ["normal", "next"]],
+            ["the ex line's letters are its own, not normal's", ["Escape", ":", "j", "q", "G"],
+                ["normal"]],
+            ["Escape lets the ex line go, then steps back", ["Escape", ":", "q", "Escape", "Escape"],
+                ["normal", "back"]],
+            ["Backspace takes its letters, then lets it go",
+                ["Escape", ":", "q", "Backspace", "Backspace", "j"], ["normal", "next"]],
+            ["a colon in insert is the field's to type", [":", "q", "Return"], ["run"]],
             ["normal's rows keep the arrows and Tab", ["Escape", "Down", "Tab", "Up", "Shift+Tab"],
                 ["normal", "next", "next", "previous", "previous"]],
             ["normal's j and k go down and up", ["Escape", "j", "k"],
@@ -128,7 +145,11 @@ QtObject {
             ["Escape only cancels a g waiting, then steps back", ["Escape", "g", "Escape", "Escape"],
                 ["normal", "back"]],
             ["a key that ends nothing lets the count go", ["Escape", "3", "x", "j"],
-                ["normal", "next"]]
+                ["normal", "next"]],
+            [":12 goes to the 12th row, as :12 goes to its line",
+                ["Escape", ":", "1", "2", "Return"], ["normal", "12 first"]],
+            ["a count before a colon is let go", ["Escape", "3", ":", "q", "Return", "j"],
+                ["normal", "close", "next"]]
         ];
         for (const [what, keys, want] of counting)
             holds(what, typed(keys).counted, want);
@@ -137,12 +158,17 @@ QtObject {
         holds("a count typed is the line's", typed(["Escape", "4"]).ours, true);
         holds("and stands until its move", typed(["Escape", "4", "2"]).standing,
             { count: "42", typed: [] });
+        holds("an ex line stands as it's typed, waiting for its Return",
+            typed(["Escape", ":", "q"]).standing, { count: "", typed: [], ex: "q" });
+        holds("and is let go with Escape", typed(["Escape", ":", "q", "Escape"]).standing,
+            { count: "", typed: [] });
         holds("a g waiting its timeoutlen lets go, keeping the count",
             Keys.waited({ count: "3", typed: ["g"] }), { count: "3", typed: [] });
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
-        for (const act of ["run", "into", "out", "back", "insert", "change", "restore", ""])
+        for (const act of ["run", "into", "out", "back", "close", "insert", "change",
+            "restore", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
