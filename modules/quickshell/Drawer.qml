@@ -860,8 +860,18 @@ Floating {
         font.pointSize: Theme.level.figure.pointSize
         font.features: Theme.level.figure.features
     }
+    // A value that's words with no figure in them, as "no sunset today",
+    // in the face words are read in, as a notice's are.
+    FontMetrics {
+        id: wordsFace
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.variableAxes: Theme.level.words.variableAxes
+    }
     // The face a fact's value is measured and drawn in.
     function faceOf(fact) {
+        if (fact?.words === true)
+            return wordsFace;
         return drawer.script !== "" && fact?.latin === true ? latinFace : valueFace;
     }
     // Every fact it shows, the moment's groups' among them.

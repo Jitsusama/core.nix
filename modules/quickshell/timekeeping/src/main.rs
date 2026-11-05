@@ -11,12 +11,14 @@
 //!
 //! It also says what day it is in the Chinese, Japanese, Hebrew and
 //! Islamic calendars, for the launcher's Date, reckoned with ICU4X when
-//! asked (calendar.rs).
+//! asked (calendar.rs), and, asked from a place, when the sun sets there
+//! to begin the Hebrew and Islamic days (sun.rs).
 
 mod calendar;
 mod candm;
 mod chrony;
 mod service;
+mod sun;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::process::ExitCode;

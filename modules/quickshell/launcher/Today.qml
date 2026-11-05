@@ -106,14 +106,14 @@ Provider {
     }
 
     // While the date is shown, as the answer or a step held in it, today's
-    // calendars are asked for, once, and the date is answered again as
-    // they come.
+    // calendars are asked for, once, from where the laptop is, as the
+    // weather's here reads it, and the date is answered again as they come.
     readonly property bool shown: launcher !== null && launcher.open
         && (launcher.answer?.live === provider
             || (launcher.held ?? []).some(step => step.row?.live === provider))
     onShownChanged: {
         if (shown)
-            Calendars.ask(Moment.iso(new Date()));
+            Calendars.ask(Moment.iso(new Date()), Location.here);
     }
 
     Connections {
@@ -160,8 +160,41 @@ Provider {
             : latinOf(figure, now);
     }
 
-    function calendarThing(calendar, now) {
+    // When a day that begins at sunset begins, where Date is seen from: the
+    // time today's sunset begins the next, "Day Began" once it has, in the
+    // figures' face. Seen from nowhere it's said to begin at sunset, and on
+    // a day the sun doesn't set that it doesn't, as words, each with the
+    // civil day kept (VKCF3Z, 2026-11-05).
+    function dayBegins(evening, now) {
+        const sunset = evening?.sunset ?? null;
+        const name = Words.name(sunset !== null && now >= sunset ? "today:calendars:dayBegan"
+            : "today:calendars:dayBegins");
+        if (sunset !== null)
+            return { name: name, value: Moment.clock(new Date(sunset)), words: false };
+        return { name: name, value: evening ? calendarsSaid.noSunset : calendarsSaid.atSunset,
+            words: true };
+    }
+
+    // A calendar's figures, each as its row says it in Latin letters and its
+    // plate in its script, and when its day begins just after its Day where
+    // it begins at sunset.
+    function figuresOf(calendar, now, begins) {
+        const figures = calendar.figures.map(figure => {
+            const latin = latinOf(figure, now);
+            const value = nativeOf(figure, now);
+            return { name: Words.name(`today:calendars:${figure.id}`), side: latin, value: value,
+                latin: value === latin, words: false };
+        });
+        if (calendar.fromSunset)
+            figures.splice(calendar.figures.findIndex(figure => figure.id === "day") + 1, 0,
+                { name: begins.name, side: begins.value, value: begins.value, latin: true,
+                    words: begins.words });
+        return figures;
+    }
+
+    function calendarThing(calendar, now, begins) {
         const id = `today:calendars:${calendar.reckoning}`;
+        const figures = figuresOf(calendar, now, begins);
         return thingRow({
             key: id,
             name: Words.name(id),
@@ -173,18 +206,13 @@ Provider {
                 title: calendar.native,
                 script: scripts[calendar.reckoning],
                 // A figure its script has no word for, a count or a day,
-                // is said in Latin letters and set in the theme's face.
-                facts: calendar.figures.map(figure => {
-                    const value = nativeOf(figure, now);
-                    return { label: Words.name(`today:calendars:${figure.id}`), value: value,
-                        latin: value === latinOf(figure, now) };
-                })
+                // is said in Latin letters and set in the theme's face, and
+                // words with no figure in them in the face words are read in.
+                facts: figures.map(each => ({ label: each.name, value: each.value,
+                    latin: each.latin, words: each.words }))
             })
-        }, () => calendar.figures.map(figure => {
-            const side = latinOf(figure, now);
-            return copyRow({ name: Words.name(`today:calendars:${figure.id}`), side: side,
-                copy: side, note: "", glyph: "" });
-        }));
+        }, () => figures.map(each => copyRow({ name: each.name, side: each.side,
+            copy: each.side, copiesNothing: each.words, note: "", glyph: "" })));
     }
 
     // Today in every calendar, stepping into each, once they're reckoned;
@@ -197,12 +225,21 @@ Provider {
             return copyRow({ name: Words.name("today:calendars"), side: side,
                 copiesNothing: true, note: "", glyph: Theme.glyph.date });
         }
+        // From sunset, a calendar whose day begins then is on the day begun.
+        // It's reckoned with the day, so a plate open across sunset moves
+        // the next time Date is shown, and nothing waits on the sun.
+        const evening = reading.evening ?? null;
+        const begins = dayBegins(evening, now);
+        const begun = evening?.sunset !== null && evening?.sunset !== undefined
+            && now >= evening.sunset;
+        const onIt = calendar => !begun || !calendar.fromSunset ? calendar
+            : evening.calendars.find(each => each.reckoning === calendar.reckoning) ?? calendar;
         return holderRow({
             key: "today:calendars",
             name: Words.name("today:calendars"),
             side: String(reading.calendars.length),
             glyph: Theme.glyph.date
-        }, () => reading.calendars.map(calendar => calendarThing(calendar, now)));
+        }, () => reading.calendars.map(calendar => calendarThing(onIt(calendar), now, begins)));
     }
 
     function told(now) {
