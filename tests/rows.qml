@@ -14,13 +14,12 @@
 // ellipsis rather than cut through a letter. What the shell says in its voice,
 // a quiet row's words and a field's hint, is drawn in the serif face
 // on the baseline the mono's would take. The launcher's modal field says
-// Ctrl+Y in insert and the left arrow in normal, its caret a bar a quarter
-// of a letter wide in insert and a block a letter wide in normal, resting on
-// the last letter, and a modal caret fades and then, with no key, holds
-// steady. The letters a find matched in a row's name are washed beneath
-// them, run by run, a selected row's on the ground a shade past the
-// selection, and a cut name's only before its ellipsis. It exits 0 once
-// every case holds,
+// Ctrl+Y on the find and no key in normal, its caret a bar a quarter of a
+// letter wide on the find and none in normal, resting on the last letter,
+// and a modal caret fades and then, with no key, holds steady. The letters
+// a find matched in a row's name are washed beneath them, run by run, a
+// selected row's on the ground a shade past the selection, and a cut name's
+// only before its ellipsis. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
