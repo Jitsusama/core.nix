@@ -232,6 +232,20 @@ in
                   short-lived token the host takes as a bearer.
                 '';
               };
+              changed = mkOption {
+                type = types.nullOr (types.nonEmptyListOf types.str);
+                default = null;
+                description = ''
+                  A command, run as the account in its checkout, that prints
+                  the newest commit on main that changed the folder. When
+                  main's head isn't in the checkout but that commit is, and
+                  its folder is the one last built, the ask fetches and
+                  builds nothing. The account's word only spares a fetch:
+                  what's built is always a commit the host named. When it
+                  fails, or names a commit the checkout lacks, main is
+                  fetched as it would be without it.
+                '';
+              };
               path = mkOption {
                 type = types.listOf types.str;
                 default = [

@@ -34,7 +34,8 @@ let
 in
 {
   # update-to-main's tests run as it builds: a signed main is built and
-  # switched to, main where it was builds nothing, an unsigned main, one
+  # switched to, main where it was builds nothing, a hosted main whose
+  # folder is where it was is neither fetched nor built, an unsigned main, one
   # signed by a key not given and a rewritten one are refused, a failed
   # build leaves the machine as it was, a failed switch and a machine not
   # whole after it go back, a new kernel's userland runs at once and goes

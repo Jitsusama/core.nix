@@ -36,7 +36,7 @@ pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
     tell(&Line::Fetching);
     let main = Repo::main(config);
     let head = match &config.hosted {
-        Some(hosted) => hosted::head(config, hosted),
+        Some(hosted) => hosted::head(config, hosted, last.as_deref()),
         None => git::keyring(&main).and_then(|()| git::fetch(&main)),
     };
     let head = match head {

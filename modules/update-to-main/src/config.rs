@@ -135,8 +135,9 @@ pub struct Signers {
 
 /// How main is known on a host that doesn't sign it. Root asks the host
 /// itself, and builds from objects git checks against the commit the host
-/// named; only a token, objects and the flake's locked inputs come from
-/// `user`, and none of them can change what's built.
+/// named; only a token, objects, the flake's locked inputs and the commit
+/// that last changed `directory` come from `user`, and none of them can
+/// change what's built.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hosted {
@@ -151,6 +152,13 @@ pub struct Hosted {
     /// A command run as `user` in `checkout` that prints a token the host
     /// takes as a bearer.
     pub token: Vec<String>,
+    /// A command run as `user` in `checkout` that prints the newest commit
+    /// on main that changed `directory`, or none. When main's head isn't
+    /// in the checkout but that commit's folder is the one last built, the
+    /// folder hasn't moved, and nothing is fetched or built. Its word only
+    /// ever spares a fetch: what's built is still a commit the host named.
+    #[serde(default)]
+    pub changed: Option<Vec<String>>,
     /// The folders `user`'s commands find their programs in.
     pub path: Vec<PathBuf>,
     /// The flake's inputs only `user` can fetch, fetched as them by their

@@ -144,6 +144,25 @@ pub fn show(repo: &Repo, commit: &str, path: &str) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The tree `path` is in `commit`, the commit's whole tree for an empty
+/// `path`, or none when root's copy can't read the commit or it has no
+/// such path.
+pub fn tree(repo: &Repo, commit: &str, path: &str) -> Option<String> {
+    let out = git(repo)
+        .args([
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{commit}^{{commit}}:{path}"),
+        ])
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+}
+
 /// Puts the PGP keys that count in root's keyring, made afresh each
 /// time so a key taken out of the config stops counting.
 pub fn keyring(repo: &Repo) -> Result<(), Failure> {
