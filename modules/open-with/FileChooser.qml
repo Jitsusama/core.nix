@@ -40,10 +40,12 @@
 // home's files, apart, found by typing from any folder (VKCF3Z,
 // 2026-10-29). Their files are fetched before they're picked: the launcher
 // stays, its foot saying so, and closes once every path is here, or stays
-// saying why one couldn't be. Saving, a folder there whose place gives
-// `saveTo` leads with the name, as a folder here does, what's typed
-// naming it instead, and a name already there (`names`) steps in to
-// Replace It; Return makes the folder the place said to save in, here,
+// saying why one couldn't be. Saving, the launcher's line holds the name
+// to save as, a prompt's words rather than a find, the caret before its
+// extension, kept from folder to folder; each folder, here or there whose
+// place gives `saveTo`, leads with it, and a name already there (`names`)
+// asks once, "Replace notes.md? (y/n)" (VKCF3Z's vi-paradigm spec, The
+// File Picker). Return in a place there makes it the place said to save in, here,
 // and then answers the path, which the place takes from there (VKCF3Z,
 // 2026-10-30). An ask from inside the shell for a local folder alone
 // (`local`) is given no places. A program's save staged there is marked
@@ -86,6 +88,9 @@ Provider {
     readonly property bool saving: mode === "save"
     readonly property bool folders: mode === "save-files" || request.folders === true
     readonly property string start: startOf(request)
+    // The name a save is asked to save as, as the line holds it: the
+    // program's, then as it's typed, kept from folder to folder.
+    property string saveName: ""
     readonly property var filters: request.filters ?? []
     // The words a file's row and plate say (FileFacts.js), the launcher's,
     // and days and months as the locale names them, as the launcher says
@@ -217,15 +222,16 @@ Provider {
         const own = shown.filter(entry => entry.folder).map(entry => folderRow(entry.path))
             .concat(folders ? [] : shown.filter(entry => !entry.folder && passes(entry.name))
                 .map(entry => fileRow(entry.path)));
-        // A file the name given is already, which it leads with, isn't
+        // The name the line holds leads, and a file it already names isn't
         // listed again below.
-        const naming = saving && path !== "/" ? savingRow(path, request.name ?? "") : null;
+        const lead = saving && path !== "/" ? savingRow(path, provider.saveName) : null;
+        const named = lead ? fileRow(lead.path).key : "";
         // The filters, choices and Order wait for the folder's read as its
         // Copy the Path does (folderRow), to come after its files. What was
         // opened lately keeps its own order, apart and on top.
         return apart([several ? [markedLead()] : [],
-            (naming ? [naming] : []).concat(path === start ? recent(path) : []),
-            own.filter(row => row.key !== naming?.key), path === Files.home ? places.slice() : [],
+            (lead ? [lead] : []).concat(path === start ? recent(path) : []),
+            own.filter(row => row.key !== named), path === Files.home ? places.slice() : [],
             path in listed ? options().concat([orderRow()]) : []]);
     }
 
@@ -277,7 +283,7 @@ Provider {
             empty: "Nothing here.",
             typed: letters => typedIn(path, letters),
             beside: by => provider.beside(path, by)
-        });
+        }, saving ? naming(() => rowsOf(readIn(path))) : {});
         // Until the folder's read, it holds no Copy the Path: rows shown
         // keep their place and those that come go below them, so a Copy
         // shown before its files were read headed the list for good, where
@@ -291,6 +297,22 @@ Provider {
             ask: { get: () => provider.question(), enumerable: true }
         });
         return described(row, path, away === true);
+    }
+
+    // What a folder a save is asked in gives the launcher's line: the name
+    // it saves as, a prompt's words rather than a find, kept from folder to
+    // folder, the caret starting before its extension, and every row it
+    // holds, led by the name, never narrowed by it (VKCF3Z's vi-paradigm
+    // spec, The File Picker).
+    function naming(rows) {
+        return {
+            words: () => provider.saveName,
+            worded: letters => {
+                provider.saveName = letters;
+            },
+            caretIn: words => FileFacts.nameEnd(words),
+            finds: () => rows()
+        };
     }
 
     // A file's or a folder's row says its size, or how many items it
@@ -490,50 +512,37 @@ Provider {
         elsewhere[fields.key] = { name: fields.name, folder: true };
         const saves = saving && typeof fields.saveTo === "function";
         const inside = !saves ? () => fields.inside() : () => {
-            const naming = provider.namingElsewhere(fields, request.name ?? "");
-            return provider.apart([naming ? [naming] : [], fields.inside()]);
+            const named = provider.namingElsewhere(fields, provider.saveName);
+            return provider.apart([named ? [named] : [], fields.inside()]);
         };
-        const row = Files.elsewhere("folder", fields, thing, [], inside);
+        const row = Object.assign(Files.elsewhere("folder", fields, thing, [], inside),
+            saves ? naming(inside) : {});
         Object.defineProperties(row, {
             title: { get: () => provider.titled(fields.name), enumerable: true },
             ask: { get: () => provider.question(), enumerable: true },
             empty: { get: () => fields.empty?.() || "Nothing here.", enumerable: true }
         });
-        if (saves)
-            row.typed = letters => {
-                const naming = provider.namingElsewhere(fields, letters.trim());
-                return naming ? [naming] : [];
-            };
         return row;
     }
 
     // The row Return saves to in a folder kept elsewhere: the name given,
-    // or, one already there by that name, a file stepped into to Replace
-    // It first.
+    // which, a file already there by that name, asks once first.
     function namingElsewhere(fields, name) {
-        if (name === "" || name === "." || name === ".." || name.includes("/"))
+        const trimmed = name.trim();
+        if (trimmed === "" || trimmed === "." || trimmed === ".." || trimmed.includes("/"))
             return null;
-        const path = fields.saveTo(name);
-        if ((fields.names?.() ?? []).includes(name))
-            return Files.elsewhere("file", { key: `${fields.key}:${name}`, name: name, side: fields.name },
-                thing, [thing({
-                    key: `verb:file-chooser:replace:${path}`,
-                    name: Words.name("verb:file-chooser:replace"),
-                    verb: Words.verb("verb:file-chooser:replace"),
-                    glyph: Words.glyph("verb:file-chooser:replace"),
-                    hue: "action",
-                    stays: true,
-                    run: () => provider.stage(path)
-                })], () => []);
+        const path = fields.saveTo(trimmed);
+        const taken = (fields.names?.() ?? []).includes(trimmed);
         const row = thing({
             key: `file-chooser:save:${path}`,
-            name: name,
+            name: trimmed,
             verb: accept !== "" ? word("") : "save",
             glyph: Words.glyph("path:file"),
             hue: "program",
             side: fields.name,
+            names: true,
             stays: true,
-            run: () => provider.stage(path)
+            run: () => provider.replacing(taken, trimmed, () => provider.stage(path))
         });
         Object.defineProperty(row, "note", { get: () => provider.fetchingSaid(), enumerable: true });
         return row;
@@ -611,6 +620,9 @@ Provider {
             ? Files.file(path, thing, [act("verb:file-chooser:replace", path, [path])], () => [])
             : several ? markingRow(path, acts => Files.file(path, thing, acts))
             : Files.file(path, thing, [act("verb:path:file:open", path, [path])]);
+        // Normal's gx opens it in its own program, as his oil's does, the
+        // ask still waiting.
+        made.openOwn = () => Niri.spawn(["xdg-open", path]);
         return described(made, path, away === true);
     }
 
@@ -815,31 +827,53 @@ Provider {
             });
     }
 
-    // The row Return saves to: the name given, in this folder, or the file
-    // already there by that name, which asks first.
+    // The row Return saves to: the name given, in this folder, which, a
+    // file already there by that name, asks once first. A folder by that
+    // name can't be saved over, so it gives none.
     function savingRow(folder, name) {
-        if (name === "" || name === "." || name === ".." || name.includes("/"))
+        const trimmed = name.trim();
+        if (trimmed === "" || trimmed === "." || trimmed === ".." || trimmed.includes("/"))
             return null;
-        const path = folder === "/" ? `/${name}` : `${folder}/${name}`;
-        const there = (listed[folder] ?? []).find(entry => entry.name === name);
-        if (there)
-            return there.folder ? null : fileRow(path);
-        return thing({
+        const path = folder === "/" ? `/${trimmed}` : `${folder}/${trimmed}`;
+        const there = (listed[folder] ?? []).find(entry => entry.name === trimmed);
+        if (there?.folder)
+            return null;
+        return Object.assign(thing({
             key: `file-chooser:save:${path}`,
-            name: name,
+            name: trimmed,
             verb: accept !== "" ? word("") : "save",
             glyph: Words.glyph("path:file"),
             hue: "program",
             side: Files.within(path),
-            run: () => provider.pick([path])
-        });
+            // It's the row the line's words name, so normal edits them on
+            // it alone (Launcher.qml, editsWords).
+            names: true,
+            // One that asks first keeps the launcher until it's answered,
+            // y closing it once saved, n leaving it as it was.
+            stays: !!there,
+            run: () => provider.replacing(!!there, trimmed, () => {
+                provider.pick([path]);
+                launcher.open = false;
+            })
+        }), { path });
     }
 
-    // What's typed in a folder: saving, the name it saves as; and from a
-    // "." on, what's hidden there by that name.
+    // Saves at once, or, a file already there by that name, asks once
+    // first, as Vim's :w says E13, y saving and anything else letting it go
+    // (VKCF3Z's vi-paradigm spec, The File Picker).
+    function replacing(taken, name, save) {
+        if (!taken) {
+            save();
+            return;
+        }
+        const asked = Words.field.asked?.replace ?? "";
+        launcher.askOnce(asked.replace("{name}", name), save, () => {});
+    }
+
+    // What's typed in a folder found, from a "." on, what's hidden there by
+    // that name, and the places kept elsewhere it names.
     function typedIn(folder, letters) {
         const typed = letters.trim();
-        const naming = saving ? savingRow(folder, typed) : null;
         const words = Fuzzy.words(typed);
         const placed = folder === Files.home || typed === "" || typed.startsWith(".") ? []
             : places.filter(row => Fuzzy.match(Fuzzy.prepare(row.name), words, false).score >= 0);
@@ -848,7 +882,7 @@ Provider {
                 && entry.name.toLowerCase().startsWith(typed.toLowerCase())
                 && (entry.folder || !folders && passes(entry.name)))
             .map(entry => entry.folder ? folderRow(entry.path) : fileRow(entry.path));
-        return (naming ? [naming] : []).concat(hidden, placed);
+        return hidden.concat(placed);
     }
 
     // The program's filters, the one in use chosen, and its choices, each
@@ -1149,6 +1183,7 @@ Provider {
         marked = [];
         stepped = [];
         besideNext = null;
+        saveName = request.name ?? "";
         lately = [];
         fetching = null;
         elsewhere = {};

@@ -89,6 +89,14 @@ function weighed(bytes) {
     return `${shown}${KEPT}${unit[1]}`;
 }
 
+// Where a name's own part ends, before its extension, as the caret starts
+// there in a save's name so typing renames it: before the last dot, but
+// for a dot that begins a hidden name or ends one, which isn't one.
+function nameEnd(name) {
+    const dot = name.lastIndexOf(".");
+    return dot > 0 && dot < name.length - 1 ? dot : name.length;
+}
+
 // How many items a folder shows: 14 items, 1 item, or that it's empty.
 function items(count, words) {
     if (count === 0) {

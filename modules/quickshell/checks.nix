@@ -2595,6 +2595,7 @@ onLinux {
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
@@ -3015,7 +3016,7 @@ onLinux {
     '';
 
   # The launcher's query line takes vi's two modes from one table, as
-  # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
+  # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's keys, normal's
   # ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
   # sequences, and where the caret goes; and ListedKeys.js to the keys
@@ -3027,6 +3028,7 @@ onLinux {
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../tests/query-keys.qml} query-keys.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

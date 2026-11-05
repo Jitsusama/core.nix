@@ -177,6 +177,18 @@ QtObject {
             .slice(0, 2).map(entry => entry.name), ["a", "b"]);
         expect("the entries given are left as they were", entries[0].name, "note 10.md");
 
+        // [what, a name, where the caret starts in it]
+        const ends = [
+            ["the caret starts before the extension", "notes.md", 5],
+            ["before the last of several", "notes.tar.gz", 9],
+            ["at the end of a name with none", "notes", 5],
+            ["at the end of a hidden name, whose dot begins it", ".bashrc", 7],
+            ["at the end of a name ending in a dot", "notes.", 6],
+            ["at the start of nothing", "", 0]
+        ];
+        for (const [what, name, want] of ends)
+            expect(what, FileFacts.nameEnd(name), want);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(`FAIL ${failure}`);

@@ -6491,6 +6491,7 @@
         "run": "Do it",
         "lastPlace": "The place used last",
         "beside": "The place beside",
+        "own": "Open in its program",
         "insert": "Type",
         "change": "Clear it and type",
         "restore": "Bring it back",
@@ -6511,6 +6512,9 @@
       "help": "List the Keys",
       "row": "Go to a Row",
       "on": "on {things}"
+    },
+    "asked": {
+      "replace": "Replace {name}? (y/n)"
     }
   },
   "meant": [

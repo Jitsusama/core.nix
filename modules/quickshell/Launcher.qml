@@ -2547,8 +2547,10 @@ Scope {
         // What was typed found the row, so it goes: inside, everything the row
         // holds shows, and the left arrow puts it back on the way out. Stepped
         // into from a collection's match, the match stays selected among all
-        // it holds (Joel, 2026-10-26: stepping in keeps the match).
-        restart("");
+        // it holds (Joel, 2026-10-26: stepping in keeps the match). A step
+        // whose line holds its words, as a save's name, puts them back.
+        restart(row.words?.() ?? "");
+        placeCaret(row);
         if (row.from) {
             const matched = matches.findIndex(one => steadyId(one) === steadyId(row));
             if (matched >= 0) {
@@ -2860,9 +2862,25 @@ Scope {
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
         const left = held[held.length - steps];
         held = held.slice(0, -steps);
-        restart(left.typed);
+        // A step back onto one whose line holds its words puts them back.
+        const onto = held.length > 0 ? held[held.length - 1].row : null;
+        restart(onto?.words?.() ?? left.typed);
+        placeCaret(onto);
         reselect(left);
     }
+
+    // A step whose line holds its words, as a save's name, says where the
+    // caret starts in them: before a name's extension, so typing renames
+    // it (VKCF3Z's vi-paradigm spec, The File Picker).
+    function placeCaret(row) {
+        if (typeof row?.words === "function")
+            prompt.caretTo(row.caretIn?.(prompt.text) ?? prompt.text.length);
+    }
+
+    // Whether the step held holds its words in the line rather than a
+    // find: then normal edits them, and its rows aren't narrowed by them.
+    readonly property bool holdsWords: held.length > 0
+        && typeof held[held.length - 1].row.words === "function"
 
     // Searches afresh for what the field is set to, since what was found
     // before belongs to another step.
@@ -2956,6 +2974,9 @@ Scope {
         if (acted && (letters !== acted.typed || held.length !== acted.depth))
             acted = null;
         words = Fuzzy.words(letters);
+        // A step whose line holds its words is told each change to them.
+        if (holdsWords)
+            held[held.length - 1].row.worded?.(letters);
         if (asking) {
             matches = [];
             answer = null;
@@ -3015,7 +3036,7 @@ Scope {
             // Meeting makes a time, lists them first. One that finds what's
             // typed past the rows it shows (`finds`), as Capture's Recent
             // finds among everything taken, lists what it finds instead.
-            else if (words.length === 0)
+            else if (words.length === 0 && !holdsWords)
                 found = offered.slice();
             else if (held[held.length - 1].row.finds)
                 found = held[held.length - 1].row.finds(letters);
@@ -3862,6 +3883,11 @@ Scope {
             // is, between letters in insert and on one in normal.
             mode: prompt.mode,
             caret: prompt.caret,
+            // A question asked once in the line's place, or "", and
+            // whether it takes keys yet: those in its first moment don't.
+            question: prompt.asking,
+            takesAnswer: prompt.asking !== "" && Date.now() - prompt.askedAt >= prompt.wait,
+            questionWhole: prompt.askedWhole,
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -4104,8 +4130,31 @@ Scope {
     // home, rather than stepping out to a home it never showed.
     property int homeDepth: 0
 
+    // Asks a question once in the line's place, "Replace notes.md? (y/n)",
+    // as Vim's :w asks over E13: y calls yes, and n, Escape or Ctrl+C call
+    // no (VKCF3Z's vi-paradigm spec, The File Picker). A stand-in, with the
+    // signature V4's own will have, until that lands. The question is said
+    // whole, as the vocabulary has it.
+    function askOnce(question: string, yes: var, no: var) {
+        onceAsked = { yes: yes, no: no };
+        prompt.asking = question;
+    }
+
+    property var onceAsked: null
+
+    function answerOnce(yes: bool) {
+        const asked = onceAsked;
+        onceAsked = null;
+        prompt.asking = "";
+        if (asked)
+            (yes ? asked.yes : asked.no)();
+    }
+
     onOpenChanged: {
         madeSince(open ? "opening" : "closing");
+        // A question asked as it closed is let go, never asked again.
+        if (!open && onceAsked)
+            answerOnce(false);
         if (open)
             traces.opened({});
         else
@@ -4453,6 +4502,8 @@ Scope {
                         // inputsecret() has none (VKCF3Z's vi-paradigm
                         // spec, Insert).
                         modal: !prompt.secret
+                        words: root.holdsWords
+                        editsWords: root.holdsWords && root.selected?.names === true
                         awake: root.open
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
@@ -4553,6 +4604,7 @@ Scope {
                             trials.pressed("backs");
                             root.back();
                         }
+                        onAnsweredOnce: yes => root.answerOnce(yes)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
@@ -4591,6 +4643,9 @@ Scope {
                                 return;
                             case "previousFile":
                                 root.beside(-1);
+                                return;
+                            case "openOwn":
+                                root.matches[root.current]?.openOwn?.();
                                 return;
                             }
                             const view = list.inView();
@@ -5123,9 +5178,11 @@ Scope {
                         readonly property var choice: root.selected ?? root.asking
                         // A parting word stands where Return was, its
                         // mark in the success colour.
+                        // A question asked once takes no key of the row's,
+                        // its own (y/n) saying how it's answered.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
-                            : root.keysFor(choice)
+                            : prompt.asking !== "" ? [] : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []
