@@ -107,8 +107,10 @@ Floating {
     readonly property int room: Math.max(Math.min(NoticeList.room,
         Math.floor((screenHeight * linesShare) / rowHeight)), 3)
     // How much of the screen's height the lines take at most, leaving the
-    // cursor card, the menu and the foot room beneath them.
-    readonly property real linesShare: 0.45
+    // cursor card, the menu and the foot room beneath them. Half, so eight
+    // of the launcher's rows fit a screen 768 tall: seven would keep the
+    // cursor on the middle line, scrolloff held to half the view.
+    readonly property real linesShare: 0.5
     property real screenHeight: 768
     readonly property var inView: listed.slice(firstShown, firstShown + room)
     function follow() {
@@ -141,7 +143,7 @@ Floating {
     property bool listing: false
     property int listTop: 0
     readonly property var keyList: NoticeKeys.keyList()
-    readonly property var listShown: keyList.slice(listTop, listTop + room)
+    readonly property var listShown: keyList.slice(listTop, listTop + listRoom)
     onListingChanged: {
         listTop = 0;
         Report.say(listing ? "notice lists keys" : "notice hides keys");
@@ -877,12 +879,13 @@ Floating {
     // Keys while the key list shows: the moves scroll it, and Escape, q
     // and Space ? put it away.
     function scrollsKeys(read) {
-        const last = Math.max(keyList.length - room, 0);
+        const last = Math.max(keyList.length - listRoom, 0);
         const by = Math.max(read.count, 1);
+        const half = Math.floor(listRoom / 2);
         const scrolls = {
             down: listTop + by, up: listTop - by, first: 0, last,
-            halfDown: listTop + Math.floor(room / 2) * by, halfUp: listTop - Math.floor(room / 2) * by,
-            viewDown: listTop + room * by, viewUp: listTop - room * by
+            halfDown: listTop + half * by, halfUp: listTop - half * by,
+            viewDown: listTop + listRoom * by, viewUp: listTop - listRoom * by
         };
         if (read.act in scrolls)
             listTop = Math.max(0, Math.min(scrolls[read.act], last));
@@ -1059,11 +1062,32 @@ Floating {
         return NoticeKeys.hints(hintMode, { open: opens }, { done: doneWord(ids) });
     }
 
-    readonly property real rowHeight: Theme.space.xxl
-    // A line's room from the frame, as the launcher's selected row is: an
-    // inset, and its ink a step further in.
-    readonly property real ink: Theme.space.l
+    // A held notice is a notice row of the launcher's (VKCF3Z,
+    // 2026-11-05), so it takes the launcher's row (Choice.qml): four beats
+    // tall, its Name's capitals centred in it, its ground close round its
+    // ink. Every line's ink stands the inset from the frame's inside edge.
+    readonly property real rowHeight: 4 * Theme.space.beat
+    readonly property real rowCaps: nameCaps.tightBoundingRect.height
+    // Where a row's Name has its baseline, down from the row's top.
+    readonly property real rowBase: (rowHeight + rowCaps) / 2
+    // What a row leaves under its baseline, which the last of anything
+    // leaves too, so the hairline under it always stands as far off.
+    readonly property real rowLeaves: (rowHeight - rowCaps) / 2
+    // The columns: the gutter's figures right-aligned in the room of two,
+    // the mark's cell a group on, and the Name a glyph's column after the
+    // mark's start, so names align whatever a mark's width.
+    readonly property real markAt: Theme.space.rung.inset + twoFigures.advanceWidth
+        + Theme.space.rung.groups
+    readonly property real nameAt: markAt + Theme.level.name.pitch + Theme.space.rung.mark
+    // Space ?'s pitch, the drawer's key list's: Figure's, at Note.
+    readonly property real keyPitch: Theme.level.figure.pitch
+    // How many of its lines show: as tall as the rows' room, about.
+    readonly property int listRoom: Math.floor(room * rowHeight / keyPitch)
 
+    // The faces, measured by TextMetrics where a binding reads what's
+    // measured, since a FontMetrics call in a binding is asked once, before
+    // the face has loaded; the calls below read the face first, so they're
+    // asked again as it does.
     FontMetrics {
         id: note
         font.family: Theme.level.note.family
@@ -1071,18 +1095,52 @@ Floating {
         font.weight: Theme.level.note.weight
     }
 
-    // The columns' widths, by the widest each holds.
+    TextMetrics {
+        id: nameCaps
+        text: "H"
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+        font.weight: Theme.level.name.weight
+    }
+
+    TextMetrics {
+        id: noteCaps
+        text: "H"
+        font: note.font
+    }
+
+    TextMetrics {
+        id: labelCaps
+        text: "H"
+        font.family: Theme.level.label.family
+        font.pointSize: Theme.level.label.pointSize
+        font.weight: Theme.level.label.weight
+        font.capitalization: Theme.level.label.capitalization
+    }
+
+    // The gutter's width, by the widest it holds.
     TextMetrics {
         id: twoFigures
         font: note.font
         text: "99"
     }
 
-    TextMetrics {
-        id: keysColumn
-        font: note.font
-        text: "Shift+Tab Up  "
+    // How wide a run of Note's is, asked again as the face loads.
+    function noteWide(text: string): real {
+        void note.font;
+        return note.advanceWidth(text);
     }
+
+    // How wide a key list's chords are drawn: each key of a chord a tie
+    // from the next, each chord apart from the next.
+    function chordsWide(chords): real {
+        return chords.reduce((sum, chord, at) => sum + (at > 0 ? Theme.space.rung.apart : 0)
+            + chord.split(" ").reduce((wide, key, part) => wide
+                + (part > 0 ? Theme.space.rung.tie : 0) + held.noteWide(key), 0), 0);
+    }
+    // The keys' column, as wide as the widest line's chords.
+    readonly property real keysWide: keyList.reduce((most, one) =>
+        Math.max(most, chordsWide(one.chords)), 0)
 
     FontMetrics {
         id: figure
@@ -1146,12 +1204,16 @@ Floating {
         };
     }
 
+    // The frame's inside edge to edge, its first row's capitals the inset
+    // under its top, and the foot's baseline the inset over its bottom.
     Column {
         id: sheet
-        x: Theme.inset
-        width: parent.width - 2 * x
-        topPadding: Theme.inset
-        bottomPadding: Theme.inset
+        width: parent.width
+        topPadding: Math.round(Theme.space.rung.inset - held.rowLeaves)
+        // The foot's room under its row, so its baseline, where the row's
+        // box puts it, stands the inset over the frame (Launcher.qml's).
+        bottomPadding: Math.round(Theme.space.rung.inset
+            - (held.rowHeight - (held.rowHeight - note.height) / 2 - note.ascent))
 
         // The wheel scrolls three lines a notch, as his Neovim's mousescroll
         // does, the cursor kept in view; over the key list, the list.
@@ -1163,7 +1225,7 @@ Floating {
                     return;
                 if (held.listing) {
                     held.listTop = Math.max(0, Math.min(held.listTop + 3 * notches,
-                        Math.max(held.keyList.length - held.room, 0)));
+                        Math.max(held.keyList.length - held.listRoom, 0)));
                     return;
                 }
                 held.scroll(notches > 0 ? "lineDown" : "lineUp", 3 * Math.abs(notches));
@@ -1197,14 +1259,18 @@ Floating {
                     width: parent.width
                     height: held.rowHeight
 
-                    // Chosen in visual, or waiting on an operator, the band
-                    // runs behind the whole card, so the cards chosen read as
-                    // one run, as Vim's lines do, and d waiting reads apart
-                    // from rest. A command line's targets lie on raised.
+                    // Chosen in visual, or waiting on an operator, each row
+                    // wears the selection's ground, as the launcher's tinted
+                    // rows do; a command line's targets lie on raised. It's
+                    // the launcher's ground, close round the row's ink: a
+                    // mark round the gutter and the time, above the capitals
+                    // and below the baseline, so more room stands outside
+                    // it than in.
                     Rectangle {
-                        width: parent.width
-                        height: held.mode === "visual" || held.pending ? line.height
-                            : parent.height
+                        x: Theme.space.rung.inset - Theme.space.rung.mark
+                        y: held.rowLeaves - Theme.space.rung.mark
+                        width: parent.width - 2 * x
+                        height: held.rowCaps + 2 * Theme.space.rung.mark
                         radius: Theme.inner
                         visible: line.chosenLine || line.targeted
                         color: Qt.alpha(line.targeted ? Theme.raised : Theme.selection,
@@ -1215,7 +1281,7 @@ Floating {
                     // rest how far from it, muted.
                     Text {
                         id: gutter
-                        x: held.ink
+                        x: Theme.space.rung.inset
                         width: twoFigures.advanceWidth
                         anchors.baseline: who.baseline
                         horizontalAlignment: Text.AlignRight
@@ -1226,20 +1292,21 @@ Floating {
 
                     Text {
                         id: mark
-                        x: gutter.x + gutter.width + Theme.space.m
-                        width: Theme.space.xl
+                        x: held.markAt
                         anchors.baseline: who.baseline
                         text: line.from ? String.fromCodePoint(line.from.glyph) : ""
                         color: line.from ? Theme[line.from.hue] : Theme.muted
                         font: note.font
                     }
 
+                    // Its Name, its capitals centred in the row. Washed by
+                    // the find, it's rich text, set on the same baseline.
                     Text {
                         id: who
-                        x: mark.x + mark.width
-                        width: Math.min(implicitWidth, (time.x - x - Theme.space.l)
+                        x: held.nameAt
+                        y: held.rowBase - baselineOffset
+                        width: Math.min(implicitWidth, (time.x - x - Theme.space.rung.groups)
                             * (first.text === "" ? 1 : 0.6))
-                        anchors.verticalCenter: parent.verticalCenter
                         text: !line.one ? "" : line.washed
                             ? Search.washed(line.one.summary, held.pattern,
                                 held.wash(line.chosenLine))
@@ -1257,8 +1324,9 @@ Floating {
                     // words show whole beneath.
                     Text {
                         id: first
-                        x: who.x + who.width + Theme.space.l
-                        width: Math.max(time.x - x - Theme.space.l, 0)
+                        x: who.x + who.width + Theme.space.rung.items
+                        // Giving way a group before the time.
+                        width: Math.max(time.x - x - Theme.space.rung.groups, 0)
                         anchors.baseline: who.baseline
                         visible: text !== ""
                         text: !line.one || line.atCursor ? ""
@@ -1278,7 +1346,7 @@ Floating {
                     Text {
                         id: time
                         anchors.right: parent.right
-                        anchors.rightMargin: held.ink
+                        anchors.rightMargin: Theme.space.rung.inset
                         anchors.baseline: who.baseline
                         readonly property real now: clock.date.getTime()
                         text: line.one ? held.stack.since(held.stack.arrived[line.one.id] ?? now,
@@ -1298,17 +1366,39 @@ Floating {
                     }
                 }
 
-                // The cursor card whole under its line: what it says, who
-                // sent it, its acts as commands, and a reply's prompt.
-                Column {
+                // The cursor card whole under its line, on the Name's
+                // column, each line set by its baseline, down in beats
+                // (VKCF3Z, 2026-11-05): what it says a pitch under the
+                // Name, as lines of one saying; who sent it Note's pitch and
+                // a beat on, as the toast signs it; its acts as commands a
+                // pitch under that, and a reply's field two beats under
+                // them.
+                Item {
+                    id: card
+
+                    // Its row's Name's baseline, down from its top, which
+                    // is the row's bottom.
+                    readonly property real nameBase: held.rowBase - held.rowHeight
+                    readonly property real wordsEnd: body.visible ? body.y
+                        + body.baselineOffset + (body.lineCount - 1) * Theme.level.words.pitch
+                        : nameBase
+                    readonly property real senderBase: wordsEnd + Theme.level.note.pitch
+                        + Theme.space.beat
+                    readonly property real lastBase: says.visible
+                        ? senderBase + Theme.level.note.pitch : senderBase
+
                     // Folded while the command line's menu is up, which
                     // takes its room.
                     visible: line.atCursor && line.one !== null && held.mode !== "command"
-                    x: who.x
-                    width: parent.width - x - held.ink
-                    bottomPadding: Theme.space.m
+                    x: held.nameAt
+                    width: parent.width - x - Theme.space.rung.inset
+                    // A field ends it as a row does; else it leaves what a
+                    // row leaves under its last baseline.
+                    height: field.visible ? field.y + field.height : lastBase + held.rowLeaves
 
                     Text {
+                        id: body
+                        y: card.nameBase + Theme.level.words.pitch - baselineOffset
                         width: parent.width
                         visible: text !== ""
                         text: !line.one || !line.atCursor ? "" : line.washed
@@ -1319,7 +1409,7 @@ Floating {
                         wrapMode: Text.Wrap
                         maximumLineCount: 6
                         elide: Text.ElideRight
-                        lineHeight: Theme.space.xl
+                        lineHeight: Theme.level.words.pitch
                         lineHeightMode: Text.FixedHeight
                         color: Theme.text
                         font.family: Theme.level.words.family
@@ -1329,11 +1419,10 @@ Floating {
                     }
 
                     Text {
+                        y: card.senderBase - baselineOffset
                         width: parent.width
                         text: line.from ? line.from.name : ""
                         elide: Text.ElideRight
-                        lineHeight: Theme.space.xl
-                        lineHeightMode: Text.FixedHeight
                         color: Theme.level.note.colour
                         font: note.font
                     }
@@ -1342,21 +1431,29 @@ Floating {
                     // ":play", in the text's colour since they're typed; Return
                     // goes to its sender, as the foot says.
                     Text {
+                        id: says
+                        y: card.senderBase + Theme.level.note.pitch - baselineOffset
                         width: parent.width
                         visible: text !== ""
                         text: held.cardSays
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
-                        lineHeight: Theme.level.note.pitch
-                        lineHeightMode: Text.FixedHeight
                         color: Theme.text
                         font: note.font
                     }
 
-                    // A reply's words, typed on the card it answers.
+                    // A reply's words, typed on the card it answers, in a
+                    // prompt's field: a row, its words on the card's column
+                    // and ending at its inset, as every line of the card,
+                    // and its ground the inset out from them on each side,
+                    // so it meets the frame's inside edge at the right
+                    // (VKCF3Z, 2026-11-05).
                     Item {
+                        id: field
                         visible: line.atCursor && held.replyTo === line.modelData
-                        width: parent.width
+                        x: -Theme.space.rung.inset
+                        y: card.lastBase + 2 * Theme.space.beat
+                        width: parent.width + 2 * Theme.space.rung.inset
                         height: held.rowHeight
 
                         Rectangle {
@@ -1365,12 +1462,19 @@ Floating {
                             color: Qt.alpha(Theme.raised, Theme.floating.selection)
                         }
 
+                        // How far in the caret stands.
+                        TextMetrics {
+                            id: replyBefore
+                            font: figure.font
+                            text: held.promptLine.text.slice(0, held.promptLine.caret)
+                        }
+
                         // Over the caret, so the block in normal sits
                         // behind the letter it's on.
                         Text {
                             id: words
                             z: 1
-                            x: Theme.space.m
+                            x: Theme.space.rung.inset
                             width: parent.width - 2 * x
                             anchors.verticalCenter: parent.verticalCenter
                             text: held.promptLine.text === "" && held.mode === "insert"
@@ -1384,8 +1488,7 @@ Floating {
                         // The bar in insert, the block over a letter in
                         // normal, as Joel's guicursor.
                         Rectangle {
-                            readonly property real before: figure.advanceWidth(
-                                held.promptLine.text.slice(0, held.promptLine.caret))
+                            readonly property real before: replyBefore.advanceWidth
                             visible: held.mode === "insert" || held.mode === "prompt"
                             opacity: held.mode === "insert" ? held.caretLight : 1
                             x: words.x + before
@@ -1404,7 +1507,7 @@ Floating {
         // Nothing left: said, so the list never looks broken.
         Text {
             visible: !held.listing && held.listed.length === 0
-            x: held.ink
+            x: Theme.space.rung.inset
             height: held.rowHeight
             verticalAlignment: Text.AlignVCenter
             text: held.pattern !== "" ? `nothing holds ${held.pattern}` : "no notices"
@@ -1417,7 +1520,7 @@ Floating {
         // What arrived while the lines held their order.
         Text {
             visible: held.arrivals > 0
-            x: held.ink
+            x: Theme.space.rung.inset
             height: held.rowHeight
             verticalAlignment: Text.AlignVCenter
             text: `${held.arrivals} new`
@@ -1425,50 +1528,102 @@ Floating {
             font: note.font
         }
 
-        // Space ?: every key, by mode, each group under its heading.
-        Repeater {
-            model: held.listing ? held.listShown : []
+        // Space ?: every key, by mode, each group under its heading, as the
+        // drawer's key list sets them (VKCF3Z, 2026-11-05): a line a key
+        // pitch, a heading a pitch and a beat over its first line and an
+        // empty line under the one before; each chord apart from the next
+        // and its keys a tie, and what they do a group past the keys.
+        Item {
+            id: keyLines
 
-            Item {
-                id: listedKey
+            // Each line's baseline, down from the list's top: the first's
+            // capitals stand where a row's would.
+            readonly property var bases: {
+                const out = [];
+                const top = Theme.space.rung.inset - sheet.topPadding;
+                held.listShown.forEach((one, at) => {
+                    const heading = one.heading !== "";
+                    const before = out[at - 1];
+                    out.push(at === 0
+                        ? top + (heading ? labelCaps : noteCaps).tightBoundingRect.height
+                        : heading ? before + 2 * held.keyPitch
+                        : held.listShown[at - 1].heading !== ""
+                            ? before + held.keyPitch + Theme.space.beat
+                        : before + held.keyPitch);
+                });
+                return out;
+            }
 
-                required property var modelData
+            visible: held.listing
+            width: sheet.width
+            height: bases.length === 0 ? 0 : bases[bases.length - 1] + held.rowLeaves
 
-                width: sheet.width
-                height: held.rowHeight
+            Repeater {
+                model: held.listing ? held.listShown : []
 
-                Text {
-                    x: held.ink
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: listedKey.modelData.heading !== ""
-                    text: listedKey.modelData.heading
-                    color: Theme.level.label.colour
-                    font.family: Theme.level.label.family
-                    font.pointSize: Theme.level.label.pointSize
-                    font.weight: Theme.level.label.weight
-                    font.capitalization: Theme.level.label.capitalization
-                    font.letterSpacing: Theme.level.label.letterSpacing
-                    font.features: Theme.level.label.features
-                }
+                Item {
+                    id: listedKey
 
-                Text {
-                    id: listedKeys
-                    x: held.ink
-                    width: keysColumn.advanceWidth
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: listedKey.modelData.heading === ""
-                    text: listedKey.modelData.keys
-                    color: Theme.text
-                    font: note.font
-                }
+                    required property var modelData
+                    required property int index
+                    readonly property real base: keyLines.bases[index] ?? 0
 
-                Text {
-                    x: listedKeys.x + listedKeys.width
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: listedKey.modelData.heading === ""
-                    text: listedKey.modelData.does
-                    color: Theme.muted
-                    font: note.font
+                    width: sheet.width
+
+                    Text {
+                        x: Theme.space.rung.inset
+                        y: listedKey.base - baselineOffset
+                        visible: listedKey.modelData.heading !== ""
+                        text: listedKey.modelData.heading
+                        color: Theme.level.label.colour
+                        font.family: Theme.level.label.family
+                        font.pointSize: Theme.level.label.pointSize
+                        font.weight: Theme.level.label.weight
+                        font.capitalization: Theme.level.label.capitalization
+                        font.letterSpacing: Theme.level.label.letterSpacing
+                        font.features: Theme.level.label.features
+                    }
+
+                    Row {
+                        x: Theme.space.rung.inset
+                        y: listedKey.base - baselineOffset
+                        spacing: Theme.space.rung.apart
+                        visible: listedKey.modelData.heading === ""
+                        baselineOffset: note.ascent
+
+                        Repeater {
+                            model: listedKey.modelData.chords
+
+                            Row {
+                                id: chord
+                                required property string modelData
+                                spacing: Theme.space.rung.tie
+
+                                Repeater {
+                                    model: chord.modelData.split(" ")
+
+                                    Text {
+                                        required property string modelData
+                                        text: modelData
+                                        textFormat: Text.PlainText
+                                        color: Theme.text
+                                        font: note.font
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        x: Theme.space.rung.inset + held.keysWide + Theme.space.rung.groups
+                        width: parent.width - x - Theme.space.rung.inset
+                        y: listedKey.base - baselineOffset
+                        visible: listedKey.modelData.heading === ""
+                        text: listedKey.modelData.does
+                        elide: Text.ElideRight
+                        color: Theme.muted
+                        font: note.font
+                    }
                 }
             }
         }
@@ -1492,9 +1647,17 @@ Floating {
             width: sheet.width
             height: held.rowHeight
 
+            // How far in the caret stands.
+            TextMetrics {
+                id: lineBefore
+                font: figure.font
+                text: held.lineText.slice(0, (held.mode === "find" ? held.findLine
+                    : held.commandLine).caret)
+            }
+
             Text {
                 id: sigil
-                x: held.ink
+                x: Theme.space.rung.inset
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.mode === "find" ? "/" : ":"
                 color: Theme.accent
@@ -1504,7 +1667,7 @@ Floating {
             Text {
                 id: typed
                 x: sigil.x + sigil.width
-                width: parent.width - x - held.ink
+                width: parent.width - x - Theme.space.rung.inset
                 anchors.baseline: sigil.baseline
                 text: held.lineText
                 textFormat: Text.PlainText
@@ -1516,7 +1679,7 @@ Floating {
             Rectangle {
                 readonly property var line: held.mode === "find" ? held.findLine : held.commandLine
                 opacity: held.caretLight
-                x: typed.x + figure.advanceWidth(line.text.slice(0, line.caret))
+                x: typed.x + lineBefore.advanceWidth
                 y: typed.y + typed.baselineOffset - figure.ascent
                 width: Math.max(1, Math.round(figure.averageCharacterWidth / 4))
                 height: figure.ascent + figure.descent
@@ -1524,11 +1687,13 @@ Floating {
             }
         }
 
+        // The foot a region of its own, as the launcher's is: under one
+        // hairline, the frame's inside edge to edge, which whatever is last
+        // above meets with what a row leaves.
         Rectangle {
-            x: Theme.space.s
-            width: sheet.width - 2 * x
+            width: sheet.width
             height: Theme.border
-            color: Theme.rule
+            color: Theme.edge
         }
 
         // The foot: how things stand, the mode's word in its room, and the
@@ -1562,7 +1727,7 @@ Floating {
             // of theirs, and nothing beside it moves as the mode changes.
             Text {
                 id: markText
-                x: held.ink
+                x: Theme.space.rung.inset
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.modeMark
                 color: held.modeMark === NoticeKeys.mark("normal") ? Theme.muted : Theme.accent
@@ -1574,14 +1739,17 @@ Floating {
                 font.features: Theme.level.label.features
             }
 
-            // Where the facts start: past the mark and a step.
-            readonly property real factsAt: markText.x + markText.implicitWidth + Theme.space.l
+            // Where the facts start: a group past the mark's ink, its last
+            // capital's tracking, which a label draws after it, left off.
+            readonly property real factsAt: markText.x + markText.implicitWidth
+                - markText.font.letterSpacing + Theme.space.rung.groups
 
             Text {
                 id: facts
                 x: foot.factsAt
-                width: Math.min(implicitWidth, foot.width - foot.factsAt - held.ink
-                    - foot.wordRoom - Theme.space.l - hinted.width)
+                width: Math.min(implicitWidth, foot.width - foot.factsAt
+                    - Theme.space.rung.inset - foot.wordRoom - Theme.space.rung.groups
+                    - hinted.width)
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.facts
                 elide: Text.ElideRight
@@ -1591,9 +1759,10 @@ Floating {
 
             Text {
                 id: modeWord
-                x: facts.x + facts.width + (facts.width > 0 ? Theme.space.l : 0)
+                x: facts.x + facts.width + (facts.width > 0 ? Theme.space.rung.groups : 0)
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - foot.factsAt - held.ink - facts.width - hinted.width - 2 * Theme.space.l))
+                    - foot.factsAt - Theme.space.rung.inset - facts.width - hinted.width
+                    - 2 * Theme.space.rung.groups))
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.modeWord
                 elide: Text.ElideRight
@@ -1604,11 +1773,14 @@ Floating {
             Text {
                 id: hinted
 
-                // The room the facts and the mode word leave as they stand,
-                // so at rest, with no mode word, the hints have it all.
-                readonly property real fits: foot.width - foot.factsAt - held.ink
-                    - factsNow.advanceWidth - Theme.space.l - (held.modeWord === "" ? 0
-                        : Math.max(foot.wordRoom, wordNow.advanceWidth) + Theme.space.l)
+                // The room the facts and the mode word leave as they say
+                // it now, a group from each, so at rest, with no mode word,
+                // the hints have it all, and none gives way while there's
+                // room for it (VKCF3Z, 2026-11-05).
+                readonly property real fits: foot.width - foot.factsAt
+                    - Theme.space.rung.inset - factsNow.advanceWidth - Theme.space.rung.groups
+                    - (held.modeWord === "" ? 0
+                        : wordNow.advanceWidth + Theme.space.rung.groups)
 
                 TextMetrics {
                     id: factsNow
@@ -1641,7 +1813,7 @@ Floating {
                 }
 
                 anchors.right: parent.right
-                anchors.rightMargin: held.ink
+                anchors.rightMargin: Theme.space.rung.inset
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, fits)
                 text: all
@@ -1654,8 +1826,11 @@ Floating {
 
     // How many menu lines show: ten at most, and no more than the screen
     // has rows for below the lines, the command line and the foot, so the
-    // line being typed never falls off it; three at least.
-    readonly property int screenRows: Math.floor((screenHeight - 2 * Theme.space.xxl) / rowHeight)
+    // line being typed never falls off it; three at least. The list
+    // stands the screen rung from the screen's edges, as every floating
+    // frame does.
+    readonly property int screenRows: Math.floor((screenHeight
+        - 2 * Theme.space.rung.screen) / rowHeight)
     readonly property int menuRoom: Math.max(3, Math.min(10, screenRows - inView.length - 3))
 
 

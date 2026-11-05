@@ -379,11 +379,12 @@ function spoken(keys) {
 }
 
 // The keys listed: each group's heading, then a line for each act first
-// done in it, its first two keys and what it does.
+// done in it, its first two keys and what it does. Its chords are the keys
+// apart, since a chord of several keys, "Space w", has a space of its own.
 function keyList() {
     const out = [];
     for (const group of groups) {
-        out.push({ heading: group.name, keys: "", does: "" });
+        out.push({ heading: group.name, keys: "", chords: [], does: "" });
         const listed = [];
         for (const row of table) {
             const home = groups.find(one => one.modes.some(mode => inMode(row, mode)));
@@ -398,7 +399,7 @@ function keyList() {
             const named = key => !(key in arrowLetters && keys.includes(arrowLetters[key]));
             const said = keys.filter(named).map(spoken).filter((one, at, all) => all.indexOf(one) === at);
             out.push({ heading: "", keys: said.slice(0, 2).join(" "),
-                does: row.does, act: row.act });
+                chords: said.slice(0, 2), does: row.does, act: row.act });
         }
     }
     return out;

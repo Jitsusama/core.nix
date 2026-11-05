@@ -249,7 +249,7 @@ QtObject {
         holds("nor does a hint", Keys.hints("normal", {}, {}).concat(Keys.hints("visual", {}, {}))
             .filter(one => one.key in letters).map(one => one.key), []);
         holds("a move lists its letter alone", listed[1],
-            { heading: "", keys: "j", does: "down a card", act: "down" });
+            { heading: "", keys: "j", chords: ["j"], does: "down a card", act: "down" });
         holds("a sequence is listed as typed", listed.find(one => one.act === "first").keys, "gg");
         holds("each mode has its heading", listed.filter(one => one.heading !== "")
             .map(one => one.heading), ["Normal: moving and acting", "The find: the / line",
