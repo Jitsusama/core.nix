@@ -41,6 +41,9 @@ Item {
     // Room between the glyph and what's typed: the launcher lines what's
     // typed up with its results' column, and a secret sits close by its lock.
     property int glyphWidth: glyphText.implicitWidth + Theme.space.m
+    // Where its mark stands from its left, so a frame holding it sets the
+    // mark on its own column by this rather than by a number of its own.
+    readonly property real markAt: glyphText.x
     // A glyph after the first, leading the path: a held thing's, where the
     // find's / leads the line.
     property string lead
