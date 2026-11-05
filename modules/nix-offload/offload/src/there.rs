@@ -1984,18 +1984,28 @@ pub const VM_ROOM: usize = 4;
 /// in the order they came, each holding its place in the folder's
 /// `waiting`, since one past the room goes only once nothing else is
 /// sent, and smaller runs coming after it kept finding room first.
-pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
+///
+/// While it waits, a run goes to `other`, a second VM builder, once that
+/// one has room and nothing waits there, and says which it went to: a
+/// run's split is decided as it starts, so on 4 November ten runs waited
+/// 51 minutes on the first while the second sat idle.
+pub fn admitted<'a>(
+    dir: &'a Path,
+    other: Option<&'a Path>,
+    count: usize,
+    room: usize,
+) -> (&'a Path, Option<Claim>) {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
     let mut said = false;
     let mut place: Option<Claim> = None;
     loop {
         let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
-            return claim(dir, wants);
+            return (dir, claim(dir, wants));
         };
         // SAFETY: flock only locks the file it's given, open until dropped.
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
-            return claim(dir, wants);
+            return (dir, claim(dir, wants));
         }
         let busy = claimed(dir);
         let before = ahead(dir, place.as_ref());
@@ -2004,12 +2014,24 @@ pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
             // as dropping it does.
             let claimed = claim(dir, wants);
             drop(place);
-            return claimed;
+            return (dir, claimed);
         }
         if place.is_none() {
             place = queued(dir, wants);
         }
+        // Let go before the other's is taken, so two runs waiting on each
+        // other's builders never hold one lock each and wait on the other.
         drop(lock);
+        if let Some(other) = other
+            && let Some(claimed) = free(other, wants, room)
+        {
+            eprintln!(
+                "nix-offload: another VM builder has room now and nothing waiting, so this goes \
+                 there"
+            );
+            drop(place);
+            return (other, Some(claimed));
+        }
         if !said {
             let queue = match before {
                 0 => String::new(),
@@ -2023,6 +2045,24 @@ pub fn admitted(dir: &Path, count: usize, room: usize) -> Option<Claim> {
             said = true;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+/// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
+/// under its lock only while no run waits there and it has room for them
+/// as [`admitted`] counts it; none otherwise.
+fn free(dir: &Path, wants: usize, room: usize) -> Option<Claim> {
+    use std::os::fd::AsRawFd;
+    let lock = fs::File::create(dir.join("sending.lock")).ok()?;
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return None;
+    }
+    let busy = claimed(dir);
+    if ahead(dir, None) == 0 && (busy == 0 || busy + wants <= room) {
+        claim(dir, wants)
+    } else {
+        None
     }
 }
 
