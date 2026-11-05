@@ -453,7 +453,7 @@ shows and further apart as they grow:
 | xl   | 6     | 24     | the inset rung, the large pitch                    |
 | xxl  | 8     | 32     | the frames rung, a glyph's column in a list        |
 | xxxl | 12    | 48     | the screen rung, a row of the launcher or a prompt |
-| huge | 16    | 64     | the screen rung where the room allows              |
+| huge | 16    | 64     | the bound past which empty room needs a reason     |
 
 Whitespace groups things before borders or boxes do. Start with too much space
 and take it away. Density follows the moment: dense and scannable where Joel is
@@ -482,7 +482,7 @@ the theme refuses a ladder that doesn't widen outward.
 | groups | 20 | groups on one line (the facts, the state, the hints), and column and column |
 | inset | 24 (xl) | a frame and its text, on every side, to the ink |
 | frames | 32 (xxl) | floating frames that belong together: the launcher and its drawer, notices in a stack |
-| screen | 48 (xxxl) at least | a floating frame and the screen's edge; huge where the room allows |
+| screen | 48 (xxxl) | a floating frame and the screen's edge, every frame alike |
 
 Groups take 20, the one rung off the scale, since the ladder needs one between
 things on a line and a frame's own room: no gap inside a frame passes the room
