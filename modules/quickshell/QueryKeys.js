@@ -168,8 +168,8 @@ const table = [
     // the left arrow too, and ZZ, Space w and :q, as his Neovim closes a
     // window; a bare arrow does nothing. Escape only lets a count or a
     // waiting key go, as it does nothing at rest in a window, and q alone
-    // does nothing, as Joel asked of every modal surface (2026-11-04).
-    // Return does the row the drawer's about.
+    // only says how to close, as Joel asked of every modal surface
+    // (2026-11-04). Return does the row the drawer's about.
     { act: "next", mode: "page", keys: ["j"] },
     { act: "previous", mode: "page", keys: ["k"] },
     { act: "left", mode: "page", keys: ["h"] },
@@ -196,6 +196,13 @@ const table = [
     // search itself (seekRead).
     { act: "seekNext", mode: "page", keys: ["n"] },
     { act: "seekPrevious", mode: "page", keys: ["N"] },
+    // A page can't be changed, so x, p and S say Vim's E21 at once, d and c
+    // once their motion comes (Operators.refused), and visual's d x c p
+    // over what's chosen; q says how to close, as on the rows.
+    { act: "cannotChange", mode: "page", keys: ["x", "p", "S"] },
+    { act: "cannotChange", mode: "pageVisual", keys: ["d", "x", "c", "p"] },
+    { act: "quitSaid", mode: "page", keys: ["q"] },
+    { act: "quitSaid", mode: "pageVisual", keys: ["q"] },
     // Visual on the page, the language's select and select-lines: v from
     // the cursor's letter, V by whole lines, and gv the last chosen again.
     // While choosing, its rows are pageVisual's, whose two kinds share them
@@ -395,8 +402,10 @@ function read(standing, key, mode, words = false) {
     const before = mode === "normal" || mode === "visual"
         ? Operators.beforeTable(standing, key, { mode, words }, { matching, rested: rest() })
         : null;
-    if (before !== null) {
-        return before;
+    const refused = mode === "page"
+        ? Operators.refused(standing, key, { matching, rested: rest() }) : null;
+    if (before !== null || refused !== null) {
+        return before ?? refused;
     }
     // A count before a move in the drawer, choosing or not, where nothing
     // types: 0 alone is Vim's first column, which rows haven't, so it
@@ -477,7 +486,7 @@ function modeAfter(act, mode, typing = "find") {
     if (act === "selectLines") {
         return mode === "pageVisualLine" ? "page" : "pageVisualLine";
     }
-    if (["copy", "copyLines", "back"].includes(act) && chosen(mode)) {
+    if (["copy", "copyLines", "back", "cannotChange"].includes(act) && chosen(mode)) {
         return "page";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind"]

@@ -589,8 +589,9 @@ Item {
                 visualOperated = { key, at: Date.now() };
             }
             // y copies what the drawer chose and gv brings the last back
-            // before the mode moves, while it still holds what they act on.
-            else if (["copy", "copyLines"].includes(read.act)
+            // before the mode moves, while it still holds what they act on,
+            // and d x c p say they can't change it as the choice ends.
+            else if (["copy", "copyLines", "cannotChange"].includes(read.act)
                 || read.act === "reselect" && !onRows)
                 prompt.stepped(read.act, read.count);
             input.deselect();

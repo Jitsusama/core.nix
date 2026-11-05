@@ -2058,6 +2058,13 @@ Scope {
         sayingKeys = prompt.keysTaken;
     }
 
+    // What q says, on the rows and in the drawer alike: with :q at the
+    // right end, where Return stands, so it reads q then :q.
+    function sayQuit() {
+        const hints = Words.field.hints ?? {};
+        say([[":q", hints.quits ?? ""], ["q", hints.quit ?? ""]]);
+    }
+
     // A key as the foot says it: its mark, then its word where it has one.
     function saidKey(key) {
         return key[1] === "" ? key[0] : `${key[0]} ${key[1]}`;
@@ -5914,6 +5921,12 @@ Scope {
                                     Quickshell.clipboardText = drawerCard.copy(act === "copyLines");
                                 else if (act === "keys")
                                     root.listInDrawer();
+                                else if (act === "quitSaid")
+                                    root.sayQuit();
+                                // A page can't be changed, so d c p x say
+                                // Vim's E21 where the line was, as E492 is.
+                                else if (act === "cannotChange")
+                                    root.commandSay((Words.field.hints ?? {}).E21 ?? "", true);
                                 else
                                     drawerCard.go(act, count);
                                 return;
@@ -5943,13 +5956,9 @@ Scope {
                             case "jumpForward":
                                 root.jump(1);
                                 return;
-                            case "quitSaid": {
-                                // Said with :q at the right end, where Return
-                                // stands, so it reads q then :q.
-                                const hints = Words.field.hints ?? {};
-                                root.say([[":q", hints.quits ?? ""], ["q", hints.quit ?? ""]]);
+                            case "quitSaid":
+                                root.sayQuit();
                                 return;
-                            }
                             case "nextFile":
                                 root.beside(1);
                                 return;

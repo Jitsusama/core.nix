@@ -70,6 +70,44 @@ function operated(standing, key, matching, rested) {
 
 const digit = /^[0-9]$/;
 
+// The operators a page has only to refuse, since it can't be changed: d
+// and c, as the drawer's (modules/keys/language.toml, delete-motion and
+// change-motion).
+const refusals = ["d", "c"];
+
+// What the drawer's page reads before its own keys, or null for a key it
+// doesn't: d or c at rest waits for its motion, as Vim's do on a buffer
+// that can't be modified, and says E21 once one comes (`cannotChange`):
+// its own key again, as dd, a count going before it, a sequence's first
+// key (gg's g) or a text object's (ip's i) waiting for the rest, and any
+// other key refused too, there being nothing it could change. Ctrl+C
+// lets it go unsaid, as Escape does (QueryKeys.js). The table is as
+// beforeTable takes it.
+function refused(standing, key, table) {
+    const { operator } = standing;
+    const atRest = standing.typed.length === 0;
+    if (operator === undefined) {
+        return atRest && refusals.includes(key) ? { act: "", count: 0,
+            standing: { count: "", typed: [], operator: { key, count: standing.count } },
+            ours: true } : null;
+    }
+    if (key === "Ctrl+c") {
+        return { act: "", count: 0, standing: table.rested, ours: true };
+    }
+    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
+        return { act: "", count: 0, standing: Object.assign({}, standing,
+            { count: standing.count + key }), ours: true };
+    }
+    const typed = standing.typed.concat([key]);
+    const object = table.matching(typed, "object");
+    const matched = object.act !== "" || object.begun ? object : table.matching(typed, "page");
+    if (key !== operator.key && matched.act === "" && matched.begun) {
+        return { act: "", count: 0, standing: { count: standing.count, typed, operator },
+            ours: true };
+    }
+    return { act: "cannotChange", count: 0, standing: table.rested, ours: true };
+}
+
 // What normal and visual read before their table, or null for a key they
 // don't. A count is typed where nothing types: 0 alone is Vim's first
 // column, which rows haven't, so it counts only after another digit, and
