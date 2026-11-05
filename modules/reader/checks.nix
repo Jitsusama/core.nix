@@ -115,7 +115,8 @@ onLinux {
   # to one, a mark is kept with its file between openings, gf and Ctrl+]
   # open the second file, :bp, :e and :bn go between the two, :e of a
   # file that isn't is E484, :h lists the keys, :g/Part/ lists the four
-  # sections and Return goes to one, :marks and :ju list theirs, the menu
+  # sections and Return goes to one, :marks and :ju list theirs, a chosen
+  # row too long for the list reads on, the menu
   # shows on :, narrows as e or b is typed, and Tab, Shift+Tab, the arrows,
   # Ctrl+N, Ctrl+P, Ctrl+E and Ctrl+Y choose, put away and take its lines,
   # :e and a space listing the files, @: runs the last line again, :his
