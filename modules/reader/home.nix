@@ -28,10 +28,14 @@
 # y a p and y } copy the block the cursor is in, its paragraph, that and
 # the blank line after it, or on to the paragraph's end, each flashing what
 # it took for 200 ms, as his Neovim's yank does. q does nothing, since
-# nothing records. A link to another markdown
-# file sets it in the same window, as Neovim's gf, keeping the place on the
-# first, and Ctrl+O and Ctrl+I go back and forth across files. Escape only
-# cancels. The same table, as the launcher lists it over
+# nothing records. A change, d d or d with its motion, c c, S or c with
+# its motion, x, p, or d, c and p on a selection, and :d, says Vim's
+# E21: Cannot make changes, as a buffer that can't be modified does. A
+# link to another markdown file sets it in the same window, as Neovim's
+# gf, keeping the place on the first, and Ctrl+O and Ctrl+I go back and
+# forth across files. Escape only cancels: at rest it does nothing, as
+# Vim's does, and :noh puts the search's marks away. The same table, as
+# the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
 #
@@ -328,6 +332,13 @@ let
     (page "" "Ctrl+Plus" "Larger")
     (page "" "Ctrl+Minus" "Smaller")
     (page "" "Ctrl+0" "Back to its own size")
+    (page "ending" "d d" "Nothing: a page can't be changed")
+    (page "change-line" "c c" "Nothing: a page can't be changed")
+    (page "change-line" "S" "Nothing: a page can't be changed")
+    (page "delete-character" "x" "Nothing: a page can't be changed")
+    (page "put-after" "p" "Nothing: a page can't be changed")
+    (page "delete-motion" "d" "Nothing: a page can't be changed")
+    (page "change-motion" "c" "Nothing: a page can't be changed")
     (page "show-keys" "Space ?" "Show every key here")
     (page "show-keys" "F1" "Show every key here")
     (page "close" "Z Z" "Close the page")

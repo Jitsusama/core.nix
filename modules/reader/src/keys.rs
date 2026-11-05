@@ -140,9 +140,13 @@ pub enum Act {
     CopyAParagraph,
     /// y }: copies from the cursor's piece to its paragraph's end.
     CopyToParagraphEnd,
+    /// A change, which a page refuses as a buffer Vim can't modify does,
+    /// saying E21.
+    Change(Change),
     /// Escape at rest: nothing was in progress. In a window it does
-    /// nothing, so a habitual second Escape never closes a page; while
-    /// selecting, it ends the selection.
+    /// nothing, as Vim's does, so a habitual second Escape never closes a
+    /// page or puts the search's marks away; while selecting, it ends the
+    /// selection.
     Rest,
 }
 
@@ -180,6 +184,18 @@ impl Act {
                 | Act::ZoomOut
         )
     }
+}
+
+/// Vim's changes, which a page has only to refuse: dd, cc and S, d and c
+/// with their motion or on a selection, x and p.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change {
+    Ending,
+    ChangeLine,
+    DeleteMotion,
+    ChangeMotion,
+    DeleteCharacter,
+    PutAfter,
 }
 
 /// Where a key works: at rest, while selecting, or both.
@@ -279,6 +295,10 @@ const SPOKEN: &[(&str, Act)] = &[
     ("copy-paragraph", Act::CopyParagraph),
     ("copy-a-paragraph", Act::CopyAParagraph),
     ("copy-to-paragraph-end", Act::CopyToParagraphEnd),
+    ("ending", Act::Change(Change::Ending)),
+    ("change-line", Act::Change(Change::ChangeLine)),
+    ("delete-character", Act::Change(Change::DeleteCharacter)),
+    ("put-after", Act::Change(Change::PutAfter)),
     ("close", Act::Close),
     ("show-keys", Act::ShowKeys),
 ];
@@ -288,6 +308,13 @@ type Slot = fn(char) -> Act;
 
 /// The acts whose key takes a letter after it, by their names.
 const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
+
+/// The acts whose key takes a motion after it, as Vim's operators do, or
+/// acts on a selection at once, by their names.
+const OPERATORS: &[(&str, Act)] = &[
+    ("delete-motion", Act::Change(Change::DeleteMotion)),
+    ("change-motion", Act::Change(Change::ChangeMotion)),
+];
 
 /// The reader's own keys: a browser's zoom, at rest and while selecting,
 /// for what Vim has nothing for.
@@ -306,6 +333,7 @@ pub type Sequence = (Vec<Key>, Act, In);
 pub struct Table {
     pub sequences: Vec<Sequence>,
     slots: Vec<(Key, Slot, In)>,
+    operators: Vec<(Key, Act, In)>,
 }
 
 /// The keys, read from the language once.
@@ -386,7 +414,21 @@ fn read(language: &str) -> Table {
             })
         })
         .collect();
-    Table { sequences, slots }
+    let operators = OPERATORS
+        .iter()
+        .flat_map(|&(name, act)| {
+            let (keys, held) = keys(name);
+            keys.into_iter().map(move |keys| match keys[..] {
+                [key] => (key, act, held),
+                _ => panic!("{name} takes its motion after one key"),
+            })
+        })
+        .collect();
+    Table {
+        sequences,
+        slots,
+        operators,
+    }
 }
 
 /// Keys written in Neovim's notation, as j, gg, <C-d> and <Space>?, or
@@ -436,9 +478,16 @@ fn spoken(act: Act) -> &'static str {
         Act::GoToMark(_) => "go-to-mark",
         act => SPOKEN
             .iter()
+            .chain(OPERATORS)
             .find(|&&(_, spoken)| spoken == act)
             .map_or("", |&(name, _)| name),
     }
+}
+
+/// The operators as the key list and the key map show them: the act, and
+/// the key that waits for its motion.
+fn operators() -> impl Iterator<Item = (Act, Key)> {
+    table().operators.iter().map(|&(key, act, _)| (act, key))
 }
 
 /// The letter slots as the key list and the key map show them: the act it
@@ -539,6 +588,7 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::ZoomBack => ("The Page", "Back to its own size"),
         Act::ShowKeys => ("The Page", "Show every key here"),
         Act::Close => ("The Page", "Close the page"),
+        Act::Change(_) => ("The Page", "Nothing: a page can't be changed"),
         Act::Rest => return None,
     })
 }
@@ -606,7 +656,8 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
         .iter()
         .map(|(keys, act, _)| (*act, shown_all(keys)));
     let slots = slots().map(|(act, key)| (act, format!("{} and a letter", shown(key))));
-    for (act, keys) in typed.chain(slots) {
+    let operators = operators().map(|(act, key)| (act, shown(key)));
+    for (act, keys) in typed.chain(slots).chain(operators) {
         let Some((group, does)) = named(act) else {
             continue;
         };
@@ -656,6 +707,7 @@ pub fn chords() -> Vec<Listed> {
             )
         })
         .chain(slots().map(|(act, key)| (act, spelled(key))))
+        .chain(operators().map(|(act, key)| (act, spelled(key))))
         .filter_map(|(act, chord)| {
             let (group, does) = named(act)?;
             // Moving is the picture viewer's group in the launcher, so the
@@ -694,6 +746,8 @@ fn takes_a_letter(key: Key, selecting: bool) -> Option<Slot> {
 pub struct Machine {
     count: Option<u32>,
     pending: Vec<Key>,
+    /// An operator's key and act, waiting for its motion.
+    operator: Option<(Key, Act)>,
 }
 
 impl Machine {
@@ -703,7 +757,7 @@ impl Machine {
     /// progress, as vi does.
     pub fn press(&mut self, key: Key, selecting: bool) -> Option<(Act, Option<u32>)> {
         if key == Key::Escape {
-            let busy = self.count.is_some() || !self.pending.is_empty();
+            let busy = self.waiting();
             self.reset();
             return if busy { None } else { Some((Act::Rest, None)) };
         }
@@ -721,6 +775,19 @@ impl Machine {
                 self.count = Some(count.min(999_999));
                 return None;
             }
+        }
+        if let Some(operator) = self.operator {
+            return self.motion(operator, key);
+        }
+        if self.pending.is_empty()
+            && let Some(act) = operator_of(key, selecting)
+        {
+            // While selecting, the selection is what it acts on.
+            if selecting {
+                return Some(self.finish(act));
+            }
+            self.operator = Some((key, act));
+            return None;
         }
         if let [first] = self.pending[..]
             && let (Some(slot), Char(letter)) = (takes_a_letter(first, selecting), key)
@@ -746,10 +813,55 @@ impl Machine {
         None
     }
 
+    /// After an operator, a key of its motion: the motion whole gives the
+    /// operator's act, its own key again the line's act the language has
+    /// for the two, as d d is dd's, and a key that's no motion drops it, as
+    /// vi does. A mark's motion takes its letter, as d'a does, and a text
+    /// object is a motion, as in d i p, though the page has them only
+    /// while selecting.
+    fn motion(&mut self, (first, act): (Key, Act), key: Key) -> Option<(Act, Option<u32>)> {
+        let every = || table().sequences.iter();
+        if let [mark] = self.pending[..]
+            && takes_a_letter(mark, false).is_some()
+        {
+            return if matches!(key, Char(letter) if letter.is_ascii_alphabetic()) {
+                Some(self.finish(act))
+            } else {
+                self.reset();
+                None
+            };
+        }
+        if self.pending.is_empty() && takes_a_letter(key, false).is_some() {
+            self.pending.push(key);
+            return None;
+        }
+        self.pending.push(key);
+        let line: Vec<Key> = std::iter::once(first)
+            .chain(self.pending.iter().copied())
+            .collect();
+        if let Some(&(_, act, _)) = every().find(|(keys, _, _)| *keys == line) {
+            return Some(self.finish(act));
+        }
+        if self.pending == [first] || every().any(|(keys, _, _)| *keys == self.pending) {
+            return Some(self.finish(act));
+        }
+        let waits =
+            every().any(|(keys, _, _)| keys.starts_with(&self.pending) || keys.starts_with(&line));
+        if !waits {
+            self.reset();
+        }
+        None
+    }
+
+    /// Whether a key is waiting for more, or a count is being typed.
+    fn waiting(&self) -> bool {
+        self.count.is_some() || !self.pending.is_empty() || self.operator.is_some()
+    }
+
     /// Whether a key is waiting for its second, or a count is being typed.
     #[cfg(test)]
     pub fn busy(&self) -> bool {
-        self.count.is_some() || !self.pending.is_empty()
+        self.waiting()
     }
 
     fn finish(&mut self, act: Act) -> (Act, Option<u32>) {
@@ -773,7 +885,17 @@ impl Machine {
     fn reset(&mut self) {
         self.count = None;
         self.pending.clear();
+        self.operator = None;
     }
+}
+
+/// An operator: these keys wait for a motion, where they work.
+fn operator_of(key: Key, selecting: bool) -> Option<Act> {
+    table()
+        .operators
+        .iter()
+        .find(|&&(operator, _, held)| operator == key && held.holds(selecting))
+        .map(|&(_, act, _)| act)
 }
 
 #[cfg(test)]
@@ -1156,6 +1278,51 @@ mod tests {
                 (Act::SearchBackward, None),
                 (Act::Next, None),
                 (Act::Previous, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_change_is_refused_once_it_is_whole() {
+        use Change::{ChangeLine, ChangeMotion, DeleteCharacter, DeleteMotion, Ending, PutAfter};
+        let mut machine = Machine::default();
+        let refused = |change| (Act::Change(change), None);
+        assert_eq!(typed(&mut machine, "x"), [refused(DeleteCharacter)]);
+        assert_eq!(typed(&mut machine, "p"), [refused(PutAfter)]);
+        assert_eq!(typed(&mut machine, "S"), [refused(ChangeLine)]);
+        assert_eq!(typed(&mut machine, "dd"), [refused(Ending)]);
+        assert_eq!(typed(&mut machine, "cc"), [refused(ChangeLine)]);
+        // d and c wait for their motion, whatever it is, and say nothing
+        // until it's whole, as vi does.
+        assert_eq!(typed(&mut machine, "d"), []);
+        assert!(machine.busy());
+        assert_eq!(typed(&mut machine, "j"), [refused(DeleteMotion)]);
+        assert_eq!(
+            typed(&mut machine, "d3j"),
+            [(Act::Change(DeleteMotion), Some(3))]
+        );
+        for motion in ["dip", "d'a", "dgg", "d}", "cw", "c]]"] {
+            assert_eq!(typed(&mut machine, motion).len(), 1, "{motion}");
+            assert!(!machine.busy(), "{motion}");
+        }
+        assert_eq!(typed(&mut machine, "cgg"), [refused(ChangeMotion)]);
+        // A key that's no motion drops the operator, and Escape cancels it.
+        assert_eq!(typed(&mut machine, "dqj"), [(Act::Down, None)]);
+        typed(&mut machine, "c");
+        assert_eq!(machine.press(Key::Escape, false), None);
+        assert_eq!(typed(&mut machine, "j"), [(Act::Down, None)]);
+    }
+
+    #[test]
+    fn a_selection_refuses_d_c_and_p_at_once() {
+        use Change::{ChangeMotion, DeleteMotion, PutAfter};
+        let mut machine = Machine::default();
+        assert_eq!(
+            typed_in(&mut machine, "dcp", true),
+            [
+                (Act::Change(DeleteMotion), None),
+                (Act::Change(ChangeMotion), None),
+                (Act::Change(PutAfter), None),
             ]
         );
     }

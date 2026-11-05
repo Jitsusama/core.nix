@@ -107,7 +107,9 @@ onLinux {
   # paragraphs, ]], 2]] and [[ by headings, H, M and L down the view, zt,
   # zz and zb place it, 50% goes half way and % from a code block's { to
   # its }, * and # search for the word here, :noh, :5 and E492 on the
-  # command line, Return a line, gO lists the headings and Return in it goes
+  # command line, Escape at rest leaves the search's marks, every change
+  # (d d, c c, S, x, p, d and c with a motion, :d, d on a selection) says
+  # E21, Return a line, gO lists the headings and Return in it goes
   # to one, a mark is kept with its file between openings, gf and Ctrl+]
   # open the second file, and :q closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.

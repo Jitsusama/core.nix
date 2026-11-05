@@ -1020,6 +1020,7 @@ impl App {
                     }
                     ex::Command::Quit => self.exit = true,
                     ex::Command::NoHighlight => self.highlighting = false,
+                    ex::Command::Change => self.say(ex::CANNOT_CHANGE),
                     ex::Command::Nothing => {}
                     ex::Command::Unknown(typed) => self.say(&ex::unknown(typed)),
                 }
@@ -1904,8 +1905,10 @@ impl App {
             }
             Act::Next | Act::Previous => self.go_on(act == Act::Next, count.unwrap_or(1)),
             Act::ShowKeys => self.show_keys(!listed),
-            Act::Rest if listed => {}
-            Act::Rest => self.highlighting = false,
+            // Escape at rest does nothing, as Vim's does; :noh puts the
+            // search's marks away.
+            Act::Rest => {}
+            Act::Change(_) => self.say(ex::CANNOT_CHANGE),
             // The page is set to fit the window's width, so there's never
             // anything beside it to move to; h and l move only a
             // selection's cursor, which takes them, with its own keys,
