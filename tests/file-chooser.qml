@@ -15,7 +15,8 @@
 // V selection's Return, taking one file, answers its first with the filter
 // in use, one holding no file being left to the launcher. Asked to save, the line holds the name the
 // program gave, a prompt's words, its caret before the extension, kept
-// from folder to folder; each folder leads with it, unnarrowed, and a
+// from folder to folder; the line is each folder's row Return saves by,
+// the name not listed again below, nothing narrowed by it, and a
 // name already there asks once, "Replace a.md? (y/n)", no saving nothing;
 // a name typed is saved by :w in the folder it's typed in, asking nothing,
 // and :w with a name already there asks once. Its commands are :sort,
@@ -42,7 +43,7 @@
 // until then; gathered with others, it's answered in the order gathered, and
 // one that can't be fetched keeps the launcher, saying why, until Return
 // again fetches it. Saving there, it holds only the folders a file can
-// be saved in, each leading with the name the line holds, a name already
+// be saved in, each line the row the name saves by, a name already
 // there asking once; the name typed is saved instead, and Return makes the
 // folder the place stages it in and answers the path there, closing the
 // launcher once it's made, the program that asked written beside it (the
@@ -239,6 +240,11 @@ ShellRoot {
 
     function rowsIn(path) {
         return chooser.rowsOf(path);
+    }
+
+    // The row a save's line is in the folder given: the name Return saves.
+    function lineIn(path) {
+        return chooser.folderRow(path).line();
     }
 
     function named(rows, name) {
@@ -536,9 +542,9 @@ ShellRoot {
         expect("saving, the field asks where, by the name given", fieldAsks() === "save a.md where?",
             fieldAsks());
         const rows = rowsIn(notes);
-        expect("saving leads with the name given, then the folders lately, then the rest",
-            names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding", names(rows));
-        const there = rows[0];
+        expect("saving, the name given is the line's alone, then the folders lately, then the rest",
+            names(rows) === "elsewhere, | sub, b.png, notes.txt, | Encoding", names(rows));
+        const there = lineIn(notes);
         there.run();
         const asked = launcher.asked[0];
         expect("a name already there asks once before Return saves over it",
@@ -555,8 +561,8 @@ ShellRoot {
         const sub = named(rows, "sub");
         launcher.enter(sub);
         expect("the name is kept from folder to folder", sub.words() === "new.md"
-            && rowsIn(`${notes}/sub`)[0].name === "new.md", `${sub.words()}`);
-        const typed = rowsIn(`${notes}/sub`)[0];
+            && lineIn(`${notes}/sub`).name === "new.md", `${sub.words()}`);
+        const typed = lineIn(`${notes}/sub`);
         expect("the name typed saves in the folder it's typed in", typed.verb === "save"
             && typed.side === "~/notes/sub", `${typed.verb} ${typed.side}`);
         launcher.open = false;
@@ -599,7 +605,7 @@ ShellRoot {
     function sorting() {
         const sort = command(notes, "sort");
         expect(":sort takes name, changed and size, each saying how", JSON.stringify(sort.args)
-            === JSON.stringify([{ value: "name", note: "alphabetical" },
+            === JSON.stringify([{ value: "name", note: "A to Z" },
                 { value: "changed", note: "newest first" }, { value: "size", note: "largest first" }])
             && sort.short === "sor" && sort.bang === true, JSON.stringify(sort));
         const depth = launcher.held.length;
@@ -639,8 +645,8 @@ ShellRoot {
     }
 
     // The folder a save is asked in gives the line the name it saves as,
-    // its caret before the extension, told each change, and lists every row
-    // it holds, led by the name, never narrowed by it.
+    // its caret before the extension, told each change, the line's own row
+    // the name, and lists every other row it holds, never narrowed by it.
     function naming(folder) {
         expect("saving, the line holds the name given, a prompt's words", folder.words() === "a.md"
             && typeof folder.worded === "function", folder.words());
@@ -648,15 +654,18 @@ ShellRoot {
             `${folder.caretIn("a.md")}`);
         folder.worded("new.md");
         const rows = folder.finds("new.md");
-        expect("a name typed leads, saved by Return, and narrows nothing",
-            names(rows) === "new.md, elsewhere, | sub, a.md, b.png, notes.txt, | Encoding"
-                && rows[0].verb === "save" && rows[0].side === "~/notes", names(rows));
-        expect("only the name's row says it names the line's words, so h and l step on the rest",
-            rows[0].names === true && rows.slice(1).every(row => row.names !== true),
+        const line = folder.line();
+        expect("a name typed is the line's row, saved by Return, and narrows nothing",
+            names(rows) === "elsewhere, | sub, a.md, b.png, notes.txt, | Encoding"
+                && line.name === "new.md" && line.verb === "save" && line.side === "~/notes",
+            `${line.name} ${line.verb} ${line.side}; ${names(rows)}`);
+        expect("only the line's row says it names the line's words, so h and l step on the rest",
+            line.names === true && rows.every(row => row.names !== true),
             rows.map(row => `${row.name}:${row.names}`).join(" "));
         folder.worded("sub");
-        expect("a folder's name gives nothing to save over", names(folder.finds("sub"))
-            === "elsewhere, | sub, a.md, b.png, notes.txt, | Encoding", names(folder.finds("sub")));
+        expect("a folder's name gives nothing to save over", folder.line() === null
+            && names(folder.finds("sub")) === "elsewhere, | sub, a.md, b.png, notes.txt, | Encoding",
+            names(folder.finds("sub")));
         folder.worded("new.md");
     }
 
@@ -817,25 +826,27 @@ ShellRoot {
         const mine = place.verbs()[0];
         launcher.enter(mine);
         const rows = mine.verbs();
-        expect("it leads with the name, apart from its folders", names(rows) === "report.pdf, | Plans",
-            names(rows));
+        const given = mine.line();
+        expect("its line is the name's row, its folders alone listed", names(rows) === "Plans"
+            && given.name === "report.pdf", `${given?.name}; ${names(rows)}`);
         const asked = launcher.asked.length;
-        rows[0].run();
-        expect("a name already there asks once", rows[0].verb === "save"
+        given.run();
+        expect("a name already there asks once", given.verb === "save"
             && launcher.asked.length === asked + 1
             && launcher.asked[asked].question === "Replace report.pdf? (y/n)",
-            `${rows[0].verb} ${JSON.stringify(launcher.asked)}`);
+            `${given.verb} ${JSON.stringify(launcher.asked)}`);
         launcher.asked[asked].no();
         const plans = named(rows, "Plans");
         launcher.enter(plans);
         expect("there too, the line holds the name", plans.words() === "report.pdf"
             && plans.caretIn("report.pdf") === 6, plans.words());
         plans.worded("new.md");
-        const typed = plans.finds("new.md");
+        const typed = plans.line();
         expect("the name typed is the file Return saves there, saying the folder",
-            names(typed) === "new.md" && typed[0].verb === "save" && typed[0].side === "Plans"
-                && typed[0].stays === true, `${names(typed)} ${typed[0]?.side} ${typed[0]?.stays}`);
-        typed[0].run();
+            typed.name === "new.md" && typed.verb === "save" && typed.side === "Plans"
+                && typed.stays === true && plans.finds("new.md").length === 0,
+            `${typed.name} ${typed.side} ${typed.stays}`);
+        typed.run();
         expect("the launcher stays while the folder is made", launcher.open && answers.length === 8,
             `${launcher.open}, ${answers.length} answers`);
     }
@@ -843,8 +854,8 @@ ShellRoot {
     function savingForTheShell() {
         expect("asked for a local folder alone, no place kept elsewhere is offered",
             chooser.places.length === 0, names(chooser.places));
-        const given = rowsIn(notes)[0];
-        expect("asked from inside the shell, it leads with the name given, saved by Return",
+        const given = lineIn(notes);
+        expect("asked from inside the shell, its line is the name given, saved by Return",
             given.name === "copy.pdf" && given.verb === "save", `${given.name} ${given.verb}`);
         launcher.open = false;
         given.run();

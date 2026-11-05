@@ -306,6 +306,8 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     give the keys back to the rows, the selection where it was. Its pictures at 1 and both of
     Joel's scales, on the title and down in the words, are for a person to judge the rule and
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
+    There it waits until the keys go in and then takes the card's place, its title on one line,
+    rather than squeezed beside it until a word breaks (VKCF3Z, 2026-11-05: "Depl/oy/log").
     """
     page = InTheDrawer(desktop)
     came = page.into()
@@ -326,7 +328,27 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         desktop.close_launcher()
         desktop.as_account(f"niri msg output winit scale {scale}")
         page.open()
+        # The card stays inside the screen however small, its rows fewer (VKCF3Z, 2026-11-05).
+        card = desktop.showing()["card"]
+        assert card["top"] > 0, f"at {scale} it's off the top: {card}"
+        assert card["foot"] < card["screen"], f"at {scale} it's off the bottom: {card}"
+        assert card["left"] > 0, f"at {scale} it's off the left: {card}"
+        assert card["right"] < card["across"], f"at {scale} it's off the right: {card}"
+        rows = page.drawer()
+        assert scale != "2" or rows["over"], f"at 2 the drawer is squeezed beside: {rows}"
+        assert rows["over"] != rows["shown"], f"at {scale} the drawer is out as it lies: {rows}"
         at = page.into()
+        inside = page.drawer()
+        lines = inside["lines"]
+        assert lines["title"] == lines["titleLast"], f"at {scale} the title breaks: {inside}"
+        if inside["over"]:
+            assert inside["shown"], f"at {scale} the drawer isn't shown inside: {inside}"
+            assert inside["at"] == inside["cardAt"], f"at {scale} it's off the card: {inside}"
+            assert inside["width"] == inside["cardWidth"], f"at {scale} it's narrower: {inside}"
+            # The card's foot stays in sight under it, saying how to come back.
+            assert inside["height"] < inside["cardHeight"], (
+                f"at {scale} it hides the foot: {inside}"
+            )
         named = scale.replace(".", "-")
         desktop.photograph(f"launcher-drawer-keys-at-{named}")
 

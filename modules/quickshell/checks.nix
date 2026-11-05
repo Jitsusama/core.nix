@@ -1530,6 +1530,15 @@ onLinux {
           property bool refused: false
           property var reading: (${builtins.readFile ../../tests/timekeeping-reading.json})
         ''} Timekeeping.qml
+        cp ${singleton "Calendars.qml" ''
+          property string asked: ""
+          property bool refused: false
+          // A day's reading as timekeeping gives it, said of today, whichever
+          // day the check runs on.
+          property var reading: Object.assign((${builtins.readFile ./timekeeping/calendars-reading.json}),
+            { day: Qt.formatDate(new Date(), "yyyy-MM-dd") })
+          function ask(day) { asked = day; }
+        ''} Calendars.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo

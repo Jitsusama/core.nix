@@ -23,7 +23,8 @@ wouldn't say: a program's or the system's own name (niri, PipeWire, the
 kernel), a name that reads its value first ("10 bit" rather than "Colour
 Depth"), a unit written another way than the launcher's ("10-bit", "KB",
 "Mbit/s", "1000 a second" for "1000 Hz"), a thing's words said beside it
-in capitals, or a verb longer than a word but for a turn ("turn off").
+in capitals, a verb longer than a word but for a turn ("turn off"), or a
+forgetting act wearing a thing's glyph rather than an ending act's.
 And so does the check itself, should one of those last rules stop refusing
 what it's there for, or refuse what sits beside it.
 """
@@ -264,6 +265,8 @@ STRAY_UNITS = [
 # whole (Launcher.qml's `phrasal`).
 TURN = "turn"
 PHRASAL = {"in", "out", "back"}
+FORGET = "forget"
+FORGETTING = {"forget", "dismiss"}
 
 
 def shown(entry: Entry) -> list[tuple[str, str]]:
@@ -307,6 +310,12 @@ def unsaid(vocabulary: Entry) -> list[str]:
             whole = len(verb) > 1 and verb[1] in PHRASAL and not verb[2:]
             if len(verb) > 1 and verb[0] != TURN and not whole:
                 out.append(f"{entry['id']}'s verb {' '.join(verb)!r} is more than a word.")
+            # An act that forgets ends what it's on, so it wears an ending
+            # act's glyph, as d's rows do, never the glyph of what it
+            # forgets (VKCF3Z: the picker's Forget Them wore a file's).
+            glyph = state.get("glyph")
+            if verb == [FORGET] and glyph is not None and glyph not in FORGETTING:
+                out.append(f"{entry['id']} forgets wearing {glyph}, not an ending act's glyph.")
     return out
 
 
@@ -330,6 +339,10 @@ REFUSED: list[tuple[str, Entry]] = [
     ),
     ("a verb of two words", {"id": "bad:verb", "name": "Join", "verb": "join now"}),
     (
+        "a forgetting act in a thing's glyph",
+        {"id": "bad:forget", "name": "Forget Them", "verb": "forget", "glyph": "marked"},
+    ),
+    (
         "a drawer's words not a sentence",
         {"id": "bad:tells", "name": "Lid", "tells": {"shut": "shut"}},
     ),
@@ -341,7 +354,7 @@ REFUSED_COMMAND: Entry = {"id": "bad:command", "start": "", "form": "ip", "says"
 # What sits beside each rule's edge and isn't refused: a program's name
 # hidden, or inside another word; a name with its value after; units as
 # the launcher writes them; an initialism at the start of a side word; and
-# a turn, the one verb of two words.
+# a turn, the one verb of two words; and forgetting in either ending glyph.
 ALLOWED: Entry = {
     "things": [
         {"id": "good:depth", "name": "Colour Depth", "said": "10 bit", "hidden": ["niri"]},
@@ -359,6 +372,8 @@ ALLOWED: Entry = {
             "states": {"wired": {"said": "USB 3", "verb": "copy"}},
         },
         {"id": "good:tells", "name": "Lid", "tells": {"shut": "Closed since {time}."}},
+        {"id": "good:forget", "name": "Forget It", "verb": "forget", "glyph": "dismiss"},
+        {"id": "good:clear", "name": "Forget the Clipboard", "verb": "forget", "glyph": "forget"},
     ],
     "commands": [{"id": "good:command", "start": "", "form": "ip", "says": "your addresses"}],
 }

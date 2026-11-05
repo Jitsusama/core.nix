@@ -1,0 +1,149 @@
+# The day each solar term begins from 2025 to 2030, in Hong Kong's time,
+# UTC+8 as China's is, by its English name there: the Hong Kong
+# Observatory's Gregorian-Lunar Calendar Conversion Tables,
+# https://www.hko.gov.hk/en/gts/time/calendar/text/files/T2025e.txt and
+# the years after, read 2026-11-05.
+2025-01-05 Moderate Cold
+2025-01-20 Severe Cold
+2025-02-03 Spring Commences
+2025-02-18 Spring Showers
+2025-03-05 Insects Waken
+2025-03-20 Vernal Equinox
+2025-04-04 Bright & Clear
+2025-04-20 Corn Rain
+2025-05-05 Summer Commences
+2025-05-21 Corn Forms
+2025-06-05 Corn on Ear
+2025-06-21 Summer Solstice
+2025-07-07 Moderate Heat
+2025-07-22 Great Heat
+2025-08-07 Autumn Commences
+2025-08-23 End of Heat
+2025-09-07 White Dew
+2025-09-23 Autumnal Equinox
+2025-10-08 Cold Dew
+2025-10-23 Frost
+2025-11-07 Winter Commences
+2025-11-22 Light Snow
+2025-12-07 Heavy Snow
+2025-12-21 Winter Solstice
+2026-01-05 Moderate Cold
+2026-01-20 Severe Cold
+2026-02-04 Spring Commences
+2026-02-18 Spring Showers
+2026-03-05 Insects Waken
+2026-03-20 Vernal Equinox
+2026-04-05 Bright & Clear
+2026-04-20 Corn Rain
+2026-05-05 Summer Commences
+2026-05-21 Corn Forms
+2026-06-05 Corn on Ear
+2026-06-21 Summer Solstice
+2026-07-07 Moderate Heat
+2026-07-23 Great Heat
+2026-08-07 Autumn Commences
+2026-08-23 End of Heat
+2026-09-07 White Dew
+2026-09-23 Autumnal Equinox
+2026-10-08 Cold Dew
+2026-10-23 Frost
+2026-11-07 Winter Commences
+2026-11-22 Light Snow
+2026-12-07 Heavy Snow
+2026-12-22 Winter Solstice
+2027-01-05 Moderate Cold
+2027-01-20 Severe Cold
+2027-02-04 Spring Commences
+2027-02-19 Spring Showers
+2027-03-06 Insects Waken
+2027-03-21 Vernal Equinox
+2027-04-05 Bright & Clear
+2027-04-20 Corn Rain
+2027-05-06 Summer Commences
+2027-05-21 Corn Forms
+2027-06-06 Corn on Ear
+2027-06-21 Summer Solstice
+2027-07-07 Moderate Heat
+2027-07-23 Great Heat
+2027-08-08 Autumn Commences
+2027-08-23 End of Heat
+2027-09-08 White Dew
+2027-09-23 Autumnal Equinox
+2027-10-08 Cold Dew
+2027-10-23 Frost
+2027-11-07 Winter Commences
+2027-11-22 Light Snow
+2027-12-07 Heavy Snow
+2027-12-22 Winter Solstice
+2028-01-06 Moderate Cold
+2028-01-20 Severe Cold
+2028-02-04 Spring Commences
+2028-02-19 Spring Showers
+2028-03-05 Insects Waken
+2028-03-20 Vernal Equinox
+2028-04-04 Bright & Clear
+2028-04-19 Corn Rain
+2028-05-05 Summer Commences
+2028-05-20 Corn Forms
+2028-06-05 Corn on Ear
+2028-06-21 Summer Solstice
+2028-07-06 Moderate Heat
+2028-07-22 Great Heat
+2028-08-07 Autumn Commences
+2028-08-22 End of Heat
+2028-09-07 White Dew
+2028-09-22 Autumnal Equinox
+2028-10-08 Cold Dew
+2028-10-23 Frost
+2028-11-07 Winter Commences
+2028-11-22 Light Snow
+2028-12-06 Heavy Snow
+2028-12-21 Winter Solstice
+2029-01-05 Moderate Cold
+2029-01-20 Severe Cold
+2029-02-03 Spring Commences
+2029-02-18 Spring Showers
+2029-03-05 Insects Waken
+2029-03-20 Vernal Equinox
+2029-04-04 Bright & Clear
+2029-04-20 Corn Rain
+2029-05-05 Summer Commences
+2029-05-21 Corn Forms
+2029-06-05 Corn on Ear
+2029-06-21 Summer Solstice
+2029-07-07 Moderate Heat
+2029-07-22 Great Heat
+2029-08-07 Autumn Commences
+2029-08-23 End of Heat
+2029-09-07 White Dew
+2029-09-23 Autumnal Equinox
+2029-10-08 Cold Dew
+2029-10-23 Frost
+2029-11-07 Winter Commences
+2029-11-22 Light Snow
+2029-12-07 Heavy Snow
+2029-12-21 Winter Solstice
+2030-01-05 Moderate Cold
+2030-01-20 Severe Cold
+2030-02-04 Spring Commences
+2030-02-18 Spring Showers
+2030-03-05 Insects Waken
+2030-03-20 Vernal Equinox
+2030-04-05 Bright & Clear
+2030-04-20 Corn Rain
+2030-05-05 Summer Commences
+2030-05-21 Corn Forms
+2030-06-05 Corn on Ear
+2030-06-21 Summer Solstice
+2030-07-07 Moderate Heat
+2030-07-23 Great Heat
+2030-08-07 Autumn Commences
+2030-08-23 End of Heat
+2030-09-07 White Dew
+2030-09-23 Autumnal Equinox
+2030-10-08 Cold Dew
+2030-10-23 Frost
+2030-11-07 Winter Commences
+2030-11-22 Light Snow
+2030-12-07 Heavy Snow
+2030-12-22 Winter Solstice

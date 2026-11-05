@@ -1,6 +1,7 @@
-# How the clock is kept, for the launcher's Time: asks chronyd over its
-# command port and answers the shell over varlink (src/main.rs says what and
-# how).
+# How the clock is kept and what day it is in other calendars, for the
+# launcher's Time and Date: asks chronyd over its command port, reckons the
+# calendars with ICU4X, and answers the shell over varlink (src/main.rs says
+# what and how).
 [package]
 name = "timekeeping"
 version = "0.1.0"
@@ -10,8 +11,19 @@ publish = false
 
 [dependencies]
 futures-util = { version = "0.3", default-features = false }
+# The Chinese, Japanese, Hebrew and Islamic (Umm al-Qura) calendars, and
+# each one's date written in its own script, from Unicode's own data built
+# in, so nothing is read at run time.
+icu_calendar = "2.4"
+icu_datetime = "2.4"
+icu_locale = "2.4"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.53", features = ["macros", "net", "rt", "time"] }
 # zlink logs through tracing, which says nothing with no subscriber, so the
 # reader keeps to its own journal lines.
 zlink = { version = "0.7", default-features = false, features = ["service", "tokio", "tracing"] }
+
+[dev-dependencies]
+# Reads the day the shell's checks stand in for the reader with, to hold it
+# to what the reader says.
+serde_json = "1"

@@ -49,7 +49,8 @@
 # does, each in Vim's help notation with its name and key: typing narrows
 # it, Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P choose a line and
 # write it in, Ctrl+Y takes it, Ctrl+E puts the menu away, and after :e
-# and a space it lists the files. The same table, as
+# and a space it lists the files. :his lists the lines run, Return running
+# one again, and @: runs the last. The same table, as
 # the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
@@ -386,6 +387,7 @@ let
     (onCommand "previous-row" "Ctrl+P" "Choose the command before in the menu")
     (onCommand "take-name" "Ctrl+Y" "Take the command chosen")
     (onCommand "menu-away" "Ctrl+E" "Put the menu away")
+    (commands "again-command" "@ :" "Run the last command again")
   ];
 in
 {
