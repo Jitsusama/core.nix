@@ -9,12 +9,12 @@ language has, and what follows it on the line where it needs more: an
 argument, as :new . or :answer yes, which for :set is the whole word the
 row sets, since switches and levels are options, as :set nowifi and :set
 volume+=5; a bang, the other way, as :skip! goes back and :w! replaces;
-or a range of every row, %, as :%forg, only on an act that takes rows. Fails, naming each, on a verb with no command or one the
-language hasn't got, a :set with nothing to set, an argument with spaces
-around it, a range on an act that takes none, and two verbs on one row
-that the line can't tell apart, since
-two acts on a row differ by what follows the command, never by order
-(VKCF3Z's spec, The Command Line). And so does the check itself, should a
+or a range of every row, %, as :%forg, only on an act that takes rows.
+Fails, naming each, on a verb with no command or one the language hasn't
+got, a :set with nothing to set, an argument with spaces around it, a
+range on an act that takes none, and two verbs on one row that the line
+can't tell apart, since two acts on a row differ by what follows the
+command, never by order (VKCF3Z's spec, The Command Line). And so does the check itself, should a
 rule stop refusing what it's there for, or refuse what sits beside it.
 """
 
