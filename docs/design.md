@@ -1695,8 +1695,11 @@ behaviour of the nearest kind of Vim buffer, never half of one, and a key
 that departs from Vim is in the Departures below with its reason. No such
 call goes to Joel: it's already made. His Neovim's values are kept: a key
 that could begin a pair waits his timeoutlen, 300 ms; which-key lists what
-can follow after 200 ms; the mode is named in the accent, lowercase, only
-when it isn't normal; and what's copied flashes for 200 ms.
+can follow after 200 ms; the mode is named in the accent when it isn't
+normal; and what's copied flashes for 200 ms. Where his status line names
+it in a word, ours name it in three capitals at the foot's start (Joel,
+2026-11-05: "the mode should be 3 letters, in caps, and in a place where
+they are more obvious and not lost with other things").
 
 The surfaces move to these keys a piece at a time. Until a surface's piece
 lands, its own paragraphs above say what it does today; where they
@@ -1730,8 +1733,8 @@ separate and have separate purposes"):
 | normal | standing on a thing and acting on it | no caret; the cursor row's ground; relative numbers in the gutter |
 | the find line, `/` | typing what to find, the rows narrowing | the accent's `/` at its start; the mono's bar caret |
 | the command line, `:` | naming a command from a menu of every one | the accent's `:`; the bar caret; the menu |
-| insert | writing a prompt's words | the bar caret; "insert" |
-| visual, `v` `V` | choosing several things | the selection's ground; "visual line · 3" |
+| insert | writing a prompt's words | the bar caret; INS |
+| visual, `v` `V` | choosing several things | the selection's ground; VIS, and "3 chosen" |
 | operator-pending | an operator waiting for what it acts on | the cursor row tinted; "d · disconnect Home-5G" |
 
 This is Vim's own split: `/` and `:` aren't insert in Vim but its command
@@ -1851,7 +1854,7 @@ greeter.
 **Visual** works wherever there are rows, cards, files, pictures or words
 (Joel, 2026-11-04: "imaging visual mode a number of notfications and then
 dd to mark them as read"). On a list a row has no letters to choose among,
-so v is V and the mode word says "visual line · 3"; on a page v takes
+so v is V, the mark says VIS and the mode word "3 chosen"; on a page v takes
 characters. o goes to the other end, gv brings the last back, and : gives
 :'<,'>. The same operator pressed again within 300 ms of a visual
 operator is taken with it, so V j j d d acts on three. While a surface is
@@ -1933,7 +1936,12 @@ the letter, "l in" and "h out", and the key list shows both.
 
 His other groups have nothing to act on here, and none is faked.
 
-**The foot, the mode word and the key list.** The foot gives the status
+**The foot, the mode mark, the mode word and the key list.** The foot
+starts with the mode's mark, three capitals at Label, NOR, FND, CMD, INS
+or VIS: muted in normal and in the accent otherwise, first where the eye
+starts the line, as his status line starts with its mode, and every mark
+the same width, so nothing beside it moves. Pending, a prompt's normal and
+the key list are NOR. It then gives the status
 facts, the mode word's room, then the cursor row's keys in this mode by
 letter and lowercase verb, "d disconnect · Space ? keys · ↵ go to": Return
 at the right end, as Joel chose, and Space ? just before it, so the way to
