@@ -20,9 +20,15 @@ use crate::watch::{Bad, Changed, Merged, World};
 /// Where the quarantine list is in the repository.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
 
-/// The longest a VM test may run before it's stopped and counts as failed:
-/// the slowest pass in well under an hour on a builder of its own.
+/// The longest a VM test may run before it's stopped, a stall rather than
+/// a failure: the slowest pass in well under an hour on a builder of its
+/// own.
 const LONGEST: Duration = Duration::from_hours(2);
+
+/// How long a VM test's log may stay silent before it's stopped as a
+/// stall. A run built with `-L` prints as it goes, and a build that hung
+/// on the builder once sat silent for over an hour.
+const SILENT: Duration = Duration::from_mins(30);
 
 /// The world as the net finds it.
 pub struct Real {
@@ -329,10 +335,15 @@ impl World for Real {
             .spawn()
             .ok()?;
         let began = Instant::now();
+        let (mut written, mut heard) = (0, Instant::now());
         loop {
+            let now_written = fs::metadata(log).map_or(0, |meta| meta.len());
+            if now_written != written {
+                (written, heard) = (now_written, Instant::now());
+            }
             match child.try_wait() {
                 Ok(Some(status)) => return status.code(),
-                Ok(None) if began.elapsed() > LONGEST => {
+                Ok(None) if began.elapsed() > LONGEST || heard.elapsed() > SILENT => {
                     let _ = child.kill();
                     let _ = child.wait();
                     return None;
