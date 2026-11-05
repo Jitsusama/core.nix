@@ -118,6 +118,11 @@ ShellRoot {
                     .map(part => `link:bluetooth:${at}:${part}`))
                 .concat([`bluetooth:${at}:trusted`, `bluetooth:${at}:address`]).join(","),
             heard.map(row => row.key).join(","));
+        // d ends a joined device by disconnecting it, as the spec's table
+        // says, and leaves forgetting it, which can't be put back, to a
+        // command named.
+        expect("d disconnects, never forgets", heard[0].act === "ending"
+            && heard[1].act === undefined, `${heard[0].act}, ${heard[1].act}`);
         const parts = heard.slice(2);
         expect("a classic link's parts", said(parts) === ["Battery=15%", "Signal=in range",
             "Link Quality=90%", "Channels=61 of 79 clear",
