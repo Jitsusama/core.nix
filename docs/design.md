@@ -1374,7 +1374,10 @@ works the same way everywhere.
   centre, the name on the first row's baseline (the serif's own line box
   would set it 1.72 lower), and the rest on a pitch of 24 (xl), half a
   row, so each line falls on a row's baseline or halfway between two,
-  one empty line between the name, the facts and the words. Home's Now
+  one empty line between the name, the facts and the words. A name that
+  wraps sets its lines 32 (xxl) apart, a heading's leading tighter than
+  the pitch, so it reads as one title, and its block ends on the next
+  whole line of the pitch, so what follows stays on the card's. Home's Now
   has a plate of the moment instead (look 3): the date as its eyebrow;
   the time at Display, in the mono as the lock's clock is, its capitals
   centred on Now's row, and its seconds counting after it at Note; what

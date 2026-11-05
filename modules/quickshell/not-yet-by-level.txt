@@ -1,6 +1,6 @@
 # The shell's files that still set their type by step rather than by level,
 # by path under modules/, which type-is-set-by-level lets through. Each piece
-# of the type hierarchy that moves a file takes it off, and the check fails
+# of the type hierarchy that moved a file took it off, and the check fails
 # on a file listed here that no longer needs to be, so the list only
-# shrinks; the last piece empties it.
-dictation/Speaking.qml
+# shrinks. The last piece emptied it: every file now reads a level, and a
+# new file must read one too, never be listed here.
