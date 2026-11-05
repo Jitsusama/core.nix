@@ -142,7 +142,7 @@ pub enum Act {
     CopyToParagraphEnd,
     /// A change, which a page refuses as a buffer Vim can't modify does,
     /// saying E21.
-    Change(Change),
+    Change(Edit),
     /// Escape at rest: nothing was in progress. In a window it does
     /// nothing, as Vim's does, so a habitual second Escape never closes a
     /// page or puts the search's marks away; while selecting, it ends the
@@ -189,7 +189,7 @@ impl Act {
 /// Vim's changes, which a page has only to refuse: dd, cc and S, d and c
 /// with their motion or on a selection, x and p.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Change {
+pub enum Edit {
     Ending,
     ChangeLine,
     DeleteMotion,
@@ -295,10 +295,10 @@ const SPOKEN: &[(&str, Act)] = &[
     ("copy-paragraph", Act::CopyParagraph),
     ("copy-a-paragraph", Act::CopyAParagraph),
     ("copy-to-paragraph-end", Act::CopyToParagraphEnd),
-    ("ending", Act::Change(Change::Ending)),
-    ("change-line", Act::Change(Change::ChangeLine)),
-    ("delete-character", Act::Change(Change::DeleteCharacter)),
-    ("put-after", Act::Change(Change::PutAfter)),
+    ("ending", Act::Change(Edit::Ending)),
+    ("change-line", Act::Change(Edit::ChangeLine)),
+    ("delete-character", Act::Change(Edit::DeleteCharacter)),
+    ("put-after", Act::Change(Edit::PutAfter)),
     ("close", Act::Close),
     ("show-keys", Act::ShowKeys),
 ];
@@ -312,8 +312,8 @@ const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act:
 /// The acts whose key takes a motion after it, as Vim's operators do, or
 /// acts on a selection at once, by their names.
 const OPERATORS: &[(&str, Act)] = &[
-    ("delete-motion", Act::Change(Change::DeleteMotion)),
-    ("change-motion", Act::Change(Change::ChangeMotion)),
+    ("delete-motion", Act::Change(Edit::DeleteMotion)),
+    ("change-motion", Act::Change(Edit::ChangeMotion)),
 ];
 
 /// The reader's own keys: a browser's zoom, at rest and while selecting,
@@ -1284,7 +1284,7 @@ mod tests {
 
     #[test]
     fn a_change_is_refused_once_it_is_whole() {
-        use Change::{ChangeLine, ChangeMotion, DeleteCharacter, DeleteMotion, Ending, PutAfter};
+        use Edit::{ChangeLine, ChangeMotion, DeleteCharacter, DeleteMotion, Ending, PutAfter};
         let mut machine = Machine::default();
         let refused = |change| (Act::Change(change), None);
         assert_eq!(typed(&mut machine, "x"), [refused(DeleteCharacter)]);
@@ -1315,7 +1315,7 @@ mod tests {
 
     #[test]
     fn a_selection_refuses_d_c_and_p_at_once() {
-        use Change::{ChangeMotion, DeleteMotion, PutAfter};
+        use Edit::{ChangeMotion, DeleteMotion, PutAfter};
         let mut machine = Machine::default();
         assert_eq!(
             typed_in(&mut machine, "dcp", true),
