@@ -8,7 +8,7 @@
 // it shows in its mode, the first alone where `firsts` says, since
 // Return's with Shift and Ctrl are told apart where they're done. A line's
 // `also` are keys no act's row holds, as a count and the : line's. Escape
-// isn't listed, since it always steps back.
+// isn't listed, since it always lets go: what's begun, then the launcher.
 const normal = [
     { name: "rows", acts: ["next", "previous"] },
     { name: "ends", acts: ["first", "last"] },
