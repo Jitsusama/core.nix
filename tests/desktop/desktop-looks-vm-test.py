@@ -53,9 +53,10 @@ NEAR = 0.02
 # A Title's pitch: how far the title sits under the eyebrow, and its lines apart when its name
 # wraps, tighter than two of the plate's, so the name reads as one heading.
 TITLE_LEADING = 32
-# How far the text keeps from the plate's frame on every side, its foot included: an inset and a
-# step, 4 and 16, inside the border.
-INSIDE = 20
+# How far the text keeps from the plate's frame on every side, its foot included: the inset rung,
+# from the frame's inside edge, its hairline border left out, to the ink.
+INSET = 24
+BORDER = 1
 # A row's words stand a step from its name (Theme.space.m), in the theme's serif, and on its
 # baseline to half a device pixel.
 WORDS_GAP = 12
@@ -144,6 +145,20 @@ def things_apart(firsts: list[float], wrapped: bool) -> bool:
         later - earlier > apart and on_the_pitch(later - apart, earlier)
         for earlier, later in pairwise(firsts)
     )
+
+
+def bottom_set(drawer: Json, lines: list[float]) -> bool:
+    """Say whether the last of these lines shown keeps the inset above the frame's bottom.
+
+    Its baseline stands at least the inset above the frame's inside edge, and where more waits
+    below, less than the widest gap to the next line further (a group's, two pitches), since the
+    next whole line would have fit there.
+    """
+    shown = [line for line in lines if line < drawer["foot"]]
+    if not shown:
+        return False
+    room = drawer["height"] - BORDER - shown[-1]
+    return room >= INSET - NEAR and (not drawer["more"] or room < INSET + 2 * PITCH + NEAR)
 
 
 def room_beside_the_card(desktop: Desktop) -> int:
@@ -375,6 +390,9 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     if scale == "1.5":
         assert drawer["factsWrapped"] == 0, f"at 1.5 {drawer['factsWrapped']} keys wrap: {drawer}"
     assert drawer["more"] or drawer["lines"]["facts"][-1] < drawer["foot"], drawer
+    assert bottom_set(drawer, drawer["lines"]["facts"]), (
+        f"at {scale} the keys' last line isn't the inset above the foot: {drawer}"
+    )
     desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
@@ -986,8 +1004,8 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         assert drawer["more"] or facts[-1] < drawer["foot"], (
             f"at {scale} a fact past the foot can't be scrolled to: {drawer}"
         )
-        assert drawer["height"] - drawer["foot"] >= INSIDE - NEAR, (
-            f"at {scale} the last line runs into the plate's foot: {drawer}"
+        assert bottom_set(drawer, facts), (
+            f"at {scale} the last line isn't the inset above the plate's foot: {drawer}"
         )
         desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
         desktop.close_launcher()

@@ -1138,12 +1138,6 @@ Floating {
     function unbroken(words) {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0");
     }
-    // Where the first line's box after the head begins, down from the
-    // content's top: the moment's first row's, or the body's, whose
-    // whole lines the view ends on.
-    readonly property real firstLine: drawer.moment
-        ? drawer.rowLine - Theme.border - drawer.pitch / 2
-        : drawer.bodyBase - Theme.border - drawer.pitch / 2 - drawer.dropped
 
     // The time, read as it turns each second while the moment shows.
     SystemClock {
@@ -1157,13 +1151,15 @@ Floating {
         font: timeText.font
     }
 
-    // How far down the view may show, from its top: to the last whole line
-    // that keeps its inset and a step from the frame below, as the text
-    // does on every other side, so nothing runs into the foot of the plate;
-    // its keys, gone into, bring up the rest (VKCF3Z, 2026-11-03).
-    readonly property real viewRoom: drawer.firstLine + Math.max(0, Math.floor((drawer.tall
-        - 2 * Theme.border - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch))
-        * drawer.pitch
+    // How far down the view may show, from its top: to the foot of a line
+    // whose baseline stands the inset above the frame's inside bottom, as
+    // the text keeps it on every other side, so the bottom is set rather
+    // than what whole lines leave. The last line shown is the last whole
+    // one there, which shares the card's foot baseline when it falls on
+    // that beat; its keys, gone into, bring up the rest (VKCF3Z,
+    // 2026-11-05).
+    readonly property real viewRoom: drawer.tall - 2 * Theme.border - Theme.space.rung.inset
+        + drawer.pitch / 2 - drawer.dropped
     // The top of every line's box it lays on the pitch past its title, down
     // the content: the facts', the moment's, the preview's and the words'.
     // Each a fact takes as { top, bottom }, all its lines, a heading held
@@ -1229,11 +1225,15 @@ Floating {
 
         Item {
             id: column
-            // The letters an inset and a step from the frame on either side,
-            // as the card's beside it are.
-            x: Theme.inset + Theme.space.l
+            // The letters the inset from the frame's inside edge on either
+            // side, as on every frame. Its width is what the screen leaves
+            // beside the card (Launcher.qml's drawerWidth), so the card never
+            // moves as it comes and goes; a plate whose lines are short
+            // leaves that room at their right, given by the screen rather
+            // than taken by the plate.
+            x: Theme.space.rung.inset
             width: view.width - 2 * x
-            height: flow.y + flow.height + Theme.inset + Theme.space.l
+            height: flow.y + flow.height + Theme.space.rung.inset
 
             // V's bands, under the letters: the selection's ground while it
             // chooses, and the accent while y flashes them, as his Neovim's
