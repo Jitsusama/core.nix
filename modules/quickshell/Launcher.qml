@@ -2017,19 +2017,39 @@ Scope {
             keys.push([hintKey("into"), hints.in ?? ""]);
         if (held.length > 0)
             keys.push([hintKey("out"), hints.out ?? ""]);
+        keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
         keys.push([hintKey("keys"), hints.keys ?? ""]);
         return keys;
     }
 
-    // A key as the foot names it: the first the table gives an act in
-    // normal, drawn as the key list draws it, so a hint names the key that
-    // does what it says.
-    function hintKey(act) {
+    // A key as the foot names it: the first the table gives an act in a
+    // mode, normal unless said, drawn as the key list draws it, so a hint
+    // names the key that does what it says.
+    function hintKey(act, mode) {
         const row = QueryKeys.table.find(one => one.act === act
-            && QueryKeys.inMode(one, "normal"));
+            && QueryKeys.inMode(one, mode ?? "normal"));
         return row ? ListedKeys.sequenceFace(row.keys[0]) : "";
+    }
+
+    // d and y where the row has an ending or a copy that its Return isn't,
+    // d by the ending's own verb, as docs/design.md's foot says "d
+    // disconnect", each by the operator's key (Operators.operators). Only
+    // the one row's actions are read, as pendingSaid reads them.
+    function operatorKeys(choice) {
+        const actions = actionsOf(choice);
+        const ending = Operators.endingOf(choice, actions);
+        const copy = Operators.copyOf(choice, actions,
+            one => verbOf(one) === "copy" && !!one.run);
+        const keyOf = act => Object.keys(Operators.operators)
+            .find(key => Operators.operators[key] === act) ?? "";
+        const keys = [];
+        if (ending !== null && ending !== choice)
+            keys.push([keyOf("ending"), verbOf(ending)]);
+        if (copy && copy !== choice)
+            keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
+        return keys;
     }
 
     // A word the foot says for a key, in place of the keys, until the next

@@ -6695,6 +6695,7 @@
       "in": "in",
       "out": "out",
       "commands": "commands",
+      "copy": "copy",
       "keys": "keys",
       "notHere": "not here",
       "quit": "does nothing",
