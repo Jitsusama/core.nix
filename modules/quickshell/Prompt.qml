@@ -555,9 +555,6 @@ Item {
         case "out":
             prompt.backward();
             break;
-        case "dismiss":
-            prompt.cancelled();
-            break;
         case "ending":
         case "copy":
             prompt.operated(read.act, read.count, read.motion);
@@ -1027,7 +1024,8 @@ Item {
         // each repeat would do it again, a setting turned on and off.
         // Qt calls these before Keys.onPressed, so a modal line hands them
         // to its table here, or Escape would close the launcher from
-        // insert and Tab would complete rather than move.
+        // insert, where it only leaves for normal, and Tab would complete
+        // rather than move.
         Keys.onReturnPressed: event => prompt.modal ? prompt.tabled(event)
             : prompt.returned(event)
         Keys.onEnterPressed: event => prompt.modal ? prompt.tabled(event)

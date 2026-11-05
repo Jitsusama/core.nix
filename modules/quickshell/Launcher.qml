@@ -5426,8 +5426,8 @@ Scope {
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
-    // straight into, where normal's Escape at rest closes it, as it does at
-    // home, rather than stepping out to a home it never showed.
+    // straight into, where :q closes it, as it does at home, rather than
+    // stepping out to a home it never showed.
     property int homeDepth: 0
 
     onOpenChanged: {
