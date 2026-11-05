@@ -205,8 +205,8 @@ or a copy, can be opened, copied or forgotten.
 | row | one thing in a place | | |
 | home | the launcher's first place: Now, Agents, Programs, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
-| field | where Joel types, at the top of every place | | |
-| back | going up one place, to the row he was on | | the ← key |
+| field | the line at the top of every place: the find line, or the command line in its place | | |
+| back | going up one place, to the row he was on, with h, - or Backspace | | the `out` act |
 | action | what a row can do: the same set for every row of its kind | verb | |
 | go to | the action moving to something already open, such as a window or a session, a row named Go To with where at its side | | |
 | open | the action starting something, such as a program or a file | | |
@@ -340,6 +340,22 @@ shortcuts are listed inside it.
 | key language | the one set of keys every surface of ours speaks, Vim's as Joel's Neovim has it | | `modules/keys/language.toml` |
 | act | one thing the key language's keys do, named once, as down or close | | `acts.<name>` |
 | surface | a program of ours keys act on, of one or more kinds: field, list, page or player | | `jitsusama.surfaces` |
+| mode | what keys do at a moment, each with one purpose: normal, the find line, the command line, insert, visual or an operator waiting | | `modes` |
+| normal | the mode standing on a thing and acting on it, where nothing types | | |
+| find line | the / line that narrows a list as it's typed | | the `find` mode |
+| search | a page's /, moving to a match and hiding nothing | | |
+| command line | the : line, where a command is named | | the `command` mode |
+| menu | what the command line lists: every command the cursor row, the selection or the surface takes | | |
+| insert | the mode writing a prompt's words | | |
+| prompt | a line of words written to be handed over: a reply, a new name, a save name | | the `prompt` kind |
+| secret | a one-line password, with no modes | | the `secret` kind |
+| cursor row | the one row normal stands on | | |
+| visual | the mode choosing several things | | |
+| selection | what visual has chosen | | |
+| gathered | files collected across folders for one answer, with :arga | | the arglist |
+| done | a notice forgotten, marked read first where its sender offers it | | |
+| leader | Space, starting a sequence of keys in normal and visual | | `mapleader` |
+| mark | a place kept under a letter, set with m and gone back to with ' | | |
 
 ## Security
 

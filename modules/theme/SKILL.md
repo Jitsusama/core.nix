@@ -180,8 +180,17 @@ constrain".
   motion and search and shit everywhere a list can come up. i think i want
   everything modal"; and of the reader, "should feel like we are using vi
   in every way that makes sense" (2026-11-04). Every list and text box has
-  vi's modes, a field opening in insert; every app of ours reads its keys
-  from one key language, checked, as docs/design.md's Vi's Keys says.
+  vi's modes; every app of ours reads its keys from one key language,
+  checked, as docs/design.md's Vi's Keys says.
+- **A mode doing half of another's job.** "it seems like insert has some
+  command mode functionality and not others ... we need the modes to be
+  separate and have separate purposes" (2026-11-04). Each mode has one
+  purpose: normal acts on what the cursor is on, / finds, : names a command
+  from a menu of all of them, insert only writes words handed over. Return
+  from the find line never changes anything, an arrow is its letter with no
+  act of its own, Escape cancels and closes what floats, and q does
+  nothing: "make esc work like vi, q should do nothing by itself. :q to
+  quit". A Vim user is at home with no training.
 - **A sans-serif without class.** Of Mona Sans on the launcher's rows: "I
   don't like seeing sans-serif fonts in the launcher, the current one feels
   so out of place. like if the sans serif has some more class to it maybe,
