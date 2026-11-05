@@ -120,6 +120,7 @@ let
     "Confirm.js"
     "KeyHints.qml"
     "Drawer.qml"
+    "DrawerPage.js"
     "Launcher.qml"
     "Choice.qml"
     "ReadsOn.qml"

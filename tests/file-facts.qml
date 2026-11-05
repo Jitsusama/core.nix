@@ -173,6 +173,14 @@ QtObject {
             ["b", "a", "note 10.md", "apple.md", "Note 2.md"]);
         expect("by size: folders first by how many they hold, then largest first", order("size"),
             ["b", "a", "Note 2.md", "apple.md", "note 10.md"]);
+        const backward = by => FileFacts.ordered(entries, by, { "/n/a": 1, "/n/b": 7 }, true)
+            .map(entry => entry.name);
+        expect("reversed by name: folders still first, each order turned round", backward("name"),
+            ["b", "a", "note 10.md", "Note 2.md", "apple.md"]);
+        expect("reversed by when it changed: oldest first", backward("changed"),
+            ["a", "b", "Note 2.md", "apple.md", "note 10.md"]);
+        expect("reversed by size: smallest first", backward("size"),
+            ["a", "b", "note 10.md", "apple.md", "Note 2.md"]);
         expect("a folder not yet counted is the least", FileFacts.ordered(entries, "size", {})
             .slice(0, 2).map(entry => entry.name), ["a", "b"]);
         expect("the entries given are left as they were", entries[0].name, "note 10.md");

@@ -19,9 +19,7 @@
 // styled, a fact whose value isn't known yet null, shown as a fixed
 // placeholder until it is. A preview, as a file's plate has (FileFacts.js),
 // comes right under the name: `{ picture, across, down }` or `{ lines,
-// quiet }`. Shift+Up and Shift+Down scroll it a few lines at a time,
-// as the launcher's foot says while it holds more than fits
-// (docs/design.md, the drawer).
+// quiet }`. What doesn't fit is reached by going into it (below).
 //
 // Home's Now gives a plate of the moment instead (look 3's piece 4,
 // launcher/WhatsOn.qml): `{ now: true, eyebrow, seconds, say, groups:
@@ -30,14 +28,106 @@
 // the row `lines.say` names, and each group of facts that holds any from
 // the next row `lines.groups` names, on the pitch; a row that's missing,
 // -1, sets its part one empty line below the one before.
+//
+// It's a window the keys go into, as his Neovim's splits are: Space and
+// the right arrow from the rows, and back with Space and the left arrow
+// (QueryKeys.js, the page mode). While it holds them its frame takes the
+// accent and a cursor stands on one of its lines, each line of words it
+// shows: the eyebrow, the title's, a preview's, each fact's, the words',
+// and the moment's. A picture is no line. The cursor's line is marked by
+// an accent rule in the left margin, as the reader marks its own and his
+// Neovim lights only the cursor line's number (VKCF3Z's spec v2, The
+// Reader): the cursor keeps a letter along it, which h and l move, for
+// visual to start from. Its words are laid out by Qt as read-only
+// TextEdits (PageText, below), which can say which letters each line
+// holds and where, so the cursor stands on the letters drawn;
+// DrawerPage.js says where each key takes it and the view.
 pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 import QtQuick.Effects
 import "launcher/Moment.js" as Moment
+import "DrawerPage.js" as Page
+import "Search.js" as Search
 
 Floating {
     id: drawer
+
+    // Words set on the plate, laid out by Qt as a read-only TextEdit so the
+    // keys can ask which letters each line holds and where, at a fixed
+    // line height as a Text's FixedHeight sets it, which a TextEdit takes
+    // from its rich text's style: it breaks at the same letters a Text
+    // would. A line that elides is cut first, by Qt's elision, and what's
+    // left laid out.
+    component PageText: Text {
+        id: words
+
+        // What it says, plain unless `styled` says it's the row's own
+        // markup, as a StyledText reads it.
+        property string plain
+        property bool styled: false
+        // How tall each of its lines is, the plate's pitch or a step of it,
+        // or 0 for the face's own, as a line set alone by its baseline is.
+        required property real leading
+        // Whether it's one line, cut with an ellipsis where it's longer
+        // than its width; or one line as long as it is, with no width.
+        property bool elides: false
+        property bool wraps: true
+        // Whether its layout is read, which the drawer says while it holds
+        // the keys, and what reads it then: a TextEdit laid on its letters
+        // in no ink, since a Text can't say which letters each of its lines
+        // holds. It's made only then, as a TextEdit for every text drawn
+        // would give each plate a QTextDocument a text as the rows are
+        // moved through, twice a Text's time to make one.
+        property bool reading: false
+        readonly property TextEdit reader: readerLoader.item
+
+        text: plain
+        textFormat: styled ? Text.StyledText : Text.PlainText
+        wrapMode: elides || !wraps ? Text.NoWrap : Text.Wrap
+        elide: elides ? Text.ElideRight : Text.ElideNone
+        lineHeightMode: leading > 0 ? Text.FixedHeight : Text.ProportionalHeight
+        lineHeight: leading > 0 ? leading : 1
+
+        Loader {
+            id: readerLoader
+            active: words.reading
+            sourceComponent: TextEdit {
+                // How far below its top Qt sets its first line's letters: a
+                // fixed line keeps its spare room above its letters, which a
+                // TextEdit's baselineOffset leaves out, so it's set by both.
+                readonly property real drop: {
+                    contentHeight;
+                    width;
+                    return positionToRectangle(0).y;
+                }
+                readonly property string said: words.elides
+                    ? cut.elidedText(words.plain, Qt.ElideRight, words.width) : words.plain
+
+                // Its letters on the Text's, the row's markup keeping its
+                // words and losing its colours, which the Text draws.
+                y: words.baselineOffset - drop - baselineOffset
+                width: words.width
+                readOnly: true
+                selectByMouse: false
+                activeFocusOnPress: false
+                color: "transparent"
+                font: words.font
+                textFormat: TextEdit.RichText
+                wrapMode: words.wrapMode === Text.Wrap ? TextEdit.Wrap : TextEdit.NoWrap
+                text: `<div style="white-space:pre-wrap`
+                    + (words.leading > 0
+                        ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
+                    + `">${words.styled ? said.replace(/ color="[^"]*"/g, "")
+                        : Search.escaped(said)}</div>`
+
+                FontMetrics {
+                    id: cut
+                    font: words.font
+                }
+            }
+        }
+    }
 
     // What it's given to show, or null once it's to go in, when it keeps
     // what it last showed while it slides away.
@@ -182,11 +272,223 @@ Floating {
                 + `${plain(fact.qualifier)}</font>`;
     }
 
-    // Moves what it shows three lines up or down, never past either end,
-    // so its lines stay on the card's.
-    function scroll(lines) {
-        view.contentY = Math.max(0, Math.min(view.contentHeight - view.height,
-            view.contentY + lines * 3 * pitch));
+
+    // Whether it has words for a cursor to sit on, so the keys can go in.
+    readonly property bool lined: shown !== null && (moment || eyebrow !== "" || title !== ""
+        || facts.length > 0 || body !== "" || (preview?.lines ?? []).length > 0)
+    // The lines kept about the cursor as the view follows it, as his
+    // Neovim's scrolloff (modules/neovim/init.lua).
+    readonly property int scrolloff: 4
+    // Its lines as Qt laid them out, worked out as the keys come in and
+    // again once what it shows is laid out anew, never for each key; and
+    // the cursor: its line, its letter along it, and how far along the
+    // line it wants to be, which j and k go back to.
+    property var laid: []
+    property var cursor: ({ line: 0, letter: 0, want: 0 })
+    onKeysChanged: {
+        if (keys) {
+            enter();
+        } else {
+            for (const text of texts())
+                text.reading = false;
+        }
+    }
+    onShownChanged: relay()
+    onWidthChanged: relay()
+    Connections {
+        target: view
+        function onContentHeightChanged() {
+            drawer.relay();
+        }
+    }
+
+    // Every PageText it has, shown or not.
+    function texts() {
+        return [eyebrowText, timeText, secondsText, sayText, titleText]
+            .concat(groupsShown.texts(), previewRows.texts(), factRows.texts(), [bodyText])
+            .filter(text => text);
+    }
+
+    // Every line of words it shows, top to bottom down its content: each
+    // { top, height, length, parts }, a part being the letters `from` on
+    // of one PageText (`text`) that lie on the line, as its reader holds
+    // them (`words`), where it starts across, and how many there are. Two
+    // texts sharing a baseline, as a fact's name and its value, are one
+    // line, read left to right. Each text shown is read from here on, its
+    // reader made at once, as a Loader makes it.
+    function lines() {
+        const pieces = [];
+        for (const text of texts()) {
+            if (!text.visible)
+                continue;
+            text.reading = true;
+            const words = text.reader;
+            if (!words || words.length === 0)
+                continue;
+            for (let at = 0; at < words.lineCount; at++) {
+                const step = text.leading > 0 ? text.leading
+                    : words.contentHeight / words.lineCount;
+                const y = words.drop + at * step + 1;
+                const from = words.positionAt(0, y);
+                const next = at + 1 < words.lineCount ? words.positionAt(0, y + step)
+                    : words.length;
+                const box = words.positionToRectangle(from);
+                const place = words.mapToItem(column, box.x, box.y);
+                pieces.push({ text, words, from, y,
+                    length: words.getText(from, next).replace(/\s+$/, "").length,
+                    x: place.x, top: place.y, height: box.height,
+                    base: place.y + words.baselineOffset });
+            }
+        }
+        pieces.sort((one, other) => one.base - other.base || one.x - other.x);
+        const found = [];
+        for (const piece of pieces) {
+            const line = found[found.length - 1];
+            const together = line && Math.abs(line.base - piece.base) < 2;
+            // A blank piece on another's baseline is no part of its line,
+            // which would take a letter the eye can't see: a blank line
+            // is a line only where it stands alone.
+            if (together && piece.length === 0)
+                continue;
+            if (together && line.length === 0) {
+                found[found.length - 1] = { base: piece.base, top: piece.top,
+                    height: piece.height, length: piece.length, parts: [piece] };
+            } else if (together) {
+                const bottom = Math.max(line.top + line.height, piece.top + piece.height);
+                line.top = Math.min(line.top, piece.top);
+                line.height = bottom - line.top;
+                line.length += piece.length;
+                line.parts.push(piece);
+            } else {
+                found.push({ base: piece.base, top: piece.top, height: piece.height,
+                    length: piece.length, parts: [piece] });
+            }
+        }
+        return found;
+    }
+
+    // The part of a line a letter along it lies in, and the letter's place
+    // in that part's text.
+    function partOf(line, letter) {
+        let left = letter;
+        for (const part of line.parts) {
+            if (left < part.length || part === line.parts[line.parts.length - 1])
+                return { part, at: part.from + Math.max(0, Math.min(left, part.length - 1)) };
+            left -= part.length;
+        }
+        return null;
+    }
+    // How far across a letter is, and the letter nearest a place across.
+    function xOf(line, letter) {
+        const found = partOf(line, letter);
+        if (!found)
+            return 0;
+        const box = found.part.words.positionToRectangle(found.at);
+        return found.part.words.mapToItem(column, box.x, 0).x;
+    }
+    function letterAt(line, x) {
+        let before = 0;
+        for (const part of line.parts) {
+            const last = part === line.parts[line.parts.length - 1];
+            const ends = last ? Infinity : line.parts[line.parts.indexOf(part) + 1].x;
+            if (x < ends) {
+                const across = part.words.mapFromItem(column, x, 0).x;
+                const at = part.words.positionAt(across, part.y) - part.from;
+                return before + Math.max(0, Math.min(at, part.length - 1));
+            }
+            before += part.length;
+        }
+        return Math.max(0, line.length - 1);
+    }
+
+    // Into it: the cursor on the title's first letter where it's in view,
+    // else the first line in view, so nothing moves as the keys come in.
+    function enter() {
+        laid = lines();
+        const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
+        const top = view.contentY;
+        const held = laid.map((line, at) => at).filter(at => laid[at].top >= top
+            && laid[at].top + laid[at].height <= top + view.height);
+        const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
+        cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
+    }
+    // Laid out anew while it holds the keys, as a fact's value comes or the
+    // row refreshes: the lines read again once Qt has laid them out, the
+    // cursor kept on its line and letter where they still are.
+    function relay() {
+        if (keys)
+            Qt.callLater(() => {
+                laid = lines();
+                const line = Math.max(0, Math.min(cursor.line, laid.length - 1));
+                const most = laid.length > 0 ? Math.max(0, laid[line].length - 1) : 0;
+                cursor = { line, letter: Math.min(cursor.letter, most), want: cursor.want };
+            });
+    }
+
+    // A key's act while it holds the keys: where DrawerPage.js says it
+    // takes the cursor and the view.
+    function go(act, count) {
+        const page = laid;
+        const moved = Page.moved(act, count, {
+            lines: page,
+            line: cursor.line,
+            letter: cursor.letter,
+            want: cursor.want,
+            top: view.contentY,
+            height: view.height,
+            end: Math.max(0, view.contentHeight - view.height),
+            pitch: drawer.pitch,
+            off: drawer.scrolloff,
+            xOf: (line, letter) => xOf(page[line], letter),
+            letterAt: (line, x) => letterAt(page[line], x)
+        });
+        cursor = { line: moved.line, letter: moved.letter, want: moved.want };
+        view.contentY = moved.top;
+    }
+
+    // Where the cursor stands, in the content's terms: the letter as Qt
+    // laid it, as wide as it is, or a space's width on an empty line or
+    // past a line's end. The rule is drawn beside its line's height, and
+    // visual's block will be drawn on the letter.
+    readonly property var block: {
+        if (!keys || laid.length === 0)
+            return null;
+        const line = laid[Math.min(cursor.line, laid.length - 1)];
+        const found = partOf(line, cursor.letter);
+        if (!found)
+            return null;
+        const words = found.part.words;
+        const box = words.positionToRectangle(found.at);
+        const after = words.positionToRectangle(found.at + 1);
+        const place = words.mapToItem(column, box.x, box.y);
+        const letter = found.part.length === 0 ? "" : words.getText(found.at, found.at + 1);
+        return {
+            x: place.x,
+            y: place.y,
+            width: after.y === box.y && after.x > box.x ? after.x - box.x : box.height / 2,
+            height: box.height,
+            letter,
+            line: cursor.line,
+            said: line.parts.map(part => part.words.getText(part.from, part.from
+                + part.length)).join(" ")
+        };
+    }
+
+    // Where the cursor line's rule is drawn, from the drawer's top left, as
+    // the launcher reports it: its left edge, how wide, and its top and
+    // height in the view, or null while the keys are on the rows.
+    function rule() {
+        if (drawer.block === null)
+            return null;
+        // From the block the rule is bound to, not the rule's own place,
+        // since a binding on the block may run before the rule's has.
+        const at = column.mapToItem(drawer, ruleShown.x, drawer.block.y);
+        return {
+            x: Math.round(at.x),
+            width: Math.round(ruleShown.width),
+            top: Math.round(at.y),
+            height: Math.round(drawer.block.height)
+        };
     }
 
     height: tall
@@ -342,8 +644,8 @@ Floating {
         width: parent.width
         // Ending at the last whole line that keeps its inset and a step
         // from the frame below, as the text does on every other side, so
-        // nothing runs into the foot of the plate; Shift+Up and Down bring
-        // up the rest (VKCF3Z, 2026-11-03).
+        // nothing runs into the foot of the plate; its keys, gone into,
+        // bring up the rest (VKCF3Z, 2026-11-03).
         height: drawer.firstLine + Math.max(0, Math.floor((drawer.tall - 2 * Theme.border
             - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch)) * drawer.pitch
         clip: true
@@ -363,17 +665,32 @@ Floating {
             width: view.width - 2 * x
             height: flow.y + flow.height + Theme.inset + Theme.space.l
 
+            // The cursor's line while it holds the keys: one rule in the
+            // accent, as thick as the frame, halfway across the margin
+            // between the frame and the letters, as tall as the line. It
+            // stays lit, as a cursor line does, rather than blinking as a
+            // caret.
+            Rectangle {
+                id: ruleShown
+                visible: drawer.block !== null
+                x: -(Theme.space.l + width) / 2
+                y: drawer.block?.y ?? 0
+                width: Theme.border
+                height: drawer.block?.height ?? 0
+                color: Theme.accent
+            }
+
             // When or where, in capitals over the plate, on the field's
             // centre: a label, set apart by case and tracking rather than
             // size alone, so it reads as one before the name.
-            Text {
+            PageText {
                 id: eyebrowText
                 width: parent.width
                 y: drawer.fieldLine - Theme.border + drawer.eyebrowDropped - baselineOffset
                 visible: drawer.eyebrow !== ""
-                text: drawer.eyebrow
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
+                plain: drawer.eyebrow
+                leading: 0
+                elides: true
                 color: Theme.muted
                 font.family: Theme.level.label.family
                 font.pointSize: Theme.level.label.pointSize
@@ -397,13 +714,14 @@ Floating {
                 // the lock's clock is, since figures are the mono's: all one
                 // width so they never jiggle, its capitals centred on Now's
                 // row, the first.
-                Text {
+                PageText {
                     id: timeText
                     readonly property real base: (drawer.lineOf(0) ?? drawer.rowLine)
                         + timeFace.tightBoundingRect("H").height / 2
                     y: base - Theme.border - baselineOffset
-                    text: Moment.clock(clock.date)
-                    textFormat: Text.PlainText
+                    plain: Moment.clock(clock.date)
+                    leading: 0
+                    wraps: false
                     color: Theme.strong
                     font.family: Theme.level.display.family
                     font.pointSize: Theme.level.display.pointSize
@@ -414,15 +732,15 @@ Floating {
 
                 // Its seconds after it, quiet and counting, at Note on the
                 // time's baseline: upright, since italic is only the voice.
-                Text {
+                PageText {
                     id: secondsText
                     x: timeText.x + timeText.contentWidth + Theme.space.s
                     width: parent.width - x
                     y: timeText.base - Theme.border - baselineOffset
-                    text: String(drawer.shown?.seconds ?? "")
+                    plain: String(drawer.shown?.seconds ?? "")
                         .replace("{seconds}", String(clock.date.getSeconds()))
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
+                    leading: 0
+                    elides: true
                     color: Theme.muted
                     font.family: Theme.level.note.family
                     font.pointSize: Theme.level.note.pointSize
@@ -431,16 +749,16 @@ Floating {
 
                 // What needs Joel, or that nothing does, in the voice, on
                 // its row's baseline.
-                Text {
+                PageText {
                     id: sayText
                     readonly property real base: drawer.rowBase(drawer.momentLines.say ?? -1,
                         timeText.base)
                     width: parent.width
                     y: base - Theme.border - baselineOffset
-                    visible: text !== ""
-                    text: drawer.shown?.say ?? ""
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
+                    visible: plain !== ""
+                    plain: drawer.shown?.say ?? ""
+                    leading: 0
+                    elides: true
                     color: Theme.text
                     font.family: Theme.level.voice.family
                     font.italic: Theme.level.voice.italic
@@ -456,6 +774,12 @@ Floating {
                     readonly property real lastBottom: {
                         const group = count > 0 ? itemAt(count - 1) : null;
                         return group ? group.y + group.height : 0;
+                    }
+                    // Every group's words, for the keys' lines, joined
+                    // by concat, since Qt's engine has no Array's flat.
+                    function texts() {
+                        return [].concat(...Array.from({ length: count },
+                            (_, at) => itemAt(at)?.texts() ?? []));
                     }
 
                     Column {
@@ -477,6 +801,13 @@ Floating {
                             })
                         // Its last fact's first baseline.
                         readonly property real lastBase: base + height - drawer.pitch
+                        // Its facts' names and figures.
+                        function texts() {
+                            return [].concat(...Array.from({ length: facts.count }, (_, at) => {
+                                const row = facts.itemAt(at);
+                                return row ? [row.name, row.figure] : [];
+                            }));
+                        }
 
                         // Named, not its parent, which a Repeater's
                         // delegate has none of while it's made or let go.
@@ -490,34 +821,31 @@ Floating {
                             Item {
                                 id: momentFact
                                 required property var modelData
+                                readonly property Item name: factName
+                                readonly property Item figure: figure
                                 width: group.width
                                 height: Math.max(1, factName.lineCount, figure.lineCount)
                                     * drawer.pitch
 
-                                Text {
+                                PageText {
                                     id: factName
                                     width: drawer.labelsWide
                                     y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                                    text: momentFact.modelData.label ?? ""
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    lineHeightMode: Text.FixedHeight
-                                    lineHeight: drawer.pitch
+                                    plain: momentFact.modelData.label ?? ""
+                                    leading: drawer.pitch
                                     color: Theme.muted
                                     font.family: Theme.level.note.family
                                     font.pointSize: Theme.level.note.pointSize
                                 }
 
-                                Text {
+                                PageText {
                                     id: figure
                                     x: drawer.labelsWide + drawer.labelsGap
                                     width: parent.width - x
                                     y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                                    text: drawer.qualified(momentFact.modelData)
-                                    textFormat: Text.StyledText
-                                    wrapMode: Text.Wrap
-                                    lineHeightMode: Text.FixedHeight
-                                    lineHeight: drawer.pitch
+                                    plain: drawer.qualified(momentFact.modelData)
+                                    styled: true
+                                    leading: drawer.pitch
                                     color: Theme.text
                                     font.family: Theme.level.figure.family
                                     font.pointSize: Theme.level.figure.pointSize
@@ -552,18 +880,15 @@ Floating {
                         * drawer.titleLeading) / drawer.pitch) * drawer.pitch
                     visible: drawer.title !== ""
 
-                    Text {
+                    PageText {
                         id: titleText
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         // A name with no space, as a server's or a path,
                         // may break after a dot or a slash rather than
                         // mid-word, where it's as wide as the Title allows.
-                        text: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        lineHeightMode: Text.FixedHeight
-                        lineHeight: drawer.titleLeading
+                        plain: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
+                        leading: drawer.titleLeading
                         color: Theme.level.title.colour
                         font.family: Theme.level.title.family
                         font.pointSize: Theme.level.title.pointSize
@@ -659,17 +984,21 @@ Floating {
                         Repeater {
                             id: previewRows
                             model: previewBox.lines
+                            // Each of its lines, for the keys'.
+                            function texts() {
+                                return Array.from({ length: count }, (_, at) => itemAt(at));
+                            }
 
-                            Text {
+                            PageText {
                                 required property string modelData
                                 required property int index
 
                                 width: previewLines.width
                                 y: index * drawer.pitch + drawer.pitch / 2 + drawer.dropped
                                     - baselineOffset
-                                text: modelData
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
+                                plain: modelData
+                                leading: 0
+                                elides: true
                                 color: drawer.preview?.quiet === true ? Theme.muted : Theme.text
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
@@ -686,6 +1015,13 @@ Floating {
                     Repeater {
                         id: factRows
                         model: drawer.facts
+                        // Every fact's name and value, for the keys' lines.
+                        function texts() {
+                            return [].concat(...Array.from({ length: count }, (_, at) => {
+                                const row = itemAt(at);
+                                return row ? [row.over, row.name, row.value] : [];
+                            }));
+                        }
 
                         Item {
                             id: fact
@@ -698,6 +1034,9 @@ Floating {
                             readonly property bool heading: modelData.heading !== undefined
                             readonly property real headingRoom: heading && index > 0 ? drawer.pitch
                                 : 0
+                            readonly property Item over: headingText
+                            readonly property Item name: label
+                            readonly property Item value: value
                             readonly property bool known: modelData.value !== null
                                 && modelData.value !== undefined
                             // Its first baseline, down from its top.
@@ -733,13 +1072,14 @@ Floating {
                                 : (under ? label.lineCount + value.lineCount
                                     : Math.max(1, label.lineCount, value.lineCount)) * drawer.pitch
 
-                            Text {
+                            PageText {
+                                id: headingText
                                 width: parent.width
                                 y: fact.base - baselineOffset
                                 visible: fact.heading
-                                text: fact.modelData.heading ?? ""
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
+                                plain: fact.modelData.heading ?? ""
+                                leading: 0
+                                elides: true
                                 color: Theme.muted
                                 font.family: Theme.level.label.family
                                 font.pointSize: Theme.level.label.pointSize
@@ -755,22 +1095,19 @@ Floating {
                                 id: beside
                                 visible: false
                                 width: fact.width - drawer.labelsWide - drawer.labelsGap
-                                text: value.text
+                                text: value.plain
                                 textFormat: Text.PlainText
                                 wrapMode: Text.Wrap
                                 font: value.font
                             }
 
-                            Text {
+                            PageText {
                                 id: label
                                 visible: !fact.heading
                                 width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
-                                text: fact.modelData.label ?? ""
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                lineHeightMode: Text.FixedHeight
-                                lineHeight: drawer.pitch
+                                plain: fact.modelData.label ?? ""
+                                leading: drawer.pitch
                                 color: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
@@ -779,18 +1116,15 @@ Floating {
                             // Its figure, or a placeholder while it's
                             // asked, on the one edge every value starts
                             // at, a long one breaking onto the pitch.
-                            Text {
+                            PageText {
                                 id: value
                                 visible: !fact.heading
                                 x: fact.valueFrom
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
-                                text: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                lineHeightMode: Text.FixedHeight
-                                lineHeight: drawer.pitch
+                                plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
+                                leading: drawer.pitch
                                 color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: drawer.listsKeys ? Theme.level.note.family
                                     : Theme.level.figure.family
@@ -812,16 +1146,13 @@ Floating {
                     height: bodyText.lineCount * drawer.pitch
                     visible: drawer.body !== ""
 
-                    Text {
+                    PageText {
                         id: bodyText
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                        text: drawer.body
-                        textFormat: drawer.shown?.styled === true ? Text.StyledText
-                            : Text.PlainText
-                        wrapMode: Text.Wrap
-                        lineHeightMode: Text.FixedHeight
-                        lineHeight: drawer.pitch
+                        plain: drawer.body
+                        styled: drawer.shown?.styled === true
+                        leading: drawer.pitch
                         color: Theme.text
                         // Prose, such as a notice's, at Words, as its card
                         // reads it and the reader sets its text. The rest,

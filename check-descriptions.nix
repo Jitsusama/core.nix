@@ -1152,9 +1152,12 @@
     block in the terminal's cursor colours on a title's letter, copies each selection's markdown
     onto the clipboard with y and Ctrl+C, a paragraph the page wraps as its one line, and follows
     a link by g x's label, to a heading, putting the cursor on it, and to another markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
-    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, keeps the search's marks on Escape
-    at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on a
-    selection), keeps a mark between openings, and closes on :q; markdown files open in it
+    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5, E492 and E481, copies the file with :%y
+    and a selection's lines with :'<,'>y, says E16 past the end, keeps the search's marks on
+    Escape at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on
+    a selection), keeps a mark between openings, goes between files with :bp, :e and :bn, says
+    E484 of a file that isn't, lists the keys on :h, lists the lines :g/pat/ matches, the marks on
+    :marks and the jumps on :ju, going to one on Return, and closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
@@ -1527,10 +1530,12 @@
     saving there, its folders take the name, ask once before replacing one, and answer the path
     the place stages it at once its folder is made, marked beside it with the program that asked;
     the files selected in one ask are previewed by one file-preview; where several may be opened,
-    the lead counts and names what's marked, Return on it saying nothing
-    until one is, and inside it each can be unmarked; a folder's Copy the Path comes last; in every
-    folder the field asks for one file, several, a folder or where to save, in the program's word;
-    its Order row lists it by name, change or size, made afresh, and a restart keeps the order; ]b
+    :arga gathers the cursor row's file or a range's, each once, Return answers what's gathered,
+    saying how many, and :args steps into Gathered, its plate counting them; a folder's Copy the
+    Path comes last; in every folder the field asks for one file, several, a folder or where to
+    save, in the program's word; :sort lists it by name, change or size, :sort! turned round, made
+    afresh, and a restart keeps the order; :set hidden lists the hidden files; :cd and :e go to a
+    folder, their paths completed from folders read; :w saves, asking once over a name there; ]b
     and [b go to the folder beside it, round from the last to the first, once its holder is read;
     a file holds gx, opening it in its own program
   '';
@@ -1611,7 +1616,7 @@
     says it, a part's after its thing's name; each one that doesn't is printed, and the check
     refuses a stand-in vocabulary breaking each of its rules
   '';
-  the-launcher-names-every-verb-a-command = ''
+  the-launcher-names-every-action-a-command = ''
     every launcher verb names a command the key language has, with :set's whole word as its
     argument and % only on an act taking rows, but for one Return alone does, which names none,
     and no two verbs on one row make the same line; each one that doesn't is printed, and the
@@ -2261,7 +2266,8 @@
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the
-    keys and the pointer, bring what they're about forward, and sit inside the window under them
+    keys and the pointer, bring what they're about forward, and sit inside the window under them,
+    and the launcher's drawer of one takes the keys, which move through it as Vim's do
   '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the

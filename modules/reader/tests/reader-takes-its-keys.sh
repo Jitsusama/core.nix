@@ -538,10 +538,49 @@ press -k Return
 logged '^command: "noh" is NoHighlight' 1
 press ':5'
 press -k Return
-logged '^command: "5" is Line\(5\)' 1
+logged '^command: "5" is Go\(Lines\(5, 5\)\)' 1
 press ':foo'
 press -k Return
 logged '^said: E492: Not an editor command: foo' 1
+press ':%q'
+press -k Return
+logged '^said: E481: No range allowed' 1
+
+# :%y copies the file as it's written and says how many lines, as Vim
+# does; :'<,'>y the lines the last selection took, once it has ended;
+# and a range past the file's end is E16.
+taken=$(how_many '^copied: ')
+press ':%y'
+press -k Return
+logged '^copied: ' $((taken + 1))
+logged "^said: $(wc -l < page.md) lines yanked\$" 1
+deadline=$((SECONDS + 10))
+until [ "$(wl-paste 2> /dev/null)" = "$(cat page.md)" ]; do
+  ((SECONDS < deadline)) || fail "the clipboard holds $(wl-paste 2>&1 | head -n 1), not the file"
+  inotifywait -q -q -t 1 -e modify said || true
+done
+# :1 rather than gg, so the First keys counted on below stay as many.
+press ':1'
+press -k Return
+logged '^command: "1" is Go\(Lines\(1, 1\)\)' 1
+lines=$(how_many '^key SelectPieces None')
+press V
+logged '^key SelectPieces None' $((lines + 1))
+downs=$(how_many '^key Down None')
+press j
+logged '^key Down None' $((downs + 1))
+ended=$(how_many '^selected: nothing')
+press -k Escape
+logged '^selected: nothing' $((ended + 1))
+press ":'<,'>y"
+press -k Return
+logged '^copied: ' $((taken + 2))
+[ "$(grep -a -E '^copied: ' said | tail -n 1)" \
+  = 'copied: "# Every Key Neovim Has\nSome of it is on [the second page](second.md).\n"' ] \
+  || fail ":'<,'>y copied $(grep -a -E '^copied: ' said | tail -n 1)"
+press ':1,99999y'
+press -k Return
+logged '^said: E16: Invalid range' 1
 
 # Escape at rest does nothing, as Vim's does: the search's marks stay, n
 # having put them back after :noh.
@@ -612,6 +651,55 @@ logged '^opened: (.*/)?page.md, ' 5
 press -M ctrl ']' -m ctrl
 logged '^link: second.md' 2
 logged '^opened: (.*/)?second.md, ' 6
+
+# :bp and :bn go back and on through the folder as [b and ]b do, :e
+# opens a file named from where the reader started and says E484 of one
+# that isn't there, and :h lists the keys, which Escape puts away.
+press ':bp'
+press -k Return
+logged '^opened: (.*/)?page.md, ' 6
+press ':e second.md'
+press -k Return
+logged '^opened: (.*/)?second.md, ' 7
+press ':e nowhere.md'
+press -k Return
+logged '^said: E484: Can.t open file nowhere.md' 1
+press ':bn'
+press -k Return
+logged '^opened: (.*/)?page.md, ' 7
+press ':h'
+press -k Return
+logged '^command: "h" is Help' 1
+rests=$(how_many '^key Rest None')
+press -k Escape
+logged '^key Rest None' $((rests + 1))
+
+# :g/Part/ lists the four sections' headings, the lines it matches, in
+# gO's place, and Return goes to the one chosen; one matching nothing
+# says so. :marks lists ' and a, and :ju the jumps, each put away by
+# Escape.
+closed=$(how_many '^outline: closed')
+went=$(how_many '^outline went to')
+press ':g/Part/'
+press -k Return
+logged '^outline: 4 rows, chosen "Part [1-4]"' 1
+press -k Return
+logged '^outline went to "Part [1-4]"' $((went + 1))
+press ':g/zzz/'
+press -k Return
+logged '^said: Pattern not found: zzz' 1
+press ':marks'
+press -k Return
+logged "^outline: 2 rows, chosen \"'  " 1
+press -k Escape
+logged '^outline: closed' $((closed + 2))
+lists=$(how_many '^outline: [0-9]+ rows')
+press ':ju'
+press -k Return
+logged '^command: "ju" is Jumps' 1
+logged '^outline: [0-9]+ rows' $((lists + 1))
+press -k Escape
+logged '^outline: closed' $((closed + 3))
 
 # :q closes it.
 press ':q'

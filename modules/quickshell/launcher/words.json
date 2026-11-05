@@ -6005,25 +6005,19 @@
     {
       "id": "file-chooser:marked",
       "in": "path:file",
-      "name": "Marked",
-      "verb": "mark",
-      "glyph": "marked",
-      "states": {
-        "marked": {
-          "verb": "unmark"
-        }
-      }
+      "name": "Gathered",
+      "verb": "gather",
+      "glyph": "marked"
     },
     {
       "id": "verb:file-chooser:marked",
       "act": "do",
       "in": "path:folder",
-      "name": "Open the Marked",
+      "name": "Open the Gathered",
       "verb": "open",
       "glyph": "marked",
       "said": {
-        "none": "none",
-        "marked": "{count} marked"
+        "marked": "{count} gathered"
       }
     },
     {
@@ -6031,8 +6025,8 @@
       "command": "argdelete",
       "argument": "*",
       "in": "verb:file-chooser:marked",
-      "name": "Unmark All",
-      "verb": "unmark",
+      "name": "Forget Them",
+      "verb": "forget",
       "glyph": "marked"
     },
     {
@@ -6063,10 +6057,67 @@
       "verb": "choose",
       "glyph": "order",
       "said": {
-        "name": "name",
-        "changed": "changed, newest first",
-        "size": "size, largest first"
+        "name": "alphabetical",
+        "changed": "newest first",
+        "size": "largest first"
       }
+    },
+    {
+      "id": "command:file-chooser:sort",
+      "in": "path:folder",
+      "name": "Sort the Folders"
+    },
+    {
+      "id": "command:file-chooser:set",
+      "in": "path:folder",
+      "name": "Set an Option",
+      "said": {
+        "hidden": "list hidden files",
+        "nohidden": "leave them out"
+      }
+    },
+    {
+      "id": "command:file-chooser:mkdir",
+      "in": "path:folder",
+      "name": "Make a Folder"
+    },
+    {
+      "id": "command:file-chooser:edit",
+      "in": "path:folder",
+      "name": "Go to a Path",
+      "said": {
+        "folder": "folder"
+      }
+    },
+    {
+      "id": "command:file-chooser:cd",
+      "in": "path:folder",
+      "name": "Go to a Folder"
+    },
+    {
+      "id": "command:file-chooser:write",
+      "in": "path:folder",
+      "name": "Save It"
+    },
+    {
+      "id": "command:file-chooser:xit",
+      "in": "path:folder",
+      "name": "Save It and Go"
+    },
+    {
+      "id": "command:file-chooser:quit",
+      "in": "path:folder",
+      "name": "Answer Nothing"
+    },
+    {
+      "id": "command:file-chooser:argadd",
+      "in": "path:folder",
+      "name": "Gather It"
+    },
+    {
+      "id": "command:file-chooser:args",
+      "in": "path:folder",
+      "name": "Show What's Gathered"
     },
     {
       "id": "file-chooser:name",
@@ -6483,7 +6534,8 @@
       "title": "The Launcher's Keys",
       "modes": {
         "normal": "Normal",
-        "insert": "Insert"
+        "insert": "Insert",
+        "page": "Drawer"
       },
       "lines": {
         "nextRow": "The next row",
@@ -6511,7 +6563,11 @@
         "ending": "Close or forget it",
         "copy": "Copy it",
         "restore": "Bring it back",
-        "drawer": "Scroll the drawer",
+        "intoDrawer": "Into the drawer",
+        "lines": "Down and up a line",
+        "along": "Along the line",
+        "scroll": "Scroll a line",
+        "back": "Back to the rows",
         "keys": "These keys",
         "close": "Close"
       }
@@ -6549,6 +6605,10 @@
     },
     "asked": {
       "replace": "Replace {name}? (y/n)"
+    },
+    "footKeys": {
+      "normal": "normal",
+      "keys": "keys"
     }
   },
   "meant": [

@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, Operators.js and Confirm.js beside this file and runs
-// `qml -platform offscreen query-keys.qml`.
+// ListedKeys.js, DrawerPage.js, Operators.js and Confirm.js beside this
+// file and runs `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
@@ -11,6 +11,7 @@ import "QueryKeys.js" as Keys
 import "Typing.js" as Typing
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
+import "DrawerPage.js" as Page
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -405,6 +406,194 @@ QtObject {
             holds(what, Editing.edited(act, text, at, count), { text: after, at: caret });
     }
 
+    // The drawer as a window: Space and the right arrow go into it from
+    // the rows, where its keys are a page's in normal, and Space and the
+    // left arrow, ZZ or :q come back, as his splits do. q alone does
+    // nothing there, as Joel asked of every modal surface, and Escape at
+    // rest does nothing in a window (2026-11-04, VKCF3Z's spec v2).
+    function drawerKeys(holds) {
+        const into = ["Escape", "Space", "Right"];
+        // [what, the keys typed from the opening, the acts done]
+        const doing = [
+            ["Space then the right arrow goes into the drawer", into, ["normal", "drawer"]],
+            ["Space then the left arrow comes back to the rows",
+                into.concat(["Space", "Left"]), ["normal", "drawer", "rows"]],
+            ["and so does ZZ, as his Neovim closes a window, where q alone does nothing",
+                into.concat(["q", "Z", "Z"]), ["normal", "drawer", "rows"]],
+            ["where Escape at rest does nothing", into.concat(["Escape", "j"]),
+                ["normal", "drawer", "next"]],
+            ["Escape cancels a count, and the keys stay",
+                into.concat(["3", "Escape", "Escape", "j"]), ["normal", "drawer", "next"]],
+            ["and a g waiting", into.concat(["g", "Escape", "Escape", "j"]),
+                ["normal", "drawer", "next"]],
+            ["j k and the arrows move its cursor a line",
+                into.concat(["j", "k", "Down", "Up"]),
+                ["normal", "drawer", "next", "previous", "next", "previous"]],
+            ["h l and the arrows move it along its line",
+                into.concat(["h", "l", "Left", "Right"]),
+                ["normal", "drawer", "left", "right", "left", "right"]],
+            ["Ctrl+E and Ctrl+Y scroll it a line", into.concat(["Ctrl+e", "Ctrl+y"]),
+                ["normal", "drawer", "scrollDown", "scrollUp"]],
+            ["Ctrl+D Ctrl+U go half its view, Ctrl+F Ctrl+B and the page keys a view",
+                into.concat(["Ctrl+d", "Ctrl+u", "Ctrl+f", "Ctrl+b", "PageDown", "PageUp"]),
+                ["normal", "drawer", "halfDown", "halfUp", "pageDown", "pageUp", "pageDown",
+                    "pageUp"]],
+            ["gg and G go to its ends", into.concat(["g", "g", "G"]),
+                ["normal", "drawer", "first", "last"]],
+            ["H M L go to the top, middle and bottom of its view",
+                into.concat(["H", "M", "L"]),
+                ["normal", "drawer", "viewTop", "viewMiddle", "viewBottom"]],
+            ["the arrows with Shift do nothing in it, as nowhere",
+                into.concat(["Shift+Down", "Shift+Up"]), ["normal", "drawer"]],
+            ["Return does the row from it", into.concat(["Return"]),
+                ["normal", "drawer", "run"]],
+            [": opens the command line, whose :q comes back to the rows", into.concat([":"]),
+                ["normal", "drawer", "command"]],
+            ["the rows' keys that aren't a page's do nothing in it",
+                into.concat(["Tab", "-", "Backspace", "i", "a", "u", "c", "c", "]", "b"]),
+                ["normal", "drawer"]],
+            ["Space then the right arrow does nothing more in it",
+                into.concat(["Space", "Right"]), ["normal", "drawer"]],
+            ["Space then the left arrow does nothing on the rows",
+                ["Escape", "Space", "Left", "j"], ["normal", "next"]],
+            ["Space then anything else lets Space go", ["Escape", "Space", "j", "j"],
+                ["normal", "next"]],
+            ["Space and the arrows in insert type and move the caret",
+                ["Space", "Right", "Space", "Left"], ["caretRight", "caretLeft"]]
+        ];
+        for (const [what, keys, want] of doing)
+            holds(`the drawer: ${what}`, typed(keys).acts, want);
+        holds("the drawer: Space waits for its second key", typed(["Escape", "Space"]).standing,
+            { count: "", typed: ["Space"] });
+        holds("the drawer: Space in insert is the field's to type", typed(["Space"]).ours, false);
+        holds("the drawer: its keys are the page's", typed(into).mode, "page");
+        holds("the drawer: and the rows' again once back",
+            typed(into.concat(["Space", "Left"])).mode, "normal");
+        holds("the drawer: a letter in it is its own, typing nothing",
+            typed(into.concat(["x"])).ours, true);
+        // [what, the keys typed from the opening, each act with its count]
+        const counting = [
+            ["a count moves its cursor that many lines", into.concat(["3", "j", "2", "k"]),
+                ["normal", "drawer", "3 next", "2 previous"]],
+            ["and that many letters", into.concat(["4", "l", "2", "h"]),
+                ["normal", "drawer", "4 right", "2 left"]],
+            ["a count before G names the line", into.concat(["1", "2", "G"]),
+                ["normal", "drawer", "12 last"]],
+            ["a count before the scrolls", into.concat(["2", "Ctrl+e", "3", "Ctrl+d"]),
+                ["normal", "drawer", "2 scrollDown", "3 halfDown"]],
+            ["a count before a colon is let go, since its lines aren't rows",
+                into.concat(["3", ":"]), ["normal", "drawer", "command"]]
+        ];
+        for (const [what, keys, want] of counting)
+            holds(`the drawer: ${what}`, typed(keys).counted, want);
+        for (const act of ["left", "right", "scrollDown", "scrollUp"])
+            holds(`the drawer: ${act} repeats while held`, Keys.repeats(act), true);
+        for (const act of ["drawer", "rows"])
+            holds(`the drawer: ${act} is once a press`, Keys.repeats(act), false);
+    }
+
+    // Where the drawer's keys take its cursor and its view (DrawerPage.js),
+    // on a page of twenty lines of the pitch, 24 px, set as a plate sets
+    // them: a title's two, an empty line, three facts', another, and its
+    // words', each letter 10 px wide and each line ten long but the 7th,
+    // three. Its view holds ten lines, so it scrolls 288 px at most, and
+    // keeps four lines about the cursor, as his scrolloff does.
+    function drawerPage(holds) {
+        const tops = [0, 24, 72, 96, 120, 168, 192, 216, 240, 264, 288, 312, 336, 360, 384,
+            408, 432, 456, 480, 504];
+        const lines = tops.map((top, at) => ({ top, height: 24, length: at === 6 ? 3 : 10 }));
+        const page = (from, extra) => Object.assign({
+            lines,
+            line: 0,
+            letter: 0,
+            want: 0,
+            top: 0,
+            height: 240,
+            end: 288,
+            pitch: 24,
+            off: 4,
+            xOf: (line, letter) => letter * 10,
+            letterAt: (line, x) => Math.max(0, Math.min(Math.round(x / 10),
+                lines[line].length - 1))
+        }, from, extra ?? {});
+        const where = moved => [moved.line, moved.letter, moved.want, moved.top];
+        // [what, where it starts, the act, the count, [line, letter, want, top]]
+        const moves = [
+            ["j goes down a line", {}, "next", 0, [1, 0, 0, 0]],
+            ["5j scrolls to keep four lines below it", {}, "next", 5, [5, 0, 0, 48]],
+            ["k at the first line stays", {}, "previous", 0, [0, 0, 0, 0]],
+            ["k scrolls to keep four lines above it", { line: 9, top: 192 }, "previous", 0,
+                [8, 0, 0, 144]],
+            ["G goes to the last line, scrolled to the end", { letter: 4, want: 40 }, "last", 0,
+                [19, 0, 0, 288]],
+            ["gg goes to the first, scrolled to the top", { line: 19, top: 288 }, "first", 0,
+                [0, 0, 0, 0]],
+            ["3G goes to the 3rd line", {}, "last", 3, [2, 0, 0, 0]],
+            ["a line past the last, the last", {}, "first", 99, [19, 0, 0, 288]],
+            ["l goes on a letter", {}, "right", 0, [0, 1, 10, 0]],
+            ["3l goes on three", {}, "right", 3, [0, 3, 30, 0]],
+            ["l stops at the line's last letter", {}, "right", 20, [0, 9, 90, 0]],
+            ["h at the first letter stays", {}, "left", 0, [0, 0, 0, 0]],
+            ["j onto a shorter line, its last letter, keeping where it was",
+                { line: 5, letter: 7, want: 70, top: 48 }, "next", 0, [6, 2, 70, 72]],
+            ["and on to a longer line, back where it was",
+                { line: 6, letter: 2, want: 70, top: 72 }, "next", 0, [7, 7, 70, 96]],
+            ["Ctrl+E scrolls a line, the cursor kept four from the top", {}, "scrollDown", 0,
+                [4, 0, 0, 24]],
+            ["Ctrl+E at the end stays", { line: 19, top: 288 }, "scrollDown", 0,
+                [19, 0, 0, 288]],
+            ["Ctrl+Y at the top stays", {}, "scrollUp", 0, [0, 0, 0, 0]],
+            ["Ctrl+Y scrolls up a line, the cursor kept four from the bottom",
+                { line: 11, top: 192 }, "scrollUp", 0, [10, 0, 0, 168]],
+            ["Ctrl+D scrolls half the view, the cursor with it and kept from the top", {},
+                "halfDown", 0, [7, 0, 0, 120]],
+            ["Ctrl+U back", { line: 7, top: 120 }, "halfUp", 0, [3, 0, 0, 0]],
+            ["Ctrl+F scrolls a view less two lines, the cursor at its top", {}, "pageDown", 0,
+                [10, 0, 0, 192]],
+            ["Ctrl+B back, the cursor at its bottom", { line: 19, top: 288 }, "pageUp", 0,
+                [7, 0, 0, 96]],
+            ["Ctrl+F at the end goes to the last line", { line: 15, top: 288 }, "pageDown", 0,
+                [19, 0, 0, 288]],
+            ["Ctrl+B at the top goes to the first", { line: 3 }, "pageUp", 0, [0, 0, 0, 0]],
+            ["H goes to the view's top line", { line: 3 }, "viewTop", 0, [0, 0, 0, 0]],
+            ["L to its bottom, four lines up", {}, "viewBottom", 0, [4, 0, 0, 0]],
+            ["M to the middle of the eight lines wholly in view", {}, "viewMiddle", 0,
+                [3, 0, 0, 0]],
+            ["H scrolled, four lines down", { line: 8, top: 120 }, "viewTop", 0,
+                [7, 0, 0, 120]],
+            ["3H past what's in view, the last of it", { line: 7, top: 120 }, "viewTop", 3,
+                [8, 0, 0, 120]]
+        ];
+        for (const [what, from, act, count, want] of moves)
+            holds(`the drawer's page: ${what}`, where(Page.moved(act, count, page(from))), want);
+
+        // A page that fits its view, three lines, scrolls nowhere, its
+        // cursor going among its lines.
+        const short = { lines: lines.slice(0, 3), end: 0 };
+        const fitting = [
+            ["j", {}, "next", 0, [1, 0, 0, 0]],
+            ["Ctrl+E", {}, "scrollDown", 0, [0, 0, 0, 0]],
+            ["Ctrl+D, to its last line", {}, "halfDown", 0, [2, 0, 0, 0]],
+            ["Ctrl+F, to its last line", {}, "pageDown", 0, [2, 0, 0, 0]],
+            ["G", {}, "last", 0, [2, 0, 0, 0]],
+            ["L, its last line", {}, "viewBottom", 0, [2, 0, 0, 0]]
+        ];
+        for (const [what, from, act, count, want] of fitting)
+            holds(`a drawer that fits: ${what}`, where(Page.moved(act, count,
+                page(from, short))), want);
+        holds("a drawer with no lines stays", where(Page.moved("next", 0,
+            page({}, { lines: [], end: 0 }))), [0, 0, 0, 0]);
+
+        // Where the view goes to show a line, and keeps four about it.
+        holds("the view comes down to show a line below it",
+            Page.shown(lines[12], 0, page({})), 216);
+        holds("and up to show one above", Page.shown(lines[2], 288, page({})), 0);
+        holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
+        holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
+        holds("a short view keeps less about it, never past its middle",
+            Page.shown(lines[5], 0, page({}, { height: 120, end: 408 })), 120);
+    }
+
     function run() {
         function holds(what, got, want) {
             if (JSON.stringify(got) !== JSON.stringify(want))
@@ -477,8 +666,8 @@ QtObject {
             ["a key that ends nothing lets c go", ["Escape", "c", "x", "c"], ["normal"]],
             ["Shift pressed for a capital changes nothing", ["Escape", "c", "", "c"],
                 ["normal", "change"]],
-            ["the arrows with Shift scroll the drawer in either mode",
-                ["Shift+Down", "Escape", "Shift+Up"], ["drawerDown", "normal", "drawerUp"]],
+            ["the arrows with Shift do nothing in either mode: Space \u2192 goes into the drawer",
+                ["Shift+Down", "Escape", "Shift+Up"], ["normal"]],
             ["Page Up and Down page the rows in either mode",
                 ["PageDown", "Escape", "PageUp"], ["pageDown", "normal", "pageUp"]],
             ["Return with Shift or Ctrl is Return", ["Escape", "Shift+Return", "Ctrl+Return"],
@@ -532,9 +721,11 @@ QtObject {
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
-            lastPlace: "last", keys: "keys", close: "close", drawer: "drawer", ends: "ends",
-            nextRow: "next row", caret: "caret", word: "word", ending: "ending", copy: "copy" };
-        const modes = { normal: "Normal", insert: "Insert" };
+            lastPlace: "last", keys: "keys", close: "close", ends: "ends",
+            nextRow: "next row", caret: "caret", word: "word", intoDrawer: "into the drawer",
+            lines: "lines", along: "along", scroll: "scroll", back: "back", ending: "ending",
+            copy: "copy" };
+        const modes = { normal: "Normal", insert: "Insert", page: "Drawer" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
         holds("the list's rows, the arrows after Vim's", keyed("rows"),
@@ -548,9 +739,18 @@ QtObject {
         holds("the list's place used last", keyed("last"), "Tab  Space Tab");
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
-        holds("the list's drawer", keyed("drawer"), "\u21e7+\u2193  \u21e7+\u2191");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
         holds("and y", keyed("copy"), "yy  yG");
+        holds("no line scrolls the drawer with Shift and an arrow",
+            list.filter(line => (line.label ?? "").includes("\u21e7+\u2193")).length, 0);
+        holds("the list's way into the drawer", keyed("into the drawer"), "Space \u2192");
+        // In the drawer, its lines and along them, Vim's first and the arrow,
+        // a line scrolled by Ctrl, and Space with the left arrow back.
+        holds("the drawer's lines", keyed("lines"), "j  k  \u2193  \u2191");
+        holds("the drawer's letters along a line", keyed("along"), "h  l  \u2190  \u2192");
+        holds("the drawer's scroll by a line", keyed("scroll"), "Ctrl+E  Ctrl+Y");
+        holds("the drawer's way back, Space with the arrow and :q", keyed("back"),
+            "Space \u2190  :q");
         // Each mode's section, by its heading: the keys each line names, as
         // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
         const sections = {};
@@ -565,7 +765,10 @@ QtObject {
         });
         holds("the list's sections, normal's where it's opened first",
             list.filter(line => line.heading !== undefined).map(line => line.heading),
-            ["Normal", "Insert"]);
+            ["Normal", "Insert", "Drawer"]);
+        holds("the drawer's moves, as normal's on the rows",
+            ["gg  G", "H  M  L", "Ctrl+D  Ctrl+U", "Ctrl+F  Ctrl+B", "3j  12G"]
+                .filter(keys => !sections.Drawer.includes(keys.split("  ")[0])), []);
         holds("insert's next row, Ctrl+N with the arrow", keyed("next row"), "Ctrl+N  \u2193");
         holds("insert's caret", keyed("caret"), "\u2190  \u2192");
         holds("insert's word deleted", keyed("word"), "Ctrl+W");
@@ -687,6 +890,8 @@ QtObject {
         operating(holds);
 
         editing(holds);
+        drawerKeys(holds);
+        drawerPage(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
