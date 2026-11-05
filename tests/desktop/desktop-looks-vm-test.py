@@ -323,6 +323,7 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 # through niri, as Joel's recorder does, which keeps every frame niri
 # draws, and the frame kept is the one furthest from the last.
 RECORDING = "/run/user/1000/flash.mkv"
+RECORDED = "/run/user/1000/flash.log"
 FRAMES = "/run/user/1000/flash"
 
 
@@ -401,12 +402,20 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     desktop.normal()
     photographs = desktop.values["photographs"]
     if photographs:
+        # The output named, as Joel's recorder names it (Recorder.qml), since
+        # with more than one wf-recorder asks which.
+        output = (
+            "niri msg --json focused-output"
+            ' | grep -o \'"name":"[^"]*"\' | head -1 | cut -d\'"\' -f4'
+        )
         desktop.as_account(
-            f"rm -f {RECORDING}; setsid -f wf-recorder -y --file {RECORDING} >/dev/null 2>&1"
+            f'rm -f {RECORDING}; setsid -f wf-recorder -y --output "$({output})"'
+            f" --file {RECORDING} </dev/null >{RECORDED} 2>&1"
         )
-        machine.wait_until_succeeds(
-            desktop.in_session(f"test -s {RECORDING}"), timeout=timedelta(seconds=10)
+        began, _ = machine.execute(
+            f"timeout 10 sh -c 'until test -s {RECORDING}; do sleep 0.1; done'"
         )
+        assert began == 0, f"wf-recorder wrote nothing: {machine.execute(f'cat {RECORDED}')[1]}"
     since = desktop.mark()
     machine.send_chars("yy")
     desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
