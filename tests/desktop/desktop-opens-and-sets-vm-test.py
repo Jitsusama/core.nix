@@ -684,6 +684,60 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
 
 # One walk through joining networks, as its subtest was: each step starts where the last left
 # it.
+# How many times wifid has left Lantern as asked, so a wait sees a new one.
+LEFT_LANTERN = "journalctl -u wifid | grep -c 'left Lantern, as asked' || true"
+
+
+def left_lantern(desktop: Desktop) -> int:
+    """Say how many times wifid has left Lantern as asked."""
+    return int(desktop.machine.succeed(LEFT_LANTERN).strip() or "0")
+
+
+def disconnects_and_takes_back(desktop: Desktop) -> None:
+    """End Lantern by dd, unasked; Ctrl+R finds nothing to redo, and . asks to forget it.
+
+    dd on a network disconnects it, never forgets it, and doesn't ask, since u joins it again;
+    the foot says so until the next key. Disconnected, its row's end is Forget, which can't be
+    undone, so . asks, and Escape keeps it. wifid joins it again for the steps after.
+    """
+    machine = desktop.machine
+
+    def lantern_reads(side: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            f"Lantern \u00b7 {side} \u00b7 network" in [thing["reads"] for thing in shown["things"]]
+        )
+
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.normal()
+    machine.send_chars("d")
+    desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
+    before = left_lantern(desktop)
+    with desktop.told("ended 1"):
+        machine.send_chars("d")
+    desktop.launcher_until(
+        lambda shown: shown["operated"].endswith("1 done \u00b7 u brings it back")
+    )
+    machine.wait_until_succeeds(
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
+    )
+    machine.send_key("ctrl-r")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("Already at newest change"))
+    # Once the row says it's only saved, . ends it as that row ends.
+    desktop.launcher_until(lantern_reads("saved"))
+    with desktop.told("ask ready"), desktop.told("asked Forget Lantern? (y/n)"):
+        machine.send_chars(".")
+    with desktop.told("answered no"):
+        machine.send_key("esc")
+    desktop.close_launcher()
+    wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+    machine.succeed(f'{wifi}.Join \'{{"name": "Lantern"}}\'')
+    machine.wait_until_succeeds(
+        "networkctl status wlan1 | grep -q 10.42.0.", timeout=timedelta(seconds=60)
+    )
+
+
 def commands_a_network(desktop: Desktop) -> None:
     """Press every key the command line takes on Lantern's row, then bind a range.
 
@@ -793,9 +847,10 @@ def binds_a_range(desktop: Desktop) -> None:
     machine.send_chars("n")
     desktop.launcher_until(lambda shown: shown["question"] == "")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    before = left_lantern(desktop)
     machine.send_chars(":g/Lant/disc\n")
     machine.wait_until_succeeds(
-        "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
+        f"test $({LEFT_LANTERN}) -gt {before}", timeout=timedelta(seconds=30)
     )
     desktop.launcher_until(lambda shown: shown["command"] is None)
     lists_earlier_lines(desktop)
@@ -999,20 +1054,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     desktop.close_launcher()
-    # In normal, dd on the network ends it by disconnecting it, never by
-    # forgetting it, and asks first; Escape says no, and it stays.
-    desktop.as_account("qs ipc call launcher collection wifi")
-    desktop.launcher_ready()
-    desktop.type_in("lant", selecting="Lantern")
-    desktop.normal()
-    machine.send_chars("d")
-    desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
-    with desktop.told("ask ready"), desktop.told("asked Disconnect Lantern? (y/n)"):
-        machine.send_chars("d")
-    with desktop.told("answered no"):
-        machine.send_key("esc")
-    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
-    desktop.close_launcher()
+    disconnects_and_takes_back(desktop)
     commands_a_network(desktop)
     # The Office asks for an account: met for the first time, it asks
     # the account's name, its server's domain and its password in
