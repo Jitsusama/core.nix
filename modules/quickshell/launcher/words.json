@@ -6135,6 +6135,8 @@
         "beside": "The place beside",
         "insert": "Type",
         "change": "Clear it and type",
+        "ending": "Close or forget it",
+        "copy": "Copy it",
         "restore": "Bring it back",
         "drawer": "Scroll the drawer",
         "keys": "These keys",
