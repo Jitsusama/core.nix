@@ -206,6 +206,17 @@ QtObject {
         // Space ?'s list: a heading each mode, then each act's keys.
         const listed = Keys.keyList();
         holds("it opens on normal", listed[0].heading, "Normal: moving and acting");
+        // No act outside a line takes an arrow, alone, held with another key
+        // or in a sequence: normal, visual, pending, a reply's normal and the
+        // key list move by letters (Joel, 2026-11-05), and only the find,
+        // the command line and insert keep the arrows, for the caret and
+        // choosing, as Vim's insert does.
+        const lines = ["find", "command", "insert"];
+        const arrow = key => (Array.isArray(key) ? key : String(key).split(" "))
+            .some(part => ["Up", "Down", "Left", "Right"].includes(part.split("+").pop()));
+        holds("no act outside a line takes an arrow", Keys.table
+            .filter(one => (one.modes ?? ["normal"]).some(mode => !lines.includes(mode)))
+            .filter(one => one.keys.some(arrow)).map(one => one.act), []);
         holds("a move lists its letter alone", listed[1],
             { heading: "", keys: "j", does: "down a card", act: "down" });
         holds("a sequence is listed as typed", listed.find(one => one.act === "first").keys, "gg");
