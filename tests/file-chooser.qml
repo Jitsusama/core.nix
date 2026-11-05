@@ -11,8 +11,9 @@
 // rather than its folder, and its plate its facts before it's previewed,
 // it and those selected after it asked of the one file-preview kept for
 // the ask (the check's script reads which); a kind the filter names passes
-// its narrower kinds too; another filter picked shows what it passes; and Return on a file answers its
-// path and the filter in use. Asked to save, the line holds the name the
+// its narrower kinds too; another filter picked shows what it passes; and a
+// V selection's Return, taking one file, answers its first with the filter
+// in use, one holding no file being left to the launcher. Asked to save, the line holds the name the
 // program gave, a prompt's words, its caret before the extension, kept
 // from folder to folder; each folder leads with it, unnarrowed, and a
 // name already there asks once, "Replace a.md? (y/n)", no saving nothing;
@@ -295,13 +296,15 @@ ShellRoot {
             } else if (stage === 1 && previewing === "old.md"
                 && `${home}/elsewhere/old.md` in chooser.previews) {
                 stage = 2;
-                launcher.open = false;
-                picking.run();
+                // A V selection's Return, taking one file, answers its first.
+                taken = chooser.folderRow(notes).takes([{ row: picking, at: 1 },
+                    { row: named(rowsIn(notes), "notes.txt"), at: 2 }]);
             } else if (stage === 2 && answers.length === 1) {
                 stage = 3;
-                expect("Return on a file answers its path and the filter in use",
-                    answers[0] === JSON.stringify({ paths: [`${notes}/a.md`], filter: 1, choices: {} }),
-                    answers[0]);
+                expect("a V selection's Return answers its first file, taking one, and the filter",
+                    taken && !launcher.open
+                        && answers[0] === JSON.stringify({ paths: [`${notes}/a.md`], filter: 1,
+                            choices: {} }), answers[0]);
                 ask(2, {
                     mode: "save",
                     title: "Save the Notes",
@@ -723,6 +726,10 @@ ShellRoot {
         expect("Forget Them lets them go", chooser.marked.length === 0 && a.verb === "open",
             JSON.stringify(chooser.marked));
         launcher.back();
+        const here = launcher.held[launcher.held.length - 1].row;
+        expect("a V selection holding no file is left to the launcher",
+            here.takes([{ row: named(rows, "sub"), at: 2 }]) === false && answers.length === 5,
+            `${answers.length} answers`);
         arga.run(Object.assign(called(""), { things: [a, named(rows, "old.md")] }));
         launcher.open = false;
         named(rows, "b.png").run();
@@ -785,6 +792,8 @@ ShellRoot {
 
     // A file kept elsewhere, gathered with another, as the case before drew it.
     property var severalRow: null
+    // Whether the folder took a V selection's Return.
+    property bool taken: false
 
     // What the shell's own ask was answered with, none until it is.
     property var shellPicked: null

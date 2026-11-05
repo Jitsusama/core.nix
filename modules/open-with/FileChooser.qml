@@ -290,7 +290,8 @@ Provider {
             empty: "Nothing here.",
             typed: letters => typedIn(path, letters),
             beside: by => provider.beside(path, by),
-            commands: () => provider.commandsIn(path)
+            commands: () => provider.commandsIn(path),
+            takes: rows => provider.takes(rows)
         }, saving ? naming(() => rowsOf(readIn(path))) : {});
         // Until the folder's read, it holds no Copy the Path: rows shown
         // keep their place and those that come go below them, so a Copy
@@ -636,6 +637,9 @@ Provider {
         // Normal's gx opens it in its own program, as his oil's does, the
         // ask still waiting.
         made.openOwn = () => Niri.spawn(["xdg-open", path]);
+        // What a V selection's Return answers of it (takes).
+        if (!saving)
+            made.gathers = path;
         return described(made, path, away === true);
     }
 
@@ -1470,6 +1474,21 @@ Provider {
                     : [launcher.selected])
             }), titled("args", { short: "ar", run: () => launcher.enter(provider.gatheredPlace()) }));
         return rows;
+    }
+
+    // Return in a V selection, as V4's visual hands it the rows it took:
+    // every file among them is answered, in order, or the first alone
+    // where one is taken; with none, the launcher does what it would
+    // (VKCF3Z's vi-paradigm spec, The File Picker).
+    function takes(rows) {
+        const ids = (rows ?? []).map(taken => taken?.row ?? taken)
+            .filter(row => typeof row?.gathers === "string").map(row => row.gathers);
+        if (ids.length === 0 || saving || folders)
+            return false;
+        choose(several ? ids : ids.slice(0, 1));
+        if (ids.every(id => id.startsWith("/")))
+            launcher.open = false;
+        return true;
     }
 
     // :set hidden lists a folder's hidden files, and :set nohidden leaves
