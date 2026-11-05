@@ -22,7 +22,8 @@ fn starting() -> MutexGuard<'static, ()> {
 
 /// git as changed-checks asks it: where the repository is, the merge base
 /// with origin's main, with `older`, a commit origin's main holds, and with
-/// `unpushed`, one it doesn't, and no untracked files. The working
+/// `unpushed`, one it doesn't, and no untracked files. Main's quarantine
+/// list is `quarantine.json`, once a test writes it. The working
 /// tree has a change in it, until a test writes `clean`, and then it's its
 /// commit; origin has that commit once a test writes `pushed`.
 const GIT: &str = r#"#!/bin/sh
@@ -43,13 +44,14 @@ case "$1" in
           *) exit 1 ;;
         esac ;;
       ls-files) ;;
+      show) cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128 ;;
     esac ;;
 esac
 "#;
 
 /// nix as changed-checks asks it: a side's checks by name, then their
 /// derivations, the base's being any flake at a revision; and a build,
-/// which it records. It refuses an evaluation through its evaluation
+/// which it records, and which fails when it names a check `failing` lists. It refuses an evaluation through its evaluation
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
 /// derivations waits for another to be under way beside it before
@@ -58,7 +60,14 @@ esac
 /// alone.
 const NIX: &str = r#"#!/bin/sh
 case "$1" in
-  build) shift; echo "$@" >> "$STAND_IN/built"; exit 0 ;;
+  build)
+    shift; echo "$@" >> "$STAND_IN/built"
+    for word in "$@"; do
+      while read -r check; do
+        case "$word" in *".$check") exit 1 ;; esac
+      done < "$STAND_IN/failing"
+    done 2>/dev/null
+    exit 0 ;;
 esac
 case "$5" in
   builtins.mapAttrs*)
@@ -256,6 +265,44 @@ fn by_default_or_asked_it_builds_what_was_added_and_changed_but_the_vm_tests() {
         assert_eq!(runs[0]["built"]["checks"], 2, "{}", runs[0]);
         assert_eq!(runs[0]["built"]["passed"], true, "{}", runs[0]);
     }
+}
+
+#[test]
+fn a_check_main_quarantines_is_built_alone_and_its_failure_blocks_nothing() {
+    let stand_in = StandIn::new("quarantined");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::write(
+        stand_in.path("quarantine.json"),
+        r#"[{"test": "new", "reason": "failed then passed at abc", "owner_pr": 7}]"#,
+    )
+    .expect("written");
+    fs::write(stand_in.path("failing"), "new\n").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains(
+            "new failed, but main quarantines it (failed then passed at abc; #7 owns it), \
+             so it blocks nothing"
+        ),
+        "{}",
+        text(&ran.stderr)
+    );
+    let repo = stand_in.path("repo");
+    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+    assert_eq!(
+        stand_in.built(),
+        format!("--no-link --keep-going -L {flake}.a\n--no-link --keep-going -L {flake}.new\n")
+    );
+    assert_eq!(stand_in.runs()[0]["built"]["passed"], true);
+
+    // A check main doesn't quarantine still fails the run.
+    fs::write(stand_in.path("failing"), "a\n").expect("written");
+    let _ = fs::remove_file(stand_in.path("built"));
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(!ran.status.success(), "{}", text(&ran.stderr));
 }
 
 #[test]

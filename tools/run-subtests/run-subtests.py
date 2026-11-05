@@ -21,6 +21,10 @@ With --there, all of it is built elsewhere: nix-offload builds the flake's
 `subtests` for the check and words where the VM can run (subtests.nix),
 which runs this same program on the check's driver there, and copies the
 pictures back. An nix-offload that can't take that runs it here.
+
+A check the net holds in quarantine on origin's main
+(tools/merge-net/quarantine.json) still runs, but its failure is said and
+blocks nothing: the run exits 0.
 """
 
 import argparse
@@ -36,7 +40,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -54,6 +58,11 @@ USAGE = 64
 KEYWORD = re.compile(r"[A-Za-z0-9_ -]+")
 # The words -k reads as its own, which a word may not be alone.
 OPERATORS = frozenset({"and", "or", "not"})
+
+# Where the net keeps its quarantine list, and the main it's read from, so a
+# branch can't quarantine its own failure.
+QUARANTINE = "tools/merge-net/quarantine.json"
+MAIN = "refs/remotes/origin/main"
 
 type Chunk = tuple[str | None, list[str]]
 
@@ -328,9 +337,67 @@ def say_pictures(out: Path, check: str) -> None:
     print(f"no pictures: the subtests run took none{gallery}", file=sys.stderr)
 
 
+def quarantined(flake: str, check: str) -> dict[str, object] | None:
+    """Give origin main's quarantine entry for the check, or None.
+
+    A gallery, `vm-a.gallery`, is held with its test. A repository without
+    the list, or without git, quarantines nothing, and a list that doesn't
+    read is said so and quarantines nothing either.
+    """
+    folder = "." if ":" in flake else flake
+    try:
+        # git is the person's own, found on the path, as nix is.
+        shown = subprocess.run(  # noqa: S603
+            ["git", "-C", folder, "show", f"{MAIN}:{QUARANTINE}"],  # noqa: S607
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return None
+    if shown.returncode != 0:
+        return None
+    try:
+        entries: object = json.loads(shown.stdout)
+    except json.JSONDecodeError as error:
+        print(f"run-subtests: {QUARANTINE} on main doesn't read: {error}", file=sys.stderr)
+        return None
+    test = check.split(".", maxsplit=1)[0]
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict) and entry.get("test") == test:
+            return cast("dict[str, object]", entry)
+    return None
+
+
+def blocking(options: Options, status: int) -> int:
+    """Give the run's status, a failure of a check main quarantines read as none.
+
+    Inside a build, given its driver, the status is the build's own, and
+    the run that sent it there reads the list.
+    """
+    if status in {0, USAGE} or options.driver is not None:
+        return status
+    held = quarantined(options.flake, options.check)
+    if held is None:
+        return status
+    reason = held.get("reason") or "no reason given"
+    owner = f"; #{held['owner_pr']} owns it" if held.get("owner_pr") else ""
+    print(
+        f"run-subtests: {options.check} failed, but main quarantines it "
+        f"({reason}{owner}), so it blocks nothing",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def main(argv: Sequence[str]) -> int:
     """List a check's subtests, or run those the words name."""
     options = arguments(argv)
+    return blocking(options, ran(options))
+
+
+def ran(options: Options) -> int:
+    """List a check's subtests, or run those the words name, and give the status."""
     if options.there:
         status = there(options)
         if status is not None:
