@@ -213,7 +213,8 @@ Provider {
             count: said.waiting ? "waiting on you" : "",
             run: () => Niri.act({ FocusWindow: { id: window.id } }),
             below: below,
-            verbs: () => provider.verbs(window, title, program, below)
+            verbs: () => provider.verbs(window, title, program, below),
+            operands: () => provider.operands(window, title)
         });
     }
 
@@ -238,6 +239,7 @@ Provider {
             side: one.title,
             // The one Super+Tab leaves out, as it's where Joel is.
             focused: true,
+            operands: () => provider.operands(window, one.title),
             verbs: () => {
                 const all = provider.verbs(window, one.title, one.program, below)
                     .filter(row => row.key !== "verb:switch" && row.key !== "verb:bring");
@@ -326,18 +328,34 @@ Provider {
             act("verb:float", window.is_floating ? "floating" : "", {
                 run: () => Niri.act({ ToggleWindowFloating: { id: id } })
             }),
-            act("verb:title", "", {
-                // Said while the launcher still holds the keys, which a
-                // Wayland program needs to set the clipboard.
-                now: true,
-                copies: () => window.title ?? title,
-                run: () => Quickshell.clipboardText = window.title ?? title
-            }),
-            act("verb:close", "", {
-                run: () => Niri.act({ CloseWindow: { id: id } })
-            })
+            // Said while the launcher still holds the keys, which a
+            // Wayland program needs to set the clipboard.
+            act("verb:title", "", Object.assign({ now: true }, titling(window, title))),
+            act("verb:close", "", closing(window))
         );
         return all;
+    }
+
+    // What d and y take of a window: its Close and its Copy Title, as plain
+    // fields rather than rows made searchable, since d or y over a place
+    // of hundreds asks every row (Launcher.qml's actionsOf).
+    function operands(window, title) {
+        return [
+            Object.assign({ key: "verb:title", verb: Words.verb("verb:title") },
+                titling(window, title)),
+            Object.assign({ key: "verb:close" }, Words.ending("verb:close"), closing(window))
+        ];
+    }
+
+    function titling(window, title) {
+        return {
+            copies: () => window.title ?? title,
+            run: () => Quickshell.clipboardText = window.title ?? title
+        };
+    }
+
+    function closing(window) {
+        return { run: () => Niri.act({ CloseWindow: { id: window.id } }) };
     }
 
     // The workspaces a window could go to, on its own screen in order, each

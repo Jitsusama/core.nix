@@ -71,6 +71,15 @@ Provider {
                 hue: "text",
                 now: true,
                 run: () => Pasting.paste(copied),
+                // What y takes, as plain fields rather than a row made
+                // searchable, since y over hundreds asks every row
+                // (Launcher.qml's actionsOf).
+                operands: () => [{
+                    key: "verb:emoji:copy",
+                    verb: Words.verb("verb:emoji:copy"),
+                    copies: e.emoji,
+                    run: copied
+                }],
                 verbs: () => {
                     const copy = Object.assign(provider.act("verb:emoji:copy", copied),
                         { copies: e.emoji });

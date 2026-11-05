@@ -86,7 +86,10 @@ Singleton {
             note: fields.note ?? "",
             verb: first?.verb ?? Words.verb(`path:${kind}`),
             run: first?.run ?? (() => {}),
-            verbs: () => acts
+            verbs: () => acts,
+            // What d and y take, without what's inside (Launcher.qml's
+            // actionsOf), which a folder lists only as it's stepped into.
+            operands: () => acts
         };
         if (fields.drawer)
             row.drawer = fields.drawer;
@@ -110,7 +113,11 @@ Singleton {
             side: within(path),
             verb: first?.verb ?? Words.verb(`path:${kind}`),
             run: first?.run ?? (() => {}),
-            verbs: all
+            verbs: all,
+            // What d and y take, without what's inside, and its Copy the
+            // Path as plain fields, since y over a folder of hundreds asks
+            // every row (Launcher.qml's actionsOf).
+            operands: () => acts.concat([copying(kind, path, fields => fields)])
         };
         Object.assign(row, also);
         if (inside !== null) {

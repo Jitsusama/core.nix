@@ -3272,8 +3272,14 @@ Scope {
         operatorSaidFor = prompt.keysTaken;
     }
 
-    // A row's actions, as the right arrow lists them.
+    // A row's actions that d and y may take: its operands, where it says
+    // them, plain fields a place of hundreds makes in well under the 4 ms
+    // a key has; else its actions as the right arrow lists them, each a
+    // row made searchable: nine such rows a row, as a window has, took
+    // 18 ms over 400 rows when timed alone (2026-11-05).
     function actionsOf(row) {
+        if (typeof row.operands === "function")
+            return row.operands();
         return typeof row.verbs === "function" ? row.verbs() ?? [] : [];
     }
 

@@ -112,6 +112,14 @@ Provider {
             enumerable: true,
             get: () => Pasting.verb()
         });
+        // What y takes, as plain fields rather than a row made searchable,
+        // since y over hundreds asks every row (Launcher.qml's actionsOf).
+        row.operands = () => [{
+            key: "verb:copy:copy",
+            verb: Words.verb("verb:copy:copy"),
+            copies: row.text ?? "",
+            run: copied
+        }];
         row.verbs = () => {
             const act = (id, run) => thing({
                 key: id,

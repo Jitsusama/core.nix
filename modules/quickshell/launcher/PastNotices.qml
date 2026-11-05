@@ -94,6 +94,7 @@ Provider {
             later: !opened && !nowhere,
             stays: nowhere,
             verbs: verbs,
+            operands: () => provider.operands(notice, said),
             targets: nowhere ? verbs : null,
             run: () => {
                 if (nowhere) {
@@ -210,25 +211,46 @@ Provider {
                 run: () => Notices.mark(notice.id, !notice.read)
             }));
         case "forget":
-            return thing(Object.assign(named("verb:notice:forget"), {
-                stays: true,
-                run: () => {
-                    const still = Notices.live[notice.id] ?? null;
-                    if (still)
-                        still.dismiss();
-                }
-            }));
+            return thing(Object.assign(named("verb:notice:forget"), { stays: true },
+                forgetting(notice)));
         default:
             // Copying what it said, always last.
-            return thing(Object.assign(named("verb:notice:copy"), {
-                now: true,
-                copies: said,
-                run: () => {
-                    Notices.mark(notice.id, true);
-                    Quickshell.clipboardText = said;
-                }
-            }));
+            return thing(Object.assign(named("verb:notice:copy"), { now: true },
+                copying(notice, said)));
         }
+    }
+
+    // What d and y take of a notice: its Forget It while it's live, and
+    // copying what it said, as plain fields rather than rows made
+    // searchable, since d or y over a history of hundreds asks every row
+    // (Launcher.qml's actionsOf).
+    function operands(notice, said) {
+        const copy = Object.assign({ key: "verb:notice:copy",
+            verb: Words.verb("verb:notice:copy") }, copying(notice, said));
+        if (!Notices.live[notice.id])
+            return [copy];
+        return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
+            forgetting(notice)), copy];
+    }
+
+    function forgetting(notice) {
+        return {
+            run: () => {
+                const still = Notices.live[notice.id] ?? null;
+                if (still)
+                    still.dismiss();
+            }
+        };
+    }
+
+    function copying(notice, said) {
+        return {
+            copies: said,
+            run: () => {
+                Notices.mark(notice.id, true);
+                Quickshell.clipboardText = said;
+            }
+        };
     }
 
     // Made again only when the history changes, each with its age as of
