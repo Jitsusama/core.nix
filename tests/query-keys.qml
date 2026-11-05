@@ -1340,6 +1340,16 @@ QtObject {
             .filter(one => ["normal", "visual", "words"].includes(one.mode))
             .filter(one => one.keys.some(key => arrows.includes(key)))
             .map(one => one.act), []);
+        // Nor with Shift, nor as any key of a sequence, as the key language's
+        // own check refuses (#1865), which can't see this table. The drawer's
+        // way in is Y2YBTS's (jitsusama/drawer-by-ctrl-w), which takes its
+        // Space and arrow out with page's and choosing's.
+        const arrowed = key => arrows.some(arrow => key === arrow || key === `Shift+${arrow}`);
+        holds("nor with Shift or in a sequence", Keys.table
+            .filter(one => ["normal", "visual", "words"].includes(one.mode))
+            .filter(one => one.act !== "drawer")
+            .filter(one => one.keys.some(keys => [].concat(keys).some(arrowed)))
+            .map(one => one.act), []);
         holds("normal's section names no arrow alone",
             sections.Normal.filter(key => arrows.map(Listed.face).includes(key)), []);
         // The narrowest plate's names sit whole at 16 figures; 14 leaves a
