@@ -102,7 +102,10 @@ Floating {
     // show, as many as fit the screen's height up to eight.
     property int firstShown: 0
     readonly property int room: Math.max(Math.min(NoticeList.room,
-        Math.floor((screenHeight * 0.45) / rowHeight)), 3)
+        Math.floor((screenHeight * linesShare) / rowHeight)), 3)
+    // How much of the screen's height the lines take at most, leaving the
+    // cursor card, the menu and the foot room beneath them.
+    readonly property real linesShare: 0.45
     property real screenHeight: 768
     readonly property var inView: listed.slice(firstShown, firstShown + room)
     function follow() {
@@ -1366,8 +1369,11 @@ Floating {
                             color: Qt.alpha(Theme.raised, Theme.floating.selection)
                         }
 
+                        // Over the caret, so the block in normal sits
+                        // behind the letter it's on.
                         Text {
                             id: words
+                            z: 1
                             x: Theme.space.m
                             width: parent.width - 2 * x
                             anchors.verticalCenter: parent.verticalCenter
@@ -1392,8 +1398,7 @@ Floating {
                                 ? Math.max(1, Math.round(figure.averageCharacterWidth / 4))
                                 : figure.averageCharacterWidth
                             height: figure.ascent + figure.descent
-                            color: held.mode === "insert" ? Theme.strong
-                                : Qt.alpha(Theme.accent, 0.6)
+                            color: held.mode === "insert" ? Theme.strong : Theme.selection
                         }
                     }
 
