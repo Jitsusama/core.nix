@@ -571,22 +571,30 @@ Floating {
     // so it holds whichever the theme names, and never past half again, so
     // a face that measures wrongly can't swamp a plate. Hebrew's letters
     // are drawn to stand with Latin as the mono's do, and CJK's fill their
-    // em, so they keep their size.
+    // em, so they keep their size. Both are measured at ten times Figure's
+    // size, since a face's bounds come in whole pixels, and at Figure's a
+    // pixel's rounding put the ratio at 1.17 rather than 1.25.
     FontMetrics {
         id: scriptDigitFace
         font.family: drawer.script !== "" ? Theme.script.mono[drawer.script]
             : Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.pointSize: Theme.level.figure.pointSize * 10
+    }
+    FontMetrics {
+        id: figureDigitFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize * 10
+        font.features: Theme.level.figure.features
     }
     // A binding doesn't see what a call reads, so it reads both faces.
     readonly property real scriptGrown: {
         void scriptDigitFace.font;
-        void latinFace.font;
+        void figureDigitFace.font;
         const digits = scriptDigits[script] ?? "";
         if (digits === "")
             return 1;
         const stands = scriptDigitFace.tightBoundingRect(digits).height;
-        const figures = latinFace.tightBoundingRect("0123456789").height;
+        const figures = figureDigitFace.tightBoundingRect("0123456789").height;
         return stands > 0 ? Math.min(Math.max(figures / stands, 1), 1.5) : 1;
     }
     // A value in Latin letters on a script's plate (`latin: true`), as a
