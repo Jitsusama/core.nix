@@ -2053,14 +2053,19 @@ in
         # as the journal does.
         # A throwaway probe: Qt's QML profiler records every JavaScript
         # call and every allocation on its heap from the shell's first line,
-        # since the shell waits for it, and writes them when the shell ends.
+        # since the shell waits for it, and writes them when told to through
+        # a FIFO, since a shell that ends first leaves it a damaged trace.
         ExecStart = toString (
           pkgs.writeShellScript "quickshell-profiled" ''
+            told="$XDG_RUNTIME_DIR/qmlprofiler.in"
+            rm -f "$told"
+            mkfifo "$told"
             ${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs \
               --debug 3768 --waitfordebug &
-            exec ${pkgs.qt6.qtdeclarative}/bin/qmlprofiler -a localhost -p 3768 \
+            exec ${pkgs.qt6.qtdeclarative}/bin/qmlprofiler --interactive \
+              -a localhost -p 3768 \
               --include javascript,memory,creating,binding,handlingsignal \
-              -o "$XDG_RUNTIME_DIR/trace.qtd"
+              -o "$XDG_RUNTIME_DIR/trace.qtd" <> "$told"
           ''
         );
         # GTK's platform theme, which other Qt programs take, changes the

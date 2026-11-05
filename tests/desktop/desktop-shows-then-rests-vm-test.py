@@ -85,11 +85,16 @@ def test_memory_probe(desktop: Desktop) -> None:
     print(machine.succeed(desktop.in_session(read)))
     machine.succeed("sleep 45")
     print(machine.succeed(desktop.in_session(read)))
-    # The shell alone is ended, so the profiler sees it go and writes what
-    # it heard before it ends too.
-    machine.succeed("pkill -TERM -x '.quickshell-wra'")
-    machine.wait_until_fails("pgrep -f bin/qmlprofiler", timeout=900)
-    print(machine.succeed("ls -la /run/user/1000/trace.qtd"))
+    # The profiler stops recording, writes what it heard and clears it,
+    # while the shell runs on; its file is whole once it stops growing.
+    machine.succeed("echo f > /run/user/1000/qmlprofiler.in")
+    machine.wait_until_succeeds("test -s /run/user/1000/trace.qtd", timeout=900)
+    machine.wait_until_succeeds(
+        "a=$(stat -c %s /run/user/1000/trace.qtd); sleep 10;"
+        ' [ "$a" = "$(stat -c %s /run/user/1000/trace.qtd)" ]',
+        timeout=900,
+    )
+    print(machine.succeed("ls -la /run/user/1000/trace.qtd; tail -c 300 /run/user/1000/trace.qtd"))
     machine.succeed("cp /run/user/1000/trace.qtd /tmp/trace.qtd")
     machine.copy_from_vm("/tmp/trace.qtd", "trace")
 
