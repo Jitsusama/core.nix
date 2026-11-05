@@ -26,7 +26,7 @@ const normal = [
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.
     { name: "ending", acts: ["ending"], also: ["dj"] },
-    { name: "copy", acts: ["copy"], also: ["yG"] },
+    { name: "copyRow", acts: ["copy"], also: ["yG"] },
     { name: "restore", acts: ["restore"] },
     { name: "intoDrawer", acts: ["drawer"] },
     { name: "keys", acts: ["keys"] },

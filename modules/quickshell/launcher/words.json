@@ -6676,7 +6676,7 @@
         "insert": "Type",
         "change": "Clear it and type",
         "ending": "Close or forget it",
-        "copy": "Copy it",
+        "copyRow": "Copy it",
         "restore": "Bring it back",
         "intoDrawer": "Into the drawer",
         "lines": "Down and up a line",

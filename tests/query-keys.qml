@@ -922,7 +922,7 @@ QtObject {
             nextRow: "next row", caret: "caret", word: "word", intoDrawer: "into the drawer",
             lines: "lines", along: "along", scroll: "scroll", back: "back", ending: "ending",
             seek: "seek", seekOn: "seek on", select: "select", reselect: "reselect",
-            otherEnd: "other end", copy: "copy" };
+            otherEnd: "other end", copy: "copy", copyRow: "copy row" };
         const modes = { normal: "Normal", insert: "Insert", page: "Drawer",
             pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
@@ -939,7 +939,7 @@ QtObject {
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
-        holds("and y", keyed("copy"), "yy  yG");
+        holds("and y", keyed("copy row"), "yy  yG");
         holds("no line scrolls the drawer with Shift and an arrow",
             list.filter(line => (line.label ?? "").includes("\u21e7+\u2193")).length, 0);
         holds("the list's way into the drawer", keyed("into the drawer"), "Space \u2192");

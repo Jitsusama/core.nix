@@ -411,10 +411,10 @@ function read(standing, key, mode, words = false) {
     if (before !== null) {
         return before;
     }
-    // A count before a move in the drawer, where nothing types: 0 alone is
-    // Vim's first column, which rows haven't, so it counts only after
-    // another digit.
-    if (mode === "page" && standing.typed.length === 0 && digit.test(key)
+    // A count before a move in the drawer, choosing or not, where nothing
+    // types: 0 alone is Vim's first column, which rows haven't, so it
+    // counts only after another digit.
+    if (paged(mode) && standing.typed.length === 0 && digit.test(key)
         && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: { count: standing.count + key, typed: [] },
             ours: true };
