@@ -253,7 +253,7 @@ Floating {
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
-    readonly property bool more: view.contentHeight > view.height + 1
+    readonly property bool more: view.contentHeight > drawer.viewRoom + 1
     // How far it's scrolled, for the launcher to report.
     readonly property real scrolled: view.contentY
 
@@ -370,7 +370,7 @@ Floating {
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
     readonly property var wholeTops: Page.tops({ lines: laid, pitch: drawer.pitch,
-        end: Math.max(0, view.contentHeight - view.height) })
+        end: Math.max(0, view.contentHeight - drawer.viewRoom) })
     property var cursor: ({ line: 0, letter: 0, want: 0 })
     // The search being typed in it, as the launcher's line holds it, and
     // the last one run, { pattern, forward }, which n and N go on with, as
@@ -581,7 +581,7 @@ Floating {
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = view.contentY;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top
-            && laid[at].top + laid[at].height <= top + view.height);
+            && laid[at].top + laid[at].height <= top + drawer.viewRoom);
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
         cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
     }
@@ -617,8 +617,8 @@ Floating {
             letter: cursor.letter,
             want: cursor.want,
             top: view.contentY,
-            height: view.height,
-            end: Math.max(0, view.contentHeight - view.height),
+            height: drawer.viewRoom,
+            end: Math.max(0, view.contentHeight - drawer.viewRoom),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -668,8 +668,8 @@ Floating {
             letter: cursor.letter,
             want: cursor.want,
             top: view.contentY,
-            height: view.height,
-            end: Math.max(0, view.contentHeight - view.height),
+            height: drawer.viewRoom,
+            end: Math.max(0, view.contentHeight - drawer.viewRoom),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -704,8 +704,8 @@ Floating {
         cursor = { line, letter, want: xOf(laid[line], letter) };
         view.contentY = Page.shown(laid[line], view.contentY, {
             lines: laid,
-            height: view.height,
-            end: Math.max(0, view.contentHeight - view.height),
+            height: drawer.viewRoom,
+            end: Math.max(0, view.contentHeight - drawer.viewRoom),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops
@@ -976,14 +976,44 @@ Floating {
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
     // A binding doesn't see what a call reads, so it reads both faces, to be
     // measured again as a key list's face comes and goes.
+    // The names' column ends at a name, the widest of those that keep their
+    // values beside them, chosen so the most do: a column as wide as the
+    // widest name pushed half a narrow plate's values under their names,
+    // its two columns lost (VKCF3Z, 2026-11-05). A name wider goes on its
+    // own line, its value under it, as one too wide always has. A key
+    // list's sayings stay beside every key, and the moment's beside every
+    // name, so the column is never narrower than the widest of those.
     readonly property real labelsWide: {
         void valueFace.font;
         void factFace.font;
-        let widest = 0;
-        for (const fact of allFacts)
-            widest = Math.max(widest, factFace.advanceWidth(fact.label ?? ""));
-        return Math.min(column.width - labelsGap - valueFace.advanceWidth("00000000"),
-            Math.ceil(widest));
+        void wordsFace.font;
+        void latinFace.font;
+        const room = column.width - labelsGap;
+        const most = room - valueFace.advanceWidth("00000000");
+        const named = allFacts.filter(fact => fact && fact.heading === undefined)
+            .map(fact => ({
+                name: Math.ceil(factFace.advanceWidth(fact.label ?? "")),
+                value: fact.value === null || fact.value === undefined ? 0
+                    : faceOf(fact).advanceWidth(unbroken(fact.value))
+            }));
+        const widest = Math.max(0, ...named.map(one => one.name));
+        if (listsKeys || widest <= most && named.every(one => one.value <= room - widest))
+            return Math.min(most, widest);
+        const least = Math.max(0, ...[].concat(...groups.map(group => group.facts))
+            .map(fact => Math.ceil(factFace.advanceWidth(fact.label ?? ""))));
+        const ends = [...new Set(named.map(one => one.name))]
+            .filter(end => end <= most && end >= least).sort((one, other) => other - one);
+        let best = Math.min(most, Math.max(least, widest));
+        let kept = -1;
+        for (const end of ends) {
+            const beside = named.filter(one => one.name <= end && one.value <= room - end)
+                .length;
+            if (beside > kept) {
+                best = end;
+                kept = beside;
+            }
+        }
+        return best;
     }
     // How many of its facts take more than a line, a name or a value
     // wrapped, for the launcher to report when asked: a key list's take one.
@@ -991,7 +1021,7 @@ Floating {
         let wrapped = 0;
         for (let at = 0; at < factRows.count; at++) {
             const row = factRows.itemAt(at);
-            if (row && !row.heading && row.height > drawer.pitch + 0.5)
+            if (row && !row.heading && row.lines > 1)
                 wrapped += 1;
         }
         return wrapped;
@@ -1052,9 +1082,22 @@ Floating {
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
-    // Between a name and its value, a run's width apart, so the two never
-    // read as one.
-    readonly property real labelsGap: Theme.space.xl
+    // Between the names' column and the values', two columns, so the two
+    // never read as one.
+    readonly property real labelsGap: Theme.space.rung.groups
+    // Where any thing in a list takes more than a line as it's laid out,
+    // every thing in it stands a beat further from the one before, so a
+    // wrapped line sits nearer its own thing than the next and the list
+    // reads by thing rather than by line; a heading keeps a pitch above
+    // its first (VKCF3Z, 2026-11-05).
+    function apartIn(wraps, first) {
+        return wraps && !first ? Theme.space.beat : 0;
+    }
+    // Whether any of a Repeater's things takes more than a line.
+    function anyWraps(things) {
+        return Array.from({ length: things.count }, (_, at) => things.itemAt(at))
+            .some(thing => (thing?.lines ?? 1) > 1);
+    }
     // A number and its unit kept on one line, so "8 s" never leaves its s
     // alone on the next (VKCF3Z, 2026-11-03).
     function unbroken(words) {
@@ -1079,23 +1122,75 @@ Floating {
         font: timeText.font
     }
 
+    // How far down the view may show, from its top: to the last whole line
+    // that keeps its inset and a step from the frame below, as the text
+    // does on every other side, so nothing runs into the foot of the plate;
+    // its keys, gone into, bring up the rest (VKCF3Z, 2026-11-03).
+    readonly property real viewRoom: drawer.firstLine + Math.max(0, Math.floor((drawer.tall
+        - 2 * Theme.border - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch))
+        * drawer.pitch
+    // The top of every line's box it lays on the pitch past its title, down
+    // the content: the facts', the moment's, the preview's and the words'.
+    // Each a fact takes as { top, bottom }, all its lines, a heading held
+    // with the thing under it; and each line of the moment, the preview
+    // and the words, which run on as reading does.
+    function lineSpans() {
+        const spans = [];
+        const run = (top, count) => {
+            for (let at = 0; at < count; at++)
+                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch });
+        };
+        let heading = null;
+        for (let at = 0; at < factRows.count; at++) {
+            const row = factRows.itemAt(at);
+            if (!row)
+                continue;
+            const top = flow.y + factsShown.y + row.y + row.base - drawer.pitch / 2
+                - drawer.dropped;
+            const span = { top: heading ?? top, bottom: top + row.lines * drawer.pitch };
+            heading = row.heading ? span.top : null;
+            if (!row.heading)
+                spans.push(span);
+        }
+        for (let at = 0; at < groupsShown.count; at++) {
+            const group = groupsShown.itemAt(at);
+            for (const base of group?.bases ?? [])
+                run(group.y + base - drawer.pitch / 2 - drawer.dropped, 1);
+        }
+        if (previewLines.visible)
+            run(flow.y + previewBox.y, previewBox.lines.length);
+        if (wordsBox.visible)
+            run(flow.y + wordsBox.y, bodyText.lineCount);
+        return spans;
+    }
+    // Where the view ends: at its room, or where a thing would run past it,
+    // at that thing's top, so a thing is shown whole, all its lines, or not
+    // at all (VKCF3Z, 2026-11-05: a saying's first line alone reads as
+    // cut). A list whose things wrap stands them a beat off the pitch the
+    // room is counted on, so one may fall across it. A thing begun above
+    // the view, taller than it shows, ends at its last whole line instead.
+    readonly property real shownTo: {
+        const top = view.contentY;
+        const end = top + viewRoom;
+        const across = lineSpans().filter(span => span.top < end - 0.5
+            && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
+                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch);
+        return Math.min(end, ...across) - top;
+    }
+
     Flickable {
         id: view
         width: parent.width
-        // Ending at the last whole line that keeps its inset and a step
-        // from the frame below, as the text does on every other side, so
-        // nothing runs into the foot of the plate; its keys, gone into,
-        // bring up the rest (VKCF3Z, 2026-11-03).
-        height: drawer.firstLine + Math.max(0, Math.floor((drawer.tall - 2 * Theme.border
-            - Theme.inset - Theme.space.l - drawer.firstLine) / drawer.pitch)) * drawer.pitch
+        height: drawer.shownTo
         clip: true
         interactive: false
         contentWidth: width
         // Never ending between two lines, so scrolled to its end its lines
         // are still the card's.
         readonly property real natural: drawer.moment ? momentShown.ends : flow.y + flow.height
-        contentHeight: natural <= height ? natural
-            : height + Math.ceil((natural - height) / drawer.pitch) * drawer.pitch
+        contentHeight: natural <= drawer.viewRoom ? natural
+            : drawer.viewRoom + Math.ceil((natural - drawer.viewRoom) / drawer.pitch)
+                * drawer.pitch
 
         Item {
             id: column
@@ -1278,7 +1373,7 @@ Floating {
                         readonly property var bases: Array.from({ length: facts.count },
                             (_, at) => {
                                 const row = facts.itemAt(at);
-                                return row ? row.y + drawer.pitch / 2 + drawer.dropped : 0;
+                                return row ? row.y + row.base : 0;
                             })
                         // Its last fact's first baseline.
                         readonly property real lastBase: base + height - drawer.pitch
@@ -1298,21 +1393,29 @@ Floating {
                         Repeater {
                             id: facts
                             model: group.modelData.facts
+                            readonly property bool wraps: drawer.anyWraps(facts)
 
                             Item {
                                 id: momentFact
                                 required property var modelData
+                                required property int index
                                 readonly property Item name: factName
                                 readonly property Item figure: figure
+                                readonly property int lines: Math.max(1, factName.lineCount,
+                                    figure.lineCount)
+                                readonly property real apart: drawer.apartIn(facts.wraps,
+                                    index === 0)
+                                // Its first baseline, down from its top.
+                                readonly property real base: apart + drawer.pitch / 2
+                                    + drawer.dropped
                                 width: group.width
-                                height: Math.max(1, factName.lineCount, figure.lineCount)
-                                    * drawer.pitch
+                                height: apart + lines * drawer.pitch
 
                                 PageText {
                                     id: factName
                                     sought: drawer.washing
                                     width: drawer.labelsWide
-                                    y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                    y: momentFact.base - baselineOffset
                                     plain: momentFact.modelData.label ?? ""
                                     leading: drawer.pitch
                                     ink: Theme.muted
@@ -1324,7 +1427,7 @@ Floating {
                                     id: figure
                                     x: drawer.labelsWide + drawer.labelsGap
                                     width: parent.width - x
-                                    y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                    y: momentFact.base - baselineOffset
                                     plain: drawer.qualified(momentFact.modelData)
                                     styled: true
                                     leading: drawer.pitch
@@ -1403,7 +1506,7 @@ Floating {
                         .slice(0, Math.floor(room / drawer.pitch))
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
-                    readonly property real room: Math.max(4 * drawer.pitch, view.height
+                    readonly property real room: Math.max(4 * drawer.pitch, drawer.viewRoom
                         - flow.y - (titleBlock.visible ? titleBlock.height
                         + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
@@ -1507,6 +1610,7 @@ Floating {
                     Repeater {
                         id: factRows
                         model: drawer.facts
+                        readonly property bool wraps: drawer.anyWraps(factRows)
                         // Every fact's name and value, for the keys' lines.
                         function texts() {
                             return [].concat(...Array.from({ length: count }, (_, at) => {
@@ -1526,6 +1630,16 @@ Floating {
                             readonly property bool heading: modelData.heading !== undefined
                             readonly property real headingRoom: heading && index > 0 ? drawer.pitch
                                 : 0
+                            // Room above a fact for a list that wraps,
+                            // but under a heading, which stays a pitch
+                            // above its first.
+                            readonly property real apart: heading ? 0
+                                : drawer.apartIn(factRows.wraps, index === 0
+                                    || drawer.facts[index - 1]?.heading !== undefined)
+                            // How many lines it takes as it's laid out.
+                            readonly property int lines: heading ? 1 : under
+                                ? label.lineCount + value.lineCount
+                                : Math.max(1, label.lineCount, value.lineCount)
                             readonly property Item over: headingText
                             readonly property Item name: label
                             readonly property Item value: value
@@ -1533,7 +1647,7 @@ Floating {
                                 && modelData.value !== undefined
                             // Its first baseline, down from its top.
                             readonly property real base: drawer.pitch / 2 + drawer.dropped
-                                + headingRoom
+                                + headingRoom + apart
                             // A name and its value share one line, or the
                             // value takes the plate's whole width on the
                             // line under its name (VKCF3Z, 2026-11-04): a
@@ -1571,9 +1685,7 @@ Floating {
                                 || drawer.listsKeys || value.lineCount <= 1
 
                             width: parent.width
-                            height: heading ? headingRoom + drawer.pitch
-                                : (under ? label.lineCount + value.lineCount
-                                    : Math.max(1, label.lineCount, value.lineCount)) * drawer.pitch
+                            height: headingRoom + apart + lines * drawer.pitch
 
                             PageText {
                                 id: headingText
