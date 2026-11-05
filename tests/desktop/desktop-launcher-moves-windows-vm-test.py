@@ -609,6 +609,7 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
 # rows holding still while chosen, what arrives waiting as "1 new" in the
 # foot (VKCF3Z, 2026-11-05).
 PARAGRAPH = ("Paragraph first", "Paragraph second", "Paragraph third")
+ARRIVING = "Paragraph fourth"
 
 
 def test_v_o_gv_ip_and_a_copy_waiting_behind_what_is_chosen(desktop: Desktop) -> None:
@@ -622,17 +623,18 @@ def test_v_o_gv_ip_and_a_copy_waiting_behind_what_is_chosen(desktop: Desktop) ->
     desktop.launcher_until(lambda shown: len(shown["rows"]) == len(PARAGRAPH))
     desktop.normal()
     chooses_and_brings_back(desktop)
-    # A copy arriving while rows are chosen waits, counted in the foot, and
-    # comes in at the end as visual ends.
+    # A window opening while rows are chosen waits, counted in the foot,
+    # and comes in at the end as visual ends. A source refreshes only the
+    # search its rows are in, so the arrival is one more window.
     machine.send_chars("V")
     desktop.launcher_until(lambda shown: shown["mode"] == "visual")
-    desktop.as_account("wl-copy 'Paragraph copied'")
+    desktop.opened(ARRIVING)
     desktop.launcher_until(
         lambda shown: shown["waiting"] == 1 and len(shown["rows"]) == len(PARAGRAPH)
     )
     machine.send_key("esc")
     desktop.launcher_until(
-        lambda shown: shown["waiting"] == 0 and shown["rows"][3:] == ["Paragraph copied"]
+        lambda shown: shown["waiting"] == 0 and shown["rows"][len(PARAGRAPH) :] == [ARRIVING]
     )
     moves_by_runs_and_takes_them(desktop)
 
@@ -666,7 +668,7 @@ def chooses_and_brings_back(desktop: Desktop) -> None:
 def moves_by_runs_and_takes_them(desktop: Desktop) -> None:
     """Move by runs with } and {, copy a run with V j y y once, and close one with x."""
     machine = desktop.machine
-    # } goes to the next run's first row, the copy after the windows.
+    # } goes past the run of windows, which reaches the end, so to its last.
     machine.send_chars("gg}")
     desktop.launcher_until(lambda shown: shown["current"] == len(PARAGRAPH))
     machine.send_chars("{")
