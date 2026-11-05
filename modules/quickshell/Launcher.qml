@@ -69,8 +69,32 @@ Scope {
 
     // Wide enough for a long action and its chord at the large size.
     readonly property int width: 680
-    // How many results show at once; the rest are a scroll away.
-    readonly property int rows: 8
+    // How many results show at once; the rest are a scroll away. Eight,
+    // or as many as keep the card inside a small screen, a screen margin
+    // above and below it, three at least (VKCF3Z, 2026-11-05: panels
+    // never run off the screen). Home's gap is allowed for whether it shows
+    // or not, so what's found never changes how many.
+    readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
+        (screenHere.height - 2 * Theme.space.xl - cardChrome - Theme.space.m)
+            / Theme.space.xxxl)))
+    // How tall the card is but for its rows: the line, its hairline and the
+    // foot, which no screen changes.
+    readonly property real cardChrome: card.height - listBox.height
+    // How tall the drawer stands in the card's place: down to the rows'
+    // end, so the foot stays in sight under it, saying how to come back.
+    readonly property real rowsEnd: Theme.border + prompt.height + 2 * Theme.inset
+        + Theme.border + Theme.inset + listBox.height
+    // The card's words but its foot, which give way to the drawer where it
+    // takes their place, fading on the drawer's own curve as it comes.
+    property real wordsShown: drawerOver && drawerHolds ? 0 : 1
+
+    Behavior on wordsShown {
+        NumberAnimation {
+            duration: root.drawerHolds ? Theme.motion.medium : Theme.motion.short
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.motion.curve
+        }
+    }
 
     // The vocabulary (Words.qml), handed to the providers' common code
     // (Provider.qml), which can't import qs itself: Provider is the type
@@ -1659,7 +1683,8 @@ Scope {
 
     // How tall the list is while the launcher's open: always its rows, and
     // home's gap when it has one.
-    property int tall: rows * Theme.space.xxxl
+    // Set as it opens, from the rows the screen gives.
+    property int tall: 8 * Theme.space.xxxl
 
     // What kind of thing a row is, as it says at its right edge, by what
     // its provider calls its things: a closed set of nouns, so a kind is
@@ -4235,8 +4260,12 @@ Scope {
     // up, as the lock screen sits, so the picture or the video its line
     // acts on stays in view above it, as Vim's command line sits at the
     // bottom.
+    // Else a quarter down, or as far as keeps a screen margin below it on
+    // a screen too short for that.
     readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
-        ? screenHere.height * 11 / 12 - card.height : screenHere.height / 4)
+        ? screenHere.height * 11 / 12 - card.height
+        : Math.max(Theme.space.xl, Math.min(screenHere.height / 4,
+            screenHere.height - Theme.space.xl - card.height)))
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -4894,22 +4923,12 @@ Scope {
 
             Column {
                 width: parent.width
-                // Its words give way to the drawer where it takes their
-                // place, fading on the drawer's own curve as it comes.
-                opacity: root.drawerOver && root.drawerHolds ? 0 : 1
-
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: root.drawerHolds ? Theme.motion.medium : Theme.motion.short
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.motion.curve
-                    }
-                }
 
                 // What's typed, an inset inside the frame.
                 Item {
                     width: parent.width
                     height: prompt.height + 2 * Theme.inset
+                    opacity: root.wordsShown
 
                     Prompt {
                         id: prompt
@@ -5168,6 +5187,7 @@ Scope {
                     width: parent.width
                     height: Theme.border
                     color: Theme.edge
+                    opacity: root.wordsShown
                 }
 
                 Column {
@@ -5180,9 +5200,11 @@ Scope {
                     // never jumps and a row never moves because others
                     // came or went: the rows it doesn't fill are space.
                     Item {
+                        id: listBox
                         width: parent.width
                         // Over a viewer only the line's menu, as tall as it.
                         height: root.over !== null ? commandMenu.height : root.tall
+                        opacity: root.wordsShown
 
                         // The command line's menu rises over the rows'
                         // bottom, so the cursor row stays in view above
@@ -5934,7 +5956,7 @@ Scope {
             x: card.reach + (root.drawerOver ? 0 : root.width + root.drawerGap)
             y: card.reach
             width: root.drawerWidth
-            tall: card.height
+            tall: root.drawerOver ? root.rowsEnd : card.height
             fieldLine: root.fieldLine
             rowLine: root.rowLine
             rowLines: root.rowLines
