@@ -524,13 +524,25 @@ def waits_then_lets_go(desktop: Desktop, key: str, typed: str | None = None) -> 
     desktop.reported("showing ", let_go, before)
 
 
-def arrows_move_nothing(desktop: Desktop) -> None:
-    """Press each arrow in normal on the first row: none moves it, and each says so.
+def arrows_move_as_letters(desktop: Desktop) -> None:
+    """Press each arrow in normal from the first row: Down and Up are j and k, with a count.
 
-    Only j and k move (Joel, 2026-11-05: "rely only on vi right feeling things"), and an arrow
-    says "not here", as every key with no meaning does, until the next key.
+    In normal, in a buffer, the arrows move the cursor (Joel, 2026-11-05 12:1x), as their
+    letters do. Right and Left never step in or out, so on the rows they say "not here", as
+    every key with no meaning does, until the next key.
     """
-    for arrow in ("down", "up", "right", "left"):
+    machine = desktop.machine
+    for keys, row in [(["down"], 1), (["down"], 2), (["up"], 1), (["up"], 0)]:
+        for key in keys:
+            machine.send_key(key)
+        desktop.launcher_until(lambda shown: shown["current"] == row)  # noqa: B023
+    counted = 2
+    machine.send_chars(str(counted))
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: shown["current"] == counted and shown["counted"] == "")
+    machine.send_chars("gg")
+    desktop.launcher_until(lambda shown: shown["current"] == 0)
+    for arrow in ("right", "left"):
         desktop.machine.send_key(arrow)
         desktop.launcher_until(
             lambda shown: (
@@ -573,7 +585,7 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     for keys, row in [("j", 1), ("j", 2), ("k", 1), ("k", 0), ("G", last), ("g g", 0)]:
         press(keys)
         at(row)
-    arrows_move_nothing(desktop)
+    arrows_move_as_letters(desktop)
     # A count stands in the mode word's place in the foot until its move, which goes that
     # many, and before G names the row.
     machine.send_chars("3")

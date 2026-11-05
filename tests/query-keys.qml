@@ -83,8 +83,8 @@ QtObject {
                 ["normal", "6 ending"]],
             ["dj and dk end the row and the one below or above",
                 ["Escape", "d", "j", "d", "k"], ["normal", "ending next", "ending previous"]],
-            ["an arrow is no motion, and lets d go", ["Escape", "d", "Down", "j"],
-                ["normal", "next"]],
+            ["an arrow is its letter's motion, d Down as dj", ["Escape", "d", "Down", "d", "Up"],
+                ["normal", "ending next", "ending previous"]],
             ["a count after d goes with its motion", ["Escape", "d", "3", "j"],
                 ["normal", "ending 3 next"]],
             ["and one before it too, multiplied", ["Escape", "2", "d", "3", "j"],
@@ -431,7 +431,7 @@ QtObject {
                 ["normal", "selectLines"], "visual"],
             ["normal's moves extend it, with counts", ["Escape", "V", "j", "3", "k", "g", "g",
                 "G", "Ctrl+d", "Down"], ["normal", "selectLines", "next", "3 previous", "first",
-                "last", "halfDown"], "visual"],
+                "last", "halfDown", "next"], "visual"],
             ["d takes the selection at once, and ends it", ["Escape", "V", "j", "d"],
                 ["normal", "selectLines", "next", "ending"], "normal"],
             ["and y", ["Escape", "V", "y"], ["normal", "selectLines", "copy"], "normal"],
@@ -564,8 +564,8 @@ QtObject {
         const doing = [
             ["w b e move by words", ["Escape", "w", "b", "e"],
                 ["normal", "wordNext", "wordBack", "wordEnd"]],
-            ["h l move by letters, and the arrows don't", ["Escape", "h", "l", "Left", "Right"],
-                ["normal", "letterBack", "letterNext"]],
+            ["h l move by letters, and so do the arrows", ["Escape", "h", "l", "Left", "Right"],
+                ["normal", "letterBack", "letterNext", "letterBack", "letterNext"]],
             ["- and Backspace still step out", ["Escape", "-", "Backspace"],
                 ["normal", "out", "out"]],
             ["0 and $ go to the line's ends", ["Escape", "$", "0"],
@@ -1093,7 +1093,7 @@ QtObject {
             // Normal).
             ["Escape gives normal, and then closes", ["Escape", "Escape"],
                 ["normal", "dismiss"]],
-            ["normal's h and l step out and in, and the arrows don't",
+            ["normal's h and l step out and in, and the arrows never step",
                 ["Escape", "Left", "h", "Right", "l"], ["normal", "out", "into"]],
             ["normal's Backspace and - step out, as his oil's do", ["Escape", "Backspace", "-"],
                 ["normal", "out", "out"]],
@@ -1104,8 +1104,9 @@ QtObject {
             [": in normal opens the command line", ["Escape", ":"], ["normal", "command"]],
             ["a colon after letters on the find is the field's to type", ["s", ":", "Return"],
                 ["run"]],
-            ["normal's rows take no arrows, only j and k (Joel, 2026-11-05)",
-                ["Escape", "Down", "Up", "j", "k"], ["normal", "next", "previous"]],
+            ["normal's Down and Up are j and k, with counts (Joel, 2026-11-05 12:1x)",
+                ["Escape", "Down", "Up", "j", "k", "3", "Down"],
+                ["normal", "next", "previous", "next", "previous", "3 next"]],
             ["Space Tab goes to the place used last", ["Escape", "Space", "Tab"],
                 ["normal", "lastPlace"]],
             // Tab is Ctrl+I, as a terminal can't tell them apart: forward
@@ -1331,14 +1332,16 @@ QtObject {
         const facts = list.filter(line => line.heading === undefined);
         holds("every line the list gives has its keys",
             facts.filter(line => line.label === "").length, 0);
-        // Joel relies on Vim's keys alone ("rely only on vi right feeling
-        // things", 2026-11-05): where nothing types, no arrow is bound by
-        // itself, and the list names one only for an act that has no other
-        // key, as the find's caret.
+        // In normal, in a buffer, the arrows move the cursor (Joel,
+        // 2026-11-05 12:1x): where nothing types, an arrow is bound only
+        // beside its letter, as its motion, and the list names it never.
         const arrows = ["Up", "Down", "Left", "Right"];
-        holds("normal, visual and a name's words bind no arrow alone", Keys.table
+        const letterOf = { Down: "j", Up: "k", Left: "h", Right: "l" };
+        const motions = ["next", "previous", "letterBack", "letterNext"];
+        holds("an arrow alone is only its letter's motion", Keys.table
             .filter(one => ["normal", "visual", "words"].includes(one.mode))
-            .filter(one => one.keys.some(key => arrows.includes(key)))
+            .filter(one => one.keys.some(key => arrows.includes(key)
+                && (!motions.includes(one.act) || !one.keys.includes(letterOf[key]))))
             .map(one => one.act), []);
         // Nor with Shift, nor as any key of a sequence, as the key language's
         // own check refuses (#1865), which can't see this table; nor in the
