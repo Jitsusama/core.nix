@@ -86,6 +86,12 @@ Floating {
         // moved through, twice a Text's time to make one.
         property bool reading: false
         readonly property TextEdit reader: readerLoader.item
+        // Its letters' colour. While the reader is made it draws every
+        // letter and the Text none, so each letter is drawn once: a chosen,
+        // washed or flashed letter drawn over the Text's own would add
+        // their antialiased edges together and look heavier than its
+        // neighbours, where a selection changes only fill and colour.
+        property color ink: Theme.text
 
         // Search's wash, strong ink on raised, as the held notices wash what
         // they find (Notifications.qml), drawn by the reader on the Text's
@@ -98,9 +104,14 @@ Floating {
         // What a copy as markdown puts before it: a title's #, a heading's ##.
         property string marked: ""
 
-        text: plain
+        // A styled text's own colours, which no ink hides, go while the
+        // reader draws its letters; colours move no letter.
+        text: reader && styled ? plain.replace(/ color="[^"]*"/g, "") : plain
         textFormat: styled ? Text.StyledText : Text.PlainText
-        wrapMode: elides || !wraps ? Text.NoWrap : Text.Wrap
+        color: reader ? "transparent" : ink
+        // Broken only at spaces, as a page is: a drawer too narrow for a
+        // word lets it run past the edge rather than split it (VKCF3Z).
+        wrapMode: elides || !wraps ? Text.NoWrap : Text.WordWrap
         elide: elides ? Text.ElideRight : Text.ElideNone
         lineHeightMode: leading > 0 ? Text.FixedHeight : Text.ProportionalHeight
         lineHeight: leading > 0 ? leading : 1
@@ -120,31 +131,36 @@ Floating {
                 readonly property string said: words.elides
                     ? cut.elidedText(words.plain, Qt.ElideRight, words.width) : words.plain
 
-                // Its letters on the Text's, the row's markup keeping its
-                // words and losing its colours, which the Text draws: only
-                // what a search washes, on its own ground, is drawn here.
+                // Its letters where the Text's were, in their ink and the
+                // row's markup's colours, with what a search washes on its
+                // own ground.
                 y: words.baselineOffset - drop - baselineOffset
                 width: words.width
                 readOnly: true
                 selectByMouse: false
                 activeFocusOnPress: false
-                color: "transparent"
+                color: words.ink
                 // Its share of what visual chose, drawn as Qt draws a
-                // selection, its letters over the Text's: on the selection's
-                // ground as his Neovim's Visual is, or the accent's under
-                // its own ink while y flashes it, as his on_yank does. Only
-                // fill and colour change, never weight.
+                // selection: on the selection's ground in its own ink as his
+                // Neovim's Visual is, or the accent's under the accent's ink
+                // while y flashes it, as his on_yank does. Only fill and
+                // colour change, never weight.
                 persistentSelection: true
                 selectionColor: words.flashed ? Theme.accent
                     : Qt.alpha(Theme.selection, Theme.floating.selection)
-                selectedTextColor: words.flashed ? Theme.on_accent : Theme.text
+                selectedTextColor: words.flashed ? Theme.on_accent : words.ink
                 font: words.font
+                // Set as its Text is, so a right-to-left script's letters
+                // are drawn where they were laid, not at the far edge.
+                horizontalAlignment: words.horizontalAlignment
                 textFormat: TextEdit.RichText
-                wrapMode: words.wrapMode === Text.Wrap ? TextEdit.Wrap : TextEdit.NoWrap
+                wrapMode: words.wrapMode === Text.WordWrap ? TextEdit.WordWrap : TextEdit.NoWrap
                 text: `<div style="white-space:pre-wrap`
                     + (words.leading > 0
                         ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
-                    + `">${words.styled ? said.replace(/ color="[^"]*"/g, "")
+                    // A match in a styled text lands the cursor but isn't
+                    // washed, since washing inside markup isn't done.
+                    + `">${words.styled ? said
                         : words.sought !== "" ? Search.washed(said, words.sought, words.wash)
                             : Search.escaped(said)}</div>`
 
@@ -1024,7 +1040,7 @@ Floating {
                 plain: drawer.eyebrow
                 leading: 0
                 elides: true
-                color: Theme.muted
+                ink: Theme.muted
                 font.family: Theme.level.label.family
                 font.pointSize: Theme.level.label.pointSize
                 font.weight: Theme.level.label.weight
@@ -1056,7 +1072,7 @@ Floating {
                     plain: Moment.clock(clock.date)
                     leading: 0
                     wraps: false
-                    color: Theme.strong
+                    ink: Theme.strong
                     font.family: Theme.level.display.family
                     font.pointSize: Theme.level.display.pointSize
                     font.weight: Theme.level.display.weight
@@ -1076,7 +1092,7 @@ Floating {
                         .replace("{seconds}", String(clock.date.getSeconds()))
                     leading: 0
                     elides: true
-                    color: Theme.muted
+                    ink: Theme.muted
                     font.family: Theme.level.note.family
                     font.pointSize: Theme.level.note.pointSize
                     font.features: { "tnum": 1 }
@@ -1095,7 +1111,7 @@ Floating {
                     plain: drawer.shown?.say ?? ""
                     leading: 0
                     elides: true
-                    color: Theme.text
+                    ink: Theme.text
                     font.family: Theme.level.voice.family
                     font.italic: Theme.level.voice.italic
                     font.pointSize: Theme.level.voice.pointSize
@@ -1170,7 +1186,7 @@ Floating {
                                     y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                                     plain: momentFact.modelData.label ?? ""
                                     leading: drawer.pitch
-                                    color: Theme.muted
+                                    ink: Theme.muted
                                     font.family: Theme.level.note.family
                                     font.pointSize: Theme.level.note.pointSize
                                 }
@@ -1183,7 +1199,7 @@ Floating {
                                     plain: drawer.qualified(momentFact.modelData)
                                     styled: true
                                     leading: drawer.pitch
-                                    color: Theme.text
+                                    ink: Theme.text
                                     font.family: Theme.level.figure.family
                                     font.pointSize: Theme.level.figure.pointSize
                                     font.features: Theme.level.figure.features
@@ -1231,7 +1247,7 @@ Floating {
                         // A right-to-left title starts under its eyebrow
                         // too, rather than at the plate's far edge.
                         horizontalAlignment: Text.AlignLeft
-                        color: Theme.level.title.colour
+                        ink: Theme.level.title.colour
                         font.family: drawer.script === "" ? Theme.level.title.family
                             : Theme.script.serif[drawer.script]
                         font.pointSize: Theme.level.title.pointSize * drawer.scriptGrown
@@ -1346,7 +1362,7 @@ Floating {
                                 sought: drawer.washing
                                 leading: 0
                                 elides: true
-                                color: drawer.preview?.quiet === true ? Theme.muted : Theme.text
+                                ink: drawer.preview?.quiet === true ? Theme.muted : Theme.text
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
@@ -1429,7 +1445,7 @@ Floating {
                                 plain: fact.modelData.heading ?? ""
                                 leading: 0
                                 elides: true
-                                color: Theme.muted
+                                ink: Theme.muted
                                 font.family: Theme.level.label.family
                                 font.pointSize: Theme.level.label.pointSize
                                 font.weight: Theme.level.label.weight
@@ -1446,7 +1462,7 @@ Floating {
                                 width: fact.width - drawer.labelsWide - drawer.labelsGap
                                 text: value.plain
                                 textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
+                                wrapMode: Text.WordWrap
                                 font: value.font
                             }
 
@@ -1458,7 +1474,7 @@ Floating {
                                 y: fact.base - baselineOffset
                                 plain: fact.modelData.label ?? ""
                                 leading: drawer.pitch
-                                color: drawer.listsKeys ? Theme.text : Theme.muted
+                                ink: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
@@ -1476,7 +1492,7 @@ Floating {
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
                                 plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 leading: drawer.pitch
-                                color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
+                                ink: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
                                 font: drawer.faceOf(fact.modelData).font
                                 // A right-to-left script's words start at the
                                 // column too, as every other value's do,
@@ -1504,7 +1520,7 @@ Floating {
                         plain: drawer.body
                         styled: drawer.shown?.styled === true
                         leading: drawer.pitch
-                        color: Theme.text
+                        ink: Theme.text
                         // Prose, such as a notice's, at Words, as its card
                         // reads it and the reader sets its text. The rest,
                         // lines another program wrote, at Figure.

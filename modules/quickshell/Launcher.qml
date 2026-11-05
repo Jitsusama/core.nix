@@ -4278,8 +4278,8 @@ Scope {
     // and gives it back as they come out.
     readonly property bool drawerOver: !!screenHere
         && screenHere.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
-    // Whether the keys are in the drawer.
-    readonly property bool drawerHolds: prompt.mode === "page"
+    // Whether the keys are in the drawer, choosing in it or not.
+    readonly property bool drawerHolds: QueryKeys.paged(prompt.mode)
     // The room beside the card the surface holds for the drawer.
     readonly property real drawerBeside: drawerOver ? 0 : drawerGap + drawerWidth
     readonly property real drawerWidth: !screenHere ? 0 : drawerOver ? width
@@ -5633,7 +5633,7 @@ Scope {
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
                                     // only what they move moves.
-                                    shown: card.opacity > 0 && prompt.mode !== "page"
+                                    shown: card.opacity > 0 && !QueryKeys.paged(prompt.mode)
                                     fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
