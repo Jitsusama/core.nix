@@ -388,8 +388,13 @@ Item {
         event.accepted = true;
     }
 
+    // How many keys the line has taken, so what a key said, as the command
+    // line's E492, stands until the next one.
+    property int keysTaken: 0
+
     function modalKey(event: KeyEvent) {
         const key = named(event);
+        keysTaken += 1;
         woken();
         const read = QueryKeys.read(standing, key, mode);
         // A key held in normal repeats only a move, as Vim's motions do:
