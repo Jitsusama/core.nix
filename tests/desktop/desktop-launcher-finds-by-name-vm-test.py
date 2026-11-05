@@ -908,8 +908,8 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     and Tab, which is Ctrl+I, go back and forward through the places stepped into; Space ? and
     F1 list every key in the drawer until Escape or again; Space alone waits for a second key
     and lets go; Space w closes the launcher, and Escape at rest a step in does nothing, :q
-    closing it. Every hint
-    the foot draws, at home and a step in, is first pressed and seen to do something.
+    closing it. Every hint the foot draws, at home and a step in, is first pressed and seen to
+    do something.
     """
     machine = desktop.machine
     every_hint_changes(desktop, 0)
@@ -957,8 +957,23 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     assert desktop.showing()["open"], "a Space alone closed the launcher"
     machine.send_chars(" w")
     desktop.launcher_until(lambda shown: not shown["open"])
-    # Escape at rest does nothing a step in, as Vim's does in normal, and says nothing: it
-    # neither closes nor steps out (Joel, 2026-11-05: "fuck escape quitting"). :q closes.
+    escape_at_rest_stays(desktop)
+    # A colon as the find's first letter opens the command line, where :q closes.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars(":q")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def escape_at_rest_stays(desktop: Desktop) -> None:
+    """Press Escape at rest a step in, which does nothing, and close by :q.
+
+    As Vim's in normal, it neither closes nor steps out, and says nothing (Joel, 2026-11-05:
+    "fuck escape quitting").
+    """
+    machine = desktop.machine
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.follow()
@@ -983,13 +998,6 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
         [],
     ), shown
     machine.send_chars(":q\n")
-    desktop.launcher_until(lambda shown: not shown["open"])
-    # A colon as the find's first letter opens the command line, where :q closes.
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    machine.send_chars(":q")
-    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
-    machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
