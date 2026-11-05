@@ -4,12 +4,10 @@
 # check fails on a file listed here that no longer needs to be, so the list
 # only shrinks; a new file names rungs from the start, never listed here.
 quickshell/Choice.qml
-quickshell/Chord.qml
 quickshell/CommandLine.qml
 quickshell/CommandMenu.qml
 quickshell/Drawer.qml
 quickshell/HeldNotices.qml
-quickshell/KeyboardMap.qml
 quickshell/Launcher.qml
 quickshell/Notifications.qml
 quickshell/Picker.qml
