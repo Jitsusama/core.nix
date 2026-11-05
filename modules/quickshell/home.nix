@@ -57,6 +57,7 @@ let
       guarded = about.guarded or false;
       range = about.range or false;
       ends = about.ends or false;
+      starts = about.starts or false;
     }
   ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
   # The marks the theme draws as paths, for Theme.drawn.

@@ -24,7 +24,7 @@
 # names. An act with a command and no keys is named only on the command
 # line, as most of a row's acts are.
 #
-# Five flags say what an act does to the world, each false unless set:
+# Six flags say what an act does to the world, each false unless set:
 # changes, that it changes something beyond where the eye is, as Forget It
 # does and moving doesn't; undoable, that u takes the change back while the
 # surface stays open, so it acts at once, where a change that can't be
@@ -32,11 +32,13 @@
 # thing all the same, since it guards itself, as a program asks before it
 # loses work, or a prompt written and sent was the asking, though a range
 # of more than one still asks once, naming how many; range, that it
-# takes rows, as :3,5d and a visual selection give them; and ends, that it
-# ends, takes away or reaches someone, as Disconnect It, Forget It, Close
-# It, :dial and :reboot do, so Return never runs it from any mode: d or
-# the command line carries it, as Vim's changes are operators and Ex
-# commands (VKCF3Z's spec, Return).
+# takes rows, as :3,5d and a visual selection give them; ends, that it
+# ends or takes away, as Disconnect It, Forget It, Close It and :reboot
+# do, so Return never runs it from any mode: d or the command line carries
+# it, as Vim's changes are operators and Ex commands; and starts, that it
+# calls someone or starts something new, as :meet, :dial and :share do,
+# which Return leaves to the command line as it does an end (VKCF3Z's
+# spec, Return).
 
 # How long keys wait, in milliseconds, said once for Neovim and every surface.
 [timing]
@@ -876,10 +878,11 @@ range = true
 # A meeting joined, and a person called, each opening the call: :join is
 # Vim's and :call Vim's, so Join the Meeting, Join Their Call and Join by
 # Code are :meet, and Call Them :dial. Each rings or joins other people, so
-# it changes things and the find line's Return only lands on it; from
-# normal it acts at once, since it's what was asked for.
+# it starts something, and Return puts it on the command line, where a
+# second Return runs it. A meeting's own row joins on Return from ten
+# minutes before it starts all the same, which the row says, not its act.
 [acts.meet]
-ends = true
+starts = true
 command = "meet"
 short = "mee"
 kinds = ["list"]
@@ -887,17 +890,17 @@ changes = true
 guarded = true
 
 [acts.dial]
-ends = true
+starts = true
 command = "dial"
 short = "dia"
 kinds = ["list"]
 changes = true
 guarded = true
 
-# A call left, and the screen shared in it: Leave the Call and Share the
-# Screen in the Call. One ends the call and the other shows the screen to
-# everyone in it, and neither can be taken back, so Return never runs
-# them. The leave-call act, since [acts.leave] is Ctrl+C on a line.
+# A call left, and the screen shared in it: Leave the Call, which ends the
+# call, and Share the Screen in the Call, which starts showing it to
+# everyone there, so Return runs neither. The leave-call act, since
+# [acts.leave] is Ctrl+C on a line.
 [acts.leave-call]
 ends = true
 command = "leave"
@@ -906,7 +909,7 @@ kinds = ["list"]
 changes = true
 
 [acts.share]
-ends = true
+starts = true
 command = "share"
 short = "sha"
 kinds = ["list"]
