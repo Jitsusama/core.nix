@@ -252,6 +252,8 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.type_in("kitty", selecting="kitty")
     desktop.step_in("right")
     desktop.type_in("scratch 08", selecting="Scratch 08")
+    # In normal, where the arrows step; insert's move the caret, so it names none.
+    desktop.normal()
     told = (desktop.showing()["selected"] or {}).get("told", [])
     assert "\u2192" in told, told
     desktop.step_in("right")
@@ -316,9 +318,9 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     selected = desktop.showing()["selected"]
     assert selected["side"] == "Notes for Tuesday", selected
     # Return steps in, to what can be done to it, all but going to it,
-    # since it's the one he's in. It steps in as the right arrow does, so
-    # the foot says the two as one, by the one word for stepping in.
-    assert selected["told"] == ["\u21b5 \u2192"], selected
+    # since it's the one he's in. Typed, in insert, the foot says Return
+    # alone, since insert's arrows move the caret.
+    assert selected["told"] == ["\u21b5"], selected
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
@@ -343,9 +345,9 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.type_in("this window", selecting="This Window")
     desktop.step_in("ret")
     desktop.type_in("size", selecting="Size")
-    # Its sizes are a step in by the right arrow too, and the foot says so.
+    # Its sizes are a step in, and the foot says Return steps there.
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u21b5 \u2192" in told, told
+    assert "\u21b5" in told, told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
     machine.send_key("ret")

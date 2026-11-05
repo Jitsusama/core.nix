@@ -480,6 +480,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
+        # In normal, where the arrows step; insert's move the caret, so it names none.
+        desktop.normal()
         desktop.launcher_until(lambda shown: "\u2192" in (shown["selected"] or {}).get("told", []))
         told = desktop.showing()["selected"]["told"]
         assert not any(key.startswith("Ctrl") for key in told), told
@@ -814,9 +816,10 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
     # Joined, its Return typed in insert steps in too, rather than
-    # disconnecting it, so the foot says the two as one.
+    # disconnecting it, so the foot says Return alone: insert's arrows
+    # move the caret, so no arrow is named there.
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5 \u2192"], told
+    assert told[:1] == ["\u21b5"], told
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (

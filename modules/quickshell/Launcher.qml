@@ -1785,9 +1785,9 @@ Scope {
         if (!choice || choice.gone)
             return [];
         // One Return typed in insert leaves be says Return only where it
-        // steps in.
+        // steps in, and no arrow, since insert's arrows move the caret.
         if (guarded(choice))
-            return holdsMore(choice) ? [["\u21b5 \u2192", ""]] : [];
+            return holdsMore(choice) ? [["\u21b5", ""]] : [];
         // The arrows are said by their marks alone, which Joel knows: the
         // right arrow steps in and the left one steps back wherever they
         // work, so their words only took room from the marks beside them
@@ -1796,16 +1796,22 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice);
+        // An arrow is named only in a mode where it steps: in insert they
+        // move the caret, so naming them there named keys that did nothing
+        // of what was said (Joel, 2026-11-04). A line that isn't modal
+        // steps with them at its ends, as it always has.
+        const into = !prompt.modal || QueryKeys.binds("into", "Right", prompt.mode);
+        const out = !prompt.modal || QueryKeys.binds("out", "Left", prompt.mode);
         // One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
         const keys = choice.still ? []
-            : [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
+            : [stepping ? [into ? "\u21b5 \u2192" : "\u21b5", more] : ["\u21b5", verbOf(choice)]];
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
-        if (!stepping && holdsMore(choice))
+        if (into && !stepping && holdsMore(choice))
             keys.push(["\u2192", ""]);
-        if (typed === "" && held.length > 0)
+        if (out && typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
         // The drawer's keys, only while it holds more than fits, keeping
         // their word, since Shift and the arrows aren't the arrows alone.

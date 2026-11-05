@@ -356,6 +356,12 @@ function keyOf(act, mode) {
     return Array.isArray(keys) ? keys.join("") : keys;
 }
 
+// Whether a key does an act in a mode, so a hint names a key only where
+// pressing it does what the hint says.
+function binds(act, key, mode) {
+    return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
+}
+
 // What Vim's iskeyword counts as a word's: letters, digits, the underscore
 // and the accented letters past them.
 const wordLetter = /[0-9A-Za-z_\u00c0-\u024f]/;
