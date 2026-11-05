@@ -85,9 +85,6 @@ Item {
     property bool modal: false
     // The mode it's in: "insert" or "normal". It opens in insert (take()).
     property string mode: "insert"
-    // How many keys the line has taken, a press each, so a word said for
-    // one key, as d's "nothing to end", goes with the next.
-    property int keysTaken: 0
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
@@ -285,6 +282,11 @@ Item {
     // typed before it, 0 for none, and the motion it took, { act, count },
     // or null for dd and yy (QueryKeys.spanned takes them).
     signal operated(string act, int count, var motion)
+    // : in normal, which opens the command line in the line's place
+    // (CommandLine.qml), with the range a count before it gives, as 3:
+    // gives ".,.+2", or "" for none. The line holds what's typed as it
+    // is, and resume() gives it the keys back.
+    signal commanded(string range)
 
     function clear() {
         cleared = "";
@@ -298,6 +300,15 @@ Item {
         cleared = "";
         standing = QueryKeys.rest();
         mode = "insert";
+        input.forceActiveFocus();
+        woken();
+    }
+
+    // The keys back from the command line, in the mode it was opened from,
+    // or in normal, what's typed as it was left.
+    function resume(to: string) {
+        standing = QueryKeys.rest();
+        mode = to;
         input.forceActiveFocus();
         woken();
     }
@@ -389,8 +400,13 @@ Item {
         event.accepted = true;
     }
 
+    // How many keys the line has taken, so what a key said, as the command
+    // line's E492, stands until the next one.
+    property int keysTaken: 0
+
     function modalKey(event: KeyEvent) {
         const key = named(event);
+        keysTaken += 1;
         woken();
         // A held key's repeats never answer it.
         if (confirming) {
@@ -408,7 +424,6 @@ Item {
             event.accepted = true;
             return;
         }
-        keysTaken++;
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
             cleared = "";
@@ -481,6 +496,9 @@ Item {
         case "ending":
         case "copy":
             prompt.operated(read.act, read.count, read.motion);
+            break;
+        case "command":
+            prompt.commanded(QueryKeys.counted(read.count));
             break;
         case "":
             break;

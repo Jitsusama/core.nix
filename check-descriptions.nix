@@ -1388,6 +1388,13 @@
   the-colour-camera-says-it-is-upside-down = ''
     the XPS 14's camera bridge reports its colour sensor rotated 180 degrees
   '';
+  the-command-line-lists-every-command = ''
+    the launcher's : line lists the cursor row's acts, Return's first, then the surface's commands
+    and :q :help :{n}, each in Vim's help notation with its title and key; typing narrows it by the
+    command's start, then the act's words; Tab and the arrows choose and write a line in, round to
+    what was typed; Return runs exactly what's typed, a short form or more, saying E492, E477 or
+    E488 otherwise, each key's work under 2 ms over 400 commands
+  '';
   the-console-greets-the-account = ''
     a console greets the account by its description's first word, or its name, with the keys back to
     the desktop, and keeps NixOS's banner with no account
@@ -1756,10 +1763,10 @@
     Ctrl+W and Ctrl+U, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I A, cc and
     S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c or a
     count begun before it steps back, normal's moves through the rows as Vim's, with counts:
-    j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and Space w closing, an ex line whose
-    :q closes and :12 goes to the 12th row, Tab to the place used last, and Space ? and F1
-    listing every key, while / ? n N search nothing on the rows; and Vim's d and y over the
-    rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending action and copy, the (y/n) ask
+    j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and Space w closing, its : opening the
+    command line with the range a count before it gives, Tab to the place used last, and Space ?
+    and F1 listing every key, while / ? n N search nothing on the rows; and Vim's d and y over
+    the rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending action and copy, the (y/n) ask
     once before what can't be put back, and yG or dG over 400 rows within half a key's 4 ms
   '';
   the-screen-keeps-its-level-as-it-changes = ''
