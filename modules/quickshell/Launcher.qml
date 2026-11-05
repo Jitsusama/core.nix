@@ -3000,14 +3000,16 @@ Scope {
     }
 
     // What a step into a row holds: its own rows, then a thing's parts
-    // after what can be done to it, the first never one that changes
-    // anything, so a Return that steps in and a second after it only ever
-    // show (Catalogue.js's quietFirst). Null where it holds nothing.
+    // after what can be done to it. Inside a thing, as a network, the first
+    // is never one that changes anything, so a Return that steps in and a
+    // second after it only ever show (Catalogue.js's quietFirst); a
+    // setting's own act still leads its step, the right arrow then Return
+    // doing it. Null where it holds nothing.
     function inside(row, things) {
         const own = stepRows(row, things);
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        return into ? Catalogue.quietFirst(into) : into;
+        return into && things && kindOf(row) !== "" ? Catalogue.quietFirst(into) : into;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
