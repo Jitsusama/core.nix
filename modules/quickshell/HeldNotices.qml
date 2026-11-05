@@ -1873,12 +1873,13 @@ Floating {
             readonly property real factsAt: markText.x + markText.implicitWidth
                 - markText.font.letterSpacing + Theme.space.rung.groups
 
+            // Whole, as the hints leave it its room as it says it now; it
+            // gives way only where the hints that stay leave none.
             Text {
                 id: facts
                 x: foot.factsAt
                 width: Math.min(implicitWidth, foot.width - foot.factsAt
-                    - Theme.space.rung.inset - foot.wordRoom - Theme.space.rung.groups
-                    - hinted.width)
+                    - Theme.space.rung.inset - Theme.space.rung.groups - hinted.width)
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.facts
                 elide: Text.ElideRight
