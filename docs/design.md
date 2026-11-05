@@ -400,8 +400,9 @@ Now every run of text names one of eight levels, and the levels rank it.
   them; figures inside a sentence are the serif's.
 - **Optical size follows the size drawn.** Never a poster cut (opsz 72 or
   144) at a title's size or below.
-- **Italic means the voice**, nothing else: not emphasis, not a clock's
-  seconds.
+- **Italic means the voice**, nothing else, in the shell: not emphasis,
+  not a clock's seconds. A document the reader shows keeps a document's
+  italic, its emphasis and its third-level headings.
 - **No raw size or weight.** A run of text names its level, never a step, a
   size or a weight; `type-is-set-by-level` fails on one that doesn't.
 
