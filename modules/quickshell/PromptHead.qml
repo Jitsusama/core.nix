@@ -35,8 +35,14 @@ Item {
     function lines(text: Text): int {
         return Math.max(1, Math.round(text.implicitHeight / head.pitch));
     }
+    // A rich Text set at a fixed line height puts the room the pitch adds
+    // to its natural line above each line, not below as a plain one does,
+    // while its baselineOffset still says where the natural line's
+    // baseline is; so its baselines fall this much lower than it says.
+    readonly property real richDrop: pitch - natural.implicitHeight
+    readonly property real askedBaseline: askedText.baselineOffset + richDrop
     // Each Text's last baseline, from the head's top.
-    readonly property real askedLast: askedText.y + askedText.baselineOffset
+    readonly property real askedLast: askedText.y + askedBaseline
         + (lines(askedText) - 1) * pitch
     readonly property real reasonLast: reasonText.y + reasonText.baselineOffset
         + (lines(reasonText) - 1) * pitch
@@ -74,7 +80,7 @@ Item {
     Text {
         id: askedText
         x: head.inset - askedFace.tightBoundingRect(head.askedOpens).x
-        y: head.inset + wordsFace.tightBoundingRect("H").height - baselineOffset
+        y: head.inset + wordsFace.tightBoundingRect("H").height - head.askedBaseline
         width: head.width - x - head.inset
         textFormat: Text.RichText
         text: head.asked
@@ -89,6 +95,16 @@ Item {
         font.pointSize: Theme.level.words.pointSize
         font.weight: Theme.level.words.spans.weight
         font.variableAxes: Theme.level.words.spans.variableAxes
+    }
+
+    // One rich line at its natural height, to tell how far the pitch moves
+    // a rich line's baseline.
+    Text {
+        id: natural
+        visible: false
+        textFormat: Text.RichText
+        text: "H"
+        font: askedText.font
     }
 
     Text {
