@@ -20,6 +20,7 @@
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Reading.js" as Reading
 
 Rectangle {
     id: row
@@ -42,6 +43,13 @@ Rectangle {
     property string name
     property var chord: []
     property string side
+    // What it says at its right as items, each `{ said, keep }` in the
+    // order said, as a session's address, state and cost are: given, they
+    // give way whole, the least needed first, while the name is cut, so
+    // the name keeps its letters while more than one is said and the side
+    // is never cut mid-word or slid from its left (Reading.js's
+    // wholeItems). Empty, `side` is said as it is, cut to its share.
+    property var sideItems: []
     // A word after the name, muted: "here" beside a workspace.
     property string count
     // What kind of thing it is, for a noun; empty for an act or a set.
@@ -189,6 +197,13 @@ Rectangle {
         selected: row.selected
     }
 
+    // The face what the row is in, to fit a side of items to its room.
+    FontMetrics {
+        id: sideFace
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.large
+    }
+
     // A figure's character, to measure the graphs' column by.
     TextMetrics {
         id: figureFace
@@ -204,8 +219,22 @@ Rectangle {
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
         readonly property bool chorded: row.kind === "" && row.chord.length > 0
-        readonly property string said: row.kind !== "" ? row.kind : row.side
+        readonly property string said: row.kind !== "" ? row.kind
+            : itemised ? Reading.wholeItems(row.sideItems, room,
+                words => Math.ceil(sideFace.advanceWidth(words)) + 1)
+            : row.side
         readonly property bool sided: !chorded && said !== ""
+        readonly property bool itemised: row.kind === "" && row.sideItems.length > 0
+        // The room the name leaves whole, its words after it too, which a
+        // side of items is fitted to.
+        readonly property real room: row.width - Theme.space.l - nameBox.x
+            - nameBox.implicitWidth - Theme.space.xxl - (row.detail === "" ? 0
+                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)
+        // A side of items down to its last that still leaves the name no
+        // room whole: the name is cut, so where it's cut holds still as
+        // that item changes, by the column, as any side's does.
+        readonly property bool squeezed: itemised
+            && Math.ceil(sideFace.advanceWidth(said)) + 1 > room
         // What a row is never takes more than its share of the row, so
         // however long it runs it can't reach the name, and it gives the
         // name its room first, down to a fifth of the row: a window's
@@ -223,7 +252,8 @@ Rectangle {
         // its share.
         readonly property real column: row.graphed
             ? Math.min(row.figures * figureFace.advanceWidth, row.width * 0.45)
-            : right.sided ? Math.min(row.sides * figureFace.advanceWidth, right.share) : 0
+            : right.sided && (!right.itemised || right.squeezed)
+                ? Math.min(row.sides * figureFace.advanceWidth, right.share) : 0
 
         width: Math.max(column, chorded ? keys.width : sided ? sideText.width : 0)
         height: chorded ? keys.height : sideText.height
@@ -241,7 +271,7 @@ Rectangle {
             id: sideText
             anchors.right: parent.right
             visible: right.sided
-            width: Math.min(implicitWidth, right.share)
+            width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
             text: right.said
             color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
             figure: figureFace.advanceWidth

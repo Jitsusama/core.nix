@@ -152,6 +152,13 @@ Provider {
             ? word("under", { address: orchestrator }) : "";
         const figure = family ? word("inAll", { spent: family.all })
             : spent !== "" ? word("today", { spent: spent }) : "";
+        // What it says at its right, each item with how much it's needed,
+        // so where room runs short they give way whole (Choice.qml): its
+        // tree first, then its address, then its state, and what it cost
+        // stays (VKCF3Z, 2026-11-04).
+        const items = [{ said: session.address, keep: 2 }, { said: doing, keep: 3 },
+            { said: figure, keep: 4 }, { said: session.folder, keep: 0 }]
+            .filter(item => item.said !== "");
         const row = member({
             thing: true,
             key: `agent:${session.address}`,
@@ -168,8 +175,8 @@ Provider {
             also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}`),
             glyph: Theme.glyph.agent,
             hue: "program",
-            side: [session.address, doing, figure, session.folder]
-                .filter(part => part !== "").join(" \u00b7 "),
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items,
             note: noted,
             depth: depth,
             gone: !session.reachable,
@@ -181,9 +188,17 @@ Provider {
         // Itself as it reads ranked flat: at no depth, whom it's under
         // leading its note. It isn't named flat, which Quickshell's
         // JavaScript would read as the arrays' method it lacks.
+        // Whom it's under leads what it says at its right too, given way
+        // after its tree, and found from the top its words after its name
+        // (Launcher.qml's gathering), since its note is said only in the
+        // foot (15J7N3, 2026-11-04).
+        const ranked = [{ said: under, keep: 1 }].concat(items).filter(item => item.said !== "");
         row.ranked = () => Object.assign({}, row, {
             depth: 0,
-            note: [under, noted].filter(part => part !== "").join(" \u00b7 ")
+            note: [under, noted].filter(part => part !== "").join(" \u00b7 "),
+            side: ranked.map(item => item.said).join(" \u00b7 "),
+            sideItems: ranked,
+            belongs: under
         });
         return row;
     }

@@ -715,6 +715,18 @@ def orchestration_drawn(desktop: Desktop) -> list[Json]:
     return cast("list[Json]", was)
 
 
+def side_gives_way_whole(row: Json, title: str, said: str, scale: str) -> None:
+    """Hold a row's side to whole items, its name whole while the side says more than one."""
+    name = next(word for word in row["words"] if word["text"] == title)
+    # What a row says at its right is the word drawn furthest right.
+    side = max(row["words"], key=lambda word: word["x"])
+    assert not side["cut"], f"at {scale} {title}'s side is cut: {side}"
+    assert said in side["text"], f"at {scale} {title}'s side dropped {said!r}: {side}"
+    assert not name["cut"] or " \u00b7 " not in side["text"], (
+        f"at {scale} {title}'s name is cut while its side says {side['text']!r}"
+    )
+
+
 def into_agents(desktop: Desktop) -> None:
     """Open the launcher into Agents, once it lists every session of the orchestration."""
     desktop.as_account("qs ipc call launcher toggle")
@@ -755,6 +767,12 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
                 assert abs(glyph - name) <= 1, (
                     f"at {scale} {one}'s glyph is at {glyph}, not on {above}'s name at {name}"
                 )
+            # Short of room, a side gives way whole, the tree, the address, then the state,
+            # before a name gives up a letter, and what it cost stays, never slid from its left.
+            costs = {"TESTQA": "$14.20 today in all", "TESTQD": "$5.10 today"}
+            for row in rows:
+                one = address_of(row)
+                side_gives_way_whole(row, titles[one], costs.get(one, ""), scale)
             # The orchestrator says what all of it spent; one under it, its own. One idle
             # is listening, never waiting.
             reads = {address_of(row): row["reads"] for row in rows}
@@ -790,6 +808,9 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         assert row["depth"] == 0, row
         note = desktop.showing()["selected"]["note"]
         assert note.startswith("under TESTQC"), note
+        # And it leads the words drawn after its name, since the note is only in the foot.
+        drawn = [word["text"] for word in row["words"]]
+        assert any(text.startswith("under TESTQC") for text in drawn), drawn
         desktop.photograph("launcher-agents-typed-flat")
         desktop.close_launcher()
     finally:
