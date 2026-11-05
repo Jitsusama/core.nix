@@ -288,8 +288,9 @@ fn source(ask: &Ask) -> String {
 /// so a command chosen reads straight down from the line; its titles on a
 /// column Space's xl past the widest command it could hold; its keys
 /// flush with the end of the page's measure, where the prompt's count
-/// ends. The chosen line takes the selection's ground the window across,
-/// its words in the text, since muted isn't drawn there.
+/// ends. The chosen line takes the selection's ground over the measure,
+/// as gO's chosen row does, its words in the text, since muted isn't
+/// drawn there.
 fn menu_source(ask: &Ask, menu: &Menu) -> String {
     let rows: Vec<String> = menu
         .lines
@@ -301,7 +302,7 @@ fn menu_source(ask: &Ask, menu: &Menu) -> String {
                 ("none", "ink.muted")
             };
             format!(
-                "block(width: 100%, height: {row}pt, fill: {fill}, {{ set text(fill: {ink}); place(left + horizon, dx: commands, {command}); place(left + horizon, dx: titles, {title}); place(right + horizon, dx: -side, {key}) }})",
+                "block(width: 100%, height: {row}pt, fill: {fill}, inset: (x: {SPREAD_PT}pt), {{ set text(fill: {ink}); place(left + horizon, dx: commands, {command}); place(left + horizon, dx: titles, {title}); place(right + horizon, {key}) }})",
                 row = KEY_ROW_PT,
                 command = quoted(command),
                 title = quoted(title),
@@ -320,15 +321,18 @@ fn menu_source(ask: &Ask, menu: &Menu) -> String {
         r#"{ink}#set page(width: {width}pt, height: auto, margin: 0pt, fill: ink.sunken)
 #set text(..level.note.text, features: level.note.text.features + ("calt",))
 #context {{
-  let side = {side}pt
-  let commands = side + measure(text(..level.figure.text, ":")).width
+  let commands = measure(text(..level.figure.text, ":")).width
   let widest = calc.max(0pt, ..({all}).map(it => measure(text(it)).width))
   let titles = commands + widest + {xl}pt
-  block(width: 100%, stroke: (top: 0.75pt + ink.rule), inset: (y: {xs}pt), stack({rows}))
+  block(width: 100%, stroke: (top: 0.75pt + ink.rule), inset: (x: {side}pt, y: {xs}pt), stack({rows}))
 }}
 "#,
         ink = crate::theme::get().typst(),
-        side = ((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt,
+        // The hairline runs the window across, and the rows the measure,
+        // the chosen one's ground reaching Space's s past it on either
+        // side, as gO's chosen row and a selection on the page do.
+        side = (((width - ask.page.page_pt()) / 2.0).max(0.0) + ask.page.spread_pt - SPREAD_PT)
+            .max(0.0),
         xl = SIDE_PT,
         xs = SPREAD_PT / 2.0,
         rows = rows.join(", "),
