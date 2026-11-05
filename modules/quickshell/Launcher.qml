@@ -72,15 +72,15 @@ Scope {
 
     // Wide enough for a long action and its chord at the large size, or
     // as wide as a narrow screen gives, a screen margin either side.
-    readonly property int width: !screenHere ? 680
-        : Math.min(680, Math.floor(screenHere.width - 2 * Theme.space.xl))
+    readonly property int width: !screenShown ? 680
+        : Math.min(680, Math.floor(screenShown.width - 2 * Theme.space.xl))
     // How many results show at once; the rest are a scroll away. Eight,
     // or as many as keep the card inside a small screen, a screen margin
     // above and below it, three at least (VKCF3Z, 2026-11-05: panels
     // never run off the screen). Home's gap is allowed for whether it shows
     // or not, so what's found never changes how many.
-    readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
-        (screenHere.height - 2 * Theme.space.xl - cardChrome - Theme.space.m)
+    readonly property int rows: !screenShown ? 8 : Math.max(3, Math.min(8, Math.floor(
+        (screenShown.height - 2 * Theme.space.xl - cardChrome - Theme.space.m)
             / Theme.space.xxxl)))
     // How tall the card is but for its rows: the line, its hairline and the
     // foot, which no screen changes.
@@ -4620,34 +4620,34 @@ Scope {
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
     }
-    readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
-    readonly property real drawerRoom: !screenHere ? 0
-        : screenHere.width - centred - width - drawerGap - Theme.space.xl
+    readonly property real centred: !screenShown ? 0 : (screenShown.width - width) / 2
+    readonly property real drawerRoom: !screenShown ? 0
+        : screenShown.width - centred - width - drawerGap - Theme.space.xl
     // Whether the screen can't give the drawer its least beside the card
     // even with the card left of centre, as a 1080p screen at 2 can't.
     // There it isn't squeezed until a word breaks (VKCF3Z, 2026-11-05:
     // "Depl/oy/log"): it waits until the keys go in, then takes the card's
     // place and width, as Vim's preview opens in the one window there is,
     // and gives it back as they come out.
-    readonly property bool drawerOver: !!screenHere
-        && screenHere.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
+    readonly property bool drawerOver: !!screenShown
+        && screenShown.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
     // Whether the keys are in the drawer, choosing in it or not.
     readonly property bool drawerHolds: QueryKeys.paged(prompt.mode)
     // The room beside the card the surface holds for the drawer.
     readonly property real drawerBeside: drawerOver ? 0 : drawerGap + drawerWidth
-    readonly property real drawerWidth: !screenHere ? 0 : drawerOver ? width
+    readonly property real drawerWidth: !screenShown ? 0 : drawerOver ? width
         : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom) : drawerLeast
-    readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
-        Math.min(centred, screenHere.width - Theme.space.xl - drawerBeside - width))
+    readonly property real cardLeft: !screenShown ? 0 : Math.max(Theme.space.xl,
+        Math.min(centred, screenShown.width - Theme.space.xl - drawerBeside - width))
     // A quarter down; over a viewer low, its foot a twelfth of the screen
     // up, as the lock screen sits, so the picture or the video its line
     // acts on stays in view above it, as Vim's command line sits at the
     // bottom. Never so low it leaves no screen margin below it, on a
     // screen too short for a quarter down.
-    readonly property real cardTop: !screenHere ? 0 : Math.round(over !== null
-        ? screenHere.height * 11 / 12 - card.height
-        : Math.max(Theme.space.xl, Math.min(screenHere.height / 4,
-            screenHere.height - Theme.space.xl - card.height)))
+    readonly property real cardTop: !screenShown ? 0 : Math.round(over !== null
+        ? screenShown.height * 11 / 12 - card.height
+        : Math.max(Theme.space.xl, Math.min(screenShown.height / 4,
+            screenShown.height - Theme.space.xl - card.height)))
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -4695,17 +4695,19 @@ Scope {
                 range: root.commanding?.range ?? "",
                 things: root.commanding?.things.length ?? 0,
                 // What it's aimed at over a viewer, whose rows aren't drawn.
-                over: root.over ? root.commanding.things.map(thing => thing.name) : null
+                // The opening's own things, since the line let go over a
+                // viewer leaves commanding null until the launcher closes.
+                over: root.over ? root.over.things.map(thing => thing.name) : null
             },
             // Where the card's top and foot sit on a screen this tall.
             card: {
                 top: root.cardTop,
                 foot: root.cardTop + card.height,
-                screen: root.screenHere ? root.screenHere.height : 0,
+                screen: root.screenShown ? root.screenShown.height : 0,
                 // And its sides, on a screen this wide.
                 left: root.cardLeft,
                 right: root.cardLeft + root.width,
-                across: root.screenHere ? root.screenHere.width : 0
+                across: root.screenShown ? root.screenShown.width : 0
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
@@ -5209,6 +5211,12 @@ Scope {
             ?? real[0] ?? null;
     }
     property var screenHere: focusedScreen
+    // The screen the card is sized and placed for: screenHere while it's
+    // still among the screens, else none. A screen that goes leaves
+    // screenHere naming it until remake runs, and reading its size then
+    // only warns of a dangling screen.
+    readonly property var screenShown: screenHere !== null
+        && Quickshell.screens.includes(screenHere) ? screenHere : null
 
     onFocusedScreenChanged: {
         if (!open)
