@@ -1529,8 +1529,19 @@ Floating {
                             // (VKCF3Z, 2026-11-04).
                             readonly property bool nameFits: factFace.advanceWidth(
                                 modelData.label ?? "") <= drawer.labelsWide
+                            // Whether its value fits beside its name on one
+                            // line, measured in the face it's drawn in: a
+                            // laid-out text can't tell, since a word too wide
+                            // for its line runs past the edge on that one.
+                            readonly property bool fitsBeside: {
+                                const face = drawer.faceOf(modelData);
+                                void face.font;
+                                return !known || face.advanceWidth(drawer.unbroken(
+                                    modelData.value)) <= width - drawer.labelsWide
+                                    - drawer.labelsGap;
+                            }
                             readonly property bool under: !drawer.listsKeys
-                                && (!nameFits || beside.lineCount > 1)
+                                && (!nameFits || !fitsBeside)
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
                             // How wide its value may run where it's drawn.
@@ -1564,18 +1575,6 @@ Floating {
                                 font.capitalization: Theme.level.label.capitalization
                                 font.letterSpacing: Theme.level.label.letterSpacing
                                 font.features: Theme.level.label.features
-                            }
-
-                            // The value as it would wrap beside its name,
-                            // measured and never drawn.
-                            Text {
-                                id: beside
-                                visible: false
-                                width: fact.width - drawer.labelsWide - drawer.labelsGap
-                                text: value.plain
-                                textFormat: Text.PlainText
-                                wrapMode: Text.WordWrap
-                                font: value.font
                             }
 
                             PageText {
