@@ -378,7 +378,11 @@ Provider {
         const said = clockSaid;
         if (!kept) {
             const waiting = Timekeeping.watching > 0 && !Timekeeping.refused;
+            // Keyed as the Clock chronyd's answer brings, so a step into
+            // Time made before it answers keeps one Clock in its place
+            // once it does, rather than this one gone and that one last.
             return [copyRow({
+                key: "time:clock",
                 name: Words.name("time:clock"),
                 side: waiting ? "\u2026" : said.nothing,
                 copiesNothing: true,
