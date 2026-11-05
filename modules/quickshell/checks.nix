@@ -2939,7 +2939,8 @@ onLinux {
   # ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
   # sequences, and where the caret goes; ListedKeys.js to the keys Space ?
-  # lists; and Search.js to where / ? n N land on the rows, and how soon.
+  # lists; Search.js to where / ? n N land on the rows, and how soon; and
+  # Operators.js to what d and y do to the rows they take.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2949,6 +2950,7 @@ onLinux {
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./Search.js} Search.js
+      cp ${./Operators.js} Operators.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

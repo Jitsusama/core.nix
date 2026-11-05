@@ -1,12 +1,14 @@
 // The launcher's field's keys in its two modes, read from their one
-// table in Qt's own JavaScript engine, the one the shell runs it in. The
-// `the-query-field-takes-vi-modes` check copies
-// modules/quickshell/QueryKeys.js, ListedKeys.js and Search.js beside this
-// file and runs `qml -platform offscreen query-keys.qml`.
+// table in Qt's own JavaScript engine, the one the shell runs it in, and
+// what its operators do to the rows. The `the-query-field-takes-vi-modes`
+// check copies modules/quickshell/QueryKeys.js, ListedKeys.js, Search.js and
+// Operators.js beside this file and runs `qml -platform offscreen
+// query-keys.qml`.
 import QtQuick
 import "ListedKeys.js" as Listed
 import "QueryKeys.js" as Keys
 import "Search.js" as Search
+import "Operators.js" as Operators
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -29,7 +31,8 @@ QtObject {
     // insert: each act done, the mode it's left in, and whether the last key
     // was the line's rather than the field's to type.
     // Each act done is said with the count typed before it, as "3 next",
-    // in `counted`.
+    // in `counted`, and an operator's with the motion it took, as
+    // "ending 6 next".
     function typed(keys) {
         let standing = Keys.rest();
         let mode = "insert";
@@ -43,7 +46,9 @@ QtObject {
             mode = Keys.modeAfter(read.act, mode);
             if (read.act !== "") {
                 acts.push(read.act);
-                counted.push(read.count > 0 ? `${read.count} ${read.act}` : read.act);
+                const motion = !read.motion ? "" : read.motion.count > 0
+                    ? ` ${read.motion.count} ${read.motion.act}` : ` ${read.motion.act}`;
+                counted.push((read.count > 0 ? `${read.count} ${read.act}` : read.act) + motion);
             }
         }
         return { acts, counted, ours, mode, standing };
@@ -215,6 +220,202 @@ QtObject {
         holds("400 rows made searchable and searched in half a key's 4 ms",
             making + finding < 2, true);
         holds("and each later letter in a quarter of a millisecond", finding < 0.25, true);
+    }
+
+    // d and y, Vim's operators, over the rows as lines: the keys that make
+    // one, the rows it spans, and which of a row's actions it does.
+    function operating(holds) {
+        // [what, the keys typed from the opening, each act with its count
+        // and motion]
+        const operations = [
+            ["dd ends the row", ["Escape", "d", "d"], ["normal", "ending"]],
+            ["a count before dd ends that many", ["Escape", "3", "d", "d"],
+                ["normal", "3 ending"]],
+            ["and so does a count between", ["Escape", "d", "3", "d"], ["normal", "3 ending"]],
+            ["the two counts multiply, as Vim's do", ["Escape", "2", "d", "3", "d"],
+                ["normal", "6 ending"]],
+            ["dj and dk end the row and the one below or above",
+                ["Escape", "d", "j", "d", "k", "d", "Down", "d", "Up"],
+                ["normal", "ending next", "ending previous", "ending next", "ending previous"]],
+            ["a count after d goes with its motion", ["Escape", "d", "3", "j"],
+                ["normal", "ending 3 next"]],
+            ["and one before it too, multiplied", ["Escape", "2", "d", "3", "j"],
+                ["normal", "ending 6 next"]],
+            ["a count before d alone goes with its motion", ["Escape", "4", "d", "k"],
+                ["normal", "ending 4 previous"]],
+            ["dgg and dG end to the first and the last", ["Escape", "d", "g", "g", "d", "G"],
+                ["normal", "ending first", "ending last"]],
+            ["d5G ends to the 5th", ["Escape", "d", "5", "G"], ["normal", "ending 5 last"]],
+            ["dH dM dL end to the view's top, middle and bottom",
+                ["Escape", "d", "H", "d", "M", "d", "L"],
+                ["normal", "ending viewTop", "ending viewMiddle", "ending viewBottom"]],
+            ["yy copies the row", ["Escape", "y", "y"], ["normal", "copy"]],
+            ["3yy and y3y copy three", ["Escape", "3", "y", "y", "y", "3", "y"],
+                ["normal", "3 copy", "3 copy"]],
+            ["y takes the motions d does", ["Escape", "y", "2", "k", "y", "G", "y", "g", "g"],
+                ["normal", "copy 2 previous", "copy last", "copy first"]],
+            ["Escape lets d go, then steps back", ["Escape", "d", "Escape", "j", "Escape"],
+                ["normal", "next", "back"]],
+            ["and a count with it, at once, as Vim's does",
+                ["Escape", "3", "d", "Escape", "j"], ["normal", "next"]],
+            ["and a count after it", ["Escape", "d", "3", "Escape", "j"], ["normal", "next"]],
+            ["a key that ends nothing lets d go", ["Escape", "d", "x", "j"], ["normal", "next"]],
+            ["Ctrl+D is a scroll, not a motion, so it lets d go",
+                ["Escape", "d", "Ctrl+d", "j"], ["normal", "next"]],
+            ["and so are the screens and Page Down",
+                ["Escape", "d", "Ctrl+f", "d", "PageDown", "y", "Ctrl+u", "k"],
+                ["normal", "previous"]],
+            ["another operator lets d go", ["Escape", "d", "y", "y"], ["normal"]],
+            ["a g with anything but g after it lets d go", ["Escape", "d", "g", "j", "j"],
+                ["normal", "next"]],
+            ["a colon after d opens no ex line", ["Escape", "d", ":", "j"], ["normal", "next"]],
+            ["Shift pressed for a capital keeps d waiting", ["Escape", "d", "", "G"],
+                ["normal", "ending last"]],
+            ["in insert, d and y type", ["d", "d", "y", "y"], []]
+        ];
+        for (const [what, keys, want] of operations)
+            holds(what, typed(keys).counted, want);
+        holds("a d begun is the line's", typed(["Escape", "d"]).ours, true);
+        holds("and stands with the count before it", typed(["Escape", "2", "d"]).standing,
+            { count: "", typed: [], operator: { key: "d", count: "2" } });
+        holds("d and y leave the line in normal", typed(["Escape", "d", "d", "y", "j"]).mode,
+            "normal");
+        holds("an operator waits past timeoutlen, as Vim's does",
+            Keys.waited({ count: "3", typed: [], operator: { key: "d", count: "" } }),
+            { count: "3", typed: [], operator: { key: "d", count: "" } });
+        holds("though a g after it lets go",
+            Keys.waited({ count: "", typed: ["g"], operator: { key: "y", count: "2" } }),
+            { count: "", typed: [], operator: { key: "y", count: "2" } });
+        for (const act of ["ending", "copy"])
+            holds(`${act} is once a press, so a held d never makes dd`, Keys.repeats(act), false);
+        holds("the field says dd for ending", Keys.keyOf("ending", "normal"), "dd");
+        holds("and yy for copying", Keys.keyOf("copy", "normal"), "yy");
+
+        // Twenty rows, the 5th to the 12th in view, the 7th selected, as
+        // the moves' cases have them: [what, the count, the motion, the
+        // rows it spans].
+        const place = { at: 6, highest: 0, last: 19, top: 4, bottom: 11, screen: 8 };
+        const spans = [
+            ["dd, the row", 0, null, { from: 6, to: 6 }],
+            ["3dd, it and the two below", 3, null, { from: 6, to: 8 }],
+            ["30dd, to the last, as Neovim's does", 30, null, { from: 6, to: 19 }],
+            ["dj, it and the next", 0, { act: "next", count: 0 }, { from: 6, to: 7 }],
+            ["d3j, four", 0, { act: "next", count: 3 }, { from: 6, to: 9 }],
+            ["dk, the one above and it", 0, { act: "previous", count: 0 }, { from: 5, to: 6 }],
+            ["dgg, to the first", 0, { act: "first", count: 0 }, { from: 0, to: 6 }],
+            ["dG, to the last", 0, { act: "last", count: 0 }, { from: 6, to: 19 }],
+            ["d5G, back to the 5th", 0, { act: "last", count: 5 }, { from: 4, to: 6 }],
+            ["dH, to the view's top", 0, { act: "viewTop", count: 0 }, { from: 4, to: 6 }],
+            ["dM, to its middle", 0, { act: "viewMiddle", count: 0 }, { from: 6, to: 7 }],
+            ["dL, to its bottom", 0, { act: "viewBottom", count: 0 }, { from: 6, to: 11 }]
+        ];
+        for (const [what, count, motion, want] of spans)
+            holds(`${what} is spanned`, Operators.spanned(count, motion, place), want);
+        holds("yy on an answer's headline spans it",
+            Operators.spanned(0, null, Object.assign({}, place, { at: -1, highest: -1 })),
+            { from: -1, to: -1 });
+        holds("no rows span nothing",
+            Operators.spanned(2, null,
+                { at: 0, highest: 0, last: -1, top: 0, bottom: 0, screen: 8 }),
+            { from: 0, to: -1 });
+
+        // Rows and what can be done to them, as the launcher's providers
+        // make them: a window, whose Close ends it and whose Copy Title
+        // copies; an answer's row, which is a copy itself; an act that
+        // ends, as a step into a window lists it; and one with neither.
+        const run = () => {};
+        const close = { key: "verb:close", verb: "close", act: "ending", run };
+        const title = { key: "verb:title", verb: "copy", copies: () => "Notes", run };
+        const float = { key: "verb:float", verb: "float", run };
+        const window = { key: "window:1", verb: "go", run, verbs: () => [float, title, close] };
+        const answer = { key: "answer", verb: "copy", copies: "42", run };
+        // An answer that says something and copies nothing, whose Return
+        // only closes: its verb is close, and it ends nothing.
+        const said = { key: "said", verb: "close", run };
+        const bare = { key: "bare", verb: "open", run };
+        const actions = row => row.verbs ? row.verbs() : [];
+        const copies = row => row.verb === "copy" && !!row.run;
+        holds("a window's ending action is its Close",
+            Operators.endingOf(window, actions(window)), close);
+        holds("an ending action is its own", Operators.endingOf(close, []), close);
+        holds("a verb of close alone ends nothing", Operators.endingOf(said, []), null);
+        holds("nor does a row with no ending action", Operators.endingOf(bare, []), null);
+        holds("a window's copy is its Copy Title",
+            Operators.copyOf(window, actions(window), copies), title);
+        holds("an answer's row is its own copy", Operators.copyOf(answer, [], copies), answer);
+        holds("a row with no copy has none", Operators.copyOf(bare, [], copies), null);
+        holds("what a copy copies, by a function or as it is",
+            [Operators.textOf(title), Operators.textOf(answer), Operators.textOf(bare)],
+            ["Notes", "42", ""]);
+        holds("several copies are joined a line each, as a linewise yank holds them",
+            Operators.copied([title, bare, answer]), "Notes\n42");
+        const rows = [bare, window, said, window, answer];
+        holds("the ending actions over a span, by the row each ends",
+            Operators.endings(Operators.taken(rows, { from: 0, to: 3 }, null), actions)
+                .map(ending => [ending.at, ending.action.key]),
+            [[1, "verb:close"], [3, "verb:close"]]);
+        holds("and the copies",
+            Operators.copiesIn(Operators.taken(rows, { from: 1, to: 4 }, null), actions, copies)
+                .map(copy => [copy.at, copy.action.key]),
+            [[1, "verb:title"], [3, "verb:title"], [4, "answer"]]);
+        holds("a headline above the rows is taken as the row at -1",
+            Operators.taken(rows, { from: -1, to: 0 }, answer).map(one => [one.at, one.row]),
+            [[-1, answer], [0, bare]]);
+        holds("and none where there's none",
+            Operators.taken(rows, { from: -1, to: 0 }, null).map(one => one.at), [0]);
+        holds("an ending action with no undo asks once", Operators.asks([close]), true);
+        holds("one that's put back doesn't",
+            Operators.asks([Object.assign({ undo: run }, close)]), false);
+        holds("a second dd over the same rows answers the ask",
+            Operators.answers({ act: "ending", from: 3, to: 5 }, "ending", { from: 3, to: 5 }),
+            true);
+        holds("over other rows it doesn't",
+            Operators.answers({ act: "ending", from: 3, to: 5 }, "ending", { from: 3, to: 4 }),
+            false);
+        holds("nor does a y",
+            Operators.answers({ act: "ending", from: 3, to: 3 }, "copy", { from: 3, to: 3 }),
+            false);
+        holds("nor anything with no ask", Operators.answers(null, "ending", { from: 3, to: 3 }),
+            false);
+
+        // A place of 400 windows, each closed and copied by its actions:
+        // the keys, the span and the actions over it of yG and of dG, each
+        // timed as the fastest of twenty batches of fifty, as the search's
+        // are, in a quarter of a key's 4 ms.
+        const windows = [];
+        for (let at = 0; at < 400; at++) {
+            const named = `Pull request #${at} \u00b7 Jitsusama/core.nix`;
+            windows.push({ key: `window:${at}`, verb: "go", run,
+                verbs: () => [float, { key: "verb:title", verb: "copy", copies: () => named,
+                    run }, close] });
+        }
+        const all = { at: 0, highest: 0, last: 399, top: 0, bottom: 7, screen: 8 };
+        const spanOf = operator => {
+            let standing = Keys.rest();
+            let last = null;
+            for (const key of [operator, "G"]) {
+                last = Keys.read(standing, key, "normal");
+                standing = last.standing;
+            }
+            return Operators.spanned(last.count, last.motion, all);
+        };
+        const timed = work => {
+            let fastest = Infinity;
+            for (let batch = 0; batch < 20; batch++) {
+                const began = Date.now();
+                for (let at = 0; at < 50; at++)
+                    work();
+                fastest = Math.min(fastest, (Date.now() - began) / 50);
+            }
+            return fastest;
+        };
+        const yanking = timed(() => Operators.copied(Operators.copiesIn(
+            Operators.taken(windows, spanOf("y"), null), actions, copies).map(one => one.action)));
+        const ending = timed(() => Operators.asks(Operators.endings(
+            Operators.taken(windows, spanOf("d"), null), actions).map(one => one.action)));
+        console.log(`yG over 400 rows in ${yanking.toFixed(3)} ms, dG in ${ending.toFixed(3)} ms`);
+        holds("yG over 400 rows in a quarter of a key's 4 ms", yanking < 1, true);
+        holds("and dG", ending < 1, true);
     }
 
     function run() {
@@ -507,6 +708,7 @@ QtObject {
         holds("and on an empty line at its start", Keys.resting("", 0), 0);
 
         searching(holds);
+        operating(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

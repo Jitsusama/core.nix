@@ -1751,7 +1751,9 @@
     j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and Space w closing, an ex line whose
     :q closes and :12 goes to the 12th row, Tab to the place used last, Space ? and F1 listing
     every key, and / ? n N, a search typed on the line and landed on rows within half a key's
-    4 ms for 400 of them
+    4 ms for 400 of them; and Vim's d and y over the rows, dd 3dd d3j dgg dG yy y{motion}, each
+    row's ending action and copy, the ask once before what can't be put back, and yG or dG over
+    400 rows within half a key's 4 ms
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
