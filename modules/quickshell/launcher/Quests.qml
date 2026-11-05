@@ -229,19 +229,26 @@ Provider {
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
-        const found = [];
+        // Only the quests at the finest grade any reaches are kept, so one
+        // found finer starts the list again, and a letter typed costs no
+        // more than the quests it keeps.
+        let grade = 3;
+        let kept = [];
         for (const row of all) {
             const byName = (row.prepared.mask & need) === need
-                ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
+                ? Fuzzy.match(row.prepared, words, false) : null;
             const byWord = (row.also.mask & need) === need
-                ? Fuzzy.match(row.also, words, false) : { score: -1 };
-            const best = byName.score >= byWord.score ? byName : byWord;
-            if (best.score >= 0)
-                found.push({ score: best.score, grade: best.grade, row: row });
+                ? Fuzzy.match(row.also, words, false) : null;
+            const best = !byWord || (byName && byName.score >= byWord.score) ? byName : byWord;
+            if (!best || best.score < 0 || best.grade > grade)
+                continue;
+            if (best.grade < grade) {
+                grade = best.grade;
+                kept = [];
+            }
+            kept.push({ score: best.score, row: row });
         }
-        const grade = Math.min(3, ...found.map(f => f.grade));
-        const kept = found.filter(f => f.grade === grade)
-            .sort((a, b) => Number(b.row.unfinished) - Number(a.row.unfinished) || b.score - a.score);
+        kept.sort((a, b) => Number(b.row.unfinished) - Number(a.row.unfinished) || b.score - a.score);
         return { rows: kept.map(f => f.row), grade: grade };
     }
 
