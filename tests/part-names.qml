@@ -154,14 +154,13 @@ ShellRoot {
             servers.map(each => `${each.name} ${each.note}`).join(", ")
                 === "time.harbour.test chosen, far.harbour.test out of reach",
             servers.map(each => `${each.name} ${each.note}`).join(", "));
-        // The launcher keeps a selection by its row's key as the reading
-        // changes, so two servers sharing one would pull it back to the first.
-        expect("each server is known by a key of its own",
-            new Set(servers.map(each => each.key)).size === servers.length,
-            servers.map(each => each.key).join(", "));
-        expect("each server still says it's a time server",
-            servers.every(each => each.is === "time:server"),
-            servers.map(each => each.is).join(", "));
+        // The launcher knows a row by what it is, or else its key, keeping
+        // the selection on it as the reading changes and taking two it knows
+        // alike as one, so two servers known alike would pull it back to the
+        // first.
+        const known = servers.map(each => each.is ?? each.key);
+        expect("each server is known as itself", new Set(known).size === servers.length,
+            known.join(", "));
         const chosen = servers[0];
         const figures = chosen.verbs().map(each => each.name);
         const plate = chosen.drawer();
