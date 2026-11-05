@@ -618,18 +618,29 @@ QtObject {
             holds(what, Editing.edited(act, text, at, count), { text: after, at: caret });
     }
 
-    // The drawer as a window: Space and the right arrow go into it from
-    // the rows, where its keys are a page's in normal, and Space and the
-    // left arrow, ZZ or :q come back, as his splits do. q alone does
-    // nothing there, as Joel asked of every modal surface, and Escape at
-    // rest does nothing in a window (2026-11-04, VKCF3Z's spec v2).
+    // The drawer as a window: Vim's window keys go into it from the rows,
+    // where its keys are a page's in normal, Ctrl+W l to the window right,
+    // and Ctrl+W h, ZZ or :q come back, Ctrl+W w going either way. No arrow
+    // does anything in or out of it (Joel, 2026-11-05: "remove them and
+    // rely only on vi right feeling things"). q alone does nothing there,
+    // as Joel asked of every modal surface, and Escape at rest does nothing
+    // in a window (2026-11-04, VKCF3Z's spec v2).
     function drawerKeys(holds) {
-        const into = ["Escape", "Space", "Right"];
+        const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from the opening, the acts done]
         const doing = [
-            ["Space then the right arrow goes into the drawer", into, ["normal", "drawer"]],
-            ["Space then the left arrow comes back to the rows",
-                into.concat(["Space", "Left"]), ["normal", "drawer", "rows"]],
+            ["Ctrl+W l goes into the drawer, as Vim goes to the window right", into,
+                ["normal", "drawer"]],
+            ["Space and the arrows go nowhere, in or out",
+                ["Escape", "Space", "Right", "Ctrl+w", "l", "Space", "Left", "j"],
+                ["normal", "drawer", "next"]],
+            ["and Ctrl+W h comes back to the rows", into.concat(["Ctrl+w", "h"]),
+                ["normal", "drawer", "rows"]],
+            ["Ctrl+W w goes to the other either way",
+                ["Escape", "Ctrl+w", "w", "Ctrl+w", "w"], ["normal", "drawer", "rows"]],
+            ["Ctrl+W h does nothing on the rows, nor Ctrl+W l in the drawer",
+                into.concat(["Ctrl+w", "l", "Ctrl+w", "h", "Ctrl+w", "h", "j"]),
+                ["normal", "drawer", "rows", "next"]],
             ["and so does ZZ, as his Neovim closes a window, where q alone does nothing",
                 into.concat(["q", "Z", "Z"]), ["normal", "drawer", "rows"]],
             ["where Escape at rest does nothing", into.concat(["Escape", "j"]),
@@ -638,12 +649,10 @@ QtObject {
                 into.concat(["3", "Escape", "Escape", "j"]), ["normal", "drawer", "next"]],
             ["and a g waiting", into.concat(["g", "Escape", "Escape", "j"]),
                 ["normal", "drawer", "next"]],
-            ["j k and the arrows move its cursor a line",
-                into.concat(["j", "k", "Down", "Up"]),
-                ["normal", "drawer", "next", "previous", "next", "previous"]],
-            ["h l and the arrows move it along its line",
-                into.concat(["h", "l", "Left", "Right"]),
-                ["normal", "drawer", "left", "right", "left", "right"]],
+            ["j k move its cursor a line, the arrows nothing",
+                into.concat(["j", "k", "Down", "Up"]), ["normal", "drawer", "next", "previous"]],
+            ["h l move it along its line, the arrows nothing",
+                into.concat(["h", "l", "Left", "Right"]), ["normal", "drawer", "left", "right"]],
             ["Ctrl+E and Ctrl+Y scroll it a line", into.concat(["Ctrl+e", "Ctrl+y"]),
                 ["normal", "drawer", "scrollDown", "scrollUp"]],
             ["Ctrl+D Ctrl+U go half its view, Ctrl+F Ctrl+B and the page keys a view",
@@ -664,16 +673,16 @@ QtObject {
             ["the rows' keys that aren't a page's do nothing in it",
                 into.concat(["Tab", "-", "Backspace", "i", "a", "u", "c", "c", "]", "b"]),
                 ["normal", "drawer"]],
-            ["Space then the right arrow does nothing more in it",
-                into.concat(["Space", "Right"]), ["normal", "drawer"]],
+            ["Ctrl+W l does nothing more in it",
+                into.concat(["Ctrl+w", "l"]), ["normal", "drawer"]],
             // Space ? is his leader's list of keys everywhere (VKCF3Z), so
             // in the drawer it lists the drawer's, and F1 with it.
             ["Space ? and F1 list its keys", into.concat(["Space", "?", "F1"]),
                 ["normal", "drawer", "keys", "keys"]],
             ["but not while choosing, where ? searches back",
                 into.concat(["v", "Space", "?"]), ["normal", "drawer", "select"]],
-            ["Space then the left arrow does nothing on the rows",
-                ["Escape", "Space", "Left", "j"], ["normal", "next"]],
+            ["Ctrl+W h does nothing on the rows",
+                ["Escape", "Ctrl+w", "h", "j"], ["normal", "next"]],
             ["Space then anything else lets Space go", ["Escape", "Space", "j", "j"],
                 ["normal", "next"]],
             ["Space and the arrows in insert type and move the caret",
@@ -688,7 +697,7 @@ QtObject {
         holds("the drawer: and they stay the page's as its keys are listed",
             typed(into.concat(["Space", "?"])).mode, "page");
         holds("the drawer: and the rows' again once back",
-            typed(into.concat(["Space", "Left"])).mode, "normal");
+            typed(into.concat(["Ctrl+w", "h"])).mode, "normal");
         holds("the drawer: a letter in it is its own, typing nothing",
             typed(into.concat(["x"])).ours, true);
         // [what, the keys typed from the opening, each act with its count]
@@ -719,7 +728,7 @@ QtObject {
     // other. It moves the cursor and narrows nothing, so it's a page's
     // search, never the rows' find.
     function drawerSearch(holds) {
-        const into = ["Escape", "Space", "Right"];
+        const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done, what's sought]
         const doing = [
             ["/ seeks forward and Return runs it", ["/", "d", "e", "Return"], ["seek"],
@@ -830,7 +839,7 @@ QtObject {
     // other end, y copies it and Escape lets it go, each back on the page;
     // and gv on the page brings the last back.
     function drawerVisual(holds) {
-        const into = ["Escape", "Space", "Right"];
+        const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done, the mode left in]
         const doing = [
             ["v chooses letters", ["v"], ["select"], "pageVisual"],
@@ -859,8 +868,8 @@ QtObject {
                 "pageVisual"],
             ["d, x, c, p and q do nothing yet", ["v", "d", "x", "c", "p", "q", "j"],
                 ["select", "next"], "pageVisual"],
-            ["and no way back to the rows is in it, the arrow only a move",
-                ["v", "Z", "Z", "Space", "Left"], ["select", "left"], "pageVisual"],
+            ["and no way back to the rows is in it, the arrow nothing and h a move",
+                ["v", "Z", "Z", "Space", "Left", "h"], ["select", "left"], "pageVisual"],
             ["gv on the page brings the last back", ["v", "Escape", "g", "v"],
                 ["select", "back", "reselect"], "page"]
         ];
@@ -1117,7 +1126,7 @@ QtObject {
             ["a key that ends nothing lets c go", ["Escape", "c", "x", "c"], ["normal"]],
             ["Shift pressed for a capital changes nothing", ["Escape", "c", "", "c"],
                 ["normal", "change"]],
-            ["the arrows with Shift do nothing in either mode: Space \u2192 goes into the drawer",
+            ["the arrows with Shift do nothing in either mode: Ctrl+W l goes into the drawer",
                 ["Shift+Down", "Escape", "Shift+Up"], ["normal"]],
             ["Page Up and Down page the rows in either mode",
                 ["PageDown", "Escape", "PageUp"], ["pageDown", "normal", "pageUp"]],
@@ -1196,14 +1205,15 @@ QtObject {
         holds("and y", keyed("copy row"), "yy  yG");
         holds("no line scrolls the drawer with Shift and an arrow",
             list.filter(line => (line.label ?? "").includes("\u21e7+\u2193")).length, 0);
-        holds("the list's way into the drawer", keyed("into the drawer"), "Space \u2192");
+        holds("the list's way into the drawer, Vim's window keys first",
+            keyed("into the drawer"), "Ctrl+W l");
         // In the drawer, its lines and along them, Vim's first and the arrow,
         // a line scrolled by Ctrl, and Space with the left arrow back.
-        holds("the drawer's lines", keyed("lines"), "j  k  \u2193  \u2191");
-        holds("the drawer's letters along a line", keyed("along"), "h  l  \u2190  \u2192");
+        holds("the drawer's lines", keyed("lines"), "j  k");
+        holds("the drawer's letters along a line", keyed("along"), "h  l");
         holds("the drawer's scroll by a line", keyed("scroll"), "Ctrl+E  Ctrl+Y");
-        holds("the drawer's way back, Space with the arrow and :q", keyed("back"),
-            "Space \u2190  :q");
+        holds("the drawer's way back, Vim's window key and :q", keyed("back"),
+            "Ctrl+W h  :q");
         holds("the drawer's search, either way", keyed("seek"), "/  ?");
         holds("and on to its next match, either way", keyed("seek on"), "n  N");
         holds("the drawer's visual, by letters and lines", keyed("select"), "v  V");

@@ -530,7 +530,7 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
 
     Gone into, the drawer holds the keys: its frame takes the accent and its cursor's line the
     rule in its left margin. Five lines down and four letters along, it's photographed with the
-    foot at the laptop's size, for a person to judge, and Space with the left arrow comes back.
+    foot at the laptop's size, for a person to judge, and Ctrl+W h comes back.
     """
 
     def relisted() -> None:
@@ -540,9 +540,9 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
     for scale in at_each_scale:
         at_scale(desktop, scale)
         listed_keys(desktop)
-        # The arrow alone steps into the list's row, so the list is shown again.
+        # The l alone steps into the list's row, so the list is shown again.
         pressed_until(
-            desktop, "spc right", lambda shown: shown["drawer"]["cursor"] is not None, relisted
+            desktop, "ctrl-w l", lambda shown: shown["drawer"]["cursor"] is not None, relisted
         )
         line = int(desktop.showing()["drawer"]["cursor"]["line"])
         pressed(desktop, "5 j l l l l")
@@ -560,10 +560,10 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
             lambda: pressed(desktop, "esc"),
         )
         desktop.photograph(f"launcher-drawer-listed-at-{scale.replace('.', '-')}")
-        # The arrow alone moves the cursor a letter, which leaves nothing to put back.
+        # The h alone moves the cursor a letter, which leaves nothing to put back.
         pressed_until(
             desktop,
-            "spc left",
+            "ctrl-w h",
             lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"],
             lambda: None,
         )
@@ -589,7 +589,7 @@ def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
         at_scale(desktop, scale)
         listed_keys(desktop)
         pressed_until(
-            desktop, "spc right", lambda shown: shown["drawer"]["cursor"] is not None, relisted
+            desktop, "ctrl-w l", lambda shown: shown["drawer"]["cursor"] is not None, relisted
         )
         pressed(desktop, "slash d o w n")
         desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "down")
@@ -605,7 +605,7 @@ def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
         caught_flash(desktop, f"launcher-drawer-flash-at-{named}")
         pressed_until(
             desktop,
-            "spc left",
+            "ctrl-w h",
             lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"],
             lambda: None,
         )
