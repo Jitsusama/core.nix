@@ -27,6 +27,21 @@ let
   # spaces are logical pixels, 96 to the inch.
   points = pixels: toString (pixels * 3 / 4);
 
+  # The text keeps the inset from the window's frame on every side, to the
+  # ink, as every viewer's does (docs/design.md, The Ladder), but kitty pads
+  # to its cells, and a cell is taller and wider than its letters: the mono
+  # face's ascent stands 0.265 of its em above its capitals and its descent
+  # 0.25 below the baseline, and an H's ink is 0.033 in from either side of
+  # its cell (MonaspiceXe's own metrics, so another face is a pixel or two
+  # off). The padding is the inset less those, top, right, bottom and left.
+  em = builtins.fromJSON font.mono.size * 4 / 3;
+  padding = lib.concatMapStringsSep " " (ink: points (space.rung.inset - ink * em)) [
+    0.265
+    3.3e-2
+    0.25
+    3.3e-2
+  ];
+
   mix = import ../theme/mix.nix { inherit lib; };
 
   # zsh's start-up files on the other machine, each sourcing that machine's
@@ -178,7 +193,11 @@ in
   config.xdg.configFile."kitty/theme.conf".text = ''
     font_family family="${font.mono.family}" features="-calt"
     font_size ${font.mono.size}
-    window_padding_width ${points space.l} ${points space.xl}
+    window_padding_width ${padding}
+    # The part of a cell a window's size leaves over goes at the bottom and
+    # the right, so the text starts on one column, the inset in, whatever
+    # the window's size: room held at the far end rather than shared out.
+    placement_strategy top-left
 
     foreground ${terminal.foreground}
     background ${terminal.background}
