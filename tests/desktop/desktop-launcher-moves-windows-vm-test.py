@@ -27,7 +27,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -412,12 +412,14 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
 
 
 # In normal mode d does a row's ending action and y its copy, as Vim's d
-# and y do a line's: dd or a motion's span. A window's Close can't be put
-# back, so d asks once in Return's place, and the same keys again do it.
+# and y do a line's: dd, a count's rows or a motion's span. A window's
+# Close can't be put back, so d over more than one asks once on the line,
+# as Vim's ask_yesno does: only y says yes, n, Escape and Ctrl+C say no,
+# any other key does nothing, and nothing answers it in its first 300 ms.
 
 
 def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Desktop) -> None:
-    """Dd closes a window, dj closes two once asked, and yy copies a title."""
+    """Dd closes a window, 3dd, dG and d2j close two once asked, and yG and yy copy titles."""
     machine = desktop.machine
     first = desktop.opened("Ending first")
     second = desktop.opened("Ending second")
@@ -430,14 +432,7 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
         lambda shown: sorted(shown["rows"][:3]) == ["Ending first", "Ending second", "Ending third"]
     )
     desktop.normal()
-    top = desktop.showing()["rows"][0]
-    # yy copies the row's title and flashes it, the launcher still open.
-    since = desktop.mark()
-    machine.send_chars("yy")
-    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == [0], since)
-    desktop.reported("yanked 1", lambda rest: rest == "", since)
-    assert desktop.as_account("wl-paste --no-newline") == top
-    desktop.launcher_until(lambda shown: shown["open"] and shown["flashing"] == [])
+    copies_the_titles(desktop, len(endings))
     # dd closes the one window at once: its program keeps its own work,
     # as Vim's :close refuses a modified buffer, so the language marks
     # Close guarded and one asks nothing.
@@ -449,30 +444,72 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
         return endings & {window["id"] for window in desktop.windows()}
 
     retry(lambda _: len(left()) == len(endings) - 1, timeout=dt.timedelta(seconds=10))
+    asks_once_for_the_rest(desktop, left)
+    retry(lambda _: not left(), timeout=dt.timedelta(seconds=10))
+    assert desktop.showing()["open"], "d closed the launcher"
+
+
+def copies_the_titles(desktop: Desktop, windows: int) -> None:
+    """Copy every row's title with yG, a line each in order, then the top row's with yy."""
+    machine = desktop.machine
+    shown = desktop.showing()["rows"]
+    since = desktop.mark()
+    machine.send_chars("yG")
+    desktop.reported("yanked ", lambda count: int(count) >= windows, since)
+    copied = desktop.as_account("wl-paste --no-newline").split("\n")
+    assert copied[:windows] == shown[:windows], copied
+    desktop.launcher_until(lambda now: now["open"] and now["flashing"] == [])
+    # yy copies the row's title and flashes it, the launcher still open.
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == [0], since)
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
+    assert desktop.as_account("wl-paste --no-newline") == shown[0]
+    desktop.launcher_until(lambda now: now["open"] and now["flashing"] == [])
+
+
+def unasked(shown: Json) -> bool:
+    """Say whether the ask has gone, its rows untinted, the launcher still open."""
+    return bool(shown["open"] and shown["question"] == "" and shown["tinted"] == [])
+
+
+def asks_once_for_the_rest(desktop: Desktop, left: Callable[[], set[int]]) -> None:
+    """Ask over the two windows left by 3dd, dG and d2j, answering no, nothing, then yes."""
+    machine = desktop.machine
+    open_before = len(left())
     # Its row stays in its place, gone, until a key changes what's found,
-    # and d never counts it. So d2j from it takes the other two and asks
-    # once, on the line, as Vim's ask_yesno does, by their count and kind,
-    # the two rows it covers tinted, answered once it's stood 300 ms;
-    # Escape says no, and the launcher stays.
+    # and d never counts it. So 3dd from it takes the other two and asks
+    # once, on the line, by their count and kind, the two rows it covers
+    # tinted; n says no, and the launcher stays.
     desktop.launcher_until(lambda shown: shown["things"][0]["gone"])
     with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
-        machine.send_chars("d2j")
+        machine.send_chars("3dd")
     asking = desktop.showing()
     assert asking["question"] == "Close 2 windows? (y/n)", asking
     assert asking["tinted"] == [1, 2], asking
     with desktop.told("answered no"):
-        machine.send_key("esc")
-    desktop.launcher_until(
-        lambda shown: shown["open"] and shown["question"] == "" and shown["tinted"] == []
-    )
-    assert len(left()) == len(endings) - 1, desktop.windows()
-    # d2j again, and y closes both.
+        machine.send_chars("n")
+    desktop.launcher_until(unasked)
+    # dG takes every row from the cursor down, the copies yG and yy left
+    # among them; Ctrl+C says no.
+    since = desktop.mark()
+    with desktop.told("ask ready"):
+        machine.send_chars("dG")
+    desktop.reported("asked Close 2 windows", lambda rest: rest.endswith("(y/n)"), since)
+    with desktop.told("answered no"):
+        machine.send_key("ctrl-c")
+    desktop.launcher_until(unasked)
+    assert len(left()) == open_before, desktop.windows()
+    # A y typed on from d2j, inside the ask's first 300 ms, does nothing,
+    # and nor does any key but y, n, Escape and Ctrl+C once it's ready; y
+    # then closes both.
     with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
-        machine.send_chars("d2j")
+        machine.send_chars("d2jy")
+    machine.send_chars("x")
+    desktop.launcher_until(lambda shown: shown["question"] == "Close 2 windows? (y/n)")
+    assert len(left()) == open_before, desktop.windows()
     with desktop.told("ended 2"):
         machine.send_chars("y")
-    retry(lambda _: not left(), timeout=dt.timedelta(seconds=10))
-    assert desktop.showing()["open"], "d closed the launcher"
 
 
 # A window closed while Super+Tab shows it stays in its place, gone, until
