@@ -132,14 +132,16 @@ The rest run after the merge, on the net: `merge-net watch`, which
 `modules/merge-net` runs as a daemon, follows main and runs each VM test
 a head changed since the last head it passed, on the VM builder, two at
 once. A test that fails twice at one commit is broken: the net finds
-which merge broke it, runs the test just before that merge to be sure it
-passed there, writes `~/.local/state/net/hold.json` so no machine
+which merge broke it, checks that the merge changed the test and that the
+test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, reverts it through a PR merged on its own checks, and
 writes a finding for its owner in `~/.local/state/net/findings`. A check
 that fails before the revert too doesn't stop it, or one break on main
 would keep another in place. A test that failed before that merge too, or
 that didn't exist before it, as when a split moves a failing case under a
-new name, is a finding for its owner, and nothing is reverted or held. One that
+new name, is a finding for its owner, and nothing is reverted or held. So is one
+that fails after a merge that didn't change it, since something outside the
+code broke it. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
