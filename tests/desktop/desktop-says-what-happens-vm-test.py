@@ -1370,10 +1370,12 @@ def test_a_stack_of_notices_and_whats_playing_are_photographed_at_each_scale(
                     )
             named = scale.replace(".", "-")
             desktop.photograph(f"notices-stacked-at-{named}")
+            # Collected once it ends, since a stopped player exits failed and
+            # would keep the unit's name from the next scale's.
             with desktop.told("drawn notifications"):
                 desktop.as_account(
-                    "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
-                    f" {desktop.values['track']}"
+                    "systemd-run --user --collect --unit=player mpv --ao=null --no-video"
+                    f" --loop {desktop.values['track']}"
                 )
             desktop.photograph(f"notices-playing-at-{named}")
             desktop.as_account("systemctl --user stop player")
