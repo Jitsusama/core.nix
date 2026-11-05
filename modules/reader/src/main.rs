@@ -1599,8 +1599,8 @@ impl App {
                 self.close_outline();
                 return;
             }
-            // Escape has already dropped a count or a key waiting.
-            Act::Rest => return,
+            // Escape among the rest, which has already dropped a count or a
+            // key waiting, and closes nothing.
             _ => return,
         }
         self.ask_outline();
