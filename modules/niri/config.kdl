@@ -56,6 +56,9 @@ input {
 
 // The gaps, border width and corners come from theme.kdl.
 layout {
+    // A window alone on its workspace sits in the middle of the screen, not
+    // against its left edge, whatever the program.
+    always-center-single-column
     center-focused-column "never"
     default-column-width {
         proportion 0.5
