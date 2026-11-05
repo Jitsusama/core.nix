@@ -24,11 +24,11 @@
 //
 // Home's Now gives a plate of the moment instead (look 3's piece 4,
 // launcher/WhatsOn.qml): `{ now: true, eyebrow, seconds, say, groups:
-// [[{ label, value, qualifier }]], lines: { say, groups } }`. The time is
-// large on Now's row, its seconds counting after it, what needs Joel on
-// the row `lines.say` names, and each group of facts that holds any from
-// the next row `lines.groups` names, on the pitch; a row that's missing,
-// -1, sets its part one empty line below the one before.
+// [[{ label, value, qualifier }]] }`, set by the rule every plate is
+// (VKCF3Z, 2026-11-05): its head the eyebrow, the time large a Display
+// pitch under it with its seconds counting after, and what needs Joel a
+// Voice pitch under that; its groups of facts that hold any as a body
+// under its head, each the drawer's groups apart.
 //
 // It's a window the keys go into, as his Neovim's splits are: Space and
 // the right arrow from the rows, and back with Space and the left arrow
@@ -225,8 +225,6 @@ Floating {
     // plate's beats are counted from.
     property real fieldBase: 0
     property real rowLine: 0
-    // The middle of each row the card shows, for the moment's lines.
-    property var rowLines: []
     // How far below a row's line its name's baseline stands, as the card
     // sets its rows (their capitals centred on the line, Choice.qml).
     property real rowDrop: 0
@@ -257,15 +255,12 @@ Floating {
     // Whether its words are prose to read, set as the reader sets its text,
     // rather than lines in the mono.
     readonly property bool prose: shown?.prose === true
-    readonly property var momentLines: moment ? shown.lines ?? {} : ({})
-    // Its groups of facts that hold any, each set on the row the next of
-    // `lines.groups` names: a group with nothing to show gives up its
-    // place, so a day with no weather or meeting leaves no empty lines
-    // in the middle of the plate (docs/design.md, Space Available).
+    // Its groups of facts that hold any: a group with nothing to show
+    // gives up its place, so a day with no weather or meeting leaves no
+    // empty lines in the middle of the plate (docs/design.md, Space
+    // Available).
     readonly property var groups: moment ? (shown.groups ?? [])
-        .filter(facts => facts.length > 0)
-        .map((facts, at) => ({ facts: facts, line: (momentLines.groups ?? [])[at] ?? -1 }))
-        : []
+        .filter(facts => facts.length > 0).map(facts => ({ facts: facts })) : []
     // The time and its seconds as it says them, for the launcher to report.
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
@@ -366,16 +361,6 @@ Floating {
         };
     }
 
-    // A row's line of the card, by its place in the card's rows, its middle.
-    function lineOf(at) {
-        return at >= 0 && at < rowLines.length ? rowLines[at] : null;
-    }
-    // The baseline a line of the mono takes on a row's line, or one empty
-    // line below where the part before ended where that row is missing.
-    function rowBase(at, after) {
-        const line = lineOf(at);
-        return line !== null ? line + dropped : after + 2 * pitch;
-    }
     // A figure, then what qualifies it, quieter after a dot, each number
     // kept to its unit.
     function qualified(fact) {
@@ -1437,7 +1422,13 @@ Floating {
             }
 
             // The moment: the time, its seconds, what needs Joel and the
-            // facts behind it, each on a line of one of the card's rows.
+            // facts behind it. It was set on home's rows once (look 3), to
+            // tie it to the list beside it; that made every gap on it one,
+            // and Now the one plate set by its own rule, for an alignment
+            // nobody sees once the list scrolls (VKCF3Z, 2026-11-05). The
+            // room under its last group is the card's height, which the
+            // drawer keeps so the card never moves; a day with less to say
+            // leaves it, rather than spreading the plate to fill it.
             Item {
                 id: momentShown
                 width: parent.width
@@ -1448,13 +1439,12 @@ Floating {
 
                 // The time, the one large thing, at Display in the mono, as
                 // the lock's clock is, since figures are the mono's: all one
-                // width so they never jiggle, its capitals centred on Now's
-                // row, the first.
+                // width so they never jiggle, a Display pitch under the
+                // eyebrow, as a title is its own under one.
                 PageText {
                     id: timeText
                     sought: drawer.washing
-                    readonly property real base: (drawer.lineOf(0) ?? drawer.rowLine)
-                        + timeFace.tightBoundingRect("H").height / 2
+                    readonly property real base: drawer.fieldBase + Theme.level.display.pitch
                     y: base - Theme.border - baselineOffset
                     plain: Moment.clock(clock.date)
                     leading: 0
@@ -1469,10 +1459,13 @@ Floating {
 
                 // Its seconds after it, quiet and counting, at Note on the
                 // time's baseline: upright, since italic is only the voice.
+                // A mark from the time's ink to its own, a smaller figure
+                // beside the time rather than a thing apart from it.
                 PageText {
                     id: secondsText
                     sought: drawer.washing
-                    x: timeText.x + timeText.contentWidth + Theme.space.s
+                    x: timeText.x + timeInk.tightBoundingRect.x + timeInk.tightBoundingRect.width
+                        + Theme.space.rung.mark - secondsInk.tightBoundingRect.x
                     width: parent.width - x
                     y: timeText.base - Theme.border - baselineOffset
                     plain: String(drawer.shown?.seconds ?? "")
@@ -1485,13 +1478,25 @@ Floating {
                     font.features: { "tnum": 1 }
                 }
 
-                // What needs Joel, or that nothing does, in the voice, on
-                // its row's baseline.
+                // The time's ink and the seconds', read by TextMetrics,
+                // which follow the face as it loads (HVD6O3, 2026-11-05).
+                TextMetrics {
+                    id: timeInk
+                    font: timeText.font
+                    text: timeText.plain
+                }
+                TextMetrics {
+                    id: secondsInk
+                    font: secondsText.font
+                    text: secondsText.plain
+                }
+
+                // What needs Joel, or that nothing does, in the voice, a
+                // Voice pitch under the time, the last of the head.
                 PageText {
                     id: sayText
                     sought: drawer.washing
-                    readonly property real base: drawer.rowBase(drawer.momentLines.say ?? -1,
-                        timeText.base)
+                    readonly property real base: timeText.base + Theme.level.voice.pitch
                     width: parent.width
                     y: base - Theme.border - baselineOffset
                     visible: plain !== ""
@@ -1505,7 +1510,11 @@ Floating {
                     font.variableAxes: Theme.level.voice.variableAxes
                 }
 
-                // Each group of facts from its row's line, on the pitch.
+                // Each group of facts as a body under the head, the first
+                // on the first of the card's beats two Title pitches under
+                // it, as every plate's body is, and each after the
+                // drawer's groups apart, two pitches from the last baseline
+                // of the one before.
                 Repeater {
                     id: groupsShown
                     model: drawer.groups
@@ -1525,13 +1534,12 @@ Floating {
                         id: group
                         required property var modelData
                         required property int index
-                        // Its first baseline: its row's, or one empty line
-                        // below the group or the words before it.
-                        readonly property real base: {
-                            const before = index === 0 ? sayText.base
-                                : groupsShown.itemAt(index - 1)?.lastBase ?? sayText.base;
-                            return drawer.rowBase(modelData.line, before);
-                        }
+                        readonly property real headBase: sayText.visible ? sayText.base
+                            : timeText.base
+                        readonly property real base: index === 0
+                            ? drawer.onBeat(headBase + 2 * Theme.level.title.pitch)
+                            : (groupsShown.itemAt(index - 1)?.lastBase ?? headBase)
+                                + 2 * drawer.pitch
                         // Each fact's first baseline, down from its top.
                         readonly property var bases: Array.from({ length: facts.count },
                             (_, at) => {

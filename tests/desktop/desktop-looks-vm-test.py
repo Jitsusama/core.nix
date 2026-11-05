@@ -53,6 +53,8 @@ NEAR = 0.02
 # A Title's pitch: how far the title sits under the eyebrow, and its lines apart when its name
 # wraps, tighter than two of the plate's, so the name reads as one heading.
 TITLE_LEADING = 32
+# A Display's pitch: how far Now's time sits under its eyebrow, as a title sits a Title's.
+DISPLAY_PITCH = 56
 # How far the text keeps from the plate's frame on every side, its foot included: the inset rung,
 # from the frame's inside edge, its hairline border left out, to the ink.
 INSET = 24
@@ -1092,10 +1094,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.close_launcher()
 
 
-def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
+def test_nows_plate_sets_its_head_and_groups_as_every_plate(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Now's plate centres the time on Now's row and sets the rest on home's rows' lines."""
+    """Now's plate sets its head as one unit and its groups as a body under it, apart."""
     for scale in at_each_scale:
         at_scale(desktop, scale)
         desktop.as_account("qs ipc call launcher toggle")
@@ -1112,33 +1114,36 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
         room = room_beside_the_card(desktop)
         assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide: {drawer}"
         lines, card, moment = drawer["lines"], drawer["cardLines"], drawer["moment"]
-        # The rows' middles the plate sets on are worked out apart from the
-        # list, so each lies the same way above the list's own baseline.
-        middles = card["middles"]
-        drawn = zip(middles, card["rows"][: len(middles)], strict=True)
-        drop = [middle - row for middle, row in drawn if row]
-        assert all(abs(each - drop[0]) <= NEAR for each in drop), (
-            f"at {scale} the plate's row middles drift from the list's rows: {drawer}"
+        # Its head is one unit, as every plate's is: the eyebrow on the field's baseline, the
+        # time a Display pitch under it with its seconds on its baseline, and what needs Joel a
+        # Voice pitch under the time.
+        assert abs(lines["eyebrow"] - card["fieldBase"]) <= NEAR, (
+            f"at {scale} Now's eyebrow is off the field's baseline: {drawer}"
         )
-        assert abs(lines["timeMiddle"] - card["middles"][0]) <= NEAR, (
-            f"at {scale} the time's capitals aren't centred on Now's row: {drawer}"
+        assert abs(lines["time"] - lines["eyebrow"] - DISPLAY_PITCH) <= NEAR, (
+            f"at {scale} the time isn't a Display pitch under the eyebrow: {drawer}"
         )
         assert abs(lines["seconds"] - lines["time"]) <= NEAR, drawer
-        if moment["sayOn"] >= 0:
-            assert abs(lines["say"] - card["rows"][moment["sayOn"]]) <= NEAR, (
-                f"at {scale} what needs Joel is off its row's line: {drawer}"
+        head = lines["time"]
+        if moment["say"]:
+            assert abs(lines["say"] - lines["time"] - PITCH) <= NEAR, (
+                f"at {scale} what needs Joel isn't a Voice pitch under the time: {drawer}"
             )
-        # A group with nothing to show gives up its place, so the first
-        # shown starts on Programs' line, whichever it is: the VM has no
-        # weather, meeting or place, so there it's the clock's.
-        assert moment["groupsOn"][:1] == [shown["rows"].index("Programs")], (
-            f"at {scale} the first group of facts isn't on Programs' line: {drawer}"
+            head = lines["say"]
+        # Its groups are a body under the head: the first on the card's first beat two Title
+        # pitches or more under it, and each after two pitches from the last line before.
+        groups = lines["groups"]
+        assert groups, f"at {scale} Now's plate shows no facts: {drawer}"
+        first = float(card["rows"][0])
+        body = first + -(-(head + 2 * TITLE_LEADING - first - NEAR) // BEAT) * BEAT
+        assert abs(groups[0][0] - body) <= NEAR, (
+            f"at {scale} Now's facts don't start on the beat under its head: {drawer}"
         )
-        for on, group in zip(moment["groupsOn"], lines["groups"], strict=True):
-            if on >= 0:
-                assert abs(group[0] - card["rows"][on]) <= NEAR, (
-                    f"at {scale} a group of facts is off its row's line: {drawer}"
-                )
+        for earlier, later in pairwise(groups):
+            assert abs(later[0] - earlier[-1] - 2 * PITCH) <= NEAR, (
+                f"at {scale} Now's groups aren't two pitches apart: {drawer}"
+            )
+        for group in groups:
             # A group whose facts all take a line has them on the pitch; one where any wraps
             # has each a beat further from the one before, so either way on the card's beat.
             assert things_apart(group, wrapped=False) or things_apart(group, wrapped=True), (
