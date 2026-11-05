@@ -163,7 +163,7 @@ ShellRoot {
         // A figure the calendar's script has no word for, as a count or a
         // day, is in Latin letters, so it's set in the theme's own face
         // rather than the script's, whose Latin is another's.
-        const unmarked = plates.flatMap(plate => plate.facts)
+        const unmarked = [].concat(...plates.map(plate => plate.facts))
             .filter(fact => /^[\x20-\x7e]+$/.test(fact.value) !== (fact.latin === true));
         expect("a figure in Latin letters is marked so", unmarked.length === 0,
             JSON.stringify(unmarked));
