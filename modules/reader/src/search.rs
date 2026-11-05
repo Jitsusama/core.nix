@@ -1,7 +1,7 @@
 //! What / and ? do, kept apart from the window so it can be tested: the
 //! words typed after them, as Neovim's command line takes them, and which
 //! match a search goes to.
-use crate::keys::Key;
+use crate::keys::{Key, LineKey, line_key};
 use crate::text::Found;
 
 /// What a key did to the words being typed.
@@ -23,35 +23,51 @@ pub struct Typing {
     pub typed: String,
     /// Where the view's top was when / or ? was pressed, in points.
     pub from_pt: f64,
+    /// Whether it's the command line, after :, rather than the find line.
+    command: bool,
 }
 
 impl Typing {
+    /// The find line, after / or ?.
     pub fn new(forward: bool, from_pt: f64) -> Self {
         Typing {
             forward,
             typed: String::new(),
             from_pt,
+            command: false,
         }
     }
 
-    /// Takes a key as Neovim's command line does: Ctrl+U clears it, Ctrl+W
-    /// takes the last word, Ctrl+H is Backspace.
-    pub fn key(&mut self, key: Key) -> Typed {
-        match key {
-            Key::Escape | Key::Ctrl('c') => Typed::Cancelled,
-            Key::Return => Typed::Done,
-            Key::Backspace | Key::Ctrl('h') => {
+    /// The command line, after :.
+    pub fn command(from_pt: f64) -> Self {
+        Typing {
+            command: true,
+            ..Typing::new(true, from_pt)
+        }
+    }
+
+    /// Takes a key, pressed or repeated while `held`, as the key language
+    /// gives the line it is: Escape or Ctrl+C drops it, Return makes it,
+    /// Backspace and Ctrl+H take a letter, Ctrl+W the last word and
+    /// Ctrl+U the line. A held key never leaves the line, as a held
+    /// Backspace stops at empty; only a fresh press does.
+    pub fn key(&mut self, key: Key, held: bool) -> Typed {
+        let leaves = |typed| if held { Typed::Nothing } else { typed };
+        match line_key(key, self.command) {
+            Some(LineKey::Back | LineKey::Leave) => leaves(Typed::Cancelled),
+            Some(LineKey::Run | LineKey::Open) => leaves(Typed::Done),
+            Some(LineKey::DeleteLetter) => {
                 if self.typed.pop().is_some() {
                     Typed::Changed
                 } else {
-                    Typed::Cancelled
+                    leaves(Typed::Cancelled)
                 }
             }
-            Key::Ctrl('u') => {
+            Some(LineKey::DeleteToStart) => {
                 self.typed.clear();
                 Typed::Changed
             }
-            Key::Ctrl('w') => {
+            Some(LineKey::DeleteWord) => {
                 let kept = self
                     .typed
                     .trim_end()
@@ -60,11 +76,17 @@ impl Typing {
                 self.typed.truncate(kept);
                 Typed::Changed
             }
-            Key::Char(c) if !c.is_control() => {
-                self.typed.push(c);
-                Typed::Changed
-            }
-            _ => Typed::Nothing,
+            // The menu's keys are the window's to take, with the menu.
+            Some(
+                LineKey::NextRow | LineKey::PreviousRow | LineKey::TakeName | LineKey::MenuAway,
+            ) => Typed::Nothing,
+            None => match key {
+                Key::Char(c) if !c.is_control() => {
+                    self.typed.push(c);
+                    Typed::Changed
+                }
+                _ => Typed::Nothing,
+            },
         }
     }
 }
@@ -135,8 +157,24 @@ mod tests {
 
     fn typing(keys: &[Key]) -> (Typing, Vec<Typed>) {
         let mut typing = Typing::new(true, 0.0);
-        let said = keys.iter().map(|&key| typing.key(key)).collect();
+        let said = keys.iter().map(|&key| typing.key(key, false)).collect();
         (typing, said)
+    }
+
+    #[test]
+    fn a_held_key_never_leaves_the_line() {
+        let mut typing = Typing::command(0.0);
+        assert_eq!(typing.key(Key::Char('a'), false), Typed::Changed);
+        assert_eq!(typing.key(Key::Backspace, true), Typed::Changed);
+        assert_eq!(
+            typing.key(Key::Backspace, true),
+            Typed::Nothing,
+            "held, it stops at empty"
+        );
+        assert_eq!(typing.key(Key::Return, true), Typed::Nothing);
+        assert_eq!(typing.key(Key::Escape, true), Typed::Nothing);
+        assert_eq!(typing.key(Key::Ctrl('c'), false), Typed::Cancelled);
+        assert_eq!(typing.key(Key::Ctrl('h'), false), Typed::Cancelled);
     }
 
     #[test]
@@ -166,9 +204,9 @@ mod tests {
             Key::Char(' '),
             Key::Char('t'),
         ]);
-        typing.key(Key::Ctrl('w'));
+        typing.key(Key::Ctrl('w'), false);
         assert_eq!(typing.typed, "one ");
-        typing.key(Key::Ctrl('u'));
+        typing.key(Key::Ctrl('u'), false);
         assert_eq!(typing.typed, "");
     }
 
