@@ -1417,7 +1417,7 @@ works the same way everywhere.
   view following at his scrolloff by whole lines, its eyebrow and title
   among them, so no line is ever shown cut at its top or foot. It stops
   above the card's foot, which stays and, while the drawer has the keys,
-  reads "Ctrl+W h back · Space ? keys", the way out at the right end as
+  reads "Space ? keys · Ctrl+W h back", the way out at the right end as
   Return is on the card. Ctrl+W h or w, :q, ZZ or Space w bring
   them back, and Escape and q do nothing there. Shift and
   the arrows no longer scroll it, since an arrow is its letter. Another
