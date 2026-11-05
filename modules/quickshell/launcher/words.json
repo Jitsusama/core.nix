@@ -3497,6 +3497,11 @@
       "name": "The Page"
     },
     {
+      "id": "shortcuts:reader:commands",
+      "in": "shortcuts",
+      "name": "Command Line"
+    },
+    {
       "id": "shortcuts:zathura:turning",
       "in": "shortcuts",
       "name": "Turning Pages"
@@ -6652,6 +6657,14 @@
         "shortcuts:zathura:scrolling"
       ],
       "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
+    },
+    {
+      "word": "command line",
+      "things": [
+        "shortcuts:neovim:editor:commands",
+        "shortcuts:reader:commands"
+      ],
+      "why": "Neovim and the reader both take keys on their command line, and each group says which program's it is beside it."
     },
     {
       "word": "focus",

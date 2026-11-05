@@ -25,6 +25,9 @@ pub enum Key {
     PageUp,
     PageDown,
     F1,
+    /// Tab, and Shift+Tab, which the lines' menu steps through.
+    Tab,
+    BackTab,
 }
 
 /// What a key asks of the reader.
@@ -316,6 +319,78 @@ const OPERATORS: &[(&str, Act)] = &[
     ("change-motion", Act::Change(Edit::ChangeMotion)),
 ];
 
+/// What a key does on a line being typed: the find line after / and ?,
+/// and the command line after :, as Vim's command line takes it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineKey {
+    /// Escape and Ctrl+C: the line dropped.
+    Back,
+    Leave,
+    /// Backspace, or back to normal from an empty line.
+    DeleteLetter,
+    DeleteWord,
+    DeleteToStart,
+    /// Return: the command run, or the search made.
+    Run,
+    Open,
+    /// The command line's menu: the next line or the one before written
+    /// in, the one chosen taken, or the menu put away.
+    NextRow,
+    PreviousRow,
+    TakeName,
+    MenuAway,
+}
+
+impl LineKey {
+    /// Whether it's the menu's, rather than the line's own.
+    pub fn menus(self) -> bool {
+        matches!(
+            self,
+            LineKey::NextRow | LineKey::PreviousRow | LineKey::TakeName | LineKey::MenuAway
+        )
+    }
+}
+
+/// The acts of the find line and the command line, by their names, and
+/// what each does as the key list says it.
+const LINES: &[(&str, LineKey, &str)] = &[
+    (
+        "back",
+        LineKey::Back,
+        "Cancel the line, a selection or a count",
+    ),
+    ("leave", LineKey::Leave, "Cancel the line"),
+    (
+        "delete-letter",
+        LineKey::DeleteLetter,
+        "Delete a letter, or leave an empty line",
+    ),
+    ("delete-word", LineKey::DeleteWord, "Delete the word before"),
+    (
+        "delete-to-start",
+        LineKey::DeleteToStart,
+        "Delete everything typed",
+    ),
+    ("run", LineKey::Run, "Run the command typed"),
+    ("open", LineKey::Open, "Search for what's typed"),
+    (
+        "next-row",
+        LineKey::NextRow,
+        "Choose the next command in the menu",
+    ),
+    (
+        "previous-row",
+        LineKey::PreviousRow,
+        "Choose the command before in the menu",
+    ),
+    ("take-name", LineKey::TakeName, "Take the command chosen"),
+    ("menu-away", LineKey::MenuAway, "Put the menu away"),
+];
+
+/// A key of a line, what it does, and whether it's the command line's,
+/// the find line's, or both.
+type LineSlot = (Key, LineKey, bool, bool);
+
 /// The reader's own keys: a browser's zoom, at rest and while selecting,
 /// for what Vim has nothing for.
 const OWN: &[(&[Key], Act, In)] = &[
@@ -334,6 +409,7 @@ pub struct Table {
     pub sequences: Vec<Sequence>,
     slots: Vec<(Key, Slot, In)>,
     operators: Vec<(Key, Act, In)>,
+    lines: Vec<LineSlot>,
 }
 
 /// The keys, read from the language once.
@@ -428,7 +504,106 @@ fn read(language: &str) -> Table {
         sequences,
         slots,
         operators,
+        lines: read_lines(&language),
     }
+}
+
+/// The find line's and the command line's keys, from their acts' keys in
+/// find and command mode; each is one key.
+fn read_lines(language: &toml::Table) -> Vec<LineSlot> {
+    LINES
+        .iter()
+        .flat_map(|&(name, line, _)| {
+            let act = &language["acts"][name];
+            let modes: Vec<&str> = act["modes"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{name} names its modes"))
+                .iter()
+                .filter_map(|mode| mode.as_str())
+                .collect();
+            let (command, find) = (modes.contains(&"command"), modes.contains(&"find"));
+            assert!(command || find, "{name} is on neither line");
+            act["keys"]
+                .as_array()
+                .unwrap_or_else(|| panic!("the key language has no act {name}"))
+                .iter()
+                .map(move |notation| {
+                    let notation = notation.as_str().expect("a key is a string");
+                    match parse(notation).as_deref() {
+                        Some(&[key]) => (key, line, command, find),
+                        _ => panic!("the reader can't be given {notation}, for {name}"),
+                    }
+                })
+        })
+        .collect()
+}
+
+/// A command the language gives the page: the act's name, its whole
+/// command and short form, whether it takes a range, and the act's first
+/// key as the key list shows it, if the reader has one for it.
+pub struct PageCommand {
+    pub act: String,
+    pub name: String,
+    pub short: String,
+    pub ranged: bool,
+    pub key: Option<String>,
+}
+
+/// Every command the language gives the page, by its act's name.
+pub fn commands() -> Vec<PageCommand> {
+    let language: toml::Table = LANGUAGE.parse().expect("the key language is TOML");
+    let acts = language["acts"]
+        .as_table()
+        .expect("the language's acts are a table");
+    acts.iter()
+        .filter(|(_, act)| {
+            act.get("kinds")
+                .and_then(|kinds| kinds.as_array())
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("page")))
+        })
+        .filter_map(|(name, act)| {
+            let command = act.get("command")?.as_str()?.to_string();
+            let short = act
+                .get("short")
+                .and_then(|short| short.as_str())
+                .map_or_else(|| command.clone(), str::to_string);
+            let key = SPOKEN
+                .iter()
+                .find(|(spoken, _)| spoken == name)
+                .and_then(|&(_, done)| table().sequences.iter().find(|(_, act, _)| *act == done))
+                .map(|(keys, _, _)| shown_all(keys));
+            Some(PageCommand {
+                act: name.clone(),
+                name: command,
+                short,
+                ranged: act.get("range").and_then(toml::Value::as_bool) == Some(true),
+                key,
+            })
+        })
+        .collect()
+}
+
+/// What a key does on the command line, or on the find line when not.
+pub fn line_key(key: Key, command: bool) -> Option<LineKey> {
+    table()
+        .lines
+        .iter()
+        .find(|&&(k, _, on_command, on_find)| {
+            k == key && if command { on_command } else { on_find }
+        })
+        .map(|&(_, line, _, _)| line)
+}
+
+/// The lines' keys as the key list and the key map give them: each key,
+/// what it does, and its act's name.
+fn line_keys() -> impl Iterator<Item = (Key, &'static str, &'static str)> {
+    table().lines.iter().map(|&(key, line, _, _)| {
+        let &(name, _, does) = LINES
+            .iter()
+            .find(|(_, l, _)| *l == line)
+            .expect("every line key is named");
+        (key, does, name)
+    })
 }
 
 /// Keys written in Neovim's notation, as j, gg, <C-d> and <Space>?, or
@@ -454,6 +629,8 @@ fn parse(notation: &str) -> Option<Vec<Key>> {
                 "PageUp" => Key::PageUp,
                 "PageDown" => Key::PageDown,
                 "F1" => Key::F1,
+                "Tab" => Key::Tab,
+                "S-Tab" => Key::BackTab,
                 held => {
                     let mut letters = held.strip_prefix("C-")?.chars();
                     match (letters.next(), letters.next()) {
@@ -510,6 +687,7 @@ pub const GROUPS: &[&str] = &[
     "Text Objects",
     "Copying",
     "The Page",
+    "Command Line",
 ];
 
 /// What the key list says an act does, and its group, in the words his
@@ -613,6 +791,8 @@ fn shown(key: Key) -> String {
         Key::PageUp => "Page Up".into(),
         Key::PageDown => "Page Down".into(),
         Key::F1 => "F1".into(),
+        Key::Tab => "Tab".into(),
+        Key::BackTab => "Shift+Tab".into(),
     }
 }
 
@@ -664,6 +844,15 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
         match rows.iter_mut().find(|(g, _, d)| *g == group && *d == does) {
             Some((_, ways, _)) => ways.push(keys),
             None => rows.push((group, vec![keys], does)),
+        }
+    }
+    for (key, does, _) in line_keys() {
+        match rows
+            .iter_mut()
+            .find(|(g, _, d)| *g == "Command Line" && *d == does)
+        {
+            Some((_, ways, _)) => ways.push(shown(key)),
+            None => rows.push(("Command Line", vec![shown(key)], does)),
         }
     }
     GROUPS
@@ -728,6 +917,12 @@ pub fn chords() -> Vec<Listed> {
                 act: spoken(act),
             })
         })
+        .chain(line_keys().map(|(key, does, act)| Listed {
+            group: "commands".to_string(),
+            chord: spelled(key),
+            does,
+            act,
+        }))
         .collect()
 }
 
@@ -976,7 +1171,8 @@ mod tests {
         assert_eq!(parse("<PageDown>"), Some(vec![Key::PageDown]));
         assert_eq!(parse("<lt>"), Some(vec![Char('<')]));
         assert_eq!(parse("<"), Some(vec![Char('<')]));
-        assert_eq!(parse("<S-Tab>"), None);
+        assert_eq!(parse("<S-Tab>"), Some(vec![Key::BackTab]));
+        assert_eq!(parse("<S-Left>"), None);
     }
 
     #[test]
@@ -998,6 +1194,43 @@ mod tests {
             chords
                 .iter()
                 .any(|c| c.chord == "Ctrl+Equal" && c.act.is_empty())
+        );
+    }
+
+    #[test]
+    fn the_lines_take_their_keys_from_the_language() {
+        assert_eq!(line_key(Key::Return, true), Some(LineKey::Run));
+        assert_eq!(line_key(Key::Return, false), Some(LineKey::Open));
+        assert_eq!(line_key(Key::Escape, false), Some(LineKey::Back));
+        assert_eq!(line_key(Ctrl('c'), true), Some(LineKey::Leave));
+        assert_eq!(line_key(Ctrl('h'), true), Some(LineKey::DeleteLetter));
+        assert_eq!(line_key(Key::Backspace, false), Some(LineKey::DeleteLetter));
+        assert_eq!(line_key(Ctrl('w'), true), Some(LineKey::DeleteWord));
+        assert_eq!(line_key(Ctrl('u'), false), Some(LineKey::DeleteToStart));
+        assert_eq!(line_key(Char('a'), true), None);
+        let commands: Vec<String> = chords()
+            .into_iter()
+            .filter(|c| c.group == "commands")
+            .map(|c| format!("{} {}", c.chord, c.act))
+            .collect();
+        assert!(commands.contains(&"Return run".to_string()), "{commands:?}");
+        assert!(
+            commands.contains(&"Ctrl+H delete-letter".to_string()),
+            "{commands:?}"
+        );
+        let (_, rows) = listing()
+            .into_iter()
+            .find(|(group, _)| *group == "Command Line")
+            .expect("the lines' group");
+        assert_eq!(rows.len(), 11, "Backspace and Ctrl+H on one row");
+        assert_eq!(line_key(Key::Tab, true), Some(LineKey::NextRow));
+        assert_eq!(line_key(Key::BackTab, true), Some(LineKey::PreviousRow));
+        assert_eq!(line_key(Ctrl('y'), true), Some(LineKey::TakeName));
+        assert_eq!(line_key(Ctrl('e'), true), Some(LineKey::MenuAway));
+        assert_eq!(
+            line_key(Ctrl('e'), false),
+            None,
+            "the find line has no menu to put away"
         );
     }
 

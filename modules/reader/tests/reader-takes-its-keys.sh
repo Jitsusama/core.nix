@@ -546,6 +546,22 @@ press ':%q'
 press -k Return
 logged '^said: E481: No range allowed' 1
 
+# The line's keys are the key language's: Ctrl+W takes the last word,
+# Ctrl+U the rest and Ctrl+H a letter, and Ctrl+C drops the line, so the
+# :5 after it is a line of its own.
+press ':abc def'
+press -M ctrl w -m ctrl
+press -M ctrl u -m ctrl
+press nohx
+press -M ctrl h -m ctrl
+press -k Return
+logged '^command: "noh" is NoHighlight' 2
+press ':q'
+press -M ctrl c -m ctrl
+press ':5'
+press -k Return
+logged '^command: "5" is Go\(Lines\(5, 5\)\)' 2
+
 # :%y copies the file as it's written and says how many lines, as Vim
 # does; :'<,'>y the lines the last selection took, once it has ended;
 # and a range past the file's end is E16.
@@ -700,6 +716,56 @@ logged '^command: "ju" is Jumps' 1
 logged '^outline: [0-9]+ rows' $((lists + 1))
 press -k Escape
 logged '^outline: closed' $((closed + 3))
+
+# The menu shows the moment : is typed, every command the page has; a
+# letter narrows it, Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P choose
+# a line and come round through what was typed, Ctrl+E puts it away with
+# what was typed back, and Ctrl+Y takes the line chosen. After :e and a
+# space, it lists the files, and Return runs what the line holds.
+# Waits until the menu's last line logged says `menu`, as Rust quotes it.
+menu_is() {
+  local deadline=$((SECONDS + 50))
+  until [ "$(grep -a -E '^menu: ' said | tail -n 1)" = "menu: $1" ]; do
+    ((SECONDS < deadline)) || fail "the $(grep -a -E '^menu: ' said | tail -n 1), not $1"
+    inotifywait -q -q -t 1 -e modify said || true
+  done
+}
+press ':'
+menu_is '11 lines, chosen None'
+press e
+menu_is '1 lines, chosen None'
+press -k Tab
+menu_is '1 lines, chosen Some("e[dit]")'
+press -M ctrl e -m ctrl
+press -k Return
+logged '^command: "e" is Edit\(None\)' 1
+opens=$(how_many '^opened: (.*/)?second.md, ')
+press ':e sec'
+press -k Tab
+menu_is '1 lines, chosen Some("second.md")'
+press -k Return
+logged '^command: "e second.md" is Edit' 1
+logged '^opened: (.*/)?second.md, ' $((opens + 1))
+press ':b'
+menu_is '2 lines, chosen None'
+press -k Tab
+menu_is '2 lines, chosen Some("bn[ext]")'
+press -k Down
+menu_is '2 lines, chosen Some("bp[revious]")'
+press -M shift -k Tab -m shift
+menu_is '2 lines, chosen Some("bn[ext]")'
+press -M ctrl p -m ctrl
+menu_is '2 lines, chosen None'
+press -k Up
+menu_is '2 lines, chosen Some("bp[revious]")'
+press -M ctrl n -m ctrl
+menu_is '2 lines, chosen None'
+press -M ctrl n -m ctrl
+menu_is '2 lines, chosen Some("bn[ext]")'
+press -M ctrl y -m ctrl
+menu_is '1 lines, chosen None'
+press -k Return
+logged '^command: "bnext" is File' 1
 
 # :q closes it.
 press ':q'

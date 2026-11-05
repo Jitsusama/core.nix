@@ -108,13 +108,17 @@ onLinux {
   # zz and zb place it, 50% goes half way and % from a code block's { to
   # its }, * and # search for the word here, :noh, :5, E492 and E481 on
   # the command line, :%y copies the file and says its lines, :'<,'>y the
-  # lines V j took, a range past the end is E16, Escape at rest leaves the search's marks, every change
+  # lines V j took, a range past the end is E16, Ctrl+W, Ctrl+U and Ctrl+H
+  # edit the line and Ctrl+C drops it, Escape at rest leaves the search's marks, every change
   # (d d, c c, S, x, p, d and c with a motion, :d, d on a selection) says
   # E21, Return a line, gO lists the headings and Return in it goes
   # to one, a mark is kept with its file between openings, gf and Ctrl+]
   # open the second file, :bp, :e and :bn go between the two, :e of a
   # file that isn't is E484, :h lists the keys, :g/Part/ lists the four
-  # sections and Return goes to one, :marks and :ju list theirs, and :q
+  # sections and Return goes to one, :marks and :ju list theirs, the menu
+  # shows on :, narrows as e or b is typed, and Tab, Shift+Tab, the arrows,
+  # Ctrl+N, Ctrl+P, Ctrl+E and Ctrl+Y choose, put away and take its lines,
+  # :e and a space listing the files, and :q
   # closes it (tests/reader-takes-its-keys.sh). The page is on the theme's background,
   # its heading in the strong text. Markdown files open in the reader.
   reader-takes-its-keys =

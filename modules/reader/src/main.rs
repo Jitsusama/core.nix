@@ -20,6 +20,7 @@ mod ex;
 mod gl;
 mod keys;
 mod links;
+mod menu;
 mod motion;
 mod moves;
 mod outline;
@@ -366,6 +367,9 @@ struct App {
     loop_handle: LoopHandle<'static, App>,
     keys: keys::Machine,
     ctrl: bool,
+    /// Whether Shift is held, which makes Tab Shift+Tab where the keymap
+    /// gives Tab with Shift rather than its own back tab.
+    shift: bool,
     /// Marks by letter, where the view's top was, in points down the page,
     /// so a mark holds across a zoom.
     marks: HashMap<char, f64>,
@@ -465,6 +469,13 @@ struct App {
     /// the next key, as a command's error.
     commanding: Option<search::Typing>,
     said: Option<String>,
+    /// The command line's menu while it's typed, whether Ctrl+E put it
+    /// away until the next key typed, and the page's commands it lists,
+    /// read from the language once. It's set and drawn where gO's outline
+    /// is, as the two never show at once.
+    menu: Option<menu::Menu>,
+    menu_away: bool,
+    menu_entries: Vec<menu::Entry>,
     /// gO's outline while it shows, a search through it being typed, and
     /// it set, waiting to be painted, and painted.
     outline: Option<outline::Outline>,
@@ -1001,11 +1012,16 @@ impl App {
     /// Takes a key while a command is typed after :, doing it on Return.
     fn commanded(&mut self, said: search::Typed) {
         match said {
-            search::Typed::Changed => self.ask_prompt(),
+            search::Typed::Changed => {
+                self.menu_away = false;
+                self.narrow_menu();
+                self.ask_prompt();
+            }
             search::Typed::Done => {
                 let Some(typing) = self.commanding.take() else {
                     return;
                 };
+                self.close_menu();
                 self.prompt_shown = false;
                 let command = ex::parse(&typing.typed);
                 match &command {
@@ -1033,12 +1049,157 @@ impl App {
             }
             search::Typed::Cancelled => {
                 self.commanding = None;
+                self.close_menu();
                 self.prompt_shown = false;
             }
             search::Typed::Nothing => {}
         }
         if !self.frame_pending {
             self.draw();
+        }
+    }
+
+    /// The menu narrowed to what the command line holds now.
+    fn narrow_menu(&mut self) {
+        let Some(typing) = self.commanding.as_ref() else {
+            return;
+        };
+        let row = self.cursor_file_line();
+        let lines = menu::lines(&self.menu_entries, &typing.typed, row, &menu::files_for);
+        self.menu = Some(menu::Menu::new(&typing.typed, lines));
+        self.ask_menu();
+    }
+
+    /// The line of the file the cursor's piece starts on, from 1, which
+    /// :{n}'s line writes.
+    fn cursor_file_line(&self) -> usize {
+        let (_, foot) = self.view_pt();
+        self.layout
+            .as_ref()
+            .and_then(|layout| {
+                let unit = layout.piece_at(self.cursor_pt(), foot)?;
+                layout.file_lines_of(&layout.pieces_from(unit, 1)?)
+            })
+            .map_or(1, |(first, _)| first)
+    }
+
+    /// A key of the menu's on the command line: Tab, the arrows, Ctrl+N
+    /// and Ctrl+P choose a line and write it in, Ctrl+Y takes it as if
+    /// typed, and Ctrl+E puts the menu away with what was typed back.
+    fn menu_key(&mut self, key: keys::LineKey) {
+        let away = self.menu_away;
+        let (Some(menu), Some(typing)) = (self.menu.as_mut(), self.commanding.as_mut()) else {
+            return;
+        };
+        match key {
+            keys::LineKey::NextRow | keys::LineKey::PreviousRow if !away => {
+                let by = if key == keys::LineKey::NextRow { 1 } else { -1 };
+                typing.typed = menu.step(by);
+            }
+            keys::LineKey::TakeName => typing.typed = menu.line(),
+            keys::LineKey::MenuAway => {
+                typing.typed.clone_from(&menu.typed);
+                menu.chosen = None;
+            }
+            _ => {}
+        }
+        match key {
+            keys::LineKey::TakeName => {
+                self.menu_away = false;
+                self.narrow_menu();
+            }
+            keys::LineKey::MenuAway => {
+                self.menu_away = true;
+                self.ask_menu();
+            }
+            _ => self.ask_menu(),
+        }
+        self.ask_prompt();
+        if !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Asks for the menu set as it stands, or puts it away when it shows
+    /// nothing.
+    fn ask_menu(&mut self) {
+        let px_per_pt = self.prompt_px_per_pt();
+        let showing = self
+            .menu
+            .as_ref()
+            .filter(|menu| !self.menu_away && !menu.lines.is_empty());
+        let (Some(menu), Some(prompt), Some(gl)) =
+            (showing, self.prompt.as_ref(), self.gl.as_ref())
+        else {
+            self.forget_over_list();
+            return;
+        };
+        if keys_logged() {
+            eprintln!(
+                "menu: {} lines, chosen {:?}",
+                menu.lines.len(),
+                menu.chosen.map(|at| menu.lines[at].called.as_str())
+            );
+        }
+        let all = self
+            .menu_entries
+            .iter()
+            .map(|entry| menu::notation(&entry.command, &entry.short))
+            .chain(menu.lines.iter().map(|line| line.called.clone()))
+            .collect();
+        prompt.ask(prompt::Ask {
+            serial: 0,
+            keys: false,
+            labels: Vec::new(),
+            outline: Vec::new(),
+            menu: Some(prompt::Menu {
+                lines: menu
+                    .shown()
+                    .map(|(line, chosen)| {
+                        (
+                            line.called.clone(),
+                            line.title.clone(),
+                            line.key.clone(),
+                            chosen,
+                        )
+                    })
+                    .collect(),
+                all,
+            }),
+            note: String::new(),
+            mark: "",
+            typed: String::new(),
+            cursor: false,
+            count: None,
+            width_pt: f64::from(gl.width) / px_per_pt,
+            px_per_pt,
+            page: self.width,
+        });
+    }
+
+    /// Puts the menu away with the command line.
+    fn close_menu(&mut self) {
+        self.menu = None;
+        self.menu_away = false;
+        self.forget_over_list();
+    }
+
+    /// Whether the menu shows over the command line.
+    fn menu_shows(&self) -> bool {
+        self.commanding.is_some()
+            && !self.menu_away
+            && self
+                .menu
+                .as_ref()
+                .is_some_and(|menu| !menu.lines.is_empty())
+    }
+
+    /// Lets go of what stands over the prompt's row, gO's outline or the
+    /// menu, so the next to show never shows the last's pixels.
+    fn forget_over_list(&mut self) {
+        self.outline_set = None;
+        if let (Some(gl), Some(old)) = (self.gl.as_ref(), self.outline_canvas.take()) {
+            gl.forget(old);
         }
     }
 
@@ -1235,6 +1396,8 @@ impl App {
                 .shown()
                 .map(|(row, chosen)| (row.level, row.words.clone(), chosen))
                 .collect(),
+            menu: None,
+            note: String::new(),
             mark: "",
             typed: String::new(),
             cursor: false,
@@ -1262,9 +1425,9 @@ impl App {
     /// screen's keys through its rows, / and ? then n and N through its
     /// words, Return to the heading chosen, and Escape or ZZ away: q does
     /// nothing, as in his Neovim, since nothing records.
-    fn outline_key(&mut self, key: keys::Key) {
+    fn outline_key(&mut self, key: keys::Key, held: bool) {
         if let Some(typing) = self.outline_typing.as_mut() {
-            let said = typing.key(key);
+            let said = typing.key(key, held);
             match said {
                 search::Typed::Changed => self.ask_prompt(),
                 search::Typed::Done => {
@@ -1295,7 +1458,10 @@ impl App {
             // waiting for its second, as any key vi doesn't know does.
             let pressed = self.keys.press(key, false);
             if key == keys::Key::Return {
-                self.outline_go();
+                // Only a fresh press goes, as a held key never leaves.
+                if !held {
+                    self.outline_go();
+                }
             } else if let Some((act, count)) = pressed {
                 self.outline_act(act, count);
             }
@@ -1567,6 +1733,17 @@ impl App {
         } else {
             return;
         };
+        // The command line's foot says how to choose from the menu, then
+        // what Return runs once a line is chosen, as the launcher's does.
+        let note = match (&self.commanding, &self.menu) {
+            (Some(_), Some(menu)) if !self.menu_away && menu.chosen.is_some() => {
+                format!("\u{21b5} {}", menu.line().trim())
+            }
+            (Some(_), Some(menu)) if !self.menu_away && !menu.lines.is_empty() => {
+                "Tab choose".to_string()
+            }
+            _ => String::new(),
+        };
         let px_per_pt = self.prompt_px_per_pt();
         let (Some(prompt), Some(gl)) = (self.prompt.as_ref(), self.gl.as_ref()) else {
             return;
@@ -1577,6 +1754,8 @@ impl App {
             keys: false,
             labels: Vec::new(),
             outline: Vec::new(),
+            menu: None,
+            note,
             mark,
             typed,
             cursor,
@@ -1613,6 +1792,8 @@ impl App {
                 keys: true,
                 labels: Vec::new(),
                 outline: Vec::new(),
+                menu: None,
+                note: String::new(),
                 mark: "",
                 typed: String::new(),
                 cursor: false,
@@ -1744,6 +1925,8 @@ impl App {
                 keys: false,
                 labels: labelling.labels.clone(),
                 outline: Vec::new(),
+                menu: None,
+                note: String::new(),
                 mark: "",
                 typed: String::new(),
                 cursor: false,
@@ -1823,7 +2006,7 @@ impl App {
 
     fn prompt_arrived(&mut self, set: prompt::Set) {
         if set.outline {
-            if self.outline.is_some() {
+            if self.outline.is_some() || self.menu_shows() {
                 self.outline_set = Some(set);
                 if !self.frame_pending {
                     self.draw();
@@ -2258,8 +2441,9 @@ impl App {
                 }
             }
             Act::Command => {
-                self.commanding =
-                    Some(search::Typing::new(true, self.heading() / self.px_per_pt()));
+                self.commanding = Some(search::Typing::command(self.heading() / self.px_per_pt()));
+                // The menu shows the moment : is typed.
+                self.narrow_menu();
                 self.ask_prompt();
             }
             _ => {}
@@ -2854,7 +3038,7 @@ impl App {
             Some(canvas) if self.prompt_shown => canvas.height as f32,
             _ => 0.0,
         };
-        if self.outline.is_some()
+        if (self.outline.is_some() || self.menu_shows())
             && let Some(canvas) = painted(gl, &mut self.outline_canvas, self.outline_set.take())
         {
             let (width, height) = (canvas.width as f32, canvas.height as f32);
@@ -3571,7 +3755,7 @@ impl CompositorHandler for App {
 const ZOOM_LEAST: f64 = 0.5;
 const ZOOM_MOST: f64 = 3.0;
 
-fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
+fn key_of(event: &KeyEvent, ctrl: bool, shift: bool) -> Option<keys::Key> {
     Some(match event.keysym {
         Keysym::Escape => keys::Key::Escape,
         Keysym::Return | Keysym::KP_Enter => keys::Key::Return,
@@ -3583,6 +3767,9 @@ fn key_of(event: &KeyEvent, ctrl: bool) -> Option<keys::Key> {
         Keysym::Page_Up => keys::Key::PageUp,
         Keysym::Page_Down => keys::Key::PageDown,
         Keysym::F1 => keys::Key::F1,
+        Keysym::Tab if shift => keys::Key::BackTab,
+        Keysym::Tab => keys::Key::Tab,
+        Keysym::ISO_Left_Tab => keys::Key::BackTab,
         sym => {
             let typed = sym.key_char()?;
             if ctrl {
@@ -3599,7 +3786,7 @@ impl App {
     /// command takes repeats as presses, as a held Backspace goes on; a
     /// link's label and a page's keys take only those that move.
     fn key(&mut self, event: &KeyEvent, held: bool) {
-        if let Some(key) = key_of(event, self.ctrl) {
+        if let Some(key) = key_of(event, self.ctrl, self.shift) {
             if self.labelling.is_some() {
                 if !held {
                     self.label_key(key);
@@ -3614,16 +3801,20 @@ impl App {
                 }
             }
             if let Some(typing) = self.commanding.as_mut() {
-                let said = typing.key(key);
+                if let Some(line) = keys::line_key(key, true).filter(|line| line.menus()) {
+                    self.menu_key(line);
+                    return;
+                }
+                let said = typing.key(key, held);
                 self.commanded(said);
                 return;
             }
             if self.outline.is_some() {
-                self.outline_key(key);
+                self.outline_key(key, held);
                 return;
             }
             if let Some(typing) = self.typing.as_mut() {
-                let said = typing.key(key);
+                let said = typing.key(key, held);
                 self.typed(said);
                 return;
             }
@@ -3767,6 +3958,7 @@ impl KeyboardHandler for App {
         _: u32,
     ) {
         self.ctrl = modifiers.ctrl;
+        self.shift = modifiers.shift;
     }
 }
 
@@ -4365,6 +4557,7 @@ impl App {
             loop_handle,
             keys: keys::Machine::default(),
             ctrl: false,
+            shift: false,
             marks: HashMap::new(),
             start_pt: opening.start_pt,
             kept_marks: opening.kept_marks,
@@ -4413,6 +4606,9 @@ impl App {
             aim: None,
             leapt: false,
             commanding: None,
+            menu: None,
+            menu_away: false,
+            menu_entries: menu::entries(),
             said: None,
             outline: None,
             outline_typing: None,

@@ -310,11 +310,11 @@ kinds = ["page"]
 
 # From the find line: step into a place or a thing with acts, open a
 # program, a window, a file or a link, do an act that changes nothing, or
-# land on one that does.
+# land on one that does. On a page it goes to the match.
 [acts.open]
 keys = ["<CR>"]
 modes = ["find"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 # From normal: the same, doing an act that changes something too; on a
 # prompt, from normal or insert, hand the words over, and on a secret
@@ -330,7 +330,7 @@ changes = true
 [acts.run]
 keys = ["<CR>"]
 modes = ["command"]
-kinds = ["list"]
+kinds = ["list", "page"]
 changes = true
 
 # Acting on rows. A surface with rows names the acts it has on each by
@@ -595,17 +595,17 @@ kinds = ["list", "prompt"]
 [acts.delete-letter]
 keys = ["<BS>", "<C-h>"]
 modes = ["find", "command", "insert"]
-kinds = ["list", "prompt", "secret"]
+kinds = ["list", "page", "prompt", "secret"]
 
 [acts.delete-word]
 keys = ["<C-w>"]
 modes = ["find", "command", "insert"]
-kinds = ["list", "prompt", "secret"]
+kinds = ["list", "page", "prompt", "secret"]
 
 [acts.delete-to-start]
 keys = ["<C-u>"]
 modes = ["find", "command", "insert"]
-kinds = ["list", "prompt", "secret"]
+kinds = ["list", "page", "prompt", "secret"]
 
 # The clipboard put in at the caret, as Vim's Ctrl+R + puts its register.
 [acts.put-clipboard]
@@ -615,27 +615,28 @@ kinds = ["list", "prompt"]
 
 # The next row below the find line, or line of the command line's menu,
 # and the one before, as his menu chooses; the command line writes what's
-# chosen into the line.
+# chosen into the line. A page lists nothing under its find line, so there
+# they do nothing.
 [acts.next-row]
 keys = ["<Down>", "<Tab>", "<C-n>"]
 modes = ["find", "command"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.previous-row]
 keys = ["<Up>", "<S-Tab>", "<C-p>"]
 modes = ["find", "command"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 # The chosen row's name, or the menu's chosen line, taken into the line.
 [acts.take-name]
 keys = ["<C-y>"]
 modes = ["find", "command"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.menu-away]
 keys = ["<C-e>"]
 modes = ["command"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 # Escape takes one step back, as Vim's: from insert, visual, the find line
 # or the command line to normal, the rows left as found and the command
@@ -643,17 +644,18 @@ kinds = ["list"]
 # operator, a waiting key, which-key or the menu. At rest it closes a popup,
 # as the launcher and held notices are, and nothing else: never a window,
 # never a step out. On a secret it cancels, or clears the line where there's
-# no cancelling, as at the lock.
+# no cancelling, as at the lock. On a page it cancels a selection, a count
+# or a line, and at rest does nothing.
 [acts.back]
 keys = ["<Esc>"]
 modes = ["normal", "insert", "visual", "find", "command"]
-kinds = ["list", "prompt", "secret"]
+kinds = ["list", "page", "prompt", "secret"]
 
 # Ctrl+C leaves a line as Escape does, and cancels a secret.
 [acts.leave]
 keys = ["<C-c>"]
 modes = ["find", "command", "insert"]
-kinds = ["list", "secret"]
+kinds = ["list", "page", "secret"]
 
 # Everywhere.
 
