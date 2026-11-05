@@ -2822,7 +2822,8 @@
       "verb": "use",
       "states": {
         "input": {
-          "name": "Listen Through It"
+          "name": "Listen Through It",
+          "argument": "input={name}"
         }
       }
     },
