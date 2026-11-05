@@ -19,10 +19,7 @@
 // and the keys act (QueryKeys.js holds which do what). The caret says which:
 // a bar a quarter of a letter wide in insert, as his Neovim's guicursor
 // draws it, blinking as his kitty blinks it, and none in normal, where the
-// keys are on the rows. In normal, / and ? take a search on the line, as his
-// command line does: it's typed in place of what the field holds, which
-// it puts back as it ends, so what's typed and the rows it found never
-// change under a search.
+// keys are on the rows.
 // Its type ranks it (docs/design.md, Type): where Joel is at Title, the
 // largest thing on the line, its capitals centred on the field; what's
 // typed at Figure, his letters rather than a name; the hint in the voice;
@@ -82,15 +79,8 @@ Item {
     // Whether the line has vi's modes, as the launcher's does; the lock's
     // and a password's prompts are only typed in.
     property bool modal: false
-    // The mode it's in: "insert", "normal", or "search" while a search is
-    // typed. It opens in insert (take()).
+    // The mode it's in: "insert" or "normal". It opens in insert (take()).
     property string mode: "insert"
-    // The search being typed, { forward, count, pattern, at }, at being
-    // the caret's place in the pattern, or null while none is.
-    property var searching: null
-    // How many keys the line has taken, a press each, so a word said for
-    // one key, as a search's "not found", goes with the next.
-    property int keysTaken: 0
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
@@ -278,14 +268,8 @@ Item {
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
     // the count typed before it, 0 for none: the moves QueryKeys.moved
-    // takes, drawerUp and drawerDown, and n and N's searchNext and
-    // searchPrevious.
+    // takes, and drawerUp and drawerDown.
     signal stepped(string act, int count)
-    // A search, as it's typed: "begun" as / or ? opens it, "typing" as
-    // what it seeks changes, and "found" or "cancelled" as Return or
-    // Escape ends it. Forward is /'s way, and the count is the one typed
-    // before it, 0 for none.
-    signal searched(string pattern, bool forward, int count, string how)
 
     function clear() {
         cleared = "";
@@ -298,7 +282,6 @@ Item {
     function take() {
         cleared = "";
         standing = QueryKeys.rest();
-        searching = null;
         mode = "insert";
         input.forceActiveFocus();
         woken();
@@ -307,7 +290,6 @@ Item {
     // Into insert, as a line asking for words wants, the caret at its end.
     function typing() {
         standing = QueryKeys.rest();
-        searching = null;
         if (mode !== "insert") {
             mode = "insert";
             input.cursorPosition = input.text.length;
@@ -370,10 +352,6 @@ Item {
     function modalKey(event: KeyEvent) {
         const key = named(event);
         woken();
-        if (mode === "search") {
-            searchKey(event, key);
-            return;
-        }
         const read = QueryKeys.read(standing, key, mode);
         // A key held in normal repeats only a move, as Vim's motions do:
         // any other act, and a count or a sequence begun, is a press's
@@ -383,7 +361,6 @@ Item {
             event.accepted = true;
             return;
         }
-        keysTaken++;
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
             cleared = "";
@@ -393,14 +370,6 @@ Item {
         const text = input.text;
         const at = input.cursorPosition;
         const next = QueryKeys.modeAfter(read.act, mode);
-        if (next === "search") {
-            input.deselect();
-            mode = next;
-            searching = { forward: read.act === "searchForward", count: read.count, pattern: "",
-                at: 0 };
-            prompt.searched("", searching.forward, read.count, "begun");
-            return;
-        }
         if (next !== mode) {
             input.deselect();
             if (read.act === "change")
@@ -466,32 +435,6 @@ Item {
         default:
             prompt.stepped(read.act, read.count);
         }
-    }
-
-    // A key while a search is typed: the search's own, never the field's,
-    // so what the field holds stands as it was. A key held repeats only as
-    // it edits, and Return and Escape are a press's once, as normal's acts
-    // are; the field's own guard already drops a held letter.
-    function searchKey(event: KeyEvent, key: string) {
-        event.accepted = true;
-        const read = QueryKeys.read(standing, key, mode);
-        if (event.isAutoRepeat && (read.act === "find" || read.act === "cancel"))
-            return;
-        keysTaken++;
-        standing = read.standing;
-        const line = QueryKeys.typedInSearch(searching, read.act,
-            read.act === "" ? event.text : "");
-        const { forward, count } = searching;
-        if (line.ends !== "") {
-            searching = null;
-            mode = "normal";
-            prompt.searched(line.pattern, forward, count, line.ends);
-            return;
-        }
-        const changed = line.pattern !== searching.pattern;
-        searching = { forward, count, pattern: line.pattern, at: line.at };
-        if (changed)
-            prompt.searched(line.pattern, forward, count, "typing");
     }
 
     // Normal's block rests on a letter, never past the last.
@@ -609,10 +552,8 @@ Item {
         anchors.baseline: input.baseline
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
-        // drawn whole, over the hint that took the room. A search being
-        // typed has the line to itself, as his command line does, its room
-        // kept so nothing moves as it ends.
-        visible: prompt.asideRoom > 0 && prompt.searching === null
+        // drawn whole, over the hint that took the room.
+        visible: prompt.asideRoom > 0
         horizontalAlignment: Text.AlignRight
         // Too long for its room, it gives way at a whole word (Reading.js);
         // the elision only guards a face that draws wider than measured.
@@ -774,48 +715,6 @@ Item {
         }
     }
 
-    // A search being typed, where the field's words were: its / or ?,
-    // then what it seeks, in the field's face and ink, so it takes no
-    // size or weight of its own, and insert's caret, blinking, since
-    // letters type there. Run past its room, it slides left to keep the
-    // caret in view, as the field does.
-    Item {
-        id: searchLine
-        x: input.x
-        width: input.width
-        height: input.height
-        anchors.verticalCenter: parent.verticalCenter
-        visible: prompt.searching !== null
-        clip: true
-
-        readonly property string said: prompt.searching === null ? ""
-            : (prompt.searching.forward ? "/" : "?") + prompt.searching.pattern
-        // Where the caret is: after the / or ? and the letters before it.
-        readonly property real caretAt: prompt.searching === null ? 0
-            : typedFace.advanceWidth(said.slice(0, prompt.searching.at + 1))
-        readonly property real caretBar: Math.max(1, Math.round(prompt.letterWidth / 4))
-        readonly property real slid: Math.max(0, caretAt + caretBar - width)
-
-        Text {
-            id: searchText
-            x: -searchLine.slid
-            y: input.baselineOffset - baselineOffset
-            text: searchLine.said
-            textFormat: Text.PlainText
-            color: Theme.strong
-            font: input.font
-        }
-
-        Rectangle {
-            x: searchLine.caretAt - searchLine.slid
-            width: searchLine.caretBar
-            height: input.cursorRectangle.height
-            y: input.cursorRectangle.y
-            color: Theme.accent
-            opacity: prompt.caretLight
-        }
-    }
-
     TextInput {
         id: input
         x: Theme.space.l + prompt.glyphWidth
@@ -824,10 +723,6 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true
-        // A search being typed draws in its place, and the field keeps the
-        // keys, so it's hidden by its light alone: one not visible would
-        // let its focus go.
-        opacity: prompt.searching === null ? 1 : 0
         echoMode: prompt.secret ? TextInput.Password : TextInput.Normal
         passwordCharacter: "\u25cf"
         passwordMaskDelay: 0

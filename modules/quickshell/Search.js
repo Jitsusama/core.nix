@@ -3,9 +3,8 @@
 // written, never as a regular expression, so every list searches alike and
 // nothing is compiled per key, ignoring case until it has a capital, as his
 // ignorecase and smartcase do, and each place it's found is washed as his
-// Search draws it. The notices' stack (Notifications.qml) and the launcher's
-// rows (Launcher.qml) both search through it, and tests/notice-keys.qml and
-// tests/query-keys.qml hold it in Qt's own engine.
+// Search draws it. The notices' stack (Notifications.qml) searches through
+// it, and tests/notice-keys.qml holds it in Qt's own engine.
 .pragma library
 
 const ampersand = /&/g;
@@ -54,55 +53,4 @@ function washed(text, pattern, wash) {
         at = end;
     }
     return html + escaped(text.slice(at));
-}
-
-// The rows' words, each row's as one text, as they're searched: as they
-// are, for a pattern with a capital, and lowered, for one without, letter
-// for letter. Made once for a list of rows, so each letter of a search
-// typed is only a pass of includes over them. Lowering is most of the
-// cost, so a list whose words are lowered already, as the launcher's names
-// are for its ranking (Fuzzy.js's folded), gives them.
-function searchable(texts, lowered) {
-    return { texts, lowered: lowered ?? texts.map(text => text.toLowerCase()) };
-}
-
-// Which rows hold a pattern, from their words as searchable() makes them,
-// in order: their places, counted from 0.
-function holding(rows, pattern) {
-    if (pattern === "") {
-        return [];
-    }
-    const byCase = cased(pattern);
-    const texts = byCase ? rows.texts : rows.lowered;
-    const sought = byCase ? pattern : pattern.toLowerCase();
-    const holds = [];
-    for (let at = 0; at < texts.length; at++) {
-        if (texts[at].includes(sought)) {
-            holds.push(at);
-        }
-    }
-    return holds;
-}
-
-// Where a search lands from a row, given the rows holding its pattern in
-// order: the count'th of them after the row going forward, or before it
-// going back, round past the last to the first, as Vim's wrapscan goes,
-// so the row itself is found last. Whether it went round to get there is
-// said, for the foot to say as Neovim says "search hit BOTTOM". Null when
-// no row holds it. A count of 0 is 1.
-function landing(holds, from, forward, count) {
-    if (holds.length === 0) {
-        return null;
-    }
-    // How many of the rows holding it lie past the row, the way it goes.
-    const ahead = forward ? holds.filter(at => at > from).length
-        : holds.filter(at => at < from).length;
-    const times = Math.max(1, count);
-    // Stepping one by one round the list, the times'th step from the row:
-    // ahead of it first, then round from the other end.
-    const step = (times - 1) % holds.length;
-    const first = forward ? holds.length - ahead : ahead - 1;
-    const index = forward ? (first + step) % holds.length
-        : ((first - step) % holds.length + holds.length) % holds.length;
-    return { at: holds[index], wrapped: times > ahead };
 }

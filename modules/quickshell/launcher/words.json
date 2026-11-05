@@ -6097,13 +6097,6 @@
       "clear": "clear",
       "restore": "restore"
     },
-    "search": {
-      "find": "find",
-      "notFound": "not found",
-      "fromTop": "from the top",
-      "fromBottom": "from the bottom",
-      "none": "nothing searched yet"
-    },
     "listed": {
       "eyebrow": "Keys",
       "title": "The Launcher's Keys",
@@ -6127,8 +6120,6 @@
         "screen": "A screen",
         "count": "So many times",
         "row": "To that row",
-        "search": "Search down and up",
-        "found": "The next match and the one before",
         "inOut": "Into it and out",
         "run": "Do it",
         "lastPlace": "The place used last",
