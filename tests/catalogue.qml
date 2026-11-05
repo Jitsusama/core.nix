@@ -132,6 +132,10 @@ QtObject {
             // A row whose verb alone says close only closes the launcher,
             // as :quit does, where a window's Close It is its words' :close.
             ["a row that only closes the launcher", { verb: "close", run: does }],
+            // Return on a row that asks for words first only asks, whatever
+            // the words then do, as a network's new password.
+            ["a row asking its words first", { verb: "connect", command: "password",
+                given: does, run: does }],
             ["a spot to go to", { verb: "start", stays: true, spot: "x", run: does }],
             ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
                 targets: opens }],
