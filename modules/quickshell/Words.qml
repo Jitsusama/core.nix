@@ -70,10 +70,15 @@ Singleton {
     // What an action is to the key language, as words.json marks it: an
     // ending action, the one d does (the key language's act ending),
     // carries { act: "ending", ends } where `ends` is what the foot's ask
-    // says it does, "closes" or "forgets"; any other carries nothing.
+    // says it does, "closes" or "forgets". One that ends something in use
+    // but isn't d's, as a disconnect, carries `ends` alone, so Return typed
+    // in insert leaves it be too (Catalogue.js's ends); any other carries
+    // nothing.
     function ending(id) {
         const entry = of(id);
-        return entry.act === "ending" ? { act: entry.act, ends: entry.ends ?? "" } : {};
+        if (entry.act === "ending")
+            return { act: entry.act, ends: entry.ends ?? "" };
+        return (entry.ends ?? "") !== "" ? { ends: entry.ends } : {};
     }
 
     // The words that ask its answer, typed whole, best first, as a

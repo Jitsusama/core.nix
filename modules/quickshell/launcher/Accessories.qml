@@ -152,7 +152,10 @@ Provider {
             // it went.
             stays: true,
             run: joined ? () => device.disconnect() : () => provider.join(device),
-            verbs: () => provider.verbs(device)
+            verbs: () => provider.verbs(device),
+            // Joined, its Return disconnects, which Return typed in insert
+            // never does.
+            ends: joined ? Words.ending("verb:bluetooth-disconnect").ends : ""
         });
     }
 
@@ -613,14 +616,14 @@ Provider {
         && launcher.held.length === 0 && launcher.answer?.live === provider
 
     function verbs(device) {
-        const rows = [device.connected ? thing({
+        const rows = [device.connected ? thing(Object.assign({
             key: "verb:bluetooth-disconnect",
             name: Words.name("verb:bluetooth-disconnect"),
             glyph: Theme.glyph.disconnect,
             hue: "action",
             stays: true,
             run: () => device.disconnect()
-        }) : thing({
+        }, Words.ending("verb:bluetooth-disconnect"))) : thing({
             key: "verb:bluetooth-connect",
             verb: device.paired ? "connect" : "pair",
             name: Words.name("verb:bluetooth-connect", device.paired ? "" : "unpaired"),

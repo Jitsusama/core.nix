@@ -1770,10 +1770,24 @@ Scope {
         return !!choice.confirm && (held.length === 0 || collecting);
     }
 
+    // Whether Return typed in insert leaves a row be, for ending something
+    // in use (Catalogue.js's ends), as a connected network's Return
+    // disconnects it: it steps in instead, to what can be done to it, or
+    // does nothing (Joel, 2026-11-04: "it is quite dangerous how in insert
+    // mode i can type in a name of a wifi network and then hitting enter
+    // disconnects from it"). Normal's Return does it, as ever.
+    function guarded(choice) {
+        return !!choice && prompt.modal && prompt.mode === "insert" && Catalogue.ends(choice);
+    }
+
     function keysFor(choice) {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
+        // One Return typed in insert leaves be says Return only where it
+        // steps in.
+        if (guarded(choice))
+            return holdsMore(choice) ? [["\u21b5 \u2192", ""]] : [];
         // The arrows are said by their marks alone, which Joel knows: the
         // right arrow steps in and the left one steps back wherever they
         // work, so their words only took room from the marks beside them
@@ -4447,7 +4461,10 @@ Scope {
                             trials.pressed("returns");
                             if (root.asking)
                                 root.give();
-                            else
+                            else if (root.guarded(root.selected)) {
+                                if (root.holdsMore(root.selected))
+                                    root.enter(root.selected);
+                            } else
                                 root.run(root.selected, below);
                         }
                         // Ctrl+Y on an answer puts the answer in place of

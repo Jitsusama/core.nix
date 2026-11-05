@@ -254,7 +254,10 @@ Provider {
                 : opening ? opening.given : null,
             run: signing ? () => SignIn.open() : joined ? () => Wifi.leave(network.name)
                 : () => provider.join(network),
-            verbs: () => provider.verbs(network, locked)
+            verbs: () => provider.verbs(network, locked),
+            // Joined, its Return disconnects, which Return typed in insert
+            // never does.
+            ends: joined && !signing ? Words.ending("verb:wifi-leave").ends : ""
         });
     }
 

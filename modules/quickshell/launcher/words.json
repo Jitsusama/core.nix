@@ -4520,7 +4520,8 @@
     {
       "id": "verb:wifi-leave",
       "in": "wifi",
-      "name": "Disconnect It"
+      "name": "Disconnect It",
+      "ends": "disconnects"
     },
     {
       "id": "verb:wifi-join",
@@ -4930,7 +4931,8 @@
     {
       "id": "verb:bluetooth-disconnect",
       "in": "bluetooth",
-      "name": "Disconnect It"
+      "name": "Disconnect It",
+      "ends": "disconnects"
     },
     {
       "id": "verb:bluetooth-passkey",
