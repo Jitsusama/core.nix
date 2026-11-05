@@ -122,6 +122,21 @@ function leading(row, inside) {
     return [ownAct(row, verb)].concat(inside);
 }
 
+// A step into a row that does something and keeps the launcher, as a
+// setting does, led by that act, which runs and closes: the right arrow
+// then Return does it and closes, where Return alone does it in place, so
+// no chord with Ctrl is needed for it (Joel, 2026-11-02: "all of those
+// ctrl keys do not feel very vim to me"). One already inside, by its verb
+// or its name, is moved first and closes rather than being said twice.
+function closingFirst(row, inside) {
+    const verb = verbOf(row);
+    const said = verb.toLowerCase();
+    const already = said === "" ? -1 : inside.findIndex(one => saysAct(one, said));
+    const act = Object.assign({}, already >= 0 ? inside[already] : ownAct(row, verb),
+        { stays: false });
+    return [act].concat(inside.filter((_one, at) => at !== already));
+}
+
 // A copy placed last, after what can be done and what's only said, as
 // docs/design.md's Return rule has it: "Copy is never the first row of a
 // step, unless it's the only one, and is always the last".

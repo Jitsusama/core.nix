@@ -229,9 +229,8 @@ Item {
             ? part.toUpperCase() : part)).join("+");
     }
 
-    // Return, or Shift+Return, which asks for it below the focused window,
-    // or Ctrl+Return, which does it and closes whatever it is.
-    signal accepted(bool below, bool closing)
+    // Return, or Shift+Return, which asks for it below the focused window.
+    signal accepted(bool below)
     // Tab, which takes the ghost.
     signal completed
 
@@ -239,8 +238,7 @@ Item {
     // for a repeat.
     function returned(event: KeyEvent) {
         if (!event.isAutoRepeat)
-            prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
-                (event.modifiers & Qt.ControlModifier) !== 0);
+            prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0);
     }
 
     signal cancelled

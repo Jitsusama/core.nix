@@ -141,6 +141,24 @@ QtObject {
         expect("not for one that asks first", names(Catalogue.leading({ name: "Reboot",
             verb: "reboot", confirm: true, run: does, verbs: opens }, offers)), "Copy, Forget");
         expect("not for one holding nothing", Catalogue.leading(notice, []).length, 0);
+        // A setting, which Return does in place, leads its step with an act
+        // that closes, so the right arrow then Return does it and closes.
+        let kept = 0;
+        const awake = { name: "Keep Awake", verb: "keep", stays: true, run: () => {
+            kept += 1;
+        } };
+        const closing = Catalogue.closingFirst(awake, []);
+        expect("a setting holding nothing holds its act", [names(closing), closing[0].stays],
+            ["Keep", false]);
+        closing[0].run();
+        expect("which does what Return does", kept, 1);
+        const quiet = { name: "Do Not Disturb", verb: "hold", stays: true, run: does };
+        const holding = Catalogue.closingFirst(quiet, [{ name: "Until It's Ended", verb: "end",
+            stays: true, run: does }, { name: "For an Hour", verb: "hold", stays: true,
+            run: does }]);
+        expect("one already inside is moved first and closes",
+            [names(holding), holding.map(row => row.stays)],
+            ["For an Hour, Until It's Ended", [false, true]]);
         // Every row has a Return act.
         expect("a row that steps in acts", Catalogue.acts({ name: "Power", category: {} }), true);
         expect("a value that copies acts", Catalogue.acts({ name: "Load", side: "34%",

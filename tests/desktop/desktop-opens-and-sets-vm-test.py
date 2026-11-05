@@ -467,26 +467,33 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
 
 
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
-    """The launcher sets the power profile, staying to say so, or closing on Ctrl+Return."""
+    """The launcher sets the power profile, staying to say so, or closing from a step in."""
     machine = desktop.machine
     # By its name, power saver last, where what follows starts from. Setting
     # it changes something, so Return keeps the launcher, the row saying
-    # it's chosen, and Ctrl+Return sets it and closes.
-    for typed, profile, name, key in [
-        ("balanced power", "balanced", "Balanced Power", "ret"),
-        ("power saver", "power-saver", "Power Saver", "ctrl-ret"),
+    # it's chosen, and the right arrow then Return sets it and closes, with
+    # no chord with Ctrl said anywhere.
+    for typed, profile, name, stepping in [
+        ("balanced power", "balanced", "Balanced Power", False),
+        ("power saver", "power-saver", "Power Saver", True),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
-        desktop.launcher_until(
-            lambda shown: "Ctrl+\u21b5 close" in (shown["selected"] or {}).get("told", [])
-        )
-        machine.send_key(key)
+        desktop.launcher_until(lambda shown: "\u2192" in (shown["selected"] or {}).get("told", []))
+        told = desktop.showing()["selected"]["told"]
+        assert not any(key.startswith("Ctrl") for key in told), told
+        if stepping:
+            # Its own act leads the step, selected.
+            desktop.step_in()
+            desktop.launcher_until(
+                lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][0]
+            )
+        machine.send_key("ret")
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
         )
-        if key == "ret":
+        if not stepping:
             desktop.launcher_until(
                 lambda shown: shown["open"] and (shown["selected"] or {}).get("side") == "chosen"
             )

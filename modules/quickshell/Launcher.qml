@@ -1635,7 +1635,7 @@ Scope {
         else if (row && row.inside && held.length === 0)
             goTo(row.inside);
         else if (leadsElsewhere(row))
-            run(row, false, false);
+            run(row, false);
         else
             enter(row);
     }
@@ -1723,6 +1723,13 @@ Scope {
     function holdsMore(choice) {
         if (held.length > 0 && choice.given)
             return true;
+        // One that keeps the launcher holds its own act, which closes it.
+        // A copy never keeps it, and asking would ask copiesOnly, which
+        // asks this.
+        if (verbOf(choice) !== "copy" && keepsOpen(choice)
+            && (asThing(choice, held.length === 0 || collecting)
+            || !choice.targets))
+            return true;
         if (held.length === 0 && (choice.category || choice.inside))
             return true;
         return asThing(choice, held.length === 0 || collecting) ? !!choice.verbs
@@ -1774,10 +1781,6 @@ Scope {
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
         const keys = choice.still ? []
             : [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
-        // One that keeps the launcher can be done and closed at once, the
-        // font having no Ctrl key's mark, so it's spelled as chords are.
-        if (!choice.still && keepsOpen(choice))
-            keys.push(["Ctrl+\u21b5", "close"]);
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
         if (!stepping && holdsMore(choice))
@@ -1815,10 +1818,10 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // A row opened below never stays, so Ctrl+Return's place is the wider
-    // of the two it could have.
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "close"],
-        ["\u2192", ""]]
+    // Return, then the widest key a row adds beside it, the drawer's
+    // scroll, wider than Shift+Return's "below".
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
+        ["\u21e7\u2191\u2193", "scroll"], ["\u2192", ""]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -2282,6 +2285,14 @@ Scope {
     // What a row holds, led by Return's own act where it was left out
     // (Catalogue.js), that act's name prepared to be found as a
     // provider's rows are.
+    function closingLed(row, made) {
+        const own = Catalogue.closingFirst(row, made);
+        // Its act leads, prepared for searching as the rows beside it are.
+        if (!own[0].prepared)
+            own[0].prepared = Fuzzy.prepare(own[0].name);
+        return own;
+    }
+
     function led(row, made) {
         const own = Catalogue.leading(row, made);
         // Return's act leads, or a copy comes after the acts.
@@ -2297,6 +2308,10 @@ Scope {
     // same way when a step is made again, so a refresh never finds the
     // act it led with gone.
     function stepRows(row, things) {
+        // One that keeps the launcher leads with its act, which closes it,
+        // so the right arrow then Return does it and closes.
+        if (keepsOpen(row) && (things || !row.targets))
+            return closingLed(row, things && row.verbs ? row.verbs() : []);
         const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
         // A row that would only copy gains its copy inside wherever it's
         // stepped into, so the copy is never lost to Return stepping in.
@@ -3127,7 +3142,7 @@ Scope {
         picks.picked(picking ? typed : first.typed, meant.key, knowing());
     }
 
-    function run(choice, below, closing) {
+    function run(choice, below) {
         if (!choice) {
             open = false;
             return;
@@ -3168,17 +3183,14 @@ Scope {
         if (!choice.run && enter(choice))
             return;
         // One that changes something, or whose outcome takes a while, keeps
-        // the launcher, its row saying how it stands now; Ctrl+Return does
-        // it and closes anyway.
+        // the launcher, its row saying how it stands now; the right arrow
+        // then Return does it and closes (stepRows).
         if (choice.stays) {
-            const acting = keepsOpen(choice);
-            if (acting) {
+            if (keepsOpen(choice)) {
                 learn(choice);
                 acted = { key: choice.key, typed: typed, depth: held.length };
             }
             choice.run();
-            if (closing && acting)
-                open = false;
             return;
         }
         // One that opens a collection steps into it, the launcher kept open.
@@ -4221,13 +4233,13 @@ Scope {
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
                                 KeyTimes.pressed());
                         }
-                        onAccepted: (below, closing) => {
+                        onAccepted: below => {
                             root.searchNow();
                             trials.pressed("returns");
                             if (root.asking)
                                 root.give();
                             else
-                                root.run(root.selected, below, closing);
+                                root.run(root.selected, below);
                         }
                         // Ctrl+Y on an answer puts the answer in place of
                         // the question, so a sum can be carried on; one
