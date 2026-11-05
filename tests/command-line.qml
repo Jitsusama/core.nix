@@ -30,6 +30,7 @@ QtObject {
     readonly property var said: ({
         quit: "Close the Launcher",
         help: "List the Keys",
+        set: "Set an Option",
         row: "Go to a Row"
     })
 
@@ -87,6 +88,7 @@ QtObject {
             ["sor[t]", "Sort the Rows", ""],
             ["q[uit]", "Close the Launcher", "ZZ"],
             ["h[elp]", "List the Keys", "F1"],
+            ["se[t]", "Set an Option", ""],
             ["{n}", "Go to a Row", ""]
         ]);
         holds("each act's line holds the act it runs", menu[1]?.act?.verb, "disconnect");
@@ -98,7 +100,7 @@ QtObject {
         holds("an act whose verb is more words is named by its first",
             menuOf([{ name: "Sign In", verb: "sign in" }])[0].command, "sign");
         holds("a row with no acts lists only what every surface has",
-            lines(menuOf([])).map(line => line[0]), ["q[uit]", "h[elp]", "{n}"]);
+            lines(menuOf([])).map(line => line[0]), ["q[uit]", "h[elp]", "se[t]", "{n}"]);
 
         // Typing narrows it: by the command's start, then by the act's words.
         const shown = typed => Commands.narrowed(menu, typed).map(entry => entry.command);
@@ -108,7 +110,8 @@ QtObject {
             ["see", "disconnect", "forget"]);
         holds("an act's words find it where its command doesn't", shown("r"),
             ["sort"]);
-        holds("each line is listed once", shown("s"), ["see", "sort"]);
+        holds("each line is listed once", shown("s"), ["see", "sort", "set"]);
+        holds(":set's short form is its own", Commands.ran("se nowifi", menu).entry?.kind, "set");
         holds("case is ignored, as his ignorecase", shown("DISC"), ["disconnect"]);
         holds("a count shows where it goes", shown("12"), ["{n}"]);
         holds("a name and a space show that command alone", shown("disc "), ["disconnect"]);
