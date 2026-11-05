@@ -195,8 +195,8 @@ Provider {
         const said = calendarsSaid;
         if (reading?.day !== Moment.iso(at)) {
             const side = Calendars.refused ? said.silent : "\u2026";
-            return copyRow({ name: Words.name("today:calendars"), side: side, copy: "",
-                note: "", glyph: Theme.glyph.date });
+            return copyRow({ name: Words.name("today:calendars"), side: side,
+                copiesNothing: true, note: "", glyph: Theme.glyph.date });
         }
         return holderRow({
             key: "today:calendars",
