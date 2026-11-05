@@ -223,19 +223,8 @@ impl Prompt {
                             let Some(first) = pages.next() else {
                                 continue;
                             };
-                            let reading = room.and_then(|room| {
-                                let words = pages.next()?;
-                                let figure = pages.next()?;
-                                let room_px = room.width_pt * ask.px_per_pt;
-                                (f64::from(words.width) > room_px + 0.5).then(|| Strip {
-                                    said: room.said,
-                                    words,
-                                    left_px: room.left_pt * ask.px_per_pt,
-                                    top_px: room.top_pt * ask.px_per_pt,
-                                    room_px,
-                                    figure_px: f64::from(figure.width),
-                                })
-                            });
+                            let reading =
+                                room.and_then(|room| strip(room, &mut pages, ask.px_per_pt));
                             Set {
                                 serial: ask.serial,
                                 keys: ask.keys,
@@ -482,6 +471,22 @@ fn outline_room(ask: &Ask) -> Option<Room> {
         left_pt: side + SPREAD_PT + indent,
         top_pt: OUTLINE_MARGIN_PT + above * KEY_ROW_PT,
         width_pt: width - 2.0 * (side + SPREAD_PT) - indent,
+    })
+}
+
+/// The chosen row's words whole and a figure, the outline's next two
+/// pages, as the strip that reads on in its room, when they run past it.
+fn strip(room: Room, pages: &mut impl Iterator<Item = Label>, px_per_pt: f64) -> Option<Strip> {
+    let words = pages.next()?;
+    let figure = pages.next()?;
+    let room_px = room.width_pt * px_per_pt;
+    (f64::from(words.width) > room_px + 0.5).then(|| Strip {
+        said: room.said,
+        words,
+        left_px: room.left_pt * px_per_pt,
+        top_px: room.top_pt * px_per_pt,
+        room_px,
+        figure_px: f64::from(figure.width),
     })
 }
 

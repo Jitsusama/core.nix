@@ -724,6 +724,7 @@ press -k Return
 logged '^outline: 1 rows, chosen "Paragraph 7 says' 1
 logged '^outline: reads on [0-9]+ px past its room' 1
 logged '^outline: reading on' 1
+logged '^outline: read on to its end' 1
 press -k Escape
 logged '^outline: closed' $((closed + 4))
 

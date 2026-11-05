@@ -3164,6 +3164,7 @@ impl App {
             painted: false,
             wake: None,
             moved: false,
+            ended: false,
         });
     }
 
@@ -3214,6 +3215,10 @@ impl App {
             eprintln!("outline: reading on");
         }
         on.moved = true;
+        if !on.ended && at.resting_until.is_some() && keys_logged() {
+            eprintln!("outline: read on to its end");
+        }
+        on.ended |= at.resting_until.is_some();
         let words = &on.strip.words;
         let fits = on
             .canvas
@@ -4549,7 +4554,8 @@ fn print_keys() {
 
 /// gO's chosen row's words reading on: how they slide and how far past
 /// their room they run, their strip set whole and painted, when a timer
-/// last asked to wake the frame after a rest, and whether they've moved.
+/// last asked to wake the frame after a rest, and whether they've moved
+/// and come to rest at their end, each said once.
 struct ReadsOn {
     reading: reading::Reading,
     over: f64,
@@ -4558,6 +4564,7 @@ struct ReadsOn {
     painted: bool,
     wake: Option<Instant>,
     moved: bool,
+    ended: bool,
 }
 
 /// A set's pixels in its canvas, made again only when its size changes,
@@ -4718,6 +4725,10 @@ impl Measure {
 }
 
 impl App {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "it starts each of the reader's fields, a line each"
+    )]
     fn new(
         globals: &wayland_client::globals::GlobalList,
         qh: QueueHandle<App>,
