@@ -28,7 +28,9 @@
 # at a time: only on mains power, never during a call, with a delay on
 # sleep held, and only once the memory it needs is free
 # (src/bin/call-transcripts/summarizer.rs says how). Its compiled model
-# is kept in a cache of its own.
+# is kept in a cache of its own. Only a machine whose hardware names a
+# device for it sums calls up (nixos.nix); elsewhere they're only written
+# down, and the model isn't fetched.
 #
 # The shell reads the calls from the service, over
 # $XDG_RUNTIME_DIR/daemons/calls.sock in the shell's daemon interface,
@@ -45,11 +47,15 @@
   config,
   lib,
   pkgs,
+  # The machine's own settings, which Home Manager gives when it's part of
+  # one, for where it sums calls up.
+  osConfig ? { },
   ...
 }:
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ../dictation/parakeet.nix { };
+  device = config.jitsusama.call-transcripts.summarizerDevice;
   # The program the daemon asks a summary's questions of.
   summarizer = pkgs.writeShellScript "call-summarizer" ''
     exec ${dictation}/bin/call-transcripts ask ${pkgs.callPackage ./summarizer.nix { }}
@@ -61,20 +67,30 @@ in
     quickshell
   ];
 
-  xdg.configFile = {
+  options.jitsusama.call-transcripts.summarizerDevice = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = osConfig.jitsusama.call-transcripts.summarizerDevice or null;
+    defaultText = lib.literalExpression "osConfig.jitsusama.call-transcripts.summarizerDevice or null";
+    description = ''
+      The OpenVINO device calls are summed up on, or null for none, which
+      leaves each call written down with no summary.
+    '';
+  };
+
+  config.xdg.configFile = {
     "quickshell/Transcripts.qml".source = ./Transcripts.qml;
     "quickshell/Transcripts.js".source = ./Transcripts.js;
   };
 
   # Just after Tuple's calls, since a transcript is what a call leaves.
-  jitsusama.quickshell.launcher.providers.transcripts = {
+  config.jitsusama.quickshell.launcher.providers.transcripts = {
     order = 46;
     source = ./Transcribed.qml;
   };
 
   # After the programs that know who someone is, since it knows nobody of
   # its own and only lists what was said with them.
-  jitsusama.people.sources.transcripts = {
+  config.jitsusama.people.sources.transcripts = {
     order = 40;
     source = ./TranscriptSource.qml;
   };
@@ -83,12 +99,12 @@ in
   # that nothing reads any more. Kept until no machine still has it.
   # And what Phi-3.5-mini compiled for the NPU, the summarizer before
   # Gemma, that nothing reads either.
-  systemd.user.tmpfiles.rules = [
+  config.systemd.user.tmpfiles.rules = [
     "R %C/call-transcripts/whisper - - - -"
     "R %C/call-transcripts/summarizer - - - -"
   ];
 
-  systemd.user.services.call-transcripts = {
+  config.systemd.user.services.call-transcripts = {
     Unit = {
       Description = "Writes down what's said on each call";
       # Restarted after a switch reloads the units, it comes back as the
@@ -96,10 +112,14 @@ in
       X-SwitchMethod = "restart";
     };
     Service = {
-      ExecStart = lib.concatStringsSep " " [
-        "${dictation}/bin/call-transcripts serve"
-        "%t/daemons/calls.sock ${model} ${summarizer} %h/Documents/Calls"
-      ];
+      ExecStart = lib.concatStringsSep " " (
+        [
+          "${dictation}/bin/call-transcripts serve"
+          "%t/daemons/calls.sock ${model}"
+        ]
+        ++ lib.optional (device != null) "${summarizer}"
+        ++ [ "%h/Documents/Calls" ]
+      );
       ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/calls.sock";
       Slice = "background.slice";
       CacheDirectory = "call-transcripts";
@@ -108,6 +128,7 @@ in
       Environment = [
         "DICTATION_CACHE=%C/call-transcripts/parakeet"
         "SUMMARIZER_CACHE=%C/call-transcripts/gemma"
+        "SUMMARIZER_DEVICE=${toString device}"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"

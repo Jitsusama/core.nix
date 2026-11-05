@@ -261,6 +261,7 @@
         bluetooth-disk-prompt = ./modules/bluetooth-disk-prompt/nixos.nix;
         bluetooth-links = ./modules/bluetooth-links/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
+        call-transcripts = ./modules/call-transcripts/nixos.nix;
         camera = ./modules/camera/nixos.nix;
         cargo = ./modules/cargo/nixos.nix;
         chrome = ./modules/chrome/nixos.nix;

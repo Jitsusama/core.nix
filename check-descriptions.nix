@@ -207,6 +207,10 @@
     a call writes down only what was said: a loud noise with no speech in it and a silent far end
     give no turn and no bracketed sound
   '';
+  calls-are-summed-up-only-where-the-model-runs = ''
+    the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine
+    whose hardware names no device for it gives none, so never fetches the model
+  '';
   calls-passes-clippy = ''
     clippy finds nothing in calls or its tests
   '';
