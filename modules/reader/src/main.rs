@@ -380,6 +380,8 @@ struct App {
     jump_at: usize,
     /// Where the last jump left from, for ''.
     last_jump: Option<Spot>,
+    /// The lines of the file the last selection took, from 1, for :'<,'>.
+    selected: Option<(usize, usize)>,
     /// The page's lines, read off its frames for search; none until read.
     words: Option<Vec<text::Line>>,
     /// The file as last saved, drawing until it can take the page's place.
@@ -1006,23 +1008,17 @@ impl App {
                 };
                 self.prompt_shown = false;
                 let command = ex::parse(&typing.typed);
-                let here = self.heading() / self.px_per_pt();
                 match &command {
-                    ex::Command::Line(n) => {
-                        let blocks = place::blocks(&self.painter.page().frame);
-                        let to = moves::source_line(&blocks, *n).unwrap_or(0.0);
-                        self.remember(here);
-                        self.bring(to);
-                    }
-                    ex::Command::Last => {
-                        self.remember(here);
-                        self.land(f64::INFINITY);
-                    }
+                    ex::Command::Go(range) => self.go_to_range(*range),
                     ex::Command::Quit => self.exit = true,
                     ex::Command::NoHighlight => self.highlighting = false,
                     ex::Command::Change => self.say(ex::CANNOT_CHANGE),
+                    ex::Command::Copy(range) => self.copy_range(*range),
+                    ex::Command::Edit(file) => self.edit(file.as_deref()),
+                    ex::Command::File { on, times } => self.file_beside(*on, *times),
+                    ex::Command::Help => self.show_keys(true),
                     ex::Command::Nothing => {}
-                    ex::Command::Unknown(typed) => self.say(&ex::unknown(typed)),
+                    ex::Command::Refused(said) => self.say(said),
                 }
                 if keys_logged() {
                     eprintln!(
@@ -1040,6 +1036,70 @@ impl App {
         }
         if !self.frame_pending {
             self.draw();
+        }
+    }
+
+    /// A range alone, as :12, :$ and :'<,'> go: to its last line, as a
+    /// jump, the view moving as Vim's does; the file's end for $.
+    fn go_to_range(&mut self, range: ex::Range) {
+        let line = match range {
+            ex::Range::Here => return,
+            ex::Range::Lines(_, last) => last,
+            ex::Range::Selected => match self.selected {
+                Some((_, last)) => last,
+                None => return self.say(ex::NOTHING_SELECTED),
+            },
+        };
+        self.remember(self.heading() / self.px_per_pt());
+        if line == usize::MAX {
+            self.land(f64::INFINITY);
+        } else {
+            let blocks = place::blocks(&self.painter.page().frame);
+            let pt = moves::source_line(&blocks, line).unwrap_or(0.0);
+            // The line it's set on is the first whose foot is past it, since
+            // a heading's ink stands above the top of its block.
+            let top = self
+                .words
+                .as_deref()
+                .and_then(|lines| lines.iter().find(|l| moves::foot_of(l) > pt + 0.5))
+                .map_or(pt, moves::top_of);
+            self.bring(top);
+        }
+    }
+
+    /// :e: another file, named from the folder the reader was started in
+    /// or from home with ~, as Vim's takes it. Markdown opens in this
+    /// window and anything else as the desktop opens it. The file shown,
+    /// or none named, is already as it was last written, read again at
+    /// every save.
+    fn edit(&mut self, named: Option<&str>) {
+        let Some(named) = named else {
+            return;
+        };
+        let file = match named.strip_prefix("~/") {
+            Some(under) => std::env::var_os("HOME").map_or_else(
+                || std::path::PathBuf::from(named),
+                |home| std::path::Path::new(&home).join(under),
+            ),
+            None => std::path::PathBuf::from(named),
+        };
+        if file.is_dir() {
+            return self.say(&format!("\"{named}\" is a directory"));
+        }
+        if !file.is_file() {
+            return self.say(&format!("E484: Can't open file {named}"));
+        }
+        if links::same(&file, &self.file) {
+            return;
+        }
+        if links::markdown(&file) {
+            if keys_logged() {
+                eprintln!("file: {}", file.display());
+            }
+            self.remember(self.heading() / self.px_per_pt());
+            self.open(file, Landing::Kept);
+        } else {
+            desktop_open(&file.to_string_lossy());
         }
     }
 
@@ -3021,6 +3081,7 @@ impl App {
             .unwrap_or_default();
         self.take_kept_marks();
         self.last_jump = None;
+        self.selected = None;
         if !self.measuring
             && let Err(error) = showing::keep(&file)
         {
@@ -4199,6 +4260,7 @@ impl App {
             jumps: Vec::new(),
             jump_at: 0,
             last_jump: None,
+            selected: None,
             words: None,
             incoming: None,
             next_version: 1,

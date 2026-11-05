@@ -1152,9 +1152,11 @@
     block in the terminal's cursor colours on a title's letter, copies each selection's markdown
     onto the clipboard with y and Ctrl+C, a paragraph the page wraps as its one line, and follows
     a link by g x's label, to a heading, putting the cursor on it, and to another markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
-    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5 and E492, keeps the search's marks on Escape
-    at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on a
-    selection), keeps a mark between openings, and closes on :q; markdown files open in it
+    [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5, E492 and E481, copies the file with :%y
+    and a selection's lines with :'<,'>y, says E16 past the end, keeps the search's marks on
+    Escape at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on
+    a selection), keeps a mark between openings, goes between files with :bp, :e and :bn, says
+    E484 of a file that isn't, lists the keys on :h, and closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
