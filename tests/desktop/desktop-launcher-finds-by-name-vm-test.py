@@ -915,6 +915,32 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
         desktop.photograph(picture)
         desktop.close_launcher()
+    # How chrony keeps the clock, once it keeps it by the VM's own time server: inside Clock,
+    # and inside Servers with the chosen one's plate out beside it.
+    desktop.machine.wait_until_succeeds(
+        "chronyc -c -N sources | grep -q '^^,[*],time.harbour.test,'",
+        timeout=dt.timedelta(seconds=90),
+    )
+    for holder, first, picture in [
+        ("Clock", "Offset", "launcher-time-clock"),
+        ("Servers", "time.harbour.test", "launcher-time-servers"),
+    ]:
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: holder in shown["rows"])  # noqa: B023
+        desktop.down_to(holder)
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
+        desktop.down_to(first)
+        if holder == "Servers":
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["drawer"]["out"] is True
+                    and shown["drawer"]["title"] == "time.harbour.test"
+                )
+            )
+        desktop.photograph(picture)
+        desktop.close_launcher()
     # The time here counts each second while it's shown, and a tick never moves the
     # selection or changes the card's size: UTC stays selected, among as many rows.
     desktop.answer("time")
