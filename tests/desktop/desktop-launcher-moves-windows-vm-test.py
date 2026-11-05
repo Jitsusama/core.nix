@@ -619,9 +619,8 @@ PARAGRAPH = ("Paragraph first", "Paragraph second", "Paragraph third")
 ARRIVING = "Paragraph fourth"
 
 
-def test_v_o_gv_ip_and_a_copy_waiting_behind_what_is_chosen(desktop: Desktop) -> None:
-    """V's o, gv, ip, { }, yy taken once and x on windows, a copy waiting while they're chosen."""
-    machine = desktop.machine
+def test_v_o_gv_ip_and_a_window_waiting_behind_what_is_chosen(desktop: Desktop) -> None:
+    """V's o, gv, ip, { }, yy taken once and x on windows, a window waiting while they're chosen."""
     for title in PARAGRAPH:
         desktop.opened(title)
     desktop.as_account("qs ipc call launcher toggle")
@@ -630,20 +629,34 @@ def test_v_o_gv_ip_and_a_copy_waiting_behind_what_is_chosen(desktop: Desktop) ->
     desktop.launcher_until(lambda shown: len(shown["rows"]) == len(PARAGRAPH))
     desktop.normal()
     chooses_and_brings_back(desktop)
-    # A window opening while rows are chosen waits, counted in the foot,
-    # and comes in at the end as visual ends. A source refreshes only the
-    # search its rows are in, so the arrival is one more window.
+    moves_by_runs_and_takes_them(desktop)
+    desktop.close_launcher()
+    waits_behind_what_is_chosen(desktop)
+
+
+def waits_behind_what_is_chosen(desktop: Desktop) -> None:
+    """Open a window while Super+Tab's rows are chosen: it waits as 1 new, then comes in last.
+
+    A typed search said again finds only what it found, so a new window
+    arrives in the windows list, which is all of them, opened aside so it
+    isn't the one Joel is in, which the list leaves out.
+    """
+    machine = desktop.machine
+    machine.send_key("meta_l-tab")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["held"] == ["windows"])
+    desktop.normal()
     machine.send_chars("V")
     desktop.launcher_until(lambda shown: shown["mode"] == "visual")
-    desktop.opened_aside(ARRIVING)
-    desktop.launcher_until(
-        lambda shown: shown["waiting"] == 1 and len(shown["rows"]) == len(PARAGRAPH)
-    )
+    before = desktop.showing()["rows"]
+    arriving = desktop.opened_aside(ARRIVING)
+    desktop.launcher_until(lambda shown: shown["waiting"] == 1 and shown["rows"] == before)
     machine.send_key("esc")
     desktop.launcher_until(
-        lambda shown: shown["waiting"] == 0 and shown["rows"][len(PARAGRAPH) :] == [ARRIVING]
+        lambda shown: shown["waiting"] == 0 and shown["rows"] == [*before, ARRIVING]
     )
-    moves_by_runs_and_takes_them(desktop)
+    desktop.close_launcher()
+    desktop.close(arriving)
 
 
 def chooses_and_brings_back(desktop: Desktop) -> None:
@@ -677,7 +690,7 @@ def moves_by_runs_and_takes_them(desktop: Desktop) -> None:
     machine = desktop.machine
     # } goes past the run of windows, which reaches the end, so to its last.
     machine.send_chars("gg}")
-    desktop.launcher_until(lambda shown: shown["current"] == len(PARAGRAPH))
+    desktop.launcher_until(lambda shown: shown["current"] == len(PARAGRAPH) - 1)
     machine.send_chars("{")
     desktop.launcher_until(lambda shown: shown["current"] == 0)
     # y again just after visual's is taken with it: two titles copied, and

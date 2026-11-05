@@ -491,19 +491,21 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
 ) -> None:
     """V j counts two in the mode word, and a window arriving waits as "1 new" in the foot.
 
-    The arrival is a window opened aside, as another session's is, from a source the typed
-    search already shows, since a search is asked again only by a source whose rows it holds.
+    It's shown in Super+Tab's windows, since a typed search said again finds only what it
+    found, and the arrival is opened aside, as another session's is, so it isn't the window
+    Joel is in, which the list leaves out.
     """
     machine = desktop.machine
     desktop.notes_window()
-    thursday = desktop.opened("Notes for Thursday")
+    others = [desktop.opened(title) for title in ("Notes for Thursday", "Notes for Friday")]
     for scale in at_each_scale:
         at_scale(desktop, scale)
         named = scale.replace(".", "-")
-        desktop.as_account("qs ipc call launcher toggle")
+        machine.send_key("meta_l-tab")
         desktop.launcher_ready()
-        desktop.type_in("notes for")
-        desktop.launcher_until(lambda shown: len(shown["rows"]) > 1)
+        desktop.launcher_until(
+            lambda shown: shown["held"] == ["windows"] and len(shown["rows"]) > 1
+        )
         desktop.normal()
         machine.send_chars("ggVj")
         desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
@@ -518,7 +520,8 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         )
         desktop.close_launcher()
         desktop.close(arriving)
-    desktop.as_account(f"niri msg action close-window --id {thursday['id']}")
+    for other in others:
+        desktop.close(other)
 
 
 def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
