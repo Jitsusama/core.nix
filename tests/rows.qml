@@ -452,6 +452,16 @@ ShellRoot {
             const hint = root.setting(voicedField, root.voice);
             expect("the launcher's hint in the voice, on the typed words' baseline",
                 root.voicedLike(typed, hint), `${JSON.stringify(typed)} against ${JSON.stringify(hint)}`);
+            // Where a caret is drawn, the hint starts a caret and an s past
+            // where letters would, so the caret never cuts its first letter
+            // (VKCF3Z's space audit, the picker's fault 11: "open which
+            // file?" read with its o cut).
+            const line = [...voicedField.children].find(child => child.cursorPosition !== undefined);
+            const letters = line.mapToItem(null, 0, 0).x;
+            const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
+            expect("a hint starts past the caret", hinting !== undefined
+                && hinting.from >= letters + voicedField.caretWidth + Theme.space.s - 0.5,
+                `hint at ${hinting?.from}, letters at ${letters}`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
