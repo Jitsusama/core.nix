@@ -20,11 +20,11 @@
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
 // into Providers.qml), so a kind of thing is added or removed in one line.
 //
-// In normal, the right arrow steps into the selected row: what can be done
-// to it, its verbs, searched the same way, and for a verb that needs one,
-// its target. What's held shows as chips in the field; the left arrow, or
-// Backspace, steps back out. Each Escape takes one step back, and at the
-// level the launcher opened on closes it.
+// Return goes into a place or a thing with acts, and opens a program, a
+// window or a file; a row's other acts are its verbs as commands, on the
+// : line. What's held shows as chips in the field; - goes up, onto the
+// row come from, with its find. Each Escape takes one step back, and at
+// the level the launcher opened on closes it.
 //
 // What everything is called is the vocabulary's (Words.qml): its names,
 // the words that find it, its parts, and the categories it's in. A
@@ -810,7 +810,7 @@ Scope {
     // by what it is, then onto the spot itself. A step gone since, such as a
     // headset turned off, stops it where it got to. Each step's row is
     // selected before it's stepped into, and the first step keeps what was
-    // typed and selected before it, so the left arrow climbs back out
+    // typed and selected before it, so - climbs back out
     // through every step and onto the search it came from, as any way in
     // does (Joel, 2026-10-26: every way in climbs back out the same way).
     function goTo(spot) {
@@ -1535,7 +1535,7 @@ Scope {
 
     // Steps into a category from a word and a space, or from the top,
     // through the places it sits in, so the path says where it lives and
-    // the left arrow climbs out through them; what was typed is put back on
+    // - climbs out through them; what was typed is put back on
     // the way out.
     function intoCategory(category, word) {
         const chain = placesAbove(category).concat([category]);
@@ -1578,7 +1578,7 @@ Scope {
 
     // A row for each collection that has matches: its best, with what's been
     // picked for this query before put first, and a count of the rest. Its
-    // verbs are the matches, which the right arrow steps into with what was
+    // verbs are the matches, which Return steps into with what was
     // typed kept. One letter finds too much of a collection to be worth a
     // row.
     property var gathered: []
@@ -1651,12 +1651,6 @@ Scope {
                     lands: true,
                     run: () => root.landInside(gathered, best)
                 });
-            // The right arrow on any found thing that holds more goes
-            // straight inside it, whatever its Return does (VKCF3Z,
-            // 2026-10-29: "← is where you came from; the crumbs are
-            // where it lives").
-            else if (best.verbs || best.targets)
-                gathered.landsIn = best;
             rows.push(gathered);
         }
         if (Object.keys(made).length > 0)
@@ -1666,7 +1660,7 @@ Scope {
 
     // Steps into a collection's part, through the collection, and searches
     // it for what was typed, as Return on Recent's matches gathered at the
-    // top does: the left arrow climbs back out to the search.
+    // top does: - climbs back out to the search.
     function searchIn(source, part, letters) {
         into(source.settings.name);
         const at = matches.findIndex(one => steadyId(one) === steadyId(part));
@@ -1681,26 +1675,8 @@ Scope {
     function landInside(gathered, best) {
         if (enter(gathered) && selected && steadyId(selected) === steadyId(best)
             && enter(selected))
-            // The left arrow comes back past the collection to the search.
+            // - comes back past the collection to the search.
             held[held.length - 1].through = true;
-    }
-
-    // The right arrow: into the selected row, or, for a match that lands
-    // inside what it found on Return, there as well, and for a row whose
-    // Return goes elsewhere in the launcher, there too. A program's act
-    // found from the top goes into its program, onto the act, so the path
-    // says where it lives (Applications.qml's foundAct).
-    function inward(row) {
-        if (row && row.lands)
-            row.run();
-        else if (row && row.landsIn)
-            landInside(row, row.landsIn);
-        else if (row && row.inside && held.length === 0)
-            goTo(row.inside);
-        else if (leadsElsewhere(row))
-            run(row, false);
-        else
-            enter(row);
     }
 
     // How tall the list is while the launcher's open: always its rows, and
@@ -1781,7 +1757,7 @@ Scope {
         return among || (!row.targets && !!row.verbs);
     }
 
-    // Whether the right arrow steps into a row, as `enter` would: a thing's
+    // Whether a row holds more to step into, as `enter` would find: a thing's
     // insides, a verb's targets in a step, a place found from the top, or an
     // ask.
     function holdsMore(choice) {
@@ -1802,20 +1778,17 @@ Scope {
 
     // Whether a row with nothing inside it goes somewhere else in the
     // launcher on Return: a spot to where it is, a command into the field
-    // to be finished, one that opens a collection into it. The right arrow
-    // goes there as well (Joel, 2026-10-26: where Return goes somewhere in
-    // the launcher, the right arrow does the same).
+    // to be finished, one that opens a collection into it.
     function leadsElsewhere(choice) {
         return !!choice && !choice.gone && !holdsMore(choice)
             && (choice.trail !== undefined || choice.start !== undefined || !!choice.opens);
     }
 
-    // Whether Return steps into a row where the right arrow would, as `run`
-    // decides: a place or a holder, a verb wanting a target, one that can't
-    // be taken back, or one with nothing to do of its own. Such a row says
-    // both keys as one, with the right arrow's word, so stepping in has one
-    // word wherever it's done (Joel, 2026-10-26), where it was open, choose,
-    // go, see or the act asked about, and never says it twice.
+    // Whether Return steps into a row, as `run` decides: a place or a
+    // holder, a verb wanting a target, one that can't be taken back, or one
+    // with nothing to do of its own. Such a row says open, so stepping in
+    // has one word wherever it's done (Joel, 2026-10-26), where it was
+    // choose, go, see or the act asked about.
     function stepsIn(choice) {
         if (leadsElsewhere(choice) || copiesOnly(choice))
             return true;
@@ -1947,17 +1920,15 @@ Scope {
         // find's arrows move the caret.
         if (lands(choice))
             return [["\u21b5", ""]];
-        // The arrows are said by their marks alone, which Joel knows: the
-        // right arrow steps in and the left one steps back wherever they
-        // work, so their words only took room from the marks beside them
-        // (Joel, 2026-10-28: "i want icons to be able to be there as much
-        // as possible"). Going elsewhere keeps Return's own word, where it
-        // takes him.
-        const more = leadsElsewhere(choice) ? verbOf(choice) : "";
+        // Return going in says open, as oil's Return opens a folder, it
+        // being the one way in (the vi-paradigm spec's foot); going
+        // elsewhere keeps Return's own word, where it takes him.
+        const more = leadsElsewhere(choice) ? verbOf(choice)
+            : (Words.field.hints ?? {}).open ?? "";
         const stepping = stepsIn(choice) || stepsThing(choice);
         // Normal names its keys by letter and lowercase verb, from the
-        // table that does them (the vi-paradigm spec's foot): l in, h out,
-        // : commands and Space ?, the way to every key, always.
+        // table that does them (the vi-paradigm spec's foot): - up, :
+        // commands and Space ?, the way to every key, always.
         if (prompt.modal && prompt.mode === "normal")
             return normalKeys(choice, stepping, more);
         // No arrow is named: where a line is typed they move its caret, and
@@ -2000,15 +1971,13 @@ Scope {
         return taught;
     }
 
-    // Normal's keys for a row: Return's act, l where it steps in, h where
-    // there's a place to step out to, then : and Space ?.
+    // Normal's keys for a row: Return's act, which goes in where it steps
+    // in, - where there's a place to go up to, then : and Space ?.
     function normalKeys(choice, stepping, more) {
         const hints = Words.field.hints ?? {};
         const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
-        if (stepping || holdsMore(choice))
-            keys.push([hintKey("into"), hints.in ?? ""]);
         if (held.length > 0)
-            keys.push([hintKey("out"), hints.out ?? ""]);
+            keys.push([hintKey("out"), hints.up ?? ""]);
         keys.push(...operatorKeys(choice));
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
@@ -2065,6 +2034,18 @@ Scope {
         say([[":q", hints.quits ?? ""], ["q", hints.quit ?? ""]]);
     }
 
+    // What h or l says on a row, which has no line to move along: that it
+    // means nothing here, and Vim's way in or out beside it, at the right
+    // end where Return stands, so it reads "l not here \u00b7 \u21b5 open" and
+    // "h not here \u00b7 - up" (the vi-paradigm spec, Normal). Each key is
+    // the table's, so neither names one that does nothing; Backspace is h.
+    function sayTheWay(act) {
+        const hints = Words.field.hints ?? {};
+        const way = act === "intoSaid" ? [hintKey("run"), hints.open ?? ""]
+            : [hintKey("out"), hints.up ?? ""];
+        say([way, [hintKey(act), hints.notHere ?? ""]]);
+    }
+
     // A key as the foot says it: its mark, then its word where it has one.
     function saidKey(key) {
         return key[1] === "" ? key[0] : `${key[0]} ${key[1]}`;
@@ -2093,12 +2074,13 @@ Scope {
     // the launcher opens: as wide as Shift+Return's "below" beside a mark.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
         ["\u21e7\u21b5", "below"], ["\u2192", ""]]
-    // What normal says beside Return at home: in, the commands and the
-    // keys, kept once normal is taken rather than from the opening. Kept
-    // from the start, it cut the battery's charge from the glance on the
-    // find, which never gives way; out is said only once a step is held,
-    // whose rows grow the room as any row does.
-    readonly property var footNormalRoom: [["\u21b5", footVerbRoom], ["l", "in"],
+    // What normal says beside Return at home: the commands and the keys,
+    // kept once normal is taken rather than from the opening. Kept from
+    // the start, it cut the battery's charge from the glance on the find,
+    // which never gives way; - up is said only once a step is held, and
+    // Ctrl+] in only on a row holding parts, whose rows grow the room as
+    // any row does.
+    readonly property var footNormalRoom: [["\u21b5", footVerbRoom],
         [":", "commands"], ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
@@ -5307,7 +5289,7 @@ Scope {
     }
 
     // Opens straight into a collection, all of it shown until something's
-    // typed; the left arrow steps out to the search. A name no collection
+    // typed; - steps out to the search. A name no collection
     // has opens the search.
     function into(name) {
         open = true;
@@ -5869,15 +5851,16 @@ Scope {
                         // A key with no meaning here says so, until the next.
                         onIdled: key => root.say([[ListedKeys.face(key),
                             (Words.field.hints ?? {}).notHere ?? ""]])
-                        onForward: {
-                            root.searchNow();
-                            trials.pressed("steps");
-                            root.inward(root.matches[root.current]);
-                        }
+                        // - goes up, as his oil's; at home, with nothing
+                        // above, it says so, as any key meaning nothing does.
                         onBackward: {
                             root.searchNow();
                             trials.pressed("backs");
-                            root.back();
+                            if (root.held.length === 0)
+                                root.say([[root.hintKey("out"),
+                                    (Words.field.hints ?? {}).notHere ?? ""]]);
+                            else
+                                root.back();
                         }
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
                         // The ask, while it stands, takes every key, and one
@@ -5955,6 +5938,13 @@ Scope {
                                 return;
                             case "jumpForward":
                                 root.jump(1);
+                                return;
+                            // h and l on a row say Vim's way out and in,
+                            // and Backspace as h, read as the one beside
+                            // :q is: "l not here \u00b7 \u21b5 open".
+                            case "intoSaid":
+                            case "outSaid":
+                                root.sayTheWay(act);
                                 return;
                             case "quitSaid":
                                 root.sayQuit();

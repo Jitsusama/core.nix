@@ -647,9 +647,6 @@ Item {
         case "run":
             prompt.returned(event);
             break;
-        case "into":
-            prompt.forward();
-            break;
         case "out":
             prompt.backward();
             break;

@@ -55,12 +55,14 @@ const table = [
     { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
-    // l steps into the row, h out onto the row stepped in from, with its
-    // find, - and Backspace as his oil's do. No arrow does either, nor
-    // moves the rows: Joel keeps to Vim's keys where nothing types ("rely
-    // only on vi right feeling things", 2026-11-05).
-    { act: "into", mode: "normal", keys: ["l"] },
-    { act: "out", mode: "normal", keys: ["h", "-", "Backspace"] },
+    // Return goes into the row ("run", below) and - up, onto the row come
+    // from, with its find, as his oil's do. h and l move along a line,
+    // which a row hasn't, so they only say Vim's way in and out, as q says
+    // how to close, and Backspace is h, as Vim's is (Joel, 2026-11-05:
+    // "where in vi does that step into shit?"). No arrow does anything.
+    { act: "out", mode: "normal", keys: ["-"] },
+    { act: "intoSaid", mode: "normal", keys: ["l"] },
+    { act: "outSaid", mode: "normal", keys: ["h", "Backspace"] },
     // ZZ closes, as his Neovim closes a buffer, Space w as his leader closes a
     // split, and :q (CommandLine.qml); q closes nothing, there being no
     // macros, and says so until the next key (the vi-paradigm spec, Normal).
@@ -135,10 +137,9 @@ const table = [
     // They're read in normal only while the line holds a prompt's words
     // rather than a find (Prompt.qml, `words`), and before normal's own,
     // so u there undoes rather than bringing a find back.
-    // h and l move the caret a letter, as Vim's do, rather than stepping
-    // out of the place and into the row, and so do \u2190 and \u2192, each its
-    // letter in normal; - and Backspace still step out.
-    { act: "letterBack", mode: "words", keys: ["h", "Left"] },
+    // h and l move the caret a letter, as Vim's do, and so do \u2190 and
+    // \u2192, each its letter in normal, and Backspace as h; - still goes up.
+    { act: "letterBack", mode: "words", keys: ["h", "Left", "Backspace"] },
     { act: "letterNext", mode: "words", keys: ["l", "Right"] },
     { act: "wordNext", mode: "words", keys: ["w"] },
     { act: "wordBack", mode: "words", keys: ["b"] },
