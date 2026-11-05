@@ -787,9 +787,7 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
             assert "Order" not in desktop.showing()["rows"], desktop.showing()["rows"]
             desktop.normal()
             machine.send_chars(":sort ")
-            desktop.launcher_until(
-                lambda shown: (shown["command"] or {}).get("line") == "sort "
-            )
+            desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "sort ")
             desktop.photograph(f"file-picker-sort-menu-at-{said}")
             machine.send_key("ctrl-u")
             machine.send_key("esc")
@@ -797,7 +795,8 @@ def test_the_file_picker_lists_a_folder_in_the_order_chosen(
             for line, listed in ORDERS.items():
                 ran(desktop, line)
                 desktop.launcher_until(partial(listed_from_the_top, listed=listed))
-                desktop.photograph(f"file-picker-{line.replace(' ', '-').replace('!', '-turned')}-at-{said}")
+                shot = line.replace(" ", "-").replace("!", "-turned")
+                desktop.photograph(f"file-picker-{shot}-at-{said}")
             desktop.close_launcher()
             machine.wait_until_succeeds(f"grep -qx 1 {chose}", timeout=timedelta(seconds=60))
     finally:
