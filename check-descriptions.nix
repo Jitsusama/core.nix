@@ -1601,6 +1601,12 @@
     says it, a part's after its thing's name; each one that doesn't is printed, and the check
     refuses a stand-in vocabulary breaking each of its rules
   '';
+  the-launcher-names-every-verb-a-command = ''
+    every launcher verb names a command the key language has, with :set's whole word as its
+    argument and % only on an act taking rows, and no two verbs on one row make the same line;
+    each one that doesn't is printed, and the check refuses a stand-in vocabulary breaking each
+    of its rules
+  '';
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
