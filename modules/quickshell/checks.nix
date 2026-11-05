@@ -3367,7 +3367,9 @@ onLinux {
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's
-  # radius the theme derives from it, and every border is the theme's.
+  # radius the theme derives from it, or a floating surface's foot, which is
+  # the theme's radius or square where it stands on another (Floating.qml's
+  # footRadius), and every border is the theme's.
   quickshell-takes-its-shape-from-the-theme =
     let
       dir = ../.;
@@ -3376,6 +3378,7 @@ onLinux {
         radius = [
           "Theme.radius"
           "Theme.inner"
+          "floating.footRadius"
         ];
         width = [ "Theme.border" ];
       };
