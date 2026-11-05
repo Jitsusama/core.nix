@@ -71,8 +71,8 @@ PanelWindow {
                 width: Theme.space.xxl
                 text: meter.glyph
                 color: Theme.machine
-                font.family: Theme.mono.family
-                font.pointSize: Theme.mono.body
+                font.family: Theme.level.note.family
+                font.pointSize: Theme.level.note.pointSize
             }
 
             Rectangle {
@@ -106,8 +106,8 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 text: meter.figure
                 color: meter.off ? Theme.muted : Theme.text
-                font.family: Theme.mono.family
-                font.pointSize: Theme.mono.body
+                font.family: Theme.level.note.family
+                font.pointSize: Theme.level.note.pointSize
                 font.features: { "tnum": 1 }
             }
         }

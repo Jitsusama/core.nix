@@ -311,8 +311,8 @@ Scope {
                             // makes its ink the drawings' height, centred.
                             TextMetrics {
                                 id: measured
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                                 text: slot.modelData.glyph
                             }
 
@@ -326,8 +326,8 @@ Scope {
                                 text: slot.modelData.glyph
                                 textFormat: Text.PlainText
                                 color: slot.hue
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body * set.scale
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize * set.scale
                             }
 
                             MouseArea {

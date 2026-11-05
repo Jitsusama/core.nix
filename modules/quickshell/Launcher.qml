@@ -2076,7 +2076,7 @@ Scope {
     function rowRoom() {
         return Math.floor((list.width - Theme.space.l - Theme.space.xxl
             - Theme.space.xxl - Theme.space.m - Theme.space.l)
-            / Math.max(1, measure.advanceWidth("0")));
+            / Math.max(1, rowFace.advanceWidth("0")));
     }
 
     function home() {
@@ -5157,11 +5157,22 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: keys.spacing
 
+                            // The foot's face: Note, a step under the rows,
+                            // its figures tabular.
                             FontMetrics {
                                 id: measure
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                                 font.features: { "tnum": 1 }
+                            }
+
+                            // A row's name's face, to count the characters
+                            // a row has room for.
+                            FontMetrics {
+                                id: rowFace
+                                font.family: Theme.level.name.family
+                                font.pointSize: Theme.level.name.pointSize
+                                font.weight: Theme.level.name.weight
                             }
 
                             Repeater {
@@ -5173,8 +5184,10 @@ Scope {
                                     width: standing.place(modelData)
                                     text: modelData.said
                                     textFormat: Text.PlainText
-                                    // As the margin's mark wears it (Margin.qml).
-                                    color: !modelData.wants ? Theme.muted
+                                    // Its figures in text, small enough at Note
+                                    // to stay quiet; one that wants Joel as the
+                                    // margin's mark wears it (Margin.qml).
+                                    color: !modelData.wants ? Theme.text
                                         : modelData.role !== "text" ? Theme[modelData.role]
                                         : Theme[modelData.hue]
                                     font: measure.font
@@ -5189,6 +5202,7 @@ Scope {
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
                             keys: foot.shown
+                            level: Theme.level.note
                             endsRight: true
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
                                 ? foot.returnPlace : 0)

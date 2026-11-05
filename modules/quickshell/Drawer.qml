@@ -7,9 +7,10 @@
 // card never changes size for what's selected.
 //
 // It's set as a plate, a small page about the selected thing (look 3's
-// piece 3): an eyebrow saying when or where, the thing's name in the
-// voice's face, its facts as a name and a figure, its words, then its
-// picture. Every line of it lies on one of the card's lines, so the two
+// piece 3), ranked by its type (docs/design.md, Type): an eyebrow saying
+// when or where at Label, the thing's name at Title, the one strong thing
+// while it's shown, its facts as a label at Note and a value at Figure,
+// its words, then its picture. Every line of it lies on one of the card's lines, so the two
 // read as one page: the eyebrow on the field's centre, the name on the
 // first row's baseline, and the rest on a pitch of half a row from the
 // second row's, one empty line between each group. A row gives it as
@@ -99,9 +100,8 @@ Floating {
     // The plate's pitch: half a row, so its lines fall on each row's and
     // halfway between two.
     readonly property real pitch: Theme.space.xl
-    // How far below a line's centre a line of the mono at the launcher's
-    // size has its baseline, as a row centred on that line does, and the
-    // same at body size for the eyebrow. Every line here is set on such a
+    // How far below a line's centre a row's name has its baseline, as a row
+    // centred on that line does, and the same at Label for the eyebrow. Every line here is set on such a
     // baseline, whatever its own face, since the faces' line boxes differ.
     readonly property real dropped: monoRuler.y + monoRuler.baselineOffset
     readonly property real eyebrowDropped: eyebrowRuler.y + eyebrowRuler.baselineOffset
@@ -206,15 +206,15 @@ Floating {
         id: monoRuler
         y: -height / 2
         visible: false
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
     }
     Text {
         id: eyebrowRuler
         y: -height / 2
         visible: false
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.body
+        font.family: Theme.level.label.family
+        font.pointSize: Theme.level.label.pointSize
     }
 
     // The widest of its facts' names, which their values start beyond, so
@@ -223,13 +223,18 @@ Floating {
     // its figure less than eight figures' room breaks onto a second line.
     FontMetrics {
         id: factFace
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+    }
+    FontMetrics {
+        id: valueFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
     readonly property real labelsWide: Math.min(
-        column.width - labelsGap - factFace.advanceWidth("00000000"),
+        column.width - labelsGap - valueFace.advanceWidth("00000000"),
         Math.ceil(Math.max(0, ...allFacts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
     // Whether every name fits its column on one line, for the launcher to
     // report when asked.
@@ -299,12 +304,12 @@ Floating {
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: Theme.muted
-                font.family: Theme.mono.family
-                font.pointSize: Theme.mono.body
-                font.weight: Font.Medium
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: Theme.mono.body * 4 / 3 * Theme.eyebrow.tracking
-                font.features: { "case": 1 }
+                font.family: Theme.level.label.family
+                font.pointSize: Theme.level.label.pointSize
+                font.weight: Theme.level.label.weight
+                font.capitalization: Theme.level.label.capitalization
+                font.letterSpacing: Theme.level.label.letterSpacing
+                font.features: Theme.level.label.features
             }
 
             // The moment: the time, its seconds, what needs Joel and the
@@ -317,8 +322,8 @@ Floating {
                 readonly property real ends: groupsShown.count === 0 ? sayText.y + drawer.pitch
                     : groupsShown.lastBottom
 
-                // The time, the one large thing, in the voice's face upright
-                // and drawn for its size, its figures lining and all one
+                // The time, the one large thing, at Display in the mono, as
+                // the lock's clock is, since figures are the mono's: all one
                 // width so they never jiggle, its capitals centred on Now's
                 // row, the first.
                 Text {
@@ -329,15 +334,15 @@ Floating {
                     text: Moment.clock(clock.date)
                     textFormat: Text.PlainText
                     color: Theme.strong
-                    font.family: Theme.serif.family
-                    font.pointSize: Theme.serif.display
-                    font.letterSpacing: Theme.serif.tracking.display * Theme.serif.display * 4 / 3
-                    font.features: { "lnum": 1, "tnum": 1 }
-                    font.variableAxes: Theme.serif.upright.display
+                    font.family: Theme.level.display.family
+                    font.pointSize: Theme.level.display.pointSize
+                    font.weight: Theme.level.display.weight
+                    font.letterSpacing: Theme.level.display.letterSpacing
+                    font.features: Theme.level.display.features
                 }
 
-                // Its seconds after it, quiet and counting, in the italic,
-                // on the time's baseline.
+                // Its seconds after it, quiet and counting, at Note on the
+                // time's baseline: upright, since italic is only the voice.
                 Text {
                     id: secondsText
                     x: timeText.x + timeText.contentWidth + Theme.space.s
@@ -348,11 +353,9 @@ Floating {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.muted
-                    font.family: Theme.serif.family
-                    font.italic: true
-                    font.pointSize: Theme.serif.section
-                    font.features: { "lnum": 1, "tnum": 1 }
-                    font.variableAxes: Theme.serif.slanted.section
+                    font.family: Theme.level.note.family
+                    font.pointSize: Theme.level.note.pointSize
+                    font.features: { "tnum": 1 }
                 }
 
                 // What needs Joel, or that nothing does, in the voice, on
@@ -368,10 +371,10 @@ Floating {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.text
-                    font.family: Theme.serif.family
-                    font.italic: Theme.serif.italic
-                    font.pointSize: Theme.serif.large
-                    font.variableAxes: Theme.serif.axes
+                    font.family: Theme.level.voice.family
+                    font.italic: Theme.level.voice.italic
+                    font.pointSize: Theme.level.voice.pointSize
+                    font.variableAxes: Theme.level.voice.variableAxes
                 }
 
                 // Each group of facts from its row's line, on the pitch.
@@ -430,8 +433,8 @@ Floating {
                                     lineHeightMode: Text.FixedHeight
                                     lineHeight: drawer.pitch
                                     color: Theme.muted
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
+                                    font.family: Theme.level.note.family
+                                    font.pointSize: Theme.level.note.pointSize
                                 }
 
                                 Text {
@@ -445,8 +448,9 @@ Floating {
                                     lineHeightMode: Text.FixedHeight
                                     lineHeight: drawer.pitch
                                     color: Theme.text
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
+                                    font.family: Theme.level.figure.family
+                                    font.pointSize: Theme.level.figure.pointSize
+                                    font.features: Theme.level.figure.features
                                 }
                             }
                         }
@@ -464,13 +468,13 @@ Floating {
                 spacing: drawer.pitch
                 visible: !drawer.moment
 
-                // The thing's name, in the voice's face upright and a step
-                // up, sized by capitals as every serif step is, on the
-                // first row's baseline beside it, whatever its own line box
-                // would put it on.
+                // The thing's name at Title, sized by capitals as every
+                // serif step is, on the first row's baseline beside it,
+                // whatever its own line box would put it on. Too large for
+                // the pitch, a name that wraps takes two of it a line.
                 Item {
                     width: parent.width
-                    height: titleText.lineCount * drawer.pitch
+                    height: (2 * titleText.lineCount - 1) * drawer.pitch
                     visible: drawer.title !== ""
 
                     Text {
@@ -481,11 +485,12 @@ Floating {
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         lineHeightMode: Text.FixedHeight
-                        lineHeight: drawer.pitch
-                        color: Theme.strong
-                        font.family: Theme.serif.family
-                        font.pointSize: Theme.serif.section
-                        font.variableAxes: Theme.serif.upright.section
+                        lineHeight: 2 * drawer.pitch
+                        color: Theme.level.title.colour
+                        font.family: Theme.level.title.family
+                        font.pointSize: Theme.level.title.pointSize
+                        font.letterSpacing: Theme.level.title.letterSpacing
+                        font.variableAxes: Theme.level.title.variableAxes
                     }
                 }
 
@@ -505,8 +510,8 @@ Floating {
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
                     readonly property real room: Math.max(4 * drawer.pitch, view.height
-                        - drawer.firstLine - (titleText.visible ? titleText.lineCount * drawer.pitch
-                        + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
+                        - drawer.firstLine - (titleText.visible ? 2 * titleText.lineCount * drawer.pitch
+                        : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 
                     width: parent.width
@@ -588,8 +593,8 @@ Floating {
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 color: drawer.preview?.quiet === true ? Theme.muted : Theme.text
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.body
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                             }
                         }
                     }
@@ -645,8 +650,8 @@ Floating {
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: drawer.pitch
                                 color: Theme.muted
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                             }
 
                             // Its figure, or a placeholder while it's
@@ -664,8 +669,9 @@ Floating {
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: drawer.pitch
                                 color: fact.known ? Theme.text : Theme.muted
-                                font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.features: Theme.level.figure.features
                             }
                         }
                     }
@@ -691,12 +697,14 @@ Floating {
                         lineHeightMode: Text.FixedHeight
                         lineHeight: drawer.pitch
                         color: Theme.text
-                        // Prose, such as a notice's, in the face its card
-                        // reads it in: the serif upright, as the reader
-                        // sets its text. The rest in the mono.
-                        font.family: drawer.prose ? Theme.serif.family : Theme.mono.family
-                        font.pointSize: drawer.prose ? Theme.serif.large : Theme.mono.large
-                        font.variableAxes: drawer.prose ? Theme.serif.upright.large : ({})
+                        // Prose, such as a notice's, at Words, as its card
+                        // reads it and the reader sets its text. The rest,
+                        // lines another program wrote, at Figure.
+                        readonly property var level: drawer.prose ? Theme.level.words
+                            : Theme.level.figure
+                        font.family: bodyText.level.family
+                        font.pointSize: bodyText.level.pointSize
+                        font.variableAxes: bodyText.level.variableAxes
                     }
                 }
 

@@ -131,15 +131,15 @@ Item {
         text: String.fromCharCode(graph.blank + 0xff).repeat(graph.cells)
         color: Theme.edge
         opacity: graph.track
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
     Text {
         text: graph.toned("ink")
         color: graph.ink
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
     // A spark's newest reading, a step brighter, since it's how things
@@ -147,14 +147,14 @@ Item {
     Text {
         text: graph.toned("newest")
         color: graph.selected ? Theme.strong : Theme.text
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
     Text {
         text: graph.toned("hot")
         color: Theme.warning
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 }

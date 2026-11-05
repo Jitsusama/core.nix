@@ -23,6 +23,10 @@
 // command line does: it's typed in place of what the field holds, which
 // it puts back as it ends, so what's typed and the rows it found never
 // change under a search.
+// Its type ranks it (docs/design.md, Type): where Joel is at Title, the
+// largest thing on the line, its capitals centred on the field; what's
+// typed at Figure, his letters rather than a name; the hint in the voice;
+// and the aside and the field's keys at Note, a step under the rest.
 pragma ComponentBehavior: Bound
 import QtQuick
 import "Reading.js" as Reading
@@ -48,10 +52,10 @@ Item {
     property string aside
     readonly property bool capitals: secret && Lights.caps
     readonly property string said: capitals ? "caps lock" : aside
-    // How wide a text is in the field's face, a pixel to spare, so what's
-    // measured to fit is never cut again as it's drawn.
+    // How wide an aside is at Note, a pixel to spare, so what's measured to
+    // fit is never cut again as it's drawn.
     function measured(words) {
-        return Math.ceil(chipFace.advanceWidth(words)) + 1;
+        return Math.ceil(noteFace.advanceWidth(words)) + 1;
     }
     // How wide the aside is whole, measured rather than read off what's
     // drawn, since what's drawn is cut to the room this gives it.
@@ -128,7 +132,7 @@ Item {
     // so the aside gives way once as it grows, not back and forth with
     // each letter.
     property real typedWidest: 0
-    readonly property real typedWanted: chipFace.advanceWidth(input.text + ghost)
+    readonly property real typedWanted: figureFace.advanceWidth(input.text + ghost)
     onTypedWantedChanged: {
         if (typedWanted > typedWidest)
             typedWidest = typedWanted;
@@ -203,7 +207,7 @@ Item {
             [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
     function slotWidth(slot, worded) {
         return Math.max(...slot.map(([key, word]) =>
-            chipFace.advanceWidth(worded && word !== "" ? `${key} ${word}` : key)));
+            noteFace.advanceWidth(worded && word !== "" ? `${key} ${word}` : key)));
     }
     readonly property var keysWorded: keySlots.map(slot => slotWidth(slot, true))
     readonly property real keysWordedWidth: keysWorded.reduce((sum, wide) => sum + wide, 0)
@@ -558,6 +562,10 @@ Item {
         font: input.font
     }
 
+    // A secret's dots stand a fifth of their size apart, so each reads as
+    // one character. Points are 4/3 of a pixel at 96 dots an inch.
+    readonly property real dotted: Theme.level.figure.pointSize * 4 / 3 * 0.2
+
     implicitWidth: 480
     implicitHeight: Theme.space.xxxl
 
@@ -567,15 +575,16 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: prompt.glyph
         color: prompt.hue
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
 
     KeyHints {
         id: fieldKeys
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
+        level: Theme.level.note
         visible: prompt.keysHeld
         widths: prompt.keyPlaces
         endsRight: true
@@ -586,7 +595,7 @@ Item {
         id: asideText
         anchors.right: prompt.keysHeld ? fieldKeys.left : parent.right
         anchors.rightMargin: prompt.keysHeld ? Theme.space.xl : Theme.space.l
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
         // drawn whole, over the hint that took the room. A search being
@@ -599,8 +608,8 @@ Item {
         elide: Text.ElideRight
         text: Reading.wholeWords(prompt.said, prompt.asideRoom, words => prompt.measured(words))
         color: Theme.muted
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
         font.features: { "tnum": 1 }
     }
 
@@ -608,78 +617,94 @@ Item {
         id: capitalsGlyph
         anchors.right: asideText.left
         anchors.rightMargin: Theme.space.s
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         visible: prompt.capitals
         text: Theme.glyph.capitals
         color: Theme.warning
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
     }
 
+    // What's typed, the aside and the path, each at its own level, to
+    // measure what each takes of the line.
     FontMetrics {
-        id: chipFace
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
+        id: figureFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
     }
+    FontMetrics {
+        id: noteFace
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+    }
+    FontMetrics {
+        id: titleFace
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize
+        font.variableAxes: Theme.level.title.variableAxes
+        font.letterSpacing: Theme.level.title.letterSpacing
+    }
+    // How tall the title's capitals stand, which are centred on the field.
+    readonly property real titleCapitals: titleFace.tightBoundingRect("H").height
 
     // What stands between two steps of the path, so they read as one place
     // reached through the other rather than as tags side by side.
     readonly property string between: " \u203a "
+    // How far what's typed stands after the path.
+    readonly property int pathGap: Theme.space.l
 
     // The hint's face: the voice's, since it's the shell speaking to Joel.
     FontMetrics {
         id: voiceFace
-        font.family: Theme.serif.family
-        font.italic: Theme.serif.italic
-        font.pointSize: Theme.serif.large
-        font.variableAxes: Theme.serif.axes
+        font.family: Theme.level.voice.family
+        font.italic: Theme.level.voice.italic
+        font.pointSize: Theme.level.voice.pointSize
+        font.variableAxes: Theme.level.voice.variableAxes
     }
 
     // The room kept for typing: the hint's, or a dozen characters.
     readonly property real typingRoom: Math.max(
-        (voiced ? voiceFace : chipFace).advanceWidth(hint),
-        12 * chipFace.averageCharacterWidth)
+        (voiced ? voiceFace : figureFace).advanceWidth(hint),
+        12 * figureFace.averageCharacterWidth)
 
-    // How wide the path wants to be, whole, with the chip's own margins.
+    // How wide the path wants to be, whole, with the gap after it.
     readonly property real pathWanted: chips.length === 0 ? 0
-        : chips.reduce((sum, chip) => sum + Math.ceil(chipFace.advanceWidth(chip.text)) + 1, 0)
-            + chipFace.advanceWidth(between) * (chips.length - 1) + 2 * Theme.space.m
+        : chips.reduce((sum, chip) => sum + Math.ceil(titleFace.advanceWidth(chip.text)) + 1, 0)
+            + titleFace.advanceWidth(between) * (chips.length - 1) + pathGap - Theme.space.m
 
     // Each step's words' width, as Reading.sharedSteps shares the room: a
     // folder's path gives way first, down to four characters, cut in its
     // middle.
     readonly property var fitted: {
-        const room = Math.max(0, end - Theme.space.l - glyphWidth - Theme.space.m - typingRoom
-            - chipFace.advanceWidth(between) * Math.max(0, chips.length - 1)
-            - 2 * Theme.space.m);
+        const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom
+            - titleFace.advanceWidth(between) * Math.max(0, chips.length - 1) - pathGap);
         return Reading.sharedSteps(chipsWanted, chips.map(chip => chip.yields === true), room,
-            4 * chipFace.averageCharacterWidth);
+            4 * titleFace.averageCharacterWidth);
     }
 
     // Each step's words' width, whole.
     readonly property var chipsWanted: chips.map(chip =>
-        Math.ceil(chipFace.advanceWidth(chip.text)) + 1)
+        Math.ceil(titleFace.advanceWidth(chip.text)) + 1)
     // Whether each step is said whole, for the launcher's report.
     readonly property var chipsWhole: chipsWanted.map((width, index) =>
         (fitted[index] ?? 0) >= width)
 
 
-    // Where Joel is, one chip: a part of the frame, so its corners are the
-    // part's radius, raised from the surface, each step named as its row
-    // was in the strong colour, and the marks between them muted.
-    Rectangle {
+    // Where Joel is, the place's name at Title in the text colour, with no
+    // chip, since its size says it's where he is; the marks between a
+    // path's steps muted. Its capitals are centred on the field, as an
+    // eyebrow's are, and its line box may run past the field's rather than
+    // growing it, so the card is one height in a place and out of it.
+    Item {
         id: held
         x: Theme.space.l + prompt.glyphWidth
-        anchors.verticalCenter: parent.verticalCenter
         visible: prompt.chips.length > 0
-        width: visible ? path.width + 2 * Theme.space.m : 0
-        height: Theme.space.xxl
-        radius: Theme.inner
-        color: Theme.raised
+        width: visible ? path.width : 0
+        height: parent.height
 
         Row {
             id: path
-            anchors.centerIn: parent
+            y: (prompt.height + prompt.titleCapitals) / 2 - titleFace.ascent
 
             Repeater {
                 model: prompt.chips
@@ -694,8 +719,7 @@ Item {
                         visible: step.index > 0
                         text: prompt.between
                         color: Theme.muted
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.large
+                        font: titleFace.font
                     }
 
                     Text {
@@ -704,9 +728,8 @@ Item {
                         // A path keeps both ends, where it starts and the
                         // folder it's at, cut in its middle.
                         elide: step.modelData.yields === true ? Text.ElideMiddle : Text.ElideRight
-                        color: Theme.strong
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.large
+                        color: Theme.text
+                        font: titleFace.font
                     }
                 }
             }
@@ -758,7 +781,7 @@ Item {
     TextInput {
         id: input
         x: Theme.space.l + prompt.glyphWidth
-            + (prompt.chips.length > 0 ? held.width + Theme.space.m : 0)
+            + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
         width: prompt.end - x
         anchors.verticalCenter: parent.verticalCenter
         focus: true
@@ -773,12 +796,11 @@ Item {
         color: Theme.strong
         selectionColor: Theme.selection
         selectedTextColor: Theme.strong
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
-        font.weight: prompt.secret ? Font.Normal : Font.Medium
-        // A fifth of the size between dots, so each reads as one character.
-        // Points are 4/3 of a pixel at 96 dots an inch.
-        font.letterSpacing: prompt.secret ? Theme.mono.large * 4 / 3 * 0.2 : 0
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.weight: Theme.level.figure.weight
+        font.features: Theme.level.figure.features
+        font.letterSpacing: prompt.secret ? prompt.dotted : Theme.level.figure.letterSpacing
         // Return does what it does once a press: let go late by a busy
         // shell, it repeats as a held key does (Keys.onPressed below), and
         // each repeat would do it again, a setting turned on and off.
@@ -883,6 +905,7 @@ Item {
             id: hintText
             readonly property bool voiced: prompt.voiced && input.text === ""
                 && prompt.cleared === ""
+            readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
             x: input.text === "" ? 0 : input.contentWidth
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
@@ -892,10 +915,10 @@ Item {
                 : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
             color: Theme.muted
-            font.family: hintText.voiced ? Theme.serif.family : Theme.mono.family
-            font.italic: hintText.voiced && Theme.serif.italic
-            font.pointSize: hintText.voiced ? Theme.serif.large : Theme.mono.large
-            font.variableAxes: hintText.voiced ? Theme.serif.axes : ({})
+            font.family: hintText.level.family
+            font.italic: hintText.level.italic
+            font.pointSize: hintText.level.pointSize
+            font.variableAxes: hintText.level.variableAxes
         }
     }
 }

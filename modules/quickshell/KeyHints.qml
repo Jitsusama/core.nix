@@ -20,11 +20,20 @@ Row {
     // set against the right edge: what it says ends there however wide the
     // place has grown.
     property bool endsRight: false
-    // The type's step, large in a prompt and smaller in a notice, whose
-    // footer is smaller; the space between them follows it.
-    property real size: Theme.mono.large
+    // The type's level (Theme.level): Note in the launcher, whose foot and
+    // field say their keys a step under the rows, and Figure in a prompt
+    // not yet set by level; the space between them follows its size.
+    property var level: Theme.level.figure
 
-    spacing: size < Theme.mono.large ? Theme.space.l : Theme.space.xl
+    spacing: level.pointSize < Theme.level.figure.pointSize ? Theme.space.l : Theme.space.xl
+    // On its words' baseline, so a line can set it on its own.
+    baselineOffset: face.ascent
+
+    FontMetrics {
+        id: face
+        font.family: hints.level.family
+        font.pointSize: hints.level.pointSize
+    }
 
     Repeater {
         model: hints.keys
@@ -42,8 +51,9 @@ Row {
                     + ((modelData[1] ?? "") === "" ? "" : ` ${modelData[1]}`)
             textFormat: Text.StyledText
             color: Theme.muted
-            font.family: Theme.mono.family
-            font.pointSize: hints.size
+            font.family: hints.level.family
+            font.pointSize: hints.level.pointSize
+            font.weight: hints.level.weight
         }
     }
 }
