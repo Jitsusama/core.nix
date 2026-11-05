@@ -25,7 +25,7 @@ const normal = [
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     { name: "restore", acts: ["restore"] },
-    { name: "drawer", acts: ["drawerDown", "drawerUp"] },
+    { name: "intoDrawer", acts: ["drawer"] },
     { name: "keys", acts: ["keys"] },
     // q isn't listed, since Joel wants it to do nothing by itself and :q
     // to quit (2026-11-05); his respec takes its binding out.
@@ -42,11 +42,26 @@ const insert = [
     { name: "caretEnds", acts: ["caretStart", "caretEnd"] },
     { name: "letter", acts: ["deleteBack"] },
     { name: "word", acts: ["deleteWord"] },
-    { name: "start", acts: ["deleteToStart"] },
-    { name: "drawer", acts: ["drawerDown", "drawerUp"] }
+    { name: "start", acts: ["deleteToStart"] }
 ];
 
-const sections = [{ mode: "normal", lines: normal }, { mode: "insert", lines: insert }];
+// In the drawer, which the keys go into as a window, its page's moves.
+// Its way back is Space with the left arrow alone, the first of its keys,
+// and :q, since ZZ and Space w make the line too long to sit whole.
+const page = [
+    { name: "lines", acts: ["next", "previous"] },
+    { name: "along", acts: ["left", "right"] },
+    { name: "ends", acts: ["first", "last"] },
+    { name: "view", acts: ["viewTop", "viewMiddle", "viewBottom"] },
+    { name: "scroll", acts: ["scrollDown", "scrollUp"] },
+    { name: "half", acts: ["halfDown", "halfUp"] },
+    { name: "screen", acts: ["pageDown", "pageUp"] },
+    { name: "count", acts: [], also: ["3j", "12G"] },
+    { name: "back", acts: ["rows"], firsts: true, also: [":q"] }
+];
+
+const sections = [{ mode: "normal", lines: normal }, { mode: "insert", lines: insert },
+    { mode: "page", lines: page }];
 
 // How a key is drawn, as the desktop draws one (modules/theme/keys.nix):
 // its glyph where it has one, its name where not, a letter with a
