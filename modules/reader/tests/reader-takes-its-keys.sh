@@ -543,6 +543,36 @@ press ':foo'
 press -k Return
 logged '^said: E492: Not an editor command: foo' 1
 
+# Escape at rest does nothing, as Vim's does: the search's marks stay, n
+# having put them back after :noh.
+nexts=$(how_many '^key Next None')
+marks=$(how_many '^search Rest .* marked true')
+press n
+logged '^key Next None' $((nexts + 1))
+press -k Escape
+logged '^search Rest .* marked true' $((marks + 1))
+
+# Every change is refused with Vim's E21, whole: d and c once their motion
+# is, a mark's letter and a text object among them, :d, and d on a
+# selection, which Escape then ends.
+refused=0
+for change in dd cc S x p dj cw dip "d'a" c3j; do
+  press "$change"
+  refused=$((refused + 1))
+  logged '^said: E21: Cannot make changes$' "$refused"
+done
+press ':d'
+press -k Return
+logged '^said: E21: Cannot make changes$' $((refused + 1))
+selects=$(how_many '^key Select None')
+press v
+logged '^key Select None' $((selects + 1))
+press d
+logged '^said: E21: Cannot make changes$' $((refused + 2))
+rests=$(how_many '^key Rest None')
+press -k Escape
+logged '^key Rest None' $((rests + 1))
+
 # gO lists the five headings, j chooses the next, Return goes to it.
 press gg
 logged '^key First None' $((tops + 3))
