@@ -1101,17 +1101,26 @@ Floating {
         * drawer.pitch
     // The top of every line's box it lays on the pitch past its title, down
     // the content: the facts', the moment's, the preview's and the words'.
-    function lineTops() {
-        const tops = [];
+    // Each a fact takes as { top, bottom }, all its lines, a heading held
+    // with the thing under it; and each line of the moment, the preview
+    // and the words, which run on as reading does.
+    function lineSpans() {
+        const spans = [];
         const run = (top, count) => {
             for (let at = 0; at < count; at++)
-                tops.push(top + at * drawer.pitch);
+                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch });
         };
+        let heading = null;
         for (let at = 0; at < factRows.count; at++) {
             const row = factRows.itemAt(at);
-            if (row)
-                run(flow.y + factsShown.y + row.y + row.base - drawer.pitch / 2 - drawer.dropped,
-                    row.lines);
+            if (!row)
+                continue;
+            const top = flow.y + factsShown.y + row.y + row.base - drawer.pitch / 2
+                - drawer.dropped;
+            const span = { top: heading ?? top, bottom: top + row.lines * drawer.pitch };
+            heading = row.heading ? span.top : null;
+            if (!row.heading)
+                spans.push(span);
         }
         for (let at = 0; at < groupsShown.count; at++) {
             const group = groupsShown.itemAt(at);
@@ -1122,17 +1131,21 @@ Floating {
             run(flow.y + previewBox.y, previewBox.lines.length);
         if (wordsBox.visible)
             run(flow.y + wordsBox.y, bodyText.lineCount);
-        return tops;
+        return spans;
     }
-    // Where the view ends: at its room, or where a line would run past it,
-    // at that line's top, so a line is shown whole or not at all. A list
-    // whose things wrap stands them a beat off the pitch the room is
-    // counted on, so one of its lines may fall across it.
+    // Where the view ends: at its room, or where a thing would run past it,
+    // at that thing's top, so a thing is shown whole, all its lines, or not
+    // at all (VKCF3Z, 2026-11-05: a saying's first line alone reads as
+    // cut). A list whose things wrap stands them a beat off the pitch the
+    // room is counted on, so one may fall across it. A thing begun above
+    // the view, taller than it shows, ends at its last whole line instead.
     readonly property real shownTo: {
-        const end = view.contentY + viewRoom;
-        const across = lineTops().filter(top => top < end - 0.5
-            && top + drawer.pitch > end + 0.5);
-        return Math.min(end, ...across) - view.contentY;
+        const top = view.contentY;
+        const end = top + viewRoom;
+        const across = lineSpans().filter(span => span.top < end - 0.5
+            && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
+                : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch);
+        return Math.min(end, ...across) - top;
     }
 
     Flickable {
