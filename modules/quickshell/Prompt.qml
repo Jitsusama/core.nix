@@ -521,6 +521,15 @@ Item {
             event.accepted = true;
             return;
         }
+        // The find's first colon opens the command line, as normal's does.
+        if (QueryKeys.opensCommands(key, mode, input.text)) {
+            keysTaken++;
+            event.accepted = true;
+            input.deselect();
+            mode = "normal";
+            standing = QueryKeys.read(QueryKeys.rest(), key, mode).standing;
+            return;
+        }
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a

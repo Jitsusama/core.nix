@@ -442,6 +442,14 @@ function read(standing, key, mode, words = false) {
     return { act: "", count: 0, standing: rest(), ours: still(mode), idle: still(mode) };
 }
 
+// Whether a key opens the command line from the line as it stands: a
+// colon as the find's first letter does, as Vim's colon does from
+// anywhere, so a command is a colon away on opening; after letters it's
+// one of the find's, and a prompt's words are their own.
+function opensCommands(key, mode, text) {
+    return key === ":" && mode === "find" && text === "";
+}
+
 // How the keys stand once a sequence begun has waited its timeoutlen for
 // the rest: its keys let go, and a count typed before them kept, since a
 // count waits for its move as long as it takes, as Vim's does.
