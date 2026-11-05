@@ -368,6 +368,45 @@ QtObject {
         holds("and one y can't copy", says("y", "copy", null, 0), "y \u00b7 nothing to copy");
     }
 
+    // A paragraph of rows, as Vim's of lines (VKCF3Z, 2026-11-05): a run of
+    // one kind, or of one sender's notices, ending at a gap or where that
+    // changes. ip and ap take it, the same rows, since a list has no blank
+    // rows; } and { move by it, and d} and d{ stop short of where they
+    // land, as Vim's exclusive motions do.
+    function paragraphs(holds) {
+        const rows = [{ what: "window" }, { what: "window" },
+            { what: "notice", sender: "Slack" }, { what: "notice", sender: "Slack" },
+            { what: "notice", sender: "Mail" }, { what: "window" },
+            { what: "window", gap: true }];
+        const of = row => row.what === "notice" ? `notice:${row.sender}` : row.what;
+        const runOf = at => Operators.runAt(rows, at, of);
+        holds("a run of one kind", runOf(1), { from: 0, to: 1 });
+        holds("one sender's notices", runOf(2), { from: 2, to: 3 });
+        holds("another sender's apart", runOf(4), { from: 4, to: 4 });
+        holds("and a gap ends one, the kind the same", [runOf(5), runOf(6)],
+            [{ from: 5, to: 5 }, { from: 6, to: 6 }]);
+        const place = at => ({ at, highest: 0, last: 6, top: 0, bottom: 6, screen: 8, runOf });
+        const moved = (act, count, at) => Operators.moved(act, count, place(at));
+        holds("} goes to the next run's first row", moved("paragraphOn", 0, 0), 2);
+        holds("with a count", moved("paragraphOn", 2, 0), 4);
+        holds("and stops at the last", moved("paragraphOn", 9, 3), 6);
+        holds("{ to its own run's first", moved("paragraphBack", 0, 3), 2);
+        holds("or the one before, from there", moved("paragraphBack", 0, 2), 0);
+        holds("a place with no runs is one", Operators.moved("paragraphOn", 0,
+            { at: 1, highest: 0, last: 6, top: 0, bottom: 6, screen: 8 }), 6);
+        holds("{ and } repeat as moves", [Keys.repeats("paragraphOn"),
+            Keys.repeats("paragraphBack")], [true, true]);
+        const object = (act, count, at) => Operators.spanned(0, { act, count }, place(at));
+        holds("dip takes the run", object("inParagraph", 0, 3), { from: 2, to: 3 });
+        holds("and ap the same rows", object("aParagraph", 0, 3), { from: 2, to: 3 });
+        holds("d2ip two runs", object("inParagraph", 2, 3), { from: 2, to: 4 });
+        holds("d} up to the next run", object("paragraphOn", 0, 0), { from: 0, to: 1 });
+        holds("and to the end from the last run", object("paragraphOn", 0, 6),
+            { from: 6, to: 6 });
+        holds("d{ back to its run's first, the cursor's row left",
+            object("paragraphBack", 0, 3), { from: 2, to: 2 });
+    }
+
     // Visual line, Vim's V over the rows: its keys, the rows it takes and
     // what Return over them says.
     function visual(holds) {
@@ -391,9 +430,38 @@ QtObject {
                 "normal"],
             ["a colon opens the command line, the selection standing", ["Escape", "V", ":"],
                 ["normal", "selectLines", "command"], "visual"],
-            ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A", "x"],
+            ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A"],
                 ["normal", "selectLines"], "visual"],
-            ["in insert, V types", ["V"], [], "insert"]
+            ["in insert, V types", ["V"], [], "insert"],
+            // On a list v is V, as the spec has it: rows have no letters
+            // to choose among, so either begins visual line and ends it.
+            ["v begins visual line on the rows", ["Escape", "v"], ["normal", "selectLines"],
+                "visual"],
+            ["and v or V ends it", ["Escape", "v", "V", "V", "v"], ["normal", "selectLines",
+                "selectLines", "selectLines", "selectLines"], "normal"],
+            ["x takes the selection as d does", ["Escape", "V", "j", "x"],
+                ["normal", "selectLines", "next", "ending"], "normal"],
+            ["but in normal x is nothing on the rows", ["Escape", "x"], ["normal"], "normal"],
+            ["o goes to its other end", ["Escape", "V", "j", "o"],
+                ["normal", "selectLines", "next", "otherEnd"], "visual"],
+            ["gv brings the last back", ["Escape", "g", "v"], ["normal", "reselect"],
+                "visual"],
+            ["ip takes the run the cursor's in", ["Escape", "V", "i", "p"],
+                ["normal", "selectLines", "inParagraph"], "visual"],
+            ["and ap", ["Escape", "V", "a", "p"],
+                ["normal", "selectLines", "aParagraph"], "visual"],
+            ["dip and yap are an operator over them", ["Escape", "d", "i", "p", "y", "a",
+                "p"], ["normal", "ending inParagraph", "copy aParagraph"], "normal"],
+            ["with a count", ["Escape", "2", "d", "i", "p"], ["normal", "ending 2 inParagraph"],
+                "normal"],
+            ["while i alone after d lets it go", ["Escape", "d", "i", "j"], ["normal"],
+                "normal"],
+            ["} and { move by runs", ["Escape", "}", "{"], ["normal", "paragraphOn",
+                "paragraphBack"], "normal"],
+            ["and extend visual", ["Escape", "V", "}"], ["normal", "selectLines",
+                "paragraphOn"], "visual"],
+            ["and are d's motions", ["Escape", "d", "}"], ["normal", "ending paragraphOn"],
+                "normal"]
         ];
         for (const [what, keys, want, mode] of doing) {
             const got = typed(keys);
@@ -404,6 +472,21 @@ QtObject {
         holds("d in visual waits for no motion",
             typed(["Escape", "V", "d"]).standing.operator, undefined);
         holds("V is once a press", Keys.repeats("selectLines"), false);
+        holds("and so are o, gv, ip and ap", ["otherEnd", "reselect", "inParagraph",
+            "aParagraph"].some(act => Keys.repeats(act)), false);
+        holds("the selection ends on x as on d", Keys.takesSelection("ending"), true);
+        // The operator pressed again within 300 ms of visual's is taken
+        // with it, so V j j d d takes three and never two more: the same
+        // operator's key, d or y, never x, which is no operator.
+        const visualD = { key: "d", at: 1000 };
+        holds("d again within 300 ms is taken with visual's",
+            Operators.takenWith(visualD, "d", 1299, 300), true);
+        holds("but not from 300 ms", Operators.takenWith(visualD, "d", 1300, 300), false);
+        holds("nor another key", Operators.takenWith(visualD, "y", 1100, 300), false);
+        holds("nor after x",
+            Operators.takenWith({ key: "x", at: 1000 }, "x", 1100, 300), false);
+        holds("nor with none before", Operators.takenWith(null, "d", 1100, 300), false);
+        paragraphs(holds);
         holds("the command line takes the selection's range", [Keys.rangeFor(0, "visual"),
             Keys.rangeFor(3, "visual"), Keys.rangeFor(3, "normal"), Keys.rangeFor(0, "normal")],
         ["'<,'>", "'<,'>", ".,.+2", ""]);
@@ -425,6 +508,14 @@ QtObject {
             [Operators.heldFrom(named(["a", "c"]), "b", 1, keyOf),
                 Operators.heldFrom(named(["a"]), "b", 1, keyOf)], [1, 0]);
         holds("and none begun stays none", Operators.heldFrom(named(["a"]), "", -1, keyOf), -1);
+        // gv's last selection is held by its rows too, both ends, so rows
+        // changing between choosing and gv never hand d other rows.
+        const chosen = Operators.marked(named(["a", "b", "c"]), 1, 2, keyOf);
+        holds("gv brings back the rows chosen, a row having arrived above them",
+            Operators.reselected(named(["new", "a", "b", "c"]), chosen, keyOf),
+            { from: 2, at: 3 });
+        holds("and where one has gone, what's left of them",
+            Operators.reselected(named(["a", "c"]), chosen, keyOf), { from: 1, at: 1 });
 
         // Return over the selection opens the rows it can, and says how
         // many of how many where it couldn't open them all.
@@ -787,8 +878,8 @@ QtObject {
         for (const act of ["select", "selectLines", "otherEnd", "copy", "copyLines", "reselect",
             "back"])
             holds(`the drawer's visual: ${act} is once a press`, Keys.repeats(act), false);
-        holds("the drawer's visual: v on the rows chooses nothing here",
-            typed(["Escape", "v"]).mode, "normal");
+        holds("the drawer's visual: v on the rows is V, the rows' visual line",
+            typed(["Escape", "v"]).mode, "visual");
         for (const mode of ["pageVisual", "pageVisualLine"])
             holds(`the drawer's visual: ${mode} is the drawer's`, Keys.paged(mode), true);
         holds("the drawer's visual: the page is the drawer's", Keys.paged("page"), true);
@@ -1219,11 +1310,10 @@ QtObject {
             Operators.moved("previous", 0, Object.assign({}, place, { at: 0, highest: -1 })), -1);
         holds("gg goes to an answer's headline",
             Operators.moved("first", 0, Object.assign({}, place, { highest: -1 })), -1);
-        holds("j with no rows stays where it is",
-            Operators.moved("next", 0,
-                { at: 0, highest: 0, last: -1, top: 0, bottom: 0, screen: 8 }), 0);
-        holds("M in a view of three rows, the second",
-            Operators.moved("viewMiddle", 0, Object.assign({}, place, { top: 0, bottom: 2, last: 2 })), 1);
+        holds("j with no rows stays where it is", Operators.moved("next", 0,
+            { at: 0, highest: 0, last: -1, top: 0, bottom: 0, screen: 8 }), 0);
+        holds("M in a view of three rows, the second", Operators.moved("viewMiddle", 0,
+            Object.assign({}, place, { top: 0, bottom: 2, last: 2 })), 1);
 
         holds("the line opens in insert", typed([]).mode, "insert");
         holds("a letter in insert is the field's to type", typed(["x"]).ours, false);

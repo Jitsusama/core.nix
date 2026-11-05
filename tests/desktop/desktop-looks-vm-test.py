@@ -480,6 +480,49 @@ def changed_from(after: Image.Image, frame: Image.Image) -> float:
     return float(ImageStat.Stat(ImageChops.difference(frame, after).convert("L")).mean[0])
 
 
+# Visual line counts the rows it holds in the mode word, and what arrives
+# while they're chosen waits, counted last among the foot's facts, beside
+# the mode holding them still (VKCF3Z, 2026-11-05), photographed at each
+# of Joel's scales for a person to judge.
+
+
+def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """V j counts two in the mode word, and a window arriving waits as "1 new" in the foot.
+
+    It's shown in Super+Tab's windows, which is all of them, since a typed search said again
+    finds only what it found.
+    """
+    machine = desktop.machine
+    desktop.notes_window()
+    others = [desktop.opened(title) for title in ("Notes for Thursday", "Notes for Friday")]
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        named = scale.replace(".", "-")
+        machine.send_key("meta_l-tab")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: shown["held"] == ["windows"] and len(shown["rows"]) > 1
+        )
+        desktop.normal()
+        machine.send_chars("ggVj")
+        desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
+        arriving = desktop.opened(f"Notes for the shot at {named}")
+        desktop.launcher_until(
+            lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
+        )
+        desktop.photograph(f"launcher-visual-waits-at-{named}")
+        machine.send_key("esc")
+        desktop.launcher_until(
+            lambda shown: shown["waiting"] == 0 and not shown["glance"].endswith("new")
+        )
+        desktop.close_launcher()
+        desktop.close(arriving)
+    for other in others:
+        desktop.close(other)
+
+
 def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:

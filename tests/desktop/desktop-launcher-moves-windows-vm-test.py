@@ -610,6 +610,108 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     )
 
 
+# The rest of Vim's visual on the rows: v as V, since a row has no letters;
+# o and gv; ip, a paragraph of rows, a run of one kind; { and } by those
+# runs; the operator pressed again taken with visual's; x as d; and the
+# rows holding still while chosen, what arrives waiting as "1 new" in the
+# foot (VKCF3Z, 2026-11-05).
+PARAGRAPH = ("Paragraph first", "Paragraph second", "Paragraph third")
+ARRIVING = "Paragraph fourth"
+
+
+def test_v_o_gv_ip_and_a_window_waiting_behind_what_is_chosen(desktop: Desktop) -> None:
+    """V's o, gv, ip, { }, yy taken once and x on windows, a window waiting while they're chosen."""
+    for title in PARAGRAPH:
+        desktop.opened(title)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("paragraph")
+    desktop.launcher_until(lambda shown: len(shown["rows"]) == len(PARAGRAPH))
+    desktop.normal()
+    chooses_and_brings_back(desktop)
+    moves_by_runs_and_takes_them(desktop)
+    desktop.close_launcher()
+    waits_behind_what_is_chosen(desktop)
+
+
+def waits_behind_what_is_chosen(desktop: Desktop) -> None:
+    """Open a window while Super+Tab's rows are chosen: it waits as 1 new, then comes in last.
+
+    A typed search said again finds only what it found, so a new window
+    arrives in the windows list, which is all of them.
+    """
+    machine = desktop.machine
+    machine.send_key("meta_l-tab")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["held"] == ["windows"])
+    desktop.normal()
+    machine.send_chars("V")
+    desktop.launcher_until(lambda shown: shown["mode"] == "visual")
+    before = desktop.showing()["rows"]
+    arriving = desktop.opened(ARRIVING)
+    desktop.launcher_until(lambda shown: shown["waiting"] == 1 and shown["rows"] == before)
+    # The row that comes in is the one the list now holds that it didn't:
+    # niri may make the new window the one Joel is in, which gives back
+    # the one he was, so it's known by the order kept, not its name.
+    machine.send_key("esc")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["waiting"] == 0
+            and len(shown["rows"]) == len(before) + 1
+            and shown["rows"][: len(before)] == before
+        )
+    )
+    desktop.close_launcher()
+    desktop.close(arriving)
+
+
+def chooses_and_brings_back(desktop: Desktop) -> None:
+    """Choose by v and j, go to the other end with o, and bring it back with gv."""
+    machine = desktop.machine
+    machine.send_chars("v")
+    desktop.launcher_until(
+        lambda shown: shown["mode"] == "visual" and shown["modeWord"] == "visual line \u00b7 1"
+    )
+    machine.send_chars("j")
+    desktop.launcher_until(lambda shown: shown["current"] == 1 and shown["tinted"] == [0, 1])
+    machine.send_chars("o")
+    desktop.launcher_until(lambda shown: shown["current"] == 0 and shown["tinted"] == [0, 1])
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["tinted"] == [])
+    machine.send_chars("G")
+    desktop.launcher_until(lambda shown: shown["current"] == len(PARAGRAPH) - 1)
+    machine.send_chars("gv")
+    desktop.launcher_until(lambda shown: shown["mode"] == "visual" and shown["tinted"] == [0, 1])
+    # ip takes the run the cursor's in: the three windows, one kind.
+    machine.send_chars("ip")
+    desktop.launcher_until(
+        lambda shown: shown["tinted"] == [0, 1, 2] and shown["modeWord"] == "visual line \u00b7 3"
+    )
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal")
+
+
+def moves_by_runs_and_takes_them(desktop: Desktop) -> None:
+    """Move by runs with } and {, copy a run with V j y y once, and close one with x."""
+    machine = desktop.machine
+    # } goes past the run of windows, which reaches the end, so to its last.
+    machine.send_chars("gg}")
+    desktop.launcher_until(lambda shown: shown["current"] == len(PARAGRAPH) - 1)
+    machine.send_chars("{")
+    desktop.launcher_until(lambda shown: shown["current"] == 0)
+    # y again just after visual's is taken with it: two titles copied, and
+    # no y left waiting for a motion.
+    since = desktop.mark()
+    machine.send_chars("Vjyy")
+    desktop.reported("yanked 2", lambda rest: rest == "", since)
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and shown["flashing"] == [])
+    assert not desktop.showing()["modeWord"].startswith("y"), desktop.showing()
+    # x over one window closes it at once, as d would.
+    with desktop.told("ended 1"):
+        machine.send_chars("Vx")
+    desktop.launcher_until(lambda shown: any(thing["gone"] for thing in shown["things"]))
+
+
 # A window closed while Super+Tab shows it stays in its place, gone, until
 # a key: rows closing up under the cursor was one of the ways the launcher
 # moved with nothing pressed.

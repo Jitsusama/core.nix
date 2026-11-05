@@ -12,7 +12,19 @@ const operators = { d: "ending", y: "copy" };
 // The moves an operator takes as its motion, each linewise on the rows,
 // as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
 // scroll rather than move, so Vim takes none of them as a motion.
-const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"];
+const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
+    "paragraphOn", "paragraphBack"];
+
+// The text objects an operator takes in a motion's place, as dip does.
+const objects = ["inParagraph", "aParagraph"];
+
+// Whether a key is taken with the visual operator before it, `after`, its
+// key and when it was pressed: the same operator's key within `wait` ms,
+// as the spec's V j j d d, whose second d would otherwise wait for a
+// motion on the rows left.
+function takenWith(after, key, now, wait) {
+    return after !== null && key === after.key && key in operators && now - after.at < wait;
+}
 
 // Two counts as one, as Vim multiplies the count before an operator and
 // the one after it: 2d3j goes six rows. Either alone is itself, and
@@ -28,9 +40,10 @@ function multiplied(before, after) {
 // over the row and those below, as dd does; a motion does it as far as
 // that goes, as dj does, with the counts multiplied; a sequence's first
 // key (gg's g) waits for the rest; anything else lets it go. It waits as
-// long as it takes for its motion, as Vim's does. What normal's table
-// makes of the keys typed (`matching`) and how the keys stand at rest
-// (`rested`) are QueryKeys.js's, which reads every other key.
+// long as it takes for its motion, as Vim's does. What a mode's table
+// makes of the keys typed (`matching`, given them and the mode) and how
+// the keys stand at rest (`rested`) are QueryKeys.js's, which reads every
+// other key.
 function operated(standing, key, matching, rested) {
     const { operator } = standing;
     const act = operators[operator.key];
@@ -38,10 +51,13 @@ function operated(standing, key, matching, rested) {
     if (standing.typed.length === 0 && key === operator.key) {
         return { act, count, motion: null, standing: rested, ours: true };
     }
-    // Another operator's key lets this one go, as dy does in Vim.
+    // Another operator's key lets this one go, as dy does in Vim. A text
+    // object is read first, so the i of ip waits rather than inserting.
     const typed = standing.typed.concat([key]);
-    const matched = key in operators ? { act: "", begun: false } : matching(typed);
-    if (motions.includes(matched.act)) {
+    const object = matching(typed, "object");
+    const matched = key in operators ? { act: "", begun: false }
+        : object.act !== "" || object.begun ? object : matching(typed, "normal");
+    if (motions.includes(matched.act) || objects.includes(matched.act)) {
         return { act, count: 0, motion: { act: matched.act, count }, standing: rested,
             ours: true };
     }
@@ -52,16 +68,44 @@ function operated(standing, key, matching, rested) {
     return { act: "", count: 0, standing: rested, ours: true };
 }
 
+// The rows an operator takes, from where the rows stand (as moved takes
+// them): over the row and count - 1 below it with no motion, as dd
+// and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
+// row to wherever the motion goes, whichever way, every row between
+// included, as a linewise motion takes lines. No rows span nothing.
+// A paragraph's text object takes its run and count - 1 after it. } and {
+// are exclusive, as Vim's are, leaving out the later end: d} the row it
+// lands on, unless the run it began in ends the list there, and d{ the
+// cursor's own.
+function spanned(count, motion, place) {
+    if (place.last < place.highest) {
+        return { from: 0, to: -1 };
+    }
+    if (motion === null) {
+        return { from: place.at, to: Math.min(place.last, place.at + Math.max(1, count) - 1) };
+    }
+    if (motion.act === "inParagraph" || motion.act === "aParagraph") {
+        return paragraph(motion.count, place);
+    }
+    const to = moved(motion.act, motion.count, place);
+    const exclusive = (motion.act === "paragraphOn" || motion.act === "paragraphBack")
+        && to !== place.at && !(motion.act === "paragraphOn" && sameRun(place, to));
+    if (exclusive) {
+        return to > place.at ? { from: place.at, to: to - 1 } : { from: to, to: place.at - 1 };
+    }
+    return { from: Math.min(place.at, to), to: Math.max(place.at, to) };
+}
+
 // Where a move takes the selection, from where the rows stand: the row
 // selected, the highest it may go (-1 where an answer's headline sits
 // above the rows) and the last, the first and last rows wholly in view,
-// and how many rows a screen holds. A count moves that many times, or,
-// with gg and G, goes to that row, counted from 1, as a line's number is.
-// H and L count from the view's top and bottom. Ctrl+D and Ctrl+U move
-// half the rows in view, or a count's rows, as Vim's 'scroll' takes it.
-// Every move stops at the first and last rows, never going round. The
-// moves' keys are QueryKeys.js's; it's here beside the operators that
-// take a move as their motion, QueryKeys.js having outgrown its room.
+// how many rows a screen holds, and the run a row is in (runOf, from
+// runAt), a place without one being one run. A count moves that many
+// times, or, with gg and G, goes to that row, counted from 1, as a line's
+// number is. H and L count from the view's top and bottom. Ctrl+D and
+// Ctrl+U move half the rows in view, or a count's rows, as Vim's 'scroll'
+// takes it. Every move stops at the first and last rows, never going
+// round. The moves' keys are QueryKeys.js's.
 function moved(act, count, place) {
     const times = Math.max(1, count);
     const within = at => Math.max(place.highest, Math.min(at, place.last));
@@ -89,25 +133,67 @@ function moved(act, count, place) {
         return within(place.at + times * place.screen);
     case "pageUp":
         return within(place.at - times * place.screen);
+    case "paragraphOn":
+    case "paragraphBack":
+        return paragraphed(act === "paragraphOn", times, place);
     default:
         return place.at;
     }
 }
 
-// The rows an operator takes, from where the rows stand (as moved takes
-// them): over the row and count - 1 below it with no motion, as dd
-// and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
-// row to wherever the motion goes, whichever way, every row between
-// included, as a linewise motion takes lines. No rows span nothing.
-function spanned(count, motion, place) {
-    if (place.last < place.highest) {
-        return { from: 0, to: -1 };
+// The run a row is in, by the place's runOf, or the whole list.
+function runIn(place, at) {
+    return place.runOf ? place.runOf(at) : { from: place.highest, to: place.last };
+}
+
+// Where } and { go, `times` runs on or back: to the next run's first row,
+// or the last row past the last run; and to this run's first row, or the
+// run before's from there.
+function paragraphed(on, times, place) {
+    let at = place.at;
+    for (let time = 0; time < times; time += 1) {
+        const run = runIn(place, at);
+        if (on) {
+            at = Math.min(run.to + 1, place.last);
+        } else {
+            at = at > run.from ? run.from
+                : runIn(place, Math.max(place.highest, at - 1)).from;
+        }
     }
-    if (motion === null) {
-        return { from: place.at, to: Math.min(place.last, place.at + Math.max(1, count) - 1) };
+    return at;
+}
+
+// The run the cursor's in and count - 1 after it, to the last row.
+function paragraph(count, place) {
+    const first = runIn(place, place.at);
+    let last = first;
+    for (let more = 1; more < Math.max(1, count) && last.to < place.last; more += 1) {
+        last = runIn(place, last.to + 1);
     }
-    const to = moved(motion.act, motion.count, place);
-    return { from: Math.min(place.at, to), to: Math.max(place.at, to) };
+    return { from: first.from, to: last.to };
+}
+
+// Whether a row is in the cursor's run, as } landing on the last row of
+// the last run is, which d} takes.
+function sameRun(place, at) {
+    const run = runIn(place, place.at);
+    return at >= run.from && at <= run.to;
+}
+
+// The run of rows a row is in: the rows round it of the same `of`, its kind
+// or a notice's sender, none set apart by a gap above it (VKCF3Z,
+// 2026-11-05), as Vim's paragraph is the lines between blank ones.
+function runAt(rows, at, of) {
+    const key = of(rows[at]);
+    let from = at;
+    while (from > 0 && !rows[from].gap && of(rows[from - 1]) === key) {
+        from -= 1;
+    }
+    let to = at;
+    while (to < rows.length - 1 && !rows[to + 1].gap && of(rows[to + 1]) === key) {
+        to += 1;
+    }
+    return { from, to };
 }
 
 // A row's ending action, the one that ends what it is, as a window's Close
@@ -261,6 +347,22 @@ function heldFrom(rows, id, from, identity) {
     }
     const found = id === "" ? -1 : rows.findIndex(row => identity(row) === id);
     return found >= 0 ? found : Math.max(0, Math.min(from, rows.length - 1));
+}
+
+// The last selection as gv keeps it, each end by its row as well as its
+// place, so that it can be found again once the rows have changed.
+function marked(rows, from, at, identity) {
+    const id = index => (rows[index] ? identity(rows[index]) : "");
+    return { from, at, fromId: id(from), atId: id(at) };
+}
+
+// The last selection found again in the rows as they are now: each end on
+// its row, or where it was within what's left once that row has gone.
+function reselected(rows, last, identity) {
+    return {
+        from: heldFrom(rows, last.fromId, last.from, identity),
+        at: heldFrom(rows, last.atId, last.at, identity)
+    };
 }
 
 // What the foot says Return does over a selection: open its rows, by

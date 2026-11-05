@@ -72,16 +72,23 @@ const table = [
     // rows name only the doubled keys, for saying them.
     { act: "ending", mode: "normal", keys: [["d", "d"]] },
     { act: "copy", mode: "normal", keys: [["y", "y"]] },
-    // Visual line, Vim's V, the language's select-lines: the rows from
-    // where it began to the cursor, which normal's moves extend (inMode,
-    // below), and which d, y and Return take at once, as Vim's visual
-    // operators wait for no motion. V again ends it, and Escape, after a
-    // count begun; a colon hands the command line the selection.
-    { act: "selectLines", mode: "normal", keys: ["V"] },
-    { act: "selectLines", mode: "visual", keys: ["V"] },
-    { act: "ending", mode: "visual", keys: ["d"] },
+    // Visual line, Vim's V: the rows from where it began to the cursor,
+    // extended by normal's moves (inMode) and taken at once by d, y and
+    // Return; a colon hands them to the command line. On rows v is V, a row
+    // having no letters, and x is d, o the other end and gv the last, as Vim's.
+    { act: "selectLines", mode: "normal", keys: ["V", "v"] },
+    { act: "selectLines", mode: "visual", keys: ["V", "v"] },
+    { act: "ending", mode: "visual", keys: ["d", "x"] },
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
+    { act: "otherEnd", mode: "visual", keys: ["o"] },
+    { act: "reselect", mode: "normal", keys: [["g", "v"]] },
+    // A paragraph of rows is a run of one kind or sender that a gap ends
+    // (Operators.runAt): } and { go by them, ip and ap take one, as in Vim.
+    { act: "paragraphOn", mode: "normal", keys: ["}"] },
+    { act: "paragraphBack", mode: "normal", keys: ["{"] },
+    { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
+    { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
     { act: "insert", mode: "normal", keys: ["i"] },
@@ -202,7 +209,8 @@ const table = [
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
     "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
-    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "seekNext", "seekPrevious"];
+    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "seekNext", "seekPrevious",
+    "paragraphOn", "paragraphBack"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -307,6 +315,9 @@ function inMode(row, mode) {
     if (mode === "visual" && row.mode === "normal") {
         return moves.includes(row.act);
     }
+    if (mode === "visual" && row.mode === "object") {
+        return true;
+    }
     return row.mode === mode || row.mode === "both";
 }
 
@@ -348,7 +359,7 @@ function beforeTable(standing, key, mode, words) {
             { count: standing.count + key, typed: [] }), ours: true };
     }
     if (standing.operator !== undefined) {
-        return Operators.operated(standing, key, typed => matching(typed, "normal"), rest());
+        return Operators.operated(standing, key, matching, rest());
     }
     if (mode === "normal" && atRest && !words && key in operators) {
         const operator = { key, count: standing.count };
@@ -457,6 +468,9 @@ function modeAfter(act, mode) {
     // it chooses the page's lines (below).
     if (act === "selectLines" && !paged(mode)) {
         return mode === "visual" ? "normal" : "visual";
+    }
+    if (act === "reselect" && !paged(mode)) {
+        return "visual";
     }
     // Visual's d, y and Return take the selection and end it, as Vim's
     // visual operators do; its colon keeps it behind the command line.

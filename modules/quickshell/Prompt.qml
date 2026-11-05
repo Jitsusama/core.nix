@@ -29,6 +29,7 @@ import QtQuick
 import "Reading.js" as Reading
 import "Editing.js" as Editing
 import "QueryKeys.js" as QueryKeys
+import "Operators.js" as Operators
 import "Typing.js" as Typing
 
 Item {
@@ -101,6 +102,12 @@ Item {
     // window beside, and "pageVisual" or "pageVisualLine" while choosing
     // there. It opens in insert (take()).
     property string mode: "insert"
+    // Visual's operator just done, its key and when, for the same pressed
+    // again to be taken with it (Operators.takenWith); null after any key.
+    property var visualOperated: null
+    // Whether there's a selection for gv to bring back (Launcher.qml's
+    // lastVisual).
+    property bool reselectable: false
     // Whether the keys are on the rows, in normal and visual alike.
     readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
     // The kind the drawer last chose by, for gv to choose by again, let go
@@ -466,6 +473,15 @@ Item {
                 prompt.answered(key);
             return;
         }
+        // The operator pressed again just after visual's is taken with it;
+        // a key with no name, as Shift alone, lets nothing go.
+        const after = visualOperated;
+        if (key !== "")
+            visualOperated = null;
+        if (Operators.takenWith(after, key, Date.now(), wait)) {
+            event.accepted = true;
+            return;
+        }
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -491,17 +507,29 @@ Item {
         event.accepted = true;
         const text = input.text;
         const at = input.cursorPosition;
-        const next = read.act === "reselect" && lastChosen !== "" ? lastChosen
+        // gv on the rows with no selection before it does nothing, as
+        // Vim's; with one, the rows take it back before visual begins round
+        // the cursor. The drawer's gv goes back to the mode it chose in.
+        const onRows = !QueryKeys.paged(mode);
+        if (read.act === "reselect" && onRows) {
+            if (!reselectable)
+                return;
+            prompt.stepped(read.act, read.count);
+        }
+        const next = read.act === "reselect" && !onRows && lastChosen !== "" ? lastChosen
             : QueryKeys.modeAfter(read.act, mode);
         if (next !== mode) {
             // Visual's d, y and Return take the selection before it ends,
             // as Vim's visual operators do (Launcher.qml's operated, which
             // the file picker's takes(rows) hooks for Return).
-            if (mode === "visual" && QueryKeys.takesSelection(read.act))
+            if (mode === "visual" && QueryKeys.takesSelection(read.act)) {
                 prompt.operated(read.act, 0, { act: "visual", count: 0 });
+                visualOperated = { key, at: Date.now() };
+            }
             // y copies what the drawer chose and gv brings the last back
             // before the mode moves, while it still holds what they act on.
-            else if (["copy", "copyLines", "reselect"].includes(read.act))
+            else if (["copy", "copyLines"].includes(read.act)
+                || read.act === "reselect" && !onRows)
                 prompt.stepped(read.act, read.count);
             input.deselect();
             // Going into insert on a prompt's words is a change u takes

@@ -2878,7 +2878,27 @@ Scope {
         const shown = matches.filter(row => !row.endedBy);
         const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        return Steady.kept(shown, found.concat(renamed), steadyId);
+        if (!holdingRows) {
+            waitingRows = 0;
+            return Steady.kept(shown, found.concat(renamed), steadyId);
+        }
+        const still = Steady.held(shown, found.concat(renamed), steadyId);
+        waitingRows = still.waiting;
+        return still.rows;
+    }
+
+    // While visual, a pending operator or the command line acts on the
+    // rows, they hold still: what arrives waits, counted in the foot as
+    // "2 new", and comes in at the end once it ends, as a refresh adds it
+    // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05).
+    readonly property bool holdingRows: open && (visual || pendingSaid !== ""
+        || commanding !== null)
+    property int waitingRows: 0
+    readonly property string waitingSaid: waitingRows === 0 ? ""
+        : (Words.field.waiting ?? "").replace("{count}", String(waitingRows))
+    onHoldingRowsChanged: {
+        if (!holdingRows && waitingRows > 0)
+            reshow(held.length);
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -3210,7 +3230,8 @@ Scope {
     function foundMore(fresh) {
         if (!open || asking || typed.trim() === "")
             return;
-        if (fresh)
+        // Rows held still take what was found in their order, waiting.
+        if (fresh && !holdingRows)
             search(typed);
         else
             reshow(held.length);
@@ -3824,11 +3845,52 @@ Scope {
     readonly property var visualSpan: Operators.selection(visualFrom, current)
     readonly property int visualTop: visualSpan.from
     readonly property int visualBottom: visualSpan.to
-    onVisualChanged: visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current
     // What the row it began on is, to find it again as the rows change.
     property string visualId: ""
     onVisualFromChanged: visualId = visualFrom >= 0 && matches[visualFrom]
         ? Rank.identity(matches[visualFrom]) : ""
+
+    // The last selection, where it began and where the cursor was, each
+    // held by its row, for gv to bring back as Vim's '< and '> keep it;
+    // null until there's been one, and again once the launcher closes.
+    property var lastVisual: null
+    onVisualChanged: {
+        if (!visual && visualFrom >= 0)
+            lastVisual = Operators.marked(matches, visualFrom, current, Rank.identity);
+        visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current;
+    }
+
+    // The run of rows one is in, a paragraph to ip, ap, { and }: rows of
+    // one kind, or a notice's of one sender, no gap between (Operators.js).
+    function runOf(at) {
+        return Operators.runAt(matches, at, row => {
+            const kind = kindOf(row);
+            return kind === "notice" ? `notice:${row.sender ?? ""}` : kind;
+        });
+    }
+
+    // Visual's own acts on the rows: o to the selection's other end; ip and
+    // ap over the run the cursor's in, and count - 1 after it; and gv, the
+    // last selection's rows again wherever they've moved, as Vim's gv
+    // keeps its lines.
+    function visualStep(act, count) {
+        const last = matches.length - 1;
+        if (act === "otherEnd") {
+            const other = visualFrom;
+            visualFrom = current;
+            arrowed(other, "o");
+        } else if (act === "reselect" && lastVisual !== null && last >= 0) {
+            const back = Operators.reselected(matches, lastVisual, Rank.identity);
+            visualFrom = back.from;
+            arrowed(back.at, "gv");
+        } else if (act === "inParagraph" || act === "aParagraph") {
+            const run = Operators.spanned(0, { act, count }, {
+                at: current, highest: prompt.highest, last, runOf: at => runOf(at)
+            });
+            visualFrom = run.from;
+            arrowed(run.to, act === "inParagraph" ? "ip" : "ap");
+        }
+    }
 
     // The rows the selection takes.
     function visualRows() {
@@ -3884,7 +3946,8 @@ Scope {
             last: matches.length - 1,
             top: view.top,
             bottom: view.bottom,
-            screen: rows
+            screen: rows,
+            runOf: at => runOf(at)
         });
         const taken = Operators.taken(matches, span, headline);
         if (act === "copy")
@@ -4613,6 +4676,8 @@ Scope {
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
+            // How many rows wait behind rows held still (holdingRows).
+            waiting: root.waitingRows,
             begun: prompt.standing.typed.join(""),
             // The command line, while it's open: what it holds, the line
             // chosen, and each line its menu shows, as its command and
@@ -4941,9 +5006,12 @@ Scope {
     property int homeDepth: 0
 
     onOpenChanged: {
-        // A viewer's line is over once the launcher closes (viewerCommandLine).
-        if (!open)
+        // A viewer's line is over once the launcher closes (viewerCommandLine),
+        // and gv has nothing to bring back in the rows it opens on.
+        if (!open) {
             over = null;
+            lastVisual = null;
+        }
         madeSince(open ? "opening" : "closing");
         if (open)
             traces.opened({});
@@ -5423,6 +5491,7 @@ Scope {
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
+                        reselectable: root.lastVisual !== null
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) =>
@@ -5484,6 +5553,12 @@ Scope {
                             case "openOwn":
                                 root.matches[root.current]?.openOwn?.();
                                 return;
+                            case "otherEnd":
+                            case "reselect":
+                            case "inParagraph":
+                            case "aParagraph":
+                                root.visualStep(act, count);
+                                return;
                             }
                             const view = list.inView();
                             const to = Operators.moved(act, count, {
@@ -5492,7 +5567,8 @@ Scope {
                                 last: root.matches.length - 1,
                                 top: view.top,
                                 bottom: view.bottom,
-                                screen: root.rows
+                                screen: root.rows,
+                                runOf: at => root.runOf(at)
                             });
                             if (act === "halfDown" || act === "halfUp")
                                 list.scrollRows(to - root.current);
@@ -6306,13 +6382,21 @@ Scope {
                                     root.factsWidest[`${fact.entry.name}:${fact.way}`] ?? 0);
                             }
 
+                            // What waits behind rows held still, "2 new":
+                            // the last fact, beside the mode holding them,
+                            // which never gives way, so the rest fit what
+                            // it leaves (VKCF3Z, 2026-11-05).
+                            readonly property var waiting: root.waitingSaid === "" ? []
+                                : [{ entry: { name: "waiting" }, way: "", said: root.waitingSaid }]
                             readonly property var fit: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
-                                return Standing.fittedFrom(facts, told => wide(told) <= foot.room,
+                                const left = foot.room - (waiting.length === 0 ? 0
+                                    : place(waiting[0]) + spacing);
+                                return Standing.fittedFrom(facts, told => wide(told) <= left,
                                     root.footStage);
                             }
-                            readonly property var kept: fit.told
+                            readonly property var kept: fit.told.concat(waiting)
 
                             // Noted once the binding has settled, since `fit`
                             // reads what this writes.

@@ -6636,6 +6636,7 @@
       "pageVisual": "visual",
       "pageVisualLine": "visual line"
     },
+    "waiting": "{count} new",
     "keys": {
       "complete": "complete",
       "clear": "clear",

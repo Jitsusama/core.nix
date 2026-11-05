@@ -58,6 +58,25 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
+        // [what, the rows shown, the rows now, how they're shown while
+        // held, how many wait]: in visual, operator-pending or on the
+        // command line the rows hold still and a new one waits behind
+        // "2 new" until it ends (VKCF3Z's spec), each shown row saying
+        // what it says now and one gone staying, as ever.
+        const holding = [
+            ["nothing new waits for nothing", "a b", "b a", "a b", 0],
+            ["a new row waits", "a b", "c a b", "a b", 1],
+            ["and two", "a", "d c a", "a", 2],
+            ["a row gone stays, gone, a new one waiting", "a b", "c a", "a b-", 1],
+            ["each says what it says now", "a:working b", "b a:waiting", "a:waiting b", 0]
+        ];
+        for (const [what, shown, now, want, waiting] of holding) {
+            const held = Steady.held(rows(shown), rows(now), id);
+            const got = [read(held.rows), held.waiting];
+            if (JSON.stringify(got) !== JSON.stringify([want, waiting]))
+                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify([want, waiting])}`);
+        }
+
         // [what, the rows shown, the rows now, what's left once a key makes
         // the list afresh]: Write in Slack's dimmed row, there until Slack
         // answers, stands where it is through the search a step-in makes.
