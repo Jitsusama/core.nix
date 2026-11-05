@@ -82,7 +82,7 @@ const table = [
     { act: "selectLines", mode: "visual", keys: ["V", "v"] },
     { act: "ending", mode: "visual", keys: ["d", "x"] },
     { act: "copy", mode: "visual", keys: ["y"] },
-    { act: "normal", mode: "visual", keys: ["Escape"] },
+    { act: "normal", mode: "visual", keys: ["Escape", "Ctrl+c"] },
     // o goes to the other end and gv brings the last back, as Vim's do.
     { act: "otherEnd", mode: "visual", keys: ["o"] },
     { act: "reselect", mode: "normal", keys: [["g", "v"]] },

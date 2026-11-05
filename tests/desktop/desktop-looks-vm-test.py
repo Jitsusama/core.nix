@@ -376,12 +376,15 @@ def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
         machine.send_chars("gg")
         desktop.launcher_until(lambda shown: shown["current"] == 0)
         before = desktop.showing()
-        # d waiting says at once, in the mode word's room, what it will
-        # take, cut at a whole word to the room, and moves nothing; j then
+        # d waiting says at once what it will take, the row's name whole,
+        # since two windows here begin "Notes": the row's keys, which no
+        # key does while d waits, give way to it. It moves nothing; j then
         # takes both rows, and asks once for both.
         machine.send_chars("d")
         desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 close"))
         shown = desktop.showing()
+        assert shown["modeWord"] == "d \u00b7 close Notes for Tuesday", f"at {scale} {shown}"
+        assert shown["hints"] == [], f"at {scale} {shown}"
         assert shown["tinted"] == [shown["current"]], shown
         assert len(shown["glance"]) == len(before["glance"]), f"at {scale} d cut {shown}"
         desktop.photograph(f"launcher-pending-at-{named}")

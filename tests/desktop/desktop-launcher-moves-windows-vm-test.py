@@ -533,6 +533,13 @@ def test_v_and_j_choose_windows_for_y_d_and_return(desktop: Desktop) -> None:
     # rows as it finds them and leaves the third.
     rows = desktop.showing()["rows"]
     taken, kept = rows[:2], rows[2]
+    # Ctrl+C ends visual as Escape does, as in Vim, the launcher staying.
+    machine.send_chars("V")
+    desktop.launcher_until(lambda shown: shown["mode"] == "visual")
+    machine.send_key("ctrl-c")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["mode"] == "normal" and shown["tinted"] == []
+    )
     # V begins visual line on the cursor row, which it tints, saying so in
     # the mode word's room with how many it holds; j takes the row below
     # too, and the foot says how many Return opens.

@@ -55,6 +55,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Confirm.js" as Confirm
 import "QueryKeys.js" as QueryKeys
+import "Reading.js" as Reading
 import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
@@ -2025,6 +2026,11 @@ Scope {
     property int rowsDrawn: 0
 
     onMatchesChanged: {
+        // The selection's start keeps to the row it began on, as the
+        // cursor does (compose's Rank.pinned), so rows arriving above it
+        // never move what d would take from what's tinted.
+        if (visualFrom >= 0)
+            visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
         rowsMade += 1;
         noteKeys();
         noteFigures();
@@ -3815,6 +3821,11 @@ Scope {
     readonly property var visualSpan: Operators.selection(visualFrom, current)
     readonly property int visualTop: visualSpan.from
     readonly property int visualBottom: visualSpan.to
+    // What the row it began on is, to find it again as the rows change.
+    property string visualId: ""
+    onVisualFromChanged: visualId = visualFrom >= 0 && matches[visualFrom]
+        ? Rank.identity(matches[visualFrom]) : ""
+
     // The last selection, where it began and where the cursor was, for gv
     // to bring back, as Vim's '< and '> keep it; null until there's been
     // one, and again once the launcher closes.
@@ -4745,6 +4756,8 @@ Scope {
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
+            // The keys the foot says now, each its mark and its word.
+            hints: foot.told.map(key => `${key[0]} ${key[1]}`),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
@@ -6079,11 +6092,14 @@ Scope {
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,
-                        // its own (y/n) saying how it's answered.
+                        // its own (y/n) saying how it's answered, and nor
+                        // does an operator waiting, since no key of the
+                        // row's does what it says until it's done: what it
+                        // will take has their room (modeWord's pending).
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : prompt.asking !== "" ? []
+                            : prompt.asking !== "" || root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
                             : root.keysFor(choice)
                         // As the card last showed them, while it's closed
@@ -6200,12 +6216,17 @@ Scope {
                                     + prompt.standing.seek.pattern
                                 : root.pendingSaid !== "" ? ""
                                 : prompt.standing.count
-                            // A pending operator and what it will take, cut
-                            // at a whole word to the room, in the accent as
-                            // a mode's word is.
+                            // A pending operator and what it will take, in
+                            // the accent as a mode's word is, the row's name
+                            // whole in the keys' room as well as its own
+                            // (VKCF3Z and Y2YBTS, 2026-11-05: "d \u00b7 close
+                            // Notes" read as a whole name where two windows
+                            // began so), and given way at a whole word, an
+                            // ellipsis after it, only where even that's too
+                            // little, as everything cut is.
                             readonly property string pending: root.pendingSaid === "" ? ""
-                                : Operators.wholeWords(root.pendingSaid,
-                                    text => measure.advanceWidth(text) <= width)
+                                : Reading.wholeWords(root.pendingSaid, width,
+                                    text => measure.advanceWidth(text))
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
@@ -6252,7 +6273,8 @@ Scope {
                                     : keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
-                            width: Math.max(0, room - keys.spacing)
+                            width: Math.max(0, root.pendingSaid !== ""
+                                ? foot.width - Theme.space.l - x : room - keys.spacing)
                             anchors.verticalCenter: parent.verticalCenter
                             visible: said !== ""
                             text: said

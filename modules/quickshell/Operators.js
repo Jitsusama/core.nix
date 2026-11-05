@@ -338,6 +338,17 @@ function selection(from, at) {
     return { from: Math.min(from, at), to: Math.max(from, at) };
 }
 
+// Where visual line's start goes as the rows change under it: onto the
+// row it began on, found by what it is (`id`, as `identity` reads a row),
+// else where it was, within the rows; -1, none begun, stays.
+function heldFrom(rows, id, from, identity) {
+    if (from < 0) {
+        return from;
+    }
+    const found = id === "" ? -1 : rows.findIndex(row => identity(row) === id);
+    return found >= 0 ? found : Math.max(0, Math.min(from, rows.length - 1));
+}
+
 // What the foot says Return does over a selection: open its rows, by
 // their count, as "open 3".
 // Visual's mode word, counting the rows chosen (`span`, as selection gives
@@ -361,16 +372,3 @@ function openedSaid(open, count, words) {
         .replace("{count}", String(count));
 }
 
-// A word that's only a mark, as the dot between the keys and the verb.
-const LONE_MARK = /^[\u00b7\u2022:,.-]*$/;
-
-// Words cut at a whole word to what fits, as `fits` measures them, never
-// ending on a lone mark; the first word stands, however wide.
-function wholeWords(text, fits) {
-    const words = text.split(" ");
-    const lone = word => LONE_MARK.test(word);
-    while (words.length > 1 && (!fits(words.join(" ")) || lone(words[words.length - 1]))) {
-        words.pop();
-    }
-    return words.join(" ");
-}

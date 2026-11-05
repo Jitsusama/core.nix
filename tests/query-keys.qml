@@ -366,17 +366,6 @@ QtObject {
         holds("a row d can't end says so", says("d", "ending", null, 0),
             "d \u00b7 nothing to end");
         holds("and one y can't copy", says("y", "copy", null, 0), "y \u00b7 nothing to copy");
-
-        // Cut at a whole word to the room, as the spec's "d \u00b7
-        // disconnect", by however the room measures it.
-        const fits = room => text => text.length <= room;
-        const said = "d \u00b7 disconnect Home-5G";
-        holds("what fits is whole", Operators.wholeWords(said, fits(40)), said);
-        holds("what doesn't loses its last words", Operators.wholeWords(said, fits(18)),
-            "d \u00b7 disconnect");
-        holds("never ending on the dot", Operators.wholeWords(said, fits(4)), "d");
-        holds("and its first word stands, though it's wider",
-            Operators.wholeWords(said, fits(0)), "d");
     }
 
     // A paragraph of rows, as Vim's of lines (VKCF3Z, 2026-11-05): a run of
@@ -426,6 +415,8 @@ QtObject {
             ["V again ends it", ["Escape", "V", "V"], ["normal", "selectLines",
                 "selectLines"], "normal"],
             ["and so does Escape", ["Escape", "V", "Escape"], ["normal", "selectLines",
+                "normal"], "normal"],
+            ["and Ctrl+C, as Vim's", ["Escape", "V", "Ctrl+c"], ["normal", "selectLines",
                 "normal"], "normal"],
             ["Escape cancels a count first", ["Escape", "V", "3", "Escape"],
                 ["normal", "selectLines"], "visual"],
@@ -506,6 +497,17 @@ QtObject {
         holds("or up", Operators.selection(5, 2), { from: 2, to: 5 });
         holds("or the one row", Operators.selection(4, 4), { from: 4, to: 4 });
         holds("and none before it begins", Operators.selection(-1, 3), { from: 0, to: -1 });
+        // Where it began is held by that row, as the cursor is, so rows
+        // arriving or leaving above it never move what it takes.
+        const named = keys => keys.map(key => ({ key }));
+        const keyOf = row => row.key;
+        holds("a row arriving above keeps it on the row it began on",
+            Operators.heldFrom(named(["new", "a", "b", "c"]), "b", 1, keyOf), 2);
+        holds("and one leaving above", Operators.heldFrom(named(["b", "c"]), "b", 1, keyOf), 0);
+        holds("its row gone, it stays where it was, within the rows",
+            [Operators.heldFrom(named(["a", "c"]), "b", 1, keyOf),
+                Operators.heldFrom(named(["a"]), "b", 1, keyOf)], [1, 0]);
+        holds("and none begun stays none", Operators.heldFrom(named(["a"]), "", -1, keyOf), -1);
 
         // Return over the selection opens the rows it can, and says how
         // many of how many where it couldn't open them all.
