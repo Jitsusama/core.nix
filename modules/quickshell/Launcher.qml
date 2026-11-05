@@ -492,6 +492,9 @@ Scope {
     // than the name said again below it (VKCF3Z, #1812). It's made again
     // as the rows are, since the words change it.
     property var lined: null
+    // A step's line row stands at -1, above the rows, as an answer's
+    // headline does, so a refresh or a folder's read landing keeps it.
+    readonly property bool lineHeads: answer === null && headline !== null
     readonly property var headline: !answer ? (holdsWords ? lined : null) : {
         name: answer.headline,
         // An answer still being asked for has nothing to copy yet.
@@ -2737,8 +2740,8 @@ Scope {
     function reselect(left) {
         const byKey = left.key === "" ? -1
             : matches.findIndex(row => steadyId(row) === left.key);
-        const lowest = answer ? -1 : 0;
-        const at = left.at === -1 && answer ? -1
+        const lowest = answer || lineHeads ? -1 : 0;
+        const at = left.at === -1 && (answer || lineHeads) ? -1
             : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, matches.length - 1));
         list.contentY = left.scroll;
         current = at;
@@ -3126,8 +3129,8 @@ Scope {
         // What's typed asked something whole, out at the top, now it can.
         if (held.length !== count)
             return;
-        const lowest = answer && !parted(answer) ? -1 : 0;
-        const now = at === -1 && answer ? -1 : Steady.selection(matches, {
+        const lowest = (answer && !parted(answer)) || lineHeads ? -1 : 0;
+        const now = at === -1 && (answer || lineHeads) ? -1 : Steady.selection(matches, {
             row: was,
             at: at,
             lowest: lowest
@@ -5009,7 +5012,7 @@ Scope {
                         // or the row a step's line holds, sits above the rows,
                         // at -1.
                         readonly property int highest: (root.answer && !root.parted(root.answer))
-                            || (root.answer === null && root.headline !== null) ? -1 : 0
+                            || root.lineHeads ? -1 : 0
                         // The rows' keys, in either mode (QueryKeys.js).
                         // Every one is a move, which QueryKeys.moved
                         // says the end of from the rows in view, as the
