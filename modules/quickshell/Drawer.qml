@@ -555,7 +555,7 @@ Floating {
         font.family: drawer.listsKeys ? Theme.level.note.family
             : drawer.script !== "" ? Theme.script.mono[drawer.script] : Theme.level.figure.family
         font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
-            : Theme.level.figure.pointSize
+            : Theme.level.figure.pointSize * drawer.scriptGrown
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
     }
     // The digits of a script that has its own, which a value may be
@@ -563,6 +563,32 @@ Floating {
     readonly property var scriptDigits: ({
         arabic: "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
     })
+    // A script with digits of its own, set at a point size, can stand
+    // smaller than the figures beside it: Naskh's stand 0.596 of its em and
+    // the mono's 0.742, so a Hijri year read smaller than "30 days" in one
+    // column. Such a script's values and title are grown until its digits
+    // stand as tall as the figures' do, measured from the faces themselves
+    // so it holds whichever the theme names, and never past half again, so
+    // a face that measures wrongly can't swamp a plate. Hebrew's letters
+    // are drawn to stand with Latin as the mono's do, and CJK's fill their
+    // em, so they keep their size.
+    FontMetrics {
+        id: scriptDigitFace
+        font.family: drawer.script !== "" ? Theme.script.mono[drawer.script]
+            : Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+    }
+    // A binding doesn't see what a call reads, so it reads both faces.
+    readonly property real scriptGrown: {
+        void scriptDigitFace.font;
+        void latinFace.font;
+        const digits = scriptDigits[script] ?? "";
+        if (digits === "")
+            return 1;
+        const stands = scriptDigitFace.tightBoundingRect(digits).height;
+        const figures = latinFace.tightBoundingRect("0123456789").height;
+        return stands > 0 ? Math.min(Math.max(figures / stands, 1), 1.5) : 1;
+    }
     // A value in Latin letters on a script's plate (`latin: true`), as a
     // count or a day is, at Figure in the theme's own face, since the
     // script's cut draws Latin in another's.
@@ -934,7 +960,7 @@ Floating {
                         color: Theme.level.title.colour
                         font.family: drawer.script === "" ? Theme.level.title.family
                             : Theme.script.serif[drawer.script]
-                        font.pointSize: Theme.level.title.pointSize
+                        font.pointSize: Theme.level.title.pointSize * drawer.scriptGrown
                         font.letterSpacing: Theme.level.title.letterSpacing
                         // The serif's axes are its own, so a script's cut
                         // takes its own weight instead.
