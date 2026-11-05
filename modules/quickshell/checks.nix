@@ -2935,7 +2935,8 @@ onLinux {
   # The launcher's query line takes vi's two modes from one table, as
   # tests/query-keys.qml holds QueryKeys.js to: insert's keys, normal's
   # ways back into insert, its moves through the rows with counts and
-  # where each lands, sequences, and where the caret goes.
+  # where each lands, its closing keys and ex line, sequences, and where
+  # the caret goes.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;

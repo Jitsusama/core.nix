@@ -49,10 +49,13 @@ const table = [
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
     // The left and right arrows step out and in, with h and l beside them,
-    // and Backspace steps out as his oil's does; a query typed is cleared
-    // first, and u brings it back, as vi's undo does.
+    // and - and Backspace step out as his oil's do; a query typed is
+    // cleared first, and u brings it back, as vi's undo does.
     { act: "into", mode: "normal", keys: ["Right", "l"] },
-    { act: "out", mode: "normal", keys: ["Left", "h", "Backspace"] },
+    { act: "out", mode: "normal", keys: ["Left", "h", "-", "Backspace"] },
+    // q closes, as his Neovim closes help and its plugin windows, and ZZ
+    // as it closes a buffer; :q is the ex line's (exRead, below).
+    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"]] },
     { act: "restore", mode: "normal", keys: ["u"] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
@@ -98,9 +101,46 @@ function rest() {
     return { count: "", typed: [] };
 }
 
-// Whether anything's begun: a count or a sequence's first keys.
+// Whether anything's begun: a count, a sequence's first keys or an ex
+// line.
 function pending(standing) {
-    return standing.count !== "" || standing.typed.length > 0;
+    return standing.count !== "" || standing.typed.length > 0 || standing.ex !== undefined;
+}
+
+// The ex line, Vim's command line after a colon, which waits for its
+// Return as long as it takes: what's typed after the colon, held in how
+// the keys stand as `ex` while it's open. A line of digits goes to that
+// row, as :12 goes to line 12; Vim's ways of quitting close, since the
+// launcher writes nothing, so :wq and :x close as :q does; anything else
+// does nothing, as an ex line the launcher doesn't know.
+const quits = ["q", "quit", "q!", "quit!", "qa", "qall", "qa!", "wq", "x", "xit"];
+const printable = /^[!-~]$/;
+const digits = /^[0-9]+$/;
+
+function exRan(line) {
+    const said = line.trim();
+    if (digits.test(said)) {
+        return { act: "first", count: Math.max(1, Number(said)) };
+    }
+    return { act: quits.includes(said) ? "close" : "", count: 0 };
+}
+
+// A key typed on the ex line: Return runs it, Escape lets it go, as
+// Backspace does on an empty line, and anything printable is typed.
+function exRead(standing, key) {
+    const line = standing.ex;
+    const open = ex => ({ act: "", count: 0, standing: { count: "", typed: [], ex },
+        ours: true });
+    if (key === "Return" || key === "Enter") {
+        return Object.assign(exRan(line), { standing: rest(), ours: true });
+    }
+    if (key === "Escape" || (key === "Backspace" && line === "")) {
+        return { act: "", count: 0, standing: rest(), ours: true };
+    }
+    if (key === "Backspace") {
+        return open(line.slice(0, -1));
+    }
+    return open(printable.test(key) ? line + key : line);
 }
 
 const digit = /^[0-9]$/;
@@ -143,6 +183,14 @@ function read(standing, key, mode) {
     // changes nothing, so a sequence or a count begun carries on past it.
     if (key === "") {
         return { act: "", count: 0, standing, ours: false };
+    }
+    if (standing.ex !== undefined) {
+        return exRead(standing, key);
+    }
+    // A colon at rest in normal opens the ex line; a count before it is
+    // let go, since the rows take no ranges.
+    if (mode === "normal" && key === ":" && standing.typed.length === 0) {
+        return { act: "", count: 0, standing: { count: "", typed: [], ex: "" }, ours: true };
     }
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };

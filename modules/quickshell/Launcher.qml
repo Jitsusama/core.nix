@@ -3660,6 +3660,7 @@ Scope {
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
             begun: prompt.standing.typed.join(""),
+            ex: prompt.standing.ex ?? null,
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -4323,6 +4324,9 @@ Scope {
                         onStepped: (act, count) => {
                             root.searchNow();
                             switch (act) {
+                            case "close":
+                                root.open = false;
+                                return;
                             case "drawerUp":
                                 drawerCard.scroll(-1);
                                 return;
@@ -4883,12 +4887,15 @@ Scope {
                         // moving anything else.
                         // In normal, a count typed before a move stands in
                         // its place until the move, as Neovim's showcmd
-                        // shows it, in the strong ink of what's typed, its
-                        // last digits where it's longer than the room.
+                        // shows it, and an ex line after its colon until
+                        // its Return, as Neovim's command line does, both
+                        // in the strong ink of what's typed, their last
+                        // letters where they're longer than the room.
                         Text {
                             id: modeWord
 
-                            readonly property string counted: prompt.standing.count
+                            readonly property string counted: prompt.standing.ex !== undefined
+                                ? `:${prompt.standing.ex}` : prompt.standing.count
                             readonly property string said: counted !== "" ? counted
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
