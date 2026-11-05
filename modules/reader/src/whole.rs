@@ -1,9 +1,12 @@
 //! Which of the page's lines show above an overlay: only whole ones, so an
-//! overlay's top never cuts a line through. The room under the last whole
-//! line is left bare, as the drawer leaves it, so the overlay's frame never
-//! moves as the page scrolls under it (VKCF3Z, 2026-11-05). A heading
-//! counts with its first line: one whose next line won't show whole under
-//! it hides too, so a heading never stands alone over an overlay.
+//! overlay's top never cuts a line through. The page is bared from the top
+//! of the first line cut, as the drawer leaves it, so the overlay's frame
+//! never moves as the page scrolls under it (VKCF3Z, 2026-11-05). Baring
+//! from that line's top rather than the foot of the whole line over it
+//! keeps the room between them shown, and with it a ground that hangs
+//! under its block's last line, as code's does. A heading counts with its
+//! first line: one whose next line won't show whole under it hides too, so
+//! a heading never stands alone over an overlay.
 
 use crate::place::Block;
 use crate::select::line_cell;
@@ -50,22 +53,17 @@ pub fn headings(blocks: &[Block], lines: &[Line]) -> Vec<bool> {
 }
 
 /// Where the page stops showing above an overlay whose top stands at
-/// `over`: the foot of the last line that shows whole above it, past any
-/// heading left standing alone there, or `over` itself when no line is cut
-/// and none would stand alone. `lines` go top to bottom.
+/// `over`: the top of the first line that won't show whole above it, or of
+/// a heading it would leave standing alone, or `over` itself when no line
+/// is cut and none would stand alone. `lines` go top to bottom.
 pub fn bare_from(lines: &[Shown], over: f64) -> f64 {
-    let Some(cut) = lines.iter().position(|line| line.foot > over) else {
+    let Some(mut hidden) = lines.iter().position(|line| line.foot > over) else {
         return over;
     };
-    let mut last = cut;
-    while last > 0 && lines[last - 1].heading {
-        last -= 1;
+    while hidden > 0 && lines[hidden - 1].heading {
+        hidden -= 1;
     }
-    if last == cut && lines[cut].top >= over {
-        return over;
-    }
-    last.checked_sub(1)
-        .map_or_else(|| lines[0].top.min(over), |at| lines[at].foot)
+    lines[hidden].top.min(over)
 }
 
 #[cfg(test)]
@@ -95,27 +93,33 @@ mod tests {
     }
 
     #[test]
-    fn an_overlay_through_a_line_bares_it_from_the_last_whole_ones_foot() {
+    fn an_overlay_through_a_line_bares_it_from_its_top() {
         let lines = [words(0.0), words(28.0), words(56.0)];
         assert_eq!(bare_from(&lines, 70.0), 56.0);
     }
 
     #[test]
+    fn the_room_over_a_line_cut_stays_shown() {
+        let lines = [words(0.0), words(70.0)];
+        assert_eq!(bare_from(&lines, 80.0), 70.0);
+    }
+
+    #[test]
     fn a_heading_whose_next_line_is_cut_hides_with_it() {
         let lines = [words(0.0), heading(56.0), words(84.0)];
-        assert_eq!(bare_from(&lines, 100.0), 28.0);
+        assert_eq!(bare_from(&lines, 100.0), 56.0);
     }
 
     #[test]
     fn a_heading_whose_next_line_falls_under_the_overlay_hides_too() {
         let lines = [words(0.0), heading(56.0), words(112.0)];
-        assert_eq!(bare_from(&lines, 100.0), 28.0);
+        assert_eq!(bare_from(&lines, 100.0), 56.0);
     }
 
     #[test]
     fn a_heading_of_two_lines_hides_whole() {
         let lines = [words(0.0), heading(56.0), heading(84.0), words(126.0)];
-        assert_eq!(bare_from(&lines, 140.0), 28.0);
+        assert_eq!(bare_from(&lines, 140.0), 56.0);
     }
 
     #[test]

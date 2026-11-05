@@ -3140,8 +3140,8 @@ impl App {
         self.draw_keys();
     }
 
-    /// Lays the ground over the page from the foot of its last whole line
-    /// above an overlay whose top stands at `over`, so no line shows cut by
+    /// Lays the ground over the page from the top of the first line an
+    /// overlay whose top stands at `over` would cut, so no line shows cut by
     /// it and no heading stands alone over it (whole.rs).
     #[expect(
         clippy::cast_possible_truncation,
