@@ -6795,6 +6795,9 @@ Scope {
             y: card.reach
             width: root.drawerWidth
             tall: root.drawerOver ? root.rowsEnd : card.height
+            // Over the card it stands on the card's rows, its sides on the
+            // card's, so it meets them square rather than in a notch.
+            squareFoot: root.drawerOver
             fieldBase: root.fieldBase
             rowLine: root.rowLine
             rowLines: root.rowLines

@@ -2687,6 +2687,24 @@ onLinux {
       touch $out
     '';
 
+  # A floating surface standing over another, as the launcher's drawer over
+  # its card on a narrow screen, meets it with a square foot, its region
+  # alike, its top and the card's foot staying round, as tests/floating.qml
+  # reads them back from what Quickshell draws.
+  the-drawer-over-the-card-meets-it-square =
+    pkgs.runCommandLocal "the-drawer-over-the-card-meets-it-square" { }
+      ''
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Floating.qml} Floating.qml
+        cp ${../../tests/floating.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        mkdir -m 700 $XDG_RUNTIME_DIR
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
@@ -3354,7 +3372,9 @@ onLinux {
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's
-  # radius the theme derives from it, and every border is the theme's.
+  # radius the theme derives from it, or a floating surface's foot, which is
+  # the theme's radius or square where it stands on another (Floating.qml's
+  # footRadius), and every border is the theme's.
   quickshell-takes-its-shape-from-the-theme =
     let
       dir = ../.;
@@ -3363,6 +3383,7 @@ onLinux {
         radius = [
           "Theme.radius"
           "Theme.inner"
+          "floating.footRadius"
         ];
         width = [ "Theme.border" ];
       };
