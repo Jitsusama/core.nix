@@ -230,6 +230,11 @@ Rectangle {
         readonly property real room: row.width - Theme.space.l - nameBox.x
             - nameBox.implicitWidth - Theme.space.xxl - (row.detail === "" ? 0
                 : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)
+        // A side of items down to its last that still leaves the name no
+        // room whole: the name is cut, so where it's cut holds still as
+        // that item changes, by the column, as any side's does.
+        readonly property bool squeezed: itemised
+            && Math.ceil(sideFace.advanceWidth(said)) + 1 > room
         // What a row is never takes more than its share of the row, so
         // however long it runs it can't reach the name, and it gives the
         // name its room first, down to a fifth of the row: a window's
@@ -247,7 +252,7 @@ Rectangle {
         // its share.
         readonly property real column: row.graphed
             ? Math.min(row.figures * figureFace.advanceWidth, row.width * 0.45)
-            : right.sided && !right.itemised
+            : right.sided && (!right.itemised || right.squeezed)
                 ? Math.min(row.sides * figureFace.advanceWidth, right.share) : 0
 
         width: Math.max(column, chorded ? keys.width : sided ? sideText.width : 0)
