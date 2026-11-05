@@ -4349,7 +4349,6 @@ Scope {
                     Prompt {
                         id: prompt
                         steady: true
-                        voiced: true
                         // Neovim's command line, opening in insert.
                         modal: true
                         awake: root.open

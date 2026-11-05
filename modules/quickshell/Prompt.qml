@@ -43,11 +43,9 @@ Item {
     property bool secret: false
     // How what's typed could end, drawn after it in muted type.
     property string ghost
-    // Said in muted type while nothing's typed.
+    // Said in the voice while nothing's typed, as the desktop speaking:
+    // the launcher's question, or the lock's "try again".
     property string hint
-    // Whether the hint is said in the voice's face, as the launcher's is;
-    // the lock's and a password's prompts keep the mono for now.
-    property bool voiced: false
     // Said in muted type at the right end of the line.
     property string aside
     readonly property bool capitals: secret && Lights.caps
@@ -664,7 +662,7 @@ Item {
 
     // The room kept for typing: the hint's, or a dozen characters.
     readonly property real typingRoom: Math.max(
-        (voiced ? voiceFace : figureFace).advanceWidth(hint),
+        voiceFace.advanceWidth(hint),
         12 * figureFace.averageCharacterWidth)
 
     // How wide the path wants to be, whole, with the gap after it.
@@ -924,14 +922,13 @@ Item {
         // Once the left arrow has cleared what's typed, what it took stands
         // in its place as the ghost, which the right arrow puts back. The
         // keys that take them are said at the field's right edge.
-        // The hint is the shell's voice, in the serif's italic, sized by
-        // capitals and sat on the typed letters' baseline, since the two
-        // faces' line boxes differ; the cleared words and the ghost are
-        // letters typed, in the field's own face (look 3's piece 1).
+        // The hint is the shell's voice, in every field, sized by capitals
+        // and sat on the typed letters' baseline, since the two faces' line
+        // boxes differ; the cleared words and the ghost are letters typed,
+        // in the field's own face (look 3's piece 1).
         Text {
             id: hintText
-            readonly property bool voiced: prompt.voiced && input.text === ""
-                && prompt.cleared === ""
+            readonly property bool voiced: input.text === "" && prompt.cleared === ""
             readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
             x: input.text === "" ? 0 : input.contentWidth
             width: Math.max(0, input.width - x)
