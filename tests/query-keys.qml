@@ -397,6 +397,15 @@ QtObject {
             false);
         holds("nor anything with no ask", Operators.answers(null, "ending", { from: 3, to: 3 }),
             false);
+        // The ask says the keys that answer it, as they were typed.
+        holds("the ask says the keys that answer it", [
+            Operators.typedAs("ending", 0, null),
+            Operators.typedAs("ending", 3, null),
+            Operators.typedAs("ending", 0, { act: "next", count: 0 }),
+            Operators.typedAs("ending", 0, { act: "next", count: 6 }),
+            Operators.typedAs("ending", 0, { act: "last", count: 0 }),
+            Operators.typedAs("copy", 0, { act: "first", count: 0 })
+        ], ["dd", "3dd", "dj", "d6j", "dG", "ygg"]);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
