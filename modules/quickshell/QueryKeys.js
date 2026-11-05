@@ -428,6 +428,15 @@ function keyOf(act, mode) {
     return Array.isArray(keys) ? keys.join("") : keys;
 }
 
+// The keys an act is typed by in a mode as Vim's own letters, j rather
+// than the down arrow, for the foot to say what an operator took; its
+// first key where it has none.
+function lettersOf(act, mode) {
+    const row = table.find(one => one.act === act && inMode(one, mode));
+    const letters = (row?.keys ?? []).find(key => [].concat(key).every(one => one.length === 1));
+    return letters === undefined ? keyOf(act, mode) : [].concat(letters).join("");
+}
+
 // What Vim's iskeyword counts as a word's: letters, digits, the underscore
 // and the accented letters past them.
 const wordLetter = /[0-9A-Za-z_\u00c0-\u024f]/;
