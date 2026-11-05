@@ -49,11 +49,13 @@ QtObject {
 
         // [what, the keys typed in normal, the acts done]
         const normal = [
-            ["j and k move, and the arrows are their letters", ["j", "Down", "k", "Up"],
-                ["down", "down", "up", "up"]],
-            ["l steps in and h, Backspace and - out", ["l", "Right", "h", "Backspace", "-"],
-                ["into", "into", "out", "out", "out"]],
-            ["Left is h", ["Left"], ["out"]],
+            // No arrow does anything in normal, as Joel asked (2026-11-05:
+            // "remove them and rely only on vi right feeling things").
+            ["j and k move, and the arrows say not here", ["j", "Down", "k", "Up"],
+                ["down", "notHere", "up", "notHere"]],
+            ["l steps in and h, Backspace and - out", ["l", "h", "Backspace", "-"],
+                ["into", "out", "out", "out"]],
+            ["and the side arrows say not here", ["Right", "Left"], ["notHere", "notHere"]],
             ["Return opens, as Enter", ["Return", "Enter"], ["open", "open"]],
             ["gg and G go to the newest and the oldest", ["g", "g", "G"], ["first", "last"]],
             ["a count goes before a motion", ["5", "j", "1", "2", "k"], ["5down", "12up"]],
@@ -195,12 +197,17 @@ QtObject {
         holds("Return sends, : commands, u undoes", prompt(["Return", ":", "u"], "ok", 0).acts,
             ["send", "command", "undo"]);
         holds("q says not here", prompt(["q"], "ok", 0).acts, ["notHere"]);
+        // Normal over a reply's words moves by h and l alone, as every
+        // normal does; its insert keeps the arrows for the caret.
+        holds("h and l move along its words", prompt(["l", "l", "h"], "on my way", 0).caret, 1);
+        holds("and the arrows say not here", prompt(["Right", "Left"], "on my way", 4),
+            { text: "on my way", caret: 4, acts: ["notHere", "notHere"] });
 
         // Space ?'s list: a heading each mode, then each act's keys.
         const listed = Keys.keyList();
         holds("it opens on normal", listed[0].heading, "Normal: moving and acting");
-        holds("a move lists its letter and its arrow", listed[1],
-            { heading: "", keys: "j Down", does: "down a card", act: "down" });
+        holds("a move lists its letter alone", listed[1],
+            { heading: "", keys: "j", does: "down a card", act: "down" });
         holds("a sequence is listed as typed", listed.find(one => one.act === "first").keys, "gg");
         holds("each mode has its heading", listed.filter(one => one.heading !== "")
             .map(one => one.heading), ["Normal: moving and acting", "The find: the / line",

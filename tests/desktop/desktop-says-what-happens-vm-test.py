@@ -691,10 +691,10 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # keys, the cursor on the card in front, the older; the newer is line
     # 1. Tab is no key of normal's, and says so, and Backspace is h, out
     # of nothing. :forg lets the older go unread, the cursor going on to
-    # the newer, and the right arrow, as l, steps into its acts,
+    # the newer, and l steps into its acts,
     # forgetting it first, since it opens nothing, then
-    # what it offers, as a launcher row's are (launcher/Notice.js); Down
-    # chooses the next and Left steps back, and Return does the one
+    # what it offers, as a launcher row's are (launcher/Notice.js); j
+    # chooses the next and h steps back, and Return does the one
     # chosen, with a token to come forward, and gives the keys back.
     desktop.listen()
     with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
@@ -706,16 +706,16 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     with desktop.told("notice forgets 1"), desktop.told("notice cursor Recording saved"):
         machine.send_chars(":forg\n", delay=KEY_PACE)
     with desktop.told("notice verb Forget It"):
-        machine.send_key("right")
+        machine.send_key("l")
     with desktop.told("notice verb Play it"):
-        machine.send_key("down")
+        machine.send_key("j")
     desktop.photograph("notices-held-verbs")
     with desktop.told("notice back"):
-        machine.send_key("left")
+        machine.send_key("h")
     with desktop.told("notice verb Forget It"):
-        machine.send_key("right")
+        machine.send_key("l")
     with desktop.told("notice verb Play it"):
-        machine.send_key("down")
+        machine.send_key("j")
     with desktop.told("lets notices go"):
         machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
@@ -972,10 +972,10 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
-def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_launcher(
+def test_a_notices_l_holds_what_return_does_on_its_card_and_in_the_launcher(
     desktop: Desktop,
 ) -> None:
-    """A notice's right arrow holds what Return does first, on its card and in the launcher."""
+    """A notice's l holds what Return does first, on its card and in the launcher."""
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.listen()
@@ -987,14 +987,14 @@ def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_lau
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     with desktop.told("notice verb Open"):
-        machine.send_key("right")
+        machine.send_key("l")
     with desktop.told("notice verb Play it"):
-        machine.send_key("down")
+        machine.send_key("j")
     with desktop.told("notice back"):
-        machine.send_key("left")
+        machine.send_key("h")
     # :e Notices hands on to the history, which opens on its first row,
-    # the newest notice, as every place opens on its first; the right arrow
-    # steps into its acts from normal mode, and they hold the same.
+    # the newest notice, as every place opens on its first; l steps into
+    # its acts from normal mode, and they hold the same.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
@@ -1226,6 +1226,9 @@ EVERY_HELD_KEY: list[tuple[str | tuple[str, ...], str]] = [
     ("q", "notice says q does nothing \u00b7 :q closes"),
     ("n", "notice says not here"),
     ("c", "notice says not here"),
+    # No arrow does anything in normal (Joel, 2026-11-05: "rely only on vi right feeling
+    # things"), so one says so as any key with no meaning does.
+    (("down",), "notice says not here"),
     (" ul", "notice numbers absolute"),
     (" ul", "notice numbers relative"),
     # Visual: o goes to its other end, Escape ends it, gv brings it back, x is done with it.
