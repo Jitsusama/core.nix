@@ -114,6 +114,8 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.photograph("launcher-home-awake")
     desktop.type_in("let it sleep")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.

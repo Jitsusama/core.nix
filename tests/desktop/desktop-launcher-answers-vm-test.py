@@ -205,11 +205,13 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.answer("brightness")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == share)
     desktop.close_launcher()
-    # With a number, Return sets it, as the brightness keys do.
+    # With a number, Return sets it, as the brightness keys do: from the find
+    # it lands on it, since it changes how things stand, and a second does it.
     desktop.answer("brightness 30")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%"
     )
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
@@ -234,6 +236,8 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Brightness to 40%" in shown["rows"])
     desktop.type_in("40", selecting="Brightness to 40%")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",

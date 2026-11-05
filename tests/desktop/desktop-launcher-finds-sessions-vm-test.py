@@ -441,6 +441,8 @@ def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
     an_orchestrator(desktop)
     into_lighthouse(desktop)
     desktop.type_in("pause", selecting="Pause")
+    # Return from the find lands on it, since it changes how things stand, and a second does it.
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),

@@ -271,6 +271,8 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     desktop.launcher_ready()
     desktop.type_in("forget the clip", selecting="Forget the Clipboard")
     desktop.photograph("launcher-forget-copies")
+    # Return from the find lands on it, since it can't be taken back, and a second does it.
+    desktop.land()
     with desktop.told("forgot the copies"):
         machine.send_key("ret")
     assert desktop.as_account("wl-paste --no-newline 2>&1 || true") == ""

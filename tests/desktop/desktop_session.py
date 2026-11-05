@@ -518,6 +518,15 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal")
 
+    def land(self) -> None:
+        """Press Return on a row that changes how things stand, from the find, and wait.
+
+        Return there only lands on it, in normal, the row saying what a second Return does,
+        so a test presses Return again for it to be done.
+        """
+        self.machine.send_key("ret")
+        self.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+
     def on_find(self) -> None:
         """Put the launcher's line back to typing, by A from normal, and wait for it.
 
