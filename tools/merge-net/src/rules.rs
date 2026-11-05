@@ -86,6 +86,26 @@ pub fn needs(areas: &[Area], files: &[String], known: Option<&[String]>) -> Need
     found
 }
 
+/// A test as `needs` names it: alone, or, when `list` (main's quarantine
+/// list) holds it, saying it still runs but its failure blocks nothing.
+pub fn named(test: &str, list: &serde_json::Value) -> String {
+    let held = list.as_array().and_then(|entries| {
+        entries
+            .iter()
+            .find(|entry| entry["test"].as_str() == Some(test))
+    });
+    let Some(held) = held else {
+        return test.to_owned();
+    };
+    let reason = held["reason"].as_str().unwrap_or("no reason given");
+    let owner = held["owner_pr"]
+        .as_u64()
+        .map_or_else(String::new, |pr| format!("; #{pr} owns it"));
+    format!(
+        "{test}  (quarantined on main: {reason}{owner}; it runs, but its failure blocks nothing)"
+    )
+}
+
 /// Whether `text` matches `pattern`, whose `*` stands for any run of
 /// characters, a `/` among them.
 pub fn matches(pattern: &str, text: &str) -> bool {
@@ -166,6 +186,20 @@ mod tests {
     fn a_change_elsewhere_needs_nothing_first() {
         let needs = needs(&areas(), &words("modules/kitty/home.nix"), None);
         assert_eq!(needs, Needs::default());
+    }
+
+    #[test]
+    fn a_test_main_quarantines_is_named_as_blocking_nothing() {
+        let list = serde_json::json!([
+            { "test": "vm-boot-a", "reason": "failed then passed at abc", "owner_pr": 7 },
+        ]);
+        assert_eq!(
+            named("vm-boot-a", &list),
+            "vm-boot-a  (quarantined on main: failed then passed at abc; #7 owns it; \
+             it runs, but its failure blocks nothing)"
+        );
+        assert_eq!(named("vm-boot-b", &list), "vm-boot-b");
+        assert_eq!(named("vm-boot-a", &serde_json::json!(null)), "vm-boot-a");
     }
 
     #[test]

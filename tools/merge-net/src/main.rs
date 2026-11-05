@@ -164,8 +164,14 @@ fn needs(base: &str) -> Result<ExitCode, String> {
     for (area, hits) in &found.touched {
         println!("  {area}: {}", hits.join(" "));
     }
+    // The list is read from the base, main, so a branch can't quarantine
+    // its own failure.
+    let list = git(&["show", &format!("{base}:{}", world::QUARANTINE)])
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
     for test in &found.tests {
-        println!("{test}");
+        println!("{}", rules::named(test, &list));
     }
     if known.is_none() {
         println!("(the names are patterns: no list of the checks was found to match them against)");
