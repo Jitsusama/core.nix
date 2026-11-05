@@ -5602,9 +5602,12 @@ Scope {
                             id: modeWord
 
                             readonly property string counted: prompt.standing.count
-                            // A line with no modes, as a secret's, names none.
+                            // A line with no modes, as a secret's, names none,
+                            // and nor does the command line, as his status line
+                            // shows none for it, whatever mode : came from (a
+                            // viewer's : opens it from insert; VKCF3Z).
                             readonly property string said: counted !== "" ? counted
-                                : !prompt.modal ? ""
+                                : !prompt.modal || root.commanding !== null ? ""
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see
