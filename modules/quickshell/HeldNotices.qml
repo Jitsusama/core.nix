@@ -115,7 +115,12 @@ Floating {
     // cursor on the middle line, scrolloff held to half the view.
     readonly property real linesShare: 0.5
     property real screenHeight: 768
-    readonly property var inView: listed.slice(firstShown, firstShown + room)
+    // While the command line is up its menu takes the lines' room, so they
+    // give way round the cursor, down to one, and the frame never passes
+    // the screen's rung on a short screen.
+    readonly property int shownRoom: mode === "command" ? commandRows : room
+    readonly property int shownTop: Math.max(firstShown, cursor - shownRoom + 1)
+    readonly property var inView: listed.slice(shownTop, shownTop + shownRoom)
     function follow() {
         firstShown = NoticeList.viewTop(firstShown, cursor, listed.length, room);
     }
@@ -1112,21 +1117,6 @@ Floating {
         font.weight: Theme.level.name.weight
     }
 
-    TextMetrics {
-        id: noteCaps
-        text: "H"
-        font: note.font
-    }
-
-    TextMetrics {
-        id: labelCaps
-        text: "H"
-        font.family: Theme.level.label.family
-        font.pointSize: Theme.level.label.pointSize
-        font.weight: Theme.level.label.weight
-        font.capitalization: Theme.level.label.capitalization
-    }
-
     // The gutter's width, by the widest it holds.
     TextMetrics {
         id: gutterFigures
@@ -1375,7 +1365,7 @@ Floating {
 
                 required property var modelData
                 required property int index
-                readonly property int at: held.firstShown + index
+                readonly property int at: held.shownTop + index
                 readonly property var one: held.notice(modelData)
                 readonly property bool atCursor: at === held.cursor
                 readonly property bool chosenLine: held.selected.includes(modelData)
@@ -1677,15 +1667,14 @@ Floating {
             id: keyLines
 
             // Each line's baseline, down from the list's top: the first's
-            // capitals stand where a row's would.
+            // on the first row's, a row under the head's, whatever its
+            // level, so the key list keeps the rows' baselines.
             readonly property var bases: {
                 const out = [];
-                const top = held.rowLeaves;
                 held.listShown.forEach((one, at) => {
                     const heading = one.heading !== "";
                     const before = out[at - 1];
-                    out.push(at === 0
-                        ? top + (heading ? labelCaps : noteCaps).tightBoundingRect.height
+                    out.push(at === 0 ? held.rowBase
                         : heading ? before + 2 * held.keyPitch
                         : held.listShown[at - 1].heading !== ""
                             ? before + held.keyPitch + Theme.space.beat
@@ -1772,6 +1761,7 @@ Floating {
         // (CommandMenu.qml), one menu for every : line, as many lines as
         // the screen has room for.
         CommandMenu {
+            id: commandMenu
             width: sheet.width
             all: held.entries
             lines: held.menuFound.shown
@@ -1973,7 +1963,18 @@ Floating {
     // floating frame does.
     readonly property int screenRows: Math.floor((screenHeight
         - 2 * Theme.space.rung.screen) / rowHeight)
-    readonly property int menuRoom: Math.max(3, Math.min(10, screenRows - inView.length - 4))
+    readonly property int menuRoom: Math.max(1, Math.min(10,
+        Math.floor((commandTall - inView.length * rowHeight) / commandMenu.pitch) - 1))
+    // How tall the lines and the menu may be while the command line is up:
+    // the screen less its rung each side, the frame's hairlines, the head
+    // and its rule, the command line, the foot and its rule, and the menu's
+    // hairline. A menu line's pitch more is kept for the menu's room above
+    // and below its lines.
+    readonly property real commandTall: screenHeight - 2 * Theme.space.rung.screen
+        - 5 * Theme.border - headTall - 2 * rowHeight - sheet.bottomPadding
+    // The lines that leave the menu three where the screen has the room.
+    readonly property int commandRows: Math.max(1, Math.min(room,
+        Math.floor((commandTall - 4 * commandMenu.pitch) / rowHeight)))
 
 
     SystemClock {
