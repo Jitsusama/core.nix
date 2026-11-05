@@ -1073,6 +1073,12 @@ Floating {
     // What a row leaves under its baseline, which the last of anything
     // leaves too, so the hairline under it always stands as far off.
     readonly property real rowLeaves: (rowHeight - rowCaps) / 2
+    // Where rich text sets the Words' first baseline, down from its top. Qt
+    // lays a rich line of fixed height with its baseline four fifths down it
+    // (QTextDocumentLayout's lineAdjustment), while it reports the face's
+    // ascent as the baseline, as it is for styled text; placed by that, a
+    // washed card's Words dropped 3 device pixels at 2 under a find.
+    readonly property real richBase: Theme.level.words.pitch * 4 / 5
     // The columns, the launcher's (VKCF3Z's family mocks, 2026-11-05): the
     // gutter's figures right-aligned in the room of three, the ground a
     // mark on and the mark's cell a mark inside it, and the Name a glyph's
@@ -1508,8 +1514,9 @@ Floating {
                     // Its row's Name's baseline, down from its top, which
                     // is the row's bottom.
                     readonly property real nameBase: held.rowBase - held.rowHeight
-                    readonly property real wordsEnd: body.visible ? body.y
-                        + body.baselineOffset + (body.lineCount - 1) * Theme.level.words.pitch
+                    readonly property real wordsBase: nameBase + Theme.level.words.pitch
+                    readonly property real wordsEnd: body.visible
+                        ? wordsBase + (body.lineCount - 1) * Theme.level.words.pitch
                         : nameBase
                     readonly property real senderBase: wordsEnd + Theme.level.note.pitch
                         + Theme.space.beat
@@ -1527,7 +1534,7 @@ Floating {
 
                     Text {
                         id: body
-                        y: card.nameBase + Theme.level.words.pitch - baselineOffset
+                        y: card.wordsBase - (line.washed ? held.richBase : baselineOffset)
                         width: parent.width
                         visible: text !== ""
                         text: !line.one || !line.atCursor ? "" : line.washed
