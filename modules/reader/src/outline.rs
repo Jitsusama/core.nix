@@ -2,20 +2,32 @@
 //! Neovim's gO opens them in a location list, moved through in normal mode
 //! with j and k, gg and G and counts, searched with / and ? then n and N,
 //! Return going to the heading chosen and Escape or ZZ putting it away.
-//! Kept apart from the window so it can be tested; prompt.rs sets it.
+//! :g/pat/, :marks and :jumps list their lines in it the same way. Kept
+//! apart from the window so it can be tested; prompt.rs sets it.
 use crate::place::Block;
 
 /// The rows the list shows at once, as Neovim's location list opens ten
 /// lines tall; a longer outline scrolls within them.
 pub const SHOWN: usize = 10;
 
-/// A heading in the outline: its level, its words, and where its block
-/// starts on the page, in points.
+/// A row of the list: its level, its words, and where Return goes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Row {
     pub level: u8,
     pub words: String,
-    pub top_pt: f64,
+    pub to: To,
+}
+
+/// Where a row goes, in points down its page.
+#[derive(Clone, Debug, PartialEq)]
+pub enum To {
+    /// A heading, set at the view's top, as gO's go.
+    Heading(f64),
+    /// A line, the cursor put on it and the view moved as Vim's is.
+    Line(f64),
+    /// A place on the jump list, on this file or another: the view's top
+    /// and the cursor's line, as Ctrl+O goes back to it.
+    Jump(std::path::PathBuf, f64, f64),
 }
 
 pub struct Outline {
@@ -39,17 +51,22 @@ impl Outline {
                 Some(Row {
                     level,
                     words,
-                    top_pt: block.top_pt,
+                    to: To::Heading(block.top_pt),
                 })
             })
             .collect();
+        let chosen = rows
+            .iter()
+            .rposition(|row| matches!(row.to, To::Heading(top) if top <= view_pt + 1.0))
+            .unwrap_or(0);
+        Outline::of(rows, chosen)
+    }
+
+    /// A list of rows, one chosen; none for no rows.
+    pub fn of(rows: Vec<Row>, chosen: usize) -> Option<Outline> {
         if rows.is_empty() {
             return None;
         }
-        let chosen = rows
-            .iter()
-            .rposition(|row| row.top_pt <= view_pt + 1.0)
-            .unwrap_or(0);
         let mut outline = Outline {
             rows,
             chosen: 0,

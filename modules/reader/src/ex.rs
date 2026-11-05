@@ -33,6 +33,13 @@ pub enum Command {
     File { on: bool, times: u32 },
     /// :h to :help: the key list.
     Help,
+    /// :g/pat/ over a range: the pieces matching, listed as gO lists the
+    /// headings; an empty pattern is the last search's.
+    Global { pattern: String, range: Range },
+    /// :marks, or only those of the letters given.
+    Marks(String),
+    /// :ju to :jumps.
+    Jumps,
     /// Nothing typed, which does nothing, as in Neovim.
     Nothing,
     /// What Neovim says of a line it won't run, as it says it.
@@ -122,6 +129,20 @@ pub fn parse(typed: &str) -> Command {
             return Command::Refused(format!("E149: Sorry, no help for {argument}"));
         }
         Some((Command::Help, true, false))
+    } else if abbreviates(name, "global", 1) {
+        if bang {
+            return Command::Refused("E477: No ! allowed".into());
+        }
+        return global(
+            given.unwrap_or(Range::Lines(1, usize::MAX)),
+            after.trim_start(),
+            line,
+        );
+    } else if abbreviates(name, "marks", 5) {
+        let letters = argument.chars().filter(|c| !c.is_whitespace()).collect();
+        return refusal(given, bang, None).unwrap_or(Command::Marks(letters));
+    } else if abbreviates(name, "jumps", 2) {
+        Some((Command::Jumps, false, false))
     } else {
         None
     };
@@ -137,6 +158,28 @@ pub fn parse(typed: &str) -> Command {
         argument,
     )
     .unwrap_or(command)
+}
+
+/// :g/pat/ over a range, `/` any delimiter but a letter, listing the
+/// pieces it matches; with :d after it, the change refused, and any other
+/// command, one the page hasn't.
+fn global(range: Range, typed: &str, line: &str) -> Command {
+    let Some(delimiter) = typed.chars().next() else {
+        return Command::Refused("E148: Regular expression missing from :global".into());
+    };
+    if delimiter.is_alphanumeric() || matches!(delimiter, '\\' | '"' | '|') {
+        return Command::Refused("E146: Regular expressions can't be delimited by letters".into());
+    }
+    let rest = &typed[delimiter.len_utf8()..];
+    let (pattern, command) = rest.split_once(delimiter).unwrap_or((rest, ""));
+    match command.trim() {
+        "" | "p" | "pr" | "print" | "#" | "nu" | "number" | "l" | "list" => Command::Global {
+            pattern: pattern.to_string(),
+            range,
+        },
+        command if parse(command) == Command::Change => Command::Change,
+        _ => Command::Refused(unknown(line)),
+    }
 }
 
 /// What Neovim says of a range, a ! or words a command doesn't take.
@@ -268,6 +311,45 @@ mod tests {
             assert_eq!(parse(typed), Command::Help, "{typed}");
         }
         assert_eq!(refused("h gO"), "E149: Sorry, no help for gO");
+    }
+
+    #[test]
+    fn global_lists_what_its_pattern_matches_over_its_range() {
+        let every = Range::Lines(1, usize::MAX);
+        let global = |pattern: &str, range| Command::Global {
+            pattern: pattern.into(),
+            range,
+        };
+        assert_eq!(parse("g/Part/"), global("Part", every));
+        assert_eq!(parse("global/Part"), global("Part", every));
+        assert_eq!(parse("g#a/b#p"), global("a/b", every), "any delimiter");
+        assert_eq!(parse("'<,'>g/x/"), global("x", Range::Selected));
+        assert_eq!(parse("g//"), global("", every), "the last search's");
+        assert_eq!(parse("g/x/d"), Command::Change);
+        assert_eq!(
+            refused("g/x/s/a/b/"),
+            "E492: Not an editor command: g/x/s/a/b/"
+        );
+        assert_eq!(
+            refused("g"),
+            "E148: Regular expression missing from :global"
+        );
+        assert_eq!(
+            refused("g x"),
+            "E146: Regular expressions can't be delimited by letters"
+        );
+        assert_eq!(refused("g!/x/"), "E477: No ! allowed");
+    }
+
+    #[test]
+    fn marks_and_jumps_are_listed() {
+        assert_eq!(parse("marks"), Command::Marks(String::new()));
+        assert_eq!(parse("marks aB"), Command::Marks("aB".into()));
+        assert_eq!(refused("mar"), "E492: Not an editor command: mar");
+        assert_eq!(parse("ju"), Command::Jumps);
+        assert_eq!(parse("jumps"), Command::Jumps);
+        assert_eq!(refused("jumps 3"), "E488: Trailing characters: 3");
+        assert_eq!(refused("%marks"), "E481: No range allowed");
     }
 
     #[test]

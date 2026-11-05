@@ -674,6 +674,33 @@ rests=$(how_many '^key Rest None')
 press -k Escape
 logged '^key Rest None' $((rests + 1))
 
+# :g/Part/ lists the four sections' headings, the lines it matches, in
+# gO's place, and Return goes to the one chosen; one matching nothing
+# says so. :marks lists ' and a, and :ju the jumps, each put away by
+# Escape.
+closed=$(how_many '^outline: closed')
+went=$(how_many '^outline went to')
+press ':g/Part/'
+press -k Return
+logged '^outline: 4 rows, chosen "Part [1-4]"' 1
+press -k Return
+logged '^outline went to "Part [1-4]"' $((went + 1))
+press ':g/zzz/'
+press -k Return
+logged '^said: Pattern not found: zzz' 1
+press ':marks'
+press -k Return
+logged "^outline: 2 rows, chosen \"'  " 1
+press -k Escape
+logged '^outline: closed' $((closed + 2))
+lists=$(how_many '^outline: [0-9]+ rows')
+press ':ju'
+press -k Return
+logged '^command: "ju" is Jumps' 1
+logged '^outline: [0-9]+ rows' $((lists + 1))
+press -k Escape
+logged '^outline: closed' $((closed + 3))
+
 # :q closes it.
 press ':q'
 press -k Return

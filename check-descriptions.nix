@@ -1156,7 +1156,8 @@
     and a selection's lines with :'<,'>y, says E16 past the end, keeps the search's marks on
     Escape at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on
     a selection), keeps a mark between openings, goes between files with :bp, :e and :bn, says
-    E484 of a file that isn't, lists the keys on :h, and closes on :q; markdown files open in it
+    E484 of a file that isn't, lists the keys on :h, lists the lines :g/pat/ matches, the marks on
+    :marks and the jumps on :ju, going to one on Return, and closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests

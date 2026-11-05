@@ -1017,6 +1017,9 @@ impl App {
                     ex::Command::Edit(file) => self.edit(file.as_deref()),
                     ex::Command::File { on, times } => self.file_beside(*on, *times),
                     ex::Command::Help => self.show_keys(true),
+                    ex::Command::Global { pattern, range } => self.list_global(pattern, *range),
+                    ex::Command::Marks(letters) => self.list_marks(letters),
+                    ex::Command::Jumps => self.list_jumps(),
                     ex::Command::Nothing => {}
                     ex::Command::Refused(said) => self.say(said),
                 }
@@ -1065,6 +1068,110 @@ impl App {
                 .map_or(pt, moves::top_of);
             self.bring(top);
         }
+    }
+
+    /// Shows a list in gO's place, its rows moved through and gone to as
+    /// the outline's are.
+    fn list(&mut self, rows: Vec<outline::Row>, chosen: usize) {
+        self.outline = outline::Outline::of(rows, chosen);
+        self.ask_outline();
+    }
+
+    /// :g/pat/: the pieces of the range it matches, each by the line its
+    /// first match is on, as / matches; an empty pattern is the last
+    /// search's, as Vim's is.
+    fn list_global(&mut self, pattern: &str, range: ex::Range) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let (from, to) = match range {
+            ex::Range::Here => return,
+            ex::Range::Lines(from, to) => (from, to),
+            ex::Range::Selected => match self.selected {
+                Some(lines) => lines,
+                None => return self.say(ex::NOTHING_SELECTED),
+            },
+        };
+        let pattern = match (pattern, &self.searched) {
+            ("", Some((query, _))) => query.clone(),
+            ("", None) => return self.say("E35: No previous regular expression"),
+            (pattern, _) => pattern.to_string(),
+        };
+        let rows: Vec<outline::Row> = layout
+            .matching(&pattern, from, to)
+            .into_iter()
+            .map(|(top, words)| outline::Row {
+                level: 1,
+                words,
+                to: outline::To::Line(top),
+            })
+            .collect();
+        if rows.is_empty() {
+            // As Vim's :global says it, with no number, unlike a search's.
+            return self.say(&format!("Pattern not found: {pattern}"));
+        }
+        // The list opens on the first match from the cursor's line on.
+        let here = self.cursor_pt() - 0.5;
+        let chosen = rows
+            .iter()
+            .position(|row| matches!(row.to, outline::To::Line(top) if top >= here))
+            .unwrap_or(0);
+        self.list(rows, chosen);
+    }
+
+    /// :marks: ' for the last jump, then each letter's, with the words of
+    /// the line it's on, as Vim lists them; only the letters given, when
+    /// some are.
+    fn list_marks(&mut self, letters: &str) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let jumped = self.last_jump.as_ref().map_or(0.0, |spot| spot.aim);
+        let mut marks: Vec<(char, f64)> = self.marks.iter().map(|(&c, &pt)| (c, pt)).collect();
+        marks.sort_by_key(|&(letter, _)| (letter.is_uppercase(), letter));
+        let rows: Vec<outline::Row> = std::iter::once(('\'', jumped))
+            .chain(marks)
+            .filter(|(letter, _)| letters.is_empty() || letters.contains(*letter))
+            .map(|(letter, pt)| outline::Row {
+                level: 1,
+                words: format!("{letter}  {}", layout.words_at(pt).unwrap_or_default()),
+                to: outline::To::Line(pt),
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.say(&format!("E283: No marks matching \"{letters}\""));
+        }
+        self.list(rows, 0);
+    }
+
+    /// :jumps: the jump list, oldest first, the place Ctrl+O and Ctrl+I
+    /// stand at chosen, each by its line's words, or on another file by
+    /// the file's name.
+    fn list_jumps(&mut self) {
+        let Some(layout) = self.layout.clone() else {
+            return;
+        };
+        let rows: Vec<outline::Row> = self
+            .jumps
+            .iter()
+            .map(|spot| outline::Row {
+                level: 1,
+                words: if links::same(&spot.file, &self.file) {
+                    layout.words_at(spot.aim).unwrap_or_default().to_string()
+                } else {
+                    spot.file.file_name().map_or_else(
+                        || spot.file.display().to_string(),
+                        |name| name.to_string_lossy().into_owned(),
+                    )
+                },
+                to: outline::To::Jump(spot.file.clone(), spot.pt, spot.aim),
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.say("No jumps yet");
+        }
+        let chosen = self.jump_at.min(rows.len() - 1);
+        self.list(rows, chosen);
     }
 
     /// :e: another file, named from the folder the reader was started in
@@ -1206,7 +1313,11 @@ impl App {
         let row = outline.rows[outline.chosen].clone();
         self.close_outline();
         self.remember(self.heading() / self.px_per_pt());
-        self.land(row.top_pt);
+        match row.to {
+            outline::To::Heading(top) => self.land(top),
+            outline::To::Line(top) => self.bring(top),
+            outline::To::Jump(file, pt, aim) => self.revisit(Spot { file, pt, aim }),
+        }
         if keys_logged() {
             eprintln!(
                 "outline went to {:?}: heading {:.1} pt",

@@ -703,10 +703,11 @@ command = "sort"
 short = "sor"
 kinds = ["list"]
 
+# On a page it only lists the lines it matches, as gO lists headings.
 [acts.global]
 command = "global"
 short = "g"
-kinds = ["list"]
+kinds = ["list", "page"]
 changes = true
 undoable = true
 range = true
