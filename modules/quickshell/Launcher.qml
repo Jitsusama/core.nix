@@ -1836,7 +1836,7 @@ Scope {
     // or its verb, as the command line names its act, and the key
     // language's flags for it.
     function commandNamed(row) {
-        return Catalogue.named(commandWords(row.key ?? "").command, Commands.commandOf(row),
+        return Catalogue.named(commandWords(row).command, Commands.commandOf(row),
             Options.commands);
     }
 
@@ -2545,7 +2545,7 @@ Scope {
                 ?? held[held.length - 1]?.row.commands?.() ?? [],
                 table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words,
-                called: act => commandWords(act.key ?? ""), thing: one,
+                called: commandWords, thing: one,
                 earlier: opening?.earlier ? commandEarlier : [] }),
             options: standingOptions()
         };
@@ -2686,19 +2686,11 @@ Scope {
             now: () => Theme.appearance }
     }, ...sources.map(source => source.setOptions ?? {}))
 
-    // An act's words for the line (words.json's command, argument, bang and
-    // range), by its key: a verb's id, or one made from it for each of
-    // several, as verb:sound-port-2 or verb:on:waiting:go:<id>, which reads
-    // the verb's own. Only a verb names a command; any other key has none.
-    function commandWords(key) {
-        let id = key;
-        while (id.startsWith("verb:")) {
-            const words = Words.of(id);
-            if (words.command !== undefined)
-                return words;
-            id = id.slice(0, Math.max(id.lastIndexOf(":"), id.lastIndexOf("-")));
-        }
-        return {};
+    // An act's words for the line, by its key and the state its words are
+    // in, a row's wordState (CommandBinding.wordsFor).
+    function commandWords(act) {
+        return CommandBinding.wordsFor(act.key ?? "", (id, state) => Words.of(id, state),
+            act.wordState ?? "");
     }
 
     // The options as they stand as : is pressed, each read once, so the menu
@@ -2903,7 +2895,7 @@ Scope {
     // thing's own act (CommandBinding.actFor), asked first where it asks.
     function commandAcross(entry, read, things) {
         const found = things.map(thing => ({ act: CommandBinding.actFor(entry, actsOf(thing),
-            act => commandWords(act.key ?? "")), thing }))
+            commandWords), thing }))
             .filter(one => one.act !== undefined);
         commandAsked(entry, found, things.length, read.bang);
     }

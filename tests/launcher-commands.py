@@ -12,7 +12,9 @@ volume+=5; a bang, the other way, as :skip! goes back and :w! replaces;
 or a range of every row, %, as :%forg, only on an act that takes rows.
 A verb Return alone does, as Open the Marked on what's gathered, says so
 as the key language's do and names no command, since a command that
-lists, as :args, can't also open. Fails, naming each, on a verb with no
+lists, as :args, can't also open. A row that's an act itself, as Lock
+or Wi-Fi Off, names its command the same way where the language has one
+for it, and is held as a verb is. Fails, naming each, on a verb with no
 command or one the language hasn't got, a :set with nothing to set, an
 argument with spaces around it, a range on an act that takes none, a
 verb Return alone does that names a command too, and two verbs on one
@@ -93,6 +95,10 @@ def unnamed(vocabulary: Entry, commands: Commands) -> list[str]:
     """Say every verb whose command strays, and two a row can't tell apart."""
     verbs = [t for t in vocabulary["things"] if str(t.get("id", "")).startswith("verb:")]
     out = [said for verb in verbs for said in strays(verb, commands)]
+    # A row that's an act itself, as Lock, names its command where the
+    # language has one for it, held as a verb's is.
+    rows = [t for t in vocabulary["things"] if t not in verbs and "command" in t]
+    out += [said for row in rows for said in strays(row, commands)]
     seen: dict[tuple[str, str], str] = {}
     for verb in verbs:
         if "command" not in verb:
@@ -130,6 +136,14 @@ REFUSED: list[tuple[str, list[Entry]]] = [
         [{"id": "verb:bad", "in": "x", "act": "do", "command": "forget"}],
     ),
     (
+        "a row that's an act naming a command no act has",
+        [{"id": "session:bad", "command": "frob"}],
+    ),
+    (
+        "a row's :set setting nothing",
+        [{"id": "session:bad", "command": "set"}],
+    ),
+    (
         "two verbs alike on a row",
         [
             {"id": "verb:one", "in": "x", "command": "forget"},
@@ -161,6 +175,7 @@ ALLOWED: list[Entry] = [
     {"id": "verb:on:waiting:go", "in": ON, "command": "forget"},
     {"id": "verb:on:playing:go", "in": ON, "command": "forget"},
     {"id": "thing:not-a-verb", "in": "x"},
+    {"id": "session:good", "command": "set", "argument": "wifi!"},
 ]
 
 

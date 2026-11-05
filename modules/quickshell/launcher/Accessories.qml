@@ -84,6 +84,8 @@ Provider {
         verb: Words.verb("bluetooth:radio", on ? "" : "off"),
         name: Words.name("bluetooth:radio", on ? "" : "off"),
         glyph: Words.glyph("bluetooth:radio", on ? "" : "off"),
+        // Its words' state, so the : line names the command for it.
+        wordState: on ? "" : "off",
         hue: "machine",
         stays: true,
         run: () => provider.adapter.enabled = !provider.on

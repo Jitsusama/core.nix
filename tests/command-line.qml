@@ -500,10 +500,40 @@ QtObject {
         holdMinutes(options);
         holdSteps();
         holdRanges();
+        holdWords();
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // An act's words for the line by its key, as words.json has them: a
+    // verb's own, or the verb's for one of several made from it; a row that
+    // is an act itself, as Lock, its own, and the step it asks first, as
+    // Power Off's sure, its row's; one in a state, as Wi-Fi On, its state's,
+    // so the line says what runs, never a toggle; none for a key whose words
+    // name none.
+    function holdWords() {
+        const vocabulary = {
+            "wifi:radio": { id: "wifi:radio", command: "set", argument: "nowifi",
+                states: { off: { argument: "wifi" } } },
+            "verb:sound-port": { id: "verb:sound-port", command: "set",
+                argument: "port={port}" },
+            "session:Lock": { id: "session:Lock", command: "lockscreen" },
+            "session:Power Off": { id: "session:Power Off", command: "poweroff" },
+            "session:quiet": { id: "session:quiet" }
+        };
+        const of = (id, state) => Object.assign({ id }, vocabulary[id] ?? {},
+            ((vocabulary[id] ?? {}).states ?? {})[state] ?? {});
+        const named = key => CommandBinding.wordsFor(key, of).command ?? "";
+        const set = state => CommandBinding.wordsFor("wifi:radio", of, state).argument ?? "";
+        holds("a row in a state names its state's", [set(""), set("off")], ["nowifi", "wifi"]);
+        holds("a verb made one of several reads the verb's", named("verb:sound-port-2"), "set");
+        holds("a row that's an act names its own", named("session:Lock"), "lockscreen");
+        holds("the step a row asks first names the row's", named("session:Power Off:sure"),
+            "poweroff");
+        holds("a row whose words name none has none",
+            [named("session:quiet"), named("session:quiet:60"), named("")], ["", "", ""]);
     }
 
     // A range before a command, read as Vim's (Ex.js): Return says what it

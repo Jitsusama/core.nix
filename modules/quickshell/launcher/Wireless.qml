@@ -89,6 +89,8 @@ Provider {
         verb: Words.verb("wifi:radio", on ? "" : "off"),
         name: Words.name("wifi:radio", on ? "" : "off"),
         glyph: Words.glyph("wifi:radio", on ? "" : "off"),
+        // Its words' state, so the : line names the command for it.
+        wordState: on ? "" : "off",
         hue: "machine",
         stays: true,
         run: () => Wifi.turn(!provider.on)
