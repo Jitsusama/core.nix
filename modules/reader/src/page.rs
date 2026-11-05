@@ -309,10 +309,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       align: (x, y) => if numeric.at(x, default: false) { right } else { left },
       ..all.enumerate().map(((k, row)) => range(n).map(i => {
         let it = cell(row, i)
-        // Figures are the mono's, as everywhere.
-        let it = if numeric.at(i, default: false) { text(..level.figure.text, it) } else { it }
-        // A table's heads are eyebrows, on the body's baseline.
-        if head != none and k == 0 { eyebrow(it) } else { it }
+        // A table's heads are eyebrows, on the body's baseline, over
+        // figures as over words; figures are the mono's, as everywhere.
+        if head != none and k == 0 { eyebrow(it) } else if numeric.at(i, default: false) { text(..level.figure.text, it) } else { it }
       })).flatten()
     )
   }

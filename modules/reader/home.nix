@@ -142,8 +142,19 @@ let
         tracking = -2.0e-2;
       }
     );
-    # A section (##) at Title, a clear step above the words.
-    section = set title;
+    # A section (##) in the title's cut a step down, at the section step
+    # the theme keeps for the page, drawn for that size: a clear step above
+    # the words that still lets a page of many short sections read as one
+    # page rather than a list of headings, as Title's step would not.
+    section = set (
+      title
+      // {
+        step = "section";
+        axes = title.axes // {
+          opsz = 17;
+        };
+      }
+    );
     # ### at the words' size, in the italic and a touch heavier, in strong:
     # it heads, so the voice's rule bends here, and only here.
     part = set (

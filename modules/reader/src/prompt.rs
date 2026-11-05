@@ -352,7 +352,7 @@ fn key_list(width_pt: f64) -> String {
         .map(|column| format!("stack(spacing: 12pt, {})", column.join(", ")))
         .collect();
     format!(
-        r#"{}#set page(width: auto, height: auto, margin: {SIDE_PT}pt, fill: ink.sunken)
+        r"{}#set page(width: auto, height: auto, margin: {SIDE_PT}pt, fill: ink.sunken)
 #set text(..level.note.text)
 #context {{
   let cap = measure([H]).height
@@ -363,7 +363,7 @@ fn key_list(width_pt: f64) -> String {
   let room = {room}pt
   if measure(two).width <= room {{ two }} else {{ block(width: calc.min(measure(one).width, room), one) }}
 }}
-"#,
+",
         crate::theme::get().typst(),
         widest[0].join(", ") + ",",
         widest[1].join(", ") + ",",
