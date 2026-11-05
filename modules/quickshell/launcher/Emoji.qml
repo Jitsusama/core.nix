@@ -72,7 +72,8 @@ Provider {
                 now: true,
                 run: () => Pasting.paste(copied),
                 verbs: () => {
-                    const copy = provider.act("verb:emoji:copy", copied);
+                    const copy = Object.assign(provider.act("verb:emoji:copy", copied),
+                        { copies: e.emoji });
                     return Pasting.under() === null ? [copy]
                         : [provider.act("verb:emoji:paste", () => Pasting.paste(copied)), copy];
                 }

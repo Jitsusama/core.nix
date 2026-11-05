@@ -254,7 +254,10 @@ Provider {
                 : opening ? opening.given : null,
             run: signing ? () => SignIn.open() : joined ? () => Wifi.leave(network.name)
                 : () => provider.join(network),
-            verbs: () => provider.verbs(network, locked)
+            verbs: () => provider.verbs(network, locked),
+            // Joined, its Return disconnects, which Return typed in insert
+            // never does.
+            ends: joined && !signing ? Words.ending("verb:wifi-leave").ends : ""
         });
     }
 
@@ -752,7 +755,7 @@ Provider {
 
     // An act on a network, named by the vocabulary.
     function act(id, state, fields) {
-        return Object.assign(fields, {
+        return Object.assign(fields, Words.ending(`verb:${id}`), {
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`, state, fields.fill),
             hue: "action"

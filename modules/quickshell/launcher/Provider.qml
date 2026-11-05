@@ -317,6 +317,9 @@ Scope {
             figure: true,
             plain: true,
             now: true,
+            // What it copies as it says it then, for y to join with other
+            // rows' copies.
+            copies: () => textOf({ copy: fields.copy, name: fields.name, side: row.side }),
             run: () => {
                 const text = textOf({ copy: fields.copy, name: fields.name, side: row.side });
                 if (text !== "")
