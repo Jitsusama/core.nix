@@ -151,14 +151,23 @@ def bottom_set(drawer: Json, lines: list[float]) -> bool:
     """Say whether the last of these lines shown keeps the inset above the frame's bottom.
 
     Its baseline stands at least the inset above the frame's inside edge, and where more waits
-    below, less than the widest gap to the next line further (a group's, two pitches), since the
-    next whole line would have fit there.
+    below, the next thing, with its heading if it opens a group, would not have fit whole there.
+    These are each thing's first baselines, so a thing's last stands a step above the next's
+    first: a pitch, a beat more where any thing in the list wraps, and two pitches before a
+    group's heading, a fact with no name. Past the last thing left, the test can't tell.
     """
     shown = [line for line in lines if line < drawer["foot"]]
     if not shown:
         return False
-    room = drawer["height"] - BORDER - shown[-1]
-    return room >= INSET - NEAR and (not drawer["more"] or room < INSET + 2 * PITCH + NEAR)
+    if drawer["height"] - BORDER - shown[-1] < INSET - NEAR:
+        return False
+    headings = {at for at, name in enumerate(drawer["facts"]) if name == ""}
+    step = PITCH + BEAT if drawer["factsWrapped"] else PITCH
+    thing = len(shown) + (len(shown) in headings)
+    if not drawer["more"] or thing + 1 >= len(lines):
+        return True
+    last = lines[thing + 1] - (2 * PITCH if thing + 1 in headings else step)
+    return bool(last > drawer["height"] - BORDER - INSET + NEAR)
 
 
 def room_beside_the_card(desktop: Desktop) -> int:
