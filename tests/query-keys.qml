@@ -543,7 +543,7 @@ QtObject {
         for (const key of keys) {
             const read = Keys.read(standing, key, mode, true);
             standing = read.standing;
-            mode = Keys.modeAfter(read.act, mode);
+            mode = Keys.modeAfter(read.act, mode, "insert");
             if (read.act !== "")
                 acts.push(read.count > 0 ? `${read.count} ${read.act}` : read.act);
         }
