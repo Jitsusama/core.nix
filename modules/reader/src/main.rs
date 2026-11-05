@@ -1055,7 +1055,15 @@ impl App {
             self.land(f64::INFINITY);
         } else {
             let blocks = place::blocks(&self.painter.page().frame);
-            self.bring(moves::source_line(&blocks, line).unwrap_or(0.0));
+            let pt = moves::source_line(&blocks, line).unwrap_or(0.0);
+            // The line it's set on is the first whose foot is past it, since
+            // a heading's ink stands above the top of its block.
+            let top = self
+                .words
+                .as_deref()
+                .and_then(|lines| lines.iter().find(|l| moves::foot_of(l) > pt + 0.5))
+                .map_or(pt, moves::top_of);
+            self.bring(top);
         }
     }
 
