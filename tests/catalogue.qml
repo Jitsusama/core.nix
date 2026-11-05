@@ -90,13 +90,10 @@ QtObject {
         // given its command as the launcher resolves it, and that command's
         // flags where the language names it.
         const language = commands();
-        // A row's command, as Commands.js's commandOf reads one from its
-        // verb where its words give it none: the verb's first word.
-        const named = row => {
-            const command = row.command
-                ?? (String(row.verb ?? "").trim().toLowerCase().match(/^[a-z]+/) ?? [""])[0];
-            return { command, flags: language[command] };
-        };
+        // A row's command, from its words (`command` here) or else as
+        // Commands.js's commandOf reads one from its verb: its first word.
+        const named = row => Catalogue.named(row.command,
+            (String(row.verb ?? "").trim().toLowerCase().match(/^[a-z]+/) ?? [""])[0], language);
         const changes = row => Catalogue.changesState(row, named(row));
         const changing = [
             ["an ending action", { verb: "forget", act: "ending", ends: "forgets", run: does }],
@@ -116,6 +113,8 @@ QtObject {
         ];
         for (const [what, row] of changing)
             expect(`${what} changes how things stand`, changes(row), true);
+        expect("a window's Close It, by its words' :close, changes how things stand",
+            changes({ verb: "close", command: "close", run: does }), true);
         const quietly = [
             ["a program", { verb: "open", run: does }],
             ["a program opened that stays, as the table says :open changes nothing",
@@ -130,6 +129,9 @@ QtObject {
             // the launcher where it has nothing to copy yet, which isn't
             // the :close of a window that its verb would name.
             ["a figure with nothing to copy yet", { verb: "close", figure: true, run: does }],
+            // A row whose verb alone says close only closes the launcher,
+            // as :quit does, where a window's Close It is its words' :close.
+            ["a row that only closes the launcher", { verb: "close", run: does }],
             ["a spot to go to", { verb: "start", stays: true, spot: "x", run: does }],
             ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
                 targets: opens }],
