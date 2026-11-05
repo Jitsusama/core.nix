@@ -186,6 +186,7 @@ let
     "launcher/Characters.js"
     "launcher/Units.js"
     "launcher/Zones.js"
+    "launcher/Moment.js"
     "launcher/Ago.js"
     "launcher/Colours.js"
     "launcher/Asking.js"
@@ -1618,8 +1619,11 @@ in
                     // lib.optionalAttrs (provider.source == "emoji") {
                       list = "${emojiList (provider.tone or "none")}";
                     }
+                    # The zones, and which tzdata they came from, which
+                    # Time's Zone says.
                     // lib.optionalAttrs (provider.source == "time") {
                       list = "${timeZones}";
+                      tzdata = pkgs.tzdata.version;
                     }
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";

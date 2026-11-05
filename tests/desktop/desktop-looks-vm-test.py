@@ -252,6 +252,24 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
                 f"at {scale} the last line runs into the plate's foot: {drawer}"
             )
             desktop.photograph(f"launcher-plate-facts-at-{scale.replace('.', '-')}")
+            # The zone's plate, under its eyebrow: a value that won't sit beside its name in
+            # two lines, as "none before 2046", takes the plate's width under it instead, so
+            # no fact stands taller than two lines and none reads a word a line.
+            desktop.down_to("Zone")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["drawer"]["out"] is True
+                    and shown["drawer"]["title"] != "0.harbour.pool.ntp.org"
+                    and len(shown["drawer"]["lines"]["facts"]) > 1
+                )
+            )
+            drawer = plate_shown(desktop, scale)
+            facts = drawer["lines"]["facts"]
+            assert drawer["eyebrow"] == "Time Zone", f"at {scale} the zone's plate: {drawer}"
+            assert all(later - earlier <= 2 * PITCH + NEAR for earlier, later in pairwise(facts)), (
+                f"at {scale} a value stands a word a line beside its name: {drawer}"
+            )
+            desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
             desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start timekeeping")

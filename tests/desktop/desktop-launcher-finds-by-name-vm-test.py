@@ -688,6 +688,31 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         desktop.launcher_until(lambda shown: bool(shown["rows"]))
         desktop.photograph(picture)
         desktop.close_launcher()
+    # Inside the time here and the date, whose parts are the clock's and the
+    # calendar's, each a step in.
+    for typed, first, picture in [
+        ("time", "Zone", "launcher-time-inside"),
+        ("date", "ISO Date", "launcher-date-inside"),
+    ]:
+        desktop.answer(typed)
+        desktop.step_in()
+        # Each wait ends before the loop moves on, so it reads this pass's part.
+        desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
+        desktop.photograph(picture)
+        desktop.close_launcher()
+    # The time here counts each second while it's shown, and a tick never moves the
+    # selection or changes the card's size: UTC stays selected, among as many rows.
+    desktop.answer("time")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "UTC" in shown["rows"])
+    desktop.down_to("UTC")
+    before = desktop.showing()
+    was = before["selected"]["side"]
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") != was)
+    after = desktop.showing()
+    assert (after["selected"] or {}).get("name") == "UTC", f"a tick moved the selection: {after}"
+    assert after["rows"] == before["rows"], f"a tick changed the rows: {before} then {after}"
+    desktop.close_launcher()
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:

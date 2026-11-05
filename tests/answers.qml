@@ -15,6 +15,7 @@ import "Subnets.js" as Subnets
 import "Characters.js" as Characters
 import "Units.js" as Units
 import "Zones.js" as Zones
+import "Moment.js" as Moment
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
@@ -534,6 +535,58 @@ QtObject {
             "America/Toronto", 0);
         if (!away || away.unknown !== "narnia")
             failures.push(`"time in narnia" gave ${quoted(away)}, not a place to look up`);
+        asked++;
+        const change = Zones.nextChange(zones.zones["America/Toronto"],
+            at("2026-11-04T22:00") / 1000);
+        if (!change || new Date(change.when).toISOString() !== "2027-03-14T07:00:00.000Z"
+            || change.abbreviation !== "EDT" || change.minutes !== -240)
+            failures.push(`Toronto next changed at ${quoted(change)}`);
+
+        // The clock's and the calendar's figures: the equinoxes, the
+        // solstices and the moons against the instants USNO publishes, to
+        // the minute, and the rest worked by hand.
+        const minute = ms => new Date(ms).toISOString().slice(0, 16);
+        const evening = at("2026-11-04T22:00");
+        const day = new Date(2026, 10, 4);
+        const moon = Moment.moon(evening);
+        const season = Moment.season(evening, 43.67);
+        const figures = [
+            ["UTC", Moment.utcClock(evening + 7000), "22:00:07"],
+            ["Unix time", Moment.unix(evening), 1793829600],
+            ["TAI", Moment.tai(evening), "22:00:37"],
+            ["GPS time", quoted(Moment.gps(evening)), quoted({ week: 2443, seconds: 338418 })],
+            ["Greenwich sidereal time", Moment.sidereal(evening, 0), "00:56:37"],
+            ["a date this year, without its year", Moment.day(day, evening),
+                "Wednesday 4 November"],
+            ["a date of another year, with its year", Moment.day(new Date(2027, 0, 1), evening),
+                "Friday 1 January 2027"],
+            ["ISO date", Moment.iso(day), "2026-11-04"],
+            ["ISO week date", Moment.isoWeekDate(day), "2026-W45-3"],
+            ["ISO week date across a year", Moment.isoWeekDate(new Date(2027, 0, 1)),
+                "2026-W53-5"],
+            ["ordinal date", Moment.ordinal(day), 308],
+            ["quarter", quoted(Moment.quarter(day)), quoted({ quarter: 4, day: 35, days: 92 })],
+            ["Unix day", Moment.unixDay(day), 20761],
+            ["Julian day number", Moment.dayNumber(day), 2461349],
+            ["modified Julian day", Moment.modified(day), 61348],
+            ["March equinox", minute(Moment.solstice(2026, 0)), "2026-03-20T14:45"],
+            ["June solstice", minute(Moment.solstice(2026, 1)), "2026-06-21T08:24"],
+            ["September equinox", minute(Moment.solstice(2026, 2)), "2026-09-23T00:05"],
+            ["December solstice", minute(Moment.solstice(2026, 3)), "2026-12-21T20:50"],
+            ["season in the north", season.season, "autumn"],
+            ["season in the south", Moment.season(evening, -33.9).season, "spring"],
+            ["season's end", minute(season.ends), "2026-12-21T20:50"],
+            ["moon's phase", moon.phase, "waningCrescent"],
+            ["moon lit", Math.round(moon.lit * 100), 19],
+            ["next new moon", minute(moon.new), "2026-11-09T07:02"],
+            ["next full moon", minute(moon.full), "2026-11-24T14:53"],
+            ["full moon on its day", Moment.moon(at("2026-11-24T12:00")).phase, "full"]
+        ];
+        for (const [what, got, expected] of figures) {
+            asked++;
+            if (got !== expected)
+                failures.push(`${what} was ${quoted(got)}, not ${quoted(expected)}`);
+        }
 
         for (const [typed, headline, rows] of ColourCases.answers) {
             asked++;

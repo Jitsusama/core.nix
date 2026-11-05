@@ -1185,7 +1185,16 @@ works the same way everywhere.
   the network's address alone; the time then says so ("clock moved to
   Edmonton time, as the laptop is in Lighthouse"), and Put It Back leads
   what's inside, holding the zone it kept until the laptop is somewhere
-  else. So is the
+  else. The time here holds the clock and never the date: its Zone, a
+  thing saying its offset, abbreviation, next change and tzdata's
+  version, then UTC, Unix time, TAI, GPS time and sidereal time, each to
+  the second and counting while it's shown, then how the clock is kept.
+  The date holds the calendar alone: the ISO date, ISO week date and
+  ordinal date, the quarter, the Unix day, the Julian day and the
+  modified one, then the season where the laptop is and the moon, each a
+  thing. Nothing one says, the other does (VKCF3Z, 2026-10-30), and each
+  reads the same on Now's rows, its plate and in a search, from one
+  place (`launcher/Moment.js`). So is the
   machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
