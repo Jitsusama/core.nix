@@ -3,6 +3,7 @@
 {
   account,
   graphical,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -14,6 +15,26 @@ onLinux {
   zathura-next-document-passes-clippy = passesClippy "zathura-next-document-passes-clippy" (
     pkgs.callPackage ./next-document/package.nix { }
   );
+
+  # Escape closes nothing in zathura, its contents included: zathura's own
+  # Escape, Ctrl+[ and Ctrl+C there are unmapped, and ZZ closes them as a
+  # window, beside c, which opened them.
+  zathura-escape-closes-no-contents =
+    let
+      zathura = (account graphical).programs.zathura;
+      lines = lib.splitString "\n" zathura.extraConfig;
+      unmapped = key: lib.elem "unmap [index] ${key}" lines;
+    in
+    holds "zathura-escape-closes-no-contents"
+      "zathura's contents close on Escape, Ctrl+[ or Ctrl+C, or not on ZZ: unmap each in [index] and map [index] ZZ to toggle_index."
+      (
+        lib.all unmapped [
+          "<Esc>"
+          "<C-[>"
+          "<C-c>"
+        ]
+        && (zathura.mappings."[index] ZZ" or "") == "toggle_index"
+      );
 
   # zathura opens a page with the account's settings. It names a setting
   # or a colour it can't take and goes on without it, and stays open until

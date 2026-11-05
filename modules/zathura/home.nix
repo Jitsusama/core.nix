@@ -383,12 +383,17 @@ in
       unmap [fullscreen] q
       unmap [presentation] q
       unmap [index] q
+      unmap [index] <Esc>
+      unmap [index] <C-[>
+      unmap [index] <C-c>
     '';
-    # The contents close on the key that opened them, as on Escape.
+    # The contents close on the key that opened them, or on ZZ as a window
+    # does; Escape closes nothing, as Joel asked.
     mappings =
       lib.listToAttrs (map (key: lib.nameValuePair key.key key.run) (lib.filter (key: key ? run) keys))
       // {
         "[index] c" = "toggle_index";
+        "[index] ZZ" = "toggle_index";
         # Full screen closes as the window does.
         "[fullscreen] ZZ" = "quit";
       };

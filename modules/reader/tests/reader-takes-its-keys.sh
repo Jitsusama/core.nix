@@ -390,8 +390,16 @@ logged '^key Next None' 1
 press ' ?'
 logged '^key ShowKeys None' 1
 rests=$(how_many '^key Rest None')
+aways=$(how_many '^keys: away')
 press -k Escape
 logged '^key Rest None' $((rests + 1))
+# Escape closes nothing, the key list included; ZZ closes the list alone,
+# and the reader stays for the keys after it.
+[ "$(how_many '^keys: away')" = "$aways" ] || fail "Escape put the key list away"
+closes=$(how_many '^key Close None')
+press ZZ
+logged '^key Close None' $((closes + 1))
+logged '^keys: away' $((aways + 1))
 
 # The link at the page's end, back to its heading, by its label.
 ends=$(grep -c -a '^key Last None' said || true)
@@ -639,7 +647,13 @@ press -k Return
 logged '^outline went to "Part 1"' 1
 press gO
 logged '^outline: 5 rows, chosen "Part 1"' 2
+# Escape closes nothing, so j still moves through the outline, and ZZ
+# closes it as :q would a window.
 press -k Escape
+press j
+logged '^outline: 5 rows, chosen "Part 2"' 1
+[ "$(how_many '^outline: closed')" = 1 ] || fail "Escape closed the outline"
+press ZZ
 logged '^outline: closed' 2
 
 # A mark is kept with its file between openings.
@@ -670,7 +684,8 @@ logged '^opened: (.*/)?second.md, ' 6
 
 # :bp and :bn go back and on through the folder as [b and ]b do, :e
 # opens a file named from where the reader started and says E484 of one
-# that isn't there, and :h lists the keys, which Escape puts away.
+# that isn't there, and :h lists the keys, which Space w puts away and
+# Escape doesn't.
 press ':bp'
 press -k Return
 logged '^opened: (.*/)?page.md, ' 6
@@ -687,13 +702,17 @@ press ':h'
 press -k Return
 logged '^command: "h" is Help' 1
 rests=$(how_many '^key Rest None')
+aways=$(how_many '^keys: away')
 press -k Escape
 logged '^key Rest None' $((rests + 1))
+[ "$(how_many '^keys: away')" = "$aways" ] || fail "Escape put :h's list away"
+press ' w'
+logged '^keys: away' $((aways + 1))
 
 # :g/Part/ lists the four sections' headings, the lines it matches, in
 # gO's place, and Return goes to the one chosen; one matching nothing
-# says so. :marks lists ' and a, and :ju the jumps, each put away by
-# Escape.
+# says so. :marks lists ' and a, and :ju the jumps, each put away by ZZ
+# or Space w.
 closed=$(how_many '^outline: closed')
 went=$(how_many '^outline went to')
 press ':g/Part/'
@@ -707,14 +726,14 @@ logged '^said: Pattern not found: zzz' 1
 press ':marks'
 press -k Return
 logged "^outline: 2 rows, chosen \"'  " 1
-press -k Escape
+press ZZ
 logged '^outline: closed' $((closed + 2))
 lists=$(how_many '^outline: [0-9]+ rows')
 press ':ju'
 press -k Return
 logged '^command: "ju" is Jumps' 1
 logged '^outline: [0-9]+ rows' $((lists + 1))
-press -k Escape
+press ' w'
 logged '^outline: closed' $((closed + 3))
 
 # A row too long for the list reads on while it's chosen: its words
@@ -725,7 +744,7 @@ logged '^outline: 1 rows, chosen "Paragraph 7 says' 1
 logged '^outline: reads on [0-9]+ px past its room' 1
 logged '^outline: reading on' 1
 logged '^outline: read on to its end' 1
-press -k Escape
+press ZZ
 logged '^outline: closed' $((closed + 4))
 
 # The menu shows the moment : is typed, every command the page has; a
