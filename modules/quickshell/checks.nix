@@ -822,6 +822,7 @@ onLinux {
       cp ${./launcher/Units.js} Units.js
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Moment.js} Moment.js
+      cp ${./launcher/Keeping.js} Keeping.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1446,6 +1447,7 @@ onLinux {
         cp ${./launcher/Addresses.js} launcher/Addresses.js
         cp ${./launcher/Calculator.qml} launcher/Calculator.qml
         cp ${./launcher/Clocks.qml} launcher/Clocks.qml
+        cp ${./launcher/Keeping.js} launcher/Keeping.js
         cp ${./launcher/Today.qml} launcher/Today.qml
         cp ${./launcher/Moment.js} launcher/Moment.js
         cp ${./launcher/Waits.qml} launcher/Waits.qml
@@ -1469,6 +1471,11 @@ onLinux {
           function city(zone) { return zone; }
           function putBack() {}
         ''} Location.qml
+        cp ${singleton "Timekeeping.qml" ''
+          property int watching: 0
+          property bool refused: false
+          property var reading: (${builtins.readFile ../../tests/timekeeping-reading.json})
+        ''} Timekeeping.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo

@@ -70,6 +70,11 @@ let
   # someone signs in (desktop/front-desk.py).
   frontDesk = ./desktop/front-desk.py;
 
+  # The VM's own time server, which its chrony keeps the clock by
+  # (desktop/stand-in-time.conf).
+  timePort = 11123;
+  timeStandIn = pkgs.replaceVars ./desktop/stand-in-time.conf { port = toString timePort; };
+
   # Text views and file lists draw on the theme's dark background, which
   # nothing else on the screen uses, so a window that hasn't drawn can't pass
   # for one that has.
@@ -578,16 +583,31 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # the network, and the host's own position would stand in for the
       # test's.
       services.geoclue2.geoProviderUrl = lib.mkForce "http://127.0.0.1:9/v1/geolocate";
-      # A test VM turns timesyncd off, which would leave Time's keeping
-      # unheard, since it's read only where timesyncd runs. It runs here as
-      # on a laptop, asking a server that isn't there, so it makes no
-      # exchange even where the VM reaches the network, and the test
-      # writes one in its stead. The servers are forced, since a list is
-      # otherwise joined to the machine's own pool, which it would reach.
-      services.timesyncd = {
-        enable = lib.mkForce true;
-        servers = lib.mkForce [ "127.0.0.1" ];
-        fallbackServers = [ ];
+      # chrony keeps the clock as on a laptop, by a time server of the
+      # VM's own, a second chronyd serving the same clock, so Time has a
+      # chosen server with true figures wherever the VM runs, and by one
+      # named that never answers, out of reach. The pool is left out, so
+      # what the VM reaches when run by hand changes nothing.
+      networking.hosts = {
+        "127.0.0.1" = [ "time.harbour.test" ];
+        "127.0.0.3" = [ "far.harbour.test" ];
+      };
+      services.chrony = {
+        servers = lib.mkForce [ ];
+        extraConfig = ''
+          server time.harbour.test port ${toString timePort} iburst minpoll 0 maxpoll 2
+          server far.harbour.test iburst
+        '';
+      };
+      systemd.services.time-stand-in = {
+        description = "Serves the VM's own clock as a time server";
+        wantedBy = [ "multi-user.target" ];
+        before = [ "chronyd.service" ];
+        serviceConfig = {
+          # It serves the clock and never sets it.
+          ExecStart = "${pkgs.chrony}/bin/chronyd -n -x -u chrony -f ${timeStandIn}";
+          RuntimeDirectory = "time-stand-in";
+        };
       };
       home-manager.users.${account} = {
         # Slack, as a machine that brings it imports it, so Now's Slack piece

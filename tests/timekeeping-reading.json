@@ -1,0 +1,93 @@
+{
+  "synchronised": true,
+  "clock": {
+    "reference": "time.harbour.test",
+    "address": "192.0.2.7",
+    "stratum": 3,
+    "leap": "normal",
+    "lastSync": 1793829480000,
+    "correction": 0.000012,
+    "lastOffset": -0.000388,
+    "rmsOffset": 0.0002,
+    "frequency": 6.267,
+    "residualFrequency": 0.001,
+    "skew": 0.03,
+    "rootDelay": 0.015,
+    "rootDispersion": 0.000457,
+    "updateInterval": 64.2
+  },
+  "servers": [
+    {
+      "name": "time.harbour.test",
+      "address": "192.0.2.7",
+      "kind": "server",
+      "standing": "chosen",
+      "stratum": 2,
+      "poll": 64,
+      "reach": 255,
+      "lastSample": 12,
+      "offset": -0.000388,
+      "measured": -0.000391,
+      "error": 0.00002,
+      "samples": {
+        "count": 12,
+        "runs": 7,
+        "span": 680,
+        "deviation": 0.000041,
+        "residualFrequency": 0.001,
+        "skew": 0.03,
+        "offset": -0.000012,
+        "offsetError": 0.000008
+      },
+      "chosen": { "why": "chosen", "score": 1, "low": -0.0068, "high": 0.0073 },
+      "exchange": {
+        "localAddress": "192.0.2.2",
+        "version": 4,
+        "stratum": 2,
+        "leap": "normal",
+        "precision": 2.98e-8,
+        "rootDelay": 0.015,
+        "rootDispersion": 0.000457,
+        "reference": "GPS",
+        "referenceTime": 1793829470000,
+        "offset": -0.000388,
+        "delay": 0.036112,
+        "dispersion": 0.000011,
+        "responseTime": 0.000024,
+        "jitterAsymmetry": 0,
+        "testsPassed": 10,
+        "interleaved": false,
+        "authenticated": false,
+        "sent": 13,
+        "received": 13,
+        "valid": 13,
+        "good": 13
+      }
+    },
+    {
+      "name": "far.harbour.test",
+      "address": "192.0.2.9",
+      "kind": "server",
+      "standing": "unusable",
+      "stratum": 0,
+      "poll": 64,
+      "reach": 0,
+      "lastSample": null,
+      "offset": 0,
+      "measured": 0,
+      "error": 0,
+      "samples": null,
+      "chosen": null,
+      "exchange": null
+    }
+  ],
+  "hardwareClock": {
+    "fast": 0.31,
+    "gain": 2.1,
+    "samples": 6,
+    "runs": 4,
+    "span": 86400,
+    "measured": 1793829000000
+  },
+  "activity": { "online": 2, "offline": 0, "burstOnline": 0, "burstOffline": 0, "unresolved": 0 }
+}

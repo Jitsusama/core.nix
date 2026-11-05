@@ -15,7 +15,7 @@
     pkgs.callPackage ./clock/package.nix { }
   );
 
-  # The controller's clock is read for the firmware's offset before timesyncd
+  # The controller's clock is read for the firmware's offset before chrony
   # can have the kernel write the CMOS clock, through the device its module
   # gives, and set at shutdown and every hour.
   the-surface-keeps-the-clock-its-firmware-starts-from =
@@ -28,10 +28,10 @@
       clock = systemd.services.surface-clock;
     in
     holds "the-surface-keeps-the-clock-its-firmware-starts-from"
-      "The Surface Laptop 4 reads its controller's clock after timesyncd may have written the CMOS clock, lacks the controller's device, or doesn't set the controller's clock at shutdown and hourly."
+      "The Surface Laptop 4 reads its controller's clock after chrony may have written the CMOS clock, lacks the controller's device, or doesn't set the controller's clock at shutdown and hourly."
       (
         lib.elem "surface_aggregator_cdev" boot.kernelModules
-        && lib.elem "systemd-timesyncd.service" clock.before
+        && lib.elem "chronyd.service" clock.before
         && lib.elem "dev-surface-aggregator.device" clock.after
         && lib.hasSuffix "calibrate" clock.serviceConfig.ExecStart
         && lib.hasSuffix "keep" clock.serviceConfig.ExecStop

@@ -1026,110 +1026,92 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         desktop.as_account(f"rm -rf {pin} ~/.local/state/clock-follows")
 
 
-def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
-    """The time here says how the clock is kept, its server a thing to dig into."""
-    machine = desktop.machine
-    kept = "$XDG_RUNTIME_DIR/timekeeping.json"
-    # timekeeping runs, and timesyncd, asking a server that isn't there,
-    # has made no exchange, so the time says it isn't synchronised, and
-    # what keeps it, with no server to step into.
-    machine.wait_until_succeeds(
-        desktop.in_session("systemctl --user is-active timekeeping"),
-        timeout=dt.timedelta(seconds=60),
+def kept_by_the_stand_in(desktop: Desktop) -> None:
+    """Wait until chrony keeps the clock by the VM's own time server (tests/desktop.nix)."""
+    desktop.machine.wait_until_succeeds(
+        "chronyc -c -N sources | grep -q '^^,[*],time.harbour.test,'",
+        timeout=dt.timedelta(seconds=90),
     )
-    machine.wait_until_succeeds(
-        desktop.in_session(f"grep -q '\"exchange\":null' {kept}"),
-        timeout=dt.timedelta(seconds=60),
-    )
+
+
+def time_inside(desktop: Desktop) -> None:
+    """Ask the time here and step in, once its Clock and Servers are there."""
+    keeping = ["Clock", "Servers"]
+
+    def kept_rows(shown: Json) -> bool:
+        rows = cast("list[str]", shown["rows"])
+        return "Clock" in rows and rows[rows.index("Clock") :][:2] == keeping
+
     desktop.answer("time")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: "Service" in shown["rows"])
-    rows = cast("list[str]", desktop.showing()["rows"])
-    assert rows[rows.index("Synchronised") + 1] == "Service", rows
-    desktop.close_launcher()
-    # An exchange made, written as timekeeping writes it, with it stopped
-    # so nothing writes over it; heard back two minutes ago.
-    desktop.as_account("systemctl --user stop timekeeping")
-    last = int(machine.succeed("date +%s%3N").strip()) - 120_000
-    said = {
-        "version": 2, "synchronised": True, "frequency": 6.267,
-        "poll": {"now": 2048, "least": 32, "most": 2048},
-        "servers": {
-            "system": [], "link": [], "runtime": [],
-            "fallback": ["0.harbour.pool.ntp.org", "1.harbour.pool.ntp.org"],
-        },
-        "exchange": {
-            "server": "0.harbour.pool.ntp.org", "address": "192.0.2.7", "stratum": 1,
-            "reference": "GNSS", "offset": 388, "delay": 36112, "jitter": 11888,
-            "rootDelay": 15, "rootDispersion": 457, "precision": -25, "leap": "normal",
-            "ntpVersion": 4, "last": last, "packets": 13,
-        },
-    }  # fmt: skip
-    inside = [
-        "Name", "Address", "Stratum", "Reference", "Offset", "Delay", "Jitter", "Root Delay",
-        "Root Dispersion", "Precision", "Leap Second", "NTP Version", "Last Sync",
-        "Poll Interval", "Packets", "Frequency",
+    desktop.launcher_until(kept_rows)
+
+
+def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
+    """The time here says how chrony keeps the clock, each server a thing to dig into."""
+    kept_by_the_stand_in(desktop)
+    time_inside(desktop)
+    reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
+    for read in ("Clock \u00b7 synchronised", "Servers \u00b7 2"):
+        assert any(it.startswith(read) for it in reads), (read, reads)
+    # The clock steps into its figures, in order, each read from chronyd.
+    clock = [
+        "Offset", "Frequency", "Skew", "Root Delay", "Root Dispersion", "Leap Second",
+        "Last Sync", "Next Poll",
     ]  # fmt: skip
-    try:
-        desktop.as_account(f"echo '{json.dumps(said)}' > {kept}.new && mv {kept}.new {kept}")
-        desktop.answer("time")
-        desktop.step_in()
-        keeping = ["Synchronised", "0.harbour.pool.ntp.org", "Service", "Other Servers"]
-
-        def kept_rows(shown: Json) -> bool:
-            rows = cast("list[str]", shown["rows"])
-            if "Synchronised" not in rows:
-                return False
-            at = rows.index("Synchronised")
-            return rows[at : at + len(keeping)] == keeping
-
-        desktop.launcher_until(kept_rows)
-        reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
-        for read in (
-            "Synchronised \u00b7 yes, 2 min ago",
-            "0.harbour.pool.ntp.org \u00b7 stratum 1, +0.4 ms",
-            "Service \u00b7 systemd-timesyncd",
-            # The other fallback, the server in use not being another.
-            "Other Servers \u00b7 1",
-        ):
-            assert any(it.startswith(read) for it in reads), (read, reads)
-        # The server is a thing: its drawer says all it holds, and a step
-        # in lists it, each a figure.
-        desktop.down_to("0.harbour.pool.ntp.org")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["drawer"]["out"] is True
-                and shown["drawer"]["title"] == "0.harbour.pool.ntp.org"
-                and shown["drawer"]["facts"] == inside
-            )
+    desktop.down_to("Clock")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][: len(clock)] == clock)
+    reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
+    for read in ("Leap Second \u00b7 none announced", "Service \u00b7 chrony 4."):
+        assert any(it.startswith(read) for it in reads), (read, reads)
+    desktop.close_launcher()
+    # Servers steps into each server chrony asks, the chosen one first, each a thing whose
+    # note says where it stands, its drawer and its inside every figure chronyd has of it.
+    time_inside(desktop)
+    desktop.down_to("Servers")
+    desktop.step_in()
+    servers = ["time.harbour.test", "far.harbour.test"]
+    desktop.launcher_until(lambda shown: shown["rows"][: len(servers)] == servers)
+    desktop.down_to("time.harbour.test")
+    assert desktop.showing()["selected"]["note"] == "chosen", desktop.showing()["selected"]
+    inside = ["Address", "Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "time.harbour.test"
+            and shown["drawer"]["facts"][: len(inside)] == inside
         )
-        desktop.step_in()
-        desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
-        reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
-        for read in (
-            "Offset \u00b7 +0.4 ms",
-            "Root Dispersion \u00b7 0.5 ms",
-            "Precision \u00b7 30 ns",
-            "Last Sync \u00b7 2 min ago",
-            "Poll Interval \u00b7 every 34 min 8 s",
-            "Frequency \u00b7 +6.267 ppm",
-        ):
-            assert any(it.startswith(read) for it in reads), (read, reads)
-        desktop.close_launcher()
-        # With nothing keeping the time, Time says so, and no more.
-        desktop.as_account(f"echo '{{}}' > {kept}.new && mv {kept}.new {kept}")
+    )
+    desktop.down_to("far.harbour.test")
+    assert desktop.showing()["selected"]["note"] == "out of reach", desktop.showing()["selected"]
+    desktop.down_to("time.harbour.test")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
+    reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
+    for read in (
+        "Address \u00b7 127.0.0.1",
+        "Why \u00b7 the clock is kept by it",
+        "Stratum \u00b7 2",
+        "NTP Version \u00b7 4",
+    ):
+        assert any(it.startswith(read) for it in reads), (read, reads)
+    desktop.close_launcher()
+    # With chronyd stopped, nothing keeps the time, and Time says so and no more.
+    try:
+        desktop.machine.succeed("systemctl stop chronyd")
         desktop.answer("time")
         desktop.step_in()
         desktop.launcher_until(
             lambda shown: any(
-                str(thing["reads"]).startswith("Synchronised \u00b7 no, nothing keeps the time")
+                str(thing["reads"]).startswith("Clock \u00b7 nothing keeps the time")
                 for thing in shown["things"]
             )
         )
-        assert "Service" not in desktop.showing()["rows"], desktop.showing()["rows"]
+        assert "Servers" not in desktop.showing()["rows"], desktop.showing()["rows"]
         desktop.close_launcher()
     finally:
-        desktop.as_account("systemctl --user start timekeeping")
+        desktop.machine.succeed("systemctl start chronyd")
 
 
 def firmware_reads(shown: Json) -> str:

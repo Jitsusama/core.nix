@@ -6,13 +6,13 @@
 { nixosModules, homeModules }:
 {
   imports = [
+    nixosModules.chrony
     nixosModules.home-manager
     nixosModules.name-service
     nixosModules.nftables
     nixosModules.nixpkgs
     nixosModules.openssh
     nixosModules.systemd
-    nixosModules.timesyncd
     nixosModules.zsh
   ];
   home-manager.sharedModules = [ homeModules.base ];

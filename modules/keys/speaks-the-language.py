@@ -13,7 +13,8 @@ Reads the language (language.toml), the key map every layer writes
 - an act that changes something with a key the find line reaches;
 - an act taking an arrow in normal or visual mode, where it's its letter;
 - a mode, kind or field the language doesn't name, a command with no short
-  form or one that doesn't begin it, and an undoing of nothing.
+  form or one that doesn't begin it, an undoing of nothing, and a guard on
+  an act that would never ask.
 
 Every surface, a layer that names its kinds, is held to the first three.
 The source, Neovim, is held to the first and third for each key it binds
@@ -62,7 +63,18 @@ HELD = {"d": "super", "c": "ctrl", "a": "alt", "m": "alt", "s": "shift"}
 ORDER = ["super", "ctrl", "alt", "shift"]
 
 # What an act may say of itself.
-FIELDS = {"keys", "modes", "kinds", "takes", "command", "short", "changes", "undoable", "range"}
+FIELDS = {
+    "keys",
+    "modes",
+    "kinds",
+    "takes",
+    "command",
+    "short",
+    "changes",
+    "undoable",
+    "guarded",
+    "range",
+}
 # The modes an arrow is its letter in.
 LETTERED = {"normal", "visual"}
 ARROWS = {"up", "down", "left", "right"}
@@ -186,6 +198,11 @@ def shape_faults(language: dict[str, Any]) -> list[str]:
         ]
         if act.get("undoable") and not act.get("changes"):
             faults.append(f"{name} can be undone, but changes nothing")
+        if act.get("guarded"):
+            if not act.get("changes"):
+                faults.append(f"{name} guards itself, but it never asks, since it changes nothing")
+            elif act.get("undoable"):
+                faults.append(f"{name} guards itself, but it never asks, since it can be undone")
     return faults
 
 

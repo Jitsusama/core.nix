@@ -1,10 +1,10 @@
 # Sets a machine's clock on a network that names a time server of its own
 # that never answers, as a hotel's did. The machine's own servers are a second
-# machine running chrony, which it reaches; it has to get there, and not keep
-# asking the network's. Nothing names the network's server until networkd has
-# it, so timesyncd starts once it does: started sooner, it would find no server
-# named and fall back to the machine's, which proves nothing. The tests are
-# clock-vm-test.py, which pytest runs inside the driver (tests/lib/vm_pytest.py).
+# machine running chrony, which it reaches; it has to get there, and be told
+# the network's server too, which it asks beside its own. networkd names the
+# network's server once the link is up, and chrony is told it then, without
+# being started again. The tests are clock-vm-test.py, which pytest runs
+# inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
   silent = "192.168.1.99";
@@ -27,18 +27,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     networking.firewall.allowedUDPPorts = [ 123 ];
   };
 
-  nodes.machine =
-    { lib, ... }:
-    {
-      imports = [ self.nixosModules.timesyncd ];
-      networking.useNetworkd = true;
-      networking.timeServers = [ "server" ];
-      systemd.network.networks."40-eth1".ntp = [ silent ];
-      # A virtual machine takes its time from KVM, so NixOS leaves timesyncd
-      # off in one.
-      services.timesyncd.enable = lib.mkForce true;
-      systemd.services.systemd-timesyncd.wantedBy = lib.mkForce [ ];
-    };
+  nodes.machine = {
+    imports = [ self.nixosModules.chrony ];
+    networking.useNetworkd = true;
+    networking.timeServers = [ "server" ];
+    systemd.network.networks."40-eth1".ntp = [ silent ];
+  };
 
   tests = ./clock-vm-test.py;
   inherit values;

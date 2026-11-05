@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Says how systemd-timesyncd keeps the clock, for the launcher's Time";
+    description = "Says how chrony keeps the clock, for the launcher's Time";
     license = lib.licenses.mit;
     mainProgram = "timekeeping";
     platforms = lib.platforms.linux;

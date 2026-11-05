@@ -605,9 +605,9 @@
     key the language gives to another act and no act by a key not its own, in each mode its acts
     are pressed in, and Neovim's keys, its command line's among them, agree with the language;
     that the language gives no key or command name to two acts, names no command Neovim names
-    otherwise, gives no arrow a meaning of its own and lets the find line reach no change; each way
-    of straying shown to fail first, the reader leaving out a key it takes only while selecting
-    among them
+    otherwise, gives no arrow a meaning of its own, lets the find line reach no change and guards
+    no act that would never ask; each way of straying shown to fail first, the reader leaving out
+    a key it takes only while selecting among them
   '';
   kitty-accepts-its-configuration = ''
     kitty loads its files without a complaint
@@ -1908,7 +1908,7 @@
     the firmware's unreadable clock from taking rtc0
   '';
   the-surface-keeps-the-clock-its-firmware-starts-from = ''
-    the Surface Laptop 4 reads its controller's clock for the firmware's offset before timesyncd
+    the Surface Laptop 4 reads its controller's clock for the firmware's offset before chrony
     starts, through the device the controller's module gives, and sets that clock at shutdown and
     every hour
   '';
@@ -1950,8 +1950,8 @@
     timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it
   '';
   timekeeping-passes-clippy = ''
-    clippy finds nothing in timekeeping, which works out the clock's offset and delay as
-    timedatectl does, or its tests
+    clippy finds nothing in timekeeping, which reads chronyd's command port for Time, or its
+    tests
   '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
@@ -2129,7 +2129,8 @@
     quest's build is said with its quest, and a stopped build leaves no process nor cgroup
   '';
   vm-clock-keeps-time = ''
-    the clock sets from the machine's servers past a network's silent one
+    chrony is told a network's own time server and sets the clock from the machine's servers past
+    it when it's silent
   '';
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for
