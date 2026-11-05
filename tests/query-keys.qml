@@ -1342,12 +1342,15 @@ QtObject {
             .map(one => one.act), []);
         // Nor with Shift, nor as any key of a sequence, as the key language's
         // own check refuses (#1865), which can't see this table; nor in the
-        // drawer's page and its visual, gone to Ctrl+W (#1866).
+        // drawer's page and its visual, gone to Ctrl+W (#1866). A chord his
+        // leader begins, as his Neovim's Space and an arrow, may overlay
+        // Vim's own keys (Joel, 5 November): only those may hold an arrow.
         const arrowed = key => arrows.some(arrow => key === arrow || key === `Shift+${arrow}`);
+        const led = keys => Array.isArray(keys) && keys[0] === "Space";
         holds("nor with Shift, in a sequence or on the drawer's page", Keys.table
             .filter(one => ["normal", "visual", "words", "page", "pageVisual"]
                 .includes(one.mode))
-            .filter(one => one.keys.some(keys => [].concat(keys).some(arrowed)))
+            .filter(one => one.keys.some(keys => !led(keys) && [].concat(keys).some(arrowed)))
             .map(one => one.act), []);
         holds("normal's section names no arrow alone",
             sections.Normal.filter(key => arrows.map(Listed.face).includes(key)), []);
