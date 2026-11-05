@@ -484,9 +484,13 @@ def asks_once_for_the_rest(desktop: Desktop, left: Callable[[], set[int]]) -> No
     desktop.launcher_until(lambda shown: shown["things"][0]["gone"])
     with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
         machine.send_chars("3dd")
+    # A copy yG or yy made can arrive after dd and find again, taking the
+    # gone row out, so the two it covers are the windows still open,
+    # wherever they sit.
     asking = desktop.showing()
     assert asking["question"] == "Close 2 windows? (y/n)", asking
-    assert asking["tinted"] == [1, 2], asking
+    tinted = [asking["things"][at] for at in asking["tinted"]]
+    assert len(tinted) == 2 and not any(row["gone"] for row in tinted), asking
     with desktop.told("answered no"):
         machine.send_chars("n")
     desktop.launcher_until(unasked)
