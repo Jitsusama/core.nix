@@ -703,17 +703,20 @@ Floating {
                             // Its first baseline, down from its top.
                             readonly property real base: drawer.pitch / 2 + drawer.dropped
                                 + headingRoom
-                            // A value that won't sit beside its name in two
-                            // lines takes the plate's whole width on the
-                            // line under it, so it never reads a word a line
-                            // (VKCF3Z, 2026-11-04); so does one holding a
-                            // word too wide to sit beside it whole, as an
-                            // address, which would otherwise break partway.
+                            // A name and its value share one line, or the
+                            // value takes the plate's whole width on the
+                            // line under its name (VKCF3Z, 2026-11-04): a
+                            // value that won't fit beside it on one line, a
+                            // word too wide there among them, goes under,
+                            // as does the value of a name too wide for the
+                            // names' column, which then runs the width too.
                             // A key list's sayings stay beside their keys,
-                            // so each key heads its own (VKCF3Z, 2026-11-04).
+                            // however many lines, so each key heads its own
+                            // (VKCF3Z, 2026-11-04).
+                            readonly property bool nameFits: factFace.advanceWidth(
+                                modelData.label ?? "") <= drawer.labelsWide
                             readonly property bool under: !drawer.listsKeys
-                                && (beside.lineCount > 2 || value.text.split(" ").some(
-                                    word => factFace.advanceWidth(word) > beside.width))
+                                && (!nameFits || beside.lineCount > 1)
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
                             // How wide its value may run where it's drawn.
@@ -761,7 +764,7 @@ Floating {
                             Text {
                                 id: label
                                 visible: !fact.heading
-                                width: drawer.labelsWide
+                                width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
                                 text: fact.modelData.label ?? ""
                                 textFormat: Text.PlainText
