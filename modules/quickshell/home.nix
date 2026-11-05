@@ -151,6 +151,7 @@ let
     "Music.qml"
     "Music.js"
     "Lock.qml"
+    "PictureTime.qml"
     "Polkit.qml"
     "Askpass.qml"
     "PromptHead.qml"
