@@ -281,6 +281,39 @@ QtObject {
         holds("nothing after :set says every one changed, as Vim's does", first(""),
             { option: "all", how: "show", value: "" });
 
+        // What a change sets, from where the option stands now.
+        const toward = (arg, now) => {
+            const change = first(arg);
+            return Commands.toward(change, now, options[change.option]);
+        };
+        holds("on and off set a switch", [toward("wifi", false), toward("nowifi", true)],
+            [{ to: true }, { to: false }]);
+        holds("toggling turns it the other way", [toward("wifi!", true), toward("wifi!", false)],
+            [{ to: false }, { to: true }]);
+        holds("a joined network toggles off", toward("wifi!", "Home-5G"), { to: false });
+        holds("a network is set by its name", toward("wifi=Home-5G", true), { to: "Home-5G" });
+        holds("+= and -= move a number from where it is",
+            [toward("volume+=5", 40), toward("volume-=5", 40)], [{ to: 45 }, { to: 35 }]);
+        holds("and stop at its ends", [toward("volume+=20", 90), toward("volume-=20", 10)],
+            [{ to: 100 }, { to: 0 }]);
+        holds("= sets it", toward("volume=40", 70), { to: 40 });
+        holds("a choice is set", toward("background=light", "dark"), { to: "light" });
+        holds("an option that can't be set says E519",
+            Commands.toward(first("background=light"), "dark",
+                { kind: "choice", values: ["light", "dark"], fixed: true }),
+            { error: "E519: Option not supported: background=light" });
+
+        // Each option as Vim's :set volume? says it.
+        holds("a switch on says its name, off its no",
+            [Commands.shown("quiet", true, options.quiet),
+                Commands.shown("quiet", false, options.quiet)], ["quiet", "noquiet"]);
+        holds("a network joined says its name", Commands.shown("wifi", "Home-5G", options.wifi),
+            "wifi=Home-5G");
+        holds("a number and a choice say theirs",
+            [Commands.shown("volume", 40, options.volume),
+                Commands.shown("background", "dark", options.background)],
+            ["volume=40", "background=dark"]);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
