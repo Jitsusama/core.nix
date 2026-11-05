@@ -256,6 +256,7 @@ QtObject {
             Operators.typedAs("copy", 0, { act: "first", count: 0 })
         ], ["dd", "3dd", "dj", "d6j", "dG", "ygg"]);
         pending(holds);
+        visual(holds);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
@@ -336,6 +337,60 @@ QtObject {
         holds("never ending on the dot", Operators.wholeWords(said, fits(4)), "d");
         holds("and its first word stands, though it's wider",
             Operators.wholeWords(said, fits(0)), "d");
+    }
+
+    // Visual line, Vim's V over the rows: its keys, the rows it takes and
+    // what Return over them says.
+    function visual(holds) {
+        const doing = [
+            ["V begins visual line", ["Escape", "V"], ["normal", "selectLines"], "visual"],
+            ["V again ends it", ["Escape", "V", "V"], ["normal", "selectLines",
+                "selectLines"], "normal"],
+            ["and so does Escape", ["Escape", "V", "Escape"], ["normal", "selectLines",
+                "normal"], "normal"],
+            ["Escape cancels a count first", ["Escape", "V", "3", "Escape"],
+                ["normal", "selectLines"], "visual"],
+            ["normal's moves extend it, with counts", ["Escape", "V", "j", "3", "k", "g", "g",
+                "G", "Ctrl+d", "Down"], ["normal", "selectLines", "next", "3 previous", "first",
+                "last", "halfDown", "next"], "visual"],
+            ["d takes the selection at once, and ends it", ["Escape", "V", "j", "d"],
+                ["normal", "selectLines", "next", "ending"], "normal"],
+            ["and y", ["Escape", "V", "y"], ["normal", "selectLines", "copy"], "normal"],
+            ["and Return", ["Escape", "V", "Return"], ["normal", "selectLines", "run"],
+                "normal"],
+            ["a colon opens the command line, the selection standing", ["Escape", "V", ":"],
+                ["normal", "selectLines", "command"], "visual"],
+            ["nothing types, and i a and A begin nothing", ["Escape", "V", "i", "a", "A", "x"],
+                ["normal", "selectLines"], "visual"],
+            ["in insert, V types", ["V"], [], "insert"]
+        ];
+        for (const [what, keys, want, mode] of doing) {
+            const got = typed(keys);
+            holds(what, [got.counted, got.mode], [want, mode]);
+        }
+        holds("a letter in visual is the line's, never typed",
+            typed(["Escape", "V", "x"]).ours, true);
+        holds("d in visual waits for no motion",
+            typed(["Escape", "V", "d"]).standing.operator, undefined);
+        holds("V is once a press", Keys.repeats("selectLines"), false);
+        holds("the command line takes the selection's range", [Keys.rangeFor(0, "visual"),
+            Keys.rangeFor(3, "visual"), Keys.rangeFor(3, "normal"), Keys.rangeFor(0, "normal")],
+        ["'<,'>", "'<,'>", ".,.+2", ""]);
+
+        // The rows the selection takes, from where it began to the cursor,
+        // either way; none where it hasn't begun.
+        holds("down from where it began", Operators.selection(2, 5), { from: 2, to: 5 });
+        holds("or up", Operators.selection(5, 2), { from: 2, to: 5 });
+        holds("or the one row", Operators.selection(4, 4), { from: 4, to: 4 });
+        holds("and none before it begins", Operators.selection(-1, 3), { from: 0, to: -1 });
+
+        // Return over the selection opens the rows it can, and says how
+        // many of how many where it couldn't open them all.
+        const words = { opens: "open {count}", opened: "{open} of {count} open" };
+        holds("the foot says how many Return opens", Operators.opensSaid(3, words), "open 3");
+        holds("and what it opened, where not all", Operators.openedSaid(2, 3, words),
+            "2 of 3 open");
+        holds("and nothing where it opened every one", Operators.openedSaid(3, 3, words), "");
     }
 
     function run() {

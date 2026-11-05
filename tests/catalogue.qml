@@ -59,6 +59,19 @@ QtObject {
         expect("a close that only closes the launcher doesn't", Catalogue.ends({ verb: "close" }),
             false);
         expect("nor does a lock, typed to be done", Catalogue.ends({ verb: "lock" }), false);
+        // What Return over visual's selection opens: a row Return takes
+        // somewhere, never one that changes something, as one that stays
+        // to show its new state does, nor one that ends or disrupts, nor a
+        // place, which Return steps into.
+        expect("a program opens", Catalogue.opens({ verb: "open", run: does }), true);
+        expect("and a window goes", Catalogue.opens({ verb: "go", run: does }), true);
+        expect("a change that stays doesn't", Catalogue.opens({ verb: "connect", stays: true,
+            run: does }), false);
+        expect("nor an ending", Catalogue.opens({ verb: "close", act: "ending", run: does }),
+            false);
+        expect("nor a lock", Catalogue.opens({ verb: "lock", run: does }), false);
+        expect("nor a place", Catalogue.opens({ verb: "more", run: does }), false);
+        expect("nor a row with nothing to run", Catalogue.opens({ verb: "open" }), false);
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
             false);
