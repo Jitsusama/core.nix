@@ -174,6 +174,7 @@ let
     "Calendars.qml"
     "SignIn.qml"
     "Floating.qml"
+    "Signature.qml"
     "Fuzzy.js"
     "Picks.qml"
     "Trials.qml"

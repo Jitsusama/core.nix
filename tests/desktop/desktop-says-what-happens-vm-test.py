@@ -1058,8 +1058,8 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.tokened()
 
 
-def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -> None:
-    """The notices sit a step inside the window under them."""
+def test_the_notices_sit_the_frames_rung_inside_the_window_under_them(desktop: Desktop) -> None:
+    """The notices sit the frames rung inside the window under them, the screen rung at least."""
     machine = desktop.machine
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
@@ -1102,7 +1102,7 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     retry(settled, timeout=timedelta(seconds=15))
     with desktop.told("shows card Inside the window"):
         desktop.as_account(
-            "notify-send --expire-time=60000 'Inside the window' 'a step from its edges'"
+            "notify-send --expire-time=60000 'Inside the window' 'a frame on a frame'"
         )
     desktop.photograph("notice-inside")
     # The nearest window wholly on screen, as the shell picks it.
@@ -1114,17 +1114,18 @@ def test_the_notices_sit_a_step_inside_the_window_under_them(desktop: Desktop) -
     ]
     whole = [(p, s) for p, s in tiles if p[0] >= 0 and p[0] + s[0] <= screen]
     (left, top), (width, _) = min(whole, key=lambda t: (-(t[0][0] + t[1][0]), t[0][1]))
-    step = space["s"]
+    step, edge = space["rung"]["frames"], space["rung"]["screen"]
+    right = int(max(screen - (left + width) + step, edge) + 0.5)
     wanted_at = [
-        int(screen - (left + width) + step + 0.5),
-        int(max(top, 0) + step + 0.5),
-        min(440, int(width - 2 * step)),
+        right,
+        int(max(top + step, edge) + 0.5),
+        min(440, int(screen - right - (left + step))),
     ]
     notices_at = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
     ).split()[-3:]
-    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't a step inside the window"
+    assert [int(n) for n in notices_at] == wanted_at, "the notices aren't inside the window"
     desktop.as_account("qs ipc call notices putAway")
     desktop.as_account(f"niri msg action close-window --id {under['id']}")
     machine.wait_until_fails(
@@ -1341,6 +1342,47 @@ def test_super_shift_n_puts_the_notices_away(desktop: Desktop) -> None:
         desktop.in_session(kept + ' | grep -q \'"summary":"Standup"[^}]*"read":false\''),
         timeout=timedelta(seconds=10),
     )
+
+
+def test_a_stack_of_notices_and_whats_playing_are_photographed_at_each_scale(
+    desktop: Desktop,
+) -> None:
+    """Photograph three notices as one stack, and what's playing above them, at both scales.
+
+    The front card is whole and two edges show beneath it, each starting on the hairline of
+    the card before it; what's playing stands the frames rung above the stack (docs/design.md,
+    The Ladder). Each is kept for a person to measure.
+    """
+    machine = desktop.machine
+    try:
+        for scale in JOELS_SCALES:
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+            for summary, body in [
+                ("Standup in Ten Minutes", "The usual room, with the notes from Tuesday."),
+                ("Backup Finished", ""),
+                ("Tokens Run Out in About an Hour", "At $300 an hour, 92% used."),
+            ]:
+                with desktop.told(f"shows card {summary}"):
+                    desktop.as_account(
+                        f"notify-send --expire-time=60000 {shlex.quote(summary)}"
+                        f" {shlex.quote(body)}"
+                    )
+            named = scale.replace(".", "-")
+            desktop.photograph(f"notices-stacked-at-{named}")
+            with desktop.told("drawn notifications"):
+                desktop.as_account(
+                    "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
+                    f" {desktop.values['track']}"
+                )
+            desktop.photograph(f"notices-playing-at-{named}")
+            desktop.as_account("systemctl --user stop player")
+            desktop.as_account("qs ipc call notices putAway")
+    finally:
+        desktop.as_account("systemctl --user stop player || true")
+        desktop.as_account("qs ipc call notices putAway")
+        desktop.as_account("qs ipc call notices seen")
+        desktop.as_account("niri msg output winit scale 1")
 
 
 # A binding that throws or assigns the wrong type only warns, and

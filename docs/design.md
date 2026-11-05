@@ -659,7 +659,7 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down; its command line over a picture or a video low, a twelfth of the screen up, so what it acts on stays in view | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre over windows; the lock screen and the greeter low, a twelfth of the screen up, so the picture's sky stays clear | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
+| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | the frames rung inside the window at the top right | large, both | three groups, the room from frame to ink the same on every side: who first, then the message, then a signature of what sent it and when; Super+N holds the stack as lines, Vim's quickfix list |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 
@@ -756,9 +756,11 @@ footer is a region, a hairline over it, its baseline a row below the last
 row's in the launcher and a large pitch below the last line on a surface with
 no row pitch of its own, as the picker, the keyboard map and the prompts.
 
-**A notice sits the screen rung from the screen's edge,** further than the
-windows' gap, so it never lines up with a window's border by chance and reads
-as its own thing, and notices in a stack sit the frames rung apart. The
+**A notice sits the frames rung inside the window under it,** a frame on a
+frame, so it lies on one window and never over the wallpaper or across the
+border between two columns, and never nearer the screen's edge than the
+screen rung; with no window there, or one too narrow, it sits the screen
+rung from the corner. Notices in a stack sit the frames rung apart. The
 margin's marks sit at the top centre instead, on the line the launcher is
 centred on.
 
