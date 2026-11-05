@@ -765,14 +765,32 @@ Item {
         : chipsWanted.reduce((sum, wide) => sum + wide, 0)
             + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.m
 
-    // Each step's words' width, as Reading.sharedSteps shares the room: a
-    // folder's path gives way first, down to four characters, cut in its
-    // middle.
-    readonly property var fitted: {
-        const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom
-            - betweenDrawn.implicitWidth * Math.max(0, chips.length - 1) - pathGap);
-        return Reading.sharedSteps(chipsWanted, chips.map(chip => chip.yields === true), room,
-            4 * titleFace.averageCharacterWidth);
+    // The path's steps as they're drawn, given way at whole names where
+    // they don't fit (Reading.crumbs): a folder's path a folder at a time,
+    // then the middle steps folded into one mark, so no name is cut.
+    readonly property var crumbsShown: {
+        void titleFace.font;
+        const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom - pathGap);
+        const stretch = titleStretch;
+        // A step's whole words as their Text draws them, and words given
+        // way as the face measures them, stretched as the title's axes do.
+        const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
+        return Reading.crumbs(chips.map(chip => ({ text: chip.text, yields: chip.yields === true })),
+            room, text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
+            betweenDrawn.implicitWidth);
+    }
+    // How much wider the title's axes draw its letters than its face's
+    // metrics say, the most of any step's whole words, so a step given
+    // way is measured as it will be drawn.
+    readonly property real titleStretch: {
+        void titleFace.font;
+        let most = 1;
+        chips.forEach((chip, at) => {
+            const measured = titleFace.advanceWidth(chip.text);
+            if (measured > 0)
+                most = Math.max(most, ((chipsWanted[at] ?? 0) - 1) / measured);
+        });
+        return most;
     }
 
     // Each step's words' width, whole, as a Text draws them: a face's
@@ -806,8 +824,7 @@ Item {
         font: titleFace.font
     }
     // Whether each step is said whole, for the launcher's report.
-    readonly property var chipsWhole: chipsWanted.map((width, index) =>
-        (fitted[index] ?? 0) >= width)
+    readonly property var chipsWhole: crumbsShown.whole
 
 
     // Where Joel is, the place's name at Title in the text colour, with no
@@ -827,13 +844,18 @@ Item {
             y: (prompt.height + prompt.titleCapitals) / 2 - titleFace.ascent
 
             Repeater {
-                model: prompt.chips
+                id: stepsShown
+                model: prompt.crumbsShown.said
 
                 Row {
                     id: step
 
-                    required property var modelData
+                    required property string modelData
                     required property int index
+                    // Whether its words are drawn cut, and the room it
+                    // takes past them, for the launcher's report.
+                    readonly property bool cut: stepName.truncated
+                    readonly property real spare: stepName.width - stepName.implicitWidth
 
                     Text {
                         visible: step.index > 0
@@ -842,18 +864,30 @@ Item {
                         font: titleFace.font
                     }
 
+                    // Its words as they're given way, whole, so nothing
+                    // is cut and the next mark follows them at its own
+                    // spacing.
                     Text {
-                        width: prompt.fitted[step.index] ?? implicitWidth
-                        text: step.modelData.text
-                        // A path keeps both ends, where it starts and the
-                        // folder it's at, cut in its middle.
-                        elide: step.modelData.yields === true ? Text.ElideMiddle : Text.ElideRight
+                        id: stepName
+                        text: step.modelData
                         color: Theme.text
                         font: titleFace.font
                     }
                 }
             }
         }
+    }
+
+    // How each of the path's steps is drawn, for the launcher's report: its
+    // words, whether they're cut, and the room past them before the next.
+    function pathDrawn(): var {
+        const drawn = [];
+        for (let at = 0; at < stepsShown.count; at += 1) {
+            const step = stepsShown.itemAt(at);
+            if (step)
+                drawn.push({ said: step.modelData, cut: step.cut, spare: step.spare });
+        }
+        return drawn;
     }
 
     // Whether the question asked is drawn whole, for the launcher's report.

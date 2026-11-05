@@ -1214,14 +1214,15 @@ Scope {
     // their rows name them ("Agents, AI spend, Calls, Capture"), as many
     // whole as fit in `room` characters, but for one its own name already
     // says (Sound's Sound). Read from the vocabulary as home is made, so no
-    // answer is asked for it.
+    // answer is asked for it. Its typed commands are rows inside it but
+    // not named here: the words they start with read as stray lowercase
+    // words among the places (VKCF3Z, 2026-11-05: "Wi-Fi, Address, Speed,
+    // ip, is, split, mac").
     function holding(category, room) {
         const stands = standsOf(category);
         if (stands !== "")
             return stands;
-        const names = holdings(category).map(id => heldName(id)).filter(name => name !== "")
-            .concat(commandsIn(category).map(row => row.start.trim()
-                || row.key.replace(/^command:/, "")));
+        const names = holdings(category).map(id => heldName(id)).filter(name => name !== "");
         const own = (category.name ?? category.id).toLowerCase();
         return listed(names.filter(name => name.toLowerCase() !== own), room);
     }
@@ -4278,6 +4279,9 @@ Scope {
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
             pathWhole: prompt.chipsWhole,
+            // How each step is drawn: its words, whether they're cut, and
+            // the room past them before the next step's mark.
+            pathDrawn: prompt.pathDrawn(),
             rows: root.matches.slice(0, 20).map(row => row.name),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,

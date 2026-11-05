@@ -492,6 +492,9 @@ def asked_in(desktop: Desktop, place: str, rows: set[str]) -> None:
         ),
         timeout=timedelta(seconds=60),
     )
+    # The folder he's in is always named, however little room the crumbs have.
+    drawn = desktop.showing()["pathDrawn"]
+    assert drawn[-1]["said"].endswith(place.rsplit("/", 1)[-1]), f"{place} isn't named: {drawn}"
 
 
 PICKED = {
@@ -596,6 +599,12 @@ def gathered_is_in_sight(shown: Json, scale: str) -> None:
     whole = shown["pathWhole"]
     assert whole[0], f"at {scale} the program's ask is cut: {whole}"
     assert whole[-1], f"at {scale} the place is cut: {whole}"
+    # A step gives way at whole names, never cut inside one, and its mark
+    # keeps its own spacing, with no room left past the words before it
+    # (VKCF3Z, 2026-11-05: "~\u2026e" and a wide gap after it).
+    drawn = shown["pathDrawn"]
+    assert not any(step["cut"] for step in drawn), f"at {scale} a name is cut: {drawn}"
+    assert all(step["spare"] <= 1 for step in drawn), f"at {scale} a step leaves a gap: {drawn}"
 
 
 def ran(desktop: Desktop, line: str) -> None:

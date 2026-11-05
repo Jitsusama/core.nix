@@ -77,17 +77,59 @@ QtObject {
         const where = "Tokyo, Japan \u00b7 Open-Meteo";
         expect("no separator dangling", cut(where, 200) === "Tokyo, Japan\u2026", cut(where, 200));
         expect("no comma dangling", cut(where, 120) === "Tokyo\u2026", cut(where, 120));
-        // The path's steps: the program's ask, a folder's path, the place.
-        const steps = (room) => Reading.sharedSteps([100, 200, 60], [false, true, false], room, 40);
+        // The path's steps: the program's ask, a folder's path, the place,
+        // a step's mark between each, three characters wide. Each gives
+        // way at whole names, never a piece of one (VKCF3Z, 2026-11-05:
+        // "~\u2026e" and "~/gath\u2026g/more").
         const same = (one, other) => JSON.stringify(one) === JSON.stringify(other);
-        expect("steps whole where they fit", same(steps(360), [100, 200, 60]), steps(360));
-        // The path gives way before either other step is cut.
-        expect("the path gives way first", same(steps(260), [100, 100, 60]), steps(260));
-        // Down to its least, the others share what's left as they did.
-        expect("then the others share", same(steps(140), [50, 40, 50]), steps(140));
-        // With no step yielding, it's an even share, the shortest first.
-        const even = Reading.sharedSteps([100, 200, 60], [false, false, false], 240, 40);
-        expect("none yielding, shared evenly", same(even, [90, 90, 60]), even);
+        const asked = [{ text: "Open the Notes", yields: false },
+            { text: "~/src/core.nix/notes", yields: true }, { text: "Gathered", yields: false }];
+        const crumbs = (steps, room) => Reading.crumbs(steps, room, width, 30);
+        const said = (steps, room) => crumbs(steps, room).said;
+        expect("steps whole where they fit", same(said(asked, 480),
+            ["Open the Notes", "~/src/core.nix/notes", "Gathered"]), said(asked, 480));
+        // A folder's path gives way first, its middle folders to one mark,
+        // then all but its last, then all of it.
+        expect("the path's middle first", same(said(asked, 400),
+            ["Open the Notes", "~/\u2026/notes", "Gathered"]), said(asked, 400));
+        expect("then all but its last", same(said(asked, 360),
+            ["Open the Notes", "\u2026/notes", "Gathered"]), said(asked, 360));
+        expect("then the whole path", same(said(asked, 320),
+            ["Open the Notes", "\u2026", "Gathered"]), said(asked, 320));
+        // Only then is the first step said in fewer words, and where not a
+        // word of it fits, it joins the mark; where he is stays whole.
+        expect("then the ask's last words", same(said(asked, 250),
+            ["Open the\u2026", "\u2026", "Gathered"]), said(asked, 250));
+        expect("then the ask in the mark", same(said(asked, 120), ["\u2026", "Gathered"]),
+            said(asked, 120));
+        expect("where he is whole", same(said(asked, 20), ["\u2026", "Gathered"]),
+            said(asked, 20));
+        // A path of one folder below home has no middle to give.
+        const home = [{ text: "Open the Notes", yields: false },
+            { text: "~/gathering", yields: true }, { text: "Gathered", yields: false }];
+        expect("a short path whole or not at all", same(said(home, 300),
+            ["Open the Notes", "\u2026", "Gathered"]), said(home, 300));
+        // A folder's path where he is keeps its last folder's name, the
+        // ask giving way before it does.
+        const there = [{ text: "Open the Notes", yields: false },
+            { text: "~/src/marking", yields: true }];
+        expect("where he is keeps its folder", same(said(there, 260),
+            ["Open the Notes", "\u2026/marking"]), said(there, 260));
+        expect("the ask gives way before it", same(said(there, 210),
+            ["Open the\u2026", "\u2026/marking"]), said(there, 210));
+        expect("and joins the mark, the folder kept", same(said(there, 20),
+            ["\u2026", "\u2026/marking"]), said(there, 20));
+        // Steps between the first and the last fold into one mark, those
+        // nearest the first going first.
+        const deep = ["Files", "Documents", "Taxes 2025", "Receipts"]
+            .map(text => ({ text, yields: false }));
+        expect("the second step folds first", same(said(deep, 330),
+            ["Files", "\u2026", "Taxes 2025", "Receipts"]), said(deep, 330));
+        expect("then the next folds in with it", same(said(deep, 300),
+            ["Files", "\u2026", "Receipts"]), said(deep, 300));
+        expect("what's whole, step by step", same(crumbs(deep, 330).whole,
+            [true, false, true, true]), crumbs(deep, 330).whole);
+        expect("no steps, nothing", same(said([], 100), []), said([], 100));
         // A side of items gives way whole, the least needed first, in the
         // order they're said, the one needed most kept however little room
         // (VKCF3Z, 2026-11-04: the tree, the address, then the state).

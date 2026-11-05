@@ -551,14 +551,14 @@ onLinux {
   # Every launcher verb names the command the : line runs it by, one the key
   # language has, with what follows it, and no two on a row alike
   # (tests/launcher-commands.py), as the account writes the vocabulary.
-  the-launcher-names-every-verb-a-command =
+  the-launcher-names-every-action-a-command =
     let
       words =
         pkgs.writeText "words.json"
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
       language = ../keys/language.toml;
     in
-    pkgs.runCommandLocal "the-launcher-names-every-verb-a-command" { } ''
+    pkgs.runCommandLocal "the-launcher-names-every-action-a-command" { } ''
       ${lib.getExe pkgs.python3} ${../../tests/launcher-commands.py} ${words} ${language}
       touch $out
     '';
