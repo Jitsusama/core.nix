@@ -110,6 +110,9 @@ Provider {
     property var outstanding: null
     // The folders stepped into, read beside those on the way to the start.
     property var stepped: []
+    // A ]b or [b waiting on the folder holding the one it was pressed in to
+    // be read: that folder's path and which way, or nothing.
+    property var besideNext: null
     readonly property var reading: asking === null ? [] : Array.from(new Set(["/"]
         .concat(onTheWay(start), stepped)))
     // The filter picked here, else the program's, and each choice's option.
@@ -272,7 +275,8 @@ Provider {
             : "verb:file-chooser:folder", path, [path])];
         const row = Object.assign(Files.folder(path, thing, acts, () => rowsOf(readIn(path))), {
             empty: "Nothing here.",
-            typed: letters => typedIn(path, letters)
+            typed: letters => typedIn(path, letters),
+            beside: by => provider.beside(path, by)
         });
         // Until the folder's read, it holds no Copy the Path: rows shown
         // keep their place and those that come go below them, so a Copy
@@ -1007,6 +1011,38 @@ Provider {
         if (entries.some(entry => entry.folder))
             count(path);
         changed();
+        const waiting = besideNext;
+        if (waiting !== null && parentOf(waiting.path) === path) {
+            besideNext = null;
+            beside(waiting.path, waiting.by);
+        }
+    }
+
+    // The folder beside this one in the folder holding it, the next (1) or
+    // the one before (-1), as the folder holding it lists them: in the order
+    // in use, the hidden left out. It takes this one's place, held where it
+    // was, and from the last goes round to the first, as vi's :bnext does.
+    // Where the folder holding it isn't read yet, it's read first, and the
+    // step taken once it's heard.
+    function beside(path, by) {
+        const steps = launcher?.held ?? [];
+        const deepest = steps[steps.length - 1]?.row.key;
+        if (path === "/" || deepest !== `folder:${path}`)
+            return;
+        const parent = parentOf(path);
+        if (!(parent in listed)) {
+            besideNext = { path, by };
+            readIn(parent);
+            return;
+        }
+        const around = FileFacts.ordered(listed[parent].filter(entry => entry.folder
+            && (entry.path === path || !entry.name.startsWith("."))), order, counts)
+            .map(entry => entry.path);
+        const at = around.indexOf(path);
+        if (at < 0 || around.length < 2)
+            return;
+        launcher.back();
+        launcher.enter(folderRow(around[(at + by + around.length) % around.length]));
     }
 
     function everything() {
@@ -1112,6 +1148,7 @@ Provider {
         picked = {};
         marked = [];
         stepped = [];
+        besideNext = null;
         lately = [];
         fetching = null;
         elsewhere = {};

@@ -68,6 +68,8 @@ QtObject {
                     "appendEnd"]],
             ["cc and S clear the line into insert", ["Escape", "c", "c", "Escape", "S"],
                 ["normal", "change", "normal", "change"]],
+            ["]b and [b go to the place beside, the next and the one before",
+                ["Escape", "]", "b", "[", "b"], ["normal", "nextFile", "previousFile"]],
             ["Escape cancels a c waiting for its second", ["Escape", "c", "Escape", "c"],
                 ["normal"]],
             ["a key that ends nothing lets c go", ["Escape", "c", "x", "c"], ["normal"]],
@@ -86,6 +88,7 @@ QtObject {
         holds("the line opens in insert", typed([]).mode, "insert");
         holds("a letter in insert is the field's to type", typed(["x"]).ours, false);
         holds("a letter in insert types, never acts", typed(["i", "a", "c", "c", "u"]).acts, []);
+        holds("a ] in insert is the field's to type", typed(["]"]).ours, false);
         holds("a letter in normal is the line's, typing nothing", typed(["Escape", "x"]).ours,
             true);
         holds("Escape leaves insert for normal", typed(["Escape"]).mode, "normal");

@@ -1506,7 +1506,8 @@
     several may be opened, the lead counts and names what's marked, Return on it saying nothing
     until one is, and inside it each can be unmarked; a folder's Copy the Path comes last; in every
     folder the field asks for one file, several, a folder or where to save, in the program's word;
-    its Order row lists it by name, change or size, made afresh, and a restart keeps the order
+    its Order row lists it by name, change or size, made afresh, and a restart keeps the order; ]b
+    and [b go to the folder beside it, round from the last to the first, once its holder is read
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
@@ -1745,7 +1746,8 @@
   the-query-field-takes-vi-modes = ''
     the launcher's field reads its keys from one table in two modes: insert's caret moves,
     Ctrl+W and Ctrl+U, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I A, cc and
-    S into insert, with an Escape that cancels a c begun before it steps back
+    S into insert, normal's ]b and [b to the place beside, with an Escape that cancels a c begun
+    before it steps back
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's

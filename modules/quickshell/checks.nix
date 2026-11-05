@@ -1894,7 +1894,8 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       # A folder of notes, two hidden things in it, and a file opened lately
       # elsewhere beside one of its own; notes.txt is the largest, then b.png.
-      mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere
+      # Two folders deep elsewhere go from one to the other on ]b.
+      mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere/deep/one $HOME/elsewhere/deep/two
       touch $HOME/notes/a.md $HOME/notes/.hidden.txt
       printf 'twelve bytes' > $HOME/notes/notes.txt
       printf 'png' > $HOME/notes/b.png

@@ -232,7 +232,9 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     notes = f"/home/{desktop.account}/chosen-notes"
     chose = "/run/user/1000/portal-chose"
     sockets_gone = "! ls /run/user/1000/open-with/*.sock"
-    desktop.as_account(f"mkdir -p {notes} && touch {notes}/plan.md {notes}/list.md")
+    # A folder beside the notes, the next one in their folder, for ]b to go to.
+    beside = f"{notes}-beside"
+    desktop.as_account(f"mkdir -p {notes} {beside} && touch {notes}/plan.md {notes}/list.md")
     # The files, then each folder from /home down to the notes.
     held = 1 + notes.count("/")
     # The shell's watchers, each an inotify of its own, counted before
@@ -251,9 +253,11 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
             "systemd-run --user --collect --unit=choose-a-file"
             f" {desktop.values['choose_a_file']} {mode} {notes} {name}"
         )
+        # With the keys, since an ask is shown a moment before they're its.
         desktop.launcher_until(
             lambda shown: (
-                shown["path"] == [title, "~/chosen-notes"]
+                shown["keys"]
+                and shown["path"] == [title, "~/chosen-notes"]
                 and len(shown["held"]) == held
                 and shown["selected"] is not None
             ),
@@ -271,6 +275,18 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
 
     choose("open")
     desktop.photograph("file-chooser")
+    # In normal, ]b goes to the folder beside this one, held where it was,
+    # and [b comes back.
+    desktop.normal()
+    machine.send_chars("]b")
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == ["~/chosen-notes-beside"] and len(shown["held"]) == held
+    )
+    machine.send_chars("[b")
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
+    )
+    desktop.insert()
     machine.send_chars("plan")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
     machine.send_key("ret")
@@ -284,7 +300,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     choose("open")
     desktop.close_launcher()
     answered("1")
-    desktop.as_account(f"rm -r {notes}")
+    desktop.as_account(f"rm -r {notes} {beside}")
     # Three asks later, the shell watches no more than it did before them.
     try:
         machine.wait_until_succeeds(
