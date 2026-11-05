@@ -57,6 +57,24 @@ def copied(desktop: Desktop, typed: str, expected: str) -> None:
     assert desktop.as_account("wl-paste --no-newline") == expected
 
 
+# In normal mode y copies an answer as Return does, and keeps the launcher
+# open; d finds nothing to end in it, and says so in Return's place.
+
+
+def test_yy_copies_an_answer_and_dd_has_nothing_to_end(desktop: Desktop) -> None:
+    """Yy copies an answer with the launcher open, and dd says there's nothing to end."""
+    machine = desktop.machine
+    desktop.answer("3c:22:fb:12:34:56")
+    desktop.normal()
+    with desktop.told("yanked 1"):
+        machine.send_chars("yy")
+    assert desktop.as_account("wl-paste --no-newline") == "Apple, Inc."
+    machine.send_chars("dd")
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["operated"].endswith(" nothing to end")
+    )
+
+
 def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     desktop: Desktop,
 ) -> None:

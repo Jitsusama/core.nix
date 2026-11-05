@@ -409,6 +409,55 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
         desktop.as_account("systemctl --user stop wev-escape")
 
 
+# In normal mode d does a row's ending action and y its copy, as Vim's d
+# and y do a line's: dd or a motion's span. A window's Close can't be put
+# back, so d asks once in Return's place, and the same keys again do it.
+
+
+def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Desktop) -> None:
+    """Dd and dj close windows once asked, and yy copies a title with the launcher open."""
+    machine = desktop.machine
+    first = desktop.opened("Ending first")
+    second = desktop.opened("Ending second")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("ending")
+    desktop.launcher_until(
+        lambda shown: sorted(shown["rows"][:2]) == ["Ending first", "Ending second"]
+    )
+    desktop.normal()
+    top = desktop.showing()["rows"][0]
+    # yy copies the row's title and flashes it, the launcher still open.
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == [0], since)
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
+    assert desktop.as_account("wl-paste --no-newline") == top
+    desktop.launcher_until(lambda shown: shown["open"] and shown["flashing"] == [])
+    # dd asks, in Return's place, and closes nothing yet.
+    with desktop.told("asked again closes it"):
+        machine.send_chars("dd")
+    assert desktop.showing()["operated"] == "dd again closes it", desktop.showing()
+    # Escape lets the ask go, as its own rung, and the launcher stays.
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
+    assert {first["id"], second["id"]} <= {window["id"] for window in desktop.windows()}
+    # dj asks for both, and dj again closes both.
+    with desktop.told("asked again closes 2"):
+        machine.send_chars("dj")
+    assert desktop.showing()["operated"] == "dj again closes 2", desktop.showing()
+    with desktop.told("ended 2"):
+        machine.send_chars("dj")
+
+    def closed(_: bool) -> bool:
+        """Say whether both windows have gone."""
+        left = {window["id"] for window in desktop.windows()}
+        return not {first["id"], second["id"]} & left
+
+    retry(closed, timeout=dt.timedelta(seconds=10))
+    assert desktop.showing()["open"], "d closed the launcher"
+
+
 # A window closed while Super+Tab shows it stays in its place, gone, until
 # a key: rows closing up under the cursor was one of the ways the launcher
 # moved with nothing pressed.
