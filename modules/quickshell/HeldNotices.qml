@@ -14,7 +14,10 @@
 // Super+N let them go; Escape at rest does nothing, as Vim's, and q says
 // it does nothing.
 //
-// Each line is the sender's glyph, who or what at Name, its first words at
+// It's the launcher's card in shape (VKCF3Z's family cut, 2026-11-05): a
+// head reading Notices, where / types, as a place does there; a hairline;
+// the lines; a hairline; the foot. Each line is the launcher's row: the
+// sender's glyph, who or what at Name, its first words at
 // Words and when at Note, after a gutter of relative numbers, as Joel's
 // Neovim sets number and relativenumber. The foot says how things stand,
 // the mode's word in a room of its own, and the cursor card's hints from
@@ -1149,6 +1152,21 @@ Floating {
         font.weight: Theme.level.figure.weight
     }
 
+    TextMetrics {
+        id: titleCaps
+        text: "H"
+        font.family: Theme.level.title.family
+        font.pointSize: Theme.level.title.pointSize
+        font.weight: Theme.level.title.weight
+    }
+
+    // The head's one baseline, as a place's in the launcher (VKCF3Z's
+    // family cut, 2026-11-05): the place's Title its capitals the inset
+    // under the frame, and the hairline under it set so the first row's
+    // baseline stands a row under it.
+    readonly property real headBase: Theme.space.rung.inset + titleCaps.tightBoundingRect.height
+    readonly property real headTall: Math.round(headBase + rowHeight - Theme.border - rowBase)
+
     // The caret's blink, as the launcher's and his kitty's: a key shows it
     // whole, it fades out and back in, and with no key for a while it holds
     // steady, so a line left still draws nothing more (Prompt.qml).
@@ -1204,12 +1222,11 @@ Floating {
         };
     }
 
-    // The frame's inside edge to edge, its first row's capitals the inset
-    // under its top, and the foot's baseline the inset over its bottom.
+    // The frame's inside edge to edge, its head's capitals the inset under
+    // its top, and the foot's baseline the inset over its bottom.
     Column {
         id: sheet
         width: parent.width
-        topPadding: Math.round(Theme.space.rung.inset - held.rowLeaves)
         // The foot's room under its row, so its baseline, where the row's
         // box puts it, stands the inset over the frame (Launcher.qml's).
         bottomPadding: Math.round(Theme.space.rung.inset
@@ -1230,6 +1247,86 @@ Floating {
                 }
                 held.scroll(notches > 0 ? "lineDown" : "lineUp", 3 * Math.abs(notches));
             }
+        }
+
+        // The head: where Joel is, the notices' glyph and their Title, as a
+        // place in the launcher reads, led by the find's /, which types
+        // here, since a find narrows the list beneath. The / stands at the
+        // inset over the gutter, as Vim's lines start at column 0, muted at
+        // rest and the accent while it finds; what's typed follows the
+        // Title at Figure, on its baseline (VKCF3Z, 2026-11-05).
+        Item {
+            id: head
+
+            width: sheet.width
+            height: held.headTall
+
+            // How far in the caret stands.
+            TextMetrics {
+                id: soughtBefore
+                font: figure.font
+                text: held.findLine.text.slice(0, held.findLine.caret)
+            }
+
+            Text {
+                x: Theme.space.rung.inset
+                y: held.headBase - baselineOffset
+                text: "/"
+                color: held.mode === "find" ? Theme.accent : Theme.muted
+                font: figure.font
+            }
+
+            Text {
+                x: held.markAt
+                y: held.headBase - baselineOffset
+                text: Theme.glyph.notifications
+                color: Theme.muted
+                font: note.font
+            }
+
+            Text {
+                id: place
+                x: held.nameAt
+                y: held.headBase - baselineOffset
+                text: "Notices"
+                color: Theme.text
+                font.family: Theme.level.title.family
+                font.pointSize: Theme.level.title.pointSize
+                font.weight: Theme.level.title.weight
+            }
+
+            Text {
+                id: sought
+                visible: held.mode === "find"
+                x: place.x + place.implicitWidth + Theme.space.rung.items
+                width: Math.max(0, parent.width - x - Theme.space.rung.inset)
+                y: held.headBase - baselineOffset
+                text: held.findLine.text
+                textFormat: Text.PlainText
+                elide: Text.ElideLeft
+                color: Theme.strong
+                font: figure.font
+            }
+
+            Rectangle {
+                visible: sought.visible
+                opacity: held.caretLight
+                x: sought.x + soughtBefore.advanceWidth
+                y: held.headBase - figure.ascent
+                width: Math.max(1, Math.round(figure.averageCharacterWidth / 4))
+                height: figure.ascent + figure.descent
+                color: Theme.strong
+            }
+        }
+
+        // The head's hairline, inset to inset, spanning the ink: a rule
+        // meeting the frame would cut the card into boxes (VKCF3Z's family
+        // cut, 2026-11-05).
+        Rectangle {
+            x: Theme.space.rung.inset
+            width: sheet.width - 2 * Theme.space.rung.inset
+            height: Theme.border
+            color: Theme.edge
         }
 
         // The lines in view, or Space ?'s list in their place.
@@ -1540,7 +1637,7 @@ Floating {
             // capitals stand where a row's would.
             readonly property var bases: {
                 const out = [];
-                const top = Theme.space.rung.inset - sheet.topPadding;
+                const top = held.rowLeaves;
                 held.listShown.forEach((one, at) => {
                     const heading = one.heading !== "";
                     const before = out[at - 1];
@@ -1640,10 +1737,11 @@ Floating {
             visible: held.mode === "command" && !held.menuAway && showing > 0
         }
 
-        // The find line and the command line: the accent's sigil, what's
-        // typed in the mono at Figure, and the bar caret where it types.
+        // The command line, above the status line with its menu rising
+        // from it, as Vim's: the accent's sigil, what's typed in the mono
+        // at Figure, and the bar caret where it types.
         Item {
-            visible: held.mode === "find" || held.mode === "command"
+            visible: held.mode === "command"
             width: sheet.width
             height: held.rowHeight
 
@@ -1651,15 +1749,14 @@ Floating {
             TextMetrics {
                 id: lineBefore
                 font: figure.font
-                text: held.lineText.slice(0, (held.mode === "find" ? held.findLine
-                    : held.commandLine).caret)
+                text: held.commandLine.text.slice(0, held.commandLine.caret)
             }
 
             Text {
                 id: sigil
                 x: Theme.space.rung.inset
                 anchors.verticalCenter: parent.verticalCenter
-                text: held.mode === "find" ? "/" : ":"
+                text: ":"
                 color: Theme.accent
                 font: figure.font
             }
@@ -1669,7 +1766,7 @@ Floating {
                 x: sigil.x + sigil.width
                 width: parent.width - x - Theme.space.rung.inset
                 anchors.baseline: sigil.baseline
-                text: held.lineText
+                text: held.commandLine.text
                 textFormat: Text.PlainText
                 elide: Text.ElideLeft
                 color: Theme.strong
@@ -1677,7 +1774,6 @@ Floating {
             }
 
             Rectangle {
-                readonly property var line: held.mode === "find" ? held.findLine : held.commandLine
                 opacity: held.caretLight
                 x: typed.x + lineBefore.advanceWidth
                 y: typed.y + typed.baselineOffset - figure.ascent
@@ -1688,10 +1784,11 @@ Floating {
         }
 
         // The foot a region of its own, as the launcher's is: under one
-        // hairline, the frame's inside edge to edge, which whatever is last
+        // hairline, inset to inset as the head's, which whatever is last
         // above meets with what a row leaves.
         Rectangle {
-            width: sheet.width
+            x: Theme.space.rung.inset
+            width: sheet.width - 2 * Theme.space.rung.inset
             height: Theme.border
             color: Theme.edge
         }
@@ -1825,13 +1922,13 @@ Floating {
     }
 
     // How many menu lines show: ten at most, and no more than the screen
-    // has rows for below the lines, the command line and the foot, so the
-    // line being typed never falls off it; three at least. The list
-    // stands the screen rung from the screen's edges, as every floating
-    // frame does.
+    // has rows for besides the head, the lines, the command line and the
+    // foot, so the line being typed never falls off it; three at least.
+    // The list stands the screen rung from the screen's edges, as every
+    // floating frame does.
     readonly property int screenRows: Math.floor((screenHeight
         - 2 * Theme.space.rung.screen) / rowHeight)
-    readonly property int menuRoom: Math.max(3, Math.min(10, screenRows - inView.length - 3))
+    readonly property int menuRoom: Math.max(3, Math.min(10, screenRows - inView.length - 4))
 
 
     SystemClock {
