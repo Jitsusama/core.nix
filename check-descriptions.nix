@@ -413,6 +413,11 @@
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count
   '';
+  ex-reads-vims-command-lines = ''
+    a : line is read as Vim reads it: its range, a command by its full name or fixed short form, a
+    bang and what follows, :g and :v, the rows a range names, and Vim's own errors for what it can't
+    take
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';
