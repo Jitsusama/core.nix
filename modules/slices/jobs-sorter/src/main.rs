@@ -483,8 +483,17 @@ fn rest(watch: &low::Watch, every: Duration, windows: &Windows, weighing: &mut l
     weigh_windows(windows, weighing);
 }
 
-/// Weighs each window low while every pi in it is marked, and back once
-/// one isn't. A failure is said once, and tried again on the next look.
+/// Whether one of `pis` started within `low::STARTING_FOR` of `now`, in
+/// ticks since boot.
+fn starting(pis: &[Sample], now: u64) -> bool {
+    let ticks = u64::try_from(low::STARTING_FOR.as_millis()).unwrap_or(u64::MAX) / MS_PER_TICK;
+    pis.iter()
+        .any(|proc| now.saturating_sub(proc.start) < ticks)
+}
+
+/// Weighs each window high while a pi in it starts, low while every pi in
+/// it is marked, and back once neither holds. A failure is said once, and
+/// tried again on the next look.
 fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
     let Windows {
         under,
@@ -492,18 +501,20 @@ fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
         dir,
         weight,
     } = *windows;
-    let windows: Vec<(String, bool)> = under
+    let now = uptime_ticks();
+    let windows: Vec<(String, u64)> = under
         .iter()
         .flat_map(|slice| homes(slice, prefixes))
         .filter_map(|scope| {
             let unit = scope.file_name()?.to_str()?.to_owned();
-            let pis: Vec<u32> = samples(&scope)
-                .iter()
+            let pis: Vec<Sample> = samples(&scope)
+                .into_iter()
                 .filter(|proc| proc.comm == "pi")
-                .map(|proc| proc.pid)
                 .collect();
-            let low = low::low(&pis, |pid| dir.join(pid.to_string()).exists());
-            Some((unit, low))
+            let starting = now.is_some_and(|now| starting(&pis, now));
+            let running: Vec<u32> = pis.iter().map(|proc| proc.pid).collect();
+            let marked = |pid: u32| dir.join(pid.to_string()).exists();
+            Some((unit, low::wanted(&running, starting, marked, weight)))
         })
         .collect();
     weighing.keep_only(
@@ -512,7 +523,7 @@ fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
             .map(|(unit, _)| unit.clone())
             .collect::<Vec<_>>(),
     );
-    for (unit, wanted) in weighing.changes(&windows, weight) {
+    for (unit, wanted) in weighing.changes(&windows) {
         match Command::new("busctl")
             .args(low::weigh_call(&unit, wanted))
             .stdout(Stdio::null())
@@ -987,6 +998,16 @@ mod tests {
                 moves
             })
             .collect()
+    }
+
+    #[test]
+    fn a_pi_counts_as_starting_for_thirty_seconds() {
+        let mut pi = proc(20, 1, 20, "pi", 0);
+        pi.start = 10_000;
+        assert!(starting(&[pi.clone()], 10_000));
+        assert!(starting(&[pi.clone()], 12_999));
+        assert!(!starting(&[pi.clone()], 13_000));
+        assert!(!starting(&[], 10_000));
     }
 
     #[test]
