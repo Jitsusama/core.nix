@@ -1145,6 +1145,26 @@ QtObject {
         ];
         for (const [what, keys, want] of doing)
             holds(what, typed(keys).acts, want);
+        // A press named as the table names keys (nameOf): Alt with a letter
+        // it typed as the key's own is Vim's M- key, never the letter, so
+        // Alt+d never begins d's operator; a letter Alt shifts to another
+        // on the layout goes by what it typed, and one it types beyond the
+        // table's marks is the field's.
+        const press = (fields, text, letter, named) => Object.assign({ control: false,
+            shift: false, alt: false, text, letter, named: named ?? "" }, fields);
+        const names = [
+            ["a letter", press({}, "d", "d"), "d"],
+            ["a capital", press({ shift: true }, "D", "d"), "D"],
+            ["Alt with a letter", press({ alt: true }, "d", "d"), "Alt+d"],
+            ["Alt with a capital", press({ alt: true, shift: true }, "D", "d"), "Alt+D"],
+            ["Alt with Return", press({ alt: true }, "\r", "", "Return"), "Alt+Return"],
+            ["Ctrl with a letter", press({ control: true }, "\u0017", "w"), "Ctrl+w"],
+            ["Alt shifting a letter to a mark", press({ alt: true }, "@", "q"), "@"],
+            ["Alt typing beyond the marks", press({ alt: true }, "\u00f0", "d"), ""],
+            ["Shift with Tab", press({ shift: true }, "", "", "Tab"), "Shift+Tab"]
+        ];
+        for (const [what, pressed, want] of names)
+            holds(`${what} is named ${want}`, Keys.nameOf(pressed), want);
 
         // [what, the keys typed from the opening, each act with its count]
         const counting = [
