@@ -136,6 +136,17 @@ function changesState(row, command = {}) {
         && !(row.verbs && row.targets);
 }
 
+// Whether Return from the find does a row's act though it changes
+// something, rather than landing on it: one holding its own acts whose
+// command starts something (the key language's starts), as a meeting's
+// row joins from ten minutes before it and sees it before then, which the
+// row says, not its act (VKCF3Z, 2026-11-05). One with no acts of its
+// own, as the clipboard's Join the Call, is the act alone, which Return
+// only lands on.
+function startsItself(row, command = {}) {
+    return !!row && row.verbs !== undefined && command.flags?.starts === true;
+}
+
 // A step's rows with a quiet one first, where the first would change
 // something: the first row inside a thing never changes state (See It,
 // Copy, a part), so a Return that steps in and a second Return after it

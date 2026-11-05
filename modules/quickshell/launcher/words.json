@@ -1666,6 +1666,8 @@
     },
     {
       "id": "keyboards:lights:to",
+      "command": "set",
+      "argument": "kbdlevel={n}",
       "in": "keyboards:lights",
       "name": "Light to {n} of {most}",
       "verb": "set",
@@ -2855,18 +2857,23 @@
     },
     {
       "id": "keyboard:flash",
+      "command": "flash",
       "in": "keyboard",
       "name": "Flash the Keyboard",
       "verb": "flash"
     },
     {
       "id": "keyboard:release",
+      "command": "set",
+      "argument": "lock=",
       "in": "keyboard",
       "name": "Let {layer} Go",
       "verb": "release"
     },
     {
       "id": "keyboard:lock",
+      "command": "set",
+      "argument": "lock={layer}",
       "in": "keyboard",
       "name": "Lock {layer} On",
       "verb": "lock"
@@ -4156,6 +4163,8 @@
     },
     {
       "id": "displays:warmth",
+      "command": "set",
+      "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
       "verb": "turn off",
@@ -4164,7 +4173,8 @@
       ],
       "states": {
         "off": {
-          "verb": "turn on"
+          "verb": "turn on",
+          "argument": "warmth"
         }
       }
     },
@@ -6526,12 +6536,14 @@
     },
     {
       "id": "tuple:share",
+      "command": "share",
       "name": "Share the Screen in the Call",
       "verb": "share",
       "by": "tuple"
     },
     {
       "id": "tuple:leave",
+      "command": "leave",
       "name": "Leave the Call",
       "verb": "leave",
       "by": "tuple"
@@ -6691,6 +6703,19 @@
       "back": "back",
       "keys": "keys"
     },
+    "hints": {
+      "in": "in",
+      "out": "out",
+      "commands": "commands",
+      "copy": "copy",
+      "keys": "keys",
+      "notHere": "not here",
+      "quit": "does nothing",
+      "quits": "closes",
+      "complete": "complete",
+      "nextTime": "next time",
+      "enough": "is enough"
+    },
     "listed": {
       "eyebrow": "Keys",
       "title": "The Launcher's Keys",
@@ -6721,14 +6746,15 @@
         "optionHere": "Set its own option",
         "inOut": "Into it and out",
         "run": "Do it",
+        "jumps": "Back and forward",
         "lastPlace": "The place used last",
         "beside": "The place beside",
         "own": "Open in its program",
+        "find": "A fresh find",
         "insert": "Type",
         "change": "Clear it and type",
         "ending": "Close or forget it",
         "copyRow": "Copy it",
-        "restore": "Bring it back",
         "intoDrawer": "Into the drawer",
         "lines": "Down and up a line",
         "along": "Along the line",

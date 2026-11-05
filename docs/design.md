@@ -633,7 +633,7 @@ words, so Joel never wonders what he's talking to.
 | Property                    | What it says                                                    |
 | --------------------------- | --------------------------------------------------------------- |
 | a border, `shape.border`    | this is a thing; its colour says where the keys go: the accent holds them, the edge doesn't, the alert needs Joel |
-| the radius, `shape.radius`  | a whole thing: a window, or anything floating                   |
+| the radius, `shape.radius`  | a whole thing: a window, or anything floating; square at its foot where it stands on another, as the launcher's drawer over its card |
 | a part's radius             | a part of a thing, always the radius less the border and `shape.inset`, never below square; at one unit's radius, square, since a smaller curve inside a small one wobbles |
 | square                      | not a thing at all: text, a hairline, a bar's fill              |
 | a hairline across a surface | splits what's typed from what comes back                        |

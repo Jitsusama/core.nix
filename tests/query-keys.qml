@@ -38,7 +38,9 @@ QtObject {
     // line's rather than the field's to type.
     // Each act done is said with the count typed before it, as "3 next",
     // in `counted`, an operator's with the motion it took, as "ending 6
-    // next", and each search run with what it sought, in `sought`.
+    // next", each search run with what it sought, in `sought`, and each
+    // key that meant nothing where it was pressed, which the foot answers
+    // with "not here", in `idle`.
     function typed(keys, words = false) {
         const typing = words ? "insert" : "find";
         let standing = Keys.rest();
@@ -46,6 +48,7 @@ QtObject {
         const acts = [];
         const counted = [];
         const sought = [];
+        const idle = [];
         let ours = false;
         for (const key of keys) {
             const read = Keys.read(standing, key, mode);
@@ -60,8 +63,10 @@ QtObject {
             }
             if (read.sought)
                 sought.push(read.sought);
+            if (read.idle)
+                idle.push(key);
         }
-        return { acts, counted, sought, ours, mode, standing };
+        return { acts, counted, sought, idle, ours, mode, standing };
     }
 
     // d and y, Vim's operators, over the rows as lines: the keys that make
@@ -77,8 +82,10 @@ QtObject {
             ["the two counts multiply, as Vim's do", ["Escape", "2", "d", "3", "d"],
                 ["normal", "6 ending"]],
             ["dj and dk end the row and the one below or above",
-                ["Escape", "d", "j", "d", "k", "d", "Down", "d", "Up"],
-                ["normal", "ending next", "ending previous", "ending next", "ending previous"]],
+                ["Escape", "d", "j", "d", "k"], ["normal", "ending next", "ending previous"]],
+            ["an arrow is its letter's motion, d Down as dj", ["Escape", "d", "Down", "d", "Up"],
+                ["normal", "ending next", "ending previous"]],
+            ["3 Down goes three, as 3j", ["Escape", "3", "Down"], ["normal", "3 next"]],
             ["a count after d goes with its motion", ["Escape", "d", "3", "j"],
                 ["normal", "ending 3 next"]],
             ["and one before it too, multiplied", ["Escape", "2", "d", "3", "j"],
@@ -96,8 +103,8 @@ QtObject {
                 ["normal", "3 copy", "3 copy"]],
             ["y takes the motions d does", ["Escape", "y", "2", "k", "y", "G", "y", "g", "g"],
                 ["normal", "copy 2 previous", "copy last", "copy first"]],
-            ["Escape lets d go, then steps back", ["Escape", "d", "Escape", "j", "Escape"],
-                ["normal", "next", "back"]],
+            ["Escape lets d go, then closes", ["Escape", "d", "Escape", "j", "Escape"],
+                ["normal", "next", "dismiss"]],
             ["and a count with it, at once, as Vim's does",
                 ["Escape", "3", "d", "Escape", "j"], ["normal", "next"]],
             ["and a count after it", ["Escape", "d", "3", "Escape", "j"], ["normal", "next"]],
@@ -558,7 +565,7 @@ QtObject {
         const doing = [
             ["w b e move by words", ["Escape", "w", "b", "e"],
                 ["normal", "wordNext", "wordBack", "wordEnd"]],
-            ["h l and the arrows move by letters", ["Escape", "h", "l", "Left", "Right"],
+            ["h l move by letters, and so do the arrows", ["Escape", "h", "l", "Left", "Right"],
                 ["normal", "letterBack", "letterNext", "letterBack", "letterNext"]],
             ["- and Backspace still step out", ["Escape", "-", "Backspace"],
                 ["normal", "out", "out"]],
@@ -574,8 +581,8 @@ QtObject {
         for (const [what, keys, want] of doing)
             holds(`on a prompt's words, ${what}`, wordsTyped(keys).acts, want);
         holds("cw leaves the line in insert", wordsTyped(["Escape", "c", "w"]).mode, "insert");
-        holds("on a find, u brings back what was cleared", typed(["Escape", "u"]).acts,
-            ["normal", "restore"]);
+        holds("on a find, u undoes nothing, since h never clears", typed(["Escape", "u"]).acts,
+            ["normal"]);
         holds("and w and x do nothing", typed(["Escape", "w", "x"]).acts, ["normal"]);
         holds("Ctrl+H deletes back in insert", typed(["Ctrl+h"]).acts, ["deleteBack"]);
         for (const act of ["wordNext", "wordBack", "wordEnd"])
@@ -1082,28 +1089,39 @@ QtObject {
             ["Return does the row on the find, and in normal", ["Return", "Escape", "Return"],
                 ["run", "normal", "run"]],
             ["Ctrl+C leaves the find for normal", ["Ctrl+c"], ["normal"]],
-            ["Escape gives normal, and then steps back", ["Escape", "Escape"], ["normal", "back"]],
-            ["normal's arrows and h l step out and in", ["Escape", "Left", "h", "Right", "l"],
-                ["normal", "out", "out", "into", "into"]],
+            // Escape at rest closes the launcher, a popup, as his Neovim
+            // closes its floats, and never steps out (the vi-paradigm spec,
+            // Normal).
+            ["Escape gives normal, and then closes", ["Escape", "Escape"],
+                ["normal", "dismiss"]],
+            ["normal's h and l step out and in, and the arrows never step",
+                ["Escape", "Left", "h", "Right", "l"], ["normal", "out", "into"]],
             ["normal's Backspace and - step out, as his oil's do", ["Escape", "Backspace", "-"],
                 ["normal", "out", "out"]],
-            ["q and ZZ close", ["Escape", "q", "Z", "Z"], ["normal", "close", "close"]],
+            ["q only says how to close, and ZZ closes", ["Escape", "q", "Z", "Z"],
+                ["normal", "quitSaid", "close"]],
             ["a Z with anything but Z after it lets go", ["Escape", "Z", "j", "Z", "Z"],
                 ["normal", "close"]],
             [": in normal opens the command line", ["Escape", ":"], ["normal", "command"]],
-            ["a colon on the find is the field's to type", [":", "q", "Return"], ["run"]],
-            ["normal's rows keep the arrows", ["Escape", "Down", "Up"],
-                ["normal", "next", "previous"]],
-            ["normal's Tab and Space Tab go to the place used last",
-                ["Escape", "Tab", "Space", "Tab"], ["normal", "lastPlace", "lastPlace"]],
+            ["a colon after letters on the find is the field's to type", ["s", ":", "Return"],
+                ["run"]],
+            ["normal's Down and Up are j and k, with counts (Joel, 2026-11-05 12:1x)",
+                ["Escape", "Down", "Up", "j", "k"], ["normal", "next", "previous", "next", "previous"]],
+            ["Space Tab goes to the place used last", ["Escape", "Space", "Tab"],
+                ["normal", "lastPlace"]],
+            // Tab is Ctrl+I, as a terminal can't tell them apart: forward
+            // through the places stepped into, Ctrl+O back.
+            ["Ctrl+O and Ctrl+I go back and forward through the places stepped into",
+                ["Escape", "Ctrl+o", "Ctrl+i", "Tab"],
+                ["normal", "jumpBack", "jumpForward", "jumpForward"]],
             ["Space ? and F1 show every key here", ["Escape", "Space", "?", "F1"],
                 ["normal", "keys", "keys"]],
             ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
                 ["normal", "close"]],
             ["Space alone begins, and a key it doesn't lead lets it go",
                 ["Escape", "Space", "j", "j"], ["normal", "next"]],
-            ["Escape cancels a Space waiting, then steps back",
-                ["Escape", "Space", "Escape", "Escape"], ["normal", "back"]],
+            ["Escape cancels a Space waiting, then closes",
+                ["Escape", "Space", "Escape", "Escape"], ["normal", "dismiss"]],
             ["normal's j and k go down and up", ["Escape", "j", "k"],
                 ["normal", "next", "previous"]],
             ["gg and G go to the first and the last", ["Escape", "g", "g", "G"],
@@ -1118,7 +1136,8 @@ QtObject {
             ["the find's Ctrl+U still deletes to the start", ["Ctrl+u"], ["deleteToStart"]],
             ["a g with anything but g after it lets go", ["Escape", "g", "j", "g", "g"],
                 ["normal", "first"]],
-            ["u brings the query back", ["Escape", "u"], ["normal", "restore"]],
+            ["/ and ? open a fresh find", ["Escape", "/", "Escape", "?"],
+                ["normal", "freshFind", "normal", "freshFind"]],
             ["i a I A go back to the find",
                 ["Escape", "i", "Escape", "a", "Escape", "I", "Escape", "A"],
                 ["normal", "insert", "normal", "append", "normal", "insertStart", "normal",
@@ -1184,10 +1203,10 @@ QtObject {
             ["0 alone is no count, and does nothing", ["Escape", "0", "j"], ["normal", "next"]],
             ["a count goes with its move, not the next", ["Escape", "3", "j", "j"],
                 ["normal", "3 next", "next"]],
-            ["Escape only cancels a count, then steps back", ["Escape", "5", "Escape", "j", "Escape"],
-                ["normal", "next", "back"]],
-            ["Escape only cancels a g waiting, then steps back", ["Escape", "g", "Escape", "Escape"],
-                ["normal", "back"]],
+            ["Escape only cancels a count, then closes", ["Escape", "5", "Escape", "j", "Escape"],
+                ["normal", "next", "dismiss"]],
+            ["Escape only cancels a g waiting, then closes", ["Escape", "g", "Escape", "Escape"],
+                ["normal", "dismiss"]],
             ["a key that ends nothing lets the count go", ["Escape", "3", "x", "j"],
                 ["normal", "next"]],
             ["a count before a colon goes with it", ["Escape", "3", ":"],
@@ -1208,33 +1227,48 @@ QtObject {
         holds("a prompt's letters are its own to type", typed(["x"], true).ours, false);
         // The rows have no search of their own: the find line is the list's
         // one way to find (VKCF3Z's vi-paradigm spec, The Find Line).
-        holds("/ ? n N search nothing in normal", typed(["Escape", "/", "?", "n", "N"]).acts,
-            ["normal"]);
-        holds("and leave it in normal", typed(["Escape", "/", "?"]).mode, "normal");
+        holds("/ goes to the find", typed(["Escape", "/"]).mode, "find");
+        // A colon as the find's first letter opens the command line, as
+        // Vim's does from anywhere; after letters it's one of the find's.
+        holds("a colon on an empty find opens the command line",
+            Keys.opensCommands(":", "find", ""), true);
+        holds("but not after letters", Keys.opensCommands(":", "find", "sl"), false);
+        holds("nor in a prompt's words", Keys.opensCommands(":", "insert", ""), false);
+        holds("n and N search nothing in normal", typed(["Escape", "n", "N"]).acts, ["normal"]);
+        // A key with no meaning here says so, never silent (the vi-paradigm
+        // spec, Normal); a count or a sequence begun means something.
+        holds("n, N, p and u mean nothing in normal, and say so",
+            typed(["Escape", "n", "N", "p", "u"]).idle, ["n", "N", "p", "u"]);
+        holds("a key that ends what was begun means nothing, and says so",
+            typed(["Escape", "]", "x"]).idle, ["x"]);
+        holds("a count, a sequence begun and a move each mean something",
+            typed(["Escape", "3", "g", "g", "Space", "?"]).idle, []);
+        holds("a letter on the find types, meaning nothing idle", typed(["n"]).idle, []);
         holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
-            lastPlace: "last", keys: "keys", close: "close", ends: "ends",
-            nextRow: "next row", caret: "caret", word: "word", intoDrawer: "into the drawer",
-            lines: "lines", along: "along", scroll: "scroll", back: "back", ending: "ending",
-            seek: "seek", seekOn: "seek on", select: "select", reselect: "reselect",
-            otherEnd: "other end", copy: "copy", copyRow: "copy row", option: "option",
-            optionHere: "option here" };
+            lastPlace: "last", jumps: "jumps", find: "find", keys: "keys", close: "close",
+            ends: "ends", nextRow: "next row", caret: "caret", word: "word",
+            intoDrawer: "into the drawer", lines: "lines", along: "along", scroll: "scroll",
+            back: "back", ending: "ending", seek: "seek", seekOn: "seek on", select: "select",
+            reselect: "reselect", otherEnd: "other end", copy: "copy", copyRow: "copy row",
+            option: "option", optionHere: "option here" };
         const modes = { normal: "Normal", find: "Find", page: "Drawer",
             pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
-        holds("the list's rows, the arrows after Vim's", keyed("rows"),
-            "j  k  \u2193  \u2191");
+        holds("the list's rows, Vim's alone", keyed("rows"), "j  k");
         holds("the list's ends, a sequence as Vim writes it", keyed("ends"), "gg  G");
         holds("the list's screens, Ctrl's before the named keys", keyed("screen"),
             "Ctrl+F  Ctrl+B");
-        holds("the list's in and out, - among them", keyed("in and out"),
-            "l  h  -  \u2192  \u2190");
+        holds("the list's in and out, - among them", keyed("in and out"), "l  h  -");
+        holds("the list's places stepped into, back and forward", keyed("jumps"),
+            "Ctrl+O  Ctrl+I");
+        holds("the list's fresh find", keyed("find"), "/  ?");
         holds("the list's Return, once", keyed("run"), "\u21b5");
-        holds("the list's place used last", keyed("last"), "Tab  Space Tab");
+        holds("the list's place used last", keyed("last"), "Space Tab");
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
@@ -1291,8 +1325,7 @@ QtObject {
         holds("the drawer's moves, as normal's on the rows",
             ["gg  G", "H  M  L", "Ctrl+D  Ctrl+U", "Ctrl+F  Ctrl+B", "3j  12G"]
                 .filter(keys => !sections.Drawer.includes(keys.split("  ")[0])), []);
-        holds("the find's next row, Ctrl+N with the arrow", keyed("next row"),
-            "Ctrl+N  \u2193");
+        holds("the find's next row, Ctrl+N", keyed("next row"), "Ctrl+N");
         holds("the find's caret", keyed("caret"), "\u2190  \u2192");
         holds("the find's word deleted", keyed("word"), "Ctrl+W");
         holds("normal's keys aren't listed on the find, where they type",
@@ -1304,18 +1337,32 @@ QtObject {
         const facts = list.filter(line => line.heading === undefined);
         holds("every line the list gives has its keys",
             facts.filter(line => line.label === "").length, 0);
-        // Joel presses the arrows, so every act one does in a mode lists it
-        // in that mode's section. A prompt's words keep their own keys,
-        // which the launcher's list doesn't name.
+        // In normal, in a buffer, the arrows move the cursor (Joel,
+        // 2026-11-05 12:1x): where nothing types, an arrow is bound only
+        // beside its letter, as its motion, and the list names it never.
         const arrows = ["Up", "Down", "Left", "Right"];
-        holds("every act an arrow does lists its arrow", Keys.table
-            .filter(one => one.mode !== "words")
-            .map(one => ({ in: one.mode === "both" ? ["Normal", "Find"]
-                : one.mode === "line" ? ["Find"] : [modes[one.mode]],
-                arrows: one.keys.filter(key => arrows.includes(key)) }))
-            .filter(one => one.arrows.some(key => one.in.some(mode =>
-                !sections[mode].includes(Listed.face(key)))))
-            .map(one => one.arrows), []);
+        const letterOf = { Down: "j", Up: "k", Left: "h", Right: "l" };
+        const motions = ["next", "previous", "letterBack", "letterNext"];
+        holds("an arrow alone is only its letter's motion", Keys.table
+            .filter(one => ["normal", "visual", "words"].includes(one.mode))
+            .filter(one => one.keys.some(key => arrows.includes(key)
+                && (!motions.includes(one.act) || !one.keys.includes(letterOf[key]))))
+            .map(one => one.act), []);
+        // Nor with Shift, nor as any key of a sequence, as the key language's
+        // own check refuses (#1865), which can't see this table; nor in the
+        // drawer's page and its visual, gone to Ctrl+W (#1866). A chord his
+        // leader begins, as his Neovim's Space and an arrow, may overlay
+        // Vim's own keys (Joel, 5 November): only those may hold an arrow.
+        const arrowed = key => arrows.some(arrow => key === arrow || key === `Shift+${arrow}`);
+        const led = keys => Array.isArray(keys) && keys[0] === "Space";
+        holds("nor with Shift, in a sequence or on the drawer's page", Keys.table
+            .filter(one => ["normal", "visual", "words", "page", "pageVisual"]
+                .includes(one.mode))
+            .filter(one => one.keys.some(keys => !led(keys) && (Array.isArray(keys)
+                ? keys.some(arrowed) : keys.startsWith("Shift+") && arrowed(keys))))
+            .map(one => one.act), []);
+        holds("normal's section names no arrow alone",
+            sections.Normal.filter(key => arrows.map(Listed.face).includes(key)), []);
         // The narrowest plate's names sit whole at 16 figures; 14 leaves a
         // glyph's room.
         holds("every line's keys are short enough to sit whole",
@@ -1325,8 +1372,8 @@ QtObject {
         for (const act of ["next", "previous", "first", "last", "viewTop", "viewMiddle",
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
-        for (const act of ["run", "into", "out", "back", "close", "lastPlace", "keys",
-            "insert", "change", "restore", ""])
+        for (const act of ["run", "into", "out", "dismiss", "close", "quitSaid", "lastPlace",
+            "jumpBack", "jumpForward", "freshFind", "keys", "insert", "change", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
@@ -1386,7 +1433,8 @@ QtObject {
         holds("nothing begun is left after an act", typed(["Escape", "c", "c"]).standing,
             Keys.rest());
         holds("the field says Ctrl+Y for completing", Keys.keyOf("complete", "find"), "Ctrl+y");
-        holds("and the left arrow for clearing", Keys.keyOf("out", "normal"), "Left");
+        holds("and h for stepping out, as the foot names it", Keys.keyOf("out", "normal"), "h");
+        holds("and l for stepping in", Keys.keyOf("into", "normal"), "l");
 
         // [what, the text, the caret, where Ctrl+W deletes back to]
         const words = [

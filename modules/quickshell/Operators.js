@@ -68,6 +68,32 @@ function operated(standing, key, matching, rested) {
     return { act: "", count: 0, standing: rested, ours: true };
 }
 
+const digit = /^[0-9]$/;
+
+// What normal and visual read before their table, or null for a key they
+// don't. A count is typed where nothing types: 0 alone is Vim's first
+// column, which rows haven't, so it counts only after another digit, and
+// one after an operator is its motion's. An operator's key at rest in
+// normal begins it, with the count before it, but on a prompt's words
+// (`words`), where d and c are the words' own, as dw and cw; visual's
+// take no motion. The line is its mode and whether it holds words, and
+// the table QueryKeys' `matching` and `rested`, as operated takes them.
+function beforeTable(standing, key, line, table) {
+    const atRest = standing.typed.length === 0;
+    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
+        return { act: "", count: 0, standing: Object.assign({}, standing,
+            { count: standing.count + key, typed: [] }), ours: true };
+    }
+    if (standing.operator !== undefined) {
+        return operated(standing, key, table.matching, table.rested);
+    }
+    if (line.mode === "normal" && atRest && !line.words && key in operators) {
+        const operator = { key, count: standing.count };
+        return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
+    }
+    return null;
+}
+
 // The rows an operator takes, from where the rows stand (as moved takes
 // them): over the row and count - 1 below it with no motion, as dd
 // and 3dd, to the last at most, as Neovim's 9dd near the end; or from the

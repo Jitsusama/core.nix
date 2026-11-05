@@ -42,8 +42,10 @@ const table = [
     // to the last; H M L to the top, middle and bottom row in view; Ctrl+D
     // and Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page
     // Up, a screen (moved, below).
-    { act: "next", mode: "normal", keys: ["Down", "j"] },
-    { act: "previous", mode: "normal", keys: ["Up", "k"] },
+    // In normal, in a buffer, the arrows move the cursor as their letters
+    // do (Joel, 2026-11-05 12:1x), listed after them so no hint names one.
+    { act: "next", mode: "normal", keys: ["j", "Down"] },
+    { act: "previous", mode: "normal", keys: ["k", "Up"] },
     { act: "first", mode: "normal", keys: [["g", "g"]] },
     { act: "last", mode: "normal", keys: ["G"] },
     { act: "viewTop", mode: "normal", keys: ["H"] },
@@ -53,23 +55,26 @@ const table = [
     { act: "halfUp", mode: "normal", keys: ["Ctrl+u"] },
     { act: "pageDown", mode: "normal", keys: ["Ctrl+f"] },
     { act: "pageUp", mode: "normal", keys: ["Ctrl+b"] },
-    // The left and right arrows step out and in, with h and l beside them,
-    // and - and Backspace step out as his oil's do; a query typed is
-    // cleared first, and u brings it back, as vi's undo does.
-    { act: "into", mode: "normal", keys: ["Right", "l"] },
-    { act: "out", mode: "normal", keys: ["Left", "h", "-", "Backspace"] },
-    // q closes, as his Neovim closes help and its plugin windows, ZZ as it
-    // closes a buffer and Space w as his leader closes a split; :q is the
-    // command line's (CommandLine.qml), which : opens (read, below).
-    { act: "close", mode: "normal", keys: ["q", ["Z", "Z"], ["Space", "w"]] },
-    // Tab goes back to the place used last, and again to the one before
-    // that, as his Space Tab goes back to the file used last (docs/
-    // design.md, Vi's Keys: Tab stays ours, and Space Tab does it too).
-    { act: "lastPlace", mode: "normal", keys: ["Tab", ["Space", "Tab"]] },
+    // l steps into the row, h out onto the row stepped in from, with its
+    // find, - and Backspace as his oil's do. No arrow does either, nor
+    // moves the rows: Joel keeps to Vim's keys where nothing types ("rely
+    // only on vi right feeling things", 2026-11-05).
+    { act: "into", mode: "normal", keys: ["l"] },
+    { act: "out", mode: "normal", keys: ["h", "-", "Backspace"] },
+    // ZZ closes, as his Neovim closes a buffer, Space w as his leader closes a
+    // split, and :q (CommandLine.qml); q closes nothing, there being no
+    // macros, and says so until the next key (the vi-paradigm spec, Normal).
+    { act: "close", mode: "normal", keys: [["Z", "Z"], ["Space", "w"]] },
+    { act: "quitSaid", mode: "normal", keys: ["q"] },
+    // Ctrl+O and Ctrl+I go back and forward through the places stepped into,
+    // as Vim's jump list, Tab being Ctrl+I; Space Tab goes to the place used
+    // last, as his goes to the file used last.
+    { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
+    { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
+    { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
     // Every key here, as his leader's Space ? lists them, and F1 as help.
     // Space alone begins these and does nothing, waiting as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
-    { act: "restore", mode: "normal", keys: ["u"] },
     // Vim's operators on the rows as lines: d does each row's ending
     // action (Forget It, Close It) and y its copy, over the row again as
     // dd and yy, or as far as a motion goes (operated, below), so these
@@ -93,8 +98,10 @@ const table = [
     { act: "paragraphBack", mode: "normal", keys: ["{"] },
     { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
     { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
-    // Into insert: at the caret, after it, at the line's start and its end,
-    // or with the line cleared first.
+    // Back to the find: / and ? afresh, as a find has no direction; i a I A
+    // holding the find, at the caret, after it, at the line's start and its
+    // end; or cleared first, as cc clears a line.
+    { act: "freshFind", mode: "normal", keys: ["/", "?"] },
     { act: "insert", mode: "normal", keys: ["i"] },
     { act: "append", mode: "normal", keys: ["a"] },
     { act: "insertStart", mode: "normal", keys: ["I"] },
@@ -115,8 +122,9 @@ const table = [
     // Vim's Ctrl+W l and w go into the drawer, and his Neovim's Space and the
     // right arrow over them (Joel, 2026-11-05: "leader stuff can overlay").
     { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
-    // Escape steps back one level, and closes the launcher at its home.
-    { act: "back", mode: "normal", keys: ["Escape"] },
+    // Escape at rest closes the launcher from any depth, as his Neovim closes
+    // its floats, never stepping out (the spec's Normal); read cancels first.
+    { act: "dismiss", mode: "normal", keys: ["Escape"] },
 
     // A prompt's words in normal, as Vim edits a line: w, b and e to the
     // next word's start, back to a word's start and on to its end, 0 and $
@@ -232,10 +240,6 @@ function pending(standing) {
         || standing.operator !== undefined || standing.seek !== undefined;
 }
 
-// The operators, by their key, and the act each does over the rows it
-// takes (Operators.js, which reads a key while one waits).
-const operators = Operators.operators;
-
 // The range a count before a colon gives the command line, as Vim's 3:
 // gives :.,.+2 and 1: gives :., or none (Ex.js's counted).
 function counted(count) {
@@ -318,6 +322,10 @@ function inMode(row, mode) {
     if (mode === "visual" && row.mode === "object") {
         return true;
     }
+    // An operator's text objects are theirs alone, never the find's keys.
+    if (mode === "object") {
+        return row.mode === "object";
+    }
     return row.mode === mode || (row.mode === "line" && !still(mode)) || row.mode === "both";
 }
 
@@ -345,35 +353,13 @@ function matching(typed, mode, words) {
     return { act: "", begun };
 }
 
-// What normal and visual read before their table, or null for a key they
-// don't. A count is typed where nothing types: 0 alone is Vim's first
-// column, which rows haven't, so it counts only after another digit, and
-// one after an operator is its motion's. An operator's key at rest in
-// normal begins it, with the count before it, but on a prompt's words
-// (`words`), where d and c are the words' own, as dw and cw; visual's
-// take no motion.
-function beforeTable(standing, key, mode, words) {
-    const atRest = standing.typed.length === 0;
-    if (atRest && digit.test(key) && (standing.count !== "" || key !== "0")) {
-        return { act: "", count: 0, standing: Object.assign({}, standing,
-            { count: standing.count + key, typed: [] }), ours: true };
-    }
-    if (standing.operator !== undefined) {
-        return Operators.operated(standing, key, matching, rest());
-    }
-    if (mode === "normal" && atRest && !words && key in operators) {
-        const operator = { key, count: standing.count };
-        return { act: "", count: 0, standing: { count: "", typed: [], operator }, ours: true };
-    }
-    return null;
-}
-
 // What a key does in a mode from where the keys stand: the act, if one's
 // done, with the count typed before it (0 for none), how the keys stand
 // after it, and whether the key was the line's to act on at all, rather
 // than the field's own to type. Escape only cancels what's begun, as Vim's
-// does, and steps back out of anything on the next press. Words says the
-// line holds a prompt's words rather than a find, which normal edits.
+// does, and closes on the next press; one meaning nothing in normal is
+// `idle`, said "not here". Words says the line holds a prompt's words
+// rather than a find, which normal edits.
 function read(standing, key, mode, words = false) {
     // A key with no name, as Shift pressed on its own for a capital,
     // changes nothing, so a sequence or a count begun carries on past it.
@@ -405,7 +391,8 @@ function read(standing, key, mode, words = false) {
     // Normal's and visual's counts and operators, which keep an operator's
     // count apart from its motion's.
     const before = mode === "normal" || mode === "visual"
-        ? beforeTable(standing, key, mode, words) : null;
+        ? Operators.beforeTable(standing, key, { mode, words }, { matching, rested: rest() })
+        : null;
     if (before !== null) {
         return before;
     }
@@ -428,7 +415,13 @@ function read(standing, key, mode, words = false) {
     }
     // Where nothing types, a key that ends nothing is the line's and does
     // nothing, letting what was begun go, as vi does.
-    return { act: "", count: 0, standing: rest(), ours: still(mode) };
+    return { act: "", count: 0, standing: rest(), ours: still(mode), idle: still(mode) };
+}
+
+// Whether a key opens the command line: a colon as the find's first
+// letter, as Vim's from anywhere; after letters it's the find's.
+function opensCommands(key, mode, text) {
+    return key === ":" && mode === "find" && text === "";
 }
 
 // How the keys stand once a sequence begun has waited its timeoutlen for
@@ -446,12 +439,6 @@ function keyOf(act, mode) {
     const row = table.find(one => one.act === act && inMode(one, mode));
     const keys = row ? row.keys[0] : "";
     return Array.isArray(keys) ? keys.join("") : keys;
-}
-
-// Whether a key does an act in a mode, so a hint names a key only where
-// pressing it does what the hint says.
-function binds(act, key, mode) {
-    return table.some(one => one.act === act && inMode(one, mode) && one.keys.includes(key));
 }
 
 // Whether an act in visual takes its selection: d, y and Return.
@@ -491,7 +478,7 @@ function modeAfter(act, mode, typing = "find") {
     if (["copy", "copyLines", "back"].includes(act) && chosen(mode)) {
         return "page";
     }
-    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]
+    if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord", "freshFind"]
         .includes(act)) {
         return typing;
     }

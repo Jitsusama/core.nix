@@ -44,6 +44,12 @@ function notation(command, short) {
     return `${shortest}[${command.slice(shortest.length)}]`;
 }
 
+// Whether a command never asks, whatever it changes: :set, a row's own
+// included, as Vim's :set never asks (2V74KO, 2026-11-05).
+function neverAsks(command) {
+    return command === "set";
+}
+
 // What an act is named on the line: its verb in lowercase, the word on its
 // row, or else its name's first word. A verb of more words is named by its
 // first, since a command is one word.
@@ -153,7 +159,7 @@ function actLine(act, first, from) {
     const banged = words.bang === true;
     return { command, argument: String(words.argument ?? ""), short: flags.short ?? command,
         title: String(act.name ?? ""), key: keyOf(act, first), kind: "act", act,
-        bang: banged || !undoable, banged, takes: false, undoable,
+        bang: banged || (!undoable && !neverAsks(command)), banged, takes: false, undoable,
         guarded: flags.guarded === true, ranged: flags.range === true,
         every: words.range === "%", named: String(words.id ?? "") };
 }

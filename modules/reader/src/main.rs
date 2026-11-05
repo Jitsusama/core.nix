@@ -48,6 +48,8 @@ use std::ffi::c_void;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
+use theme::PT_A_PX;
+
 /// For tests: say each key's act and where the view heads after it.
 fn keys_logged() -> bool {
     static LOGGED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -143,9 +145,6 @@ const LOADING_AT_ONCE: usize = 4;
 /// times the screen's scale over this, so a band at one scale stands in
 /// for another's as a zoom's do.
 const REFERENCE_SCALE: f64 = 2.0;
-/// Points of the page a logical pixel of the window holds at zoom 1, as
-/// CSS has it.
-const PT_A_PX: f64 = 0.75;
 /// How long the first frame may wait for its screen's bands: design.md's
 /// first frame is complete, within the 250 ms the first screen is allowed.
 const FIRST_FRAME_AT_MOST: Duration = Duration::from_millis(250);
@@ -494,7 +493,9 @@ struct App {
 }
 
 /// One line of the page's body text, what Ctrl+E and Ctrl+Y move by.
-const LINE_PT: f64 = page::PITCH_PT;
+fn line_pt() -> f64 {
+    page::pitch_pt()
+}
 
 /// A key's count as lines to move by: one when none was typed.
 fn count_of(count: Option<u32>) -> isize {
@@ -882,7 +883,7 @@ impl App {
                 clippy::cast_precision_loss,
                 reason = "a count of lines, a few thousand at most"
             )]
-            let by_px = by as f64 * LINE_PT * self.px_per_pt();
+            let by_px = by as f64 * line_pt() * self.px_per_pt();
             self.step_to(self.heading() + by_px);
             return;
         };
@@ -900,7 +901,7 @@ impl App {
             return;
         };
         let (top, foot) = self.view_pt();
-        let room = SCROLL_OFF_LINES * LINE_PT;
+        let room = SCROLL_OFF_LINES * line_pt();
         let top = if self.heading() > 0.5 {
             top + room
         } else {
@@ -2224,7 +2225,7 @@ impl App {
     /// leave it on its line while that stays in view.
     fn scroll(&mut self, act: keys::Act, n: f64) {
         use keys::Act;
-        let (screen, line) = (self.screen_px(), LINE_PT * self.px_per_pt());
+        let (screen, line) = (self.screen_px(), line_pt() * self.px_per_pt());
         let (at, here) = (self.heading(), self.cursor_pt());
         let by = match act {
             Act::ScrollDown => n * line,
@@ -2251,7 +2252,7 @@ impl App {
     fn view_act(&mut self, act: keys::Act, count: Option<u32>, listed: bool) {
         use keys::Act;
         let n = f64::from(count.unwrap_or(1));
-        let line = LINE_PT * self.px_per_pt();
+        let line = line_pt() * self.px_per_pt();
         let at = self.heading();
         let here = self.cursor_pt();
         match act {

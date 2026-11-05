@@ -274,6 +274,8 @@ Provider {
                 key: choice.key,
                 verb: Words.verb(choice.id),
                 name: Words.name(choice.id, "", { layer: choice.layer }),
+                // Its layer, so the : line fills :set lock={layer}.
+                fill: { layer: choice.layer },
                 glyph: Theme.glyph.layer,
                 hue: "action",
                 stays: true,
@@ -311,6 +313,11 @@ Provider {
             const set = level;
             levels.push(thing({
                 key: `verb:keyboards-lights-${level}`,
+                // Its words, which its key never walks back to, and its
+                // level, so the : line says :set kbdlevel=2.
+                wordsId: "keyboards:lights:to",
+                wordState: state,
+                fill: { n: level },
                 verb: Words.verb("keyboards:lights:to", state),
                 name: part("lights:to", state, { n: level, most: most }),
                 glyph: Theme.glyph.brightness,

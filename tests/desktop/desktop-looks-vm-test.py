@@ -213,9 +213,14 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
         assert not arrowed, f"at {scale} the find's foot names an arrow: {arrowed}"
+        # Normal's foot names its keys by letter, as Vim's do, so no arrow either, and always
+        # the command line's and the key list's.
         desktop.normal()
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
-        assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
+        arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
+        assert not arrowed, f"at {scale} normal's foot names an arrow: {arrowed}"
+        told = desktop.showing()["selected"]["told"]
+        assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} normal's foot: {told}"
         desktop.on_find()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
@@ -229,6 +234,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         named = [word for word in foot if word["text"] in ("insert", "find", "normal")]
         assert not named, f"at {scale} the find's foot names a mode: {named}"
+        teaches_in_the_foot(desktop, scale)
         # In normal the field draws no caret and the foot names no mode, the
         # row's words where the find left them.
         desktop.normal()
@@ -237,6 +243,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
+        says_until_the_next_key(desktop, scale)
         # A count typed stands where insert's word was until its move, as showcmd shows it.
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         shows_the_command_line(desktop, scale)
@@ -263,6 +270,40 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
+    """See kitty's chord taught in the foot, by its keys and lowercase words, never on the line.
+
+    The find's line holds only the find and how far it narrows (VKCF3Z, 2026-11-05).
+    """
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    taught = [word["text"] for word in field if "next time" in word["text"]]
+    assert not taught, f"at {scale} the find's line teaches a chord: {taught}"
+    told = desktop.showing()["selected"]["told"]
+    assert any(text.endswith(" next time") for text in told), f"at {scale} the foot: {told}"
+
+
+def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
+    """Press a key with no meaning, then q, photographing what the foot says for each.
+
+    Each stands in the keys' place, the mark in text and its words muted, until the next key.
+    """
+    machine = desktop.machine
+    at = scale.replace(".", "-")
+    for chars, said, shot in [
+        ("z", ["z not here"], "not-here"),
+        ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
+    ]:
+        machine.send_chars(chars)
+        desktop.launcher_until(lambda shown: shown["saying"] == said)  # noqa: B023
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        cut = [word["text"] for word in foot if word["cut"]]
+        assert not cut, f"at {scale} the foot cuts what it says: {cut}"
+        desktop.photograph(f"launcher-{shot}-at-{at}")
+    # gg stays on the first row and lets the words go.
+    machine.send_chars("gg")
+    desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
@@ -344,7 +385,9 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
 def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
     """Find Keep Awake and Return, which lands on it in normal, and photograph it there.
 
-    Its side and the foot say what a second Return does, in the accent, and nothing is done.
+    Its side and the foot say what a second Return does, in the accent, and nothing is done. A
+    landing is normal, so its foot keeps normal's command line and key list before Return, its
+    shape never changing; only the accent marks it (VKCF3Z, 2026-11-05).
     """
     machine = desktop.machine
     desktop.on_find()
@@ -356,6 +399,7 @@ def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
     shown = desktop.showing()
     told = shown["selected"]["told"]
     assert told[:1] == [f"\u21b5 {shown['landed']}"], f"at {scale} the landed foot says {told}"
+    assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} the landed foot: {told}"
     desktop.photograph(f"launcher-landed-at-{scale.replace('.', '-')}")
 
 
@@ -1271,7 +1315,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open 2"))
             gathered_is_in_sight(desktop.showing(), scale)
             desktop.photograph(f"file-picker-inside-gathered-at-{said}")
-            machine.send_key("left")
+            machine.send_key("h")
             desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Copy the Path"])
             desktop.down_to("Copy the Path")
             desktop.photograph(f"file-picker-copy-last-at-{said}")

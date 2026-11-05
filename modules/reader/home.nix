@@ -106,7 +106,7 @@ let
       ;
     # Visual mode's cursor is the terminal's, as kitty and Neovim draw it.
     inherit (terminal) cursor cursor_text;
-    inherit levels;
+    inherit levels space;
     code = "${
       import ../theme/tmtheme.nix {
         inherit
@@ -117,6 +117,19 @@ let
           ;
       } colours.sunken
     }/Jitsusama.tmTheme";
+  };
+
+  # The page's space, in logical pixels: the theme's rungs, which the page
+  # and its overlays take across, and down the page a line and a beat of
+  # its own. The page is the one surface with a beat of its own, since it's
+  # read at length: its lines take a reader's leading, 28 against Words'
+  # pitch of 24, as a page's rhythm wants (Bringhurst), and nothing sits
+  # beside it whose lines it must meet on the theme's beat. Every space
+  # down it, its margins too, is a whole number of its beat, half a line.
+  space = rec {
+    inherit (config.jitsusama.theme.space) rung;
+    pitch = 28;
+    beat = pitch / 2;
   };
 
   # A level of the theme's type as the page sets it, each value worked out:

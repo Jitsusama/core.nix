@@ -7,21 +7,37 @@ local colour = nix.colour
 
 -- swayimg sizes its text's face by the screen's scale but counts padding,
 -- thumbnails and borders in the screen's own pixels, and doesn't say what
--- the scale is. niri does, for the screen it opens on.
-local function screen_scale()
+-- the scale is. niri does, for the screen it opens on, with the screen's
+-- size in logical pixels.
+local function screen()
   local answer = io.popen('niri msg --json focused-output 2>/dev/null')
   if not answer then
-    return 1
+    return { scale = 1 }
   end
   local told = answer:read('*a')
   answer:close()
-  return tonumber(told:match('"scale":%s*([%d.]+)')) or 1
+  local logical = told:match('"logical":%s*(%b{})') or ''
+  return {
+    width = tonumber(logical:match('"width":%s*(%d+)')),
+    height = tonumber(logical:match('"height":%s*(%d+)')),
+    scale = tonumber(logical:match('"scale":%s*([%d.]+)')) or 1,
+  }
 end
 
-local scale = screen_scale()
+local shown_on = screen()
+local scale = shown_on.scale
 
 local function px(logical)
   return math.floor(logical * scale + 0.5)
+end
+
+-- The window stands the screen rung from every edge of the screen, as
+-- every floating frame does, its border inside that; niri centres it.
+-- Given before swayimg starts, it's the size swayimg asks for, in logical
+-- pixels, so it never draws at a size niri hasn't seen.
+if shown_on.width and shown_on.height then
+  local room = 2 * (nix.space.screen + nix.border)
+  swayimg.set_window_size(shown_on.width - room, shown_on.height - room)
 end
 
 -- A path as one word for sh.
@@ -63,7 +79,10 @@ swayimg.imagelist.fsmon = true
 
 swayimg.text.font = nix.mono
 swayimg.text.size = nix.size
-swayimg.text.padding = px(nix.space.l)
+-- swayimg sets its text a third of a line in from its padding, about a
+-- mark at this size, so the padding is the inset less a mark: the ink sits
+-- the inset from the frame, as every viewer's text does.
+swayimg.text.padding = px(nix.space.inset - nix.space.mark)
 swayimg.text.color = colour.strong
 swayimg.text.shadow = colour.shadow
 -- The name shows as a picture opens and goes, so nothing sits on it.
@@ -71,19 +90,21 @@ swayimg.text.timeout = 2
 swayimg.text.status_timeout = 2
 
 swayimg.viewer.set_window_background(colour.deepest)
-swayimg.viewer.set_image_chessboard(px(nix.space.s), colour.sunken, colour.raised)
+swayimg.viewer.set_image_chessboard(px(nix.space.square), colour.sunken, colour.raised)
 -- The next and previous pictures are ready before they're asked for.
 swayimg.viewer.preload = 2
 swayimg.viewer.history = 2
 swayimg.viewer.mark_color = colour.strong
 
 swayimg.gallery.thumb_size = px(nix.thumbnail)
-swayimg.gallery.padding_size = px(nix.space.s)
+-- Each thumbnail is bounded by its own ground, as a tile is, so they sit
+-- as niri's tiles do.
+swayimg.gallery.padding_size = px(nix.space.apart)
 -- The one selected has the accent's hairline, as a focused window does, and
--- rises into half the gap around it, since a hairline alone is lost on a
--- busy picture.
+-- grows by the tie on every side, since a hairline alone is lost on a busy
+-- picture.
 swayimg.gallery.border_size = px(nix.border)
-swayimg.gallery.selected_scale = 1 + nix.space.s / nix.thumbnail
+swayimg.gallery.selected_scale = 1 + 2 * nix.space.tie / nix.thumbnail
 swayimg.gallery.window_color = colour.deepest
 swayimg.gallery.unselected_color = colour.sunken
 swayimg.gallery.selected_color = colour.raised
@@ -119,18 +140,24 @@ local function face(chord)
 end
 
 -- The few keys that move on, which a quiet line names as a picture opens,
--- by their letters, as every hint of Joel's names them.
-local hint = {
-  [swayimg.viewer] = face('h')
-    .. ' '
-    .. face('l')
-    .. '  pictures     '
-    .. face('Return')
-    .. '  all     '
-    .. face('space Shift+slash')
-    .. '  keys',
-  [swayimg.gallery] = face('Return') .. '  open     ' .. face('space Shift+slash') .. '  keys',
-}
+-- by their letters, as every hint of Joel's names them. The line is the
+-- monospaced face, whose cell is its grid, so its gaps are whole cells:
+-- the nearest to the ladder's tie, mark and items, one, two and three,
+-- each tighter than the next. h l keeps one, as Vim's own docs write it.
+local tie, mark, items = ' ', '  ', '   '
+local hint =
+  {
+    [swayimg.viewer] = face('h') .. tie .. face('l') .. mark .. 'pictures' .. items .. face(
+      'Return'
+    ) .. mark .. 'all' .. items .. face('space Shift+slash') .. mark .. 'keys',
+    [swayimg.gallery] = face('Return')
+      .. mark
+      .. 'open'
+      .. items
+      .. face('space Shift+slash')
+      .. mark
+      .. 'keys',
+  }
 
 -- A number, or the first of a pair of keys, waiting for what comes after
 -- it. Nothing shows it, as Joel's Neovim has showcmd off.

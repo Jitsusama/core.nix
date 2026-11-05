@@ -222,12 +222,14 @@ Item {
     // The field's keys, said at its right edge (Joel, 2026-10-28: hints
     // "flush against the text feels wrong and they are not super obvious
     // what they mean"): what completes while a completion shows, and what
-    // clears what's typed (keysSaid says which, in each kind of line). Each
-    // has a place as wide as the widest it can
-    // say, kept whether it says anything or not, so nothing in the field
-    // moves as they come and go with each letter. They're set at the right
-    // edge, past the aside, so neither moves as the aside changes.
-    readonly property bool keyed: leftClears || modal
+    // clears what's typed (keysSaid says which). Each has a place as wide
+    // as the widest it can say, kept whether it says anything or not, so
+    // nothing in the field moves as they come and go with each letter.
+    // They're set at the right edge, past the aside, so neither moves as
+    // the aside changes. A modal line says none: it holds only the find and
+    // how far it narrows, its hints the foot's, by key and lowercase word
+    // (VKCF3Z, 2026-11-05).
+    readonly property bool keyed: leftClears && !modal
     // Whether their place is kept: only while one of them could be said,
     // something typed or something the left arrow took to put back. With
     // neither, no key shows until a letter is typed, so the aside ends at
@@ -235,14 +237,12 @@ Item {
     // empty place (Joel, 2026-11-04: "the text in being inset left from the
     // right edge of the launcher, it looks like shit"). The first letter
     // changes what the aside says anyway, so it moves over then, once.
-    // A modal line says no key for putting back what was cleared, since
-    // normal's u is vi's own way back.
     // A question asked once takes no key of the field's, so none is said.
     // Nor do a prompt's words, which nothing clears or brings back. Where
     // even the keys alone would cut the path, they give way, since a key
     // Joel learns once never costs him where he is.
     readonly property bool keysHeld: keyed && asking === "" && !words && keysFit && (typed
-        || (!modal && input.text === "" && cleared !== ""))
+        || (input.text === "" && cleared !== ""))
     readonly property real keysBare: keySlots.reduce((sum, slot) => sum + slotWidth(slot, false),
         0) + (keySlots.length - 1) * fieldKeys.spacing
     readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.l - ledWidth
@@ -255,18 +255,14 @@ Item {
     // learns once never cost him the path or the answer to what he typed.
     // Once a step has run out of room they stay away until the step ends,
     // so they go at most once rather than coming and going with letters.
-    // Each place's keys and words: in a modal line one place, insert's
-    // completing or normal's clearing, as wide as the wider, so nothing
-    // moves as the mode changes; otherwise Tab's place, then the left
-    // arrow's and the right's.
+    // Each place's keys and words: in a modal line one place, the find's
+    // completing; otherwise Tab's place, then the left arrow's and the
+    // right's.
     readonly property string completeKey: modal
         ? prompt.drawn(QueryKeys.keyOf("complete", "find")) : "\u21e5"
-    readonly property string clearKey: modal
-        ? prompt.drawn(QueryKeys.keyOf("out", "normal")) : "\u2190"
-    readonly property var keySlots: modal
-        ? [[[completeKey, keyWords.complete ?? ""], [clearKey, keyWords.clear ?? ""]]]
-        : [[[completeKey, keyWords.complete ?? ""]],
-            [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
+    readonly property string clearKey: "\u2190"
+    readonly property var keySlots: [[[completeKey, keyWords.complete ?? ""]],
+        [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
     function slotWidth(slot, worded) {
         return Math.max(...slot.map(([key, word]) =>
             fieldKeys.advance(key, worded ? word : "")));
@@ -298,19 +294,14 @@ Item {
         return worded ? word ?? "" : "";
     }
 
-    // What the field says for its keys now: a modal line's one place says
-    // insert's Ctrl+Y while a completion shows, or normal's left arrow while
-    // something's typed; otherwise Tab while a completion shows, then the
-    // left arrow while it clears what's typed or the right while it puts
-    // back what the left took.
-    readonly property var keysSaid: modal
-        ? [typingNow && typed && ghost !== ""
-            ? [completeKey, keyWord(keyWords.complete)]
-            : mode === "normal" && typed ? [clearKey, keyWord(keyWords.clear)] : ["", ""]]
-        : [typed && ghost !== "" ? [completeKey, keyWord(keyWords.complete)] : ["", ""],
-            typed ? [clearKey, keyWord(keyWords.clear)]
-            : input.text === "" && cleared !== "" ? ["\u2192", keyWord(keyWords.restore)]
-            : ["", ""]]
+    // What the field says for its keys now: Tab while a completion shows,
+    // then the left arrow while it clears what's typed or the right while it
+    // puts back what the left took.
+    readonly property var keysSaid: [
+        typed && ghost !== "" ? [completeKey, keyWord(keyWords.complete)] : ["", ""],
+        typed ? [clearKey, keyWord(keyWords.clear)]
+        : input.text === "" && cleared !== "" ? ["\u2192", keyWord(keyWords.restore)]
+        : ["", ""]]
 
     // A key as the field draws it, from the table's name for it: an arrow
     // by its mark, and a letter with Ctrl as a chord is spelled.
@@ -360,6 +351,9 @@ Item {
     // The drawer's search run, by Return on / or ?: what it seeks, empty
     // for the last again, the way it goes, and the count typed before it.
     signal sought(string pattern, bool forward, int count)
+    // A key that means nothing in normal, by its name, which the launcher
+    // answers with "not here", so no key is silent (the vi-paradigm spec).
+    signal idled(string key)
 
     // A question asked once, said in the field's place, "Replace notes.md?
     // (y/n)", or "" while none is; the launcher's ask (Launcher.qml's
@@ -523,6 +517,16 @@ Item {
             event.accepted = true;
             return;
         }
+        // The find's first colon opens the command line, as normal's does,
+        // from normal, where its Escape gives the line back.
+        if (QueryKeys.opensCommands(key, mode, input.text)) {
+            event.accepted = true;
+            input.deselect();
+            mode = "normal";
+            standing = QueryKeys.rest();
+            prompt.commanded("");
+            return;
+        }
         const read = QueryKeys.read(standing, key, mode, editsWords);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -541,11 +545,15 @@ Item {
             return;
         }
         standing = read.standing;
-        if (key !== "" && read.act !== "restore" && read.act !== "out")
+        if (key !== "")
             cleared = "";
         if (!read.ours)
             return;
         event.accepted = true;
+        if (read.idle) {
+            prompt.idled(key);
+            return;
+        }
         const text = input.text;
         const at = input.cursorPosition;
         // gv on the rows with no selection before it does nothing, as
@@ -584,7 +592,7 @@ Item {
             if (words && next === "normal" && changes.length > 0
                 && changes[changes.length - 1].text === text)
                 changes = changes.slice(0, -1);
-            if (read.act === "change")
+            if (read.act === "change" || read.act === "freshFind")
                 input.text = "";
             if (read.act === "changeWord") {
                 const made = Editing.edited(read.act, text, at, read.count);
@@ -633,23 +641,9 @@ Item {
             prompt.forward();
             break;
         case "out":
-            // A prompt's words aren't a find to take away: - steps out
-            // with them, as oil's - does with a buffer's name kept.
-            if (leftClears && text !== "" && !words) {
-                input.text = "";
-                cleared = text;
-            } else {
-                cleared = "";
-                prompt.backward();
-            }
+            prompt.backward();
             break;
-        case "restore":
-            if (text === "" && cleared !== "") {
-                input.text = cleared;
-                cleared = "";
-            }
-            break;
-        case "back":
+        case "dismiss":
             prompt.cancelled();
             break;
         case "ending":

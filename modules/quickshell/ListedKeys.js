@@ -8,7 +8,7 @@
 // it shows in its mode, the first alone where `firsts` says, since
 // Return's with Shift and Ctrl are told apart where they're done. A line's
 // `also` are keys no act's row holds, as a count and the : line's. Escape
-// isn't listed, since it always steps back.
+// isn't listed, since it always lets go: what's begun, then the launcher.
 const normal = [
     { name: "rows", acts: ["next", "previous"] },
     { name: "ends", acts: ["first", "last"] },
@@ -23,22 +23,24 @@ const normal = [
     { name: "optionHere", acts: [], also: [":setl mute"] },
     { name: "inOut", acts: ["into", "out"] },
     { name: "run", acts: ["run"], firsts: true },
+    // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.
+    { name: "jumps", acts: ["jumpBack", "jumpForward"], without: ["Tab"] },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
     { name: "own", acts: ["openOwn"] },
+    { name: "find", acts: ["freshFind"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     // d and y, over the row as dd and yy, or as far as a motion goes.
     { name: "ending", acts: ["ending"], also: ["dj"] },
     { name: "copyRow", acts: ["copy"], also: ["yG"] },
-    { name: "restore", acts: ["restore"] },
     // Vim's Ctrl+W l alone, as the way back names Ctrl+W h alone, so the
     // line sits whole at Joel's scale.
     { name: "intoDrawer", acts: ["drawer"], firsts: true },
     { name: "keys", acts: ["keys"] },
-    // q isn't listed, since Joel wants it to do nothing by itself and :q
-    // to quit (2026-11-05); his respec takes its binding out.
-    { name: "close", acts: ["close"], without: ["q"], also: [":q"] }
+    // q isn't listed, since it does nothing by itself but say how to
+    // close (Joel, 2026-11-05).
+    { name: "close", acts: ["close"], also: [":q"] }
 ];
 
 // The find's, the line the launcher opens on, whose keys a prompt's
@@ -128,18 +130,16 @@ function rank(keys) {
     return sequence[0].startsWith("Ctrl+") ? 1 : 2;
 }
 
-// The arrows, which Joel presses rather than hjkl ("support hjkl even
-// though i only use arrows"), so the list never hides them.
-const arrows = ["Up", "Down", "Left", "Right"];
-
 // An act's keys as the list names them: those of its first rank, as the
-// notices' list names each act's first key, and its arrow beside them.
+// notices' list names each act's first key, so an arrow is named only
+// where an act has nothing better, as the find's caret, Joel keeping to
+// Vim's keys ("rely only on vi right feeling things", 2026-11-05).
 // The drawer's names stay short enough to sit whole beside what they do
 // in the narrowest plate, so PgDn, Backspace and Space w, which do what a
 // listed key does, are left out.
 function firstRank(keys) {
     const best = Math.min(...keys.map(rank));
-    return keys.filter(key => rank(key) === best || arrows.includes(key));
+    return keys.filter(key => rank(key) === best);
 }
 
 // A line of a mode's section: its acts' keys in that mode alone, so no

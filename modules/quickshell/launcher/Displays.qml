@@ -239,6 +239,10 @@ Provider {
             : `${warmth.kelvin} K, the screen's own white`;
         return thing({
             key: `displays:${output.name}:warmth`,
+            // Its words, which its key never walks back to, in its state,
+            // so the : line says :set nowarmth or warmth.
+            wordsId: "displays:warmth",
+            wordState: follows ? "" : "off",
             name: partName("warmth"),
             verb: Words.verb("displays:warmth", follows ? "" : "off"),
             glyph: Theme.glyph.warmth,

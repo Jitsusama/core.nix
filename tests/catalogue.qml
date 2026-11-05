@@ -166,6 +166,19 @@ QtObject {
         ];
         for (const [what, row] of quietly)
             expect(`${what} changes nothing`, changes(row), false);
+        // What Return from the find does rather than landing on, though it
+        // changes something: a row holding its own acts whose command
+        // starts something, as a meeting's row joins from ten minutes
+        // before it (VKCF3Z, 2026-11-05), the row saying when, not its act.
+        const itself = row => Catalogue.startsItself(row, named(row));
+        expect("a meeting's row starts itself", itself({ verb: "join", command: "meet",
+            run: does, verbs: opens }), true);
+        expect("while Join the Call, with no acts of its own, doesn't", itself({ verb: "join",
+            command: "meet", run: does }), false);
+        expect("nor a setting holding its steps", itself({ verb: "keep", command: "set",
+            stays: true, run: does, verbs: opens }), false);
+        expect("nor a network holding its acts", itself({ verb: "connect", stays: true,
+            run: does, verbs: opens }), false);
         // The verbs the guess holds quiet, the language naming no command
         // for them yet, can only shrink: one joining fails here, and so does
         // one the language has come to name, whose rows the table decides.

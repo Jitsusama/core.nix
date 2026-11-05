@@ -812,10 +812,10 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     # The mail with her, its own component's row; a meeting to come isn't
     # Recent.
     desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
-    machine.send_key("up")
-    machine.send_key("up")
+    desktop.previous_row()
+    desktop.previous_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")
     machine.send_key("ret")
     writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
@@ -945,7 +945,7 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
         if (desktop.showing()["selected"] or {}).get("name") == act:
             break
         before = (desktop.showing()["selected"] or {}).get("name")
-        machine.send_key("down")
+        desktop.next_row()
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
         )
@@ -1085,11 +1085,11 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     assert selected["side"] == "#launcher", selected
     assert selected["note"].startswith("ada \u00b7 "), selected["note"]
     assert selected["drawer"]["body"] == "The launcher is fast\nand never waits", selected
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("note", "").startswith("You \u00b7 ")
     )
-    machine.send_key("up")
+    desktop.previous_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "The launcher is fast"
     )
@@ -1104,8 +1104,8 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
         )
     )
     # Stepping out and in again asks Slack nothing more.
-    machine.send_key("left")
-    machine.send_key("left")
+    machine.send_key("h")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == [search])
     desktop.down_to(search)
     desktop.step_in("ret")

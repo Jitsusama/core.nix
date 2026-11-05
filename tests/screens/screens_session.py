@@ -334,10 +334,10 @@ class Screens:
             f"found {row!r} on {screen}",
         )
         # Keep Awake is a setting, which Return does and stays to show; the
-        # right arrow, from normal mode, then Return does it and closes.
+        # l, from normal mode, then Return does it and closes; no arrow steps in.
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal", f"normal on {screen}")
-        self.machine.send_key("right")
+        self.machine.send_chars("l")
         self.launcher_until(lambda shown: len(shown["held"]) > 0, f"stepped into {row!r}")
         self.machine.send_key("ret")
         self.launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")
