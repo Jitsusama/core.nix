@@ -3181,9 +3181,14 @@ Scope {
     }
 
     // Which of a name's letters what's typed matched, in order: none for a
-    // row found by another word or said plainly. Worked out only for the
-    // rows drawn, as each is drawn or what's typed changes, and kept by
-    // nothing but the row drawing it, so a list of matches holds no more.
+    // row found by another word, or for an answer, named by what it says
+    // rather than by what was typed. A collection, a category or a part
+    // said plainly is still found by its name, so its letters are washed
+    // as any row's are. They're matched in the name drawn, which a place
+    // asked by name can say otherwise than the row it stands on. Worked
+    // out only for the rows drawn, as each is drawn or what's typed
+    // changes, and kept by nothing but the row drawing it, so a list of
+    // matches holds no more.
     function matchedIn(choice) {
         return choice.byWord || choice.plain ? []
             : Fuzzy.match(choice.prepared, words, true).positions ?? [];
@@ -3549,8 +3554,10 @@ Scope {
                     depth: row.depth ?? 0,
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card),
-                    // The name's letters washed beneath, a run each, as
-                    // many as its wash draws: a cut name's last may not.
+                    // Whether its name is what was found, and the name's
+                    // letters washed beneath, a run each, as many as its
+                    // wash draws: a cut name's last may not.
+                    byName: !row.byWord && !row.answered,
                     washed: drawn.drawnRow.finds.slice(0, drawn.drawnRow.washed.length)
                         .map(run => row.name.slice(run[0], run[1])) });
         }

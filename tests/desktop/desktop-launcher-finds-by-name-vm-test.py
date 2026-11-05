@@ -648,6 +648,8 @@ def walk_the_rows_washed(desktop: Desktop) -> None:
         runs = [run for row in rows for run in row["washed"]]
         assert runs, f'in {mode} no row drawn for "s" washed a letter: {rows}'
         assert all(run.lower() == "s" for run in runs), f"in {mode} washed {runs}, not s"
+        unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
+        assert not unwashed, f"in {mode} rows found by name washed nothing: {unwashed}"
         selected = next(row for row in rows if row["selected"])
         name = selected["reads"].split(" \u00b7 ")[0]
         if any(word.lower().startswith("s") for word in re.split(r"\W+", name)):

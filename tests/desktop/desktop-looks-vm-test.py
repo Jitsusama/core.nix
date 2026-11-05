@@ -205,6 +205,10 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     rows = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"]
     washed = [row for row in rows if row["washed"]]
     assert len(washed) > 1, f"at {scale} few rows drawn washed a letter of s: {rows}"
+    # Home's collections and a program's parts are found by their names too, Shortcuts and
+    # Slack Theme among them, so every row found by its name washes what it matched.
+    unwashed = [row["reads"] for row in rows if row["byName"] and not row["washed"]]
+    assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 
