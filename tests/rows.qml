@@ -418,7 +418,13 @@ ShellRoot {
                 counted >= 0 && counted < texts.length - 1
                     && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
             expect("typed in insert, the launcher's field says Ctrl+Y completes",
-                texts.length > 0 && texts[texts.length - 1].text.includes("Ctrl+Y"), said(texts));
+                texts.length > 1 && texts[texts.length - 2].text === "Ctrl+Y", said(texts));
+            // A key stands a mark from its word, nearer than one hint is
+            // to the next, so the two read as one hint (docs/design.md,
+            // The Ladder).
+            expect("the field's key stands a mark from its word",
+                texts.length > 1 && Math.abs(texts[texts.length - 1].from
+                    - texts[texts.length - 2].to - Theme.space.rung.mark) < 1, said(texts));
             // Insert's caret is a bar a quarter of a letter wide, as his
             // Neovim's guicursor draws it. In normal the keys are on the
             // rows, so the field draws no caret at all: a block there sat

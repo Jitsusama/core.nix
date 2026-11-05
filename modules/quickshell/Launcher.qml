@@ -2012,7 +2012,7 @@ Scope {
     property real footKeysWidest: 0
 
     function footReset() {
-        footReturnWidest = measure.advanceWidth(`\u21b5 ${footVerbRoom}`);
+        footReturnWidest = keys.advance("\u21b5", footVerbRoom);
         footKeysWidest = keysWide(footKeysRoom);
     }
 
@@ -2021,12 +2021,12 @@ Scope {
         if (told.length === 0)
             return 0;
         return told.slice(1).reduce((sum, key) => sum + keys.spacing
-            + measure.advanceWidth(saidKey(key)), returnPlace(told[0]));
+            + keys.advance(key[0], key[1]), returnPlace(told[0]));
     }
 
     // How wide Return's place is beside what it says now.
     function returnPlace(key) {
-        return Math.max(measure.advanceWidth(saidKey(key)), footReturnWidest);
+        return Math.max(keys.advance(key[0], key[1]), footReturnWidest);
     }
 
     function noteKeys() {
@@ -2037,7 +2037,7 @@ Scope {
         if (QueryKeys.paged(prompt.mode))
             said.push(drawerKeys(prompt.mode));
         const place = Math.max(footReturnWidest,
-            ...said.map(keys => measure.advanceWidth(saidKey(keys[0]))));
+            ...said.map(told => keys.advance(told[0][0], told[0][1])));
         if (place > footReturnWidest)
             footReturnWidest = place;
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
@@ -6293,10 +6293,12 @@ Scope {
                         // As the foot says them: Return last, at the right
                         // end, the rest before it. Return first, in a place
                         // kept for the widest set, left holes after the keys
-                        // a row didn't have; at the end, what Return says
-                        // keeps to the right edge and the others come and
+                        // a row didn't have; at the end, the others come and
                         // go only to its left, as an action bar's main act
-                        // does.
+                        // does. Its place's room left over stands after its
+                        // word, at the frame's side, so the gap before it is
+                        // a hint's like every other (VKCF3Z, 2026-11-05:
+                        // held room at the far end, never before Return).
                         readonly property var shown: told.length === 0 ? []
                             : told.slice(1).concat([told[0]])
                         readonly property real returnPlace: told.length === 0 ? 0
@@ -6607,7 +6609,6 @@ Scope {
                             // The selected row's keys, Return last in its
                             // place (footReturnWidest), the rest close by.
                             keys: foot.shown
-                            endsRight: true
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
                                 ? foot.returnPlace : 0)
                         }
