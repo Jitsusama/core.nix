@@ -231,7 +231,11 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // and a half from the words round it. One where any item wraps sets its
 // items one and a half apart, as paragraphs are, and stands two off, so it
 // still reads as one group among them. The measure decides, so a list
-// widens as the window narrows and its items come to wrap.
+// widens as the window narrows and its items come to wrap. A list stands
+// off by the paragraphs' own rule, par spacing on a block left to it,
+// which wins over a paragraph's by being larger but gives way to a set
+// room such as a heading's, so a section sits a line over a list as over
+// a paragraph.
 #let hang = 1em
 #set list(marker: box(width: 0.6em, align(right, text(fill: ink.accent)[•])), indent: -hang, body-indent: hang - 0.6em, spacing: pitch - cap)
 #set enum(numbering: n => box(width: 1.6em, align(right, text(fill: ink.muted, number-width: "tabular")[#n.])), indent: -2 * hang, body-indent: 2 * hang - 1.6em, spacing: pitch - cap)
@@ -251,7 +255,8 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       return it.func()(..fields, ..children)
     }
     let off = if wide { gap(2) } else { gap(1.5) }
-    block(above: off, below: off, inner)
+    set par(spacing: off)
+    block(above: auto, below: auto, { set par(spacing: gap(1.5)); inner })
   }
 }
 #show list: listed
@@ -1119,6 +1124,22 @@ mod tests {
             [150, 100, 100, 150, 200, 100, 150, 200],
             "a tight list a line a step and one and a half off, a wrapped list one and a \
              half a step and two off: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_sections_heading_sits_a_line_over_a_list_however_its_items_wrap() {
+        let markdown = format!(
+            "{OPENING}## Tight\n\n- One\n- Two\n\n## Wrapped\n\n- A first item long enough that it wraps onto a second line at the measure, as a little paragraph would\n- Omega\n"
+        );
+        let (pitch, lines) = baselines("sectioned-lists", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        // A group's heading sits a line over its first thing, a list's
+        // first item as a paragraph, the list's own room giving way to it.
+        assert_eq!(
+            steps[steps.len() - 7..],
+            [300, 100, 100, 300, 100, 100, 150],
+            "each section a line over its list: {steps:?}"
         );
     }
 
