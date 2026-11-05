@@ -3709,7 +3709,46 @@ Scope {
     readonly property var visualSpan: Operators.selection(visualFrom, current)
     readonly property int visualTop: visualSpan.from
     readonly property int visualBottom: visualSpan.to
-    onVisualChanged: visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current
+    // The last selection, where it began and where the cursor was, for gv
+    // to bring back, as Vim's '< and '> keep it; null until there's been
+    // one, and again once the launcher closes.
+    property var lastVisual: null
+    onVisualChanged: {
+        if (!visual && visualFrom >= 0)
+            lastVisual = { from: visualFrom, at: current };
+        visualFrom = !visual ? -1 : visualFrom >= 0 ? visualFrom : current;
+    }
+
+    // The run of rows one is in, a paragraph to ip, ap, { and }: rows of
+    // one kind, or a notice's of one sender, no gap between (Operators.js).
+    function runOf(at) {
+        return Operators.runAt(matches, at, row => {
+            const kind = kindOf(row);
+            return kind === "notice" ? `notice:${row.sender ?? ""}` : kind;
+        });
+    }
+
+    // Visual's own acts on the rows: o to the selection's other end; ip and
+    // ap over the run the cursor's in, and count - 1 after it; and gv, the
+    // last selection again, the find having moved its rows or not, as
+    // Vim's gv keeps lines.
+    function visualStep(act, count) {
+        const last = matches.length - 1;
+        if (act === "otherEnd") {
+            const other = visualFrom;
+            visualFrom = current;
+            arrowed(other, "o");
+        } else if (act === "reselect" && lastVisual !== null) {
+            visualFrom = Math.min(lastVisual.from, last);
+            arrowed(Math.min(lastVisual.at, last), "gv");
+        } else if (act === "inParagraph" || act === "aParagraph") {
+            const run = Operators.spanned(0, { act, count }, {
+                at: current, highest: prompt.highest, last, runOf: at => runOf(at)
+            });
+            visualFrom = run.from;
+            arrowed(run.to, act === "inParagraph" ? "ip" : "ap");
+        }
+    }
 
     // The rows the selection takes.
     function visualRows() {
@@ -3765,7 +3804,8 @@ Scope {
             last: matches.length - 1,
             top: view.top,
             bottom: view.bottom,
-            screen: rows
+            screen: rows,
+            runOf: at => runOf(at)
         });
         const taken = Operators.taken(matches, span, headline);
         if (act === "copy")
@@ -4765,9 +4805,12 @@ Scope {
     property int homeDepth: 0
 
     onOpenChanged: {
-        // A viewer's line is over once the launcher closes (viewerCommandLine).
-        if (!open)
+        // A viewer's line is over once the launcher closes (viewerCommandLine),
+        // and gv has nothing to bring back in the rows it opens on.
+        if (!open) {
             over = null;
+            lastVisual = null;
+        }
         madeSince(open ? "opening" : "closing");
         if (open)
             traces.opened({});
@@ -5246,12 +5289,13 @@ Scope {
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
+                        reselectable: root.lastVisual !== null
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
                         // The rows' keys, in either mode (QueryKeys.js).
-                        // Every one is a move, which QueryKeys.moved
+                        // Every one is a move, which Operators.moved
                         // says the end of from the rows in view, as the
                         // list has them. Ctrl+D and Ctrl+U scroll the rows
                         // as far as they move the selection, so it keeps
@@ -5289,15 +5333,22 @@ Scope {
                             case "openOwn":
                                 root.matches[root.current]?.openOwn?.();
                                 return;
+                            case "otherEnd":
+                            case "reselect":
+                            case "inParagraph":
+                            case "aParagraph":
+                                root.visualStep(act, count);
+                                return;
                             }
                             const view = list.inView();
-                            const to = QueryKeys.moved(act, count, {
+                            const to = Operators.moved(act, count, {
                                 at: root.current,
                                 highest,
                                 last: root.matches.length - 1,
                                 top: view.top,
                                 bottom: view.bottom,
-                                screen: root.rows
+                                screen: root.rows,
+                                runOf: at => root.runOf(at)
                             });
                             if (act === "halfDown" || act === "halfUp")
                                 list.scrollRows(to - root.current);

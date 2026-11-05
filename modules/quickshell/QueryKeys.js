@@ -74,12 +74,28 @@ const table = [
     // where it began to the cursor, which normal's moves extend (inMode,
     // below), and which d, y and Return take at once, as Vim's visual
     // operators wait for no motion. V again ends it, and Escape, after a
-    // count begun; a colon hands the command line the selection.
-    { act: "selectLines", mode: "normal", keys: ["V"] },
-    { act: "selectLines", mode: "visual", keys: ["V"] },
-    { act: "ending", mode: "visual", keys: ["d"] },
+    // count begun; a colon hands the command line the selection. On rows v
+    // is V too, the spec's, since a row has no letters to choose among;
+    // and x is d, as Vim's visual x is.
+    { act: "selectLines", mode: "normal", keys: ["V", "v"] },
+    { act: "selectLines", mode: "visual", keys: ["V", "v"] },
+    { act: "ending", mode: "visual", keys: ["d", "x"] },
     { act: "copy", mode: "visual", keys: ["y"] },
     { act: "normal", mode: "visual", keys: ["Escape"] },
+    // o goes to the selection's other end, and gv brings the last one
+    // back, as Vim's do.
+    { act: "otherEnd", mode: "visual", keys: ["o"] },
+    { act: "reselect", mode: "normal", keys: [["g", "v"]] },
+    // A paragraph of rows, as Vim's of lines: a run of one kind, or of one
+    // sender's notices, that a gap or a change of either ends (VKCF3Z,
+    // 2026-11-05; Operators.runAt). } and { go to the next run's first row
+    // and back to this one's, and ip and ap select it, the same rows, since
+    // a list has no blank rows for ap to take besides; after d or y they're
+    // its text objects (objects, below).
+    { act: "paragraphOn", mode: "normal", keys: ["}"] },
+    { act: "paragraphBack", mode: "normal", keys: ["{"] },
+    { act: "inParagraph", mode: "object", keys: [["i", "p"]] },
+    { act: "aParagraph", mode: "object", keys: [["a", "p"]] },
     // Into insert: at the caret, after it, at the line's start and its end,
     // or with the line cleared first.
     { act: "insert", mode: "normal", keys: ["i"] },
@@ -174,7 +190,8 @@ const table = [
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
     "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
-    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext"];
+    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext", "paragraphOn",
+    "paragraphBack"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -202,7 +219,11 @@ const operators = { d: "ending", y: "copy" };
 // The moves an operator takes as its motion, each linewise on the rows,
 // as Vim's j k gg G H M L are on lines. Ctrl+D, Ctrl+U and the screens
 // scroll rather than move, so Vim takes none of them as a motion.
-const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom"];
+const motions = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
+    "paragraphOn", "paragraphBack"];
+
+// The text objects an operator takes in a motion's place, as dip does.
+const objects = ["inParagraph", "aParagraph"];
 
 // Two counts as one, as Vim multiplies the count before an operator and
 // the one after it: 2d3j goes six rows. Either alone is itself, and
@@ -226,10 +247,13 @@ function operated(standing, key) {
     if (standing.typed.length === 0 && key === operator.key) {
         return { act, count, motion: null, standing: rest(), ours: true };
     }
-    // Another operator's key lets this one go, as dy does in Vim.
+    // Another operator's key lets this one go, as dy does in Vim. A text
+    // object is read first, so the i of ip waits rather than inserting.
     const typed = standing.typed.concat([key]);
-    const matched = key in operators ? { act: "", begun: false } : matching(typed, "normal");
-    if (motions.includes(matched.act)) {
+    const object = matching(typed, "object");
+    const matched = key in operators ? { act: "", begun: false }
+        : object.act !== "" || object.begun ? object : matching(typed, "normal");
+    if (motions.includes(matched.act) || objects.includes(matched.act)) {
         return { act, count: 0, motion: { act: matched.act, count }, standing: rest(),
             ours: true };
     }
@@ -274,6 +298,9 @@ function still(mode) {
 function inMode(row, mode) {
     if (mode === "visual" && row.mode === "normal") {
         return moves.includes(row.act);
+    }
+    if (mode === "visual" && row.mode === "object") {
+        return true;
     }
     return row.mode === mode || row.mode === "both";
 }
@@ -388,46 +415,6 @@ function waited(standing) {
         : Object.assign(kept, { operator: standing.operator });
 }
 
-// Where a move takes the selection, from where the rows stand: the row
-// selected, the highest it may go (-1 where an answer's headline sits
-// above the rows) and the last, the first and last rows wholly in view,
-// and how many rows a screen holds. A count moves that many times, or,
-// with gg and G, goes to that row, counted from 1, as a line's number is.
-// H and L count from the view's top and bottom. Ctrl+D and Ctrl+U move
-// half the rows in view, or a count's rows, as Vim's 'scroll' takes it.
-// Every move stops at the first and last rows, never going round.
-function moved(act, count, place) {
-    const times = Math.max(1, count);
-    const within = at => Math.max(place.highest, Math.min(at, place.last));
-    const half = count > 0 ? count : Math.max(1, Math.floor((place.bottom - place.top + 1) / 2));
-    switch (act) {
-    case "next":
-        return within(place.at + times);
-    case "previous":
-        return within(place.at - times);
-    case "first":
-        return count > 0 ? within(count - 1) : place.highest;
-    case "last":
-        return count > 0 ? within(count - 1) : within(place.last);
-    case "viewTop":
-        return within(Math.min(place.top + times - 1, place.bottom));
-    case "viewMiddle":
-        return within(place.top + Math.floor((place.bottom - place.top) / 2));
-    case "viewBottom":
-        return within(Math.max(place.bottom - times + 1, place.top));
-    case "halfDown":
-        return within(place.at + half);
-    case "halfUp":
-        return within(place.at - half);
-    case "pageDown":
-        return within(place.at + times * place.screen);
-    case "pageUp":
-        return within(place.at - times * place.screen);
-    default:
-        return place.at;
-    }
-}
-
 // The first key of an act in a mode, as the table names it, for the field
 // to say beside what it does.
 function keyOf(act, mode) {
@@ -454,6 +441,9 @@ function modeAfter(act, mode) {
     }
     if (act === "selectLines") {
         return mode === "visual" ? "normal" : "visual";
+    }
+    if (act === "reselect") {
+        return "visual";
     }
     // Visual's d, y and Return take the selection and end it, as Vim's
     // visual operators do; its colon keeps it behind the command line.

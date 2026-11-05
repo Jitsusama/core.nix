@@ -84,6 +84,9 @@ Provider {
             glyph: String.fromCodePoint(notice.glyph),
             hue: notice.hue,
             note: notice.app,
+            // Who sent it, which ends a paragraph of rows (Launcher.qml's
+            // runOf), so dip takes away what one sender sent.
+            sender: notice.app,
             at: notice.at,
             unread: !notice.read,
             // The clipboard takes text only while the launcher holds the

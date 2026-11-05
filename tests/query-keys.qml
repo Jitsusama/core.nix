@@ -393,12 +393,13 @@ QtObject {
         holds("and a gap ends one, the kind the same", [runOf(5), runOf(6)],
             [{ from: 5, to: 5 }, { from: 6, to: 6 }]);
         const place = at => ({ at, highest: 0, last: 6, top: 0, bottom: 6, screen: 8, runOf });
-        holds("} goes to the next run's first row", Keys.moved("paragraphOn", 0, place(0)), 2);
-        holds("with a count", Keys.moved("paragraphOn", 2, place(0)), 4);
-        holds("and stops at the last", Keys.moved("paragraphOn", 9, place(3)), 6);
-        holds("{ to its own run's first", Keys.moved("paragraphBack", 0, place(3)), 2);
-        holds("or the one before, from there", Keys.moved("paragraphBack", 0, place(2)), 0);
-        holds("a place with no runs is one", Keys.moved("paragraphOn", 0,
+        const moved = (act, count, at) => Operators.moved(act, count, place(at));
+        holds("} goes to the next run's first row", moved("paragraphOn", 0, 0), 2);
+        holds("with a count", moved("paragraphOn", 2, 0), 4);
+        holds("and stops at the last", moved("paragraphOn", 9, 3), 6);
+        holds("{ to its own run's first", moved("paragraphBack", 0, 3), 2);
+        holds("or the one before, from there", moved("paragraphBack", 0, 2), 0);
+        holds("a place with no runs is one", Operators.moved("paragraphOn", 0,
             { at: 1, highest: 0, last: 6, top: 0, bottom: 6, screen: 8 }), 6);
         holds("{ and } repeat as moves", [Keys.repeats("paragraphOn"),
             Keys.repeats("paragraphBack")], [true, true]);
@@ -1012,16 +1013,15 @@ QtObject {
             ["Ctrl+B, to the first", "pageUp", 0, 0]
         ];
         for (const [what, act, count, want] of moves)
-            holds(`${what} goes to the row`, Keys.moved(act, count, place), want);
+            holds(`${what} goes to the row`, Operators.moved(act, count, place), want);
         holds("k goes up to an answer's headline",
-            Keys.moved("previous", 0, Object.assign({}, place, { at: 0, highest: -1 })), -1);
+            Operators.moved("previous", 0, Object.assign({}, place, { at: 0, highest: -1 })), -1);
         holds("gg goes to an answer's headline",
-            Keys.moved("first", 0, Object.assign({}, place, { highest: -1 })), -1);
-        holds("j with no rows stays where it is",
-            Keys.moved("next", 0, { at: 0, highest: 0, last: -1, top: 0, bottom: 0, screen: 8 }),
-            0);
-        holds("M in a view of three rows, the second",
-            Keys.moved("viewMiddle", 0, Object.assign({}, place, { top: 0, bottom: 2, last: 2 })), 1);
+            Operators.moved("first", 0, Object.assign({}, place, { highest: -1 })), -1);
+        holds("j with no rows stays where it is", Operators.moved("next", 0,
+            { at: 0, highest: 0, last: -1, top: 0, bottom: 0, screen: 8 }), 0);
+        holds("M in a view of three rows, the second", Operators.moved("viewMiddle", 0,
+            Object.assign({}, place, { top: 0, bottom: 2, last: 2 })), 1);
 
         holds("the line opens in insert", typed([]).mode, "insert");
         holds("a letter in insert is the field's to type", typed(["x"]).ours, false);

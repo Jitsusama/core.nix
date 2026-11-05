@@ -100,6 +100,9 @@ Item {
     // gone into with Space and the right arrow, as his Neovim goes to the
     // window beside. It opens in insert (take()).
     property string mode: "insert"
+    // Whether there's a selection for gv to bring back (Launcher.qml's
+    // lastVisual).
+    property bool reselectable: false
     // Whether the keys are on the rows, in normal and visual alike.
     readonly property bool overRows: modal && (mode === "normal" || mode === "visual")
     // Whether there's a drawer to go into: out, with lines to sit on. Gone
@@ -485,6 +488,13 @@ Item {
         const text = input.text;
         const at = input.cursorPosition;
         const next = QueryKeys.modeAfter(read.act, mode);
+        // gv with no selection before it does nothing, as Vim's; with one,
+        // the rows take it back before visual begins round the cursor.
+        if (read.act === "reselect") {
+            if (!reselectable)
+                return;
+            prompt.stepped(read.act, read.count);
+        }
         if (next !== mode) {
             // Visual's d, y and Return take the selection before it ends,
             // as Vim's visual operators do (Launcher.qml's operated, which

@@ -140,16 +140,17 @@ modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 # By paragraphs, blocks with no blank line between them being one, and by
-# headings, as Vim's } and ]] in markdown.
+# headings, as Vim's } and ]] in markdown. A list's paragraph is a run of
+# rows of one kind, or one sender's, that a gap or a change of either ends.
 [acts.paragraph-on]
 keys = ["}"]
 modes = ["normal", "visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 [acts.paragraph-back]
 keys = ["{"]
 modes = ["normal", "visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 [acts.heading-on]
 keys = ["]]"]
@@ -406,6 +407,11 @@ keys = ["V"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
+# Vim's gv, the last selection again.
+[acts.reselect]
+keys = ["gv"]
+kinds = ["list"]
+
 # While selecting, the cursor on by words, to a line's ends, and to the
 # selection's other end; { and } above move it by paragraphs too.
 
@@ -437,7 +443,7 @@ kinds = ["page"]
 [acts.other-end]
 keys = ["o"]
 modes = ["visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 # Vim's text objects, round the cursor: inner, or with the space after.
 
@@ -464,12 +470,12 @@ kinds = ["page"]
 [acts.in-paragraph]
 keys = ["ip"]
 modes = ["visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 [acts.a-paragraph]
 keys = ["ap"]
 modes = ["visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 # Code between backticks, as Vim's i` takes what's between two of them,
 # and a` the backticks too, with the blanks after them.

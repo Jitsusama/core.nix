@@ -11,6 +11,10 @@
 // and 3dd, to the last at most, as Neovim's 9dd near the end; or from the
 // row to wherever the motion goes, whichever way, every row between
 // included, as a linewise motion takes lines. No rows span nothing.
+// A paragraph's text object takes its run and count - 1 after it. } and {
+// are exclusive, as Vim's are, leaving out the later end: d} the row it
+// lands on, unless the run it began in ends the list there, and d{ the
+// cursor's own.
 function spanned(count, motion, place) {
     if (place.last < place.highest) {
         return { from: 0, to: -1 };
@@ -18,8 +22,116 @@ function spanned(count, motion, place) {
     if (motion === null) {
         return { from: place.at, to: Math.min(place.last, place.at + Math.max(1, count) - 1) };
     }
-    const to = Keys.moved(motion.act, motion.count, place);
+    if (motion.act === "inParagraph" || motion.act === "aParagraph") {
+        return paragraph(motion.count, place);
+    }
+    const to = moved(motion.act, motion.count, place);
+    const exclusive = (motion.act === "paragraphOn" || motion.act === "paragraphBack")
+        && to !== place.at && !(motion.act === "paragraphOn" && sameRun(place, to));
+    if (exclusive) {
+        return to > place.at ? { from: place.at, to: to - 1 } : { from: to, to: place.at - 1 };
+    }
     return { from: Math.min(place.at, to), to: Math.max(place.at, to) };
+}
+
+// Where a move takes the selection, from where the rows stand: the row
+// selected, the highest it may go (-1 where an answer's headline sits
+// above the rows) and the last, the first and last rows wholly in view,
+// how many rows a screen holds, and the run a row is in (runOf, from
+// runAt), a place without one being one run. A count moves that many
+// times, or, with gg and G, goes to that row, counted from 1, as a line's
+// number is. H and L count from the view's top and bottom. Ctrl+D and
+// Ctrl+U move half the rows in view, or a count's rows, as Vim's 'scroll'
+// takes it. Every move stops at the first and last rows, never going
+// round. The moves' keys are QueryKeys.js's.
+function moved(act, count, place) {
+    const times = Math.max(1, count);
+    const within = at => Math.max(place.highest, Math.min(at, place.last));
+    const half = count > 0 ? count : Math.max(1, Math.floor((place.bottom - place.top + 1) / 2));
+    switch (act) {
+    case "next":
+        return within(place.at + times);
+    case "previous":
+        return within(place.at - times);
+    case "first":
+        return count > 0 ? within(count - 1) : place.highest;
+    case "last":
+        return count > 0 ? within(count - 1) : within(place.last);
+    case "viewTop":
+        return within(Math.min(place.top + times - 1, place.bottom));
+    case "viewMiddle":
+        return within(place.top + Math.floor((place.bottom - place.top) / 2));
+    case "viewBottom":
+        return within(Math.max(place.bottom - times + 1, place.top));
+    case "halfDown":
+        return within(place.at + half);
+    case "halfUp":
+        return within(place.at - half);
+    case "pageDown":
+        return within(place.at + times * place.screen);
+    case "pageUp":
+        return within(place.at - times * place.screen);
+    case "paragraphOn":
+    case "paragraphBack":
+        return paragraphed(act === "paragraphOn", times, place);
+    default:
+        return place.at;
+    }
+}
+
+// The run a row is in, by the place's runOf, or the whole list.
+function runIn(place, at) {
+    return place.runOf ? place.runOf(at) : { from: place.highest, to: place.last };
+}
+
+// Where } and { go, `times` runs on or back: to the next run's first row,
+// or the last row past the last run; and to this run's first row, or the
+// run before's from there.
+function paragraphed(on, times, place) {
+    let at = place.at;
+    for (let time = 0; time < times; time += 1) {
+        const run = runIn(place, at);
+        if (on) {
+            at = Math.min(run.to + 1, place.last);
+        } else {
+            at = at > run.from ? run.from
+                : runIn(place, Math.max(place.highest, at - 1)).from;
+        }
+    }
+    return at;
+}
+
+// The run the cursor's in and count - 1 after it, to the last row.
+function paragraph(count, place) {
+    const first = runIn(place, place.at);
+    let last = first;
+    for (let more = 1; more < Math.max(1, count) && last.to < place.last; more += 1) {
+        last = runIn(place, last.to + 1);
+    }
+    return { from: first.from, to: last.to };
+}
+
+// Whether a row is in the cursor's run, as } landing on the last row of
+// the last run is, which d} takes.
+function sameRun(place, at) {
+    const run = runIn(place, place.at);
+    return at >= run.from && at <= run.to;
+}
+
+// The run of rows a row is in: the rows round it of the same `of`, its kind
+// or a notice's sender, none set apart by a gap above it (VKCF3Z,
+// 2026-11-05), as Vim's paragraph is the lines between blank ones.
+function runAt(rows, at, of) {
+    const key = of(rows[at]);
+    let from = at;
+    while (from > 0 && !rows[from].gap && of(rows[from - 1]) === key) {
+        from -= 1;
+    }
+    let to = at;
+    while (to < rows.length - 1 && !rows[to + 1].gap && of(rows[to + 1]) === key) {
+        to += 1;
+    }
+    return { from, to };
 }
 
 // A row's ending action, the one that ends what it is, as a window's Close
