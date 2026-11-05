@@ -706,7 +706,6 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
     """A session sits a step in under its orchestrator, its glyph on its name; flat once typed."""
-    machine = desktop.machine
     orchestrated(desktop)
     try:
         for scale in at_each_scale:
@@ -736,8 +735,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
             assert "listening" in reads["TESTQB"], reads
             assert "waiting" not in " ".join(reads.values()), reads
             desktop.photograph(f"launcher-agents-tree-at-{scale.replace('.', '-')}")
-            machine.send_key("esc")
-            desktop.launcher_until(lambda shown: not shown["open"])
+            desktop.close_launcher()
         # Inside the orchestrator, what all of it spent, then its own and its sessions'.
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
@@ -751,8 +749,7 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         ]:
             desktop.down_to(name)
             assert desktop.showing()["selected"]["side"] == side, desktop.showing()["selected"]
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
         # Typed, the builder ranks flat, at no depth, whom it's under leading its note,
         # which the foot says for the row selected.
         desktop.as_account("qs ipc call launcher toggle")
@@ -765,7 +762,6 @@ def test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_
         note = desktop.showing()["selected"]["note"]
         assert note.startswith("under TESTQC"), note
         desktop.photograph("launcher-agents-typed-flat")
-        machine.send_key("esc")
-        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.close_launcher()
     finally:
         unorchestrated(desktop)

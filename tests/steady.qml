@@ -79,7 +79,7 @@ QtObject {
         // typed: at no depth, saying whom it's under (Agents.qml). One kept
         // in place, and every row of a list shown afresh, keep their own.
         const nested = key => ({ key: key, side: "", depth: 1,
-            flat: () => ({ key: key, side: "under", depth: 0 }) });
+            ranked: () => ({ key: key, side: "under", depth: 0 }) });
         const depths = list => list.map(row => `${row.key}${row.depth ?? 0}:${row.side}`)
             .join(" ");
         const flats = [

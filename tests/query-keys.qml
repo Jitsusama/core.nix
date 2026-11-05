@@ -1,6 +1,6 @@
-// The launcher's query line's keys in its two modes, read from their one
+// The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in. The
-// `the-query-line-takes-vi-modes` check copies
+// `the-query-field-takes-vi-modes` check copies
 // modules/quickshell/QueryKeys.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
