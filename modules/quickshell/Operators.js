@@ -104,11 +104,21 @@ function copiesIn(rows, actionsOf, copies) {
         .filter(copy => copy.action !== null);
 }
 
-// Whether d asks once before it does these: where any can't be put back,
-// which an action says by having no `undo`, as a window's Close, since
-// the window and what it held go with it.
-function asks(actions) {
-    return actions.some(action => typeof action.undo !== "function");
+// Whether d asks once before it does these, as the key language says by
+// each action's command (`commands`, Options.commands): where any can't be
+// undone, unless it's guarded, as a window's Close is, whose program keeps
+// its own work, and it's the only one; never for what's undoable, nor for
+// an action that says how it's put back (`undo`). One the language doesn't
+// name asks, since nothing says it can be put back.
+function asks(actions, commands) {
+    const alone = actions.length === 1;
+    return actions.some(action => {
+        const flags = commands[action.command ?? ""] ?? {};
+        if (flags.undoable === true || typeof action.undo === "function") {
+            return false;
+        }
+        return !(flags.guarded === true && alone);
+    });
 }
 
 // The keys an operator was typed by, as the ask's mark says them: its count

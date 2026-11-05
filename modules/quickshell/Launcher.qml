@@ -3389,7 +3389,7 @@ Scope {
                 Operators.doing(action)();
             Report.say(`ended ${actions.length}`);
         };
-        if (sure || !Operators.asks(actions)) {
+        if (sure || !Operators.asks(actions, Options.commands ?? {})) {
             doing();
             return "done";
         }
