@@ -294,14 +294,19 @@ def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
 
 
 def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
-    """Press a key with no meaning, then q, photographing what the foot says for each.
+    """Press a key with no meaning, l, h, then q, photographing what the foot says for each.
 
     Each stands in the keys' place, the mark in text and its words muted, until the next key.
+    kitty opens on Return and holds its windows, so Ctrl+] goes in, furthest from Return.
     """
     machine = desktop.machine
     at = scale.replace(".", "-")
+    told = desktop.showing()["selected"]["told"]
+    assert told[-1:] == ["Ctrl+] in"], f"at {scale} kitty's foot: {told}"
     for chars, said, shot in [
         ("z", ["z not here"], "not-here"),
+        ("l", ["l not here", "\u21b5 open"], "l-not-here"),
+        ("h", ["h not here", "- up"], "h-not-here"),
         ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
     ]:
         machine.send_chars(chars)
@@ -313,6 +318,12 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     # gg stays on the first row and lets the words go.
     machine.send_chars("gg")
     desktop.launcher_until(lambda shown: shown["saying"] == [] and shown["open"])
+    # Inside, the foot says - goes up, and - comes back to kitty.
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "- up" in (shown["selected"] or {}).get("told", []))
+    desktop.photograph(f"launcher-inside-at-{at}")
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
 
 
 def lists_every_key(desktop: Desktop, scale: str) -> None:
