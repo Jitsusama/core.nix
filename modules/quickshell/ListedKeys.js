@@ -25,6 +25,8 @@ const normal = [
     // and l aren't listed, since on a row they only say so.
     { name: "openIn", acts: ["run"], firsts: true },
     { name: "up", acts: ["out"] },
+    // Ctrl+] into what Return opens, as a mail's sender (VKCF3Z).
+    { name: "follow", acts: ["follow"] },
     // Tab is Ctrl+I to a terminal, so it's listed once, as Ctrl+I.
     { name: "jumps", acts: ["jumpBack", "jumpForward"], without: ["Tab"] },
     { name: "lastPlace", acts: ["lastPlace"] },

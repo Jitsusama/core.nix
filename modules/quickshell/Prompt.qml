@@ -451,6 +451,9 @@ Item {
         // another key's, so normal's leader begins with it; insert's is
         // still the field's to type, the table giving it nothing there.
         [Qt.Key_Space]: "Space",
+        // The bracket by its mark, for Ctrl+], which types a control
+        // character rather than the mark; bare, it goes by what it typed.
+        [Qt.Key_BracketRight]: "]",
         [Qt.Key_F1]: "F1"
     })
     // A key as the table names it (KeyNames.js).

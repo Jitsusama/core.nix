@@ -1982,6 +1982,11 @@ Scope {
         // The colon opens the command line from rest (QueryKeys.read).
         keys.push([":", hints.commands ?? ""]);
         keys.push([hintKey("keys"), hints.keys ?? ""]);
+        // A row that opens on Return but holds parts says Ctrl+] goes into
+        // them, furthest from Return, so it gives way first when room runs
+        // short (VKCF3Z, 2026-11-05).
+        if (!stepping && !choice.still && holdsMore(choice))
+            keys.push([hintKey("follow"), hints.in ?? ""]);
         return keys;
     }
 
@@ -2550,6 +2555,21 @@ Scope {
         jumping = false;
         restart(to.here.typed);
         reselect(to.here);
+    }
+    // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
+    // that opens on Return, as a mail, a program or a session do, into the
+    // place listing its parts, which nothing else reaches (VKCF3Z,
+    // 2026-11-05). The place left goes on the tags' way back, as Vim's tag
+    // stack keeps it, and on the jump list, as any place left does. A row
+    // holding nothing says so.
+    property var tagsBack: []
+    function follow(row) {
+        const left = { held: held, here: here() };
+        if (row && !row.gone && holdsMore(row) && enter(row)) {
+            tagsBack = tagsBack.concat([left]);
+            return;
+        }
+        say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
     }
     function toLastPlace() {
         if (lastPlace === null)
@@ -5330,6 +5350,7 @@ Scope {
         lastPlace = null;
         jumpsBack = [];
         jumpsAhead = [];
+        tagsBack = [];
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -5370,6 +5391,7 @@ Scope {
             lastPlace = null;
             jumpsBack = [];
             jumpsAhead = [];
+            tagsBack = [];
             listing = false;
             listedInDrawer = false;
             prompt.forget();
@@ -5938,6 +5960,9 @@ Scope {
                                 return;
                             case "jumpForward":
                                 root.jump(1);
+                                return;
+                            case "follow":
+                                root.follow(root.matches[root.current] ?? null);
                                 return;
                             // h and l on a row say Vim's way out and in,
                             // and Backspace as h, read as the one beside

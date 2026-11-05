@@ -74,6 +74,9 @@ const table = [
     { act: "jumpBack", mode: "normal", keys: ["Ctrl+o"] },
     { act: "jumpForward", mode: "normal", keys: ["Ctrl+i", "Tab"] },
     { act: "lastPlace", mode: "normal", keys: [["Space", "Tab"]] },
+    // Ctrl+] goes to the place the row lives, as Vim follows a tag, and
+    // Ctrl+T back through those followed, as Vim's pops its tag stack.
+    { act: "follow", mode: "normal", keys: ["Ctrl+]"] },
     // Every key here, as his leader's Space ? lists them, and F1 as help.
     // Space alone begins these and does nothing, waiting as gg's g does.
     { act: "keys", mode: "normal", keys: [["Space", "?"], "F1"] },
