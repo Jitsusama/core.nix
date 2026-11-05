@@ -93,10 +93,12 @@ impl Width {
 /// their capitals' height (Typst's top edge), so the margin is the gap.
 pub const TOP_PT: f64 = 24.0;
 
-/// The page's line: 28 px, seven of Space's 4 px units, from one baseline
-/// to the next, and what j and k move by. Every baseline lands on a half
-/// of it.
-pub const PITCH_PT: f64 = 21.0;
+/// The page's line, from one baseline to the next, and what j and k move
+/// by: the theme's, as home.nix bends it for a page (theme.rs's `Space`).
+/// Every baseline lands on the page's beat, half of it.
+pub fn pitch_pt() -> f64 {
+    crate::theme::get().space.pitch * crate::theme::PT_A_PX
+}
 
 /// The page's look, after its measure, margins, size and line (template).
 ///
@@ -112,7 +114,6 @@ pub const PITCH_PT: f64 = 21.0;
 /// leading is the pitch less the capitals, and a gap between paragraphs is
 /// said as baseline to baseline (`gap`).
 const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
-#let half = pitch / 2
 #let gap(n) = n * pitch - cap
 #set text(..level.words.text, lang: "en", hyphenate: true, costs: (hyphenation: hyphen-cost, runt: 300%), top-edge: "cap-height", bottom-edge: "baseline")
 #set par(justify: false, linebreaks: "optimized", leading: pitch - cap, spacing: gap(1.5))
@@ -136,7 +137,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // its capitals a little higher or lower, so headings and the lede say
 // their top edge as the regular's capitals, keeping every baseline where
 // the gaps put it.
-#let lines(n, c) = calc.round((n * pitch - cap + c) / half) * half - c
+#let lines(n, c) = calc.round((n * pitch - cap + c) / beat) * beat - c
 #let title-size = level.title.text.size
 #let section-size = level.section.text.size
 #let label-size = level.label.text.size
@@ -368,7 +369,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     body
   }
   let h = measure(block(width: inner, lines)).height
-  let tall = calc.ceil((h + 2 * code-inset.y) / half) * half
+  let tall = calc.ceil((h + 2 * code-inset.y) / beat) * beat
   let shown = block(fill: ink.sunken, radius: 4pt, width: width, inset: (x: code-inset.x, y: (tall - h) / 2), {
     if label != none and not alone { place(top + right, dy: code-caps * (code-size - label-size), label) }
     lines
@@ -389,7 +390,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let alone(body, caption) = block(above: 1.5 * pitch, below: 2 * pitch - cap, width: 100%, pad(left: -spread, right: -spread, layout(size => {
   let shown = align(center, body)
   let h = measure(block(width: size.width, shown)).height
-  block(width: 100%, height: calc.ceil(h / half) * half, below: 0pt, align(bottom, shown))
+  block(width: 100%, height: calc.ceil(h / beat) * beat, below: 0pt, align(bottom, shown))
   if caption != [] {
     block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(..level.note.text, hyphenate: false, caption))))
   }
@@ -425,9 +426,7 @@ fn look(theme: &crate::theme::Theme, world: &PageWorld) -> (String, String) {
     let code_caps = world.capitals_pt(&theme.levels.code.family, 1.0);
     (
         theme.typst(),
-        format!(
-            "#let pitch = {PITCH_PT}pt\n#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"
-        ),
+        format!("#let cap = {cap}pt\n#let caps = {caps}\n#let code-caps = {code_caps}\n{PAGE}"),
     )
 }
 
@@ -952,9 +951,9 @@ mod tests {
             .expect("a second line");
         let pitch = next - opening;
         assert!(
-            (pitch - super::PITCH_PT).abs() < 0.01,
+            (pitch - super::pitch_pt()).abs() < 0.01,
             "the words step {pitch} pt, not the page's line of {} pt",
-            super::PITCH_PT
+            super::pitch_pt()
         );
         let top = runs
             .iter()

@@ -18,7 +18,7 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use crate::keys::Act;
 use crate::select::{Kind, Motion, Object, Selection};
 use crate::{
-    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, moves, prompt, select,
+    App, FLASH, SCROLL_OFF_LINES, baseline, ex, gl, keys_logged, line_pt, moves, prompt, select,
     text,
 };
 
@@ -283,7 +283,7 @@ impl App {
     /// further than half a screen.
     pub(crate) fn follow_line(&mut self, top: f64, foot: f64, toward: Option<bool>) {
         let (view_top, view_foot) = self.view_pt();
-        let room = SCROLL_OFF_LINES * LINE_PT;
+        let room = SCROLL_OFF_LINES * line_pt();
         let to_pt = if toward != Some(true) && top - room < view_top {
             top - room
         } else if toward != Some(false) && foot + room > view_foot {
