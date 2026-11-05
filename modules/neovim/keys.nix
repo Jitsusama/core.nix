@@ -2171,36 +2171,43 @@ in
 )
 # The command line's suggestions, for a command (:) and a search (/ and ?),
 # in the same words. With none showing, Tab suggests, and Ctrl+N and Ctrl+P
-# step through what was typed before, as they do in Vim.
+# step through what was typed before, as they do in Vim. They're the key
+# language's command line, which our surfaces' : line speaks too.
 ++ inWindow "commands" (
   map (key: { modes = [ "c" ]; } // key) [
     {
       chord = "Tab";
+      act = "next-row";
       does = "Choose the next suggestion, or suggest";
       plugin = "next";
     }
     {
       chord = "Shift+Tab";
+      act = "previous-row";
       does = "Choose the suggestion before, or suggest";
       plugin = "before";
     }
     {
       chord = "Ctrl+N";
+      act = "next-row";
       does = "Choose the next suggestion, or a later line from history";
       plugin = "later";
     }
     {
       chord = "Ctrl+P";
+      act = "previous-row";
       does = "Choose the suggestion before, or an earlier line from history";
       plugin = "earlier";
     }
     {
       chord = "Ctrl+Y";
+      act = "take-name";
       does = "Take the suggestion";
       plugin = "take";
     }
     {
       chord = "Ctrl+E";
+      act = "menu-away";
       does = "Put the suggestions away";
       plugin = "away";
     }

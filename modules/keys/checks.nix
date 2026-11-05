@@ -68,6 +68,24 @@ let
       says = "neovim: Space h isn't one of show-keys's keys";
     }
     {
+      layers = keyMap "neovim-closes-on-q" [
+        {
+          name = "neovim";
+          binds = [ (bind "q" "q" "close") ];
+        }
+      ];
+      says = "neovim: q isn't one of close's keys";
+    }
+    {
+      layers = keyMap "neovim-takes-a-command-line-key" [
+        {
+          name = "neovim";
+          binds = [ (bind "Ctrl+Y" "ctrl+y" "" // { when = "on the command line"; }) ];
+        }
+      ];
+      says = "neovim: Ctrl+Y is its own (Something), but the language gives it to take-name";
+    }
+    {
       layers = keyMap "neovim-gives-a-key-away" [
         {
           name = "neovim";
@@ -77,6 +95,135 @@ let
       says = "neovim: Space ? is its own (Something), but the language gives it to show-keys";
     }
   ];
+
+  # Each way the language itself can stray, as acts added to it, with what
+  # the check has to say.
+  languageStrays = [
+    {
+      name = "a-short-form-shared";
+      adds = ''
+        [acts.stray-one]
+        command = "strayone"
+        short = "stray"
+        kinds = []
+
+        [acts.stray-two]
+        command = "straytwo"
+        short = "stray"
+        kinds = []
+      '';
+      says = "the language gives :stray to both stray-one and stray-two";
+    }
+    {
+      name = "a-name-neovim-has";
+      adds = ''
+        [acts.stray]
+        command = "lock"
+        short = "lock"
+        kinds = []
+      '';
+      says = "stray's :lock is Neovim's :lockmarks";
+    }
+    {
+      name = "a-short-form-neovim-has";
+      adds = ''
+        [acts.stray]
+        command = "lockscreen"
+        short = "lo"
+        kinds = []
+      '';
+      says = "stray's :lo is Neovim's :loadview";
+    }
+    {
+      name = "a-vim-command-shortened-otherwise";
+      adds = ''
+        [acts.stray]
+        command = "registers"
+        short = "regis"
+        kinds = []
+      '';
+      says = "stray's :registers is Neovim's, whose short form is reg, not regis";
+    }
+    {
+      name = "a-short-form-of-something-else";
+      adds = ''
+        [acts.stray]
+        command = "stray"
+        short = "sx"
+        kinds = []
+      '';
+      says = "stray's short form sx doesn't begin its command, stray";
+    }
+    {
+      name = "a-command-with-no-short-form";
+      adds = ''
+        [acts.stray]
+        command = "stray"
+        kinds = []
+      '';
+      says = "stray's command, stray, has no short form";
+    }
+    {
+      name = "a-change-the-find-reaches";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        modes = ["find"]
+        kinds = []
+        changes = true
+      '';
+      says = "stray changes things, but the find line reaches it by ctrl+x";
+    }
+    {
+      name = "an-arrow-of-its-own";
+      adds = ''
+        [acts.stray]
+        keys = ["<Left>"]
+        modes = ["visual"]
+        kinds = []
+      '';
+      says = "stray takes left in visual mode, where an arrow is its letter";
+    }
+    {
+      name = "a-mode-unnamed";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        modes = ["operator"]
+        kinds = []
+      '';
+      says = "stray is pressed in operator mode, which the language doesn't name";
+    }
+    {
+      name = "a-kind-unnamed";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = ["widget"]
+      '';
+      says = "stray belongs to a widget, which the language doesn't name";
+    }
+    {
+      name = "an-undoing-of-nothing";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        undoable = true
+      '';
+      says = "stray can be undone, but changes nothing";
+    }
+    {
+      name = "a-field-unknown";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        ranged = true
+      '';
+      says = "stray has ranged, which the language doesn't know";
+    }
+  ];
 in
 {
   # Every surface of ours speaks the key language (language.toml), and
@@ -84,10 +231,12 @@ in
   # every machine writes is read as the launcher reads it, and a chord the
   # language gives to another act, an act a surface's kinds hold that it
   # leaves out, or a chord bound to an act that isn't one of the act's keys
-  # fails (speaks-the-language.py). So the check can't pass by seeing
-  # nothing, each way of straying is shown to fail first, as is a language
-  # that gives one key to two acts and the reader leaving out a key it
-  # takes only while selecting.
+  # fails (speaks-the-language.py), as does a language whose commands
+  # Neovim names otherwise, by what the machine's Neovim resolves each
+  # name to, read once as a file of its own. So the check can't pass by
+  # seeing nothing, each way of straying is shown to fail first, as is a
+  # language that gives one key to two acts and the reader leaving out a
+  # key it takes only while selecting.
   keys-speak-the-language =
     let
       # A workstation with a desktop has every layer, Neovim's among them.
@@ -96,12 +245,19 @@ in
         self.nixosModules.graphical
       ];
       keys = (account machine).xdg.configFile."jitsusama/keys.json".source;
+      # Every name the machine's Neovim takes for a command of its own,
+      # looked up once with no config and kept, so the check reads a file
+      # in a moment.
+      neovimCommands = pkgs.runCommandLocal "neovim-commands.json" { } ''
+        HOME=$TMPDIR ${lib.getExe (account machine).programs.neovim.package} --clean \
+          -l ${./neovim-commands.lua} > $out
+      '';
       check = "${lib.getExe pkgs.python3} ${./speaks-the-language.py}";
     in
     pkgs.runCommandLocal "keys-speak-the-language" { } ''
       # A language and a key map that stray, and what the check must say.
       strays() {
-        if ${check} "$1" "$2" neovim > said; then
+        if ${check} "$1" "$2" neovim ${neovimCommands} > said; then
           echo "The key language check passed on $2, which strays."
           exit 1
         fi
@@ -114,6 +270,10 @@ in
       ${lib.concatMapStrings (control: ''
         strays ${./language.toml} ${control.layers} ${lib.escapeShellArg control.says}
       '') controls}
+      ${lib.concatMapStrings (stray: ''
+        cat ${./language.toml} ${pkgs.writeText "${stray.name}.toml" stray.adds} > ${stray.name}.toml
+        strays ${stray.name}.toml ${keyMap "none" [ ]} ${lib.escapeShellArg stray.says}
+      '') languageStrays}
       cat ${./language.toml} > twice.toml
       printf '\n[acts.twice]\nkeys = ["j"]\nkinds = []\n' >> twice.toml
       strays twice.toml ${keyMap "none" [ ]} \
@@ -123,7 +283,7 @@ in
         ${keys} > unselecting.json
       strays ${./language.toml} unselecting.json \
         "reader: a page has word-on, which it leaves out"
-      ${check} ${./language.toml} ${keys} neovim
+      ${check} ${./language.toml} ${keys} neovim ${neovimCommands}
       touch $out
     '';
 

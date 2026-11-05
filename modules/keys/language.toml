@@ -1,19 +1,35 @@
 # The one key language every surface of ours speaks: Vim's, as Joel's Neovim
 # has it (modules/neovim/keys.nix and init.lua), and Vim's own where his
 # config says nothing. Each act is named once, with its keys in Neovim's
-# notation and the kinds of surface it belongs to; a surface of a kind has
-# every act that kind holds, by the keys here, and gives none of these keys
-# to anything else. A surface keeps a key of its own only where Vim has
-# nothing for the act, as the reader's zoom. keys-speak-the-language holds
-# every surface that names its kinds, and Neovim itself, to this file
-# (modules/keys/checks.nix), and docs/design.md's Vi's Keys says why.
+# notation, the modes they're pressed in and the kinds of surface it belongs
+# to; a surface of a kind has every act with keys that kind holds, by the
+# keys here, and gives none of these keys to anything else. A surface keeps
+# a key of its own only where Vim has nothing for the act, as the reader's
+# zoom. keys-speak-the-language holds every surface that names its kinds,
+# and Neovim itself, to this file (modules/keys/checks.nix), and
+# docs/design.md's Vi's Keys says why.
 #
-# An act's keys are pressed in normal mode unless its modes say otherwise:
-# insert while typing, and visual while selecting.
+# An act's keys are pressed in normal mode unless its modes say otherwise.
 # One whose takes is "letter" takes the next letter typed as a name, as m
 # and ' take a mark's. In one mode a key belongs to one act, whatever kind
 # of surface it's pressed on, so a list's l steps into a row as a page's l
 # moves right: both are Vim's l.
+#
+# An act the command line can name has a command, its whole name, and a
+# short form, the fewest letters that name it. The short form is written
+# here once, never worked out, so :disc can't change meaning when a
+# command is added; every name from the short form to the whole one is the
+# act's alone. A command Neovim has keeps Neovim's name, short form and
+# meaning, and any other is a name Neovim doesn't take, by any of those
+# names. An act with a command and no keys is named only on the command
+# line, as most of a row's acts are.
+#
+# Three flags say what an act does to the world, each false unless set:
+# changes, that it changes something beyond where the eye is, as Forget It
+# does and moving doesn't; undoable, that u takes the change back while the
+# surface stays open, so it acts at once, where a change that can't be
+# undone asks once first; and range, that it takes rows, as :3,5d and a
+# visual selection give them.
 
 # How long keys wait, in milliseconds, said once for Neovim and every surface.
 [timing]
@@ -25,33 +41,53 @@ which-key = 200
 # What's copied takes the selection's ground this long, as his on_yank.
 yank-flash = 200
 
+# Each mode has one purpose, the same on every surface.
+[modes]
+normal = "standing on a thing and acting on it, with nothing typed"
+find = "typing what to find on the / line, the rows narrowing as it's typed"
+command = "naming a command on the : line, from a menu of every one it can take"
+insert = "writing a prompt's words, or a secret's"
+visual = "choosing several things for one operator or command"
+
 [kinds]
-field = "a line that's typed in, as the launcher's query line"
-list = "rows to move through and act on, as the launcher's"
-page = "something read, with no cursor, as the reader's page"
+list = "rows to move through and act on, found by the / line, as the launcher's"
+page = "something read, with a cursor line, as the reader's page"
 player = "something that plays, as a video"
+prompt = "a line of words written to be handed over: a reply, a new name, a save name"
+secret = "a one-line password field, always in insert and never leaving it"
+
+# In normal and visual mode an arrow is its letter and nothing else, so no
+# act takes an arrow there, with Shift or without: an act with the letter
+# takes the arrow too, wherever the language is read. On a line, the find,
+# the command line or a prompt, the arrows are acts of their own below,
+# moving the caret and choosing in the menu.
+[arrows]
+"<Down>" = "j"
+"<Up>" = "k"
+"<Left>" = "h"
+"<Right>" = "l"
 
 # Moving, on whatever there's more of than fits.
 
 [acts.down]
-keys = ["<Down>", "j"]
+keys = ["j"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.up]
-keys = ["<Up>", "k"]
+keys = ["k"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
-# In a list these step out of a row and into it, and on a page they move a
-# selection's cursor.
+# In a list these step out of a row and into it, back onto the row stepped
+# in from, and on a page they move a selection's cursor.
 [acts.left]
-keys = ["<Left>", "h"]
+keys = ["h"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.right]
-keys = ["<Right>", "l"]
+keys = ["l"]
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
@@ -120,8 +156,7 @@ kinds = ["page"]
 keys = ["[["]
 kinds = ["page"]
 
-# A page keeps a cursor line it doesn't draw, for these and what acts on the
-# line here.
+# A page keeps a cursor line, for these and what acts on the line here.
 [acts.view-top]
 keys = ["H"]
 kinds = ["list", "page"]
@@ -170,14 +205,26 @@ keys = ["''", "``"]
 modes = ["normal", "visual"]
 kinds = ["page"]
 
+# Back and forward through the places jumped or stepped into. Tab is Ctrl+I
+# to a terminal, and a surface that can tell them apart gives Tab the same.
 [acts.jump-back]
 keys = ["<C-o>"]
 modes = ["normal", "visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 [acts.jump-forward]
 keys = ["<C-i>"]
 modes = ["normal", "visual"]
+kinds = ["list", "page"]
+
+[acts.marks]
+command = "marks"
+short = "marks"
+kinds = ["page"]
+
+[acts.jumps]
+command = "jumps"
+short = "ju"
 kinds = ["page"]
 
 # Neovim's gx opens the link under the cursor; a page has none, so each link
@@ -200,10 +247,14 @@ kinds = ["page"]
 # The next file and the one before: his open files, or a page's folder's.
 [acts.next-file]
 keys = ["]b"]
+command = "bnext"
+short = "bn"
 kinds = ["page"]
 
 [acts.previous-file]
 keys = ["[b"]
+command = "bprevious"
+short = "bp"
 kinds = ["page"]
 
 # The headings, as a list to go to one from.
@@ -211,12 +262,9 @@ kinds = ["page"]
 keys = ["gO"]
 kinds = ["page"]
 
-# The command line, for a line's number, :q and :noh.
-[acts.command-line]
-keys = [":"]
-kinds = ["page"]
-
-# Searching, with case ignored until a capital is typed, as his smartcase.
+# Finding and searching, with case ignored until a capital is typed, as his
+# smartcase. On a list / and ? both open the find line fresh, since a find
+# has no direction; on a page they search down and up, and n and N go on.
 
 [acts.search-forward]
 keys = ["/"]
@@ -231,12 +279,12 @@ kinds = ["list", "page"]
 [acts.next]
 keys = ["n"]
 modes = ["normal", "visual"]
-kinds = ["list", "page"]
+kinds = ["page"]
 
 [acts.previous]
 keys = ["N"]
 modes = ["normal", "visual"]
-kinds = ["list", "page"]
+kinds = ["page"]
 
 # The word here, whole, down or up, with case ignored.
 [acts.search-word-forward]
@@ -247,52 +295,100 @@ kinds = ["page"]
 keys = ["#"]
 kinds = ["page"]
 
-# Acting on rows.
+[acts.nohlsearch]
+command = "nohlsearch"
+short = "noh"
+kinds = ["page"]
 
-# Return does the row, or steps into it, from either mode: ours, as
-# design.md settles it.
-[acts.do]
+# Opening. Return opens the cursor row, from normal or the find line, but
+# for one case: on an act that changes something, the find line's Return
+# only lands on it, leaving the line for normal, so a name typed and Return
+# can never change anything. A held Return's repeats do nothing.
+
+# From the find line: step into a place or a thing with acts, open a
+# program, a window, a file or a link, do an act that changes nothing, or
+# land on one that does.
+[acts.open]
 keys = ["<CR>"]
-modes = ["insert", "normal"]
-kinds = ["field", "list"]
-
-# The row's ending act, as Forget It, asking once where it can't be undone.
-[acts.ending]
-keys = ["dd"]
+modes = ["find"]
 kinds = ["list"]
 
-# A line's worth copied, with the yank flash: a list's row, or the first
-# block in view on a page, which has no cursor.
+# From normal: the same, doing an act that changes something too; on a
+# prompt, from normal or insert, hand the words over, and on a secret
+# answer.
+[acts.do]
+keys = ["<CR>"]
+modes = ["normal", "insert"]
+kinds = ["list", "prompt", "secret"]
+changes = true
+
+# From the command line: run exactly what's typed, or what Tab or an arrow
+# chose in the menu.
+[acts.run]
+keys = ["<CR>"]
+modes = ["command"]
+kinds = ["list"]
+changes = true
+
+# Acting on rows. A surface with rows names the acts it has on each by
+# their commands below; what d, y, u and . do depends on the row.
+
+# The row's ending act, as a network's Disconnect It or a session's Forget
+# It. Whether it asks is the row's act's: forget asks, disconnect doesn't.
+[acts.ending]
+keys = ["dd"]
+command = "delete"
+short = "d"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+# A line's worth copied, with the yank flash: a list's row, or the block on
+# the cursor line on a page.
 [acts.copy]
 keys = ["yy"]
+command = "yank"
+short = "y"
 kinds = ["list", "page"]
+range = true
 
 [acts.again]
 keys = ["."]
 kinds = ["list"]
+changes = true
+undoable = true
 
 [acts.undo]
 keys = ["u"]
+command = "undo"
+short = "u"
 kinds = ["list"]
+changes = true
+undoable = true
 
 [acts.redo]
 keys = ["<C-r>"]
+command = "redo"
+short = "red"
 kinds = ["list"]
+changes = true
+undoable = true
 
 # The place used last, as his Space Tab goes back to the file used last.
 [acts.last-place]
-keys = ["<Tab>", "<Space><Tab>"]
+keys = ["<Space><Tab>"]
 kinds = ["list"]
 
-# Selecting, as Vim's visual mode: v by characters, from the first word in
-# view on a page, which has no cursor, and V by whole lines, a list's rows or
-# a page's paragraphs, items and lines of code. The same key again ends it,
-# and the other changes its kind.
+# Selecting, as Vim's visual mode: v by characters, from the cursor line on
+# a page, and V by whole lines, a list's rows or a page's paragraphs, items
+# and lines of code. A list's row has no letters to choose among, so there v
+# is V. The same key again ends it, and the other changes its kind.
 
 [acts.select]
 keys = ["v"]
 modes = ["normal", "visual"]
-kinds = ["page"]
+kinds = ["list", "page"]
 
 [acts.select-lines]
 keys = ["V"]
@@ -382,102 +478,364 @@ keys = ["y", "<C-c>"]
 modes = ["visual"]
 kinds = ["page"]
 
-# The paragraph in view copied, as yip copies the one under the cursor.
+# The paragraph here copied, as yip copies the one under the cursor.
 [acts.copy-paragraph]
 keys = ["yip"]
 kinds = ["page"]
 
-# The field, from normal mode: into insert at the caret, after it, at the
-# line's start or its end, or clearing the line first.
+# Onto a line, from normal: into the find line on a list, which has no text
+# of its own, holding the current find, and into insert on a prompt, at the
+# caret, after it, at the line's start or its end.
 
 [acts.insert]
 keys = ["i"]
-kinds = ["field"]
+kinds = ["list", "prompt"]
 
 [acts.append]
 keys = ["a"]
-kinds = ["field"]
+kinds = ["list", "prompt"]
 
 [acts.insert-at-start]
 keys = ["I"]
-kinds = ["field"]
+kinds = ["list", "prompt"]
 
 [acts.append-at-end]
 keys = ["A"]
-kinds = ["field"]
+kinds = ["list", "prompt"]
 
+# A prompt's words cleared, and insert.
 [acts.change-line]
 keys = ["cc", "S"]
-kinds = ["field"]
+kinds = ["prompt"]
 
-# The field, while typing: Vim's insert mode, and his completion menu's keys
-# for the rows below it (keys.nix, with suggestions).
+# The command line, from normal: on a list it shows the menu of every
+# command the cursor row and the surface take, and on a page it takes a
+# line's number, :q and :noh.
+[acts.command-line]
+keys = [":"]
+kinds = ["list", "page"]
+
+# On a line, the find, the command line and a prompt: Vim's command line
+# and insert keys, and his completion menu's for the rows or the menu below
+# it (keys.nix, on the command line). A held key never crosses a mode: a
+# held Backspace stops at empty, and only a fresh press leaves the line.
 
 [acts.caret-left]
 keys = ["<Left>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt"]
 
 [acts.caret-right]
 keys = ["<Right>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt"]
 
 [acts.caret-start]
 keys = ["<Home>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt"]
 
 [acts.caret-end]
 keys = ["<End>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt"]
+
+# The letter before the caret; on an empty find or command line, back to
+# normal.
+[acts.delete-letter]
+keys = ["<BS>", "<C-h>"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt", "secret"]
 
 [acts.delete-word]
 keys = ["<C-w>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt", "secret"]
 
 [acts.delete-to-start]
 keys = ["<C-u>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt", "secret"]
 
+# The clipboard put in at the caret, as Vim's Ctrl+R + puts its register.
+[acts.put-clipboard]
+keys = ["<C-r>+"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "prompt"]
+
+# The next row below the find line, or line of the command line's menu,
+# and the one before, as his menu chooses; the command line writes what's
+# chosen into the line.
 [acts.next-row]
 keys = ["<Down>", "<Tab>", "<C-n>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command"]
+kinds = ["list"]
 
 [acts.previous-row]
 keys = ["<Up>", "<S-Tab>", "<C-p>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command"]
+kinds = ["list"]
 
+# The chosen row's name, or the menu's chosen line, taken into the line.
 [acts.take-name]
 keys = ["<C-y>"]
-modes = ["insert"]
-kinds = ["field"]
+modes = ["find", "command"]
+kinds = ["list"]
 
-# Escape takes one step back: from insert or visual to normal, or it cancels
-# what's waiting, or at rest steps out a level.
+[acts.menu-away]
+keys = ["<C-e>"]
+modes = ["command"]
+kinds = ["list"]
+
+# Escape takes one step back, as Vim's: from insert, visual, the find line
+# or the command line to normal, the rows left as found and the command
+# line's covering put back; in normal it cancels a count, a pending
+# operator, a waiting key, which-key or the menu. At rest it closes a popup,
+# as the launcher and held notices are, and nothing else: never a window,
+# never a step out. On a secret it cancels, or clears the line where there's
+# no cancelling, as at the lock.
 [acts.back]
 keys = ["<Esc>"]
-modes = ["insert", "normal", "visual"]
-kinds = ["field", "list"]
+modes = ["normal", "insert", "visual", "find", "command"]
+kinds = ["list", "prompt", "secret"]
+
+# Ctrl+C leaves a line as Escape does, and cancels a secret.
+[acts.leave]
+keys = ["<C-c>"]
+modes = ["find", "command", "insert"]
+kinds = ["list", "secret"]
 
 # Everywhere.
 
-# q closes, as his Neovim closes help and its plugin windows, and Space w
-# as it closes a split.
+# Closing, as :q closes a window, ZZ as it writes and closes one, and Space
+# w as his closes a split. q does nothing by itself, since nothing records.
 [acts.close]
-keys = ["q", "ZZ", "<Space>w"]
+keys = ["ZZ", "<Space>w"]
+command = "quit"
+short = "q"
 modes = ["normal", "visual"]
 kinds = ["list", "page", "player"]
 
+# :x writes what there is to write and closes, as ZZ.
+[acts.xit]
+command = "xit"
+short = "x"
+kinds = ["list"]
+
+[acts.write]
+command = "write"
+short = "w"
+kinds = ["list"]
+changes = true
+undoable = true
+
 [acts.show-keys]
 keys = ["<Space>?", "<F1>"]
+command = "help"
+short = "h"
 modes = ["normal", "visual"]
 kinds = ["list", "page", "player"]
+
+# The command line's own, which every list takes: an option, :set wifi or
+# :set volume=40, as Vim's are set, undone by u; rows sorted; a command on
+# every row matching, or every row not; a place or a path; a window; a
+# window below; moving a row to a workspace; the commands run before.
+
+[acts.set]
+command = "set"
+short = "se"
+kinds = ["list"]
+changes = true
+undoable = true
+
+[acts.sort]
+command = "sort"
+short = "sor"
+kinds = ["list"]
+
+[acts.global]
+command = "global"
+short = "g"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+[acts.vglobal]
+command = "vglobal"
+short = "v"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+[acts.edit]
+command = "edit"
+short = "e"
+kinds = ["list"]
+
+[acts.buffer]
+command = "buffer"
+short = "b"
+kinds = ["list"]
+
+[acts.split]
+command = "split"
+short = "sp"
+kinds = ["list"]
+
+[acts.move]
+command = "move"
+short = "m"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+[acts.history]
+command = "history"
+short = "his"
+kinds = ["list"]
+
+# Files gathered across folders for one answer, as Vim's arglist; the
+# gathered; another folder; a new folder.
+
+[acts.argadd]
+command = "argadd"
+short = "arga"
+kinds = ["list"]
+range = true
+
+[acts.args]
+command = "args"
+short = "ar"
+kinds = ["list"]
+
+[acts.cd]
+command = "cd"
+short = "cd"
+kinds = ["list"]
+
+[acts.mkdir]
+command = "mkdir"
+short = "mkd"
+kinds = ["list"]
+changes = true
+undoable = true
+
+# A row's acts, each the verb on its row in lower case.
+
+# A window closed, as Vim's :close closes one; it can't be brought back.
+[acts.close-window]
+command = "close"
+short = "clo"
+kinds = ["list"]
+changes = true
+range = true
+
+[acts.disconnect]
+command = "disconnect"
+short = "disc"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+# Forgotten, a network with its password or a device with its pairing, or a
+# notice taken away unread: it can't be brought back as it was.
+[acts.forget]
+command = "forget"
+short = "forg"
+kinds = ["list"]
+changes = true
+range = true
+
+[acts.pair]
+command = "pair"
+short = "pai"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+[acts.open-it]
+command = "open"
+short = "ope"
+kinds = ["list"]
+range = true
+
+# A meeting joined, and a person called, each opening the call.
+[acts.meet]
+command = "meet"
+short = "mee"
+kinds = ["list"]
+
+[acts.dial]
+command = "dial"
+short = "dia"
+kinds = ["list"]
+
+[acts.pause]
+command = "pause"
+short = "pau"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+[acts.resume]
+command = "resume"
+short = "resu"
+kinds = ["list"]
+changes = true
+undoable = true
+range = true
+
+# Words written to whoever sent a notice, in a prompt on its card unless
+# they follow the command; sent, they can't be taken back.
+[acts.reply]
+command = "reply"
+short = "rep"
+kinds = ["list"]
+changes = true
+
+# A picture turned, as it's viewed.
+[acts.rotate]
+command = "rotate"
+short = "ro"
+kinds = ["list"]
+
+# The session's acts, each asking once: :lock is Neovim's :lockmarks, so
+# the screen's lock is :lockscreen.
+[acts.lockscreen]
+command = "lockscreen"
+short = "locks"
+kinds = ["list"]
+changes = true
+
+[acts.suspend]
+command = "suspend"
+short = "sus"
+kinds = ["list"]
+changes = true
+
+[acts.logout]
+command = "logout"
+short = "log"
+kinds = ["list"]
+changes = true
+
+[acts.reboot]
+command = "reboot"
+short = "reb"
+kinds = ["list"]
+changes = true
+
+[acts.poweroff]
+command = "poweroff"
+short = "pow"
+kinds = ["list"]
+changes = true
 
 # To the window that way, as his splits go. No kind holds these: a surface
 # with windows side by side takes them.
