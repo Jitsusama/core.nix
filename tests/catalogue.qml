@@ -83,6 +83,14 @@ QtObject {
         expect("nor a lock", Catalogue.opens({ verb: "lock", run: does }), false);
         expect("nor a place", Catalogue.opens({ verb: "more", run: does }), false);
         expect("nor a row with nothing to run", Catalogue.opens({ verb: "open" }), false);
+        // The key language decides as Return's landing does (changesState),
+        // so Return on one row and over a selection never disagree.
+        expect("nor one whose command the language says changes", Catalogue.opens(
+            { verb: "move", run: does }, { command: "move", flags: { changes: true } }), false);
+        expect("nor one that says it changes", Catalogue.opens({ verb: "go", changes: true,
+            run: does }), false);
+        expect("while one it says changes nothing opens", Catalogue.opens(
+            { verb: "go", run: does }, { command: "go", flags: { changes: false } }), true);
         // What Return from the find lands on rather than doing: whatever
         // changes how things stand, as the key language flags the command a
         // row is named by (modules/keys/language.toml's changes), so d and
