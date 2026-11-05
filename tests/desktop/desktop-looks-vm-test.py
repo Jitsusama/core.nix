@@ -170,7 +170,8 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     What it finds takes the search wash in every row that shows it, the selected one's too, and
     the field's note counts which of them the selection is, as his Neovim's status line does.
     """
-    sought = "er"
+    # Held in Now's words and Agents', so the search lands on Agents, washed beside Now.
+    sought = "on"
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.normal()
