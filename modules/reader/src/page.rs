@@ -221,15 +221,38 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // steps one line.
 #let kbd(body) = box(stroke: 0.5pt + ink.rule, inset: (x: 3pt), outset: (top: 2pt, bottom: 0.3em), radius: 2pt, text(..level.code.text, body))
 // Lists hang their marks in the margin, so the words keep the measure's
-// edge: an accent bullet, a muted number, a task's box. An item steps one
-// line and a list stands one and a half from what's around it. A list in a
-// list starts at its item's words.
+// edge: an accent bullet, a muted number, a task's box. A list in a list
+// starts at its item's words.
+//
+// Things of a kind sit a line apart, and a beat further where any can take
+// two lines, so a wrapped line is nearer its own item than the next item
+// is, and each level stays wider than the one inside it. A list whose
+// items all fit the measure steps a line from item to item and stands one
+// and a half from the words round it. One where any item wraps sets its
+// items one and a half apart, as paragraphs are, and stands two off, so it
+// still reads as one group among them. The measure decides, so a list
+// widens as the window narrows and its items come to wrap.
 #let hang = 1em
 #set list(marker: box(width: 0.6em, align(right, text(fill: ink.accent)[•])), indent: -hang, body-indent: hang - 0.6em, spacing: pitch - cap)
 #set enum(numbering: n => box(width: 1.6em, align(right, text(fill: ink.muted, number-width: "tabular")[#n.])), indent: -2 * hang, body-indent: 2 * hang - 1.6em, spacing: pitch - cap)
+#let wraps(it) = it.children.any(item => measure(item.body, width: measure-width).height > measure(item.body).height)
 #let listed(it) = {
   let inner = { set list(indent: 0pt); set enum(indent: 0pt); it }
-  if it.indent < 0pt { block(above: 1.5 * pitch - cap, below: 1.5 * pitch - cap, inner) } else { inner }
+  if it.indent >= 0pt { return inner }
+  context {
+    let wide = wraps(it)
+    let items = if wide { gap(1.5) } else { pitch - cap }
+    // The list is set again with its items' spacing, which comes back
+    // here already holding it.
+    if it.spacing != items {
+      let fields = it.fields()
+      let children = fields.remove("children")
+      fields.insert("spacing", items)
+      return it.func()(..fields, ..children)
+    }
+    let off = if wide { gap(2) } else { gap(1.5) }
+    block(above: off, below: off, inner)
+  }
 }
 #show list: listed
 #show enum: listed
@@ -1076,6 +1099,25 @@ mod tests {
             [300, 100, 250, 100, 200, 100],
             "a section three lines under the words and one over its own, a part two and a \
              half and one, a fourth two and one: {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_list_steps_its_items_a_line_apart_or_a_beat_further_where_one_wraps() {
+        let markdown = format!(
+            "{OPENING}- One\n- Two\n- Three\n\nA paragraph between.\n\n- A first item long enough that it wraps onto a second line at the measure, as a little paragraph would\n- A second\n\nOmega.\n"
+        );
+        let (pitch, lines) = baselines("lists", &markdown, "opening", "Omega");
+        let steps = steps(pitch, &lines);
+        // Each level stays wider than the one inside it: a tight list's
+        // items a line apart and the list one and a half from the words
+        // round it; a wrapped list's items one and a half apart, as
+        // paragraphs are, and the list two off.
+        assert_eq!(
+            steps,
+            [100, 100, 150, 100, 100, 150, 200, 100, 150, 200],
+            "the opening's lines, a tight list a line a step and one and a half off, a \
+             wrapped list one and a half a step and two off: {steps:?}"
         );
     }
 
