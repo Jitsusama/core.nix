@@ -38,8 +38,10 @@ PanelWindow {
     }
     readonly property var shown: KeyboardLayout.layers[KeyboardLayout.layer] ?? { name: "", keys: [] }
     readonly property var first: KeyboardLayout.layers[0] ?? { keys: [] }
-    readonly property int across: Math.ceil(Math.max(0, ...shown.keys.map(key => key.x + key.w)))
-    readonly property int down: Math.ceil(Math.max(0, ...shown.keys.map(key => key.y + key.h)))
+    // How far the keys reach, in key widths, exactly, so a board whose last
+    // key ends half a key short keeps the inset to that key's edge.
+    readonly property real across: Math.max(0, ...shown.keys.map(key => key.x + key.w))
+    readonly property real down: Math.max(0, ...shown.keys.map(key => key.y + key.h))
 
     visible: KeyboardLayout.shown
     anchors.bottom: true
