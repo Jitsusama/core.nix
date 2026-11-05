@@ -59,6 +59,48 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
         # It changed something, so the launcher stays until it's closed.
         desktop.close_launcher()
+    sets_the_output(desktop)
+
+
+def sets_the_output(desktop: Desktop) -> None:
+    """Choose the output by :set output=, as Play Sound Through It does, and ask which it is.
+
+    After output= the line lists the outputs by name, as each row names one; :set output?
+    says the one in use, and :set input? the microphone listened through.
+    """
+    machine = desktop.machine
+
+    def menu(shown: Json) -> list[str]:
+        return [str(entry).strip() for entry in (shown["command"] or {}).get("menu", [])]
+
+    def said(shown: Json) -> str:
+        return str(shown["commandSaid"]) if shown["command"] is None else ""
+
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    for output in ["stand-in-headphones", "stand-in-speakers"]:
+        kind = output.removeprefix("stand-in-")
+
+        def listed(shown: Json, kind: str = kind) -> bool:
+            return any(kind in entry for entry in menu(shown))
+
+        def told(shown: Json, kind: str = kind) -> bool:
+            return kind in said(shown)
+
+        machine.send_chars(":set output=")
+        desktop.launcher_until(listed)
+        chosen = next(entry for entry in menu(desktop.showing()) if kind in entry)
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["command"] is None)
+        machine.send_chars(f":set {chosen}\n")
+        used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
+        machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
+        machine.send_chars(":set output?\n")
+        desktop.launcher_until(told)
+    machine.send_chars(":set input?\n")
+    desktop.launcher_until(lambda shown: said(shown) == "input=Stand-in microphone")
+    desktop.close_launcher()
 
 
 def sound_reads(name: str, said: str) -> Callable[[Json], bool]:
