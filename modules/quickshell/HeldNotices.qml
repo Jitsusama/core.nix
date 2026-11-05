@@ -1100,14 +1100,17 @@ Floating {
         }
     }
 
-    // The foot's word for the mode, in the room kept for its widest: insert,
-    // visual with how many are chosen, a count being typed, or an operator
-    // waiting with what it will take.
+    // The mode, at the foot's start in three capitals (NoticeKeys.mark).
+    readonly property string modeMark: NoticeKeys.mark(mode)
+    onModeMarkChanged: Report.say(`notice shows ${held.modeMark}`)
+
+    // What the mode is doing, in the room kept for its widest beside the
+    // facts: how many visual has chosen, a count being typed, or an
+    // operator waiting with what it will take. The mode itself is named
+    // at the foot's start, so this never says it again.
     readonly property string modeWord: {
-        if (mode === "insert")
-            return "insert";
         if (mode === "visual")
-            return `visual line \u00b7 ${selected.length}`;
+            return `${selected.length} chosen`;
         if (pending) {
             const word = standing.operatorAct === "done" ? doneWord([listed[cursor]])
                 : "copy";
@@ -1651,14 +1654,39 @@ Floating {
             TextMetrics {
                 id: widestWord
                 font: note.font
-                text: "visual line \u00b7 999"
+                text: "999 chosen"
             }
+
+            // The mode in three capitals, first, where the eye starts the
+            // line, as his Neovim's status line starts with it (Joel,
+            // 2026-11-05: "in a place where they are more obvious and not
+            // lost with other things"). It's set as a label, the theme's
+            // capitals, muted in normal and in the accent in every other
+            // mode, as his status line names a mode but normal in it. Every
+            // mark is three of the mono's capitals, so one's width is all
+            // of theirs, and nothing beside it moves as the mode changes.
+            Text {
+                id: markText
+                x: held.ink
+                anchors.verticalCenter: parent.verticalCenter
+                text: held.modeMark
+                color: held.modeMark === NoticeKeys.mark("normal") ? Theme.muted : Theme.accent
+                font.family: Theme.level.label.family
+                font.pointSize: Theme.level.label.pointSize
+                font.weight: Theme.level.label.weight
+                font.capitalization: Theme.level.label.capitalization
+                font.letterSpacing: Theme.level.label.letterSpacing
+                font.features: Theme.level.label.features
+            }
+
+            // Where the facts start: past the mark and a step.
+            readonly property real factsAt: markText.x + markText.implicitWidth + Theme.space.l
 
             Text {
                 id: facts
-                x: held.ink
-                width: Math.min(implicitWidth, foot.width - 2 * held.ink - foot.wordRoom
-                    - Theme.space.l - hinted.width)
+                x: foot.factsAt
+                width: Math.min(implicitWidth, foot.width - foot.factsAt - held.ink
+                    - foot.wordRoom - Theme.space.l - hinted.width)
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.facts
                 elide: Text.ElideRight
@@ -1670,7 +1698,7 @@ Floating {
                 id: modeWord
                 x: facts.x + facts.width + (facts.width > 0 ? Theme.space.l : 0)
                 width: Math.max(foot.wordRoom, Math.min(implicitWidth, foot.width
-                    - 2 * held.ink - facts.width - hinted.width - 2 * Theme.space.l))
+                    - foot.factsAt - held.ink - facts.width - hinted.width - 2 * Theme.space.l))
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.modeWord
                 elide: Text.ElideRight
@@ -1683,8 +1711,8 @@ Floating {
 
                 // The room the facts and the mode word leave as they stand,
                 // so at rest, with no mode word, the hints have it all.
-                readonly property real fits: foot.width - 2 * held.ink - factsNow.advanceWidth
-                    - Theme.space.l - (held.modeWord === "" ? 0
+                readonly property real fits: foot.width - foot.factsAt - held.ink
+                    - factsNow.advanceWidth - Theme.space.l - (held.modeWord === "" ? 0
                         : Math.max(foot.wordRoom, wordNow.advanceWidth) + Theme.space.l)
 
                 TextMetrics {
