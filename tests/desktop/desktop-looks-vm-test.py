@@ -412,10 +412,12 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
             f'rm -f {RECORDING}; setsid -f wf-recorder -y --output "$({output})"'
             f" --file {RECORDING} </dev/null >{RECORDED} 2>&1"
         )
+        # It says the region it records once it has begun; the file stays
+        # empty a while, the encoder holding frames back on a still screen.
         began, _ = machine.execute(
-            f"timeout 10 sh -c 'until test -s {RECORDING}; do sleep 0.1; done'"
+            f"timeout 10 sh -c 'until grep -q \"selected region\" {RECORDED}; do sleep 0.1; done'"
         )
-        assert began == 0, f"wf-recorder wrote nothing: {machine.execute(f'cat {RECORDED}')[1]}"
+        assert began == 0, f"wf-recorder never began: {machine.execute(f'cat {RECORDED}')[1]}"
     since = desktop.mark()
     machine.send_chars("yy")
     desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
