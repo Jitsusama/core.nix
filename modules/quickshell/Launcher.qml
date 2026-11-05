@@ -2146,8 +2146,14 @@ Scope {
             said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
             ...said.map(told => statusLine.keys.advance(told[0][0], told[0][1])));
-        if (place > footReturnWidest)
+        // Said as it grows, so a test sees which row's Return took the
+        // room, though the foot shows only the selection's.
+        if (place > footReturnWidest) {
+            const widest = said.find(told =>
+                statusLine.keys.advance(told[0][0], told[0][1]) === place);
+            Report.say(`foot room for ${widest[0].join(" ")}`);
             footReturnWidest = place;
+        }
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
         if (wide > footKeysWidest)
             footKeysWidest = wide;
@@ -5569,7 +5575,6 @@ Scope {
             fading = false;
             parting = "";
             footCatchUp();
-            footReset();
             footStage = 0;
             factsWidest = {};
             figuresStep = "";
@@ -5599,6 +5604,12 @@ Scope {
             // The gutter as wide as where it opens can number.
             gutterDigits = held.length === 0 ? 3 : 1;
             noteDigits();
+            // The foot's room once the line is back on the find: set
+            // before, the rows noted their keys while it was still in
+            // the normal it closed in, and the find opened with normal's
+            // room, cutting the glance's date and charge.
+            footReset();
+            noteKeys();
             Report.say(`stands ${standing.said}`);
         } else {
             // An ask closing with it says no, as Escape would, and is
