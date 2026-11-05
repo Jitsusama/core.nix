@@ -127,6 +127,25 @@ def on_the_pitch(line: float, from_line: float) -> bool:
     return steps >= 0 and abs(line - from_line - steps * PITCH) <= NEAR
 
 
+def on_the_beat(line: float, from_line: float) -> bool:
+    """Say whether a line lies a whole number of the card's beats below another."""
+    steps = round((line - from_line) / BEAT)
+    return steps >= 0 and abs(line - from_line - steps * BEAT) <= NEAR
+
+
+def things_apart(firsts: list[float], wrapped: bool) -> bool:
+    """Say whether a list's things lie apart as they should, given each one's first line.
+
+    Its lines are on the pitch, and where any thing wraps, each thing stands a beat further
+    from the one before, so a wrapped line sits nearer its own thing than the next.
+    """
+    apart = BEAT if wrapped else 0
+    return all(
+        later - earlier > apart and on_the_pitch(later - apart, earlier)
+        for earlier, later in pairwise(firsts)
+    )
+
+
 def room_beside_the_card(desktop: Desktop) -> int:
     """Say how wide the drawer should be on the screen as niri lays it out now."""
     output = next(iter(json.loads(desktop.as_account("niri msg --json outputs")).values()))
@@ -851,9 +870,9 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # the facts start on the card's beat under it, on the pitch.
         facts = drawer["lines"]["facts"]
         assert after_the_title(facts[0], drawer["lines"], drawer["cardLines"]), drawer
-        assert all(
-            later > earlier and on_the_pitch(later, earlier) for earlier, later in pairwise(facts)
-        ), f"at {scale} a fact is off the pitch: {drawer}"
+        assert things_apart(facts, drawer["factsWrapped"] > 0), (
+            f"at {scale} a fact is off the pitch: {drawer}"
+        )
         # Its name is the title, so it isn't said again under it; every other name is whole;
         # and what doesn't fit above the foot's inset waits for the drawer's keys.
         assert "Name" not in drawer["drawnFacts"], drawer
@@ -873,7 +892,8 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.close_launcher()
         # The zone's plate, under its eyebrow: a value that won't sit beside its name on one
         # line, as "none before 2046", takes the plate's width under it instead, so no fact
-        # stands taller than two lines and none reads a word a line.
+        # stands taller than two lines and none reads a word a line; where one takes two, each
+        # stands a beat further from the one before.
         desktop.answer("time")
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
@@ -888,8 +908,11 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         drawer = plate_shown(desktop, scale)
         facts = drawer["lines"]["facts"]
         assert drawer["eyebrow"] == "Time Zone", f"at {scale} the zone's plate: {drawer}"
-        assert all(later - earlier <= 2 * PITCH + NEAR for earlier, later in pairwise(facts)), (
-            f"at {scale} a value stands a word a line beside its name: {drawer}"
+        assert all(
+            later - earlier <= 2 * PITCH + BEAT + NEAR for earlier, later in pairwise(facts)
+        ), f"at {scale} a value stands a word a line beside its name: {drawer}"
+        assert things_apart(facts, drawer["factsWrapped"] > 0), (
+            f"at {scale} the zone's facts are off the pitch: {drawer}"
         )
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         desktop.photograph(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
@@ -943,10 +966,11 @@ def test_nows_plate_sets_the_time_and_the_facts_on_homes_rows(
                 assert abs(group[0] - card["rows"][on]) <= NEAR, (
                     f"at {scale} a group of facts is off its row's line: {drawer}"
                 )
-            assert all(
-                later > earlier and on_the_pitch(later, earlier)
-                for earlier, later in pairwise(group)
-            ), f"at {scale} a fact is off the pitch: {drawer}"
+            # A group whose facts all take a line has them on the pitch; one where any wraps
+            # has each a beat further from the one before, so either way on the card's beat.
+            assert things_apart(group, wrapped=False) or things_apart(group, wrapped=True), (
+                f"at {scale} a fact is off the pitch: {drawer}"
+            )
         desktop.photograph(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
@@ -1045,8 +1069,14 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 shown = drawer["lines"]["previewLines"]
                 body = body_line(drawer["lines"], drawer["cardLines"])
                 assert body is not None, f"at {scale} {name}'s title is off its leading: {drawer}"
-                assert all(on_the_pitch(line, body) for line in [*shown, *facts]), (
-                    f"at {scale} {name}'s plate is off the pitch: {drawer}"
+                assert all(on_the_pitch(line, body) for line in shown), (
+                    f"at {scale} {name}'s preview is off the pitch: {drawer}"
+                )
+                assert all(on_the_beat(line, body) for line in facts), (
+                    f"at {scale} {name}'s facts are off the beat: {drawer}"
+                )
+                assert things_apart(facts, drawer["factsWrapped"] > 0), (
+                    f"at {scale} {name}'s facts are off the pitch: {drawer}"
                 )
                 if preview is not None:
                     assert facts[0] > drawer["lines"]["preview"], f"{name}'s facts lead: {drawer}"
