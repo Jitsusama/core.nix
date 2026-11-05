@@ -30,6 +30,8 @@ local options = {
   action = '',
   alert = '',
   opacity = 0.85,
+  -- The space the panel keeps from each side of the window.
+  margin = 16,
 }
 require('mp.options').read_options(options, 'camera')
 
@@ -114,7 +116,9 @@ local function elapsed()
 end
 
 -- What the keys do now, as the launcher's footer says it: the key in the
--- text's colour, its word muted.
+-- text's colour, its word muted. When the panel would be wider than the
+-- window, the hints go in the order goes gives, Tab's and then Return's;
+-- Escape's always stays, so the way out is always said.
 local function hints()
   if closing then
     return { { 'Esc', 'close now' } }
@@ -125,8 +129,8 @@ local function hints()
   end
   local other = mode == 'picture' and 'video' or 'picture'
   return {
-    { '↵', mode == 'picture' and 'take' or 'record' },
-    { '⇥', other },
+    { '↵', mode == 'picture' and 'take' or 'record', goes = 2 },
+    { '⇥', other, goes = 1 },
     { 'Esc', 'close' },
   }
 end
@@ -159,8 +163,9 @@ local function draw()
   -- On the left, what Return makes and, while recording, for how long;
   -- on the right, the keys. Words, a key's name among them, are in the
   -- serif upright, as words to read are; marks, the time and the spaces
-  -- between in the monospaced face, which has the marks, keeps the time's figures from
-  -- shifting as they count, and spaces the keys as evenly as before.
+  -- between in the monospaced face, which has the marks, keeps the time's
+  -- figures from shifting as they count, and spaces the keys as evenly as
+  -- before.
   local font = string.format('{\\fs%d\\bord0\\shad0}', size)
   local words = '\\fn' .. options.words
   local marks = '\\fn' .. options.mono
@@ -183,28 +188,47 @@ local function draw()
       word
     )
   end
-  local parts = {}
-  for _, hint in ipairs(ready and hints() or { { 'Esc', 'close' } }) do
-    table.insert(
-      parts,
-      string.format(
-        '{%s\\1c%s}%s{%s} {%s\\1c%s}%s',
-        hint[1]:match('^%a') and words or marks,
-        colour(options.text),
-        hint[1],
-        marks,
-        words,
-        colour(options.muted),
-        hint[2]
-      )
-    )
+  left = font .. left
+  local shown_hints = ready and hints() or { { 'Esc', 'close' } }
+  local function said(gone)
+    local parts = {}
+    for _, hint in ipairs(shown_hints) do
+      if not (hint.goes and hint.goes <= gone) then
+        table.insert(
+          parts,
+          string.format(
+            '{%s\\1c%s}%s{%s} {%s\\1c%s}%s',
+            hint[1]:match('^%a') and words or marks,
+            colour(options.text),
+            hint[1],
+            marks,
+            words,
+            colour(options.muted),
+            hint[2]
+          )
+        )
+      end
+    end
+    return font .. table.concat(parts, '{' .. marks .. '}   ')
   end
-  local right = table.concat(parts, '{' .. marks .. '}   ')
-  left, right = font .. left, font .. right
 
+  -- As wide as its words, but never past the window less the margin each
+  -- side, so its rounded ends stay whole: whole hints go before the type
+  -- would shrink, as goes orders them, and what can't go stays.
   local inner = unit(16)
-  local panel_width =
-    math.floor(inner * 2 + wide(left, width, height) + wide(right, width, height) + unit(24))
+  local room = width - 2 * unit(options.margin)
+  local left_width = wide(left, width, height)
+  local gone = 0
+  local right, panel_width
+  repeat
+    right = said(gone)
+    panel_width = math.floor(inner * 2 + left_width + wide(right, width, height) + unit(24))
+    local more = false
+    for _, hint in ipairs(shown_hints) do
+      more = more or (hint.goes ~= nil and hint.goes > gone)
+    end
+    gone = gone + 1
+  until panel_width <= room or not more
   local panel_height = unit(40)
   local x0 = math.floor((width - panel_width) / 2)
   local y1 = height - unit(24)
