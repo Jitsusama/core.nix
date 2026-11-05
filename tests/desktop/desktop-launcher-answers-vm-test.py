@@ -302,9 +302,8 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
-    # A path this long leaves no room for the field's keys beside the / and
-    # the thing's glyph, so a letter typed on the find, then normal, brings
-    # no key: a key never costs the path its words, whatever the / does.
+    # In normal the field names no key, since h steps out rather than
+    # clearing, so a letter typed on the find, then normal, brings none.
     desktop.on_find()
     machine.send_chars("l")
     desktop.launcher_until(lambda shown: shown["typed"] == "l")
@@ -313,7 +312,8 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.photograph("launcher-keyboard-path-normal")
     assert not any("\u2190" in word["text"] for word in field), field
     assert not any(word["text"].endswith(" clear") for word in field), field
-    machine.send_key("left")
+    desktop.on_find()
+    machine.send_key("backspace")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.

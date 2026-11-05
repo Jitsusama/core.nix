@@ -559,8 +559,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     def close_launcher(self) -> None:
         """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
 
-        From insert the first gives normal, each after it steps back out a level, and the one
-        at the level it opened on closes it. A key sent before this that the launcher hears late
+        From the find the first gives normal, and the next closes it from any depth, after
+        letting the key list go if it's shown. A key sent before this that the launcher hears late
         moves it on too, so each Escape waits only for something to change. Escape does nothing
         in the drawer, as in any window, so with the keys there, on its page or choosing on it,
         :q brings them back to the rows first, a line typed that no wait can come apart.
