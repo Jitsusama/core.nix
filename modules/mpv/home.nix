@@ -224,8 +224,9 @@ let
         does = "That one in the list, by its number";
       }
     ]
-    ++ [
-      # y alone waits for what it's to copy, as in Vim, and does nothing.
+    # The frame in view, as a picture; y alone waits for what it's to copy,
+    # as in Vim, and does nothing.
+    ++ grouped "frame" [
       {
         chord = "y y";
         does = "Copy the frame as a picture";
@@ -234,6 +235,8 @@ let
         chord = "s";
         does = "Save the frame as a picture";
       }
+    ]
+    ++ [
       {
         chord = "Shift+slash";
         does = "The player's keys";
