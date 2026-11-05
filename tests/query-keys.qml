@@ -347,6 +347,8 @@ QtObject {
         holds("and Return reads past it",
             typed(["Escape", ":", "q", "Space", "Return"]).acts, ["normal", "close"]);
         holds("insert's Space is the field's to type", typed(["Space"]).ours, false);
+        holds("a search's Space is a letter of it",
+            Keys.read({ count: "", typed: [] }, "Space", "search").act, "");
         holds("a Space waiting its timeoutlen lets go", Keys.waited({ count: "", typed: ["Space"] }),
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
