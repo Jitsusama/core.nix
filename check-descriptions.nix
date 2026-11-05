@@ -833,6 +833,10 @@
   niri-accepts-its-configuration = ''
     niri loads the files an account gets
   '';
+  niri-centres-a-window-alone = ''
+    niri's layout says always-center-single-column, so a window alone on its workspace sits in the
+    middle of the screen
+  '';
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
   '';
