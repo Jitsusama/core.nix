@@ -1,9 +1,10 @@
 // The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-query-field-takes-vi-modes` check copies
-// modules/quickshell/QueryKeys.js and ListedKeys.js beside this file and
-// runs `qml -platform offscreen query-keys.qml`.
+// modules/quickshell/QueryKeys.js, Editing.js and ListedKeys.js beside this
+// file and runs `qml -platform offscreen query-keys.qml`.
 import QtQuick
+import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
 import "QueryKeys.js" as Keys
 
@@ -46,6 +47,103 @@ QtObject {
             }
         }
         return { acts, counted, ours, mode, standing };
+    }
+
+    // The keys typed from a line's opening in insert, on a prompt's words.
+    function wordsTyped(keys) {
+        let standing = Keys.rest();
+        let mode = "insert";
+        const acts = [];
+        for (const key of keys) {
+            const read = Keys.read(standing, key, mode, true);
+            standing = read.standing;
+            mode = Keys.modeAfter(read.act, mode);
+            if (read.act !== "")
+                acts.push(read.count > 0 ? `${read.count} ${read.act}` : read.act);
+        }
+        return { acts, mode };
+    }
+
+    // A prompt's words edited in normal, as Vim edits a line, and Ctrl+H in
+    // insert, on every line.
+    function editing(holds) {
+        // [what, the key, ms since it was asked, the answer]
+        const answers = [
+            ["y answers yes", "y", 400, "yes"],
+            ["n answers no", "n", 400, "no"],
+            ["Escape answers no", "Escape", 400, "no"],
+            ["Ctrl+C answers no", "Ctrl+c", 400, "no"],
+            ["any other key does nothing", "Y", 400, ""],
+            ["Return does nothing", "Return", 400, ""],
+            ["a key on its way as it's asked does nothing", "y", 120, ""]
+        ];
+        for (const [what, key, waited, want] of answers)
+            holds(what, Editing.onceAnswered(key, waited, 300), want);
+        // [what, the keys typed from the opening, the acts done]
+        const doing = [
+            ["w b e move by words", ["Escape", "w", "b", "e"],
+                ["normal", "wordNext", "wordBack", "wordEnd"]],
+            ["h l and the arrows move by letters", ["Escape", "h", "l", "Left", "Right"],
+                ["normal", "letterBack", "letterNext", "letterBack", "letterNext"]],
+            ["- and Backspace still step out", ["Escape", "-", "Backspace"],
+                ["normal", "out", "out"]],
+            ["0 and $ go to the line's ends", ["Escape", "$", "0"],
+                ["normal", "lineEnd", "lineStart"]],
+            ["x, dw and cw change the words, cw into insert", ["Escape", "x", "d", "w", "c", "w"],
+                ["normal", "deleteLetter", "deleteWordOn", "changeWord"]],
+            ["cc still clears the line", ["Escape", "c", "c"], ["normal", "change"]],
+            ["u undoes", ["Escape", "u"], ["normal", "undo"]],
+            ["a count goes before a word's move", ["Escape", "2", "w"], ["normal", "2 wordNext"]],
+            ["j still goes down to the rows", ["Escape", "j"], ["normal", "next"]]
+        ];
+        for (const [what, keys, want] of doing)
+            holds(`on a prompt's words, ${what}`, wordsTyped(keys).acts, want);
+        holds("cw leaves the line in insert", wordsTyped(["Escape", "c", "w"]).mode, "insert");
+        holds("on a find, u brings back what was cleared", typed(["Escape", "u"]).acts,
+            ["normal", "restore"]);
+        holds("and w and x do nothing", typed(["Escape", "w", "x"]).acts, ["normal"]);
+        holds("Ctrl+H deletes back in insert", typed(["Ctrl+h"]).acts, ["deleteBack"]);
+        for (const act of ["wordNext", "wordBack", "wordEnd"])
+            holds(`${act} repeats while held`, Keys.repeats(act), true);
+        holds("x is once a press", Keys.repeats("deleteLetter"), false);
+
+        // [what, act, words, caret, count, { text, at } after]
+        const edits = [
+            ["h goes a letter back", "letterBack", "notes.md", 5, 0, 4],
+            ["h at the start stays", "letterBack", "notes.md", 0, 0, 0],
+            ["l goes a letter on", "letterNext", "notes.md", 4, 0, 5],
+            ["l on the last letter stays", "letterNext", "notes.md", 7, 0, 7],
+            ["3l goes three on", "letterNext", "notes.md", 0, 3, 3],
+            ["w goes past a word to the next run", "wordNext", "notes.md", 0, 0, 5],
+            ["w goes past the dot to the extension", "wordNext", "notes.md", 5, 0, 6],
+            ["w goes past spaces", "wordNext", "my notes", 0, 0, 3],
+            ["w on the last word rests on the last letter", "wordNext", "notes", 1, 0, 4],
+            ["2w goes two words on", "wordNext", "my big notes", 0, 2, 7],
+            ["b goes to the word's start", "wordBack", "notes.md", 3, 0, 0],
+            ["b at a word's start goes to the one before", "wordBack", "notes.md", 6, 0, 5],
+            ["e goes to the word's end", "wordEnd", "notes.md", 0, 0, 4],
+            ["e at a word's end goes to the next one's", "wordEnd", "my notes", 1, 0, 7],
+            ["0 goes to the start", "lineStart", "notes.md", 5, 0, 0],
+            ["$ goes to the last letter", "lineEnd", "notes.md", 0, 0, 7]
+        ];
+        for (const [what, act, text, at, count, want] of edits)
+            holds(what, Editing.edited(act, text, at, count), { text, at: want });
+        // [what, act, words, caret, count, words after, caret after]
+        const changes = [
+            ["x takes the letter under the caret", "deleteLetter", "notes.md", 5, 0, "notesmd", 5],
+            ["3x takes three", "deleteLetter", "notes.md", 0, 3, "es.md", 0],
+            ["x on the last letter rests on the one before", "deleteLetter", "ab", 1, 0, "a", 0],
+            ["dw takes the word and the space after it", "deleteWordOn", "my notes", 0, 0, "notes",
+                0],
+            ["dw on the last word takes it to the end", "deleteWordOn", "my notes", 3, 0, "my ", 2],
+            ["cw takes the word but not the space after it", "changeWord", "my notes", 0, 0,
+                " notes", 0],
+            ["cw takes the name before the extension", "changeWord", "notes.md", 0, 0, ".md", 0],
+            ["c2w takes two words and the space between", "changeWord", "my big notes", 0, 2,
+                " notes", 0]
+        ];
+        for (const [what, act, text, at, count, after, caret] of changes)
+            holds(what, Editing.edited(act, text, at, count), { text: after, at: caret });
     }
 
     function run() {
@@ -111,6 +209,8 @@ QtObject {
                 ["normal", "change", "normal", "change"]],
             ["]b and [b go to the place beside, the next and the one before",
                 ["Escape", "]", "b", "[", "b"], ["normal", "nextFile", "previousFile"]],
+            ["gx opens the row's file in its own program", ["Escape", "g", "x"],
+                ["normal", "openOwn"]],
             ["Escape cancels a c waiting for its second", ["Escape", "c", "Escape", "c"],
                 ["normal"]],
             ["a key that ends nothing lets c go", ["Escape", "c", "x", "c"], ["normal"]],
@@ -216,9 +316,11 @@ QtObject {
         holds("every line the list gives has its keys",
             facts.filter(line => line.label === "").length, 0);
         // Joel presses the arrows, so every act one does in a mode lists it
-        // in that mode's section.
+        // in that mode's section. A prompt's words keep their own keys,
+        // which the launcher's list doesn't name.
         const arrows = ["Up", "Down", "Left", "Right"];
         holds("every act an arrow does lists its arrow", Keys.table
+            .filter(one => one.mode !== "words")
             .map(one => ({ in: one.mode === "both" ? ["Normal", "Insert"] : [modes[one.mode]],
                 arrows: one.keys.filter(key => arrows.includes(key)) }))
             .filter(one => one.arrows.some(key => one.in.some(mode =>
@@ -318,6 +420,8 @@ QtObject {
             holds(`the caret ${what}`, Keys.caretAfter(act, text, at), want);
         holds("normal's caret rests on the last letter", Keys.resting("sound", 5), 4);
         holds("and on an empty line at its start", Keys.resting("", 0), 0);
+
+        editing(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

@@ -219,11 +219,16 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
 # A program asks the portal for a file to open, and then to save, in a
 # folder, as Chrome and Slack do, and the launcher chooses it rather than
 # GTK's dialog: it opens in that folder, its path the program's title and
-# then the folder, every folder on the way held above it. What's typed
-# finds a file there and Return opens it; saving, Return saves as the name
-# the program gave; and Escape, pressed until the launcher closes,
-# chooses nothing. The portal hands the program each path picked, and
-# each ask's socket goes once it's answered.
+# then the folder, every folder on the way held above it. Normal's gx
+# opens a file in its own program, the ask still waiting; what's typed
+# finds a file there and Return opens it. Saving, the line holds the name
+# the program gave, in insert, the caret before its extension: Ctrl+H
+# deletes back, and in normal w b e 0 $ x dw cw and u edit it as Vim's
+# do; j goes down into the folders, Return on one opens it, the name
+# kept, and Return on the name saves it there. A name already there asks
+# once, n saving nothing and y saving over it. Escape, pressed until the
+# launcher closes, chooses nothing. The portal hands the program each
+# path picked, and each ask's socket goes once it's answered.
 
 
 def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Desktop) -> None:
@@ -234,7 +239,14 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     sockets_gone = "! ls /run/user/1000/open-with/*.sock"
     # A folder beside the notes, the next one in their folder, for ]b to go to.
     beside = f"{notes}-beside"
-    desktop.as_account(f"mkdir -p {notes} {beside} && touch {notes}/plan.md {notes}/list.md")
+    # A folder inside, for a save to go down into.
+    inner = f"{notes}/inner"
+    desktop.as_account(
+        f"mkdir -p {notes} {beside} {inner} && touch {notes}/plan.md {notes}/list.md"
+        " && echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        f" | base64 -d > {notes}/look.png"
+    )
     # The files, then each folder from /home down to the notes.
     held = 1 + notes.count("/")
     # The shell's watchers, each an inotify of its own, counted before
@@ -275,17 +287,8 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
 
     choose("open")
     desktop.photograph("file-chooser")
-    # In normal, ]b goes to the folder beside this one, held where it was,
-    # and [b comes back.
-    desktop.normal()
-    machine.send_chars("]b")
-    desktop.launcher_until(
-        lambda shown: shown["path"][-1:] == ["~/chosen-notes-beside"] and len(shown["held"]) == held
-    )
-    machine.send_chars("[b")
-    desktop.launcher_until(
-        lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
-    )
+    go_beside(desktop, held)
+    open_own(desktop, chose)
     desktop.insert()
     machine.send_chars("plan")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
@@ -293,9 +296,12 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     answered("0", f"file://{notes}/plan.md")
 
     choose("save", "saved.md")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "saved.md")
-    machine.send_key("ret")
-    answered("0", f"file://{notes}/saved.md")
+    name_line(desktop, held)
+    answered("0", f"file://{inner}/kept.md")
+
+    choose("save", "plan.md")
+    replace_once(desktop, chose, "plan.md")
+    answered("0", f"file://{notes}/plan.md")
 
     choose("open")
     desktop.close_launcher()
@@ -311,6 +317,121 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         after = desktop.as_account(watchers).strip()
         kept = f"the shell holds {after} inotify handles after three asks, {watching} before"
         raise AssertionError(kept) from None
+
+
+def go_beside(desktop: Desktop, held: int) -> None:
+    """In normal, go by ]b to the folder beside the notes, held where it was, and back by [b."""
+    machine = desktop.machine
+    desktop.normal()
+    machine.send_chars("]b")
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == ["~/chosen-notes-beside"] and len(shown["held"]) == held
+    )
+    machine.send_chars("[b")
+    desktop.launcher_until(
+        lambda shown: shown["path"][-1:] == ["~/chosen-notes"] and len(shown["held"]) == held
+    )
+
+
+def open_own(desktop: Desktop, chose: str) -> None:
+    """Open look.png in its own program by gx, and wait until the ask has the keys again."""
+    machine = desktop.machine
+    desktop.down_to("look.png")
+    machine.send_chars("gx")
+    looking = f"pgrep -u {desktop.account} -f '[s]wayimg.*look.png'"
+    machine.wait_until_succeeds(looking, timeout=STARTING)
+    machine.succeed(f"pkill -KILL -u {desktop.account} -f '[s]wayimg.*look.png'")
+    machine.wait_until_fails(looking, timeout=timedelta(seconds=30))
+    # Opened as Return opens it, the portal would have its answer.
+    machine.fail(f"test -e {chose}")
+    desktop.launcher_until(
+        lambda shown: shown["keys"] and shown["path"][-1:] == ["~/chosen-notes"],
+        timeout=timedelta(seconds=30),
+    )
+
+
+def replace_once(desktop: Desktop, chose: str, name: str) -> None:
+    """Save as a name already there: Return asks once, n saves nothing, and y saves over it."""
+    machine = desktop.machine
+    before = name.rsplit(".", 1)[0]
+    desktop.launcher_until(lambda shown: shown["typed"] == name and shown["caret"] == len(before))
+    asked = f"Replace {name}? (y/n)"
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["question"] == asked and shown["takesAnswer"])
+    machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["question"] == "" and shown["open"])
+    # Saved over at once, the portal would have its answer by now.
+    machine.fail(f"test -e {chose}")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["question"] == asked and shown["takesAnswer"])
+    machine.send_chars("y")
+
+
+def name_line(desktop: Desktop, held: int) -> None:
+    """Edit a save's name, saved.md, with every key its line takes, and save it in inner.
+
+    Each key waits on what the line says after it, so one the line didn't take fails there.
+    """
+    machine = desktop.machine
+
+    def says(typed: str, caret: int, mode: str) -> None:
+        """Wait until the line holds these words, its caret here, in this mode."""
+        desktop.launcher_until(
+            lambda shown: (
+                shown["typed"] == typed
+                and shown["caret"] == caret
+                and shown["mode"] == mode
+                and (shown["selected"] or {}).get("name") == typed
+            )
+        )
+
+    says("saved.md", 5, "insert")
+    machine.send_key("ctrl-h")
+    says("save.md", 4, "insert")
+    machine.send_chars("d")
+    says("saved.md", 5, "insert")
+    machine.send_key("esc")
+    says("saved.md", 4, "normal")
+    for key, typed, caret in [
+        ("0", "saved.md", 0),
+        ("x", "aved.md", 0),
+        ("u", "saved.md", 0),
+        ("$", "saved.md", 7),
+        ("b", "saved.md", 6),
+        ("0", "saved.md", 0),
+        ("e", "saved.md", 4),
+        ("w", "saved.md", 5),
+        ("0", "saved.md", 0),
+    ]:
+        machine.send_chars(key)
+        says(typed, caret, "normal")
+    machine.send_chars("dw")
+    says(".md", 0, "normal")
+    machine.send_chars("u")
+    says("saved.md", 0, "normal")
+    machine.send_chars("cw")
+    says(".md", 0, "insert")
+    machine.send_chars("kept")
+    says("kept.md", 4, "insert")
+    machine.send_key("esc")
+    says("kept.md", 3, "normal")
+    for key, caret in [("h", 2), ("l", 3)]:
+        machine.send_chars(key)
+        says("kept.md", caret, "normal")
+    # j goes down from the name into the folders, where l steps into one
+    # rather than moving the name's caret, the name kept, leading.
+    rows = desktop.showing()["rows"]
+    machine.send_chars("j" * rows.index("inner"))
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "inner")
+    machine.send_chars("l")
+    desktop.launcher_until(
+        lambda shown: (
+            len(shown["held"]) == held + 1
+            and shown["typed"] == "kept.md"
+            and (shown["selected"] or {}).get("name") == "kept.md"
+        )
+    )
+    machine.send_key("ret")
 
 
 def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
@@ -392,14 +513,18 @@ def test_the_launchers_picker_saves_into_google_drive_for_the_portal(
             lambda shown: shown["path"] == ["Save the Notes", "~/drive-saves-notes"],
             timeout=timedelta(seconds=60),
         )
-        # Typed in any folder, Google Drive is found, after the name what's
-        # typed gives the file, and holds only what a file can be saved in.
-        machine.send_chars("drive")
-        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["drive", "Google Drive"])
+        # The line holds the name, so - steps out to home with it, where
+        # Google Drive is listed, and holds only what a file can be saved in.
+        desktop.normal()
+        machine.send_chars("-")
+        desktop.launcher_until(
+            lambda shown: shown["path"] == ["Save the Notes", "~"] and shown["typed"] == "draft.md"
+        )
         desktop.down_to("Google Drive")
-        desktop.step_in()
+        desktop.step_in("ret")
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["My Drive", "Shared Drives"])
-        desktop.step_in()
+        desktop.down_to("My Drive")
+        desktop.step_in("ret")
         # My Drive leads with the name given, saved by Return.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "draft.md")
         desktop.photograph("file-chooser-drive-save")

@@ -109,6 +109,7 @@ let
     "CommandLine.qml"
     "CommandMenu.qml"
     "Commands.js"
+    "Editing.js"
     "ListedKeys.js"
     "Search.js"
     "KeyHints.qml"

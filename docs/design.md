@@ -1469,6 +1469,18 @@ works the same way everywhere.
   sizes by its items. Folders come first in every order and what was
   opened lately stays apart on top. One order serves every ask and
   outlasts a restart, starting on name (VKCF3Z, 2026-11-04).
+- **A save is named on the line** (VKCF3Z's vi-paradigm spec, The File
+  Picker). Asked to save, the line holds the name the program gave, a
+  prompt's words in insert rather than a find, the caret before its
+  extension so typing renames it; Ctrl+W, Ctrl+U and Ctrl+H edit it, and
+  Escape gives normal on it, where h l w b e 0 $ x dw cw and u edit it
+  as Vim's do. The name leads every folder, its first row, and the rows
+  under it are never narrowed by it: j goes down into the folders,
+  Return on one opens it and - steps out, as oil's do, the name kept,
+  and Return on the name saves there. A name already there asks once in the line's place, "Replace
+  notes.md? (y/n)", as Vim's :w says E13: y saves over it, n, Escape or
+  Ctrl+C let it go, and any other key, or one in its first 300 ms, does
+  nothing.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

@@ -12,9 +12,11 @@
 // it and those selected after it asked of the one file-preview kept for
 // the ask (the check's script reads which); a kind the filter names passes
 // its narrower kinds too; another filter picked shows what it passes; and Return on a file answers its
-// path and the filter in use. Asked to save, it leads with the name the
-// program gave, which, being there already, steps in to Replace It first;
-// what's typed names it instead, saved in the folder it's typed in. Its
+// path and the filter in use. Asked to save, the line holds the name the
+// program gave, a prompt's words, its caret before the extension, kept
+// from folder to folder; each folder leads with it, unnarrowed, and a
+// name already there asks once, "Replace a.md? (y/n)", no saving nothing;
+// a name typed is saved in the folder it's typed in, asking nothing. Its
 // Order, last, steps into Name, Changed and Size, the one in use first,
 // and Return on Size lists the folder largest first, made afresh, an
 // order the chooser made again after a restart keeps. Asked
@@ -39,8 +41,8 @@
 // until then; marked with others, it's answered in the order marked, and
 // one that can't be fetched keeps the launcher, saying why, until Return
 // again fetches it. Saving there, it holds only the folders a file can
-// be saved in, each leading with the name, a name already there stepping
-// in to Replace It; what's typed names it instead, and Return makes the
+// be saved in, each leading with the name the line holds, a name already
+// there asking once; the name typed is saved instead, and Return makes the
 // folder the place stages it in and answers the path there, closing the
 // launcher once it's made, the program that asked written beside it (the
 // check reads it). A save here keeps the folder it went to, one
@@ -103,6 +105,13 @@ ShellRoot {
 
         function openedHere() {
             homeDepth = held.length;
+        }
+
+        // Each question asked once, as the launcher's line asks it.
+        property var asked: []
+
+        function askOnce(question, yes, no) {
+            asked = asked.concat([{ question: question, yes: yes, no: no }]);
         }
     }
 
@@ -525,16 +534,52 @@ ShellRoot {
         expect("saving leads with the name given, then the folders lately, then the rest",
             names(rows) === "a.md, elsewhere, | sub, b.png, notes.txt, | Encoding, Order", names(rows));
         const there = rows[0];
-        expect("a name already there steps in to Replace It first", there.verb === "more"
-            && names(there.verbs()) === "Replace It, Copy the Path", `${there.verb}: ${names(there.verbs())}`);
+        there.run();
+        const asked = launcher.asked[0];
+        expect("a name already there asks once before Return saves over it",
+            there.verb === "save" && launcher.asked.length === 1
+                && asked.question === "Replace a.md? (y/n)" && answers.length === 1,
+            `${there.verb} ${JSON.stringify(launcher.asked)} ${answers.length} answers`);
+        asked.no();
+        expect("and no saves nothing", answers.length === 1 && chooser.asking !== null,
+            `${answers.length} answers`);
         named(rows, "Encoding").verbs()[1].run();
-        const sub = named(rows, "sub");
-        const typed = sub.typed("new.md");
-        expect("what's typed names the file Return saves", names(typed) === "new.md"
-            && typed[0].verb === "save" && typed[0].side === "~/notes/sub", `${names(typed)} ${typed[0]?.side}`);
         ordering();
+        naming(launcher.held[launcher.held.length - 1].row);
+        const sub = named(rows, "sub");
+        launcher.enter(sub);
+        expect("the name is kept from folder to folder", sub.words() === "new.md"
+            && rowsIn(`${notes}/sub`)[0].name === "new.md", `${sub.words()}`);
+        const typed = rowsIn(`${notes}/sub`)[0];
+        expect("the name typed saves in the folder it's typed in", typed.verb === "save"
+            && typed.side === "~/notes/sub", `${typed.verb} ${typed.side}`);
+        launcher.back();
         launcher.open = false;
-        typed[0].run();
+        typed.run();
+        expect("a name not there saves at once, asking nothing", launcher.asked.length === 1,
+            JSON.stringify(launcher.asked));
+    }
+
+    // The folder a save is asked in gives the line the name it saves as,
+    // its caret before the extension, told each change, and lists every row
+    // it holds, led by the name, never narrowed by it.
+    function naming(folder) {
+        expect("saving, the line holds the name given, a prompt's words", folder.words() === "a.md"
+            && typeof folder.worded === "function", folder.words());
+        expect("its caret starts before the extension", folder.caretIn("a.md") === 1,
+            `${folder.caretIn("a.md")}`);
+        folder.worded("new.md");
+        const rows = folder.finds("new.md");
+        expect("a name typed leads, saved by Return, and narrows nothing",
+            names(rows) === "new.md, elsewhere, | sub, a.md, b.png, notes.txt, | Encoding, Order"
+                && rows[0].verb === "save" && rows[0].side === "~/notes", names(rows));
+        expect("only the name's row says it names the line's words, so h and l step on the rest",
+            rows[0].names === true && rows.slice(1).every(row => row.names !== true),
+            rows.map(row => `${row.name}:${row.names}`).join(" "));
+        folder.worded("sub");
+        expect("a folder's name gives nothing to save over", names(folder.finds("sub"))
+            === "elsewhere, | sub, a.md, b.png, notes.txt, | Encoding, Order", names(folder.finds("sub")));
+        folder.worded("new.md");
     }
 
     // Order comes last, saying the order in use, and steps into the three,
@@ -745,11 +790,20 @@ ShellRoot {
         const rows = mine.verbs();
         expect("it leads with the name, apart from its folders", names(rows) === "report.pdf, | Plans",
             names(rows));
-        expect("a name already there steps in to Replace It", rows[0].verb === "more"
-            && names(rows[0].verbs()) === "Replace It", `${rows[0].verb}: ${names(rows[0].verbs())}`);
+        const asked = launcher.asked.length;
+        rows[0].run();
+        expect("a name already there asks once", rows[0].verb === "save"
+            && launcher.asked.length === asked + 1
+            && launcher.asked[asked].question === "Replace report.pdf? (y/n)",
+            `${rows[0].verb} ${JSON.stringify(launcher.asked)}`);
+        launcher.asked[asked].no();
         const plans = named(rows, "Plans");
-        const typed = plans.typed("new.md");
-        expect("what's typed names the file Return saves there, saying the folder",
+        launcher.enter(plans);
+        expect("there too, the line holds the name", plans.words() === "report.pdf"
+            && plans.caretIn("report.pdf") === 6, plans.words());
+        plans.worded("new.md");
+        const typed = plans.finds("new.md");
+        expect("the name typed is the file Return saves there, saying the folder",
             names(typed) === "new.md" && typed[0].verb === "save" && typed[0].side === "Plans"
                 && typed[0].stays === true, `${names(typed)} ${typed[0]?.side} ${typed[0]?.stays}`);
         typed[0].run();

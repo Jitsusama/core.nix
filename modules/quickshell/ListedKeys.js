@@ -21,6 +21,7 @@ const normal = [
     { name: "run", acts: ["run"], firsts: true },
     { name: "lastPlace", acts: ["lastPlace"] },
     { name: "beside", acts: ["nextFile", "previousFile"] },
+    { name: "own", acts: ["openOwn"] },
     { name: "insert", acts: ["insert", "append", "insertStart", "appendEnd"] },
     { name: "change", acts: ["change"] },
     { name: "restore", acts: ["restore"] },
