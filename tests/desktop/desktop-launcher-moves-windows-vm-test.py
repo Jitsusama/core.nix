@@ -852,7 +852,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     assert re.fullmatch(r"Desktop \u00b7 \d+ \u00b7 Windows, Columns", desktop_row), desktop_row
     desktop.photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
-    desktop.step_in()
+    desktop.follow()
     groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
     desktop.launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     desktop.photograph("launcher-shortcut-groups")
@@ -861,7 +861,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # holds groups of its own, then what none of them takes.
     desktop.type_in("work", selecting="Workspaces")
     assert "Go to workspace 3" in desktop.showing()["rows"]
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
     inner = ["Focus", "The Column", "The Window", "Above and Below"]
     assert desktop.showing()["rows"][: len(inner)] == inner
@@ -916,7 +916,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("shortcuts", selecting="Shortcuts")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
     # Inside it, a group named what's typed, whole, comes first, and is
     # Return's row.
@@ -940,7 +940,7 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     # Return steps into a group, and - back out to the
     # layers, the terminal's first and selected, saying it's the window's,
     # and the desktop's next.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal", "tabs"])
     desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])

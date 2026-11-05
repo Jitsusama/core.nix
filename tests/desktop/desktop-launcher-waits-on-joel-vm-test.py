@@ -459,7 +459,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"] == ["Answer the ask", "Later"])
     desktop.next_row()
     picked(desktop, "Later")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Pick a bucket", "Try the new home"])
     desktop.next_row()
     picked(desktop, "Try the new home")
@@ -471,10 +471,10 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     )
     # One naming no window is done in its session's window.
     waiting_opened(desktop)
-    desktop.step_in()
+    desktop.follow()
     desktop.next_row()
     picked(desktop, "Later")
-    desktop.step_in()
+    desktop.follow()
     picked(desktop, "Pick a bucket")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -513,7 +513,7 @@ def waiting_inside(desktop: Desktop) -> tuple[str, list[str]]:
     """Give Needs You's side and the rows inside it, as a fresh look sees them."""
     waiting_opened(desktop)
     side = cast("str", (desktop.showing()["selected"] or {}).get("side"))
-    desktop.step_in()
+    desktop.follow()
     rows = cast("list[str]", desktop.showing()["rows"])
     desktop.close_launcher()
     return side, rows
@@ -616,7 +616,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     )
     # One with nowhere to go steps in to Done and Not Now.
     waiting_opened(desktop)
-    desktop.step_in()
+    desktop.follow()
     desktop.down_to("Answer the old")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Done", "Not Now"])
@@ -634,7 +634,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     )
     # Not Now puts one under Later.
     waiting_opened(desktop)
-    desktop.step_in()
+    desktop.follow()
     picked(desktop, "Restart Once")
     desktop.follow()
     desktop.down_to("Not Now")

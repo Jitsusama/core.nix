@@ -548,7 +548,7 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     def save_a_copy() -> None:
         """Press Save a Copy on the menu, and wait for the picker, in Downloads, naming it."""
         into_the_menu()
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
         desktop.down_to("Save a Copy")
         machine.send_key("ret")
@@ -659,7 +659,7 @@ def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
         assert len(shown["rows"]) > 1, shown["rows"]
         assert (shown["selected"] or {}).get("name") == shown["rows"][0], shown["selected"]
         desktop.down_to(further)
-        desktop.step_in()
+        desktop.follow()
         # Inside, a stand-in dimmed while it's asked, then what was found
         # once the source says so, with nothing typed again. The stand-in
         # stays dimmed where it stood until a key, as any row that leaves
@@ -808,7 +808,7 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     )
     machine.fail(f"test -s {opened}")
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     # The mail with her, its own component's row; a meeting to come isn't
     # Recent.
     desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
@@ -837,7 +837,7 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Docs")
     desktop.follow()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
     plan = desktop.showing()["selected"]
     assert plan["is"] == "gdoc:plan", plan

@@ -923,11 +923,12 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     )
     for scale in at_each_scale:
         at_scale(desktop, scale)
+        # The time copies on Return, so Ctrl+] goes into what keeps it.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
         desktop.down_to("Servers")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
         desktop.down_to("time.harbour.test")
         desktop.launcher_until(
@@ -967,7 +968,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # stands taller than two lines and none reads a word a line; where one takes two, each
         # stands a beat further from the one before.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
         desktop.down_to("Zone")
         desktop.launcher_until(
@@ -1327,7 +1328,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.down_to("a.md")
             ran(desktop, "arga")
             desktop.down_to("more")
-            desktop.step_in()
+            desktop.follow()
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["~/gathering/more"])
             desktop.down_to("d.md")
             ran(desktop, "arga")

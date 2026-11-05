@@ -678,9 +678,9 @@ def transcripts_listed(desktop: Desktop) -> None:
     # saying what it was and when, and how long it went on.
     desktop.answer("people")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "People")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("transcripts", selecting="Transcripts")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Call With Ada Lovelace", "Standup"])
     for name, side, length in [
         ("Call With Ada Lovelace", "call", "32 min"),
@@ -714,7 +714,7 @@ def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
     )
     desktop.step_in("ret")
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Call With Ada Lovelace" in shown["rows"])
     things = desktop.showing()["things"]
     assert any(thing["is"] == f"transcript:{ada}" for thing in things), things

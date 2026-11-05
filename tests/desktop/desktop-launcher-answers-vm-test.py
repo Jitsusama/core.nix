@@ -110,7 +110,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     # The copy is listed last, after the facts, since nothing else inside
     # does anything (Joel, 2026-10-28: never a copy at the top).
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["rows"][:1] == ["Charger"] and shown["rows"][-1:] == ["Copy"]
     )
@@ -159,7 +159,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     # history first, and again once back out by -.
     desktop.answer("heat")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
     desktop.type_in("battery", "Battery")
     assert re.search("^-?\\d+ \\u00b0C$", desktop.showing()["selected"]["side"])
@@ -170,7 +170,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
             shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
         )
 
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(in_battery)
     desktop.photograph("launcher-heat-part")
     desktop.step_out()
@@ -262,7 +262,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     )
     # The levels lead the answer's step, then the copy, after what can be
     # done and before what's said.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:4] == [*KBD_LEVELS, "Copy"])
     for _ in range(KBD_LEVELS.index("Light to 2 of 2")):
         desktop.next_row()
@@ -292,8 +292,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
         " && mv $XDG_RUNTIME_DIR/desk/.k $XDG_RUNTIME_DIR/desk/keyboards.json"
     )
     board = "The Laptop's Keyboard"
+    # An answer asked at the top copies on Return, so Ctrl+] goes into it.
     desktop.answer("keyboards")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: board in shown["rows"])
     desktop.down_to(board)
     desktop.step_in("ret")
@@ -338,7 +339,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     # It changed something, so the launcher stays until it's closed.
     desktop.close_launcher()
     desktop.answer("keyboards")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: board in shown["rows"])
     desktop.down_to(board)
     desktop.step_in("ret")
@@ -347,7 +348,7 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Repeat" in shown["rows"])
     desktop.down_to("Repeat")
     desktop.launcher_until(
@@ -413,7 +414,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     # Its first part, a step in after Return's own Copy, is the space the
     # headline's disk has, and the disk's speed, how busy it is and its
     # latency come after.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Space"])
     desktop.launcher_until(
         lambda shown: (
@@ -426,7 +427,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     # A disk is a thing, so the drawer is out for it: one that's short
     # says beside it what the guard is doing, and in the drawer its
     # figures and the guard's own words (docs/design.md, the drawer).
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
@@ -441,11 +442,11 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     # step in each holder, saying whether the guard clears any of it or
     # why not, its own sentence below.
     desktop.answer("disk")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's Filling It"])
     desktop.type_in("filling", selecting="What's Filling It")
     assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"] == ["Containers", "Nix cache", "Copy"]
@@ -464,7 +465,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
             is not None
         )
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing", "Copy"])
     desktop.close_launcher()
     # What the network carries now, in and out, from the kernel's
@@ -499,7 +500,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
             is not None
         )
     )
-    desktop.step_in()
+    desktop.follow()
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
         lambda shown: shown["rows"][:5] == ["In", "Out", "Connection", "Round Trip", "Dropped"]
@@ -514,7 +515,7 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     desktop.launcher_until(
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9", "Copy"])
     desktop.close_launcher()
     # A guard that stops writing is asked about once its last heartbeat
@@ -619,7 +620,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
     # run against the last time, a minute turning over allowed for, or what
     # it waits for; below it, its kind, the memory it holds or needs, and
     # how it's marked.
-    desktop.step_in()
+    desktop.follow()
     # Past Return's own act, where the step leads with it.
     desktop.launcher_until(lambda shown: "Lighthouse" in shown["rows"])
     desktop.down_to("Lighthouse")
@@ -665,18 +666,18 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
             and shown["footer"] == "just now"
         )
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
     # Past the answer's own Copy, which leads, to Cores.
     desktop.down_to("Cores")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Core 0")
     desktop.close_launcher()
     # The memory, and the programs holding most of it, read once it's
     # asked.
     desktop.answer("memory")
     desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: {"Used", "Cached", "Using It"} <= set(shown["rows"]))
     desktop.close_launcher()
 
@@ -726,9 +727,9 @@ def a_scratch_folder(desktop: Desktop) -> str:
 def into_whats_filling_it(desktop: Desktop) -> None:
     """Open Disk's What's Filling It, with the scratch folder alone in it."""
     desktop.answer("disk")
-    desktop.step_in()
+    desktop.follow()
     desktop.type_in("filling", selecting="What's Filling It")
-    desktop.step_in()
+    desktop.follow()
     # The folder, then the figure's own Copy, last as every step keeps it.
     desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch", "Copy"])
 
@@ -925,7 +926,7 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
                 shown["footer"] == "clock moved to Edmonton time, as the laptop is in Lighthouse"
             )
         )
-        desktop.step_in()
+        desktop.follow()
         # Put It Back leads what can be done; Copy, which isn't an act on
         # the clock, may stand before or after it.
         desktop.launcher_until(
@@ -977,7 +978,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         # may reach Open-Meteo, which finds no such place.
         nowhere = "Qzxv Fjordholm"
         location(lambda _: True)
-        desktop.step_in()
+        desktop.follow()
         desktop.down_to("Set It by Hand")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["asking"])
@@ -1010,7 +1011,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
             timeout=dt.timedelta(seconds=30),
         )
         location(lambda row: row["side"] == "Lighthouse, Alberta")
-        desktop.step_in()
+        desktop.follow()
         # Inside, in the design's order, saying it was set by hand.
         desktop.launcher_until(
             lambda shown: (
@@ -1052,16 +1053,16 @@ def time_inside(desktop: Desktop) -> None:
         rows = cast("list[str]", shown["rows"])
         return "Clock" in rows and rows[rows.index("Clock") :][:2] == keeping
 
+    # The time copies on Return, so Ctrl+] goes into what keeps it.
     desktop.answer("time")
-    desktop.step_in()
+    desktop.follow()
     # A step holds its rows still, so a row come after it was made goes last (Steady.js):
     # where chrony's reading is back only once the step is made, Servers follows Copy, and
     # stepping in afresh puts it after Clock.
     desktop.launcher_until(lambda shown: "Servers" in shown["rows"])
     if not kept_rows(desktop.showing()):
-        desktop.machine.send_chars("h")
-        desktop.launcher_until(lambda shown: shown["held"] == [])
-        desktop.step_in()
+        desktop.step_out()
+        desktop.follow()
     desktop.launcher_until(kept_rows)
 
 
@@ -1105,7 +1106,7 @@ def calendars_asked(desktop: Desktop) -> None:
     try:
         desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
         desktop.answer("date")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: any(
                 str(thing["reads"]).startswith("Calendars \u00b7 not answering")
@@ -1120,14 +1121,14 @@ def calendars_asked(desktop: Desktop) -> None:
     # Asked again, today in the Chinese, Japanese, Hebrew and Islamic calendars, each a
     # thing whose plate is titled with its date in its own script.
     desktop.answer("date")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: any(
             str(thing["reads"]).startswith("Calendars \u00b7 4") for thing in shown["things"]
         )
     )
     desktop.down_to("Calendars")
-    desktop.step_in()
+    desktop.follow()
     calendars = ["Chinese", "Japanese", "Hebrew", "Islamic"]
     desktop.launcher_until(lambda shown: shown["rows"][: len(calendars)] == calendars)
     desktop.down_to("Hebrew")
@@ -1158,7 +1159,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         "Last Sync", "Next Poll",
     ]  # fmt: skip
     desktop.down_to("Clock")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][: len(clock)] == clock)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
     for read in ("Leap Second \u00b7 none announced", "Service \u00b7 chrony 4."):
@@ -1168,7 +1169,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     # note says where it stands, its drawer and its inside every figure chronyd has of it.
     time_inside(desktop)
     desktop.down_to("Servers")
-    desktop.step_in()
+    desktop.follow()
     servers = ["time.harbour.test", "far.harbour.test"]
     desktop.launcher_until(lambda shown: shown["rows"][: len(servers)] == servers)
     desktop.down_to("time.harbour.test")
@@ -1184,7 +1185,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.down_to("far.harbour.test")
     assert desktop.showing()["selected"]["note"] == "out of reach", desktop.showing()["selected"]
     desktop.down_to("time.harbour.test")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
     for read in (
@@ -1199,7 +1200,7 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     try:
         desktop.machine.succeed("systemctl stop chronyd")
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: any(
                 str(thing["reads"]).startswith("Clock \u00b7 nothing keeps the time")
@@ -1224,7 +1225,7 @@ def keeps_one_clock(desktop: Desktop) -> None:
     try:
         desktop.as_account("systemctl --user stop timekeeping.socket timekeeping.service")
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Clock" in shown["rows"])
     finally:
         desktop.as_account("systemctl --user start timekeeping.socket")
@@ -1288,7 +1289,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
         )
         desktop.type_in("firm", "Firmware")
         desktop.photograph("launcher-firmware-in-machine")
-        desktop.step_in()
+        desktop.follow()
         # A device is a thing, so the drawer is out for the BIOS: who makes
         # it, its version, what's offered and the release's own words.
         desktop.launcher_until(
@@ -1303,7 +1304,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
         assert reads[0].startswith("System Firmware \u00b7 1.12.0"), reads
         assert reads[1].startswith("PVC10 SK hynix 1024GB \u00b7 61001171"), reads
         desktop.photograph("launcher-firmware")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"] == ["Install 1.13.0", "Version"])
         desktop.close_launcher()
     finally:
@@ -1345,9 +1346,9 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
             lambda shown: firmware_reads(shown).startswith("Firmware \u00b7 1 update ready")
         )
         desktop.type_in("firm", "Firmware")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"][:1] == ["System Firmware"])
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Install 1.13.0"])
         # Return asks, its foot saying what it ends; nothing has run yet.
         machine.send_key("ret")
@@ -1528,7 +1529,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     # refused first, as when the reader's socket is missing on a machine.
     desktop.answer("heat")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.step_in()
+    desktop.follow()
     stand_in_for_the_telemetry(desktop)
     # Listed once the first reading comes, stepped in already, in order:
     # the refused connection is made afresh while Heat is still shown.
@@ -1545,7 +1546,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     # held, a step in; the core its cluster didn't hold isn't listed.
     desktop.answer("processor")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Held Back" in shown["rows"])
     # Clock is there only where the kernel says the cores' clocks.
     rows = desktop.showing()["rows"]
@@ -1557,7 +1558,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
             and shown["footer"] == "by its power limit, PL1, over the last second"
         )
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0", "Copy"])
     desktop.close_launcher()
     # What kept it from resting comes and goes, so it's the last part, before
@@ -1565,7 +1566,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     # did a step in.
     desktop.answer("processor")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Kept From Resting", "Copy"])
     desktop.type_in("kept", "Kept From Resting")
     desktop.launcher_until(
@@ -1575,7 +1576,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         )
     )
     desktop.photograph("launcher-kept-from-resting")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
     desktop.close_launcher()
     the_telemetry_is_let_go(desktop)

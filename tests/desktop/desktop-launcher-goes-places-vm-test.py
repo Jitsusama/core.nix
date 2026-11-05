@@ -120,7 +120,7 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     )
     desktop.photograph("launcher-volume-told")
     # A step in, each device's level drawn as a bar.
-    desktop.step_in()
+    desktop.follow()
     desktop.photograph("launcher-volume-parts")
     desktop.close_launcher()
 
@@ -189,7 +189,7 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
         if desktop.showing()["selected"]["is"] == "collection:applications":
             break
     chosen = selected()
-    desktop.step_in()
+    desktop.follow()
     # Open programs come first, so kitty, whose notes are open, leads the
     # programs closed, however they're named.
     desktop.launcher_until(lambda shown: shown["rows"][:1] == ["kitty"])
@@ -412,7 +412,7 @@ def test_an_opening_is_traced_and_sent_to_the_collector_as_it_closes(desktop: De
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.down_to("Machine")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Machine"])
         desktop.step_out()
         desktop.launcher_until(lambda shown: shown["held"] == [])
@@ -891,7 +891,7 @@ def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Deskt
     """The machine's programs are there the first time it's asked."""
     for figure in ("processor", "memory"):
         desktop.answer(figure)
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "Using It" in shown["rows"])
         desktop.close_launcher()
 
@@ -960,7 +960,7 @@ def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_sa
     # What was taken is read as the launcher opens, so Recent showing the newest says it's read.
     desktop.capture()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "2026-10-29 09-00-00.png" in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     desktop.answer("wombat")

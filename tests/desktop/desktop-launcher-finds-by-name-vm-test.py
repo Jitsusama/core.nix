@@ -98,8 +98,9 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # The status facts hold their places; the keys are normal's own, drawn with their marks.
     facts = {(text, x) for text, x in rest if "<font" not in text}
     assert facts <= held, (facts, laid["foot"])
+    # The answer copies on Return and holds more, so Ctrl+] in comes last, first to give way.
     told = desktop.showing()["selected"]["told"]
-    assert told[-2:] == [": commands", "Space ? keys"], told
+    assert told[-3:] == [": commands", "Space ? keys", "Ctrl+] in"], told
     assert not any("\u2192" in text for text in told), told
     assert not any(word["text"].endswith(" clear") for word in laid["field"]), laid["field"]
     machine.send_chars("A")
@@ -954,7 +955,7 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     # Escape at rest closes it from a step in, never stepping out.
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
-    desktop.step_in()
+    desktop.follow()
     # A held place's rows are numbered as the search's are (87ED6K, for the picker's folders).
     desktop.launcher_until(
         lambda shown: (
@@ -1049,12 +1050,12 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
         " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
     )
     desktop.answer("address")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "VPN" in shown["rows"])
     desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
     # Return steps into it.
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
     # Stepping back out, by -, lands on the row it came from, with its find.
     desktop.step_out()
@@ -1092,12 +1093,12 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "answer:machine:cpu"
     )
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Processor"] and "Cores" in shown["rows"]
     )
     desktop.down_to("Cores")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["path"] == ["Machine", "Processor", "Cores"])
     cores = desktop.showing()["rows"]
     if len(cores) > 1:
@@ -1213,10 +1214,10 @@ def photograph_a_calendar(
         )
 
     desktop.answer("date")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
     desktop.down_to("Calendars")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: calendar in shown["rows"])
     desktop.down_to(calendar)
     desktop.launcher_until(drawn)
@@ -1255,7 +1256,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         ("date", "ISO Date", "launcher-date-inside"),
     ]:
         desktop.answer(typed)
-        desktop.step_in()
+        desktop.follow()
         # Each wait ends before the loop moves on, so it reads this pass's part.
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
         desktop.photograph(picture)
@@ -1271,11 +1272,12 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
         ("Clock", "Offset", "launcher-time-clock"),
         ("Servers", "time.harbour.test", "launcher-time-servers"),
     ]:
+        # The time copies on Return, so Ctrl+] goes into what keeps it.
         desktop.answer("time")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: holder in shown["rows"])  # noqa: B023
         desktop.down_to(holder)
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: first in shown["rows"])  # noqa: B023
         desktop.down_to(first)
         if holder == "Servers":
@@ -1296,7 +1298,7 @@ def test_the_answers_are_photographed_for_the_gallery(desktop: Desktop) -> None:
     # The time here counts each second while it's shown, and a tick never moves the
     # selection or changes the card's size: UTC stays selected, among as many rows.
     desktop.answer("time")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "UTC" in shown["rows"])
     desktop.down_to("UTC")
     before = desktop.showing()

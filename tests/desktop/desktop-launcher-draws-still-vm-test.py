@@ -383,18 +383,18 @@ def test_a_place_stepped_into_under_load_shows_its_first_row_at_its_top(
         top = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["firstAt"]
         for _ in range(WALKS):
             desktop.down_to("Machine")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
             # Down to its last place, below the fold, and straight into it.
             desktop.down_to("Firmware")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
             desktop.step_out()
             desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])
             # And from home's last place straight into it.
             desktop.down_to("Keyboard")
-            desktop.step_in()
+            desktop.follow()
             first_rows(top)
             desktop.step_out()
             desktop.launcher_until(lambda shown: shown["held"] == [])

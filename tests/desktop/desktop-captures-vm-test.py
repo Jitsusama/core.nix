@@ -261,7 +261,7 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
     newest = desktop.machine.succeed(f"ls -t {desktop.pictures}/*.png | head -1").strip()
     desktop.capture()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == newest.rsplit("/", 1)[1]
@@ -645,8 +645,8 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
-    # The camera, then the copy.
-    desktop.step_in()
+    # It copies on Return, so Ctrl+] goes in: the camera, then the copy.
+    desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Built-In Camera", "Copy"])
     desktop.close_launcher()
     desktop.answer("built-in camera")
@@ -663,7 +663,7 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.photograph("launcher-camera")
     desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In Use")
-    desktop.step_in()
+    desktop.follow()
     # Copying what it says comes last, since nothing inside does anything.
     assert desktop.showing()["rows"] == ["chrome", "Copy"]
     desktop.step_out()

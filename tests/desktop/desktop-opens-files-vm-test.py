@@ -98,7 +98,7 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
         ),
     )
     desktop.down_to("Recent")
-    desktop.step_in()
+    desktop.follow()
     taken = picture.rsplit("/", 1)[-1]
     desktop.launcher_until(lambda shown: shown["rows"][:1] == [taken])
     desktop.follow()
@@ -604,12 +604,12 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Google Drive"
         )
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(
             lambda shown: shown["rows"][:3] == ["My Drive", "Shared with Me", "Shared Drives"]
         )
         desktop.down_to("My Drive")
-        desktop.step_in()
+        desktop.follow()
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
         desktop.photograph("file-chooser-drive")
         desktop.down_to("menu.pdf")
@@ -932,7 +932,7 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     desktop.type_in("kitty", selecting="kitty")
     desktop.follow()
     desktop.type_in("recent", selecting="Recent")
-    desktop.step_in()
+    desktop.follow()
     desktop.launcher_until(lambda shown: "tide" in shown["rows"])
     desktop.photograph("launcher-kitty-recent")
     desktop.type_in("tide", selecting="tide")
