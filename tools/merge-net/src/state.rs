@@ -176,11 +176,10 @@ impl State {
     /// Say something in the net's own log, and on its standard error.
     pub fn say(&self, what: &str) {
         eprintln!("merge-net: {what}");
-        let _ = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.root.join("logs/net.log"))
-            .and_then(|mut log| writeln!(log, "{} {what}", now()));
+        let _ = append_line(
+            &self.root.join("logs/net.log"),
+            &format!("{} {what}", now()),
+        );
     }
 }
 
@@ -222,12 +221,19 @@ fn write_json(path: &Path, value: &Value) -> Result<(), String> {
 }
 
 fn append(path: &Path, value: &Value) -> Result<(), String> {
+    append_line(path, &value.to_string())
+        .map_err(|error| format!("writing {}: {error}", path.display()))
+}
+
+/// Add `line` to the end of `path` in one write. Two tests ending at once
+/// append from two threads, and a line written in pieces, as `writeln!`
+/// writes a JSON value, comes out woven into the other.
+fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
     fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
-        .and_then(|mut file| writeln!(file, "{value}"))
-        .map_err(|error| format!("writing {}: {error}", path.display()))
+        .open(path)?
+        .write_all(format!("{line}\n").as_bytes())
 }
 
 /// The time now, in seconds since the epoch, as every file here gives it.
@@ -268,6 +274,29 @@ mod tests {
             .unwrap();
         assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
         assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
+        fs::remove_dir_all(&state.root).unwrap();
+    }
+
+    #[test]
+    fn runs_ending_together_are_each_kept_whole() {
+        let state = state("together");
+        let checks = ["vm-a", "vm-b", "vm-c", "vm-d"];
+        std::thread::scope(|scope| {
+            for check in checks {
+                let state = &state;
+                scope.spawn(move || {
+                    let log = state.log("aaaa", check, 1);
+                    for _ in 0..200 {
+                        state
+                            .record("aaaa", check, Ran::Passed, Some(0), &log)
+                            .unwrap();
+                    }
+                });
+            }
+        });
+        for check in checks {
+            assert_eq!(state.runs("aaaa", check).len(), 200, "{check}'s runs");
+        }
         fs::remove_dir_all(&state.root).unwrap();
     }
 
