@@ -45,8 +45,9 @@
 
   # The splash's prompt is built as the lock's field (../quickshell/Lock.qml
   # and Prompt.qml) from the theme's sizes: Prompt.qml's row, the hairline,
-  # the inset rung to the padlock's cell and Prompt.qml's room after the
-  # glyph, the step it names until it moves to the rungs.
+  # the inset rung to the padlock's cell, and Prompt.qml's room after the
+  # glyph, the step it names until it moves to the rungs, in the lead Qt
+  # measures.
   the-splash-prompt-is-the-locks =
     let
       machine = bareNixos [

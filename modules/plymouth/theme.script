@@ -38,7 +38,8 @@ fun sprite_at(sprite, image, x, y, z)
 
 # Where each face's capitals stand in its line at each scale, in device
 # pixels from the line's top: the top of an H and the baseline under it,
-# measured as the pictures were drawn.
+# measured as the pictures were drawn; and how far the padlock's cell leads
+# what's typed, as Qt measures the lock's.
 @measured@
 
 fun measure(what)
@@ -202,7 +203,8 @@ fun lay_out()
     local.room = @inkRoom@ * global.scale;
     global.lock.sprite = sprite_at(global.lock.sprite, global.lock.image, cell - room,
                                    global.centre - global.lock.image.GetHeight() / 2, 21);
-    global.typed = cell + global.lock.image.GetWidth() - 2 * room + @glyphGap@ * global.scale;
+    # What's typed starts as far after the cell as the lock's does.
+    global.typed = cell + measure("lead");
 
     local.hint = global.hints[global.hint.which];
     global.hint.sprite = sprite_at(global.hint.sprite, hint, global.typed,

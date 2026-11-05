@@ -49,9 +49,9 @@ let
 
   # The prompt's place, as Lock.qml and Prompt.qml build it: a field of one
   # prompt's row inside its hairline, the padlock's cell the inset rung in
-  # from the frame's inside edge, what's typed the glyph's advance and
-  # Prompt.qml's room after it, and the hint where the first letter typed
-  # will be.
+  # from the frame's inside edge, what's typed as far after it as Qt puts
+  # it (./glyph-width.qml), and the hint where the first letter typed will
+  # be.
   inherit (theme) space;
   inherit (theme.shape) border;
   panel = {
@@ -93,6 +93,42 @@ let
     inherit (theme) font;
   };
   fonts = pkgs.makeFontsConf { fontDirectories = config.fonts.packages ++ [ serifText ]; };
+  # The fonts hinted as the machine hints them, for Qt, whose width for a
+  # glyph moves with its hinting.
+  qtFonts =
+    let
+      inherit (config.fonts.fontconfig) hinting;
+    in
+    pkgs.writeText "fonts.conf" ''
+      <?xml version="1.0"?>
+      <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+      <fontconfig>
+        <include>${fonts}</include>
+        <match target="pattern">
+          <edit name="hinting" mode="assign"><bool>${lib.boolToString hinting.enable}</bool></edit>
+          <edit name="hintstyle" mode="assign"><const>hint${hinting.style}</const></edit>
+        </match>
+      </fontconfig>
+    '';
+  # How far Prompt.qml's glyph leads what's typed, as Qt measures it, in
+  # the desktop's pixels, put in for the script with the pictures' measures.
+  lead = ''
+    lead=$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 FONTCONFIG_FILE=${qtFonts} \
+      QML_IMPORT_PATH=${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtQmlPrefix} \
+      QT_PLUGIN_PATH=${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.qtPluginPrefix} \
+      ${lib.getExe' pkgs.qt6.qtdeclarative "qml"} ${./glyph-width.qml} -- ${
+        lib.escapeShellArgs [
+          lockGlyph
+          mono
+          (toString (points "mono" "large"))
+          space.m
+        ]
+      } 2>&1 | sed -n 's/^qml: \([0-9]*\)$/\1/p')
+    [ -n "$lead" ] || { echo "Qt said nothing of how far the glyph leads"; exit 1; }
+    for scale in 1 2; do
+      echo 'measured["lead-'$scale'"] = '$((lead * scale))';' >> measured
+    done
+  '';
 
   # The words under the name, keyed by the picture that says them.
   under = {
@@ -212,7 +248,7 @@ let
       # The lock's ink reaches past its cell, so it's drawn with room round
       # it and cut to the line's height; drawn without, its right side would
       # be cut away. The room is kept at its sides, so the script finds its
-      # cell, and the glyph's advance, a room in from each.
+      # cell a room in.
       ${words "lock.png" mono large colours.machine inkRoom lockGlyph}
       magick lock.png -shave 0x${at inkRoom} +repage ${file "lock"}
       ${lib.concatStrings (lib.mapAttrsToList hint hints)}
@@ -301,9 +337,6 @@ let
     panelHeight = panel.height;
     # The padlock's cell, from the frame's outside edge.
     markAt = border + space.rung.inset;
-    # Prompt.qml's glyphWidth, the glyph's advance and this, which it names
-    # by the step until it moves to the rungs.
-    glyphGap = space.m;
     inherit inkRoom;
     # A fifth of the size between dots, as Prompt.qml spaces them.
     dotSpacing = toString (points "mono" "large" * 4 / 3 * 0.2);
@@ -334,6 +367,7 @@ let
         out=$dir
         ${drawnAt 1}
         ${drawnAt 2}
+        ${lead}
         ${lib.optionalString (picture != null) "magick ${picture} -strip $out/picture.png"}
         substitute ${script} $out/jitsusama.script --replace-fail @measured@ "$(cat measured)"
         cat > $out/jitsusama.plymouth <<EOF
