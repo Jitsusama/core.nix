@@ -847,8 +847,9 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     assert "Show every workspace" in desktop.showing()["rows"]
     # The field says where that is as one path, in the rows' own case.
     assert desktop.showing()["path"] == ["Shortcuts", "Desktop", "Workspaces"]
-    # Back out: to the desktop with "work" typed, cleared, then the top.
-    for _step in range(3):
+    # Back out: to the desktop with "work" typed, then Shortcuts, each h a step,
+    # since no key clears the find from normal.
+    for _step in range(2):
         machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"] and shown["rows"] == layers)
     # At the top, what's typed finds a chord in any layer, flat.

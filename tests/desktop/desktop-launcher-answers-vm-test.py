@@ -229,6 +229,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     # Room light beside it.
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
+    # Screens is held, with its screen, before l steps in, or the step in
+    # would be counted from before Screens was.
+    desktop.launcher_until(lambda shown: shown["held"] == ["screens"] and shown["rows"] != [])
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Focus", "Brightness", "Room Light"])
     desktop.next_row()
