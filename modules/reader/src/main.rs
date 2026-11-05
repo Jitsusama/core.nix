@@ -1095,7 +1095,7 @@ impl App {
             }
             keys::LineKey::TakeName => typing.typed = menu.line(),
             keys::LineKey::MenuAway => {
-                typing.typed = menu.typed.clone();
+                typing.typed.clone_from(&menu.typed);
                 menu.chosen = None;
             }
             _ => {}

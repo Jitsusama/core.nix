@@ -54,7 +54,7 @@ pub fn entries() -> Vec<Entry> {
         .filter_map(|&(act, title)| {
             let command = commands.iter().find(|command| command.act == act)?;
             Some(Entry {
-                command: command.command.clone(),
+                command: command.name.clone(),
                 short: command.short.clone(),
                 title: title.to_string(),
                 key: command.key.clone().unwrap_or_default(),

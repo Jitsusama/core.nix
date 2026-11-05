@@ -541,16 +541,16 @@ fn read_lines(language: &toml::Table) -> Vec<LineSlot> {
 /// A command the language gives the page: the act's name, its whole
 /// command and short form, whether it takes a range, and the act's first
 /// key as the key list shows it, if the reader has one for it.
-pub struct Command {
+pub struct PageCommand {
     pub act: String,
-    pub command: String,
+    pub name: String,
     pub short: String,
     pub ranged: bool,
     pub key: Option<String>,
 }
 
 /// Every command the language gives the page, by its act's name.
-pub fn commands() -> Vec<Command> {
+pub fn commands() -> Vec<PageCommand> {
     let language: toml::Table = LANGUAGE.parse().expect("the key language is TOML");
     let acts = language["acts"]
         .as_table()
@@ -572,9 +572,9 @@ pub fn commands() -> Vec<Command> {
                 .find(|(spoken, _)| spoken == name)
                 .and_then(|&(_, done)| table().sequences.iter().find(|(_, act, _)| *act == done))
                 .map(|(keys, _, _)| shown_all(keys));
-            Some(Command {
+            Some(PageCommand {
                 act: name.clone(),
-                command,
+                name: command,
                 short,
                 ranged: act.get("range").and_then(toml::Value::as_bool) == Some(true),
                 key,
@@ -1171,7 +1171,8 @@ mod tests {
         assert_eq!(parse("<PageDown>"), Some(vec![Key::PageDown]));
         assert_eq!(parse("<lt>"), Some(vec![Char('<')]));
         assert_eq!(parse("<"), Some(vec![Char('<')]));
-        assert_eq!(parse("<S-Tab>"), None);
+        assert_eq!(parse("<S-Tab>"), Some(vec![Key::BackTab]));
+        assert_eq!(parse("<S-Left>"), None);
     }
 
     #[test]

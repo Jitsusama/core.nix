@@ -308,11 +308,11 @@ fn menu_source(ask: &Ask, menu: &Menu) -> String {
         })
         .collect();
     // A Typst array, a trailing comma making one of a single command.
-    let all: String = menu
-        .all
-        .iter()
-        .map(|command| format!("{}, ", quoted(command)))
-        .collect();
+    let all = menu.all.iter().fold(String::new(), |mut all, command| {
+        all.push_str(&quoted(command));
+        all.push_str(", ");
+        all
+    });
     let width = ask.width_pt.max(290.0 + 72.0);
     format!(
         r#"{ink}#set page(width: {width}pt, height: auto, margin: 0pt, fill: ink.sunken)
