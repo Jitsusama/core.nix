@@ -1212,7 +1212,7 @@ Floating {
     // above the frame's inside bottom, a thing's step below the last
     // thing shown, which ends a step sooner for it.
     readonly property real moreBase: rowBaseline + Math.floor((tall - Theme.border
-        - Theme.space.rung.inset - rowBaseline) / Theme.space.beat + 0.001) * Theme.space.beat
+        - Theme.space.rung.inset - rowBaseline) / Theme.space.beat + rounding) * Theme.space.beat
     readonly property var shownAndHidden: {
         const spans = lineSpans();
         const top = view.contentY;
