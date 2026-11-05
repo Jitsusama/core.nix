@@ -226,57 +226,62 @@ Scope {
                 }
             }
 
-            Column {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: parent.height / 12
-                spacing: Theme.space.xl
+            // Low on the screen, under the picture's sky, but never nearer its
+            // foot than a floating frame stands from an edge, so a short
+            // screen keeps the time on it, measured to the said line's
+            // baseline. The field is placed first, on a whole device pixel
+            // so its frame's hairline falls clean at 1.5, and the time and
+            // what PAM says stand from it.
+            Item {
+                id: column
+                anchors.fill: parent
 
-                Lifted {
+                FontMetrics {
+                    id: voiceFace
+                    readonly property real capitals: tightBoundingRect("H").height
+                    font.family: Theme.level.voice.family
+                    font.pointSize: Theme.level.voice.pointSize
+                    font.italic: Theme.level.voice.italic
+                    font.variableAxes: Theme.level.voice.variableAxes
+                }
+
+                Hairline {
+                    id: snap
+                    visible: false
+                }
+
+                // The time and the field are two regions with no rule
+                // between them, so the day's baseline stands three beats
+                // over the field's frame.
+                PictureTime {
+                    id: time
                     anchors.horizontalCenter: parent.horizontalCenter
-
-                    Column {
-                        // At Display, at the size it stands alone on the
-                        // wallpaper at.
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(clock.date, "HH:mm")
-                            color: Theme.level.display.colour
-                            font.family: Theme.level.display.family
-                            font.pointSize: Theme.level.display.wallpaper.pointSize
-                            font.weight: Theme.level.display.weight
-                            font.letterSpacing: Theme.level.display.wallpaper.letterSpacing
-                            font.features: Theme.level.display.features
-                        }
-
-                        // Nothing else is on screen to say the day, at
-                        // Words, in text since it stands alone.
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(clock.date, "dddd d MMMM")
-                            color: Theme.text
-                            font.family: Theme.level.words.family
-                            font.pointSize: Theme.level.words.pointSize
-                            font.weight: Theme.level.words.weight
-                            font.variableAxes: Theme.level.words.variableAxes
-                        }
-                    }
+                    y: field.y - 3 * Theme.space.beat - dayBaseline
+                    date: clock.date
                 }
 
                 Floating {
+                    id: field
+                    x: snap.whole((column.width - width) / 2)
+                    // What PAM says is about the field, so its capitals
+                    // stand a beat under the frame, nearer it than the time
+                    // is.
+                    y: snap.whole(column.height - Math.max(column.height / 12,
+                        Theme.space.rung.screen) - voiceFace.capitals - Theme.space.beat - height)
                     width: root.width
                     keys: true
                     urgent: root.failed
 
+                    // A lone field: one row, its mark caps-centred, its
+                    // sides the inset from the frame to the ink.
                     Item {
                         width: parent.width
-                        height: prompt.height + 2 * Theme.inset
+                        height: prompt.height
 
                         Prompt {
                             id: prompt
-                            x: Theme.inset
-                            y: Theme.inset
-                            width: parent.width - 2 * Theme.inset
+                            x: Theme.space.rung.inset - markAt
+                            width: parent.width - 2 * x
                             glyph: Theme.glyph.secret
                             hue: Theme.machine
                             secret: root.question === "" || !root.answerShows
@@ -298,13 +303,17 @@ Scope {
                 // moves when it speaks.
                 Lifted {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    y: field.y + field.height + Theme.space.beat + voiceFace.capitals
+                        - saying.baselineOffset
                     width: root.width
 
                     // In the voice, since it's the lock speaking, in text
                     // as it does.
                     Text {
+                        id: saying
                         width: root.width
-                        height: Theme.space.xl
+                        // A line's room whether it says anything or not.
+                        height: voiceFace.height
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
                         text: root.said

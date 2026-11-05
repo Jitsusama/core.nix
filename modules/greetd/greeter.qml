@@ -30,8 +30,6 @@ ShellRoot {
 
     // As wide as polkit's prompt, the same kind of thing.
     readonly property int width: 560
-    // A line of the title: the large step's, on the space grid.
-    readonly property int line: Theme.space.xl
 
     readonly property var accounts: @accounts@
     readonly property var session: @session@
@@ -50,8 +48,8 @@ ShellRoot {
     property bool answerShows: false
     // What PAM said that wasn't a question.
     property string said
-    // How long the boot took, once systemd has said.
-    property string booted
+    // How long the boot took, once systemd has said, in parts.
+    property var booted: []
     // Whether greetd has just refused the password. Quickshell then cancels
     // the session greetd has already ended, and greetd's error about that
     // says nothing about the password.
@@ -92,8 +90,8 @@ ShellRoot {
     }
 
     // "Startup finished in 4.9s (firmware) + 5.5s (loader) + 512ms (kernel)
-    // + 11.6s (initrd) + 10.9s (userspace) = 33.5s" as "booted in 33.5 s ·
-    // firmware 4.9 · …", every part in seconds.
+    // + 11.6s (initrd) + 10.9s (userspace) = 33.5s" as the parts "booted in
+    // 33.5 s", "firmware 4.9" and on, every part in seconds.
     function timings(said) {
         const seconds = time => {
             const parts = time.match(/(\d+(?:\.\d+)?)(min|ms|s)/g) || [];
@@ -106,12 +104,12 @@ ShellRoot {
         };
         const finished = said.match(/Startup finished in (.*) = (.*)$/m);
         if (!finished)
-            return "";
+            return [];
         const steps = finished[1].split(" + ").map(step => {
             const [, time, name] = step.match(/^(.*) \((.*)\)$/) || [null, step, ""];
             return `${name} ${seconds(time)}`;
         });
-        return [`booted in ${seconds(finished[2])} s`, ...steps].join("  \u00b7  ");
+        return [`booted in ${seconds(finished[2])} s`, ...steps];
     }
 
     FileView {
@@ -223,43 +221,48 @@ ShellRoot {
                 }
             }
 
-            Column {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: parent.height / 12
-                spacing: Theme.space.xl
+            // As the lock's: low on the screen, under the picture's sky, but
+            // never nearer its foot than a floating frame stands from an
+            // edge, so a short screen keeps the time on it, measured to the
+            // said line's baseline. The card is placed first, on a whole
+            // device pixel so its hairlines fall clean at 1.5, and the time
+            // and what PAM says stand from it.
+            Item {
+                id: column
+                anchors.fill: parent
 
-                Lifted {
+                FontMetrics {
+                    id: voiceFace
+                    readonly property real capitals: tightBoundingRect("H").height
+                    font.family: Theme.level.voice.family
+                    font.pointSize: Theme.level.voice.pointSize
+                    font.italic: Theme.level.voice.italic
+                    font.variableAxes: Theme.level.voice.variableAxes
+                }
+
+                Hairline {
+                    id: snap
+                    visible: false
+                }
+
+                // The time and the card are two regions with no rule
+                // between them, so the day's baseline stands three beats
+                // over the card's frame.
+                PictureTime {
+                    id: time
                     anchors.horizontalCenter: parent.horizontalCenter
-
-                    // As the lock's: the time at Display, at the size it
-                    // stands alone on the wallpaper at, and the day at
-                    // Words, in text.
-                    Column {
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(clock.date, "HH:mm")
-                            color: Theme.level.display.colour
-                            font.family: Theme.level.display.family
-                            font.pointSize: Theme.level.display.wallpaper.pointSize
-                            font.weight: Theme.level.display.weight
-                            font.letterSpacing: Theme.level.display.wallpaper.letterSpacing
-                            font.features: Theme.level.display.features
-                        }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(clock.date, "dddd d MMMM")
-                            color: Theme.text
-                            font.family: Theme.level.words.family
-                            font.pointSize: Theme.level.words.pointSize
-                            font.weight: Theme.level.words.weight
-                            font.variableAxes: Theme.level.words.variableAxes
-                        }
-                    }
+                    y: card.y - 3 * Theme.space.beat - dayBaseline
+                    date: clock.date
                 }
 
                 Floating {
+                    id: card
+                    x: snap.whole((column.width - width) / 2)
+                    // What PAM says is about the field, so its capitals
+                    // stand a beat under the card, nearer it than the time
+                    // is.
+                    y: snap.whole(column.height - Math.max(column.height / 12,
+                        Theme.space.rung.screen) - voiceFace.capitals - Theme.space.beat - height)
                     width: root.width
                     keys: true
                     urgent: root.failed
@@ -267,53 +270,35 @@ ShellRoot {
                     Column {
                         width: parent.width
 
-                        Item {
+                        // The greeting at Words, in text, their name a
+                        // strong span, on one line.
+                        PromptHead {
                             width: parent.width
-                            // The letters an inset and a step from the frame
-                            // on every side, as on polkit's prompt.
-                            height: title.height + 2 * (Theme.inset + Theme.space.l)
-
-                            Text {
-                                id: title
-                                x: Theme.inset + Theme.space.l
-                                y: x
-                                width: parent.width - 2 * x
-                                textFormat: Text.RichText
-                                // At Words, in text, their name a strong
-                                // span: the line takes the face's weight
-                                // rather than its axis, since a span can't
-                                // set the axis.
-                                readonly property string called: "<span style=\""
-                                    + `color:${Theme.strong};`
-                                    + `font-weight:${Theme.level.words.spans.strong}">`
-                                    + `${root.account.called}</span>`
-                                text: `${root.greeting(clock.date.getHours())}, ${called}`
-                                color: Theme.text
-                                elide: Text.ElideRight
-                                lineHeight: root.line
-                                lineHeightMode: Text.FixedHeight
-                                font.family: Theme.level.words.family
-                                font.pointSize: Theme.level.words.pointSize
-                                font.weight: Theme.level.words.spans.weight
-                                font.variableAxes: Theme.level.words.spans.variableAxes
-                            }
+                            readonly property string greeting:
+                                root.greeting(clock.date.getHours())
+                            readonly property string called: "<span style=\""
+                                + `color:${Theme.strong};`
+                                + `font-weight:${Theme.level.words.spans.strong}">`
+                                + `${root.account.called}</span>`
+                            asked: `${greeting}, ${called}`
+                            askedOpens: greeting.charAt(0)
+                            oneLine: true
                         }
 
-                        Rectangle {
+                        Hairline {
                             width: parent.width
-                            height: Theme.border
-                            color: Theme.edge
                         }
 
+                        // The field, one row, its mark on the greeting's
+                        // column.
                         Item {
                             width: parent.width
-                            height: prompt.height + 2 * Theme.inset
+                            height: prompt.height
 
                             Prompt {
                                 id: prompt
-                                x: Theme.inset
-                                y: Theme.inset
-                                width: parent.width - 2 * Theme.inset
+                                x: Theme.space.rung.inset - markAt
+                                width: parent.width - 2 * x
                                 // A layer surface's keys go nowhere until
                                 // something in it asks for them.
                                 Component.onCompleted: take()
@@ -337,41 +322,17 @@ ShellRoot {
                             }
                         }
 
-                        Rectangle {
+                        Hairline {
                             width: parent.width
-                            height: Theme.border
-                            color: Theme.edge
                         }
 
-                        Item {
+                        // Where Return leads, the session's program, on
+                        // the greeting's column, and what the keys do.
+                        PromptFoot {
                             width: parent.width
-                            height: Theme.space.xxl + 2 * Theme.inset
-
-                            // Where Return leads: the session's program, its
-                            // letters under the title's.
-                            Text {
-                                anchors.left: parent.left
-                                anchors.leftMargin: Theme.inset + Theme.space.l
-                                anchors.right: keys.left
-                                anchors.rightMargin: Theme.space.xl
-                                anchors.verticalCenter: parent.verticalCenter
-                                textFormat: Text.StyledText
-                                text: `into <font color="${Theme.text}">${root.into}</font>`
-                                color: Theme.level.note.colour
-                                elide: Text.ElideRight
-                                font.family: Theme.level.note.family
-                                font.pointSize: Theme.level.note.pointSize
-                                font.weight: Theme.level.note.weight
-                            }
-
-                            KeyHints {
-                                id: keys
-                                anchors.right: parent.right
-                                anchors.rightMargin: Theme.inset + Theme.space.l
-                                anchors.verticalCenter: parent.verticalCenter
-                                keys: root.next === null ? [["\u21b5", "sign in"]]
-                                    : [["\u21b5", "sign in"], ["\u21e5", root.next.called]]
-                            }
+                            leads: `into <font color="${Theme.text}">${root.into}</font>`
+                            keys: root.next === null ? [["\u21b5", "sign in"]]
+                                : [["\u21b5", "sign in"], ["\u21e5", root.next.called]]
                         }
                     }
                 }
@@ -380,11 +341,15 @@ ShellRoot {
                 // moves when it speaks.
                 Lifted {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    y: card.y + card.height + Theme.space.beat + voiceFace.capitals
+                        - saying.baselineOffset
                     width: root.width
 
                     Text {
+                        id: saying
                         width: root.width
-                        height: Theme.space.xl
+                        // A line's room whether it says anything or not.
+                        height: voiceFace.height
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
                         text: root.said
@@ -398,19 +363,68 @@ ShellRoot {
                 }
             }
 
+            // How long the boot took, along the bottom, its baseline the
+            // inset over the screen's foot. It's as wide as the card, its
+            // first and last ink on the card's edges and its parts an even
+            // space apart, a dot in the middle of each, so it lines up with
+            // the card rather than nearly does. At Note, but in text, since
+            // muted is too faint on the wallpaper.
             Lifted {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: Theme.space.xl
+                anchors.bottomMargin: Theme.space.rung.inset - (booted.height - noteFace.ascent)
+                visible: root.booted.length > 0
 
-                // At Note, but in text, since muted is too faint on the
-                // wallpaper.
-                Text {
-                    text: root.booted
-                    color: Theme.text
-                    font.family: Theme.level.note.family
-                    font.pointSize: Theme.level.note.pointSize
-                    font.weight: Theme.level.note.weight
+                Item {
+                    id: booted
+                    width: root.width
+                    height: noteFace.height
+
+                    FontMetrics {
+                        id: noteFace
+                        font.family: Theme.level.note.family
+                        font.pointSize: Theme.level.note.pointSize
+                        font.weight: Theme.level.note.weight
+                    }
+
+                    // Each part's ink, from its box's left.
+                    readonly property var inks: root.booted.map(part => {
+                        const ink = noteFace.tightBoundingRect(part);
+                        return { from: ink.x, wide: ink.width };
+                    })
+                    readonly property real gap: inks.length < 2 ? 0
+                        : (width - inks.reduce((sum, ink) => sum + ink.wide, 0))
+                            / (inks.length - 1)
+                    // Where each part's ink starts.
+                    readonly property var starts: inks.map((ink, at) => inks.slice(0, at)
+                        .reduce((sum, before) => sum + before.wide + gap, 0))
+
+                    Repeater {
+                        model: root.booted
+
+                        Item {
+                            id: part
+                            required property string modelData
+                            required property int index
+
+                            Text {
+                                x: booted.starts[part.index] - booted.inks[part.index].from
+                                text: part.modelData
+                                color: Theme.text
+                                font: noteFace.font
+                            }
+
+                            // The dot in the middle of the space after it.
+                            Text {
+                                visible: part.index < root.booted.length - 1
+                                x: booted.starts[part.index] + booted.inks[part.index].wide
+                                    + (booted.gap - implicitWidth) / 2
+                                text: "\u00b7"
+                                color: Theme.text
+                                font: noteFace.font
+                            }
+                        }
+                    }
                 }
             }
         }
