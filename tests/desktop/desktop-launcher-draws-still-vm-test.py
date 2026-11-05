@@ -291,6 +291,13 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
     machine.succeed(f"echo 99 > {capacity}")
     desktop.launcher_until(lambda shown: " 99%" in shown["glance"])
     after = laid_out(desktop)
+    # Back on the find from normal, the foot keeps only the find's room, so
+    # the glance says its charge again (QIFT5D, 2026-11-05: facts gave way to
+    # normal's keys, no longer drawn).
+    desktop.normal()
+    machine.send_chars("/")
+    desktop.launcher_until(lambda shown: shown["mode"] == "find")
+    desktop.launcher_until(lambda shown: " 99%" in shown["glance"])
     desktop.close_launcher()
     machine.succeed(f"echo {was} > {capacity}")
     # It measures something: the battery is in the foot, and after it more.
