@@ -1405,13 +1405,15 @@ works the same way everywhere.
   2026-10-29: "the side drawer shows when it's not needed, and only
   shows in certain places"). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
-  selection rests, so holding an arrow never flickers it. Shift+Up and
-  Shift+Down scroll it three lines at a time, on the pitch, said in the
-  foot while it holds more than fits, since Page Up and Page Down page
-  the list: Shift is the outer column and the arrows the right hand, where
-  Ctrl was the little finger's home key (Joel, 2 November: "all of those
-  ctrl keys do not feel very vim to me"). Another program's words are
-  shown plain, never as markup.
+  selection rests, so holding an arrow never flickers it. It's Vim's
+  preview window, a split the keys go into: Space and the right arrow
+  take them in, where its frame takes the accent, an accent rule in its
+  left margin marks the cursor's line as the reader's does, and the
+  reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
+  view following at his scrolloff; Space and the left arrow, :q, ZZ or
+  Space w bring them back, and Escape and q do nothing there. Shift and
+  the arrows no longer scroll it, since an arrow is its letter. Another
+  program's words are shown plain, never as markup.
 - **A file picked shows what it is** (Joel, 2026-11-03: "i see no
   previews for files ... no clue about sizes or when last updated"). In
   the file picker, a row in the folder shown says its size in SI units,

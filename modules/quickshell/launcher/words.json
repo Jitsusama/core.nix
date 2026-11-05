@@ -6525,7 +6525,8 @@
       "title": "The Launcher's Keys",
       "modes": {
         "normal": "Normal",
-        "insert": "Insert"
+        "insert": "Insert",
+        "page": "Drawer"
       },
       "lines": {
         "nextRow": "The next row",
@@ -6551,7 +6552,11 @@
         "insert": "Type",
         "change": "Clear it and type",
         "restore": "Bring it back",
-        "drawer": "Scroll the drawer",
+        "intoDrawer": "Into the drawer",
+        "lines": "Down and up a line",
+        "along": "Along the line",
+        "scroll": "Scroll a line",
+        "back": "Back to the rows",
         "keys": "These keys",
         "close": "Close"
       }

@@ -24,7 +24,7 @@ import pytest
 from desktop_session import LAUNCHER_OPEN
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -53,6 +53,11 @@ INSIDE = 20
 # baseline to half a device pixel.
 WORDS_GAP = 12
 HALF_A_PIXEL = 0.5
+# How long QEMU holds a key down, and how often and how long a sequence that waits for its
+# second key is pressed before it counts as never doing what it does.
+HELD_MS = 20
+TRIES = 3
+TRIED = timedelta(seconds=10)
 
 
 @pytest.fixture(scope="module")
@@ -215,7 +220,7 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
 def lists_every_key(desktop: Desktop, scale: str) -> None:
     """Show every key normal takes with Space ?, as a plate in the drawer, and photograph it.
 
-    Each key's name is whole, and what won't fit above the foot waits for Shift and the arrows.
+    Each key's name is whole, and what won't fit above the foot waits for the drawer's keys.
     """
     desktop.machine.send_chars(" ?")
     desktop.launcher_until(
@@ -304,6 +309,118 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
     desktop.launcher_until(lambda shown: shown["open"] and shown["counted"] == "")
 
 
+def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Go into the key list's drawer at each of Joel's scales, move there, and photograph it.
+
+    Gone into, the drawer holds the keys: its frame takes the accent and its cursor's line the
+    rule in its left margin. Five lines down and four letters along, it's photographed with the
+    foot at the laptop's size, for a person to judge, and Space with the left arrow comes back.
+    """
+
+    def relisted() -> None:
+        closed_from_the_list(desktop)
+        listed_keys(desktop)
+
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        listed_keys(desktop)
+        # The arrow alone steps into the list's row, so the list is shown again.
+        pressed_until(
+            desktop, "spc right", lambda shown: shown["drawer"]["cursor"] is not None, relisted
+        )
+        line = int(desktop.showing()["drawer"]["cursor"]["line"])
+        pressed(desktop, "5 j l l l l")
+        desktop.launcher_until(partial(moved_to, line + 5))
+        drawn = desktop.showing()["drawer"]
+        assert drawn["keys"], f"at {scale} the drawer doesn't hold the keys: {drawn}"
+        assert drawn["cursor"]["rule"]["width"] > 0, f"at {scale} no rule: {drawn['cursor']}"
+        desktop.photograph(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
+        # The arrow alone moves the cursor a letter, which leaves nothing to put back.
+        pressed_until(
+            desktop,
+            "spc left",
+            lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"],
+            lambda: None,
+        )
+        closed_from_the_list(desktop)
+
+
+def pressed(desktop: Desktop, keys: str) -> None:
+    """Press each key QEMU names, held a moment, the next following at once."""
+    for key in keys.split():
+        desktop.machine.send_monitor_command(f"sendkey {key} {HELD_MS}")
+
+
+def pressed_until(
+    desktop: Desktop, keys: str, test: Callable[[Json], bool], again: Callable[[], None]
+) -> None:
+    """Press the keys and wait until the launcher passes the test, pressing them again if not.
+
+    Space waits Joel's 300 ms for the arrow, which a loaded builder has kept from the shell
+    longer, so a pair that came apart is pressed again once `again` puts back what the arrow
+    did alone.
+    """
+    for _ in range(TRIES - 1):
+        pressed(desktop, keys)
+        try:
+            desktop.launcher_until(test, TRIED)
+        except AssertionError:
+            print(f"{keys} came apart, the wait letting go between them: pressed again")
+            again()
+        else:
+            return
+    pressed(desktop, keys)
+    desktop.launcher_until(test)
+
+
+def closed_from_the_list(desktop: Desktop) -> None:
+    """Close the launcher with the key list shown, or not.
+
+    Escape puts the list away first, which changes nothing close_launcher waits on.
+    """
+    if desktop.showing()["listing"]:
+        desktop.machine.send_key("esc")
+        desktop.launcher_until(lambda shown: shown["open"] and not shown["listing"])
+    desktop.close_launcher()
+
+
+def listed_keys(desktop: Desktop) -> None:
+    """Open the launcher, and list its keys with Space ? in the drawer.
+
+    Space waits for ? as it does for an arrow, so a pair that came apart is pressed again in a
+    launcher opened afresh.
+    """
+
+    def opened() -> None:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.normal()
+
+    def reopened() -> None:
+        desktop.close_launcher()
+        opened()
+
+    opened()
+    pressed_until(
+        desktop,
+        "spc shift-0x35",
+        lambda shown: shown["listing"] and shown["drawer"]["out"],
+        reopened,
+    )
+
+
+def moved_to(below: int, shown: Json) -> bool:
+    """Say whether the drawer's cursor is on a line, four letters along or at its last."""
+    cursor = shown["drawer"]["cursor"]
+    return bool(
+        cursor is not None
+        and cursor["line"] == below
+        and cursor["letter"] == min(4, len(cursor["says"]) - 1)
+    )
+
+
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -375,7 +492,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
             later > earlier and on_the_pitch(later, earlier) for earlier, later in pairwise(facts)
         ), f"at {scale} a fact is off the pitch: {drawer}"
         # Its name is the title, so it isn't said again under it; every other name is whole;
-        # and what doesn't fit above the foot's inset waits for Shift and the arrows.
+        # and what doesn't fit above the foot's inset waits for the drawer's keys.
         assert "Name" not in drawer["drawnFacts"], drawer
         assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
         # Each fact is its name and its value on one line, or its name with its value under

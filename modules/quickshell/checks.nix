@@ -3061,8 +3061,9 @@ onLinux {
   # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's keys, normal's
   # ways back into insert, its moves through the rows with counts and
   # where each lands, its closing keys and ex line, its place used last,
-  # sequences, and where the caret goes; and ListedKeys.js to the keys
-  # Space ? lists.
+  # sequences, and where the caret goes; ListedKeys.js to the keys Space ?
+  # lists; and the drawer as a window, Space and the arrows into it and
+  # back, with DrawerPage.js to where its keys take its cursor and view.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3072,6 +3073,7 @@ onLinux {
       cp ${./QueryKeys.js} QueryKeys.js
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
+      cp ${./DrawerPage.js} DrawerPage.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

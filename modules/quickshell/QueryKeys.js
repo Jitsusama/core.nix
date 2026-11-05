@@ -83,6 +83,10 @@ const table = [
     // @: runs the last command line again, as Vim's does (the language's
     // again-command); @ alone waits for it.
     { act: "commandAgain", mode: "normal", keys: [["@", ":"]] },
+    // Space and the right arrow go into the drawer beside the rows, as his
+    // Space and the arrows go to the window that way (the language's
+    // window-right): its keys are then a page's, below.
+    { act: "drawer", mode: "normal", keys: [["Space", "Right"]] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
 
@@ -110,22 +114,51 @@ const table = [
 
     // Both modes: Return does the row or steps into it, as everywhere of
     // ours, with Shift below the window in focus and with Ctrl closing
-    // whatever it opens; Page Up and Page Down page the rows; and with
-    // Shift the arrows scroll the drawer, as his picker's preview keys do.
+    // whatever it opens; and Page Up and Page Down page the rows. Shift
+    // and the arrows do nothing: the drawer is gone into with Space and
+    // the right arrow and moved through there, as an arrow is its letter
+    // and has no act of its own (VKCF3Z's spec v2, The Arrows).
     { act: "run", mode: "both", keys: ["Return", "Enter", "Shift+Return", "Shift+Enter",
         "Ctrl+Return", "Ctrl+Enter"] },
     { act: "pageUp", mode: "both", keys: ["PageUp"] },
     { act: "pageDown", mode: "both", keys: ["PageDown"] },
-    { act: "drawerUp", mode: "both", keys: ["Shift+Up"] },
-    { act: "drawerDown", mode: "both", keys: ["Shift+Down"] }
+
+    // The drawer, gone into: the preview window, a page in normal with a
+    // cursor on its lines (DrawerPage.js), as the reader's page and his
+    // Neovim's windows have them. j k and the arrows move it a line and h l along one, the
+    // view kept about it; Ctrl+E and Ctrl+Y scroll the view a line, Ctrl+D
+    // and Ctrl+U half the view, Ctrl+F and Ctrl+B a view, with Page Down
+    // and Page Up (both modes', above); gg G and H M L as on the rows, each
+    // taking a count. Space and the left arrow go back to the rows, as his
+    // window-left does, and so do ZZ, Space w and :q, as his Neovim
+    // closes a window. Escape only lets a count or a waiting key go, as
+    // it does nothing at rest in a window, and q alone does nothing, as
+    // Joel asked of every modal surface (2026-11-04). Return does the row
+    // the drawer's about.
+    { act: "next", mode: "page", keys: ["Down", "j"] },
+    { act: "previous", mode: "page", keys: ["Up", "k"] },
+    { act: "left", mode: "page", keys: ["Left", "h"] },
+    { act: "right", mode: "page", keys: ["Right", "l"] },
+    { act: "scrollDown", mode: "page", keys: ["Ctrl+e"] },
+    { act: "scrollUp", mode: "page", keys: ["Ctrl+y"] },
+    { act: "halfDown", mode: "page", keys: ["Ctrl+d"] },
+    { act: "halfUp", mode: "page", keys: ["Ctrl+u"] },
+    { act: "pageDown", mode: "page", keys: ["Ctrl+f"] },
+    { act: "pageUp", mode: "page", keys: ["Ctrl+b"] },
+    { act: "first", mode: "page", keys: [["g", "g"]] },
+    { act: "last", mode: "page", keys: ["G"] },
+    { act: "viewTop", mode: "page", keys: ["H"] },
+    { act: "viewMiddle", mode: "page", keys: ["M"] },
+    { act: "viewBottom", mode: "page", keys: ["L"] },
+    { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] }
 ];
 
 // The acts that move through the rows, which repeat while their key is
 // held, as Vim's motions do; every other act is done once a press, so a
 // key let go late by a busy shell never does it twice (Prompt.qml).
 const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "viewBottom",
-    "halfDown", "halfUp", "pageDown", "pageUp", "drawerUp", "drawerDown", "wordNext",
-    "wordBack", "wordEnd", "letterBack", "letterNext"];
+    "halfDown", "halfUp", "pageDown", "pageUp", "left", "right", "scrollDown", "scrollUp",
+    "wordNext", "wordBack", "wordEnd", "letterBack", "letterNext"];
 
 function repeats(act) {
     return moves.includes(act);
@@ -158,6 +191,14 @@ function begins(sequence, typed) {
     return typed.length < sequence.length && typed.every((key, at) => key === sequence[at]);
 }
 
+// Whether a mode is one where nothing types, where counts and the command
+// line are taken: normal on the rows, and the drawer's page.
+function still(mode) {
+    return mode === "normal" || mode === "page";
+}
+
+// Whether a row's keys are a mode's: "both" is the line's two modes,
+// insert and normal, and the drawer's page.
 function inMode(row, mode) {
     return row.mode === mode || row.mode === "both";
 }
@@ -198,19 +239,20 @@ function read(standing, key, mode, words = false) {
     if (key === "") {
         return { act: "", count: 0, standing, ours: false };
     }
-    // A colon at rest in normal opens the command line, which takes the
-    // keys from here (CommandLine.qml), with a count typed before it.
-    if (mode === "normal" && key === ":" && standing.typed.length === 0) {
-        return { act: "command", count: standing.count === "" ? 0 : Number(standing.count),
-            standing: rest(), ours: true };
+    // A colon at rest where nothing types opens the command line, which
+    // takes the keys from here (CommandLine.qml): in normal with a count
+    // typed before it as its range of rows, and in the drawer with none,
+    // since a count there counts lines, not rows.
+    if (still(mode) && key === ":" && standing.typed.length === 0) {
+        const count = mode === "normal" && standing.count !== "" ? Number(standing.count) : 0;
+        return { act: "command", count, standing: rest(), ours: true };
     }
     if (key === "Escape" && pending(standing)) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
-    // A count before a move, in normal, where nothing types: 0 alone is
-    // Vim's first column, which rows haven't, so it counts only after
-    // another digit.
-    if (mode === "normal" && standing.typed.length === 0 && digit.test(key)
+    // A count before a move, where nothing types: 0 alone is Vim's first
+    // column, which rows haven't, so it counts only after another digit.
+    if (still(mode) && standing.typed.length === 0 && digit.test(key)
         && (standing.count !== "" || key !== "0")) {
         return { act: "", count: 0, standing: { count: standing.count + key, typed: [] },
             ours: true };
@@ -224,9 +266,10 @@ function read(standing, key, mode, words = false) {
     if (begun) {
         return { act: "", count: 0, standing: { count: standing.count, typed }, ours: true };
     }
-    // In normal nothing types, so a key that ends nothing is the line's
-    // and does nothing, letting what was begun go, as vi does.
-    return { act: "", count: 0, standing: rest(), ours: mode === "normal" };
+    // In normal and the drawer nothing types, so a key that ends nothing
+    // is the line's and does nothing, letting what was begun go, as vi
+    // does.
+    return { act: "", count: 0, standing: rest(), ours: still(mode) };
 }
 
 // How the keys stand once a sequence begun has waited its timeoutlen for
@@ -341,8 +384,11 @@ function caretAfter(act, text, at) {
 
 // The mode an act leaves the line in.
 function modeAfter(act, mode) {
-    if (act === "normal") {
+    if (act === "normal" || act === "rows") {
         return "normal";
+    }
+    if (act === "drawer") {
+        return "page";
     }
     if (["insert", "append", "insertStart", "appendEnd", "change", "changeWord"]
         .includes(act)) {
