@@ -105,6 +105,10 @@ Floating {
     // baseline, whatever its own face, since the faces' line boxes differ.
     readonly property real dropped: monoRuler.y + monoRuler.baselineOffset
     readonly property real eyebrowDropped: eyebrowRuler.y + eyebrowRuler.baselineOffset
+    // How far apart a Title's lines sit: tighter than the pitch's two, about
+    // 1.15 of its size, so a name that wraps reads as one heading rather
+    // than two (VKCF3Z, 2026-11-04).
+    readonly property real titleLeading: Theme.space.xxl
 
     // Where its lines' baselines are, down from its top, for the launcher
     // to report: the eyebrow's and the middle of its line, the title's first
@@ -124,10 +128,9 @@ Floating {
             words: wordsBox.visible ? contentTop + flow.y + wordsBox.y + bodyText.y
                 + bodyText.baselineOffset : null,
             title: flowed(titleText),
-            // Its last line's, two of the pitch a line, which what follows
-            // stands one empty line below.
+            // Its last line's, a Title's leading below its first.
             titleLast: titleText.visible ? flowed(titleText)
-                + (titleText.lineCount - 1) * 2 * drawer.pitch : null,
+                + (titleText.lineCount - 1) * drawer.titleLeading : null,
             preview: previewBox.visible ? contentTop + flow.y + previewBox.y : null,
             previewLines: previewLines.visible ? Array.from({ length: previewRows.count },
                 (_, at) => {
@@ -475,11 +478,15 @@ Floating {
 
                 // The thing's name at Title, sized by capitals as every
                 // serif step is, on the first row's baseline beside it,
-                // whatever its own line box would put it on. Too large for
-                // the pitch, a name that wraps takes two of it a line.
+                // whatever its own line box would put it on. A name that
+                // wraps sets its lines a Title's leading apart, and the
+                // block ends on the next whole line of the pitch, so what
+                // follows stays on the plate's.
                 Item {
+                    id: titleBlock
                     width: parent.width
-                    height: (2 * titleText.lineCount - 1) * drawer.pitch
+                    height: Math.ceil((drawer.pitch + (titleText.lineCount - 1)
+                        * drawer.titleLeading) / drawer.pitch) * drawer.pitch
                     visible: drawer.title !== ""
 
                     Text {
@@ -493,7 +500,7 @@ Floating {
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         lineHeightMode: Text.FixedHeight
-                        lineHeight: 2 * drawer.pitch
+                        lineHeight: drawer.titleLeading
                         color: Theme.level.title.colour
                         font.family: Theme.level.title.family
                         font.pointSize: Theme.level.title.pointSize
@@ -518,8 +525,8 @@ Floating {
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
                     readonly property real room: Math.max(4 * drawer.pitch, view.height
-                        - drawer.firstLine - (titleText.visible ? 2 * titleText.lineCount * drawer.pitch
-                        : 0) - (factsShown.visible ? factsShown.height
+                        - drawer.firstLine - (titleBlock.visible ? titleBlock.height
+                        + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 
                     width: parent.width

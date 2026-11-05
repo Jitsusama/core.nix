@@ -43,6 +43,9 @@ MOST = 520
 # and the half a hundredth each of two lengths the launcher reports rounded may take.
 PITCH = 24
 NEAR = 0.02
+# How far apart a Title's lines sit when its name wraps (Theme.space.xxl), tighter than two of
+# the pitch, so the name reads as one heading.
+TITLE_LEADING = 32
 # How far the text keeps from the plate's frame on every side, its foot included: an inset and a
 # step, 4 and 16, inside the border.
 INSIDE = 20
@@ -73,6 +76,20 @@ def at_scale(desktop: Desktop, scale: str) -> None:
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account(f"niri msg output winit scale {scale}")
+
+
+def after_the_title(line: float, lines: Json) -> bool:
+    """Say whether a line is the first of the pitch one empty line below the title's block.
+
+    The title's lines sit its leading apart, and its block ends on the next whole line of the
+    pitch after its last, so what follows it stays on the plate's lines.
+    """
+    title, last = float(lines["title"]), float(lines["titleLast"])
+    later = round((last - title) / TITLE_LEADING)
+    if later < 0 or abs(last - title - later * TITLE_LEADING) > NEAR:
+        return False
+    block = -(-(PITCH + later * TITLE_LEADING) // PITCH) * PITCH
+    return abs(line - (title + block + PITCH)) <= NEAR
 
 
 def on_the_pitch(line: float, from_line: float) -> bool:
@@ -229,8 +246,8 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         assert abs(lines["eyebrowMiddle"] - card["field"]) <= NEAR, (
             f"at {scale} the eyebrow is off the field's centre: {drawer}"
         )
-        # One empty line below the title's last line.
-        assert abs(lines["words"] - (lines["titleLast"] + 2 * PITCH)) <= NEAR, drawer
+        # One empty line below the title's block.
+        assert after_the_title(lines["words"], lines), drawer
         assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
         desktop.photograph(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
@@ -279,10 +296,10 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
                 )
             )
             drawer = plate_shown(desktop, scale)
-            # The title, at Title, may take two lines of the plate's width, each two of the
-            # pitch; the facts start one empty line below its last.
-            title, facts = drawer["lines"]["titleLast"], drawer["lines"]["facts"]
-            assert abs(facts[0] - (title + 2 * PITCH)) <= NEAR, drawer
+            # The title, at Title, may take two lines of the plate's width, its leading apart;
+            # the facts start one empty line below its block, on the pitch.
+            facts = drawer["lines"]["facts"]
+            assert after_the_title(facts[0], drawer["lines"]), drawer
             assert all(
                 later > earlier and on_the_pitch(later, earlier)
                 for earlier, later in pairwise(facts)
