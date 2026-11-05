@@ -3339,8 +3339,10 @@ Scope {
             return;
         }
         const actions = endings.map(ending => ending.action);
-        const answered = askStands && asked.rows === matches
-            && Operators.answers(asked, "ending", span);
+        // The keys that answer began on the key after the ask, as dd's
+        // first d; askStands has let it go by now, the operator being done.
+        const answered = asked !== null && prompt.begunAt === askedFor + 1
+            && asked.rows === matches && Operators.answers(asked, "ending", span);
         if (Operators.asks(actions) && !answered) {
             const unsure = actions.filter(action => typeof action.undo !== "function");
             const ends = unsure.every(action => action.ends === unsure[0].ends)

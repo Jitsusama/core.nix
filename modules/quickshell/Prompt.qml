@@ -97,9 +97,10 @@ Item {
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
-    // Which of the keys taken began what stands now, as a count's first
-    // digit or an operator's key, so an operator can be told from the keys
-    // straight after something it answers (Launcher.qml's ask).
+    // Which of the keys taken began what stands now, or the act just done,
+    // as a count's first digit or an operator's key, so an operator done
+    // can be told from the keys straight after something it answers
+    // (Launcher.qml's ask).
     property int begunAt: 0
     // How long a sequence begun waits for its next key before it's let go,
     // as his Neovim's timeoutlen (modules/keys/language.toml).
@@ -395,7 +396,7 @@ Item {
             return;
         }
         keysTaken++;
-        if (!QueryKeys.pending(standing) && QueryKeys.pending(read.standing))
+        if (!QueryKeys.pending(standing))
             begunAt = keysTaken;
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
