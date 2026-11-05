@@ -365,6 +365,10 @@ Scope {
             is: "answer",
             answered: true,
             nested: parted(said),
+            // One whose parts are read only as they're looked at, as
+            // Machine's CPU lists the processes, which the walk for where a
+            // row lives never makes (Catalogue.js's followsInto).
+            parted: said.parted === true,
             // Named by what it says, not by what was typed, so nothing in
             // it is marked as matched.
             plain: true,
@@ -2717,12 +2721,17 @@ Scope {
             tagsBack = tagsBack.concat([came]);
             return;
         }
+        // The walk's own time goes in the trace, found or not, since it
+        // runs on the key and makes the places' rows on its way.
+        const walking = Date.now();
         const spot = live ? followedTo(live) : null;
+        if (live)
+            traces.began("follow", { from: held.length, to: spot ? spot.trail.length : null,
+                walked: Date.now() - walking });
         if (spot === null) {
             say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
             return;
         }
-        traces.began("follow", { from: held.length, to: spot.trail.length });
         jumping = true;
         try {
             goTo(spot);

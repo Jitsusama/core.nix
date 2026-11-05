@@ -338,7 +338,9 @@ function descends(row, depth, above) {
 // elsewhere, nor a long list's items or a program's or window's own, which
 // are found only from their place, so the walk stays a key's worth.
 function followsInto(row, depth, above) {
-    if (depth >= DEEPEST || row.opens === "on") {
+    // A measured figure's parts are read as they're made, Machine's CPU
+    // listing the processes, so a walk on every Ctrl+] never makes them.
+    if (depth >= DEEPEST || row.opens === "on" || row.parted === true) {
         return false;
     }
     if (row.opens && LONG.has(row.opens)) {
