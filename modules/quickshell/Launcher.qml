@@ -2620,7 +2620,40 @@ Scope {
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;
         }
-        run(act, false);
+        commandAsked(entry, [act], 1, read.bang, thing.name ?? "");
+    }
+
+    // Runs a line's acts on what it's bound to, asking once first where
+    // CommandBinding.asking says, through the one ask (askOnce), as the
+    // spec's Operators have it: y runs them past their own confirm, as a !
+    // does; n, Escape and Ctrl+C leave them be.
+    function commandAsked(entry, acts, all, bang, name) {
+        const words = Words.field.command ?? {};
+        const asked = CommandBinding.asking(entry, acts.length, all, bang);
+        const fill = template => {
+            const said = String(template ?? "").replace(/\{command\}/g, entry.command)
+                .replace("{some}", acts.length).replace("{all}", all)
+                .replace("{count}", acts.length).replace("{name}", name);
+            return said.charAt(0).toUpperCase() + said.slice(1);
+        };
+        if (asked.none) {
+            commandSay(fill(words.none), true);
+            return;
+        }
+        const sure = () => {
+            for (const act of acts)
+                run(act.confirm ? Object.assign({}, act, { confirm: false }) : act, false);
+        };
+        if (asked.ask !== "") {
+            askOnce(fill(words[asked.ask]), sure, () => {});
+            return;
+        }
+        if (bang) {
+            sure();
+            return;
+        }
+        for (const act of acts)
+            run(act, false);
     }
 
     // @:, the last line Return ran run again on the cursor row as it is
@@ -2648,27 +2681,12 @@ Scope {
     }
 
     // A line run on several things, or on one a range or :g found: each
-    // thing's own act (CommandBinding.actFor). Where only some have it, it says so
-    // and runs none; one that would ask, over more than one, runs only with
-    // its !, until the ask lands on the line (MVL7F9's askOnce).
+    // thing's own act (CommandBinding.actFor), asked first where it asks.
     function commandAcross(entry, read, things) {
-        const words = Words.field.command ?? {};
         const acts = things.map(thing => CommandBinding.actFor(entry, actsOf(thing),
             act => commandWords(act.key ?? "")))
             .filter(act => act !== undefined);
-        if (acts.length < things.length || acts.length === 0) {
-            commandSay(String(words.some ?? "").replace("{some}", acts.length)
-                .replace("{all}", things.length).replace("{command}", entry.command), true);
-            return;
-        }
-        const asks = !entry.undoable && (!entry.guarded || acts.length > 1);
-        if (asks && acts.length > 1 && !read.bang) {
-            commandSay(String(words.unasked ?? "").replace("{command}", entry.command)
-                .replace("{count}", acts.length), true);
-            return;
-        }
-        for (const act of acts)
-            run(act, false);
+        commandAsked(entry, acts, things.length, read.bang, things[0]?.name ?? "");
     }
 
     // Where the launcher is now, for a step into something to keep.
