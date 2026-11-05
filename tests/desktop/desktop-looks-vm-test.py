@@ -301,6 +301,9 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
 ) -> None:
     """Y flashes the row it copies, and d's ask takes Return's place and moves nothing."""
     machine = desktop.machine
+    # A second window, so dj has two to close and asks once for both,
+    # where one closes at once.
+    wednesday = desktop.opened("Notes for Wednesday")
     desktop.notes_window()
     for scale in at_each_scale:
         at_scale(desktop, scale)
@@ -316,9 +319,19 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         flashed = max(frames, key=partial(changed_from, after))
         if desktop.values["photographs"]:
             flashed.save(machine.out_dir / f"launcher-yank-flash-at-{named}.png")
+        desktop.close_launcher()
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("notes for")
+        desktop.launcher_until(
+            lambda shown: sorted(shown["rows"]) == ["Notes for Tuesday", "Notes for Wednesday"]
+        )
+        desktop.normal()
+        machine.send_chars("gg")
+        desktop.launcher_until(lambda shown: shown["current"] == 0)
         before = desktop.showing()
-        with desktop.told("ask ready"), desktop.told("asked Close Notes for Tuesday? (y/n)"):
-            machine.send_chars("dd")
+        with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+            machine.send_chars("dj")
         # The ask stands alone in the keys' place, ending where Return
         # ends, wider than Return's word, so it reaches into the room the
         # other keys left, and how things stand gives way around it as
@@ -333,7 +346,7 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
             assert said == fact or fact.startswith(f"{said} "), (
                 f"at {scale} the ask cut a fact: {kept} of {facts}"
             )
-        assert shown["operated"] == "dd Close Notes for Tuesday? (y/n)", shown
+        assert shown["operated"] == "dj Close these 2? (y/n)", shown
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
             machine.send_key("esc")
@@ -342,6 +355,7 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
         assert len(after_ask["glance"].split("  ")) == len(facts), f"at {scale} {after_ask}"
         desktop.close_launcher()
+    desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
 
 
 def changed_from(after: Image.Image, frame: Image.Image) -> float:

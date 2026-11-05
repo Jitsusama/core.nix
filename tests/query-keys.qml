@@ -216,9 +216,25 @@ QtObject {
             [[-1, answer], [0, bare]]);
         holds("and none where there's none",
             Operators.taken(rows, { from: -1, to: 0 }, null).map(one => one.at), [0]);
-        holds("an ending action with no undo asks once", Operators.asks([close]), true);
-        holds("one that's put back doesn't",
-            Operators.asks([Object.assign({ undo: run }, close)]), false);
+        // What asks is the key language's to say, by each action's command
+        // (Options.commands): what can't be undone asks once; what's
+        // undoable acts at once; and a guarded one, as a window's Close,
+        // whose program keeps its own work, asks only over more than one.
+        const commands = { halt: { undoable: false, guarded: false },
+            close: { undoable: false, guarded: true },
+            disconnect: { undoable: true, guarded: false } };
+        const as = command => Object.assign({ command }, close);
+        holds("what can't be undone asks once", Operators.asks([as("halt")], commands), true);
+        holds("what's undoable doesn't", Operators.asks([as("disconnect")], commands), false);
+        holds("nor one guarded thing", Operators.asks([as("close")], commands), false);
+        holds("though more than one guarded thing asks once",
+            Operators.asks([as("close"), as("close")], commands), true);
+        holds("as does any that can't be undone among undoable ones",
+            Operators.asks([as("disconnect"), as("halt")], commands), true);
+        holds("an action the language doesn't name asks", Operators.asks([close], commands),
+            true);
+        holds("unless it says how it's put back",
+            Operators.asks([Object.assign({ undo: run }, close)], commands), false);
         // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
         const asking = { ask: "{ends} {name}? (y/n)", asks: "{ends} these {count}? (y/n)",
@@ -291,7 +307,8 @@ QtObject {
         const yanking = timed(() => Operators.copied(Operators.copiesIn(
             Operators.taken(windows, spanOf("y"), null), actions, copies).map(one => one.action)));
         const ending = timed(() => Operators.asks(Operators.endings(
-            Operators.taken(windows, spanOf("d"), null), actions).map(one => one.action)));
+            Operators.taken(windows, spanOf("d"), null), actions).map(one => one.action),
+            commands));
         console.log(`yG over 400 rows in ${yanking.toFixed(3)} ms, dG in ${ending.toFixed(3)} ms`);
         holds("yG over 400 rows in half a key's 4 ms", yanking < 2, true);
         holds("and dG", ending < 2, true);
