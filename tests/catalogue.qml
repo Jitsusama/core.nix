@@ -50,6 +50,15 @@ QtObject {
             expect(`${verb} ends something`, Catalogue.disruptive({ verb: verb }), true);
         for (const verb of ["open", "set", "brighter", "louder", "mute", "go", "use", "pause"])
             expect(`${verb} is done at once`, Catalogue.disruptive({ verb: verb }), false);
+        // What Return typed in insert never does: what words.json marks as
+        // ending something in use, a row's ending action or a disconnect.
+        expect("an ending action ends", Catalogue.ends({ verb: "forget", act: "ending",
+            ends: "forgets" }), true);
+        expect("and so does a disconnect", Catalogue.ends({ verb: "disconnect",
+            ends: "disconnects" }), true);
+        expect("a close that only closes the launcher doesn't", Catalogue.ends({ verb: "close" }),
+            false);
+        expect("nor does a lock, typed to be done", Catalogue.ends({ verb: "lock" }), false);
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
             false);
