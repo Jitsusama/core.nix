@@ -46,6 +46,17 @@ let
 
   # A JavaScript object of the values, which QML reads as Theme.space.m.
   object = values: "(${builtins.toJSON values})";
+  # The key language's commands, by their whole names, for the : line.
+  commands = lib.mapAttrs' (
+    act: about:
+    lib.nameValuePair about.command {
+      inherit act;
+      inherit (about) short;
+      changes = about.changes or false;
+      undoable = about.undoable or false;
+      range = about.range or false;
+    }
+  ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
   # The marks the theme draws as paths, for Theme.drawn.
   drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") marks);
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
@@ -1675,6 +1686,9 @@ in
               // How long keys wait, in milliseconds, from the key language
               // (modules/keys/language.toml), as Neovim reads it too.
               readonly property var keyTiming: ${object config.jitsusama.keyLanguage.timing}
+              // Every command the : line can name, by its whole name, with
+              // its act, fixed short form and flags, from the key language.
+              readonly property var commands: ${object commands}
               // Whether a shut lid suspends the machine on the charger.
               readonly property bool lidSleepsOnPower: ${lib.boolToString lidSleepsOnPower}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}

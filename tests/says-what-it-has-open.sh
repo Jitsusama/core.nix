@@ -3,12 +3,19 @@
 # the program has open by the command its Recent in the launcher is led by
 # (a file source's `opened`, ../modules/quickshell/recents.nix). Run inside
 # cage, with a session bus where the program wants one and wtype on the
-# path, as `says-what-it-has-open.sh FILE PROGRAM... -- COMMAND...`, FILE
-# named from the folder it's in. It leaves ./passed once the command said
-# the program's process and the file's whole path, and then nothing once q
-# closed it, since cage ends 0 whatever the script inside it does.
+# path, as `says-what-it-has-open.sh [--closed-by WTYPE] FILE PROGRAM... --
+# COMMAND...`, FILE named from the folder it's in. It leaves ./passed once
+# the command said the program's process and the file's whole path, and
+# then nothing once the program was closed, since cage ends 0 whatever the
+# script inside it does. It's closed by q, or by what --closed-by gives
+# wtype, as its words, such as '-M shift zz -m shift' for ZZ.
 set -eu
 
+closing=q
+if [ "$1" = --closed-by ]; then
+  closing=$2
+  shift 2
+fi
 file=$1
 shift
 program=()
@@ -46,7 +53,9 @@ reads() {
 reads "the program's process and the file's whole path" \
   "$(printf '%s\t%s' "$opened" "$PWD/$file")" true
 # The program is open before its window has the keyboard, and a key sent
-# before then goes nowhere, so q is pressed until it's closed.
-reads "nothing once q closed it" "" wtype q
+# before then goes nowhere, so the keys that close it are pressed until it
+# has.
+# shellcheck disable=SC2086 # wtype's words, split as given.
+reads "nothing once $closing closed it" "" wtype $closing
 wait "$opened" || true
 touch passed

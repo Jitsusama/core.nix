@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # Presses mpv's keys, as its input.conf and vi-keys.lua bind them, and reads
-# back over its IPC socket what each did: Vim's beside the arrows they
-# twin, a number before them, 0 and $, gg G and a number before G through
-# the list, ]b and [b, yy, Space ?, and the keys j and l displaced. mpv
+# back over its IPC socket what each did: Vim's beside the arrows that do as
+# they do, a number before them, 0 and $, gg G and a number before G through
+# the list, ]b and [b, yy, ? and F1, Space at once, Z alone, the keys j and
+# l displaced, and ZZ closing where q, Escape and Space w don't. mpv
 # plays nothing to a screen here, so each key is pressed through mpv's own
 # keypress command, which goes through the same bindings a key on the
 # keyboard does.
@@ -27,8 +28,10 @@ never() {
   exit 1
 }
 
+# Before a fresh mpv makes its socket, socat goes without reading what
+# printf writes, which is no matter.
 asked() {
-  printf '{"command":%s}\n' "$1" | socat -t 2 - "UNIX-CONNECT:$PWD/mpv.sock" 2> /dev/null
+  { printf '{"command":%s}\n' "$1"; } 2> /dev/null | socat -t 2 - "UNIX-CONNECT:$PWD/mpv.sock" 2> /dev/null
 }
 # A property mpv has, a time in whole milliseconds, and any other number as
 # jq writes it once it's reckoned with, 1.1 rather than mpv's 1.100000.
@@ -67,9 +70,8 @@ for _ in $(seq 600); do
 done
 [ -n "$(property duration)" ] || never "mpv to open the clip"
 
-# From a hundred seconds in, each letter lands where its arrow does, which
-# is where mpv's arrows have always gone: j on, as it goes on through a
-# file, and k back.
+# From a hundred seconds in, each letter lands where its arrow does: j and
+# Down on, as j goes on through a file, and k and Up back.
 twins() {
   arrow=$1 letter=$2 lands=$3
   from 100
@@ -81,16 +83,20 @@ twins() {
 }
 twins LEFT h 95000
 twins RIGHT l 105000
-twins UP j 160000
-twins DOWN k 40000
+twins DOWN j 160000
+twins UP k 40000
 
-# A number before a key does it that many times.
+# A number before a key does it that many times, an arrow's as its
+# letter's.
 from 100
 keys 3 l
 reads time-pos 115000 3l
 from 160
 keys 2 k
 reads time-pos 40000 2k
+from 100
+keys 3 RIGHT
+reads time-pos 115000 "3 and Right"
 
 # A number goes 300 ms on with nothing more, choosing nothing, as no
 # number chooses from the list, and Escape stops one rather than leaving
@@ -157,8 +163,8 @@ keys y
 sleep 1
 if [ -e copied ]; then never "y alone to copy nothing"; fi
 
-# ? asks the launcher for the keys, and Space ? as well, without pausing
-# or playing on.
+# ? asks the launcher for the keys, and F1 as well. Space leads nothing:
+# before a ? it plays on at once, and the ? is heard alone.
 asks() {
   rm -f "$ASKED"
   keys "$@"
@@ -169,9 +175,16 @@ asks() {
   never "$* to ask the launcher for the keys"
 }
 asks '?'
+asks F1
 asks SPACE '?'
-sleep 1
-reads pause true "Space ? to leave it paused"
+reads pause false "Space before ? to play on"
+keys SPACE
+reads pause true "Space to pause again"
+
+# Z alone, a moment on, delays the subtitles, as mpv has it.
+reads sub-delay 0 "the subtitles undelayed"
+keys Z
+reads sub-delay 0.1 "Z alone"
 
 # ]b and [b play the next and the one before in the list, and with a
 # number that many; gg and G the first and the last, and a number before G
@@ -192,8 +205,7 @@ reads playlist-pos 1 2G
 keys g g
 reads playlist-pos 0 "gg again"
 
-# f fills the screen and Escape leaves it; Space plays on and pauses, a
-# moment on, once no ? follows.
+# f fills the screen and Escape leaves it; Space plays on and pauses.
 keys f
 reads fullscreen true f
 keys ESC
@@ -203,13 +215,28 @@ reads pause false Space
 keys SPACE
 reads pause true "Space again"
 
-# q closes it.
-keys q
-for _ in $(seq 600); do
-  if ! kill -0 "$mpv" 2> /dev/null; then break; fi
-  sleep 0.1
-done
-if kill -0 "$mpv" 2> /dev/null; then never "q to close"; fi
+# Waits up to a minute for this mpv to close, saying what didn't close it.
+closed() {
+  for _ in $(seq 600); do
+    if ! kill -0 "$mpv" 2> /dev/null; then return 0; fi
+    sleep 0.1
+  done
+  never "$1 to close"
+}
+# q, Q, Escape at rest, and Space w, close nothing: a second on, the player
+# is still there, since Space leads nothing here.
+open_after() {
+  keys "$@"
+  sleep 1
+  kill -0 "$mpv" 2> /dev/null || never "$* to leave it open"
+}
+open_after q
+open_after Q
+open_after ESC
+open_after SPACE w
+# ZZ closes it.
+keys Z Z
+closed ZZ
 
 # A program that runs mpv with Escape of its own, forced, as the camera's
 # viewfinder does, always gets it, whichever script mpv loads first: of

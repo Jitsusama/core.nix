@@ -2,7 +2,7 @@
 # Runs inside cage: opens a long markdown file in the reader, presses
 # Neovim's keys through wtype and reads where each took the view from the
 # reader's key log (READER_KEYS_LOG), photographs the top of the page once
-# its heading is drawn, and closes it with q. cage doesn't pass on how this
+# its heading is drawn, and closes it with :q. cage doesn't pass on how this
 # ended, so it leaves ./passed once every key did what it should.
 #
 # cage has no keyboard until wtype makes one, so the reader has the
@@ -458,7 +458,7 @@ press -k Return
 logged '^outline went to "Part 1"' 1
 press gO
 logged '^outline: 5 rows, chosen "Part 1"' 2
-press q
+press -k Escape
 logged '^outline: closed' 2
 
 # A mark is kept with its file between openings.

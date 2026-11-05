@@ -1,24 +1,31 @@
 // How the launcher asks once before what can't be put back, as Vim's
-// confirm() asks: what it asks, which keys answer, and how soon. Where the
+// ask_yesno asks: what it asks, which keys answer, and how soon. Where the
 // ask is drawn is the launcher's to say. Read apart from it so
 // tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
 
-// An ask standing: what it asks, what y does and what any other key
-// does, and when it was put, in ms.
+// An ask standing: what it asks, what y does and what n does, and when it
+// was put, in ms.
 function asked(asks, yes, no, now) {
     return { question: asks, yes, no, at: now };
 }
 
+// The keys that answer no, as Vim's ask_yesno takes them.
+const NO = ["n", "Escape", "Ctrl+c"];
+
 // What a key says to an ask: "early" in its first `guard` ms, so a key
 // typed on from what asked can't answer it, or for no key at all, as a
-// modifier alone; "yes" for y alone; "no" for any other, as Escape, since
-// confirm()'s answer is no unless it's yes.
+// modifier alone; "yes" for y alone; "no" for n, Escape and Ctrl+C; and
+// "nothing" for any other, which ask_yesno lets by, so a stray key never
+// answers.
 function answer(ask, key, now, guard) {
     if (key === "" || now - ask.at < guard) {
         return "early";
     }
-    return key === "y" ? "yes" : "no";
+    if (key === "y") {
+        return "yes";
+    }
+    return NO.includes(key) ? "no" : "nothing";
 }
 
 // What d asks over the rows it would end, each { ends, name }: the one

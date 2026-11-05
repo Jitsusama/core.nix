@@ -2959,7 +2959,7 @@ onLinux {
   # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
   # to the keys Space ? lists; Operators.js to what d and y do to the rows
   # they take; and Confirm.js to how the launcher asks once, as Vim's
-  # confirm() does.
+  # ask_yesno does.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;

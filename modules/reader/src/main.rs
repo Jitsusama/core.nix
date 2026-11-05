@@ -996,7 +996,8 @@ impl App {
     /// A key while gO's outline shows, as Neovim's location list takes
     /// them in normal mode: j and k, gg and G, Ctrl+D and Ctrl+U and the
     /// screen's keys through its rows, / and ? then n and N through its
-    /// words, Return to the heading chosen, and q or Escape away.
+    /// words, Return to the heading chosen, and Escape or ZZ away: q does
+    /// nothing, as in his Neovim, since nothing records.
     fn outline_key(&mut self, key: keys::Key) {
         if let Some(typing) = self.outline_typing.as_mut() {
             let said = typing.key(key);

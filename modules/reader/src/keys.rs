@@ -276,16 +276,37 @@ pub fn table() -> &'static Table {
 /// tests find before it ships.
 fn read(language: &str) -> Table {
     let language: toml::Table = language.parse().expect("the key language is TOML");
+    // In normal and visual mode an arrow is its letter, so an act with the
+    // letter takes the arrow too, listed before it.
+    let arrows: Vec<(Vec<Key>, Vec<Key>)> = language["arrows"]
+        .as_table()
+        .expect("the key language's arrows are a table")
+        .iter()
+        .map(|(arrow, letter)| {
+            let letter = letter.as_str().expect("an arrow's letter is a string");
+            (
+                parse(letter).expect("an arrow's letter is a key"),
+                parse(arrow).expect("an arrow is a key"),
+            )
+        })
+        .collect();
     let keys = |name: &str| -> (Vec<Vec<Key>>, In) {
         let act = &language["acts"][name];
         let keys = act["keys"]
             .as_array()
             .unwrap_or_else(|| panic!("the key language has no act {name}"))
             .iter()
-            .map(|notation| {
+            .flat_map(|notation| {
                 let notation = notation.as_str().expect("a key is a string");
-                parse(notation)
-                    .unwrap_or_else(|| panic!("the reader can't be given {notation}, for {name}"))
+                let keys = parse(notation)
+                    .unwrap_or_else(|| panic!("the reader can't be given {notation}, for {name}"));
+                let mut taken: Vec<Vec<Key>> = arrows
+                    .iter()
+                    .filter(|(letter, _)| *letter == keys)
+                    .map(|(_, arrow)| arrow.clone())
+                    .collect();
+                taken.push(keys);
+                taken
             })
             .collect();
         // An act is pressed in normal mode unless the language says.
@@ -726,7 +747,7 @@ mod tests {
                 .any(|(ways, _)| ways == &["]b"])
         );
         let page = rows_of("The Page");
-        assert!(page.iter().any(|(ways, _)| ways == &["q", "ZZ", "Space w"]));
+        assert!(page.iter().any(|(ways, _)| ways == &["ZZ", "Space w"]));
         assert!(
             page.iter()
                 .any(|(ways, _)| ways == &["Ctrl+Equal", "Ctrl+Plus"])
@@ -1036,12 +1057,11 @@ mod tests {
     }
 
     #[test]
-    fn q_closes_and_search_starts_both_ways() {
+    fn q_does_nothing_and_search_starts_both_ways() {
         let mut machine = Machine::default();
         assert_eq!(
             typed(&mut machine, "q/?nN"),
             [
-                (Act::Close, None),
                 (Act::SearchForward, None),
                 (Act::SearchBackward, None),
                 (Act::Next, None),

@@ -3119,15 +3119,16 @@ Scope {
     // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
     // says what each does to a row): d does each row's ending action, as
     // dd deletes a line, and y copies each, as yy yanks one. What d does
-    // that can't be put back it asks about once, as Vim's confirm() asks
+    // that can't be put back it asks about once, as Vim's ask_yesno asks
     // (Confirm.js): the launcher's one ask, said in Return's place in the
     // foot as a search's "not found" is, the keys that asked it its mark.
     // While it stands every key is its answer (Prompt.qml's confirming):
-    // y after its first 300 ms does it, any other key lets it go.
+    // after its first 300 ms, y does it, n, Escape or Ctrl+C lets it go,
+    // and any other key does nothing.
     property var asked: null
     property string askedBy: ""
 
-    // Asks once, `yes` done on y and `no` on any other key, `mark` the
+    // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, `mark` the
     // keys that asked it, as "dd". The command line will draw it in place
     // of the foot, through the same call.
     function askOnce(question, yes, no, mark) {
@@ -3143,7 +3144,7 @@ Scope {
         if (ask === null)
             return;
         const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early")
+        if (said === "early" || said === "nothing")
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -4192,7 +4193,7 @@ Scope {
             prompt.take();
             Report.say(`stands ${standing.said}`);
         } else {
-            // An ask closing with it says no, as any other key would.
+            // An ask closing with it says no, as Escape would.
             asked = null;
             screenHere = focusedScreen;
             trials.closed();

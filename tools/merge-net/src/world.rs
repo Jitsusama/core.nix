@@ -20,15 +20,54 @@ use crate::watch::{Bad, Changed, Merged, World};
 /// Where the quarantine list is in the repository.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
 
-/// The longest a VM test may run before it's stopped, a stall rather than
-/// a failure: the slowest pass in well under an hour on a builder of its
-/// own.
+/// The longest a VM test may run on a builder before it's stopped, a stall
+/// rather than a failure: the slowest pass in well under an hour on a
+/// builder of its own.
 const LONGEST: Duration = Duration::from_hours(2);
 
-/// How long a VM test's log may stay silent before it's stopped as a
-/// stall. A run built with `-L` prints as it goes, and a build that hung
-/// on the builder once sat silent for over an hour.
+/// How long a VM test's log may stay silent on a builder before it's
+/// stopped as a stall. A run built with `-L` prints as it goes, and a build
+/// that hung on the builder once sat silent for over an hour.
 const SILENT: Duration = Duration::from_mins(30);
+
+/// What nix-offload says once a builder has taken a run. Before it, the run
+/// waits its turn in the builder's queue, which says nothing for as long as
+/// the queue takes, so neither clock may start until it's said.
+const TAKEN: &str = "nix-offload: building on ";
+
+/// When a run sent to a builder has been there too long, or too quiet.
+struct Clock {
+    taken: Option<Instant>,
+    written: u64,
+    heard: Instant,
+}
+
+impl Clock {
+    fn new(now: Instant) -> Self {
+        Self {
+            taken: None,
+            written: 0,
+            heard: now,
+        }
+    }
+
+    /// Whether the run whose log is `log` should be stopped at `now`.
+    fn overdue(&mut self, log: &Path, now: Instant) -> bool {
+        let written = fs::metadata(log).map_or(0, |meta| meta.len());
+        if written != self.written {
+            self.written = written;
+            self.heard = now;
+            if self.taken.is_none()
+                && fs::read_to_string(log).is_ok_and(|text| text.contains(TAKEN))
+            {
+                self.taken = Some(now);
+            }
+        }
+        self.taken.is_some_and(|taken| {
+            now.duration_since(taken) > LONGEST || now.duration_since(self.heard) > SILENT
+        })
+    }
+}
 
 /// The world as the net finds it.
 pub struct Real {
@@ -334,16 +373,11 @@ impl World for Real {
             .stderr(output)
             .spawn()
             .ok()?;
-        let began = Instant::now();
-        let (mut written, mut heard) = (0, Instant::now());
+        let mut clock = Clock::new(Instant::now());
         loop {
-            let now_written = fs::metadata(log).map_or(0, |meta| meta.len());
-            if now_written != written {
-                (written, heard) = (now_written, Instant::now());
-            }
             match child.try_wait() {
                 Ok(Some(status)) => return status.code(),
-                Ok(None) if began.elapsed() > LONGEST || heard.elapsed() > SILENT => {
+                Ok(None) if clock.overdue(log, Instant::now()) => {
                     let _ = child.kill();
                     let _ = child.wait();
                     return None;
@@ -672,6 +706,58 @@ mod tests {
             assert!(body.contains(named), "{named}");
         }
         assert!(!body.contains('\u{2014}'));
+    }
+
+    #[test]
+    fn a_run_waiting_its_turn_is_never_overdue() {
+        let log = std::env::temp_dir().join(format!("merge-net-queue-{}.log", std::process::id()));
+        let start = Instant::now();
+        let mut clock = Clock::new(start);
+        fs::write(
+            &log,
+            "nix-offload: the VM builder has 4 VM tests, so this waits for room\n",
+        )
+        .unwrap();
+        assert!(!clock.overdue(&log, start));
+        assert!(
+            !clock.overdue(&log, start + LONGEST * 2),
+            "queued, however long"
+        );
+        let taken = start + LONGEST * 2;
+        fs::write(
+            &log,
+            "waits for room\nnix-offload: building on the lent builder b\n",
+        )
+        .unwrap();
+        assert!(!clock.overdue(&log, taken));
+        assert!(!clock.overdue(&log, taken + SILENT));
+        assert!(
+            clock.overdue(&log, taken + SILENT + Duration::from_secs(1)),
+            "silent"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_run_on_a_builder_too_long_is_overdue() {
+        let log = std::env::temp_dir().join(format!("merge-net-long-{}.log", std::process::id()));
+        let start = Instant::now();
+        let mut clock = Clock::new(start);
+        let mut text = String::from("nix-offload: building on b, flake\n");
+        let mut now = start;
+        while now <= start + LONGEST {
+            text.push_str("still going\n");
+            fs::write(&log, &text).unwrap();
+            assert!(!clock.overdue(&log, now));
+            now += Duration::from_mins(10);
+        }
+        text.push_str("still going\n");
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "past the longest, though never silent"
+        );
+        let _ = fs::remove_file(&log);
     }
 
     #[test]

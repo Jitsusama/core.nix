@@ -22,21 +22,21 @@
 # open now, which zathura says over its bus and open-now reads, and which
 # Return goes to.
 #
-# Its keys speak the keyboard's language: Left and Right turn the pages and
-# Up and Down scroll, Tab goes back to the place used last (a link followed,
-# a search, the first page) and again returns, C opens the contents, and
-# Space ? shows its keys in the launcher, over its window, as in Joel's
-# Neovim. Vim's keys are zathura's own, as his Vim has them, and listed
-# beside the arrow or the key each twins: j and k scroll as Down and Up do,
-# h and l sideways, J and K turn the pages as Page Down and Page Up do, gg
-# and G go to the first and the last as Home and End do, a count before G
-# to that page, Ctrl+D and Ctrl+U half a screen, Ctrl+F and Ctrl+B a
-# screen, / and ? find on and back and n and N again, m and ' mark a place
-# and go back to it, and Ctrl+O and Ctrl+I go back and on along the jumps.
-# ]b and [b open the next document in its folder and the one before, by
-# name, as Vim's go between buffers (next-document/). Left and Right turn
-# pages rather than scroll sideways, as Joel chose, so h and l twin
-# nothing. Space scrolls no more, since it leads, which a patch lets it.
+# Its keys are Vim's, which are zathura's own, as his Vim has them, each
+# with one meaning, and each arrow does what its letter does: j and k
+# scroll down and up, h and l sideways, J and K turn the pages as Page Down
+# and Page Up do, gg and G go to the first and the last as Home and End do,
+# a count before G to that page, Ctrl+D and Ctrl+U half a screen, Ctrl+F
+# and Ctrl+B a screen, / and ? find on and back and n and N again, m and '
+# mark a place and go back to it, and Ctrl+O and Ctrl+I go back and on
+# along the jumps. ]b and [b open the next document in its folder and the
+# one before, by name, as Vim's go between buffers (next-document/). Tab
+# goes back to the place used last (a link followed, a search, the first
+# page) and again returns, c opens the contents, Space ? shows its keys in
+# the launcher, over its window, as in Joel's Neovim, and : is zathura's
+# own command line, which is Vim's already. ZZ and Space w close it, as
+# they close everything of his, and q closes nothing. Space scrolls no
+# more, since it leads, which a patch lets it.
 #
 # A key waiting for its second isn't shown, as Joel's Neovim has showcmd
 # off, and zathura's bar, which would show it, stays hidden.
@@ -88,24 +88,12 @@ let
   keys =
     grouped "turning" [
       {
-        chord = "Left";
-        key = "<Left>";
-        run = "navigate previous";
-        does = "The previous page";
-      }
-      {
         chord = "Page_Up";
         does = "The previous page";
       }
       {
         chord = "Shift+k";
         does = "The previous page";
-      }
-      {
-        chord = "Right";
-        key = "<Right>";
-        run = "navigate next";
-        does = "The next page";
       }
       {
         chord = "Page_Down";
@@ -169,8 +157,16 @@ let
         does = "Down a little";
       }
       {
+        chord = "Left";
+        does = "Left a little";
+      }
+      {
         chord = "h";
         does = "Left a little";
+      }
+      {
+        chord = "Right";
+        does = "Right a little";
       }
       {
         chord = "l";
@@ -275,8 +271,18 @@ let
         run = ''exec "launcher-say collection shortcuts"'';
         does = "The document's keys";
       }
+      # q closes nothing, as in every program of Joel's; ZZ and Space w
+      # close, as they close everything of his.
       {
-        chord = "q";
+        chord = "Shift+z Shift+z";
+        key = "ZZ";
+        run = "quit";
+        does = "Close the document";
+      }
+      {
+        chord = "space w";
+        key = ''" w"'';
+        run = "quit";
         does = "Close the document";
       }
     ];
@@ -373,16 +379,23 @@ in
       selection-clipboard = "clipboard";
       window-title-basename = true;
     };
-    # Space leads rather than scrolls, and Shift+Space with it.
+    # Space leads rather than scrolls, and Shift+Space with it, and q closes
+    # nothing, in any of zathura's modes.
     extraConfig = ''
       unmap <Space>
       unmap <S-Space>
+      unmap q
+      unmap [fullscreen] q
+      unmap [presentation] q
+      unmap [index] q
     '';
     # The contents close on the key that opened them, as on Escape.
     mappings =
       lib.listToAttrs (map (key: lib.nameValuePair key.key key.run) (lib.filter (key: key ? run) keys))
       // {
         "[index] c" = "toggle_index";
+        # Full screen closes as the window does.
+        "[fullscreen] ZZ" = "quit";
       };
   };
 

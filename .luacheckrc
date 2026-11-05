@@ -14,6 +14,9 @@ files['modules/neovim'] = { std = 'luajit', globals = { 'vim' }, read_globals = 
 -- each line by its width, and trimming them would skew the picture.
 files['modules/neovim/plugins/snacks.lua'] = { ignore = { '613' } }
 
+-- Neovim runs the key language's lookup of its commands with no config.
+files['modules/keys'] = { std = 'luajit', read_globals = { 'vim' } }
+
 -- mpv runs the camera's viewfinder script in Lua 5.2 and gives it `mp`.
 files['modules/camera'] = { std = 'lua52', read_globals = { 'mp' } }
 

@@ -219,7 +219,7 @@ QtObject {
         holds("an ending action with no undo asks once", Operators.asks([close]), true);
         holds("one that's put back doesn't",
             Operators.asks([Object.assign({ undo: run }, close)]), false);
-        // The ask, as Vim's confirm() asks: what it would end, by name for
+        // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
         const asking = { ask: "{ends} {name}? (y/n)", asks: "{ends} these {count}? (y/n)",
             ends: "end" };
@@ -238,10 +238,12 @@ QtObject {
         holds("a key in the ask's first 300 ms is let by", Confirm.answer(ask, "y", 1299, 300),
             "early");
         holds("y after it answers yes", Confirm.answer(ask, "y", 1300, 300), "yes");
-        holds("n answers no", Confirm.answer(ask, "n", 1400, 300), "no");
-        holds("and so does any other key, Y and Escape among them",
-            ["Y", "Escape", "d", "Return"].map(key => Confirm.answer(ask, key, 1400, 300)),
-            ["no", "no", "no", "no"]);
+        holds("n, Escape and Ctrl+C answer no, as Vim's ask_yesno",
+            ["n", "Escape", "Ctrl+c"].map(key => Confirm.answer(ask, key, 1400, 300)),
+            ["no", "no", "no"]);
+        holds("and any other key, Y among them, does nothing",
+            ["Y", "d", "Return", "j"].map(key => Confirm.answer(ask, key, 1400, 300)),
+            ["nothing", "nothing", "nothing", "nothing"]);
         holds("and no key at all, as a modifier alone, is let by",
             Confirm.answer(ask, "", 1400, 300), "early");
         // The ask's mark says the keys that asked it, as they were typed.

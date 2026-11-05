@@ -455,15 +455,16 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
     machine.succeed(f"rm {looked}")
 
 
-def test_a_document_opens_in_zathura_beside_the_rest_and_q_closes_it(desktop: Desktop) -> None:
-    """A document opens in zathura, beside the rest, and q closes it."""
+def test_a_document_opens_in_zathura_beside_the_rest_and_zz_closes_it(desktop: Desktop) -> None:
+    """A document opens in zathura, beside the rest, and ZZ closes it, as q no longer does."""
     machine = desktop.machine
     desktop.opens_in(desktop.values["page"], "application/pdf", "org.pwmt.zathura")
     windows = json.loads(desktop.as_account("niri msg --json windows"))
     zathura = next(window for window in windows if window["app_id"] == "org.pwmt.zathura")
     assert not zathura["is_floating"], zathura
     desktop.photograph("zathura")
-    machine.send_key("q")
+    machine.send_key("shift-z")
+    machine.send_key("shift-z")
     machine.wait_until_fails(
         f"pgrep -u {desktop.account} -f '[z]athura'", timeout=timedelta(seconds=10)
     )
@@ -473,8 +474,8 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
     """A markdown file opens in the reader, which takes Neovim's keys and reopens where it was.
 
     Where the reader was when it closed is kept beside its state, so what each key did is
-    read back from there: G and q keep it at the end, opening again comes back to the end,
-    and gg then Ctrl+D then q keep it half a screen down.
+    read back from there: G and ZZ keep it at the end, opening again comes back to the end,
+    and gg then Ctrl+D then ZZ keep it half a screen down.
     """
     machine = desktop.machine
     page = f"/home/{desktop.account}/page.md"
@@ -486,18 +487,18 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
     reader = reader_opened(desktop, page)
     desktop.photograph("reader")
     machine.send_key("shift-g")
-    machine.send_key("q")
-    assert reader_closed_at(desktop, reader)["at_end"], "G didn't go to the end, or q didn't close"
+    close_the_reader(desktop)
+    assert reader_closed_at(desktop, reader)["at_end"], "G didn't go to the end, or ZZ didn't close"
 
     reader = reader_opened(desktop, page)
-    machine.send_key("q")
+    close_the_reader(desktop)
     assert reader_closed_at(desktop, reader)["at_end"], "the reader didn't open where it closed"
 
     reader = reader_opened(desktop, page)
     machine.send_key("g")
     machine.send_key("g")
     machine.send_key("ctrl-d")
-    machine.send_key("q")
+    close_the_reader(desktop)
     kept = reader_closed_at(desktop, reader)
     assert not kept["at_end"], kept
     assert kept["block"] != 0 or kept["into_pt"] != 0, "Ctrl+D didn't move from the top"
@@ -509,9 +510,9 @@ def test_the_reader_closed_straight_after_a_jump_keeps_its_place_and_dies_in_not
 ) -> None:
     """The reader closed straight after a jump keeps its place and dies in nothing.
 
-    q just after G used to close it while its loader still made the landing's textures, and
+    Closing just after G used to close it while its loader still made the landing's textures, and
     the driver's own teardown at exit freed what the loader used: it died in Mesa now and
-    then, after keeping its place or before. Opened on a long page, G then q at once, again
+    then, after keeping its place or before. Opened on a long page, G then ZZ at once, again
     and again, keeps the end each time, and no thread of the reader faults.
     """
     machine = desktop.machine
@@ -524,9 +525,15 @@ def test_the_reader_closed_straight_after_a_jump_keeps_its_place_and_dies_in_not
         desktop.as_account("rm -f ~/.local/state/reader/places/*.json")
         reader = reader_opened(desktop, page)
         machine.send_key("shift-g")
-        machine.send_key("q")
-        assert reader_closed_at(desktop, reader)["at_end"], "G then q at once didn't keep the end"
+        close_the_reader(desktop)
+        assert reader_closed_at(desktop, reader)["at_end"], "G then ZZ at once didn't keep the end"
     machine.succeed(f"rm {page}")
+
+
+def close_the_reader(desktop: Desktop) -> None:
+    """Close the reader as Neovim closes, by ZZ: q does nothing, since nothing records."""
+    desktop.machine.send_key("shift-z")
+    desktop.machine.send_key("shift-z")
 
 
 def reader_opened(desktop: Desktop, page: str) -> tuple[str, int]:
@@ -599,7 +606,7 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
     machine.wait_until_succeeds(
         desktop.in_session(f"grep -qF {first.group(1)} {showing}"), timeout=timedelta(seconds=20)
     )
-    machine.send_key("q")
+    close_the_reader(desktop)
     machine.wait_until_fails(
         f"pgrep -u {desktop.account} -f '[.]reader-wrapped'", timeout=timedelta(seconds=10)
     )

@@ -436,7 +436,7 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
     desktop.reported("yanked 1", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline") == top
     desktop.launcher_until(lambda shown: shown["open"] and shown["flashing"] == [])
-    # dd asks, in Return's place, as Vim's confirm() does, and closes
+    # dd asks, in Return's place, as Vim's ask_yesno does, and closes
     # nothing yet; it can be answered once it's stood 300 ms.
     with desktop.told("ask ready"), desktop.told(f"asked Close {top}? (y/n)"):
         machine.send_chars("dd")
