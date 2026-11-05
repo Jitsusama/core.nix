@@ -1572,8 +1572,8 @@
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';
   the-launcher-makes-texts-ready-lightly = ''
-    making a text ready to match and keeping it grows the launcher's memory by at most 10 KB a
-    text, where one grown a letter at a time took 14
+    making a text ready to match and keeping it grows the launcher's memory by at most 3.5 KB a
+    text, where one whose letters were spread into calls took 7.6
   '';
   the-launcher-means-one-thing-a-word = ''
     no name, word or question in the launcher's vocabulary finds two things at once unless it's

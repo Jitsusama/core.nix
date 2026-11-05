@@ -95,7 +95,11 @@ QtObject {
         "Log out",
         "Reboot the machine",
         "Power off the machine",
-        "Join a Wi-Fi network"
+        "Join a Wi-Fi network",
+        // Two words written with hyphens, and one whose first letter's
+        // lower case is two letters, so it's made ready the long way.
+        "Jean-Luc Picard-Smith",
+        "\u0130zmir Caf\u00e9-Bar"
     ].concat([1, 2, 3, 4, 5, 6, 7, 8, 9].reduce((all, n) => all.concat([
         `Go to workspace ${n}`,
         `Move the column to workspace ${n}`,
@@ -121,6 +125,11 @@ QtObject {
         "wifi": "Join a Wi-Fi network",
         "join wifi": "Join a Wi-Fi network",
         "wi-fi": "Join a Wi-Fi network",
+        "jeanluc": "Jean-Luc Picard-Smith",
+        "picardsmith": "Jean-Luc Picard-Smith",
+        "jean picard": "Jean-Luc Picard-Smith",
+        "caf\u00e9bar": "\u0130zmir Caf\u00e9-Bar",
+        "caf\u00e9-bar": "\u0130zmir Caf\u00e9-Bar",
         "chr": "Google Chrome",
         "chrome": "Google Chrome",
         "sl": "Slack",

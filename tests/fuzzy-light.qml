@@ -6,7 +6,9 @@
 // makes a text ready for every row it lists and keeps up to 40,000 of them,
 // so each one's cost is the shell's: a text grown a letter at a time, or a
 // string made for each letter, took this process's memory up by 14 KB a
-// text, where making them at once takes 7.
+// text; one whose letters were spread into calls, with its closed-up form
+// grown a place at a time, took 7.6; one made as the engine lowers a
+// whole text, and its closed-up form joined from pieces, takes 2.9.
 import QtQuick
 import QtQuick.Window
 import "Fuzzy.js" as Fuzzy
@@ -17,7 +19,7 @@ Window {
     // How many texts are kept: the most one lot of Fuzzy.kept holds.
     readonly property int texts: 20000
     // The most a kept text may raise the process's own memory, in bytes.
-    readonly property int most: 10240
+    readonly property int most: 3500
 
     // The process's own anonymous memory, in bytes.
     function anonymous() {
