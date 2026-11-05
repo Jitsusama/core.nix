@@ -1758,41 +1758,51 @@ impl App {
         self.acted(act, count, from, screen_pt);
     }
 
+    /// Ctrl+E and Ctrl+Y a line, Ctrl+D and Ctrl+U half a screen, and
+    /// Ctrl+F and Ctrl+B a screen, `n` times. Ctrl+D and Ctrl+U take the
+    /// cursor as far as the view, as vi's scroll option has it; the others
+    /// leave it on its line while that stays in view.
+    fn scroll(&mut self, act: keys::Act, n: f64) {
+        use keys::Act;
+        let (screen, line) = (self.screen_px(), LINE_PT * self.px_per_pt());
+        let (at, here) = (self.heading(), self.cursor_pt());
+        let by = match act {
+            Act::ScrollDown => n * line,
+            Act::ScrollUp => -n * line,
+            Act::HalfDown => n * screen / 2.0,
+            Act::HalfUp => -n * screen / 2.0,
+            Act::ScreenDown => n * screen,
+            _ => -n * screen,
+        };
+        match act {
+            Act::ScrollDown | Act::ScrollUp => self.step_to(at + by),
+            _ => self.jump_to(at + by),
+        }
+        let carried = if matches!(act, Act::HalfDown | Act::HalfUp) {
+            by / self.px_per_pt()
+        } else {
+            0.0
+        };
+        self.keep_cursor(here + carried);
+    }
+
     /// Does what a key asks of the view, at rest or of one it moves while
     /// selecting.
     fn view_act(&mut self, act: keys::Act, count: Option<u32>, listed: bool) {
         use keys::Act;
         let n = f64::from(count.unwrap_or(1));
-        let screen = self.screen_px();
         let line = LINE_PT * self.px_per_pt();
         let at = self.heading();
         let here = self.cursor_pt();
-        // Ctrl+D and Ctrl+U take the cursor as far as the view, as vi's
-        // scroll option has it; Ctrl+E, Ctrl+Y, Ctrl+F and Ctrl+B leave it on
-        // its line while that stays in view.
-        let half = n * screen / 2.0;
         match act {
             Act::Down => self.step_cursor(count_of(count)),
             Act::Up => self.step_cursor(-count_of(count)),
-            Act::ScrollDown | Act::ScrollUp | Act::ScreenDown | Act::ScreenUp => {
-                let by = match act {
-                    Act::ScrollDown => n * line,
-                    Act::ScrollUp => -n * line,
-                    Act::ScreenDown => n * screen,
-                    _ => -n * screen,
-                };
-                if matches!(act, Act::ScrollDown | Act::ScrollUp) {
-                    self.step_to(at + by);
-                } else {
-                    self.jump_to(at + by);
-                }
-                self.keep_cursor(here);
-            }
-            Act::HalfDown | Act::HalfUp => {
-                let by = if act == Act::HalfDown { half } else { -half };
-                self.jump_to(at + by);
-                self.keep_cursor(here + by / self.px_per_pt());
-            }
+            Act::ScrollDown
+            | Act::ScrollUp
+            | Act::HalfDown
+            | Act::HalfUp
+            | Act::ScreenDown
+            | Act::ScreenUp => self.scroll(act, n),
             // gg and a count's G take the cursor to the view's top line, and G
             // alone to its bottom one, as vi's go to a line and to the last.
             Act::First => {
@@ -1892,8 +1902,8 @@ impl App {
     /// the view's top and the cursor's line were, and what it did logged for
     /// the tests.
     fn acted(&mut self, act: keys::Act, count: Option<u32>, from: (f64, f64), screen_pt: f64) {
-        let (from_pt, from_aim) = from;
         use keys::Act;
+        let (from_pt, from_aim) = from;
         // A move longer than a screen is a jump, as vi's are, however it
         // was made; going through the jumps never adds to them.
         let to_pt = self.heading() / self.px_per_pt();
