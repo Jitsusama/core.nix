@@ -929,7 +929,14 @@ def walk_the_rows_keys(desktop: Desktop) -> None:
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+    # A held place's rows are numbered as the search's are (87ED6K, for the picker's folders).
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["emoji"]
+            and shown["gutter"]["shown"]
+            and shown["gutter"]["numbers"][:3] == ["1", "1", "2"]
+        )
+    )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
     # A colon as the find's first letter opens the command line, where :q closes.
