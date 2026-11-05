@@ -525,8 +525,8 @@ QtObject {
         };
         const of = (id, state) => Object.assign({ id }, vocabulary[id] ?? {},
             ((vocabulary[id] ?? {}).states ?? {})[state] ?? {});
-        const named = key => Commands.wordsFor(key, of).command ?? "";
-        const set = state => Commands.wordsFor("wifi:radio", of, state).argument ?? "";
+        const named = key => CommandBinding.wordsFor(key, of).command ?? "";
+        const set = state => CommandBinding.wordsFor("wifi:radio", of, state).argument ?? "";
         holds("a row in a state names its state's", [set(""), set("off")], ["nowifi", "wifi"]);
         holds("a verb made one of several reads the verb's", named("verb:sound-port-2"), "set");
         holds("a row that's an act names its own", named("session:Lock"), "lockscreen");

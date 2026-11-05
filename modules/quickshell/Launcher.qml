@@ -2687,9 +2687,9 @@ Scope {
     }, ...sources.map(source => source.setOptions ?? {}))
 
     // An act's words for the line, by its key and the state its words are
-    // in, a row's wordState (Commands.wordsFor).
+    // in, a row's wordState (CommandBinding.wordsFor).
     function commandWords(act) {
-        return Commands.wordsFor(act.key ?? "", (id, state) => Words.of(id, state),
+        return CommandBinding.wordsFor(act.key ?? "", (id, state) => Words.of(id, state),
             act.wordState ?? "");
     }
 
