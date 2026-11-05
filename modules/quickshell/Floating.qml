@@ -26,24 +26,44 @@ Item {
 
     // How far its shadows reach beyond it, which its window leaves room for.
     readonly property int reach: Theme.floating.reach
+    // Its bottom corners' radius: the whole thing's, or square at a
+    // square foot.
+    readonly property int footRadius: squareFoot ? 0 : Theme.radius
     readonly property Region area: Region {
         item: panel
         radius: Theme.radius
+        bottomLeftRadius: floating.footRadius
+        bottomRightRadius: floating.footRadius
     }
 
     implicitHeight: body.implicitHeight + 2 * Theme.border
 
-    Repeater {
-        model: Theme.floating.shadows
+    // Its shadows, as far as they reach. At a square foot they're cut
+    // there, and each runs a reach past it, so neither a shadow's round
+    // corner nor its fading edge shows under the cloudy panel, and none
+    // falls on what it stands on.
+    Item {
+        x: -floating.reach
+        y: -floating.reach
+        width: floating.width + 2 * floating.reach
+        height: floating.height + (floating.squareFoot ? 1 : 2) * floating.reach
+        clip: floating.squareFoot
 
-        RectangularShadow {
-            required property var modelData
+        Repeater {
+            model: Theme.floating.shadows
 
-            anchors.fill: panel
-            offset.y: modelData.offset
-            blur: modelData.blur
-            radius: Theme.radius
-            color: Qt.alpha(Theme.shadow, modelData.opacity)
+            RectangularShadow {
+                required property var modelData
+
+                x: floating.reach
+                y: floating.reach
+                width: floating.width
+                height: floating.height + (floating.squareFoot ? floating.reach : 0)
+                offset.y: modelData.offset
+                blur: modelData.blur
+                radius: Theme.radius
+                color: Qt.alpha(Theme.shadow, modelData.opacity)
+            }
         }
     }
 
@@ -52,6 +72,8 @@ Item {
         anchors.fill: parent
         color: Qt.alpha(Theme.deepest, Theme.floating.opacity)
         radius: Theme.radius
+        bottomLeftRadius: floating.footRadius
+        bottomRightRadius: floating.footRadius
         border.width: Theme.border
         border.color: floating.urgent ? Theme.alert : floating.keys ? Theme.accent : Theme.edge
 
