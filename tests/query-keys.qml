@@ -285,15 +285,26 @@ QtObject {
         // the keys, the span and the actions over it of yG and of dG, each
         // timed as the fastest of twenty batches of fifty, since a check
         // shares its machine, in half a key's 4 ms: about 0.4 ms alone, and
-        // past 1 ms while VM tests shared the machine (2026-11-04).
+        // past 1 ms while VM tests shared the machine (2026-11-04). And the
+        // longest place the launcher lists, a folder of 1000 files, within
+        // the key's 4 ms.
+        const made = { run, float, close, actions, copies, commands };
+        operatorsTimed(holds, 400, 2, made);
+        operatorsTimed(holds, 1000, 4, made);
+    }
+
+    // yG and dG over a place of `count` windows, made of `made`'s acts as
+    // operators' rows are, each taking less than `under` ms.
+    function operatorsTimed(holds, count, under, made) {
+        const { run, float, close, actions, copies, commands } = made;
         const windows = [];
-        for (let at = 0; at < 400; at++) {
+        for (let at = 0; at < count; at++) {
             const named = `Pull request #${at} \u00b7 Jitsusama/core.nix`;
             windows.push({ key: `window:${at}`, verb: "go", run,
                 verbs: () => [float, { key: "verb:title", verb: "copy", copies: () => named,
                     run }, close] });
         }
-        const all = { at: 0, highest: 0, last: 399, top: 0, bottom: 7, screen: 8 };
+        const all = { at: 0, highest: 0, last: count - 1, top: 0, bottom: 7, screen: 8 };
         const spanOf = operator => {
             let standing = Keys.rest();
             let last = null;
@@ -318,9 +329,10 @@ QtObject {
         const ending = timed(() => Operators.asks(Operators.endings(
             Operators.taken(windows, spanOf("d"), null), actions).map(one => one.action),
             commands));
-        console.log(`yG over 400 rows in ${yanking.toFixed(3)} ms, dG in ${ending.toFixed(3)} ms`);
-        holds("yG over 400 rows in half a key's 4 ms", yanking < 2, true);
-        holds("and dG", ending < 2, true);
+        console.log(`yG over ${count} rows in ${yanking.toFixed(3)} ms, `
+            + `dG in ${ending.toFixed(3)} ms`);
+        holds(`yG over ${count} rows in under ${under} ms`, yanking < under, true);
+        holds(`and dG over ${count}`, ending < under, true);
     }
 
     // An operator waiting for what it acts on, as the mode word's room says

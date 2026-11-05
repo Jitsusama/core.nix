@@ -140,7 +140,10 @@ Provider {
             reads: quest.summary ?? "",
             later: true,
             run: () => provider.go(quest),
-            verbs: () => provider.verbs(quest)
+            verbs: () => provider.verbs(quest),
+            // What y takes: its id, the first of its facts, as its verbs
+            // list them.
+            operands: () => [copyOperand("fact:quest:id", quest.id)]
         });
         // Its id and kind, made ready to match when first searched, as its
         // name is, and kept while they read the same (Fuzzy.kept), for a

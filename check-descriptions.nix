@@ -1153,11 +1153,14 @@
     onto the clipboard with y and Ctrl+C, a paragraph the page wraps as its one line, and follows
     a link by g x's label, to a heading, putting the cursor on it, and to another markdown file set in the same window, Ctrl+O and Ctrl+I across the two, then vi's [b ]b { } ]]
     [[ H M L zt zz zb % * # gO gf and Ctrl+], :noh, :5, E492 and E481, copies the file with :%y
-    and a selection's lines with :'<,'>y, says E16 past the end, keeps the search's marks on
+    and a selection's lines with :'<,'>y, says E16 past the end, edits the line with Ctrl+W,
+    Ctrl+U and Ctrl+H and drops it with Ctrl+C, keeps the search's marks on
     Escape at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on
     a selection), keeps a mark between openings, goes between files with :bp, :e and :bn, says
     E484 of a file that isn't, lists the keys on :h, lists the lines :g/pat/ matches, the marks on
-    :marks and the jumps on :ju, going to one on Return, and closes on :q; markdown files open in it
+    :marks and the jumps on :ju, going to one on Return, shows the command line's menu on :, narrowed
+    by what's typed and chosen from with Tab, Shift+Tab, the arrows, Ctrl+N, Ctrl+P, Ctrl+E and
+    Ctrl+Y, the files after :e, and closes on :q; markdown files open in it
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests

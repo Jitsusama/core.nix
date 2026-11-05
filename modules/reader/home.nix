@@ -40,7 +40,16 @@
 # link to another markdown file sets it in the same window, as Neovim's
 # gf, keeping the place on the first, and Ctrl+O and Ctrl+I go back and
 # forth across files. Escape only cancels: at rest it does nothing, as
-# Vim's does, and :noh puts the search's marks away. The same table, as
+# Vim's does, and :noh puts the search's marks away. The find line and
+# the command line take the key language's keys, as Vim's command line:
+# Escape or Ctrl+C drops one, Backspace or Ctrl+H takes a letter and
+# leaves an empty line, Ctrl+W a word, Ctrl+U the rest, and Return makes
+# it; held, a key never leaves the line. The moment : is typed, a menu of
+# every command the page has rises over the line, as his completion menu
+# does, each in Vim's help notation with its name and key: typing narrows
+# it, Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P choose a line and
+# write it in, Ctrl+Y takes it, Ctrl+E puts the menu away, and after :e
+# and a space it lists the files. The same table, as
 # the launcher lists it over
 # the reader's window, is below, and a check holds the two alike
 # (reader-says-the-keys-it-takes).
@@ -262,6 +271,18 @@ let
   objects = key "objects";
   copying = key "copying";
   page = key "page";
+  commands = key "commands";
+  # The lines' keys work only while one is typed, where some of them mean
+  # something else on the page, as Ctrl+E scrolls it.
+  on =
+    where: act: chord: does:
+    commands act chord does
+    // {
+      when = where;
+    };
+  onLines = on "on the find line or the command line";
+  onCommand = on "on the command line";
+  onFind = on "on the find line";
   keys = [
     (moving "down" "Down" "Down a line")
     (moving "down" "j" "Down a line")
@@ -349,6 +370,22 @@ let
     (page "show-keys" "F1" "Show every key here")
     (page "close" "Z Z" "Close the page")
     (page "close" "Space w" "Close the page")
+    (commands "back" "Escape" "Cancel the line, a selection or a count")
+    (onLines "leave" "Ctrl+C" "Cancel the line")
+    (onLines "delete-letter" "Backspace" "Delete a letter, or leave an empty line")
+    (onLines "delete-letter" "Ctrl+H" "Delete a letter, or leave an empty line")
+    (onLines "delete-word" "Ctrl+W" "Delete the word before")
+    (onLines "delete-to-start" "Ctrl+U" "Delete everything typed")
+    (onCommand "run" "Return" "Run the command typed")
+    (onFind "open" "Return" "Search for what's typed")
+    (onCommand "next-row" "Down" "Choose the next command in the menu")
+    (onCommand "next-row" "Tab" "Choose the next command in the menu")
+    (onCommand "next-row" "Ctrl+N" "Choose the next command in the menu")
+    (onCommand "previous-row" "Up" "Choose the command before in the menu")
+    (onCommand "previous-row" "Shift+Tab" "Choose the command before in the menu")
+    (onCommand "previous-row" "Ctrl+P" "Choose the command before in the menu")
+    (onCommand "take-name" "Ctrl+Y" "Take the command chosen")
+    (onCommand "menu-away" "Ctrl+E" "Put the menu away")
   ];
 in
 {

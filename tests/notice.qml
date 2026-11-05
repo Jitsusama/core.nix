@@ -68,6 +68,16 @@ QtObject {
                 { window: false, stack: false })),
             ["read", "forget", "copy"]);
 
+        // Its sender's own Read, where it offers one, by its identifier or
+        // its words, which d sends at once on the card and in the launcher.
+        const marking = { identifier: "mark-as-read", text: "Mark as Read" };
+        expect("a sender's Read, by its identifier",
+            Notice.readOffer(slack.concat([marking])), marking);
+        expect("or by its words",
+            Notice.readOffer([{ identifier: "2", text: "Read" }]), { identifier: "2", text: "Read" });
+        expect("and none where it offers none, a word holding read among them",
+            Notice.readOffer(slack.concat([{ identifier: "readme", text: "Readme" }])), null);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

@@ -29,6 +29,10 @@ pub const UNSENT: i32 = 75;
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
 
+/// How many times a test fails at a commit, and passes not once, before
+/// it counts as broken there.
+const FAILURES: usize = 2;
+
 /// How many runs of a test at a commit may be stopped before they end,
 /// for running too long or going silent, before the net leaves the test
 /// there: a builder that hangs on it would hang again.
@@ -168,7 +172,7 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
             Outcome::Passed
         };
     }
-    while failures < 2 {
+    while failures < FAILURES {
         if stalls >= STALLS {
             return Outcome::Stalled;
         }
@@ -270,7 +274,7 @@ pub fn attempt_all(
 pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) -> Option<String> {
     // `good` is how many of the merges are known to pass, `bad` the index
     // of the first known to fail.
-    let (mut good, mut bad) = (0_usize, merges.len().checked_sub(1)?);
+    let (mut good, mut bad) = known(state, merges, check)?;
     while good < bad {
         let middle = good + (bad - good) / 2;
         let commit = &merges[middle];
@@ -296,6 +300,33 @@ pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) 
         }
     }
     merges.get(bad).cloned()
+}
+
+/// Where a bisect over `merges` starts: just after the last merge where
+/// `check` is recorded passing, and at the first after that recorded
+/// failing twice, or else the last merge. A test that passed at a merge and
+/// fails at one before it now fails for something no merge did, such as the
+/// date, and searching the merges before the pass would blame one of them.
+fn known(state: &State, merges: &[String], check: &str) -> Option<(usize, usize)> {
+    let last = merges.len().checked_sub(1)?;
+    let runs: Vec<Vec<Ran>> = merges
+        .iter()
+        .map(|commit| state.runs(commit, check))
+        .collect();
+    let good = runs
+        .iter()
+        .rposition(|ran| ran.contains(&Ran::Passed))
+        .map_or(0, |index| (index + 1).min(last));
+    let bad = (good..=last)
+        .find(|&index| {
+            runs[index]
+                .iter()
+                .filter(|&&ran| ran == Ran::Failed)
+                .count()
+                >= FAILURES
+        })
+        .unwrap_or(last);
+    Some((good, bad))
 }
 
 /// How a test did just before the merge a bisect found.
@@ -881,6 +912,36 @@ mod tests {
         );
         assert!(world.reverted.lock().unwrap().is_empty());
         assert_eq!(findings(&state)[0]["kind"], "failed-in-quarantine");
+    }
+
+    #[test]
+    fn a_bisect_starts_after_the_last_merge_known_to_pass() {
+        let state = state("known");
+        let log = state.log("m4", "vm-a", 1);
+        state
+            .record("m4", "vm-a", Ran::Passed, Some(0), &log)
+            .unwrap();
+        let world = Stand {
+            head: "m6".into(),
+            merges: names("m1 m2 m3 m4 m5 m6"),
+            changed: changed("vm-a"),
+            missing: vec![("s".into(), "vm-a".into())],
+            ..Stand::default()
+        }
+        .exits("m1", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1])
+        .exits("m3", "vm-a", &[1, 1])
+        .exits("m5", "vm-a", &[1, 1])
+        .exits("m6", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m6".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m5"),
+            "what fails before a recorded pass now is no merge's doing"
+        );
     }
 
     #[test]

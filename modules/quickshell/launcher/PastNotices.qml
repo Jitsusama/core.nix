@@ -220,7 +220,7 @@ Provider {
         }
     }
 
-    // What d and y take of a notice: its Forget It while it's live, and
+    // What d and y take of a notice: done with it while it's live, and
     // copying what it said, as plain fields rather than rows made
     // searchable, since d or y over a history of hundreds asks every row
     // (Launcher.qml's actionsOf).
@@ -230,7 +230,25 @@ Provider {
         if (!Notices.live[notice.id])
             return [copy];
         return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
-            forgetting(notice)), copy];
+            done(notice)), copy];
+    }
+
+    // d's done, as the held notices' is (HeldNotices.qml's finish): read,
+    // at its sender too where it offers Read, then taken away.
+    function done(notice) {
+        return {
+            run: () => {
+                const still = Notices.live[notice.id] ?? null;
+                if (!still)
+                    return;
+                Notices.mark(notice.id, true);
+                Notice.readOffer(still.actions)?.invoke();
+                // A sender's action closes a notice it doesn't keep, so
+                // only one still open is taken away.
+                if (Notices.live[notice.id])
+                    still.dismiss();
+            }
+        };
     }
 
     function forgetting(notice) {

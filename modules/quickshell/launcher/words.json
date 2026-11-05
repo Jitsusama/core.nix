@@ -3497,6 +3497,11 @@
       "name": "The Page"
     },
     {
+      "id": "shortcuts:reader:commands",
+      "in": "shortcuts",
+      "name": "Command Line"
+    },
+    {
       "id": "shortcuts:zathura:turning",
       "in": "shortcuts",
       "name": "Turning Pages"
@@ -3942,8 +3947,7 @@
       "verb": "forget",
       "glyph": "dismiss",
       "act": "ending",
-      "ends": "forget",
-      "command": "forget"
+      "ends": "forget"
     },
     {
       "id": "verb:notices:forget",
@@ -4759,8 +4763,7 @@
       "in": "wifi",
       "name": "Disconnect It",
       "act": "ending",
-      "ends": "disconnect",
-      "command": "disconnect"
+      "ends": "disconnect"
     },
     {
       "id": "verb:wifi-join",
@@ -4799,8 +4802,7 @@
       "command": "forget",
       "in": "wifi",
       "name": "Forget It",
-      "ends": "forget",
-      "command": "forget"
+      "ends": "forget"
     },
     {
       "id": "verb:wifi-sign-in",
@@ -5204,8 +5206,7 @@
       "in": "bluetooth",
       "name": "Disconnect It",
       "act": "ending",
-      "ends": "disconnect",
-      "command": "disconnect"
+      "ends": "disconnect"
     },
     {
       "id": "verb:bluetooth-passkey",
@@ -5218,8 +5219,7 @@
       "command": "forget",
       "in": "bluetooth",
       "name": "Forget It",
-      "ends": "forget",
-      "command": "forget"
+      "ends": "forget"
     },
     {
       "id": "verb:copy:paste",
@@ -5702,8 +5702,7 @@
       "glyph": "close",
       "sure": "Quit Now",
       "act": "ending",
-      "ends": "quit",
-      "command": "halt"
+      "ends": "quit"
     },
     {
       "id": "program:media",
@@ -5865,8 +5864,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "close",
-      "command": "close"
+      "ends": "close"
     },
     {
       "id": "verb:recent:site:link",
@@ -5923,8 +5921,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "close",
-      "command": "close"
+      "ends": "close"
     },
     {
       "id": "verb:path:folder:window",
@@ -6217,8 +6214,7 @@
       "verb": "close",
       "glyph": "close",
       "act": "ending",
-      "ends": "close",
-      "command": "close"
+      "ends": "close"
     },
     {
       "id": "verb:agent:switch",
@@ -6670,6 +6666,14 @@
         "shortcuts:zathura:scrolling"
       ],
       "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
+    },
+    {
+      "word": "command line",
+      "things": [
+        "shortcuts:neovim:editor:commands",
+        "shortcuts:reader:commands"
+      ],
+      "why": "Neovim and the reader both take keys on their command line, and each group says which program's it is beside it."
     },
     {
       "word": "focus",
