@@ -790,7 +790,9 @@ Provider {
         return Object.assign(fields, Words.ending(`verb:${id}`), {
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`, state, fields.fill),
-            hue: "action"
+            hue: "action",
+            // Its words' state, so the : line names the command for it.
+            wordState: state
         });
     }
 

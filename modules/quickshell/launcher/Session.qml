@@ -29,7 +29,9 @@ Provider {
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state),
-            glyph: Words.glyph(key, state)
+            glyph: Words.glyph(key, state),
+            // Its words' state, so the : line names the command for it.
+            wordState: state
         }, fields));
     }
 
