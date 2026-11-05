@@ -47,7 +47,8 @@
         { "id": "month", "latin": "Jumada I", "native": "جمادى الأولى", "day": null },
         { "id": "day", "latin": "25", "native": "٢٥", "day": null },
         { "id": "monthDays", "latin": "30", "native": "30", "day": null },
-        { "id": "yearDays", "latin": "355", "native": "355", "day": null }
+        { "id": "yearDays", "latin": "355", "native": "355", "day": null },
+        { "id": "reckoning", "latin": "Umm al-Qura", "native": "Umm al-Qura", "day": null }
       ]
     }
   ]

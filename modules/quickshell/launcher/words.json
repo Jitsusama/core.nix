@@ -1530,10 +1530,7 @@
     {
       "id": "today:calendars:islamic",
       "in": "today:calendars",
-      "name": "Islamic",
-      "said": {
-        "note": "by Umm al-Qura"
-      }
+      "name": "Islamic"
     },
     {
       "id": "today:calendars:year",
@@ -1599,6 +1596,11 @@
       "id": "today:calendars:rokuyo",
       "in": "today:calendars",
       "name": "Rokuy\u014d"
+    },
+    {
+      "id": "today:calendars:reckoning",
+      "in": "today:calendars",
+      "name": "Reckoning"
     },
     {
       "id": "keyboards",

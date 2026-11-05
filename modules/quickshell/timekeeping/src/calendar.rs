@@ -446,6 +446,11 @@ fn islamic(iso: Date<Iso>) -> Option<Calendar> {
                 day.days_in_year().to_string(),
                 day.days_in_year().to_string(),
             ),
+            // Which reckoning of the months this is, the tables Saudi Arabia
+            // publishes, since a sighting of the new moon may begin a month a
+            // day either side. It's named as the shell names it, in Latin
+            // letters, on the plate rather than in the place's head.
+            figure("reckoning", "Umm al-Qura".to_owned(), "Umm al-Qura".to_owned()),
         ],
     })
 }

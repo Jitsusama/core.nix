@@ -166,7 +166,6 @@ Provider {
             key: id,
             name: Words.name(id),
             side: calendar.latin,
-            note: Words.of(id).said?.note ?? "",
             glyph: Theme.glyph.date,
             thing: true,
             drawer: () => ({
