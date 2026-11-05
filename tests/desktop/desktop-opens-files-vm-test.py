@@ -580,6 +580,31 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
     machine.succeed(f"rm {looked}")
 
 
+def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desktop) -> None:
+    """: in swayimg opens the launcher's command line over the picture, and :q there closes it."""
+    machine = desktop.machine
+    looked = f"/home/{desktop.account}/commanded.png"
+    desktop.as_account(f"cp {desktop.values['picture']} {looked}")
+    desktop.opens_in(looked, "image/png", "swayimg")
+    machine.send_key("shift-semicolon")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["keys"]
+            and "rotate Turn it, by 90, 180 or 270 degrees"
+            in (shown["command"] or {}).get("menu", [])
+        )
+    )
+    desktop.photograph("swayimg-command-line")
+    machine.send_chars("q")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
+    machine.send_key("ret")
+    machine.wait_until_fails(
+        f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=10)
+    )
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm {looked}")
+
+
 def test_a_document_opens_in_zathura_beside_the_rest_and_zz_closes_it(desktop: Desktop) -> None:
     """A document opens in zathura, beside the rest, and ZZ closes it, as q no longer does."""
     machine = desktop.machine
