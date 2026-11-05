@@ -228,6 +228,59 @@ QtObject {
             true);
         holds("and narrowed and read in half a key's 4 ms", keyed < 2, true);
 
+        // :set, read as Vim reads its words (:help :set): each an option
+        // on, off, the other way, set, moved by so much, or shown.
+        const options = {
+            wifi: { kind: "switch", takes: true },
+            bluetooth: { kind: "switch" },
+            quiet: { kind: "switch" },
+            mute: { kind: "switch" },
+            volume: { kind: "number", least: 0, most: 100 },
+            brightness: { kind: "number", least: 0, most: 100 },
+            background: { kind: "choice", values: ["light", "dark"] }
+        };
+        const set = arg => Commands.setting(arg, options);
+        const first = arg => (set(arg).changes ?? [])[0] ?? null;
+        holds(":set wifi turns it on", first("wifi"), { option: "wifi", how: "on", value: "" });
+        holds(":set nowifi turns it off", first("nowifi"),
+            { option: "wifi", how: "off", value: "" });
+        holds(":set wifi! and invwifi turn it the other way",
+            [first("wifi!")?.how, first("invwifi")?.how], ["toggle", "toggle"]);
+        holds(":set wifi=Home-5G joins a network", first("wifi=Home-5G"),
+            { option: "wifi", how: "set", value: "Home-5G" });
+        holds("a network's spaces are escaped, as Vim's are", first("wifi=Home\\ 5G")?.value,
+            "Home 5G");
+        holds(":set volume=40 sets it", first("volume=40"),
+            { option: "volume", how: "set", value: 40 });
+        holds(":set volume+=5 and -=5 move it",
+            [first("volume+=5"), first("volume-=5")],
+            [{ option: "volume", how: "add", value: 5 },
+                { option: "volume", how: "subtract", value: 5 }]);
+        holds(":set volume? and :set volume say it", [first("volume?")?.how, first("volume")?.how],
+            ["show", "show"]);
+        holds(":set wifi? says it too", first("wifi?")?.how, "show");
+        holds(":set background=dark", first("background=dark")?.value, "dark");
+        holds(":set all says every one", first("all"), { option: "all", how: "show", value: "" });
+        holds("several at once, in order", (set("nowifi mute").changes ?? []).map(c => c.option),
+            ["wifi", "mute"]);
+        holds("an option it hasn't says E518", set("wfii"), { error: "E518: Unknown option: wfii" });
+        holds("and so does one after a good one, changing none", set("mute wfii"),
+            { error: "E518: Unknown option: wfii" });
+        holds("a word for a number says E521", set("volume=loud"),
+            { error: "E521: Number required after =: volume=loud" });
+        holds("a number past its ends says E474", set("volume=140"),
+            { error: "E474: Invalid argument: volume=140" });
+        holds("a choice it hasn't says E474", set("background=blue"),
+            { error: "E474: Invalid argument: background=blue" });
+        holds("no before what isn't a switch says E474", set("novolume"),
+            { error: "E474: Invalid argument: novolume" });
+        holds("a switch given a value it takes none of says E474", set("mute=1"),
+            { error: "E474: Invalid argument: mute=1" });
+        holds("+= on a switch says E474", set("wifi+=1"),
+            { error: "E474: Invalid argument: wifi+=1" });
+        holds("nothing after :set says every one changed, as Vim's does", first(""),
+            { option: "all", how: "show", value: "" });
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

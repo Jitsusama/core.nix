@@ -278,3 +278,9 @@ function ran(typed, menu) {
     }
     return { entry, bang: read.bang, arg: read.arg };
 }
+
+// What :set's words ask (:help :set), read against `options`, each option's
+// kind: { changes: [{ option, how, value }] }, or { error }.
+function setting(arg, options) {
+    return { changes: [] };
+}
