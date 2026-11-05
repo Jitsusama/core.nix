@@ -1860,10 +1860,11 @@ Scope {
     // hitting enter disconnects from it"). Normal's Return does it.
     // One that asks for words first asks, as Join by Code does, and one
     // asking Joel to be sure is done, since stepping in was the second press.
+    // A meeting's row joins, as its row says (Catalogue.js's startsItself).
     function lands(choice) {
         return !!choice && prompt.modal && prompt.mode === "find" && changesState(choice)
             && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !choice.sure
-            && !sureOf();
+            && !sureOf() && !Catalogue.startsItself(choice, commandNamed(choice));
     }
 
     // Whether the step Joel is in asks him to be sure, as Power Off's does.

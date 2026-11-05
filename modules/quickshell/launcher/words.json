@@ -2855,6 +2855,7 @@
     },
     {
       "id": "keyboard:flash",
+      "command": "flash",
       "in": "keyboard",
       "name": "Flash the Keyboard",
       "verb": "flash"
@@ -6526,12 +6527,14 @@
     },
     {
       "id": "tuple:share",
+      "command": "share",
       "name": "Share the Screen in the Call",
       "verb": "share",
       "by": "tuple"
     },
     {
       "id": "tuple:leave",
+      "command": "leave",
       "name": "Leave the Call",
       "verb": "leave",
       "by": "tuple"

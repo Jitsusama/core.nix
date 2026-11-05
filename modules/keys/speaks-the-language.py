@@ -11,8 +11,8 @@ Reads the language (language.toml), the key map every layer writes
 - a command, or a name between its short form and its whole one, that
   Neovim takes for another, or one of Neovim's own shortened otherwise;
 - an act that changes something with a key the find line reaches, one
-  that ends something with Return in any mode, and a list's act taking
-  h, l or Backspace, which step into and out of nothing;
+  that ends or starts something with Return in any mode, and a list's act
+  taking h, l or Backspace, which step into and out of nothing;
 - an arrow in normal or visual mode that isn't its letter's motion: an
   act a surface's kinds hold naming one, since its letter brings it, or
   a modal layer of ours binding one held, in a sequence, or to anything
@@ -81,6 +81,7 @@ FIELDS = {
     "guarded",
     "range",
     "ends",
+    "starts",
 }
 # The modes an arrow is its letter's motion in and nothing else (Joel,
 # 2026-11-05: "In normal mode, in a buffer, arrows move the cursor"), and
@@ -226,6 +227,8 @@ def shape_faults(language: dict[str, Any]) -> list[str]:
             faults.append(f"{name} can be undone, but changes nothing")
         if act.get("ends") and not act.get("changes"):
             faults.append(f"{name} ends something, but changes nothing")
+        if act.get("starts") and not act.get("changes"):
+            faults.append(f"{name} starts something, but changes nothing")
         if act.get("guarded"):
             if not act.get("changes"):
                 faults.append(f"{name} guards itself, but it never asks, since it changes nothing")
@@ -282,22 +285,24 @@ def arrow_bind_faults(layer: Layer, acts: Acts) -> list[str]:
 
 
 def return_faults(language: dict[str, Any]) -> list[str]:
-    """Find an act that ends something given Return, or a list's act taking h, l or Backspace.
+    """Find an end or a start given Return, or a list's act taking h, l or Backspace.
 
-    What ends, takes away or reaches someone runs only from d or the
-    command line, never from Return in any mode; and nothing on a list
-    steps in or out by h, l or Backspace, which Vim's lists never do.
+    What ends or takes away, and what calls someone or starts something
+    new, runs only from d or the command line, never from Return in any
+    mode; and nothing on a list steps in or out by h, l or Backspace,
+    which Vim's lists never do.
     """
     faults = []
     for name, act in language["acts"].items():
         keys = sorted(spelled(key) for key in act.get("keys", []))
-        if act.get("ends"):
-            faults += [
-                f"{name} ends something, but Return reaches it by {key} in {mode} mode"
-                for key in keys
-                if key.split(" ")[-1] == "enter"
-                for mode in sorted(modes_of(act))
-            ]
+        for flag in ("ends", "starts"):
+            if act.get(flag):
+                faults += [
+                    f"{name} {flag} something, but Return reaches it by {key} in {mode} mode"
+                    for key in keys
+                    if key.split(" ")[-1] == "enter"
+                    for mode in sorted(modes_of(act))
+                ]
         if "list" in act["kinds"]:
             faults += [
                 f"{name} takes {key} on a list, where h, l and Backspace mean nothing"

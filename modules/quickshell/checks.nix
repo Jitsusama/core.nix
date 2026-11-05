@@ -758,14 +758,19 @@ onLinux {
     let
       qt = pkgs.qt6.qtdeclarative;
       # The key language's commands by their whole names, each with whether
-      # it changes things, as the shell's Options.commands holds them.
+      # it changes things and whether it starts something, as the shell's
+      # Options.commands holds them.
       named =
         lib.filterAttrs (_: about: about ? command)
           (builtins.fromTOML (builtins.readFile ../keys/language.toml)).acts;
       commands = pkgs.writeText "commands.json" (
         builtins.toJSON (
           lib.mapAttrs' (
-            _: about: lib.nameValuePair about.command { changes = about.changes or false; }
+            _: about:
+            lib.nameValuePair about.command {
+              changes = about.changes or false;
+              starts = about.starts or false;
+            }
           ) named
         )
       );
