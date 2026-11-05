@@ -1038,23 +1038,31 @@ def escape_at_rest_stays(desktop: Desktop) -> None:
 def walk_the_rows_follows(desktop: Desktop) -> None:
     """Press Ctrl+] on a row found from home, and Ctrl+T, Ctrl+O and Tab over it, through niri.
 
-    Keep Awake holds no parts, so Ctrl+] goes to the place it lives, the cursor on it there, as
-    Vim follows a tag, and Ctrl+T comes back, as Vim's pops its tag stack, saying Vim's E73
+    Lock holds no parts: no verbs, and its Return closes the launcher, where Keep Awake's keeps
+    it and so holds its own act. So Ctrl+] goes to the place it lives, the cursor on it there,
+    as Vim follows a tag, and Ctrl+T comes back, as Vim's pops its tag stack, saying Vim's E73
     with nothing to pop. The place it went to is on the jump list too. In the row's own place
-    Ctrl+] means nothing.
+    Ctrl+] means nothing. Return is never pressed, so the screen never locks.
     """
     machine = desktop.machine
-    desktop.answer("keep awake")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "session:awake")
+    desktop.answer("lock")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "session:Lock")
     desktop.normal()
+    # A row whose foot says Ctrl+] in holds parts, and Ctrl+] would go into them instead.
+    desktop.launcher_until(
+        lambda shown: (
+            ": commands" in shown["selected"]["told"]
+            and "Ctrl+] in" not in shown["selected"]["told"]
+        )
+    )
     # Where it lives is read from the first follow and held to after, so the walk says the
     # place is the same each time without naming the catalogue's crumbs.
     lives: list[object] = []
 
     def followed() -> None:
         def there(shown: Json) -> bool:
-            """Say whether the launcher holds Keep Awake's own place, onto it, nothing typed."""
-            onto = (shown["selected"] or {}).get("is") == "session:awake"
+            """Say whether the launcher holds Lock's own place, onto it, nothing typed."""
+            onto = (shown["selected"] or {}).get("is") == "session:Lock"
             held = shown["held"]
             if not (onto and shown["typed"] == "" and held != []):
                 return False
@@ -1068,7 +1076,7 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
         desktop.launcher_until(
             lambda shown: (
                 (shown["held"], shown["typed"], (shown["selected"] or {}).get("is"))
-                == ([], "keep awake", "session:awake")
+                == ([], "lock", "session:Lock")
             )
         )
 
