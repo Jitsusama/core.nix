@@ -311,13 +311,37 @@ fn a_disk_below_healthy_has_what_holds_it_measured_on_a_thread_of_its_own() {
 /// The status file once its holders are measured, or as it stands when
 /// `within` passes first.
 fn measured(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Value {
+    status_once(guard, dir, within, |status| {
+        status["holders_at"].is_number()
+    })
+}
+
+/// The first status saying what holds the disks once a pass has surveyed
+/// them, so the holders say what that survey offered. The status written
+/// just before the first pass can carry a measure with no survey yet: on
+/// a builder with a core to spare, the measuring thread finished first,
+/// and every holder said nothing in it clears.
+fn surveyed(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Value {
+    status_once(guard, dir, within, |status| {
+        status["holders_at"].is_number() && status["last"].is_object()
+    })
+}
+
+/// The first status, step after step, that `ready` takes, or the last
+/// once `within` has passed.
+fn status_once(
+    guard: &mut Guard,
+    dir: &Path,
+    within: Duration,
+    ready: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
     let mut desk = Fake::default();
     let deadline = std::time::Instant::now() + within;
     loop {
         stepped(guard, 2, &mut desk);
         let status: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(dir.join("status.json")).unwrap()).unwrap();
-        if status["holders_at"].is_number() || std::time::Instant::now() > deadline {
+        if ready(&status) || std::time::Instant::now() > deadline {
             return status;
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -536,7 +560,7 @@ fn a_clear_leaves_what_the_other_holders_could_clear_as_it_was() {
             .find(|holder| holder["owner"]["name"] == "spare")
             .map(|holder| holder["clears"].clone())
     };
-    let status = measured(&mut guard, &root, Duration::from_secs(20));
+    let status = surveyed(&mut guard, &root, Duration::from_secs(20));
     let before = clears(&status);
     assert!(
         before.as_ref().and_then(serde_json::Value::as_u64) > Some(0),
