@@ -7,36 +7,30 @@
 // then the surface's commands, then what every surface has.
 .pragma library
 
-// Each command's fixed short form and what it is, by its full name, as the
-// key language will say them (modules/keys/language.toml's [acts.<name>]
-// command, short, changes, undoable and range, reaching the shell as
-// Options.commands): until it does, they're said here, in the same shape.
-// A short form is fixed, never worked out from what else is listed, so
-// :disc never changes meaning as a command is added. Vim's own keep Vim's
-// (:help ex-cmd-index); a name Neovim gives another meaning isn't ours to
-// take, so forgetting is :forg (Vim's :fo is :fold).
-const standIn = {
-    quit: { short: "q", changes: false, undoable: true, range: false },
-    help: { short: "h", changes: false, undoable: true, range: false },
-    set: { short: "se", changes: true, undoable: true, range: false },
-    sort: { short: "sor", changes: false, undoable: true, range: true },
-    global: { short: "g", changes: true, undoable: true, range: true },
-    vglobal: { short: "v", changes: true, undoable: true, range: true },
-    delete: { short: "d", changes: true, undoable: true, range: true },
-    yank: { short: "y", changes: false, undoable: true, range: true },
-    undo: { short: "u", changes: true, undoable: true, range: false },
-    redo: { short: "red", changes: true, undoable: true, range: false },
-    nohlsearch: { short: "noh", changes: false, undoable: true, range: false },
-    edit: { short: "e", changes: false, undoable: true, range: false },
-    buffer: { short: "b", changes: false, undoable: true, range: false },
-    split: { short: "sp", changes: false, undoable: true, range: false },
-    move: { short: "m", changes: true, undoable: true, range: true },
-    history: { short: "his", changes: false, undoable: true, range: false },
-    close: { short: "clo", changes: true, undoable: false, range: true },
-    disconnect: { short: "disc", changes: true, undoable: true, range: true },
-    forget: { short: "forg", changes: true, undoable: false, range: true },
-    suspend: { short: "sus", changes: true, undoable: false, range: false }
-};
+// A line's command as the menu writes it: its notation, its own bang, then
+// the argument that tells an act apart from another of its name, as :new .
+// from :new and :skip! from :skip.
+function called(entry) {
+    const name = `${notation(entry.command, entry.short)}${entry.banged ? "!" : ""}`;
+    return (entry.argument ?? "") === "" ? name : `${name} ${entry.argument}`;
+}
+
+// An act's words with what's in braces filled, as {name} in :set wifi={name}:
+// from the act's own fill first, then the row it's on, a space escaped as
+// Vim writes one in an argument. Words it can't fill aren't the act's, so
+// it's named by its verb instead.
+const braces = /\{(\w+)\}/g;
+const aSpace = / /g;
+
+function filled(words, act, thing) {
+    let missing = false;
+    const argument = String(words.argument ?? "").replace(braces, (whole, field) => {
+        const value = act.fill?.[field] ?? thing?.[field];
+        missing = missing || value === undefined || value === null;
+        return missing ? whole : String(value).replace(aSpace, "\\ ");
+    });
+    return missing ? {} : Object.assign({}, words, { argument });
+}
 
 // Vim's help notation: the shortest form a command takes outside the
 // brackets, the rest of its name inside, as :help writes disc[onnect].
@@ -76,34 +70,54 @@ function keyOf(act, first) {
 // The menu: the cursor row's or the selection's acts, Return's first, the
 // surface's commands, then what every surface has, :q, :help and :{n}, each
 // line { command, short, title, key, kind } with the act or the surface's
-// command it runs. `from` gives them: { acts, surface, table, said, row },
-// `said` the words for the line's own commands, by command, and `row` the
-// cursor row's number, counted from 1, which :{n}'s line writes. A name
-// listed twice is listed once, the first kept, so a name runs one thing.
+// command it runs. `from` gives them: { acts, surface, table, said, row,
+// called, thing }, `said` the words for the line's own commands, by
+// command, `row` the cursor row's number, counted from 1, which :{n}'s line
+// writes, `called` an act's words (words.json's command, argument, bang and
+// range) and `thing` the row the acts are on. A name listed twice is listed
+// once, the first kept, so a name runs one thing.
 function listed(from) {
     const table = from.table ?? {};
     const said = from.said ?? {};
     const short = command => table[command]?.short ?? command;
-    const flags = command => table[command] ?? {};
+    // What asks first is what changes and can't be undone, the language
+    // leaving undoable out wherever nothing changes; a command it doesn't
+    // name asks nothing.
+    const asks = command => table[command]?.changes === true
+        && table[command]?.undoable !== true;
     const seen = new Set();
     const menu = [];
     // Each line's title is lowered once, as it's listed, a space before it,
     // so narrowing as a key is typed only looks for a word's start in it.
+    // A name and its argument are listed once.
     const add = entry => {
-        if (entry.command === "" || seen.has(entry.command)) {
+        entry.argument = entry.argument ?? "";
+        const naming = `${entry.command}${entry.banged ? "!" : ""} ${entry.argument}`;
+        if (entry.command === "" || seen.has(naming)) {
             return;
         }
-        seen.add(entry.command);
+        seen.add(naming);
         entry.lowered = ` ${entry.title.toLowerCase()}`;
         menu.push(entry);
     };
-    // An act takes a ! only where it would ask first, its ! saying don't.
+    // An act is named by the command its words give it, with the argument
+    // telling it from another of that name, or else by its verb; it takes
+    // a ! only where it would ask first, its ! saying don't. A guarded one
+    // asks nothing on one thing, only once on more, so takes ! too. One its
+    // words give a bang of its own is banged: the bang is its line's, as
+    // :skip! goes back. One on every row, as :%forg, waits for ranges.
     (from.acts ?? []).forEach((act, at) => {
-        const command = commandOf(act);
-        const undoable = flags(command).undoable !== false;
-        add({ command, short: short(command), title: String(act.name ?? ""),
-            key: keyOf(act, at === 0), kind: "act", act, bang: !undoable, takes: false,
-            undoable });
+        const words = filled(from.called ? from.called(act) : {}, act, from.thing);
+        if (words.range !== undefined) {
+            return;
+        }
+        const command = words.command ?? commandOf(act);
+        const undoable = !asks(command);
+        const banged = words.bang === true;
+        add({ command, argument: String(words.argument ?? ""), short: short(command),
+            title: String(act.name ?? ""), key: keyOf(act, at === 0), kind: "act", act,
+            bang: banged || !undoable, banged, takes: false, undoable,
+            guarded: table[command]?.guarded === true });
     });
     for (const own of from.surface ?? []) {
         add({ command: own.command, short: own.short ?? short(own.command),
@@ -114,6 +128,8 @@ function listed(from) {
         kind: "quit", bang: true, takes: false, undoable: true });
     add({ command: "help", short: short("help"), title: said.help ?? "", key: "F1",
         kind: "help", bang: true, takes: true, undoable: true });
+    add({ command: "set", short: short("set"), title: said.set ?? "", key: "",
+        kind: "set", bang: false, takes: true, undoable: true });
     add({ command: "{n}", short: "{n}", title: said.row ?? "", key: "", kind: "row",
         bang: false, takes: false, undoable: true, row: from.row ?? 1 });
     return menu;
@@ -121,8 +137,9 @@ function listed(from) {
 
 // What's typed, read as Vim's command line reads it: the colons and spaces
 // before it passed over, then a number, or a name and a ! after it, then
-// what follows, { line, name, bang, arg, spaced }, spaced saying whether a
-// space came after the name.
+// what follows, { line, name, bang, arg, rest, spaced }, arg what follows
+// trimmed and rest as typed, spaced saying whether a space came after the
+// name.
 const leading = /^[\s:]*/;
 const counting = /^[0-9$]/;
 const number = /^[0-9]+$/;
@@ -134,10 +151,10 @@ function parts(typed) {
     const line = typed.replace(leading, "");
     const found = line.match(named);
     if (!found) {
-        return { line, name: "", bang: false, arg: "", spaced: false };
+        return { line, name: "", bang: false, arg: "", rest: "", spaced: false };
     }
     return { line, name: found[1], bang: found[2] === "!", arg: found[4].trim(),
-        spaced: found[3] !== "" };
+        rest: found[4], spaced: found[3] !== "" };
 }
 
 // Whether a word names a command, as Vim's do: its full name, or its short
@@ -154,9 +171,11 @@ function names(word, entry) {
 
 // The menu narrowed to what's typed: by the command's start, then by a word
 // of the act's that starts as typed, each line once, case ignored as his
-// ignorecase has it. A number shows :{n}'s line, and a name with a space or
-// a ! after it shows its own line alone.
-function narrowed(menu, typed) {
+// ignorecase has it. A number shows :{n}'s line, and a name with a ! after
+// it shows its own line alone, as does a space where `argued` (entry, arg)
+// says it has no arguments (null); where it has, they're its lines, each
+// written in place of the word being typed.
+function narrowed(menu, typed, argued) {
     const read = parts(typed);
     if (read.line === "") {
         return menu;
@@ -168,7 +187,7 @@ function narrowed(menu, typed) {
         return [];
     }
     if (read.spaced || read.bang) {
-        return menu.filter(entry => names(read.name, entry));
+        return namedLines(menu.filter(entry => names(read.name, entry)), read, typed, argued);
     }
     const word = read.name.toLowerCase();
     const starting = [];
@@ -183,6 +202,20 @@ function narrowed(menu, typed) {
     return starting.concat(worded);
 }
 
+// The lines for a command named: its own line, or after a space the
+// arguments `argued` gives it, each written in place of the word typed.
+function namedLines(own, read, typed, argued) {
+    const taker = own.find(one => one.takes);
+    const args = read.spaced && taker && argued ? argued(taker, read.rest) : null;
+    if (args === null) {
+        return own.filter(one => one.takes || one.argument.startsWith(read.arg)
+            || (read.arg === "" && one.argument === ""));
+    }
+    const before = typed.slice(0, typed.length - lastWord(typed).length);
+    return args.map(one => ({ command: one.value, short: one.value, title: one.note ?? "",
+        key: "", kind: "argument", line: before + one.value }));
+}
+
 // How choosing stands: what was typed, the line chosen (-1 for none) and
 // what the line holds, which is what was typed until a line is chosen.
 function typing(typed) {
@@ -195,9 +228,13 @@ function written(entry, typed) {
     if (entry.kind === "row") {
         return String(entry.row);
     }
+    if (entry.kind === "argument") {
+        return entry.line;
+    }
     const read = parts(typed);
-    const bang = read.bang && entry.bang ? "!" : "";
-    return `${entry.command}${bang}${read.arg === "" ? "" : ` ${read.arg}`}`;
+    const bang = entry.banged || (read.bang && entry.bang) ? "!" : "";
+    const arg = entry.argument === "" ? read.arg : entry.argument;
+    return `${entry.command}${bang}${arg === "" ? "" : ` ${arg}`}`;
 }
 
 // Tab, Shift+Tab, the arrows, Ctrl+N and Ctrl+P: the next line or the one
@@ -266,9 +303,44 @@ function ran(typed, menu) {
     if (time.test(read.line.trim())) {
         return { go: read.line.trim() };
     }
-    const entry = read.name === "" ? undefined : menu.find(one => names(read.name, one));
-    if (!entry) {
+    const matching = read.name === "" ? [] : menu.filter(one => names(read.name, one));
+    if (matching.length === 0) {
         return { error: `E492: Not an editor command: ${read.line.trim()}` };
+    }
+    return ranNamed(matching, read);
+}
+
+// Of the lines a name names, one whose bang is its own runs only where a
+// bang is typed, as :skip! goes back; then the act holding the argument
+// typed; then the one holding none.
+function ranNamed(matching, read) {
+    const banged = read.bang
+        ? matching.find(one => one.banged && one.argument === read.arg) : undefined;
+    if (banged) {
+        return { entry: banged, bang: true, arg: "" };
+    }
+    const plain = matching.filter(one => !one.banged);
+    if (plain.length === 0) {
+        return { error: `E492: Not an editor command: ${read.line.trim()}` };
+    }
+    const holding = plain.find(one => one.argument !== "" && one.argument === read.arg);
+    return holding ? ranHolding(holding, read) : ranBare(plain, read);
+}
+
+// The act holding the argument typed, which runs ahead of the rest of its
+// name, as a row's :set bluetooth+= ahead of :set.
+function ranHolding(entry, read) {
+    return read.bang && !entry.bang ? { error: "E477: No ! allowed" }
+        : { entry, bang: read.bang, arg: "" };
+}
+
+// Else the one of its name holding no argument, which an act needing its
+// own goes without.
+function ranBare(matching, read) {
+    const entry = matching.find(one => one.argument === "");
+    if (!entry) {
+        return { error: read.arg === "" ? "E471: Argument required"
+            : `E488: Trailing characters: ${read.arg}` };
     }
     if (read.bang && !entry.bang) {
         return { error: "E477: No ! allowed" };
@@ -277,4 +349,34 @@ function ran(typed, menu) {
         return { error: `E488: Trailing characters: ${read.arg}` };
     }
     return { entry, bang: read.bang, arg: read.arg };
+}
+
+// The word being typed at the end of what follows a name: from the last
+// space Vim doesn't escape, "" just after one.
+function lastWord(arg) {
+    let start = 0;
+    let at = 0;
+    while (at < arg.length) {
+        if (arg[at] === "\\") {
+            at += 1;
+        } else if (space.test(arg[at])) {
+            start = at + 1;
+        }
+        at += 1;
+    }
+    return arg.slice(start);
+}
+
+// A surface command's own arguments, a list or what it gives for what's
+// typed after it, each { value, note } or a plain word, narrowed to those
+// starting as the word typed does; null for one that has none.
+function ownArguments(entry, arg) {
+    const args = entry.own?.args;
+    if (args === undefined) {
+        return null;
+    }
+    const given = typeof args === "function" ? args(arg) : args;
+    const word = lastWord(arg).toLowerCase();
+    return given.map(one => typeof one === "string" ? { value: one, note: "" } : one)
+        .filter(one => one.value.toLowerCase().startsWith(word));
 }

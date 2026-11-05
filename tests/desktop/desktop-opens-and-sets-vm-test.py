@@ -766,6 +766,63 @@ def commands_a_network(desktop: Desktop) -> None:
         desktop.close_launcher()
 
 
+def says_how_wi_fi_is_set(desktop: Desktop) -> None:
+    """List :set's options after a space, Tab writing one in, and ask how Wi-Fi is set.
+
+    A space after :set lists every option with where it stands; typing narrows them and Tab
+    writes the one chosen in; :set wifi? says the network joined, and a word no option names
+    says E518.
+    """
+    machine = desktop.machine
+
+    def line(shown: Json) -> Json:
+        return shown["command"] or {}
+
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    machine.send_chars(":set ")
+    desktop.launcher_until(
+        lambda shown: (
+            {"wifi wifi=Office", "volume"}
+            <= {
+                entry if entry.startswith("wifi ") else entry.split(" ")[0]
+                for entry in line(shown).get("menu", [])
+            }
+        )
+    )
+    machine.send_chars("wi")
+    desktop.launcher_until(lambda shown: line(shown).get("menu") == ["wifi wifi=Office"])
+    machine.send_key("tab")
+    desktop.launcher_until(
+        lambda shown: line(shown).get("line") == "set wifi" and line(shown).get("chosen") == 0
+    )
+    machine.send_chars("?\n")
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "wifi=Office"
+    )
+    machine.send_chars(":set wfii\n")
+    desktop.launcher_until(
+        lambda shown: shown["commandSaid"] == "E518: Unknown option: wfii" and shown["open"]
+    )
+    desktop.close_launcher()
+
+
+def sets_wi_fi(desktop: Desktop) -> None:
+    """Turn Wi-Fi on by :set wifi, off by :set nowifi, and on again, as the rfkill switch says."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    for typed, blocked in [("wifi", "no"), ("nowifi", "yes"), ("wifi", "no")]:
+        machine.send_chars(f":set {typed}\n")
+        machine.wait_until_succeeds(
+            f"rfkill list wifi | grep -q 'Soft blocked: {blocked}'", timeout=timedelta(seconds=15)
+        )
+    desktop.launcher_until(lambda shown: shown["open"] and shown["command"] is None)
+    desktop.close_launcher()
+
+
 def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password(  # noqa: PLR0915
     desktop: Desktop,
 ) -> None:
@@ -994,6 +1051,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         )
     )
     desktop.close_launcher()
+    says_how_wi_fi_is_set(desktop)
     # Turning Wi-Fi off is an action like any, found by name from the top.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -1007,7 +1065,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         lambda shown: shown["open"] and (shown["selected"] or {}).get("name") == "Wi-Fi On"
     )
     desktop.close_launcher()
-    machine.succeed("rfkill unblock wifi")
+    # And it's an option, :set wifi, as Vim's are.
+    sets_wi_fi(desktop)
 
 
 def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop) -> None:

@@ -242,11 +242,23 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
 def shows_the_command_line(desktop: Desktop, scale: str) -> None:
     """Open the command line on kitty's row, photograph it and its menu, and let it go.
 
-    The menu lists kitty's acts, Return's first, before :q, :help and :{n}; a line chosen
-    says in the drawer what it acts on, and Escape puts the find line back in normal.
+    The menu lists kitty's acts, Return's first, before :q, :help, :set and :{n}; the foot
+    names the line's own keys, Tab until a line is chosen and Return once one is, never the
+    rows'; a line chosen says in the drawer what it acts on, and Escape puts the find line
+    back in normal.
     """
+
+    def foot() -> list[str]:
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return [word["text"] for word in laid["foot"]]
+
     machine = desktop.machine
-    everywhere = ["quit Close the Launcher", "help List the Keys", "{n} Go to a Row"]
+    everywhere = [
+        "quit Close the Launcher",
+        "help List the Keys",
+        "set Set an Option",
+        "{n} Go to a Row",
+    ]
     machine.send_chars(":")
     desktop.launcher_until(
         lambda shown: (
@@ -256,12 +268,18 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
         )
     )
     desktop.photograph(f"launcher-command-at-{scale.replace('.', '-')}")
+    said = foot()
+    assert any("choose" in text for text in said), said
+    assert not any("below" in text or "\u21b5" in text for text in said), said
     machine.send_key("tab")
     desktop.launcher_until(
         lambda shown: (
             (shown["command"] or {}).get("chosen") == 0 and shown["drawer"]["body"] == "on kitty"
         )
     )
+    said = foot()
+    assert any("\u21b5" in text for text in said), said
+    assert not any("choose" in text or "below" in text for text in said), said
     desktop.photograph(f"launcher-command-chosen-at-{scale.replace('.', '-')}")
     machine.send_key("esc")
     desktop.launcher_until(
