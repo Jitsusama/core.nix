@@ -497,9 +497,9 @@ Item {
         event.accepted = true;
     }
 
-    // How many keys the line has taken, a press each, so what a key said,
-    // as the command line's E492 or the act a landing's second Return
-    // does, stands until the next one.
+    // How many keys the line has taken, so what a key said, as the command
+    // line's E492 or the act a landing's second Return does, stands until
+    // the next one.
     property int keysTaken: 0
 
     function modalKey(event: KeyEvent) {
