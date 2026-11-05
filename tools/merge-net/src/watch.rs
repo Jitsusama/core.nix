@@ -7,7 +7,10 @@
 //! quarantine list with the merge's PR as its owner, and nothing is
 //! reverted for it, nor for a quarantined test that fails. A run the
 //! builder never took (`nix-offload` exits 75) is tried again later, and is
-//! no failure. A test that passed at a commit never runs there again.
+//! no failure, and so is one stopped before it ended, for running too long
+//! or going silent: twice at a commit, and the test is left there with a
+//! finding, blaming no merge. A test that passed at a commit never runs
+//! there again.
 //!
 //! The round talks to git, nix and GitHub through `World`, so each of
 //! those choices is tested against a stand-in (the tests below).
@@ -25,6 +28,11 @@ pub const UNSENT: i32 = 75;
 /// How many times a run the builder never took is sent again, two minutes
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
+
+/// How many runs of a test at a commit may be stopped before they end,
+/// for running too long or going silent, before the net leaves the test
+/// there: a builder that hangs on it would hang again.
+const STALLS: usize = 2;
 
 /// How many VM tests run at once on the VM builder.
 pub const AT_ONCE: usize = 2;
@@ -128,6 +136,9 @@ pub enum Outcome {
     Failed,
     /// The builder never took it.
     Unsent,
+    /// Stopped twice at the same commit before it ended, so it says
+    /// nothing of the merge.
+    Stalled,
 }
 
 /// What a round came to.
@@ -144,10 +155,12 @@ pub enum Round {
 }
 
 /// Run `check` at `commit` until it has passed or failed twice there,
-/// counting the runs it had before.
+/// counting the runs it had before. A run stopped before it ended counts
+/// towards neither, and two of them at a commit leave the test there.
 pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
     let before = state.runs(commit, check);
     let mut failures = before.iter().filter(|ran| **ran == Ran::Failed).count();
+    let mut stalls = before.iter().filter(|ran| **ran == Ran::Stalled).count();
     if before.contains(&Ran::Passed) {
         return if failures > 0 {
             Outcome::Flaky
@@ -156,7 +169,11 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
         };
     }
     while failures < 2 {
-        // Every run before was a failure, so the next is one past them.
+        if stalls >= STALLS {
+            return Outcome::Stalled;
+        }
+        // Every run before was a failure, so the next is one past them; a
+        // stall's log is the next run's to write over.
         let log = state.log(commit, check, u32::try_from(failures + 1).unwrap_or(0));
         let mut sends = 0;
         let code = loop {
@@ -171,10 +188,10 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
             }
             world.wait(120);
         };
-        let ran = if code == Some(0) {
-            Ran::Passed
-        } else {
-            Ran::Failed
+        let ran = match code {
+            Some(0) => Ran::Passed,
+            Some(_) => Ran::Failed,
+            None => Ran::Stalled,
         };
         if let Err(why) = state.record(commit, check, ran, code, &log) {
             state.say(&why);
@@ -185,6 +202,15 @@ pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> O
             } else {
                 Outcome::Passed
             };
+        }
+        if ran == Ran::Stalled {
+            stalls += 1;
+            state.say(&format!(
+                "{check} stalled at {} ({stalls} of {STALLS}): it was stopped before it ended, \
+                 so it isn't counted as a failure",
+                short(commit)
+            ));
+            continue;
         }
         failures += 1;
         state.say(&format!(
@@ -253,7 +279,7 @@ pub fn bisect(world: &dyn World, state: &State, merges: &[String], check: &str) 
             Ok(true) => match attempt(world, state, commit, check) {
                 Outcome::Passed | Outcome::Flaky => true,
                 Outcome::Failed => false,
-                Outcome::Unsent => return None,
+                Outcome::Unsent | Outcome::Stalled => return None,
             },
             Err(why) => {
                 state.say(&format!(
@@ -296,7 +322,7 @@ fn before(world: &dyn World, state: &State, commit: &str, check: &str) -> Result
     Ok(match attempt(world, state, &parent, check) {
         Outcome::Passed | Outcome::Flaky => Before::Passed,
         Outcome::Failed => Before::Failed,
-        Outcome::Unsent => Before::Unsent,
+        Outcome::Unsent | Outcome::Stalled => Before::Unsent,
     })
 }
 
@@ -431,6 +457,13 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                 broke(world, state, &base, &head, test)?;
             }
             Outcome::Unsent => unfinished = true,
+            // A test that stalls twice at the head is held like one that
+            // fails there, so it runs again only once its inputs change,
+            // but no merge is blamed for it.
+            Outcome::Stalled => {
+                failed = true;
+                stalled(state, &head, test, owner)?;
+            }
         }
     }
     if unfinished && !failed {
@@ -447,6 +480,19 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     state.set_heads(&head, &head)?;
     state.say(&format!("{} passed every VM test it changed", short(&head)));
     Ok(Round::Passed(head))
+}
+
+/// Tell the owner of `head` that `test` stalled there twice.
+fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<(), String> {
+    state.find(&json!({
+        "kind": "stalled",
+        "test": test,
+        "commit": head,
+        "owner_pr": owner,
+        "log": state.log(head, test, 1).display().to_string(),
+        "at": now(),
+    }))?;
+    Ok(())
 }
 
 /// A test failed for real at `head`: find the merge since `base` that
@@ -555,6 +601,9 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
 
+    /// The exit the stand-in gives for a run stopped before it ended.
+    const STALL: i32 = -1;
+
     /// A stand-in world: each (commit, check) gives the exits listed, in
     /// turn, the last again once they run out; checks named in `missing`
     /// don't exist at a commit.
@@ -623,11 +672,12 @@ mod tests {
             let left = exits
                 .entry((commit.to_owned(), check.to_owned()))
                 .or_insert_with(|| vec![0]);
-            Some(if left.len() > 1 {
+            let exit = if left.len() > 1 {
                 left.remove(0)
             } else {
                 left[0]
-            })
+            };
+            (exit != STALL).then_some(exit)
         }
         fn quarantined(&self, _: &str) -> Vec<String> {
             self.quarantined.clone()
@@ -855,6 +905,41 @@ mod tests {
         assert!(
             world.built().contains(&("m1".into(), "vm-a".into())),
             "m1, before m2, passes"
+        );
+    }
+
+    #[test]
+    fn a_stopped_run_is_no_failure() {
+        let state = state("stopped");
+        let world = Stand::default().exits("h", "vm-a", &[STALL, 1, 0]);
+        assert_eq!(attempt(&world, &state, "h", "vm-a"), Outcome::Flaky);
+        assert_eq!(
+            state.runs("h", "vm-a"),
+            vec![Ran::Stalled, Ran::Failed, Ran::Passed]
+        );
+    }
+
+    #[test]
+    fn a_test_stalling_twice_blames_no_merge() {
+        let state = state("stalls");
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, STALL]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m2".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(state.hold().is_none());
+        assert_eq!(findings(&state)[0]["kind"], "stalled");
+        assert_eq!(
+            world.built.lock().unwrap().len(),
+            3,
+            "one failure and two stalls, and no bisect"
         );
     }
 

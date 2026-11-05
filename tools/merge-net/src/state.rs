@@ -30,6 +30,9 @@ pub struct State {
 pub enum Ran {
     Passed,
     Failed,
+    /// Stopped before it ended, for running too long or going silent, so
+    /// it says nothing of the test.
+    Stalled,
 }
 
 impl State {
@@ -109,6 +112,7 @@ impl State {
             "commit": commit,
             "check": check,
             "passed": ran == Ran::Passed,
+            "stalled": ran == Ran::Stalled,
             "code": code,
             "log": log.display().to_string(),
         });
@@ -188,6 +192,8 @@ pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
         .map(|line| {
             if line["passed"] == true {
                 Ran::Passed
+            } else if line["stalled"] == true {
+                Ran::Stalled
             } else {
                 Ran::Failed
             }
@@ -257,6 +263,10 @@ mod tests {
             .record("bbbb", "vm-a", Ran::Passed, Some(0), &log)
             .unwrap();
         assert_eq!(state.runs("aaaa", "vm-a"), vec![Ran::Failed, Ran::Passed]);
+        state
+            .record("cccc", "vm-a", Ran::Stalled, None, &log)
+            .unwrap();
+        assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
         assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
         fs::remove_dir_all(&state.root).unwrap();
     }
