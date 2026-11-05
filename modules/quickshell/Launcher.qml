@@ -487,7 +487,12 @@ Scope {
     // The headline as a row of its own, for Return and the footer. Return
     // copies it, unless the answer says what it does instead, as setting
     // the brightness to what was typed does.
-    readonly property var headline: !answer ? null : {
+    // In a step whose line holds its words, the row those words make, as a
+    // save dialog's name: the line is the row Return stands on, rather
+    // than the name said again below it (VKCF3Z, #1812). It's made again
+    // as the rows are, since the words change it.
+    property var lined: null
+    readonly property var headline: !answer ? (holdsWords ? lined : null) : {
         name: answer.headline,
         // An answer still being asked for has nothing to copy yet.
         verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
@@ -3381,17 +3386,20 @@ Scope {
                         row.offers && row.verbs ? row.verbs() : []), []), letters));
             found = found.concat(stillActed(found));
             answer = null;
+            lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
                 matches = steadied(found);
+                if (current === -1 && !lined)
+                    current = 0;
                 return;
             }
             matches = found;
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
-            current = Math.max(0, kept);
+            current = Math.max(lined ? -1 : 0, kept);
             if (kept >= 0)
                 list.positionViewAtIndex(kept, ListView.Contain);
             else
@@ -4997,10 +5005,11 @@ Scope {
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
-                        // The highest the selection goes: an answer's headline
-                        // sits above the rows, at -1.
-                        readonly property int highest: root.answer && !root.parted(root.answer)
-                            ? -1 : 0
+                        // The highest the selection goes: an answer's headline,
+                        // or the row a step's line holds, sits above the rows,
+                        // at -1.
+                        readonly property int highest: (root.answer && !root.parted(root.answer))
+                            || (root.answer === null && root.headline !== null) ? -1 : 0
                         // The rows' keys, in either mode (QueryKeys.js).
                         // Every one is a move, which QueryKeys.moved
                         // says the end of from the rows in view, as the

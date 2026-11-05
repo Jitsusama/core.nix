@@ -1476,10 +1476,12 @@ works the same way everywhere.
   prompt's words in insert rather than a find, the caret before its
   extension so typing renames it; Ctrl+W, Ctrl+U and Ctrl+H edit it, and
   Escape gives normal on it, where h l w b e 0 $ x dw cw and u edit it
-  as Vim's do. The name leads every folder, its first row, and the rows
-  under it are never narrowed by it: j goes down into the folders,
-  Return on one opens it and - steps out, as oil's do, the name kept,
-  and Return on the name saves there. A name already there asks once in the line's place, "Replace
+  as Vim's do. The line is the row Return stands on, above every
+  folder's rows, as an answer's headline is, so the name is never said
+  again below it, and the rows are never narrowed by it: j goes down
+  into the folders and k back up to the name, Return on a folder opens
+  it and - steps out, as oil's do, the name kept, and Return on the name
+  saves there. A name already there asks once in the line's place, "Replace
   notes.md? (y/n)", as Vim's :w says E13: y saves over it, n, Escape or
   Ctrl+C let it go, and any other key, or one in its first 300 ms, does
   nothing. :w [name] and :x save from anywhere, asking the same, and :w!
