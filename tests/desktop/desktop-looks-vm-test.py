@@ -123,7 +123,10 @@ def words_on_their_names(card: Json, scale: str, serif: str) -> int:
 def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Home's lists and a found row's note are in the serif, on the name's baseline, a step on."""
+    """Home's lists and a found row's note are in the serif, on the name's baseline, a step on.
+
+    Its gallery photographs normal's count, ex line and search at each scale too.
+    """
     # The serif is the theme's, read as the theme exports it, so a theme with another face is
     # held to that face.
     theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
@@ -158,6 +161,30 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         stands_in_the_mode_words_room(desktop, "12", f"launcher-count-at-{scale}")
         stands_in_the_mode_words_room(desktop, ":q", f"launcher-ex-at-{scale}")
         desktop.close_launcher()
+        washes_what_it_finds(desktop, scale)
+
+
+def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
+    """Search home's rows from normal, photographing the search typed and the rows it washes.
+
+    What it finds takes the search wash in every row that shows it, the selected one's too, and
+    the field's note counts which of them the selection is, as his Neovim's status line does.
+    """
+    sought = "er"
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    desktop.machine.send_chars(f"/{sought}", delay=desktop_session.KEY_PACE)
+    desktop.launcher_until(lambda shown: shown["search"]["typing"] == f"/{sought}")
+    desktop.photograph(f"launcher-search-typed-at-{scale.replace('.', '-')}")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["mode"] == "normal" and shown["search"]["washing"] == sought
+    )
+    shown = desktop.showing()
+    assert shown["search"]["washed"] > 1, f"at {scale} few rows hold {sought!r}: {shown}"
+    desktop.photograph(f"launcher-search-washed-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
 
 
 def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> None:
