@@ -2065,7 +2065,7 @@ in
             exec ${pkgs.qt6.qtdeclarative}/bin/qmlprofiler --interactive \
               -a localhost -p 3768 \
               --include javascript,memory,creating,binding,handlingsignal \
-              -o "$XDG_RUNTIME_DIR/trace.qtd" <> "$told"
+              -o /tmp/trace.qtd <> "$told"
           ''
         );
         # GTK's platform theme, which other Qt programs take, changes the

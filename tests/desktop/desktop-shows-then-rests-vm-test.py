@@ -86,16 +86,14 @@ def test_memory_probe(desktop: Desktop) -> None:
     machine.succeed("sleep 45")
     print(machine.succeed(desktop.in_session(read)))
     # The profiler stops recording, writes what it heard and clears it,
-    # while the shell runs on; its file is whole once it stops growing.
+    # while the shell runs on; its file is whole once it says so, since it
+    # writes in bursts with pauses longer than any wait for it to settle.
     machine.succeed("echo f > /run/user/1000/qmlprofiler.in")
-    machine.wait_until_succeeds("test -s /run/user/1000/trace.qtd", timeout=900)
     machine.wait_until_succeeds(
-        "a=$(stat -c %s /run/user/1000/trace.qtd); sleep 10;"
-        ' [ "$a" = "$(stat -c %s /run/user/1000/trace.qtd)" ]',
+        "journalctl --no-pager -b | grep -q 'Data written to /tmp/trace.qtd'",
         timeout=900,
     )
-    print(machine.succeed("ls -la /run/user/1000/trace.qtd; tail -c 300 /run/user/1000/trace.qtd"))
-    machine.succeed("cp /run/user/1000/trace.qtd /tmp/trace.qtd")
+    print(machine.succeed("df -h /tmp; ls -la /tmp/trace.qtd; tail -c 300 /tmp/trace.qtd"))
     machine.copy_from_vm("/tmp/trace.qtd", "trace")
 
 

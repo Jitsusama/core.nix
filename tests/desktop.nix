@@ -555,6 +555,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
       virtualisation = {
         memorySize = 4096;
+        # The probe's profile of the shell runs past half a gigabyte.
+        diskSize = 4096;
         cores = 4;
         qemu.options = [
           "-vga none -device virtio-gpu-pci,xres=${toString screen.width},yres=${toString screen.height}"
