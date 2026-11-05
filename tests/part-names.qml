@@ -173,6 +173,14 @@ ShellRoot {
         expect("each plate is titled with its date there",
             plates[2].title === "\u05db\u05f4\u05d4 \u05d1\u05d7\u05e9\u05d5\u05d5\u05df "
                 + "\u05d4\u05f3\u05ea\u05e9\u05e4\u05f4\u05d6", plates[2].title);
+        // Which reckoning the Islamic months are by is the plate's to say:
+        // a cursor row's note shows in the place's head, which isn't a row's.
+        const reckoned = plates[3].facts[plates[3].facts.length - 1];
+        expect("the Islamic plate ends with its reckoning",
+            `${reckoned.label} ${reckoned.value}` === "Reckoning Umm al-Qura",
+            JSON.stringify(reckoned));
+        expect("no calendar says a note", calendars.every(each => each.note === ""),
+            calendars.map(each => each.note).join(", "));
         const names = Object.keys(Words.things)
             .filter(id => Words.things[id].in === "today:calendars")
             .map(id => Words.things[id].name);
