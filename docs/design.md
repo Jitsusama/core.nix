@@ -1414,8 +1414,12 @@ works the same way everywhere.
   take them in, where its frame takes the accent, an accent rule in its
   left margin marks the cursor's line as the reader's does, and the
   reader's keys move it (j k, counts, Ctrl+E Ctrl+Y and the rest), the
-  view following at his scrolloff; Space and the left arrow, :q, ZZ or
-  Space w bring them back, and Escape and q do nothing there. Shift and
+  view following at his scrolloff by whole lines, its eyebrow and title
+  among them, so no line is ever shown cut at its top or foot. It stops
+  above the card's foot, which stays and, while the drawer has the keys,
+  reads "Space ? keys · Space ← back", the way out at the right end as
+  Return is on the card. Space and the left arrow, :q, ZZ or Space w bring
+  them back, and Escape and q do nothing there. Shift and
   the arrows no longer scroll it, since an arrow is its letter. Another
   program's words are shown plain, never as markup.
 - **A file picked shows what it is** (Joel, 2026-11-03: "i see no
