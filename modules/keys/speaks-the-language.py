@@ -12,9 +12,10 @@ Reads the language (language.toml), the key map every layer writes
   Neovim takes for another, or one of Neovim's own shortened otherwise;
 - an act that changes something with a key the find line reaches;
 - an arrow the leader doesn't begin, alone, held or in a sequence, in
-  normal or visual mode, where none does anything: an act a surface's kinds hold taking one, or a modal
-  layer of ours binding one, but for his Neovim, kept as it is, and the
-  layers that still keep theirs, a list that may only shrink. An arrow
+  normal or visual mode, where none does anything: an act a surface's
+  kinds hold taking one, or a modal layer of ours binding one, but for
+  his Neovim, kept as it is, and the layers that still keep theirs, a
+  list that may only shrink. An arrow
   after the leader, as Space and the right arrow, overlays Vim's own keys
   and is allowed;
 - a mode, kind or field the language doesn't name, a command with no short

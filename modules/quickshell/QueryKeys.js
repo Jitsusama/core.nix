@@ -108,11 +108,9 @@ const table = [
     // @: runs the last command line again, as Vim's does (the language's
     // again-command); @ alone waits for it.
     { act: "commandAgain", mode: "normal", keys: [["@", ":"]] },
-    // Vim's Ctrl+W l and w go into the drawer, the window right, and his
-    // Neovim's Space and the right arrow over them (Joel, 2026-11-05:
-    // "leader stuff can overlay default stuff"); a bare arrow doesn't.
-    { act: "drawer", mode: "normal",
-        keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
+    // Vim's Ctrl+W l and w go into the drawer, and his Neovim's Space and the
+    // right arrow over them (Joel, 2026-11-05: "leader stuff can overlay").
+    { act: "drawer", mode: "normal", keys: [["Ctrl+w", "l"], ["Ctrl+w", "w"], ["Space", "Right"]] },
     // Escape steps back one level, and closes the launcher at its home.
     { act: "back", mode: "normal", keys: ["Escape"] },
 
@@ -157,10 +155,10 @@ const table = [
     // and Page Up (both modes', above); gg G and H M L as on the rows, each
     // taking a count. Ctrl+W h and w go back, the foot naming h, Space and
     // the left arrow too, and ZZ, Space w and :q, as his Neovim closes a
-    // window; a bare arrow does nothing. Escape only lets a count or a waiting key go,
-    // as it does nothing at rest in a window, and q alone does nothing, as
-    // Joel asked of every modal surface (2026-11-04). Return does the row
-    // the drawer's about.
+    // window; a bare arrow does nothing. Escape only lets a count or a
+    // waiting key go, as it does nothing at rest in a window, and q alone
+    // does nothing, as Joel asked of every modal surface (2026-11-04).
+    // Return does the row the drawer's about.
     { act: "next", mode: "page", keys: ["j"] },
     { act: "previous", mode: "page", keys: ["k"] },
     { act: "left", mode: "page", keys: ["h"] },
