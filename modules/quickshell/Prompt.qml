@@ -795,14 +795,20 @@ Item {
 
     implicitWidth: 480
     implicitHeight: Theme.space.xxxl
-    // The line's baseline, the typed letters', which the field's keys and
-    // aside sit on and the launcher's drawer sets its eyebrow on.
-    baselineOffset: input.y + input.baselineOffset
+    // The line's baseline, which the typed letters, the hint, the aside,
+    // the glyph and a place's name all sit on, and the launcher's drawer
+    // sets its eyebrow on. It's the largest level's, the place's name at
+    // Title, set by centring its capitals on the field (docs/design.md, One
+    // Baseline a Line), and it's there out of a place too, where no name
+    // shows, so nothing on the line moves as one opens (Joel, 2026-11-05:
+    // "which? &etc. need to be baselined with the text to their left").
+    readonly property real lineBaseline: (height + titleCapitals) / 2
+    baselineOffset: lineBaseline
 
     Text {
         id: glyphText
         x: Theme.space.l
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         text: prompt.glyph
         color: prompt.hue
         font.family: Theme.level.figure.family
@@ -812,7 +818,7 @@ Item {
     Text {
         id: leadText
         x: Theme.space.l + prompt.glyphWidth
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         visible: prompt.lead !== ""
         text: prompt.lead
         color: prompt.leadHue
@@ -976,9 +982,10 @@ Item {
 
     // Where Joel is, the place's name at Title in the text colour, with no
     // chip, since its size says it's where he is; the marks between a
-    // path's steps muted. Its capitals are centred on the field, as an
-    // eyebrow's are, and its line box may run past the field's rather than
-    // growing it, so the card is one height in a place and out of it.
+    // path's steps muted. Its capitals are centred on the field, setting
+    // the line's baseline (lineBaseline), and its line box may run past the
+    // field's rather than growing it, so the card is one height in a place
+    // and out of it.
     Item {
         id: held
         x: Theme.space.l + prompt.ledWidth
@@ -988,7 +995,7 @@ Item {
 
         Row {
             id: path
-            y: (prompt.height + prompt.titleCapitals) / 2 - titleFace.ascent
+            y: prompt.lineBaseline - titleFace.ascent
 
             Repeater {
                 id: stepsShown
@@ -1046,7 +1053,7 @@ Item {
         id: askedText
         x: input.x
         width: input.width
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.baseline: input.baseline
         visible: prompt.asking !== ""
         text: prompt.asking
         textFormat: Text.PlainText
@@ -1060,7 +1067,7 @@ Item {
         x: Theme.space.l + prompt.ledWidth
             + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
         width: prompt.end - x
-        anchors.verticalCenter: parent.verticalCenter
+        y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
         // A question asked draws in its place, and the field keeps the
