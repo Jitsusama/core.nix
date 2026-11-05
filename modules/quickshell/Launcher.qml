@@ -1836,7 +1836,7 @@ Scope {
     // or its verb, as the command line names its act, and the key
     // language's flags for it.
     function commandNamed(row) {
-        return Catalogue.named(commandWords(row.key ?? "").command, Commands.commandOf(row),
+        return Catalogue.named(commandWords(row).command, Commands.commandOf(row),
             Options.commands);
     }
 
