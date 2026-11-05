@@ -316,9 +316,10 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     selected = desktop.showing()["selected"]
     assert selected["side"] == "Notes for Tuesday", selected
     # Return steps in, to what can be done to it, all but going to it,
-    # since it's the one he's in. Typed, on the find, the foot says Return
-    # alone, since the find's arrows move the caret.
-    assert selected["told"] == ["\u21b5"], selected
+    # since it's the one he's in. Typed, on the find, the foot says "\u21b5 open",
+    # as normal does, since stepping in has one word wherever it's done, and
+    # no arrow, since the find's arrows move the caret.
+    assert selected["told"] == ["\u21b5 open"], selected
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]

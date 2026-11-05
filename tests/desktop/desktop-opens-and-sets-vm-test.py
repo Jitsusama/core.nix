@@ -1185,10 +1185,11 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
     # Joined, its Return typed on the find steps in too, rather than
-    # disconnecting it, so the foot says Return alone: the find's arrows
-    # move the caret, so no arrow is named there.
+    # disconnecting it, so the foot says "\u21b5 open", as stepping in does
+    # wherever it's done; the find's arrows move the caret, so no arrow is
+    # named there.
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5"], told
+    assert told[:1] == ["\u21b5 open"], told
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
