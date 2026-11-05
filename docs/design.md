@@ -101,8 +101,10 @@ for judging before it's been judged here first.
   edge by its column, each baseline by its pitch, each run by its level, each
   ink by its colour role. A design review judges type, space, alignment and
   colour together on those shots and answers within half an hour, and the
-  change merges only on its pass (Joel, 2026-11-05: "you are not
-  considering enough design elements when changing things"). A change that
+  change merges on its pass (Joel, 2026-11-05: "you are not considering
+  enough design elements when changing things"). If no answer comes within
+  half an hour of the shots, it merges on its owner's checks and is judged
+  after, a miss fixed forward, so nothing waits on the review. A change that
   draws nothing differently says so and needs none.
 - **Said, where it's unfinished.** Whatever hasn't met all of this is called
   unfinished when it's shown, never done.
@@ -510,6 +512,13 @@ Title 32; Display 56.
 - **A frame's bottom is set**, never what whole lines happen to leave.
 
 The rest follows from the ladder:
+
+- **The frame's edges keep the inset; its bands meet as rows do.** The inset
+  is measured from the frame's inside edge, its border left out, to the ink:
+  the first cap's top, the side's first and last ink, and the last baseline
+  above the bottom edge. Inside, a band meets the next across a hairline with
+  what a row leaves round its centred capitals, so a foot comes out a little
+  taller than a row, and the room round the whole frame stays equal.
 
 - **One baseline a line.** A line's pieces share one baseline, found by
   centring its largest level's capitals in the line; a smaller level takes that
