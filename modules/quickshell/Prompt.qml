@@ -40,7 +40,7 @@ Item {
     property color hue: Theme.muted
     // Room between the glyph and what's typed: the launcher lines what's
     // typed up with its results' column, and a secret sits close by its lock.
-    property int glyphWidth: glyphText.implicitWidth + Theme.space.m
+    property int glyphWidth: glyphText.implicitWidth + Theme.space.rung.mark
     // Where its mark stands from its left, so a frame holding it sets the
     // mark on its own column by this rather than by a number of its own.
     readonly property real markAt: glyphText.x
@@ -48,7 +48,8 @@ Item {
     // find's / leads the line.
     property string lead
     property color leadHue: Theme.muted
-    readonly property real leadWidth: lead === "" ? 0 : leadText.implicitWidth + Theme.space.m
+    readonly property real leadWidth: lead === "" ? 0
+        : leadText.implicitWidth + Theme.space.rung.mark
     // Where what follows the glyphs starts, from the line's own inset.
     readonly property real ledWidth: glyphWidth + leadWidth
     property bool secret: false
@@ -187,9 +188,9 @@ Item {
     // room to spare beside a short hint (Joel, 2026-11-04).
     // What's typed with its completion comes before the aside too, so
     // "weather tokyo" keeps "= no forecast" whole and the aside says less.
-    property real asideMost: Math.max(0, width - 2 * Theme.space.l
-        - ledWidth - Theme.space.m - pathWanted - Math.max(typingRoom, typedWidest)
-        - Theme.space.xl - keysRoom)
+    property real asideMost: Math.max(0, width - 2 * Theme.space.rung.inset
+        - ledWidth - Theme.space.rung.apart - pathWanted - Math.max(typingRoom, typedWidest)
+        - Theme.space.rung.groups - keysRoom)
     // The widest what's typed has been with its completion since forget(),
     // so the aside gives way once as it grows, not back and forth with
     // each letter.
@@ -224,9 +225,9 @@ Item {
 
     // Where what's typed has to end: before the aside's room, and before
     // caps lock's glyph when it shows, and before the field's keys.
-    readonly property real end: asideRoom === 0 ? width - Theme.space.l - keysRoom
-        : asideText.x - Theme.space.xl
-            - (capitals ? Theme.space.s + capitalsGlyph.implicitWidth : 0)
+    readonly property real end: asideRoom === 0 ? width - Theme.space.rung.inset - keysRoom
+        : asideText.x - Theme.space.rung.groups
+            - (capitals ? Theme.space.rung.mark + capitalsGlyph.implicitWidth : 0)
 
     // The field's keys, said at its right edge (Joel, 2026-10-28: hints
     // "flush against the text feels wrong and they are not super obvious
@@ -254,9 +255,9 @@ Item {
         || (input.text === "" && cleared !== ""))
     readonly property real keysBare: keySlots.reduce((sum, slot) => sum + slotWidth(slot, false),
         0) + (keySlots.length - 1) * fieldKeys.spacing
-    readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.l - ledWidth
-        - Theme.space.m - pathWanted - Math.max(typingRoom, typedWanted) - Theme.space.xl
-        >= keysBare + Theme.space.xl
+    readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.rung.inset
+        - ledWidth - Theme.space.rung.apart - pathWanted - Math.max(typingRoom, typedWanted)
+        - Theme.space.rung.groups >= keysBare + Theme.space.rung.groups
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
     // what's typed with its completion, and the aside, each whole. Where
@@ -280,10 +281,11 @@ Item {
     readonly property real keysWordedWidth: keysWorded.reduce((sum, wide) => sum + wide, 0)
         + (keysWorded.length - 1) * fieldKeys.spacing
     readonly property real asideWanted: asideWhole
-    readonly property bool wordsFit: width - 2 * Theme.space.l - ledWidth - Theme.space.m
-        - pathWanted - Math.max(typingRoom, typedWanted)
-        - Theme.space.xl - (asideWanted > 0 ? asideWanted + Theme.space.xl : 0)
-        >= keysWordedWidth + Theme.space.xl
+    readonly property bool wordsFit: width - 2 * Theme.space.rung.inset - ledWidth
+        - Theme.space.rung.apart - pathWanted - Math.max(typingRoom, typedWanted)
+        - Theme.space.rung.groups
+        - (asideWanted > 0 ? asideWanted + Theme.space.rung.groups : 0)
+        >= keysWordedWidth + Theme.space.rung.groups
     // Set as the words stop fitting, and let go by forget(), as a step ends.
     property bool crowded: false
     onWordsFitChanged: {
@@ -295,7 +297,7 @@ Item {
         : keySlots.map(slot => slotWidth(slot, false))
     readonly property real keysRoom: keysHeld
         ? keyPlaces.reduce((sum, wide) => sum + wide, 0)
-            + (keyPlaces.length - 1) * fieldKeys.spacing + Theme.space.xl : 0
+            + (keyPlaces.length - 1) * fieldKeys.spacing + Theme.space.rung.groups : 0
     readonly property bool typed: input.text !== "" && !secret
 
     // A key's word, where there's room for the words.
@@ -803,7 +805,7 @@ Item {
     readonly property real dotted: Theme.level.figure.pointSize * 4 / 3 * 0.2
 
     implicitWidth: 480
-    implicitHeight: Theme.space.xxxl
+    implicitHeight: 4 * Theme.space.beat
     // The line's baseline, which the typed letters, the hint, the aside,
     // the glyph and a place's name all sit on, and the launcher's drawer
     // sets its eyebrow on. It's the largest level's, the place's name at
@@ -814,9 +816,12 @@ Item {
     readonly property real lineBaseline: (height + titleCapitals) / 2
     baselineOffset: lineBaseline
 
+    // Its glyph an inset from its left and its keys an inset from its right,
+    // as a frame holds its text (docs/design.md, The Ladder), so a surface
+    // sets it at its frame's inside edge.
     Text {
         id: glyphText
-        x: Theme.space.l
+        x: Theme.space.rung.inset
         anchors.baseline: input.baseline
         text: prompt.glyph
         color: prompt.hue
@@ -826,7 +831,7 @@ Item {
 
     Text {
         id: leadText
-        x: Theme.space.l + prompt.glyphWidth
+        x: Theme.space.rung.inset + prompt.glyphWidth
         anchors.baseline: input.baseline
         visible: prompt.lead !== ""
         text: prompt.lead
@@ -838,7 +843,7 @@ Item {
     KeyHints {
         id: fieldKeys
         anchors.right: parent.right
-        anchors.rightMargin: Theme.space.l
+        anchors.rightMargin: Theme.space.rung.inset
         anchors.baseline: input.baseline
         visible: prompt.keysHeld
         widths: prompt.keyPlaces
@@ -849,7 +854,7 @@ Item {
     Text {
         id: asideText
         anchors.right: prompt.keysHeld ? fieldKeys.left : parent.right
-        anchors.rightMargin: prompt.keysHeld ? Theme.space.xl : Theme.space.l
+        anchors.rightMargin: prompt.keysHeld ? Theme.space.rung.groups : Theme.space.rung.inset
         anchors.baseline: input.baseline
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
@@ -869,7 +874,7 @@ Item {
     Text {
         id: capitalsGlyph
         anchors.right: asideText.left
-        anchors.rightMargin: Theme.space.s
+        anchors.rightMargin: Theme.space.rung.mark
         anchors.baseline: input.baseline
         visible: prompt.capitals
         text: Theme.glyph.capitals
@@ -897,14 +902,22 @@ Item {
         font.variableAxes: Theme.level.title.variableAxes
         font.letterSpacing: Theme.level.title.letterSpacing
     }
-    // How tall the title's capitals stand, which are centred on the field.
-    readonly property real titleCapitals: titleFace.tightBoundingRect("H").height
+    // How tall the title's capitals stand, which are centred on the field:
+    // TextMetrics, which measures again once the face has loaded, where a
+    // FontMetrics' call in a binding is asked once, before it has, and
+    // reads small ever after (HVD6O3, 2026-11-05).
+    readonly property real titleCapitals: titleCaps.tightBoundingRect.height
+    TextMetrics {
+        id: titleCaps
+        text: "H"
+        font: titleFace.font
+    }
 
     // What stands between two steps of the path, so they read as one place
     // reached through the other rather than as tags side by side.
     readonly property string between: " \u203a "
     // How far what's typed stands after the path.
-    readonly property int pathGap: Theme.space.l
+    readonly property int pathGap: Theme.space.rung.apart
 
     // The hint's face: the voice's, since it's the shell speaking to Joel.
     FontMetrics {
@@ -925,14 +938,14 @@ Item {
     // How wide the path wants to be, whole, with the gap after it.
     readonly property real pathWanted: chips.length === 0 ? 0
         : chipsWanted.reduce((sum, wide) => sum + wide, 0)
-            + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.m
+            + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.rung.apart
 
     // The path's steps as they're drawn, given way at whole names where
     // they don't fit (Reading.crumbs): a folder's path a folder at a time,
     // then the middle steps folded into one mark, so no name is cut.
     readonly property var crumbsShown: {
         void titleFace.font;
-        const room = Math.max(0, end - Theme.space.l - ledWidth - typingRoom - pathGap);
+        const room = Math.max(0, end - Theme.space.rung.inset - ledWidth - typingRoom - pathGap);
         const stretch = titleStretch;
         // A step's whole words as their Text draws them, and words given
         // way as the face measures them, stretched as the title's axes do.
@@ -997,7 +1010,7 @@ Item {
     // and out of it.
     Item {
         id: held
-        x: Theme.space.l + prompt.ledWidth
+        x: Theme.space.rung.inset + prompt.ledWidth
         visible: prompt.chips.length > 0
         width: visible ? path.width : 0
         height: parent.height
@@ -1073,7 +1086,7 @@ Item {
 
     TextInput {
         id: input
-        x: Theme.space.l + prompt.ledWidth
+        x: Theme.space.rung.inset + prompt.ledWidth
             + (prompt.chips.length > 0 ? held.width + prompt.pathGap : 0)
         width: prompt.end - x
         y: prompt.lineBaseline - baselineOffset

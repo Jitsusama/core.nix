@@ -514,7 +514,7 @@ ShellRoot {
             expect("a hint starts past the caret", hinting !== undefined
                 && hinting.from >= letters + voicedField.caretWidth + Theme.space.rung.mark - 0.5,
                 `hint at ${hinting?.from}, letters at ${letters}`);
-            const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
+            const right = steadied.mapToItem(null, steadied.width - Theme.space.rung.inset, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
                 && Math.abs(note.to - right) <= 1, `${said(drawn(steadied, []))}, end ${right}`);

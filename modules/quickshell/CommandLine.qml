@@ -47,7 +47,12 @@ Item {
     // covered, or "normal" by Backspace on an empty line.
     signal letGo(string how)
 
-    implicitHeight: Theme.space.xxxl
+    implicitHeight: 4 * Theme.space.beat
+    // Its : on the rows' glyph column, an inset in, and what's typed a
+    // glyph's column on, on their names' (Choice.qml): a mark's square
+    // cell, a line pitch wide, and the mark rung before its text.
+    readonly property real typedAt: Theme.space.rung.inset + Theme.level.name.pitch
+        + Theme.space.rung.mark
 
     // Takes the keys, as : opens it, with the range it opens on written in,
     // as a count's .,.+2 or visual's '<,'>.
@@ -164,7 +169,7 @@ Item {
 
     Text {
         id: sigil
-        x: Theme.space.l
+        x: Theme.space.rung.inset
         anchors.baseline: input.baseline
         text: ":"
         color: Theme.accent
@@ -173,8 +178,8 @@ Item {
 
     TextInput {
         id: input
-        x: Theme.space.l + Theme.space.xxl
-        width: parent.width - x - Theme.space.l
+        x: line.typedAt
+        width: parent.width - x - Theme.space.rung.inset
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true
