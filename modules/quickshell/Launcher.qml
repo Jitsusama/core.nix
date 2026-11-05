@@ -1559,8 +1559,11 @@ Scope {
                 continue;
             const best = found[0];
             const noun = source.collection.noun;
+            // What it belongs to leads, as a session ranked flat says whom
+            // it's under, the depth that showed it gone (Agents.qml).
+            const counted = found.length > 1 ? `${found.length - 1} more ${noun}` : noun;
             const gathered = Object.assign({}, best, {
-                side: found.length > 1 ? `${found.length - 1} more ${noun}` : noun,
+                side: [best.belongs ?? "", counted].filter(part => part !== "").join(" \u00b7 "),
                 chip: noun,
                 title: source.collection.title,
                 ask: source.collection.ask,
@@ -4721,6 +4724,7 @@ Scope {
                                         : root.marked(entry.modelData)
                                     chord: entry.modelData.chord
                                     side: entry.modelData.side
+                                    sideItems: entry.modelData.sideItems ?? []
                                     count: entry.modelData.count ?? ""
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
