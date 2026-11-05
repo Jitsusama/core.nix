@@ -60,10 +60,11 @@ function fullDay(at) {
     return Qt.formatDate(at, "dddd d MMMM yyyy");
 }
 
-// The date over a plate, "Wednesday 4 November": the year is the
-// calendar's, and the plate is this moment's.
-function eyebrow(at) {
-    return Qt.formatDate(at, "dddd d MMMM");
+// The date over a plate or a drawer, "Wednesday 4 November", with its
+// year only when it's another than `now`'s, as a seven-day forecast from
+// 28 December reaches.
+function eyebrow(at, now) {
+    return day(at, now);
 }
 
 // A day as a row says one past the week around it: "28 Oct", with its year
