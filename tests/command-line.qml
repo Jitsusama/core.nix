@@ -35,6 +35,7 @@ QtObject {
         quit: "Close the Launcher",
         help: "List the Keys",
         set: "Set an Option",
+        setlocal: "Set an Option of This",
         history: "List Earlier Lines",
         row: "Go to a Row"
     })
@@ -46,6 +47,8 @@ QtObject {
         quit: { act: "close", short: "q" },
         help: { act: "help", short: "h" },
         set: { act: "set", short: "se", changes: true, undoable: true },
+        setlocal: { act: "setlocal", short: "setl", changes: true, undoable: true,
+            range: true },
         history: { act: "history", short: "his" },
         sort: { act: "sort", short: "sor", changes: true, undoable: true, range: true },
         open: { act: "open-it", short: "ope" },
@@ -111,6 +114,7 @@ QtObject {
             ["q[uit]", "Close the Launcher", "ZZ"],
             ["h[elp]", "List the Keys", "F1"],
             ["se[t]", "Set an Option", ""],
+            ["setl[ocal]", "Set an Option of This", ""],
             ["his[tory]", "List Earlier Lines", ""],
             ["{n}", "Go to a Row", ""]
         ]);
@@ -124,7 +128,7 @@ QtObject {
             menuOf([{ name: "Sign In", verb: "sign in" }])[0].command, "sign");
         holds("a row with no acts lists only what every surface has",
             lines(menuOf([])).map(line => line[0]),
-            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
+            ["q[uit]", "h[elp]", "se[t]", "setl[ocal]", "his[tory]", "{n}"]);
 
         // Typing narrows it: by the command's start, then by the act's words.
         const shown = typed => Commands.narrowed(menu, typed).map(entry => entry.command);
@@ -614,6 +618,43 @@ QtObject {
             ["Leave", "Disconnect It", undefined]);
         holdEarlier();
         holdAsking();
+        holdLocal();
+    }
+
+    // :setl, as Vim's :setlocal sets the current buffer's option rather
+    // than the global one (VKCF3Z, 2026-11-05): the option of the thing
+    // under the cursor, or of the nearest thing it's inside that has one,
+    // as Muted inside a program sets the program's; over a range, each
+    // thing's own. A thing with none has none, so :setl there says E518
+    // rather than setting the machine's.
+    function holdLocal() {
+        const menu = menuOf([]);
+        const ran = typed => {
+            const read = Commands.ran(typed, menu);
+            return read.error ?? [read.entry.kind, read.arg, JSON.stringify(read.range ?? null)];
+        };
+        holds(":setl is its own command, taking a range, and :set still none",
+            [ran("setl mute"), ran("setlocal nomute"), ran("%setl mute"), ran("%set mute")],
+            [["setlocal", "mute", "null"], ["setlocal", "nomute", "null"],
+                ["setlocal", "mute", JSON.stringify("%")], "E481: No range allowed"]);
+        const mute = { kind: "switch", now: () => false };
+        const program = { name: "mpv", options: { mute, volume: { kind: "number" } } };
+        const device = { name: "Speakers", options: { mute, port: { kind: "choice" } } };
+        const muted = { name: "Muted" };
+        const files = { name: "Files" };
+        const whose = found => found.map(options =>
+            [program, device].find(thing => thing.options === options)?.name ?? "none");
+        holds("one thing sets its own",
+            whose(CommandBinding.localOptions([program], [device])), ["mpv"]);
+        holds("an act inside a thing sets the thing's, the nearest first",
+            whose(CommandBinding.localOptions([muted], [device, program])), ["mpv"]);
+        holds("over a range, each thing its own, none for one that has none",
+            whose(CommandBinding.localOptions([program, files, device], [device])),
+            ["mpv", "none", "Speakers"]);
+        holds("a thing with none, or none at all, says E518, never the machine's",
+            [SetWords.setting("mute", CommandBinding.localOptions([files], [])[0]),
+                SetWords.setting("port", CommandBinding.localOptions([], [])[0] ?? {})],
+            [{ error: "E518: Unknown option: mute" }, { error: "E518: Unknown option: port" }]);
     }
 
     // A switch that takes minutes, as Do Not Disturb's dnd does (VKCF3Z,
@@ -726,10 +767,10 @@ QtObject {
             lines(menu).slice(0, 4).map(line => line[0]), ["12", "disc", "set nowifi", "see"]);
         holds("and lists itself with what every surface has",
             lines(Commands.listed({ acts: [], table: commands, said })).map(line => line[0]),
-            ["q[uit]", "h[elp]", "se[t]", "his[tory]", "{n}"]);
+            ["q[uit]", "h[elp]", "se[t]", "setl[ocal]", "his[tory]", "{n}"]);
         holds("typing narrows them by their start",
             Commands.narrowed(menu, "se").map(line => Commands.called(line)),
-            ["set nowifi", "see", "se[t]"]);
+            ["set nowifi", "see", "se[t]", "setl[ocal]"]);
         holds("choosing one writes it in, and Return runs it as typed",
             [Commands.chosen(Commands.typing("se"), 1, Commands.narrowed(menu, "se")).line,
                 Commands.ran("set nowifi", menu).entry?.kind,

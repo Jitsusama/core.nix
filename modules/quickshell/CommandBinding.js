@@ -71,6 +71,12 @@ function actFor(entry, acts, wordsOf) {
         && String(act.name ?? "") === entry.title);
 }
 
+// The options :setl sets on each thing it's bound to, as Vim's :setlocal
+// sets the current buffer's: a stub until they're read.
+function localOptions(things) {
+    return things.map(() => ({}));
+}
+
 // An act's words for the line (words.json's command, argument, bang and
 // range), by its key and the state its words are in, `of` reading
 // words.json's entry for an id in a state, as Words.of does: a verb's
