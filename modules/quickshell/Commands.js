@@ -114,6 +114,8 @@ function listed(from) {
         kind: "quit", bang: true, takes: false, undoable: true });
     add({ command: "help", short: short("help"), title: said.help ?? "", key: "F1",
         kind: "help", bang: true, takes: true, undoable: true });
+    add({ command: "set", short: short("set"), title: said.set ?? "", key: "",
+        kind: "set", bang: false, takes: true, undoable: true });
     add({ command: "{n}", short: "{n}", title: said.row ?? "", key: "", kind: "row",
         bang: false, takes: false, undoable: true, row: from.row ?? 1 });
     return menu;
@@ -305,45 +307,31 @@ function setWords(arg) {
 
 const setWord = /^(no|inv)?([a-z]+)(!|\?|\+=|-=|=)?([\s\S]*)$/;
 
-// One of :set's words, against the option it names: a change, or Vim's
-// error for it.
-function setOne(word, options) {
+// One of :set's words split into what it says: no or inv, the option's
+// name, how it's set and the value, or null where it names no option. An
+// option whose own name starts with no or inv is that option.
+function setRead(word, options) {
     const found = word.match(setWord);
     if (!found) {
-        return { error: `E518: Unknown option: ${word}` };
+        return null;
     }
-    // An option whose own name starts with no or inv is that option.
-    const [, said = "", named, how = "", value = ""] = found;
-    const whole = said !== "" && options[said + named] !== undefined;
-    const prefix = whole ? "" : said;
-    const name = whole ? said + named : named;
+    const [, said = "", called, how = "", value = ""] = found;
+    const whole = said !== "" && options[said + called] !== undefined;
+    const name = whole ? said + called : called;
     const option = options[name];
-    if (!option) {
-        return { error: `E518: Unknown option: ${word}` };
-    }
-    const invalid = { error: `E474: Invalid argument: ${word}` };
-    const switches = option.kind === "switch";
-    const numbered = option.kind === "number";
     const given = how === "=" || how === "+=" || how === "-=";
-    if (!given && value !== "") {
-        return { error: `E518: Unknown option: ${word}` };
+    if (!option || (!given && value !== "")) {
+        return null;
     }
-    if ((prefix !== "" || how === "!") && (!switches || (how !== "" && how !== "!"))) {
-        return invalid;
-    }
-    if (prefix === "no") {
-        return { option: name, how: how === "!" ? "toggle" : "off", value: "" };
-    }
-    if (prefix === "inv" || how === "!") {
-        return { option: name, how: "toggle", value: "" };
-    }
-    if (how === "?" || (how === "" && !switches)) {
-        return { option: name, how: "show", value: "" };
-    }
-    if (how === "") {
-        return { option: name, how: "on", value: "" };
-    }
-    if ((how !== "=" && !numbered) || (switches && !option.takes)) {
+    return { prefix: whole ? "" : said, name, how, value, option };
+}
+
+// A value given an option with =, += or -=: a change, or Vim's error.
+function setValue(word, read) {
+    const { name, how, value, option } = read;
+    const invalid = { error: `E474: Invalid argument: ${word}` };
+    const numbered = option.kind === "number";
+    if ((how !== "=" && !numbered) || (option.kind === "switch" && !option.takes)) {
         return invalid;
     }
     if (!numbered) {
@@ -360,6 +348,29 @@ function setOne(word, options) {
     }
     const moved = { "=": "set", "+=": "add", "-=": "subtract" };
     return { option: name, how: moved[how], value: by };
+}
+
+// One of :set's words, against the option it names: a change, or Vim's
+// error for it.
+function setOne(word, options) {
+    const read = setRead(word, options);
+    if (read === null) {
+        return { error: `E518: Unknown option: ${word}` };
+    }
+    const { prefix, name, how } = read;
+    const switches = read.option.kind === "switch";
+    const flipped = prefix !== "" || how === "!";
+    if (flipped && (!switches || (how !== "" && how !== "!"))) {
+        return { error: `E474: Invalid argument: ${word}` };
+    }
+    if (flipped) {
+        const off = prefix === "no" && how === "";
+        return { option: name, how: off ? "off" : "toggle", value: "" };
+    }
+    if (how === "?" || (how === "" && !switches)) {
+        return { option: name, how: "show", value: "" };
+    }
+    return how === "" ? { option: name, how: "on", value: "" } : setValue(word, read);
 }
 
 // What :set's words ask (:help :set), read against `options`, each an
