@@ -1300,13 +1300,14 @@ fn serve(settings: &Settings) -> bool {
     }
     let mut lent = adopt(settings, &mut machines, into_day());
     let mut leaving: Vec<Leaving> = Vec::new();
-    let mut not_before = 0;
+    let mut hold = decide::Hold::default();
     let mut hand_over_after = 0;
     let mut said_on = None;
     let mut sleep = sleep::Sleep::default();
     let mut said_superseded = false;
     let mut restarts = false;
     while !ENDING.load(Ordering::SeqCst) {
+        let asked = there::wanted(dir);
         let tick = Tick {
             now: now(),
             into_day: into_day(),
@@ -1316,22 +1317,21 @@ fn serve(settings: &Settings) -> bool {
                     fs::read_to_string(&settings.queue)
                         .is_ok_and(|queue| queue::wants(&queue, now()))
                 },
-                there::wanted(dir),
+                asked,
             ),
+            asked,
             woke: sleep.woke(now()),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref(), &leaving);
         let mut reached = false;
         lent = match lent.take() {
-            None => {
-                decide::lend(settings.hours, tick, not_before, unreturned).and_then(|seconds| {
-                    let lent = lend(settings, &mut machines, tick.now, seconds);
-                    if lent.is_none() {
-                        not_before = after_failing(tick);
-                    }
-                    lent
-                })
-            }
+            None => decide::lend(settings.hours, tick, hold, unreturned).and_then(|seconds| {
+                let lent = lend(settings, &mut machines, tick.now, seconds);
+                if lent.is_none() {
+                    hold = after_failing(tick);
+                }
+                lent
+            }),
             Some(mut builder) => {
                 reached = in_use(Path::new("/proc"), &builder.host)
                     || outlives_on(settings, tick, &builder);
@@ -1343,8 +1343,7 @@ fn serve(settings: &Settings) -> bool {
                     Some(event) => {
                         let (used, ends) = (builder.used, builder.ends);
                         give_back(settings, &mut machines, builder, event);
-                        not_before =
-                            decide::next_after(event, tick.wants, used, ends, tick.woke, now());
+                        hold = decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
                     None => Some(handed_over(
@@ -1416,13 +1415,13 @@ fn handed_over(
     let (kept, outgoing) = hand_over(settings, machines, builder, tick.now, seconds);
     match outgoing {
         Some(outgoing) => leaving.push(outgoing),
-        None => *hand_over_after = after_failing(tick),
+        None => *hand_over_after = after_failing(tick).until,
     }
     kept
 }
 
 /// When to ask again for a builder that failed to stand.
-fn after_failing(tick: Tick) -> u64 {
+fn after_failing(tick: Tick) -> decide::Hold {
     decide::next_after(Event::Failed, tick.wants, 0, u64::MAX, false, now())
 }
 
