@@ -253,6 +253,7 @@ QtObject {
             Operators.typedAs("ending", 0, { act: "last", count: 0 }),
             Operators.typedAs("copy", 0, { act: "first", count: 0 })
         ], ["dd", "3dd", "dj", "d6j", "dG", "ygg"]);
+        pending(holds);
 
         // A place of 400 windows, each closed and copied by its actions:
         // the keys, the span and the actions over it of yG and of dG, each
@@ -293,6 +294,46 @@ QtObject {
         console.log(`yG over 400 rows in ${yanking.toFixed(3)} ms, dG in ${ending.toFixed(3)} ms`);
         holds("yG over 400 rows in half a key's 4 ms", yanking < 2, true);
         holds("and dG", ending < 2, true);
+    }
+
+    // An operator waiting for what it acts on, as the mode word's room says
+    // it: the keys typed so far, and what the cursor row would take.
+    function pending(holds) {
+        const standing = keys => typed(["Escape", ...keys]).standing;
+        holds("nothing pending at rest", Operators.pending(Keys.rest()), null);
+        holds("nor with a count alone", Operators.pending(standing(["3"])), null);
+        holds("the keys an operator waits after, and its count", ["d", "3d", "d2", "2d3",
+            "dg", "y"].map(keys => Operators.pending(standing(keys.split(""))))
+            .map(hit => `${hit.typed} ${hit.count}`),
+        ["d 0", "3d 3", "d2 2", "2d3 6", "dg 0", "y 0"]);
+
+        // The verb is the row's: its ending's for d, copy for y, or none
+        // where it has nothing d or y takes.
+        const words = { pending: "{typed} \u00b7 {what}", hit: "{verb} {name}",
+            hits: "{verb} {count}", nothing: "nothing to end", noCopy: "nothing to copy" };
+        const says = (typedSoFar, act, verb, count) => Operators.pendingSays({
+            typed: typedSoFar, act, verb, name: "Home-5G", count }, words);
+        holds("d says the cursor row's end", says("d", "ending", "disconnect", 0),
+            "d \u00b7 disconnect Home-5G");
+        holds("a count says how many it takes", says("3d", "ending", "close", 3),
+            "3d \u00b7 close 3");
+        holds("a count of one is the row", says("1d", "ending", "close", 1),
+            "1d \u00b7 close Home-5G");
+        holds("y says copy", says("y", "copy", "copy", 0), "y \u00b7 copy Home-5G");
+        holds("a row d can't end says so", says("d", "ending", null, 0),
+            "d \u00b7 nothing to end");
+        holds("and one y can't copy", says("y", "copy", null, 0), "y \u00b7 nothing to copy");
+
+        // Cut at a whole word to the room, as the spec's "d \u00b7
+        // disconnect", by however the room measures it.
+        const fits = room => text => text.length <= room;
+        const said = "d \u00b7 disconnect Home-5G";
+        holds("what fits is whole", Operators.wholeWords(said, fits(40)), said);
+        holds("what doesn't loses its last words", Operators.wholeWords(said, fits(18)),
+            "d \u00b7 disconnect");
+        holds("never ending on the dot", Operators.wholeWords(said, fits(4)), "d");
+        holds("and its first word stands, though it's wider",
+            Operators.wholeWords(said, fits(0)), "d");
     }
 
     function run() {

@@ -270,8 +270,16 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         if desktop.values["photographs"]:
             flashed.save(machine.out_dir / f"launcher-yank-flash-at-{named}.png")
         before = desktop.showing()
+        # d waiting says at once, in the mode word's room, what it will
+        # take, cut at a whole word to the room, and moves nothing.
+        machine.send_chars("d")
+        desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 close"))
+        shown = desktop.showing()
+        assert shown["tinted"] == [shown["current"]], shown
+        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} d cut {shown}"
+        desktop.photograph(f"launcher-pending-at-{named}")
         with desktop.told("ask ready"), desktop.told("asked Close Notes for Tuesday? (y/n)"):
-            machine.send_chars("dd")
+            machine.send_chars("d")
         # The ask stands alone in the keys' place, ending where Return
         # ends, wider than Return's word, so it reaches into the room the
         # other keys left; how things stand beside it holds, whole (a

@@ -810,8 +810,10 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
     desktop.normal()
+    machine.send_chars("d")
+    desktop.launcher_until(lambda shown: shown["modeWord"].startswith("d \u00b7 disconnect"))
     with desktop.told("ask ready"), desktop.told("asked Disconnect Lantern? (y/n)"):
-        machine.send_chars("dd")
+        machine.send_chars("d")
     with desktop.told("answered no"):
         machine.send_key("esc")
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
