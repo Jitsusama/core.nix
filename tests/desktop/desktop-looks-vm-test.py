@@ -36,12 +36,13 @@ if TYPE_CHECKING:
 # Joel's scales.
 JOELS_SCALES = ("1.5", "2")
 # The drawer takes what the screen leaves beside the centred card, less the gap between them
-# and the margin at the screen's edge, up to its most (Launcher.qml's drawerRoom). On the
-# laptop's 2880 that's 520 at 1.5 and 344 at 2; niri gives the VM's screen a few logical
-# pixels less, so it's worked out from the screen niri says it has.
+# and the margin at the screen's edge, up to its most (Launcher.qml's drawerRoom): the frames
+# rung and the screen rung. On the laptop's 2880 that's 520 at 1.5 and 300 at 2; niri gives
+# the VM's screen a few logical pixels less, so it's worked out from the screen niri says it
+# has.
 CARD = 680
-GAP = 12
-MARGIN = 24
+GAP = 32
+MARGIN = 48
 MOST = 520
 # The plate's pitch, half a row, and how near a line is to where it should be: a hundredth,
 # and the half a hundredth each of two lengths the launcher reports rounded may take.
