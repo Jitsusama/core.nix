@@ -339,6 +339,31 @@ Item {
         return (control ? "Ctrl+" : "") + (shift && !bare ? "Shift+" : "") + name;
     }
 
+    // A secret's keys, as Vim's inputsecret() takes them: Ctrl+C gives it
+    // up as Escape does, Ctrl+U deletes back to the start, Ctrl+W the word
+    // before and Ctrl+H the letter before. Everything else is the field's,
+    // so the arrows only move the caret and Backspace on nothing does
+    // nothing: no key of a secret's steps anywhere.
+    function secretKey(event: KeyEvent) {
+        const at = input.cursorPosition;
+        const key = named(event);
+        const from = key === "Ctrl+u" ? 0
+            : key === "Ctrl+w" ? QueryKeys.wordStart(input.text, at)
+            : key === "Ctrl+h" ? Math.max(0, at - 1) : -1;
+        if (key === "Ctrl+c") {
+            prompt.cancelled();
+            event.accepted = true;
+        } else if (from >= 0) {
+            input.remove(from, at);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Backspace && input.text === "") {
+            event.accepted = true;
+        }
+    }
+    // Whichever way the line's modes come and go, it comes back in insert,
+    // as a line asking for words wants.
+    onModalChanged: mode = "insert"
+
     // A modal line's key: what the table says it does in this mode, done
     // here, or left to the field to type.
     // A key Qt gives a handler of its own, read from the table all the
@@ -766,6 +791,10 @@ Item {
             }
             if (prompt.modal) {
                 prompt.modalKey(event);
+                return;
+            }
+            if (prompt.secret) {
+                prompt.secretKey(event);
                 return;
             }
             const none = input.selectionStart === input.selectionEnd;

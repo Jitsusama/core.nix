@@ -703,6 +703,26 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # Never joined, it asks for its password, which a wrong one doesn't
     # satisfy; the launcher stays to say so.
     desktop.step_in("ret")
+    # A password is a secret, as Vim's inputsecret() is: one line with no
+    # modes and no mode word, where Ctrl+H deletes the letter before, Ctrl+W
+    # the word before, the arrows only move the caret, Ctrl+U deletes back
+    # to the start, and Escape gives it up.
+    desktop.launcher_until(lambda shown: shown["asking"] and shown["modal"] is False)
+    foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+    assert not any(word["text"] == "insert" for word in foot), foot
+    machine.send_chars("not the pass")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the pass"))
+    machine.send_key("ctrl-h")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the pas"))
+    machine.send_key("ctrl-w")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the "))
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["caret"] == len("not the"))
+    machine.send_key("ctrl-u")
+    desktop.launcher_until(lambda shown: shown["caret"] == 0)
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
+    desktop.step_in("ret")
     desktop.type_in("not the password")
     desktop.photograph("launcher-wifi-password")
     with desktop.told("refused wifi Lantern", timeout=timedelta(seconds=60)):

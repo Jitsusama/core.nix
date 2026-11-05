@@ -1797,10 +1797,10 @@ Scope {
         const stepping = stepsIn(choice);
         // An arrow is named only in a mode where it steps: in insert they
         // move the caret, so naming them there named keys that did nothing
-        // of what was said (Joel, 2026-11-04). A line that isn't modal
-        // steps with them at its ends, as it always has.
-        const into = !prompt.modal || QueryKeys.binds("into", "Right", prompt.mode);
-        const out = !prompt.modal || QueryKeys.binds("out", "Left", prompt.mode);
+        // of what was said (Joel, 2026-11-04). A secret's line has no
+        // modes and its arrows only move the caret, as inputsecret()'s.
+        const into = prompt.modal && QueryKeys.binds("into", "Right", prompt.mode);
+        const out = prompt.modal && QueryKeys.binds("out", "Left", prompt.mode);
         // One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
@@ -3739,6 +3739,8 @@ Scope {
             // said on every change.
             caretWidth: root.hundredths(prompt.caretWidth),
             caretShown: prompt.caretShown,
+            // Whether the line has modes: not while it asks for a secret.
+            modal: prompt.modal,
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
             // What the field asks while nothing's typed.
@@ -4286,8 +4288,11 @@ Scope {
                     Prompt {
                         id: prompt
                         steady: true
-                        // Neovim's command line, opening in insert.
-                        modal: true
+                        // Neovim's command line, opening in insert, but for
+                        // a secret, which has no modes, as Vim's
+                        // inputsecret() has none (VKCF3Z's vi-paradigm
+                        // spec, Insert).
+                        modal: !prompt.secret
                         awake: root.open
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
@@ -4985,7 +4990,9 @@ Scope {
 
                             readonly property string counted: prompt.standing.ex !== undefined
                                 ? `:${prompt.standing.ex}` : prompt.standing.count
+                            // A line with no modes, as a secret's, names none.
                             readonly property string said: counted !== "" ? counted
+                                : !prompt.modal ? ""
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see
