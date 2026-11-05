@@ -1931,9 +1931,14 @@ Scope {
             return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
                 commandNamed(row))).length, Words.field.visual ?? {})]];
         // The row landed on says the act a second Return does, in the
-        // accent, since it's the one key that changes something now.
-        if (choice === selected && landedOn(choice))
-            return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent]];
+        // accent, since it's the one key that changes something now; the
+        // rest is normal's foot, as a landing is normal, so its shape never
+        // changes (VKCF3Z, 2026-11-05).
+        if (choice === selected && landedOn(choice)) {
+            const hints = Words.field.hints ?? {};
+            return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent],
+                [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]];
+        }
         // One Return lands on from the find says Return with no act, since
         // Return there does nothing of its own, and no arrow, since the
         // find's arrows move the caret.
@@ -1947,23 +1952,17 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice) || stepsThing(choice);
-        // An arrow is named only in a mode where it steps: in insert they
-        // move the caret, so naming them there named keys that did nothing
-        // of what was said (Joel, 2026-11-04). A secret's line has no
-        // modes and its arrows only move the caret, as inputsecret()'s.
-        // On a prompt's words, as a save's name, they move its caret.
-        const arrows = prompt.modal && !prompt.editsWords;
-        const into = arrows && QueryKeys.binds("into", "Right", prompt.mode);
-        const out = arrows && QueryKeys.binds("out", "Left", prompt.mode);
-        // One with nothing to do yet (`still`), as the file chooser's Open
+        // Normal names its keys by letter and lowercase verb, from the
+        // table that does them (the vi-paradigm spec's foot): l in, h out,
+        // : commands and Space ?, the way to every key, always.
+        if (prompt.modal && prompt.mode === "normal")
+            return normalKeys(choice, stepping, more);
+        // No arrow is named: where a line is typed they move its caret, and
+        // nothing else steps by them (Joel, 2026-11-05). One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
-        const keys = choice.still ? []
-            : [stepping ? [into ? "\u21b5 \u2192" : "\u21b5", more] : ["\u21b5", verbOf(choice)]];
-        if (into && !stepping && holdsMore(choice))
-            keys.push(["\u2192", ""]);
-        if (out && typed === "" && held.length > 0)
-            keys.push(["\u2190", ""]);
+        const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
+        keys.push(...findTaught(choice));
         // Where the line holds a prompt's words, it says how to get to
         // normal's keys and to the list of them, just before Return
         // (VKCF3Z, 2026-11-05).
@@ -1974,6 +1973,86 @@ Scope {
             keys.push(["Space ?", said.keys ?? ""]);
         }
         return keys;
+    }
+
+    // What the find teaches in the foot, by key and lowercase word, since
+    // its line holds only the find and how far it narrows (VKCF3Z,
+    // 2026-11-05): the key that takes the completion shown; less to type
+    // where what's typed is longer than it need be, worked out once, since
+    // each start of what's typed asks every pick; and a thing's chord,
+    // since its row says its kind where a chord would be. Only the
+    // selection's, as the foot says, so the rows' widths never ask it.
+    function findTaught(choice) {
+        if (!prompt.modal || prompt.mode !== "find" || choice !== selected)
+            return [];
+        const hints = Words.field.hints ?? {};
+        const taught = [];
+        if (typed !== "" && prompt.ghost !== "")
+            taught.push([prompt.completeKey, hints.complete ?? ""]);
+        const shorter = enough(choice);
+        if (shorter !== "")
+            taught.push([shorter, hints.enough ?? ""]);
+        else if (kindOf(choice) !== "" && (choice.chord ?? []).length > 0)
+            taught.push([chordText(choice.chord), hints.nextTime ?? ""]);
+        return taught;
+    }
+
+    // Normal's keys for a row: Return's act, l where it steps in, h where
+    // there's a place to step out to, then : and Space ?.
+    function normalKeys(choice, stepping, more) {
+        const hints = Words.field.hints ?? {};
+        const keys = choice.still ? [] : [["\u21b5", stepping ? more : verbOf(choice)]];
+        if (stepping || holdsMore(choice))
+            keys.push([hintKey("into"), hints.in ?? ""]);
+        if (held.length > 0)
+            keys.push([hintKey("out"), hints.out ?? ""]);
+        keys.push(...operatorKeys(choice));
+        // The colon opens the command line from rest (QueryKeys.read).
+        keys.push([":", hints.commands ?? ""]);
+        keys.push([hintKey("keys"), hints.keys ?? ""]);
+        return keys;
+    }
+
+    // A key as the foot names it: the first the table gives an act in a
+    // mode, normal unless said, drawn as the key list draws it, so a hint
+    // names the key that does what it says.
+    function hintKey(act, mode) {
+        const row = QueryKeys.table.find(one => one.act === act
+            && QueryKeys.inMode(one, mode ?? "normal"));
+        return row ? ListedKeys.sequenceFace(row.keys[0]) : "";
+    }
+
+    // d and y where the row has an ending or a copy that its Return isn't,
+    // d by the ending's own verb, as docs/design.md's foot says "d
+    // disconnect", each by the operator's key (Operators.operators). Only
+    // the one row's actions are read, as pendingSaid reads them, and only
+    // once it's selected (selectedActions), never in the foot's binding.
+    function operatorKeys(choice) {
+        if (choice !== selectedActions.row)
+            return [];
+        const actions = selectedActions.actions;
+        const ending = Operators.endingOf(choice, actions);
+        const copy = Operators.copyOf(choice, actions,
+            one => verbOf(one) === "copy" && !!one.run);
+        const keyOf = act => Object.keys(Operators.operators)
+            .find(key => Operators.operators[key] === act) ?? "";
+        const keys = [];
+        if (ending !== null && ending !== choice)
+            keys.push([keyOf("ending"), verbOf(ending)]);
+        if (copy && copy !== choice)
+            keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
+        return keys;
+    }
+
+    // A word the foot says for a key, in place of the keys, until the next
+    // key: q's “q does nothing · :q closes”, or “not here” for
+    // a key that means nothing in normal, so none is silent.
+    property var saying: []
+    property int sayingKeys: -1
+    readonly property bool sayingNow: saying.length > 0 && prompt.keysTaken === sayingKeys
+    function say(keys) {
+        saying = keys;
+        sayingKeys = prompt.keysTaken;
     }
 
     // A key as the foot says it: its mark, then its word where it has one.
@@ -2000,10 +2079,17 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Return, then the widest key a row adds beside it, Shift+Return's
-    // "below".
+    // Return, then the widest key a row adds beside it on the find, where
+    // the launcher opens: as wide as Shift+Return's "below" beside a mark.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
         ["\u21e7\u21b5", "below"], ["\u2192", ""]]
+    // What normal says beside Return at home: in, the commands and the
+    // keys, kept once normal is taken rather than from the opening. Kept
+    // from the start, it cut the battery's charge from the glance on the
+    // find, which never gives way; out is said only once a step is held,
+    // whose rows grow the room as any row does.
+    readonly property var footNormalRoom: [["\u21b5", footVerbRoom], ["l", "in"],
+        [":", "commands"], ["Space ?", "keys"]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -2037,6 +2123,8 @@ Scope {
         // the rows' foot never gives up room to keys they don't show.
         if (QueryKeys.paged(prompt.mode))
             said.push(drawerKeys(prompt.mode));
+        if (prompt.mode === "normal")
+            said.push(footNormalRoom);
         const place = Math.max(footReturnWidest,
             ...said.map(told => keys.advance(told[0][0], told[0][1])));
         if (place > footReturnWidest)
@@ -2114,6 +2202,7 @@ Scope {
     Connections {
         target: prompt
         function onModeChanged() {
+            root.readSelectedActions();
             root.noteKeys();
         }
     }
@@ -2432,8 +2521,43 @@ Scope {
     onHeldChanged: {
         const left = placeHeld;
         placeHeld = held;
-        if (open && placeOf(left) !== placeOf(held))
+        if (open && placeOf(left) !== placeOf(held)) {
             lastPlace = { held: left, here: here() };
+            // A place stepped to afresh goes on the way back, and leaves
+            // nothing ahead, as Vim's jump list does.
+            if (!jumping) {
+                jumpsBack = jumpsBack.concat([{ held: left, here: here() }]);
+                jumpsAhead = [];
+            }
+        }
+    }
+
+    // The places stepped into, as Vim's jump list: those left, which Ctrl+O
+    // goes back through, and those gone back from, which Ctrl+I and Tab go
+    // forward through again. Let go as the launcher opens, with the place
+    // used last.
+    property var jumpsBack: []
+    property var jumpsAhead: []
+    property bool jumping: false
+    function jump(by) {
+        const from = by < 0 ? jumpsBack : jumpsAhead;
+        if (from.length === 0)
+            return;
+        const to = from[from.length - 1];
+        const left = { held: held, here: here() };
+        if (by < 0) {
+            jumpsBack = jumpsBack.slice(0, -1);
+            jumpsAhead = jumpsAhead.concat([left]);
+        } else {
+            jumpsAhead = jumpsAhead.slice(0, -1);
+            jumpsBack = jumpsBack.concat([left]);
+        }
+        traces.began("jump", { from: held.length, to: to.held.length });
+        jumping = true;
+        held = to.held;
+        jumping = false;
+        restart(to.here.typed);
+        reselect(to.here);
     }
     function toLastPlace() {
         if (lastPlace === null)
@@ -3900,7 +4024,7 @@ Scope {
         if (hit === null || !row)
             return "";
         const words = Words.field.operators ?? {};
-        const act = QueryKeys.operators[prompt.standing.operator.key];
+        const act = Operators.operators[prompt.standing.operator.key];
         const actions = actionsOf(row);
         const copy = act === "copy"
             && Operators.copyOf(row, actions, one => verbOf(one) === "copy" && !!one.run);
@@ -3916,6 +4040,21 @@ Scope {
     // a key has; else its actions as the right arrow lists them, each a
     // row made searchable: nine such rows a row, as a window has, took
     // 18 ms over 400 rows when timed alone (2026-11-05).
+    // The selected row's actions, read as it's selected rather than in the
+    // foot's binding: a row's verbs() may ask its source, as Time's watch
+    // chrony, and a binding that read them would loop on what they set.
+    // Only in normal and visual, where the foot names d and y, and never a row whose
+    // verbs are the things inside it (nested), since reading those asks
+    // for them: Search Slack's asked Slack with each letter typed, which
+    // Slack allows only a few times a minute.
+    property var selectedActions: ({ row: null, actions: [] })
+    onSelectedChanged: readSelectedActions()
+    function readSelectedActions() {
+        const reads = selected && prompt.modal && ["normal", "visual"].includes(prompt.mode)
+            && !selected.nested;
+        selectedActions = { row: selected, actions: reads ? actionsOf(selected) : [] };
+    }
+
     function actionsOf(row) {
         if (typeof row.operands === "function")
             return row.operands();
@@ -4770,6 +4909,12 @@ Scope {
             landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
             landedFresh: root.landedJustNow(),
             returned: root.returned,
+            // What the foot says for a key in place of the keys, as q's words
+            // or "not here", in the foot's order, until the next key.
+            saying: root.sayingNow ? root.saying.slice(1).concat([root.saying[0]])
+                .map(key => root.saidKey(key)) : [],
+            // The places Ctrl+O and Ctrl+I go back and forward through.
+            jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
@@ -5109,6 +5254,8 @@ Scope {
         homeDepth = held.length;
         // A place it never showed on the way is none to go back to.
         lastPlace = null;
+        jumpsBack = [];
+        jumpsAhead = [];
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
@@ -5147,6 +5294,8 @@ Scope {
             held = [];
             homeDepth = 0;
             lastPlace = null;
+            jumpsBack = [];
+            jumpsAhead = [];
             listing = false;
             listedInDrawer = false;
             prompt.forget();
@@ -5600,17 +5749,24 @@ Scope {
                                 text = root.answer.copy ?? root.answer.headline;
                             root.searchNow();
                         }
-                        // Normal's Escape at rest, the Escape ladder's last
-                        // rungs (docs/design.md, Vi's Keys): a step back out,
-                        // or, at the level it opened on, closing it.
+                        // Normal's Escape at rest: the key list let go, or
+                        // the launcher closed, a popup, from any depth, as
+                        // his Neovim closes its floats; it never steps out
+                        // (the vi-paradigm spec, Normal).
                         onCancelled: {
                             if (root.listing)
                                 root.listing = false;
-                            else if (root.held.length > root.homeDepth)
+                            // Words asked for, as a password, are given up,
+                            // back to the row that asked, as Vim's
+                            // inputsecret() gives up on Escape.
+                            else if (root.asking)
                                 root.back();
                             else
                                 root.open = false;
                         }
+                        // A key with no meaning here says so, until the next.
+                        onIdled: key => root.say([[ListedKeys.face(key),
+                            (Words.field.hints ?? {}).notHere ?? ""]])
                         onForward: {
                             root.searchNow();
                             trials.pressed("steps");
@@ -5683,6 +5839,19 @@ Scope {
                             case "lastPlace":
                                 root.toLastPlace();
                                 return;
+                            case "jumpBack":
+                                root.jump(-1);
+                                return;
+                            case "jumpForward":
+                                root.jump(1);
+                                return;
+                            case "quitSaid": {
+                                // Said with :q at the right end, where Return
+                                // stands, so it reads q then :q.
+                                const hints = Words.field.hints ?? {};
+                                root.say([[":q", hints.quits ?? ""], ["q", hints.quit ?? ""]]);
+                                return;
+                            }
                             case "nextFile":
                                 root.beside(1);
                                 return;
@@ -6281,7 +6450,7 @@ Scope {
                             : operatorWord !== null ? [operatorWord]
                             : prompt.asking !== "" || root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
-                            : root.keysFor(choice)
+                            : root.sayingNow ? root.saying : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).
                         property var told: []
@@ -6344,16 +6513,7 @@ Scope {
                                 return root.answer.missed === true ? "" : root.answer.note ?? "";
                             if (root.held.length > 0)
                                 return root.held[0].row.context ?? "";
-                            // What's typed is longer than it need be,
-                            // worked out once, since each start of what's
-                            // typed asks every pick.
-                            const shorter = root.enough(choice);
-                            if (shorter !== "")
-                                return `${shorter} is enough`;
-                            // A thing's row says its kind where a chord
-                            // would be, so its chord is taught here.
-                            return root.kindOf(choice) !== "" && (choice.chord ?? []).length > 0
-                                ? `next time ${root.chordText(choice.chord)}` : "";
+                            return "";
                         }
 
                         width: parent.width

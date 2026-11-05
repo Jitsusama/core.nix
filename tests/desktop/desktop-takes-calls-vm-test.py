@@ -119,7 +119,7 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.photograph("notice-alone")
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
     # stream says the call's over. :e Notices opens the history on its
-    # first row, the newest notice, and the right arrow steps into its
+    # first row, the newest notice, and l steps into its
     # offers from normal mode, Return's own Open first.
     desktop.notices_history()
     desktop.launcher_until(
@@ -127,7 +127,7 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the Call"])
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the Call")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))

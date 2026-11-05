@@ -139,7 +139,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         ("Working On", r"Tidy the tests"),
         ("Hears", r"#desk"),
     ]:
-        machine.send_key("down")
+        desktop.next_row()
         # The wait ends before the loop moves on, so it reads this pass's names.
         desktop.launcher_until(
             lambda shown: (
@@ -152,7 +152,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     selection = laid_out(desktop)["selection"]
     assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"
@@ -316,23 +316,23 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         )
     )
     desktop.close_launcher()
-    # Found from the root by its name, the right arrow in normal mode goes
+    # Found from the root by its name, l in normal mode goes
     # straight inside it, though its Return goes to its window, the crumbs
-    # saying where it lives; the left arrow comes back to the search,
+    # saying where it lives; h comes back to the search,
     # Lighthouse selected (VKCF3Z, 2026-10-29: "\u2190 is where you came
     # from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     desktop.normal()
-    machine.send_key("right")
+    machine.send_key("l")
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
             and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
         )
     )
-    machine.send_key("left")
+    machine.send_key("h")
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == []
@@ -346,7 +346,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     desktop.normal()
-    machine.send_key("right")
+    machine.send_key("l")
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
@@ -497,7 +497,7 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
             and shown["selected"]["side"] == "driving \u00b7 TESTQA"
         )
     )
-    machine.send_key("down")
+    desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Paint the hallway"
@@ -505,7 +505,7 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
         )
     )
     desktop.photograph("launcher-quests")
-    machine.send_key("up")
+    desktop.previous_row()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "A quest of its own & whole"
     )

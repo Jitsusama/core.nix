@@ -254,12 +254,18 @@ class Shell:
     def close_launcher(self) -> None:
         """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
 
-        From insert the first gives normal, each after it steps back out a level, and the one
-        at the level it opened on closes it.
+        From the find the first gives normal, and the next closes it from any depth, after
+        letting the key list go if it's shown.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
-            return (shown["open"], shown["mode"], len(shown["held"]))
+            return (
+                shown["open"],
+                shown["mode"],
+                len(shown["held"]),
+                shown.get("listing"),
+                shown.get("command") is not None,
+            )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
             return where(shown) != was
