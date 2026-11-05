@@ -198,6 +198,33 @@ const NEAR_PT: f64 = 0.5;
 /// A soft hyphen, set where hyphenation broke a word.
 const BREAK: char = '\u{ad}';
 
+/// The marks a list's items are set with: bullets, a dash and a task's
+/// boxes.
+const MARKS: &str = "\u{2022}\u{25e6}\u{25aa}\u{2023}\u{2043}\u{2013}-*+\u{2610}\u{2611}\u{2612}";
+
+/// Whether a line's words are a list's marker: a bullet or a task's box,
+/// or a number or letter and the point or bracket after it.
+fn marker(text: &str) -> bool {
+    let text = text.trim();
+    let numbered = text
+        .strip_suffix(['.', ')'])
+        .is_some_and(|n| !n.is_empty() && n.len() <= 4 && n.chars().all(char::is_alphanumeric));
+    !text.is_empty() && (text.chars().all(|c| MARKS.contains(c)) || numbered)
+}
+
+/// Whether a line of the file starts a list's item: a mark or a number,
+/// then a blank.
+fn listed(line: &str) -> bool {
+    let line = line.trim_start().trim_start_matches('>').trim_start();
+    let Some((mark, rest)) = line.split_once(' ') else {
+        return false;
+    };
+    let numbered = mark
+        .strip_suffix(['.', ')'])
+        .is_some_and(|n| !n.is_empty() && n.len() <= 9 && n.chars().all(|c| c.is_ascii_digit()));
+    !rest.is_empty() && (matches!(mark, "-" | "*" | "+") || numbered)
+}
+
 /// How vi tells words apart: blanks between them, letters and digits, and
 /// everything else.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -315,12 +342,15 @@ impl Layout {
                 let Some(unit) = of_line[line] else {
                     return false;
                 };
-                let beside = (0..lines.len()).any(|other| {
+                let level = |other: usize| {
                     other != line
                         && of_line[other] == Some(unit)
                         && (lines[other].baseline_pt - lines[line].baseline_pt).abs()
                             < lines[line].size_pt * 0.5
-                });
+                };
+                let beside = (0..lines.len()).any(level);
+                let before = (0..lines.len())
+                    .any(|other| level(other) && lines[other].x_pt > lines[line].x_pt);
                 let (first, last) = (units[unit].first, units[unit].last);
                 let written = source_lines
                     .get(first.saturating_sub(1)..last.min(source_lines.len()))
@@ -329,11 +359,15 @@ impl Layout {
                     .map(|range| &source[range.clone()])
                     .collect::<Vec<_>>()
                     .join("\n");
-                beside && !holds_its_words(&written, &lines[line].text)
+                let item = written.lines().next().is_some_and(listed);
+                (beside && !holds_its_words(&written, &lines[line].text))
+                    || (before && item && marker(&lines[line].text))
             })
             .collect();
         // Taken off the lines a selection goes over, since one standing
-        // between a piece's lines would part the piece.
+        // between a piece's lines would part the piece. A list's marker,
+        // beside its item's first line, goes too: it's the margin's, as
+        // Vim's number column is, so nothing stands on it or grounds it.
         for &line in labels.iter().rev() {
             lines.remove(line);
             chars.remove(line);
@@ -1345,6 +1379,32 @@ mod tests {
         }
     }
 
+    /// The same, set in from the page's edge by `x_pt`, as a list's item
+    /// is from its bullet.
+    fn indented(baseline: f64, x_pt: f64, text: &str) -> Line {
+        let mut set = line(baseline, text);
+        set.x_pt = x_pt;
+        set.tail_x_pt = x_pt;
+        for span in &mut set.spans {
+            *span = (span.0 + x_pt, span.1 + x_pt);
+        }
+        set
+    }
+
+    #[test]
+    fn a_list_is_marked_by_its_bullets_and_numbers_alone() {
+        assert!(marker("\u{2022}"));
+        assert!(marker("4."));
+        assert!(marker("b)"));
+        assert!(!marker("4 items."));
+        assert!(!marker(""));
+        assert!(listed("- first item"));
+        assert!(listed("  12. twelfth"));
+        assert!(listed("> * quoted"));
+        assert!(!listed("| - | one |"));
+        assert!(!listed("-5 degrees"));
+    }
+
     #[test]
     fn a_lines_words_are_the_files_in_any_case() {
         assert!(holds_its_words("| Name | Size |", "NAME"));
@@ -1370,9 +1430,9 @@ mod tests {
             line(60.0, "Some bold words and a"),
             line(81.0, "link here. Then more."),
             line(120.0, "\u{2022}"),
-            line(120.0, "first item"),
+            indented(120.0, 12.0, "first item"),
             line(141.0, "\u{2022}"),
-            line(141.0, "second code item"),
+            indented(141.0, 12.0, "second code item"),
             line(180.0, "let x = 1;"),
         ];
         let units = vec![
@@ -1400,16 +1460,8 @@ mod tests {
         let page = page();
         assert_eq!(
             page.of_line,
-            [
-                Some(0),
-                Some(1),
-                Some(1),
-                Some(2),
-                Some(2),
-                Some(3),
-                Some(3),
-                Some(4)
-            ]
+            [Some(0), Some(1), Some(1), Some(2), Some(3), Some(4)],
+            "a bullet is the margin's, no line of its item's"
         );
         assert_eq!(
             page.paragraph,
@@ -1447,7 +1499,7 @@ mod tests {
         );
         assert_eq!(
             page.first_in_view(100.0, 400.0),
-            Some(at(4, 0)),
+            Some(at(3, 0)),
             "a bullet is no word"
         );
     }
@@ -1455,27 +1507,31 @@ mod tests {
     #[test]
     fn the_letters_and_arrows_move_by_characters_and_lines_keeping_across() {
         let page = page();
-        let mut s = Selection::new(Kind::Chars, at(1, 10));
+        let mut s = Selection::new(Kind::Chars, at(1, 12));
         page.moved(&mut s, Motion::Down, 1);
-        assert_eq!(s.cursor, at(2, 10));
-        page.moved(&mut s, Motion::Down, 1);
-        assert_eq!(s.cursor, at(3, 0), "a bullet is one character");
+        assert_eq!(s.cursor, at(2, 12));
         page.moved(&mut s, Motion::Down, 1);
         assert_eq!(
             s.cursor,
-            at(4, 9),
-            "back across to where it was, or the line's end"
+            at(3, 9),
+            "past the bullet, which is no line, to the item's end"
         );
+        page.moved(&mut s, Motion::Down, 1);
+        assert_eq!(s.cursor, at(4, 10), "back across to where it was");
         page.moved(&mut s, Motion::Left, 3);
-        assert_eq!(s.cursor, at(4, 6));
+        assert_eq!(s.cursor, at(4, 7));
         page.moved(&mut s, Motion::Right, 99);
-        assert_eq!(s.cursor, at(4, 9), "l stops at the line's end");
+        assert_eq!(s.cursor, at(4, 15), "l stops at the line's end");
         page.moved(&mut s, Motion::LineStart, 1);
-        assert_eq!(s.cursor, at(4, 0));
+        assert_eq!(
+            s.cursor,
+            at(4, 0),
+            "the item's first letter, not its bullet"
+        );
         page.moved(&mut s, Motion::LineEnd, 1);
-        assert_eq!(s.cursor, at(4, 9));
+        assert_eq!(s.cursor, at(4, 15));
         page.moved(&mut s, Motion::Up, 3);
-        assert_eq!(s.cursor, at(1, 9));
+        assert_eq!(s.cursor, at(1, 17));
     }
 
     #[test]
@@ -1501,7 +1557,7 @@ mod tests {
         page.moved(&mut s, Motion::ParagraphOn, 1);
         assert_eq!(s.cursor, at(3, 0));
         page.moved(&mut s, Motion::ParagraphOn, 1);
-        assert_eq!(s.cursor, at(7, 0), "both items are one paragraph");
+        assert_eq!(s.cursor, at(5, 0), "both items are one paragraph");
         page.moved(&mut s, Motion::ParagraphBack, 1);
         assert_eq!(s.cursor, at(3, 0));
         page.moved(&mut s, Motion::ParagraphBack, 2);
@@ -1546,9 +1602,9 @@ mod tests {
             "and a\n[link](https://example.com)",
             "across lines, the file's own break"
         );
-        assert_eq!(chars(&page, at(6, 7), at(6, 10)), "`code`");
+        assert_eq!(chars(&page, at(4, 7), at(4, 10)), "`code`");
         assert_eq!(
-            chars(&page, at(4, 0), at(6, 5)),
+            chars(&page, at(3, 0), at(4, 5)),
             "first item\n- second",
             "a bullet the file spells its own way"
         );
@@ -1557,15 +1613,15 @@ mod tests {
     #[test]
     fn i_backtick_selects_a_code_spans_words() {
         let page = page();
-        let mut s = Selection::new(Kind::Chars, at(6, 8));
+        let mut s = Selection::new(Kind::Chars, at(4, 8));
         page.object(&mut s, Object::InCode);
-        assert_eq!(s.ends(), (at(6, 7), at(6, 10)));
+        assert_eq!(s.ends(), (at(4, 7), at(4, 10)));
         assert_eq!(page.copied(&s), "code", "inside, as Vim's i` takes it");
-        let mut elsewhere = Selection::new(Kind::Chars, at(4, 2));
+        let mut elsewhere = Selection::new(Kind::Chars, at(3, 2));
         page.object(&mut elsewhere, Object::InCode);
         assert_eq!(
             elsewhere.ends(),
-            (at(4, 2), at(4, 2)),
+            (at(3, 2), at(3, 2)),
             "outside code, nothing"
         );
     }
@@ -1573,11 +1629,11 @@ mod tests {
     #[test]
     fn a_backtick_takes_the_ticks_and_the_blank_after_them() {
         let page = page();
-        let mut s = Selection::new(Kind::Chars, at(6, 9));
+        let mut s = Selection::new(Kind::Chars, at(4, 9));
         page.object(&mut s, Object::ACode);
-        assert_eq!(s.ends(), (at(6, 7), at(6, 11)), "the page has no ticks");
+        assert_eq!(s.ends(), (at(4, 7), at(4, 11)), "the page has no ticks");
         assert_eq!(page.copied(&s), "`code` ");
-        s.put(at(6, 13));
+        s.put(at(4, 13));
         assert_eq!(
             page.copied(&s),
             "`code` it",
@@ -1638,7 +1694,7 @@ mod tests {
             2,
             "both of the paragraph's lines are drawn"
         );
-        page.moved(&mut s, Motion::Down, 2);
+        page.moved(&mut s, Motion::Down, 1);
         assert_eq!(
             page.copied(&s),
             "Some **bold words** and a\n[link](https://example.com) here. Then more.\n\n- first item\n"
@@ -1650,10 +1706,14 @@ mod tests {
     #[test]
     fn ip_takes_the_paragraph_and_ap_the_blank_lines_after_it() {
         let page = page();
-        let mut s = Selection::new(Kind::Chars, at(6, 2));
+        let mut s = Selection::new(Kind::Chars, at(4, 2));
         page.object(&mut s, Object::InParagraph);
         assert_eq!(page.copied(&s), "- first item\n- second `code` item\n");
-        assert_eq!(page.pieces(&s).len(), 4, "both items, bullets and all");
+        assert_eq!(
+            page.pieces(&s).len(),
+            2,
+            "both items' words, their bullets the margin's and left bare"
+        );
         page.object(&mut s, Object::AParagraph);
         assert_eq!(page.copied(&s), "- first item\n- second `code` item\n\n");
         let code = page
@@ -1763,6 +1823,15 @@ mod tests {
         assert_eq!(piece("Noted"), Some(6));
         assert_eq!(piece("One item"), Some(8));
         assert_eq!(piece("Two items"), Some(9));
+        assert!(
+            !page.lines.iter().any(|line| marker(&line.text)),
+            "a list's bullets are the margin's, no line to select"
+        );
+        let numbered = set("numbers", "1. One\n2. Two\n\n- [ ] A task\n");
+        assert!(
+            !numbered.lines.iter().any(|line| marker(&line.text)),
+            "nor are its numbers or a task's box"
+        );
         assert_eq!(piece("echo one"), Some(12));
         assert!(
             !page.lines.iter().any(|line| line.text.contains("SH")),
