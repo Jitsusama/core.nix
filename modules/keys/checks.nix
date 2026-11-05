@@ -351,7 +351,9 @@ in
       # Space and an arrow do (Joel, 2026-11-05: "leader stuff can overlay
       # default stuff"), so a surface's act may take one.
       cat ${./language.toml} > leader.toml
-      printf '\n[acts.over]\nkeys = ["<Space><Right>"]\nkinds = ["list"]\n' >> leader.toml
+      # In visual, where his window-right isn't, so it gives no key twice.
+      printf '\n[acts.over]\nkeys = ["<Space><Right>"]\nmodes = ["visual"]\nkinds = ["list"]\n' \
+        >> leader.toml
       ${check} leader.toml ${keys} neovim ${neovimCommands}
       # His Neovim is kept as it is, bare arrows and all.
       ${lib.getExe pkgs.jq} \
