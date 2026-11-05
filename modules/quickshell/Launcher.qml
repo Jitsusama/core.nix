@@ -1827,10 +1827,6 @@ Scope {
                 keys.push(["Esc", said.normal ?? ""]);
             keys.push(["Space ?", said.keys ?? ""]);
         }
-        // The drawer's keys, only while it holds more than fits, keeping
-        // their word, since Shift and the arrows aren't the arrows alone.
-        if (choice === selected && drawerOut && drawerCard.more)
-            keys.push(["\u21e7\u2191\u2193", "scroll"]);
         return keys;
     }
 
@@ -1858,10 +1854,10 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Return, then the widest key a row adds beside it, the drawer's
-    // scroll, wider than Shift+Return's "below".
+    // Return, then the widest key a row adds beside it, Shift+Return's
+    // "below".
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
-        ["\u21e7\u2191\u2193", "scroll"], ["\u2192", ""]]
+        ["\u21e7\u21b5", "below"], ["\u2192", ""]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -2576,11 +2572,22 @@ Scope {
     }
 
     // Return on the line: exactly what's typed, as Commands.ran read it.
+    // From the drawer, :q closes its window, the keys back on the rows, as
+    // his Neovim's :q closes a split, and :{n} stays in it.
     function commandRan(read) {
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
-        // What went wrong is said where the line was, over a viewer too.
-        commandLeft(read.error ? "said" : "normal");
+        // What went wrong is said where the line was, over a viewer too,
+        // and from the drawer the keys stay in it, as an error leaves his
+        // Neovim in the window it was typed in.
+        const drawn = opened.from === "page";
+        if (drawn)
+            commandLeft(read.error || read.go !== undefined ? "page" : "normal");
+        else
+            commandLeft(read.error ? "said" : "normal");
+        if (drawn && read.error === undefined && read.go === undefined
+            && read.entry.kind === "quit")
+            return;
         if (read.error !== undefined) {
             commandSay(read.error, true);
             return;
@@ -4392,6 +4399,23 @@ Scope {
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
+                // Whether it holds the keys, and its cursor while it does:
+                // its line, of how many, the letter along it, the words
+                // the line says and where the line is, down from the
+                // drawer's top, and where its rule is drawn, in from the
+                // drawer's left.
+                keys: drawerCard.keys,
+                frame: String(drawerCard.keys ? Theme.accent : Theme.edge),
+                cursor: drawerCard.block === null ? null : {
+                    line: drawerCard.cursor.line,
+                    lines: drawerCard.laid.length,
+                    letter: drawerCard.cursor.letter,
+                    on: drawerCard.block.letter,
+                    says: drawerCard.block.said,
+                    top: Math.round(Theme.border + drawerCard.block.y - drawerCard.scrolled),
+                    height: Math.round(drawerCard.block.height),
+                    rule: drawerCard.rule()
+                },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
                 at: Math.round(drawerCard.mapToGlobal(0, 0).x),
                 width: Math.round(drawerCard.width),
@@ -4822,7 +4846,8 @@ Scope {
             x: reach
             y: reach
             width: root.width
-            keys: true
+            // Its frame says the keys are here, unless the drawer holds them.
+            keys: prompt.mode !== "page"
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
@@ -4853,7 +4878,13 @@ Scope {
                         // open, and what it said went wrong for a key
                         // after; hidden by its light, so its focus stays.
                         opacity: root.commanding === null && !root.commandSays ? 1 : 0
-                        onCommanded: range => root.commandLine(root.over ?? { range })
+                        // From the drawer, :{n} and :$ go to its lines,
+                        // as they do in his Neovim's window.
+                        onCommanded: range => root.commandLine(root.over
+                            ?? (prompt.mode === "page"
+                                ? { go: to => drawerCard.go(to === "$" ? "last" : "first",
+                                    to === "$" ? 0 : to) }
+                                : { range }))
                         steady: true
                         // Neovim's command line, opening in insert, but for
                         // a secret, which has no modes, as Vim's
@@ -4963,23 +4994,27 @@ Scope {
                             root.back();
                         }
                         onAnsweredOnce: yes => root.answerOnce(yes)
+                        // There's a drawer to go into while it's out with
+                        // words to sit on.
+                        drawerHere: root.drawerOut && drawerCard.lined
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        // The rows' keys, in either mode (QueryKeys.js). With
-                        // Shift, the arrows scroll the drawer instead, since
-                        // Page Up and Page Down page the list: the outer
-                        // column and the right hand's arrows, never the
-                        // little finger's Ctrl (Joel, 2026-11-02: "all of
-                        // those ctrl keys do not feel very vim to me").
-                        // Every other is a move, which QueryKeys.moved
+                        // The rows' keys, in either mode (QueryKeys.js).
+                        // Every one is a move, which QueryKeys.moved
                         // says the end of from the rows in view, as the
                         // list has them. Ctrl+D and Ctrl+U scroll the rows
                         // as far as they move the selection, so it keeps
                         // its place in view, as Vim's do.
+                        // In the drawer, every one is the drawer's: where
+                        // its cursor goes and its view with it.
                         onStepped: (act, count) => {
                             root.searchNow();
+                            if (mode === "page") {
+                                drawerCard.go(act, count);
+                                return;
+                            }
                             switch (act) {
                             case "xit":
                                 root.xit();
@@ -4995,12 +5030,6 @@ Scope {
                                 return;
                             case "lastPlace":
                                 root.toLastPlace();
-                                return;
-                            case "drawerUp":
-                                drawerCard.scroll(-1);
-                                return;
-                            case "drawerDown":
-                                drawerCard.scroll(1);
                                 return;
                             case "nextFile":
                                 root.beside(1);
@@ -5047,7 +5076,10 @@ Scope {
                             menu: root.commanding?.menu ?? []
                             argued: (entry, arg) => root.commandArguments(entry, arg)
                             onRan: read => root.commandRan(read)
+                            // Let go from the drawer, the keys go back into
+                            // it however it was let go.
                             onLetGo: how => root.commandLeft(how === "dropped"
+                                || root.commanding?.from === "page"
                                 ? root.commanding?.from ?? "normal" : "normal")
                         }
                     }
@@ -5405,9 +5437,14 @@ Scope {
                                 y: list.originY + list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 radius: Theme.inner
+                                // While the drawer holds the keys the row
+                                // stays marked, in the raised role rather
+                                // than the selection's, since the keys
+                                // aren't here: a mark, not a selection.
                                 color: root.commandChosen
                                     ? Qt.alpha(Theme.raised, Theme.floating.opacity)
-                                    : Qt.alpha(Theme.selection, Theme.floating.selection)
+                                    : Qt.alpha(prompt.mode === "page" ? Theme.raised
+                                        : Theme.selection, Theme.floating.selection)
                             }
 
                             delegate: Item {
@@ -5461,8 +5498,11 @@ Scope {
                                     id: choice
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
-                                    // Seen until the closing card has faded.
-                                    shown: card.opacity > 0
+                                    // Seen until the closing card has faded, and
+                                    // reading a long name on only while the keys
+                                    // are on the rows: with them in the drawer,
+                                    // only what they move moves.
+                                    shown: card.opacity > 0 && prompt.mode !== "page"
                                     fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
@@ -5860,6 +5900,9 @@ Scope {
             rowLines: root.rowLines
             out: root.drawerOut
             given: root.drawerShows
+            // Its frame says the keys are here while they're in it, gone in
+            // with Space and the right arrow.
+            keys: prompt.mode === "page"
         }
     }
 }

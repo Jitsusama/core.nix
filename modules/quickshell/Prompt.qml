@@ -91,8 +91,17 @@ Item {
     property bool editsWords: words
     property var changes: []
     onWordsChanged: changes = []
-    // The mode it's in: "insert" or "normal". It opens in insert (take()).
+    // The mode it's in: "insert", "normal", or "page" while the launcher's
+    // drawer holds the keys, gone into with Space and the right arrow, as
+    // his Neovim goes to the window beside. It opens in insert (take()).
     property string mode: "insert"
+    // Whether there's a drawer to go into: out, with lines to sit on. Gone
+    // while it holds the keys, they come back to the rows.
+    property bool drawerHere: false
+    onDrawerHereChanged: {
+        if (!drawerHere && mode === "page")
+            mode = "normal";
+    }
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
@@ -282,7 +291,8 @@ Item {
     signal backward
     // A modal line's keys for the rows below it, by their act's name, with
     // the count typed before it, 0 for none: the moves QueryKeys.moved
-    // takes, and drawerUp and drawerDown.
+    // takes; or, in the page mode, the drawer's, which DrawerPage.moved
+    // takes.
     signal stepped(string act, int count)
     // : in normal, which opens the command line in the line's place
     // (CommandLine.qml), with the range a count before it gives, as 3:
@@ -435,11 +445,19 @@ Item {
             return;
         }
         const read = QueryKeys.read(standing, key, mode, editsWords);
-        // A key held in normal repeats only a move, as Vim's motions do:
-        // any other act, and a count or a sequence begun, is a press's
-        // once, so a key let go late by a busy shell, which repeats as if
-        // held (modules/keyboard/repeat.nix), never does it twice.
-        if (event.isAutoRepeat && mode === "normal" && !QueryKeys.repeats(read.act)) {
+        // A key held where nothing types repeats only a move, as Vim's
+        // motions do: any other act, and a count or a sequence begun, is a
+        // press's once, so a key let go late by a busy shell, which
+        // repeats as if held (modules/keyboard/repeat.nix), never does it
+        // twice.
+        if (event.isAutoRepeat && QueryKeys.still(mode) && !QueryKeys.repeats(read.act)) {
+            event.accepted = true;
+            return;
+        }
+        // With no drawer out, Space and the right arrow do nothing, as
+        // his Ctrl+W l does with no window to the right.
+        if (read.act === "drawer" && !drawerHere) {
+            standing = read.standing;
             event.accepted = true;
             return;
         }
@@ -648,8 +666,10 @@ Item {
     readonly property real caretWidth: modal ? Math.max(1, Math.round(letterWidth / 4)) : 2
     // Whether the field draws its caret: not in normal, where the keys are
     // on the rows. A block there sat on the hint's first letter, in the
-    // hint's face, before anything was typed (Joel, 2026-11-04).
-    readonly property bool caretShown: !(modal && mode === "normal")
+    // hint's face, before anything was typed (Joel, 2026-11-04). Nor while
+    // the drawer holds the keys, as Neovim draws one cursor, in the window
+    // the keys are in.
+    readonly property bool caretShown: !(modal && (mode === "normal" || mode === "page"))
 
     FontMetrics {
         id: typedFace
@@ -957,7 +977,7 @@ Item {
             // says which keys repeat: the moves (modalKey).
             if (event.isAutoRepeat && event.text !== "" && event.text >= " "
                 && event.text !== "\u007f" && (event.modifiers & Qt.ControlModifier) === 0
-                && !(prompt.modal && prompt.mode === "normal")) {
+                && !(prompt.modal && QueryKeys.still(prompt.mode))) {
                 event.accepted = true;
                 return;
             }
