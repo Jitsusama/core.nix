@@ -499,6 +499,9 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
             thing["reads"].startswith("Microphone Muted \u00b7 yes") for thing in shown["things"]
         )
     )
+    # A switch changes how things stand, so from the find Return lands on it, and the
+    # second flips it.
+    desktop.land()
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))
