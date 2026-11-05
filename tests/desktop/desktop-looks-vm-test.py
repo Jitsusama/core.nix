@@ -190,7 +190,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
         # The find is a line, no mode of Vim's, so the foot names none; a prompt's insert,
-        # which does, is seen whole in opens-and-sets' Wi-Fi password.
+        # which does, is seen whole in finds-sessions' Talk.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         named = [word for word in foot if word["text"] in ("insert", "find", "normal")]
         assert not named, f"at {scale} the find's foot names a mode: {named}"
