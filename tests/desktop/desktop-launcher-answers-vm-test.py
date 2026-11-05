@@ -64,12 +64,22 @@ def copied(desktop: Desktop, typed: str, expected: str) -> None:
 def test_yy_copies_an_answer_and_dd_has_nothing_to_end(desktop: Desktop) -> None:
     """Yy copies an answer with the launcher open, and dd says there's nothing to end."""
     machine = desktop.machine
-    desktop.answer("3c:22:fb:12:34:56")
+    # A sum has no rows, only its headline, said in the field's ghost,
+    # which flashes in its place, above the rows at -1.
+    desktop.answer("12*7")
     desktop.normal()
-    # The answer is said in the field's ghost, which flashes in its place.
     since = desktop.mark()
     machine.send_chars("yy")
     desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == [-1], since)
+    desktop.reported("yanked 1", lambda rest: rest == "", since)
+    assert desktop.as_account("wl-paste --no-newline") == "84"
+    # A MAC's answer has its vendor as its first row, which flashes.
+    desktop.close_launcher()
+    desktop.answer("3c:22:fb:12:34:56")
+    desktop.normal()
+    since = desktop.mark()
+    machine.send_chars("yy")
+    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == [0], since)
     desktop.reported("yanked 1", lambda rest: rest == "", since)
     assert desktop.as_account("wl-paste --no-newline") == "Apple, Inc."
     machine.send_chars("dd")

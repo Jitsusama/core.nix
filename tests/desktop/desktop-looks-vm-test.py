@@ -231,15 +231,20 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         flashed = max(frames, key=partial(changed_from, after))
         if desktop.values["photographs"]:
             flashed.save(machine.out_dir / f"launcher-yank-flash-at-{named}.png")
-        before = desktop.showing()["keysAt"]
+        before = desktop.showing()
         with desktop.told("asked again closes it"):
             machine.send_chars("dd")
+        # The ask stands alone in the keys' place, ending where Return
+        # ends, wider than Return's word, so it reaches into the room the
+        # other keys left; how things stand beside it holds, whole (a
+        # minute turning keeps its length).
         shown = desktop.showing()
-        assert shown["keysAt"] == before, f"at {scale} the ask moved Return's place: {shown}"
+        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the ask cut {shown}"
         assert shown["operated"] == "dd again closes it", shown
         desktop.photograph(f"launcher-asks-at-{named}")
         machine.send_key("esc")
         desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
+        assert desktop.showing()["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
         desktop.close_launcher()
 
 
