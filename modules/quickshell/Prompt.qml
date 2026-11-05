@@ -669,22 +669,49 @@ Item {
 
     // How wide the path wants to be, whole, with the gap after it.
     readonly property real pathWanted: chips.length === 0 ? 0
-        : chips.reduce((sum, chip) => sum + Math.ceil(titleFace.advanceWidth(chip.text)) + 1, 0)
-            + titleFace.advanceWidth(between) * (chips.length - 1) + pathGap - Theme.space.m
+        : chipsWanted.reduce((sum, wide) => sum + wide, 0)
+            + betweenDrawn.implicitWidth * (chips.length - 1) + pathGap - Theme.space.m
 
     // Each step's words' width, as Reading.sharedSteps shares the room: a
     // folder's path gives way first, down to four characters, cut in its
     // middle.
     readonly property var fitted: {
         const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom
-            - titleFace.advanceWidth(between) * Math.max(0, chips.length - 1) - pathGap);
+            - betweenDrawn.implicitWidth * Math.max(0, chips.length - 1) - pathGap);
         return Reading.sharedSteps(chipsWanted, chips.map(chip => chip.yields === true), room,
             4 * titleFace.averageCharacterWidth);
     }
 
-    // Each step's words' width, whole.
-    readonly property var chipsWanted: chips.map(chip =>
-        Math.ceil(titleFace.advanceWidth(chip.text)) + 1)
+    // Each step's words' width, whole, as a Text draws them: a face's
+    // metrics leave out the title's axes, which change its letters'
+    // widths, so measured by them a step came out a hair short and was cut.
+    // Until a step's Text is made for its words, the face's measure stands.
+    readonly property var chipsWanted: stepsMade >= 0 ? chips.map((chip, at) => {
+        const drawn = stepsDrawn.itemAt(at);
+        return Math.ceil(drawn && drawn.text === chip.text ? drawn.implicitWidth
+            : titleFace.advanceWidth(chip.text)) + 1;
+    }) : []
+    // How many steps' Texts have been made, so each new one is measured.
+    property int stepsMade: 0
+
+    Repeater {
+        id: stepsDrawn
+        model: prompt.chips
+        onItemAdded: prompt.stepsMade += 1
+
+        Text {
+            required property var modelData
+            visible: false
+            text: modelData.text
+            font: titleFace.font
+        }
+    }
+    Text {
+        id: betweenDrawn
+        visible: false
+        text: prompt.between
+        font: titleFace.font
+    }
     // Whether each step is said whole, for the launcher's report.
     readonly property var chipsWhole: chipsWanted.map((width, index) =>
         (fitted[index] ?? 0) >= width)
