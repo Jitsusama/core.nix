@@ -245,7 +245,7 @@ ShellRoot {
         // every figure a step in and in its drawer.
         const three = hoursOf(today)[2];
         expect("an hour's sky and rain", three.side === "8\u00b0 \u00b7 light rain"
-            && three.note === "70%, 1.2 mm", `${three.side} ${three.note}`);
+            && three.note === "70% \u00b7 1.2 mm", `${three.side} ${three.note}`);
         expect("an hour steps into its figures", three.verb === "more" && three.thing
             && sides(three.verbs()) === "Temperature 8\u00b0, Feels Like 5\u00b0, "
             + "Humidity 80%, Dew Point 3\u00b0, Chance of Precipitation 70%, "
@@ -255,7 +255,7 @@ ShellRoot {
         expect("an hour's drawer says when",
             three.drawer().eyebrow === "Saturday 24 October \u00b7 15:00"
                 && three.drawer().facts.length === 12, JSON.stringify(three.drawer()));
-        expect("the next rain", rain.side === "from 15:00, 70%", rain.side);
+        expect("the next rain", rain.side === "from 15:00 \u00b7 70%", rain.side);
         expect("a spark of the next twelve hours",
             rain.graph.shape === "spark" && rain.graph.values.length === 12
                 && rain.graph.values[0] === 0.1 && rain.graph.values[3] === 0.9,
@@ -270,8 +270,9 @@ ShellRoot {
         expect("the next twelve hours, from this one",
             hours.length === 12 && hours[0].name === "13:00" && hours[11].name === "00:00",
             names(hours));
-        expect("an hour's chance and amount", hours[2].note === "70%, 1.2 mm", hours[2].note);
-        expect("a dry hour's", hours[0].note === "10%, 0 mm", hours[0].note);
+        expect("an hour's chance and amount", hours[2].note === "70% \u00b7 1.2 mm",
+            hours[2].note);
+        expect("a dry hour's", hours[0].note === "10% \u00b7 0 mm", hours[0].note);
         expect("an hour's bar",
             hours[3].graph.shape === "bar" && hours[3].graph.values.length === 1
                 && hours[3].graph.values[0] === 0.9, JSON.stringify(hours[3].graph));
@@ -283,7 +284,7 @@ ShellRoot {
         for (const typed of ["rain", "Rain", "rain?"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the next rain`,
-                said?.headline === "rain from 15:00, 70%" && said.rows.length === 12
+                said?.headline === "rain from 15:00 \u00b7 70%" && said.rows.length === 12
                     && said.graph?.shape === "spark", said?.headline);
         }
         const asRain = weather.answer("rain");
@@ -293,24 +294,36 @@ ShellRoot {
         // Elsewhere, with its own clock and its own rain.
         const tokyo = weather.answer("weather in tokyo");
         expect("the time there", tokyo.rows[0].name === "Now There, 22:45 Saturday", tokyo.rows[0].name);
-        expect("its own rain", tokyo.rows[1].side === "none in the next 12 hours", tokyo.rows[1].side);
+        // No rain due there, so Rain gives up its place rather than say
+        // there's none (VKCF3Z, 2026-11-04).
+        expect("no rain, no Rain", !tokyo.rows.some(row => row.name === "Rain"),
+            names(tokyo.rows));
         expect("where it is", tokyo.note === "Tokyo, Japan \u00b7 Open-Meteo", tokyo.note);
         expect("its hours run into tomorrow",
-            tokyo.rows[1].verbs()[1].name === "23:00" && tokyo.rows[1].verbs()[2].name === "00:00",
-            names(tokyo.rows[1].verbs()));
+            hoursOf(tokyo.rows[1]).pop().name === "23:00"
+                && hoursOf(tokyo.rows[2])[0].name === "00:00",
+            `${names(hoursOf(tokyo.rows[1]))} | ${names(hoursOf(tokyo.rows[2]))}`);
         const dry = weather.answer("rain in tokyo");
         expect("no rain there", dry.headline === "no rain in the next 12 hours", dry.headline);
         const wet = weather.answer("rain in paris?");
-        expect("raining now", wet.headline === "rain now, 80%", wet.headline);
+        expect("raining now", wet.headline === "rain now \u00b7 80%", wet.headline);
         const maybe = weather.answer("rain for oslo");
         expect("might", maybe.headline === "rain unlikely, at most 40%", maybe.headline);
+        // Rain that only might come isn't due, so it has no row either.
+        expect("rain that might, no Rain",
+            !weather.answer("weather for oslo").rows.some(row => row.name === "Rain"),
+            names(weather.answer("weather for oslo").rows));
 
         // The weather's one word asks it, here or anywhere.
-        for (const typed of ["weather", "Weather", "weather tokyo", "weather for tokyo",
-                "tokyo weather"]) {
+        for (const typed of ["weather", "Weather"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the weather`,
                 said?.rows.length === 9 && said.rows[1].name === "Rain", said?.headline);
+        }
+        for (const typed of ["weather tokyo", "weather for tokyo", "tokyo weather"]) {
+            const said = weather.answer(typed);
+            expect(`"${typed}" answers the weather`,
+                said?.rows.length === 8 && said.rows[1].name === "Today", said?.headline);
         }
         // And nothing else is read as rain, nor a place looked up by it.
         for (const typed of ["rainbow", "rain tomorrow", "train", "brain", "umbrella", "forecast"])
