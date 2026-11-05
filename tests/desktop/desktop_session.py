@@ -554,6 +554,17 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         fresh = "qs ipc call launcher showing | grep -qF '\"linedFresh\":false'"
         self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
 
+    def line_answered(self, written: str) -> None:
+        """Press Return on a row that ends something, run its line, and answer its ask yes.
+
+        What can't be taken back asks once the line runs, as d's does, and y does it.
+        """
+        self.line(written)
+        with self.told("ask ready"):
+            self.machine.send_key("ret")
+        with self.told("answered yes"):
+            self.machine.send_chars("y")
+
     def on_find(self) -> None:
         """Put the launcher's line back to typing, by A from normal, and wait for it.
 

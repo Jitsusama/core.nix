@@ -1297,12 +1297,9 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.held_still(timedelta(seconds=2))
     machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
     assert desktop.showing()["returned"]["act"] == "lined", desktop.showing()["returned"]
-    # A fresh Return runs the line, which asks first, as dropping the network can't be
-    # taken back, and y turns it off.
-    with desktop.told("ask ready"), desktop.told("asked Set Wi-Fi Off? (y/n)"):
-        machine.send_key("ret")
-    machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
-    machine.send_chars("y")
+    # A fresh Return runs the line, which turns it off without asking, as :set never
+    # asks: :set wifi takes it back.
+    machine.send_key("ret")
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
     )

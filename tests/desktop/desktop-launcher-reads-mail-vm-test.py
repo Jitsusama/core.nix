@@ -474,6 +474,9 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
     desktop.follow()
     desktop.down_to("Reply")
+    # Reply reaches someone, so Return writes :reply on the command line, and a fresh
+    # Return there writes the reply, asking nothing, since nothing is sent yet.
+    desktop.line("reply")
     machine.send_key("ret")
     link = (
         "https://mail.google.com/mail/u/0/?view=cm&fs=1"
@@ -499,6 +502,7 @@ def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: 
         lambda shown: shown["rows"][:4] == ["Open in Mail", "Reply", "Reply All", "Archive"]
     )
     desktop.down_to("Reply All")
+    desktop.line("reply all")
     machine.send_key("ret")
     link = (
         "https://mail.google.com/mail/u/0/?view=cm&fs=1"
@@ -934,9 +938,8 @@ def test_mail_opened_while_mail_is_open_leaves_one_mail_window(desktop: Desktop)
                 desktop.close(window)
 
 
-def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) -> None:
-    """Find mail by its subject, do one of its acts, and see it said, the launcher kept."""
-    machine = desktop.machine
+def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, line: str, became: str) -> None:
+    """Find mail by its subject, do one of its acts by its line, and see it said, kept."""
     desktop.answer(subject.lower())
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == subject)
     desktop.follow()
@@ -950,7 +953,10 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
             lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
         )
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == act)
-    machine.send_key("ret")
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == [f"\u21b5 :{line}"], told
+    # It ends what wants Joel, so Return writes its line, and a fresh Return asks first.
+    desktop.line_answered(line)
     # The launcher stays where it was, its foot saying what became of it
     # once the program no longer holds it as wanting Joel.
     desktop.launcher_until(
@@ -979,11 +985,11 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
         )
 
     # Read is a switch: it says no, Return marks it read and it says yes.
-    tidy_from_its_acts(desktop, "Lunch on Friday", "Read", "read")
+    tidy_from_its_acts(desktop, "Lunch on Friday", "Read", "delete", "read")
     was_asked({"read": {"id": "lunch"}})
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "yes")
-    # Return again marks it unread, and it wants Joel once more.
-    machine.send_key("ret")
+    # Return again, by its line, marks it unread, and it wants Joel once more.
+    desktop.line_answered("delete")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Read"
@@ -993,7 +999,7 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     )
     was_asked({"unread": {"id": "lunch"}})
     desktop.close_launcher()
-    tidy_from_its_acts(desktop, "Quarterly Numbers", "Archive", "archived")
+    tidy_from_its_acts(desktop, "Quarterly Numbers", "Archive", "archive", "archived")
     was_asked({"archive": {"id": "numbers"}})
     desktop.close_launcher()
 

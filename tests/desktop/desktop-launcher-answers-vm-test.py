@@ -778,7 +778,8 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
                 and shown["selected"]["verb"] == "release"
             )
         )
-        machine.send_key("ret")
+        # Letting it go ends the keeping, so Return writes its line, which asks first.
+        desktop.line_answered("snooze")
         desktop.launcher_until(lambda shown: shown["footer"] == f"No longer kept: {folder}.")
         desktop.close_launcher()
     finally:
@@ -801,6 +802,9 @@ def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop
         assert desktop.showing()["selected"]["side"] == "1.0 GiB", desktop.showing()["selected"]
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: shown["rows"] == ["Clear 1.0 GiB of ~/scratch"])
+        # The step asked, so its line is banged, and a fresh Return there clears it, asking
+        # no more.
+        desktop.line("delete!")
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
@@ -1360,11 +1364,19 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         )
         desktop.photograph("launcher-firmware-install-asks")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
-        # Return again installs, keeping the launcher and saying so; a
-        # third Return while it goes in does nothing more.
+        # Return again writes its line, banged, since the step was the asking, and a fresh
+        # Return there installs, keeping the launcher and saying so; a third Return while
+        # it goes in installs nothing more, at most writing the line again, which Escape
+        # lets go.
+        desktop.line("install!")
+        machine.fail(desktop.in_session(f"test -e {said}/installed"))
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["footer"] == "installing")
         machine.send_key("ret")
+        desktop.held_still(dt.timedelta(seconds=2))
+        if desktop.showing()["command"] is not None:
+            machine.send_key("esc")
+            desktop.launcher_until(lambda shown: shown["command"] is None)
         # Once in, Install waits for the restart, dimmed in place.
         desktop.step_out()
         desktop.launcher_until(
