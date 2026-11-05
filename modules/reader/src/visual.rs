@@ -1,12 +1,13 @@
 //! Visual mode in the window: v and V start a selection with the theme's
-//! cursor on the first word in view, the keys move it and its text objects
-//! take what's round it (select.rs), and y or Ctrl+C copies it as the
-//! file's markdown through wl-copy, flashing what it took as his Neovim's
-//! yank does. At rest the page has no cursor, so y y and y i p copy the
-//! first paragraph, item or line of code wholly in view, or its paragraph,
-//! and H, M, L and % flash the line they put the page's unseen one on.
-//! The selection's ground is drawn over the page's bands, as search's
-//! marks are, recolouring the page under it in one pass.
+//! block cursor on the first word of the cursor's line, the keys move it
+//! and its text objects take what's round it (select.rs), and y or Ctrl+C
+//! copies it as the file's markdown through wl-copy, flashing what it took
+//! as his Neovim's yank does. At rest, y y, y i p, y a p and y } copy the
+//! paragraph, item or line of code the cursor's line is in, its paragraph,
+//! that with the blank line after it, or to its paragraph's end. The
+//! selection's ground is drawn over the page's bands, as search's marks
+//! are, recolouring the page under it in one pass, and the cursor's line
+//! is marked by a rule in the margin, at rest and while selecting.
 
 use std::io::Write;
 use std::sync::Arc;
@@ -15,10 +16,19 @@ use std::time::Instant;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use crate::keys::Act;
-use crate::select::{Kind, Motion, Selection};
+use crate::select::{Kind, Motion, Object, Selection};
 use crate::{
-    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, gl, keys_logged, prompt, select, text,
+    App, FLASH, LINE_PT, SCROLL_OFF_LINES, baseline, gl, keys_logged, moves, prompt, select, text,
 };
+
+/// How wide the cursor's rule is, in logical pixels: thin, a whole number
+/// of device pixels at every scale.
+const RULE_PX: f64 = 2.0;
+
+/// How far the rule's right edge stands from the words' edge, in points of
+/// the page: just past the box a numbered list hangs its numbers in, two of
+/// the text's em wide (27.4 pt at its 13.69), so a number never touches it.
+const RULE_FROM_WORDS_PT: f64 = 30.0;
 
 impl App {
     /// The view the cursor keeps to, its top and foot in points down the
@@ -66,8 +76,16 @@ impl App {
         self.layout = Some(Arc::new(layout));
     }
 
+    /// Ends the selection, leaving the cursor on the line its cursor was
+    /// on, as Neovim's stays where visual mode left it.
     fn end_selection(&mut self) {
-        if self.selection.take().is_some() && keys_logged() {
+        let Some(selection) = self.selection.take() else {
+            return;
+        };
+        if let Some(layout) = self.layout.as_ref() {
+            self.aim = Some(layout.line_extent(selection.cursor.line).0);
+        }
+        if keys_logged() {
             eprintln!("selected: nothing");
         }
     }
@@ -79,10 +97,16 @@ impl App {
         let Some(layout) = self.layout.clone() else {
             return matches!(
                 act,
-                Act::Select | Act::SelectPieces | Act::CopyPiece | Act::CopyParagraph
+                Act::Select
+                    | Act::SelectPieces
+                    | Act::CopyPiece
+                    | Act::CopyParagraph
+                    | Act::CopyAParagraph
+                    | Act::CopyToParagraphEnd
             );
         };
-        let (top, foot) = self.view_pt();
+        let (_, foot) = self.view_pt();
+        let here = self.cursor_pt();
         match act {
             Act::Select | Act::SelectPieces => {
                 let kind = if act == Act::Select {
@@ -99,19 +123,18 @@ impl App {
                     }
                     None => {
                         self.selection = layout
-                            .first_in_view(top, foot)
+                            .first_in_view(here - 0.5, foot)
                             .map(|at| Selection::new(kind, at));
                     }
                 }
                 return true;
             }
-            Act::CopyPiece | Act::CopyParagraph => {
-                let taken = layout.first_piece_in_view(top, foot).and_then(|unit| {
-                    if act == Act::CopyPiece {
-                        layout.pieces_from(unit, times)
-                    } else {
-                        layout.paragraph_of(unit)
-                    }
+            Act::CopyPiece | Act::CopyParagraph | Act::CopyAParagraph | Act::CopyToParagraphEnd => {
+                let taken = layout.piece_at(here, foot).and_then(|unit| match act {
+                    Act::CopyPiece => layout.pieces_from(unit, times),
+                    Act::CopyParagraph => layout.paragraph_of(unit, Object::InParagraph),
+                    Act::CopyAParagraph => layout.paragraph_of(unit, Object::AParagraph),
+                    _ => layout.to_paragraph_end(unit, times),
                 });
                 if let Some(taken) = taken {
                     self.copy(&layout, taken);
@@ -192,20 +215,28 @@ impl App {
         }
     }
 
-    /// Moves the view to keep the cursor in it, four lines from its edge
-    /// as his Neovim's scrolloff: at once for a step, as a jump for
-    /// further than half a screen.
+    /// Moves the view to keep the selection's cursor in it.
     fn follow_cursor(&mut self) {
         let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref())
         else {
             return;
         };
         let (top, foot) = layout.line_extent(selection.cursor.line);
+        self.follow_line(top, foot, None);
+    }
+
+    /// Moves the view to keep a line from `top` to `foot` in it, four lines
+    /// from its edge as his Neovim's scrolloff: from the edge it went
+    /// toward, down for `Some(true)` and up for `Some(false)`, or either.
+    /// A landing leaves its line at the view's top, so a j after it keeps
+    /// the view where it is. At once for a step, as a jump for further than
+    /// half a screen.
+    pub(crate) fn follow_line(&mut self, top: f64, foot: f64, toward: Option<bool>) {
         let (view_top, view_foot) = self.view_pt();
         let room = SCROLL_OFF_LINES * LINE_PT;
-        let to_pt = if top - room < view_top {
+        let to_pt = if toward != Some(true) && top - room < view_top {
             top - room
-        } else if foot + room > view_foot {
+        } else if toward != Some(false) && foot + room > view_foot {
             view_top + foot + room - view_foot
         } else {
             return;
@@ -270,24 +301,45 @@ impl App {
         }
     }
 
-    /// Flashes the cursor's line, the width of its words: at rest the page
-    /// draws no cursor, so H, M, L and % show this way where they put it.
-    pub(crate) fn flash_cursor(&mut self) {
-        let piece = self
-            .cursor()
-            .zip(self.words.as_deref())
-            .and_then(|(i, lines)| {
-                let line = &lines[i];
-                Some(text::Piece {
-                    baseline_pt: line.baseline_pt,
-                    size_pt: line.size_pt,
-                    from_pt: line.spans.first()?.0,
-                    to_pt: line.spans.last()?.1,
-                })
-            });
-        if let Some(piece) = piece {
-            self.flash(vec![piece]);
+    /// The cursor's line, its top and foot in points: the selection's
+    /// cursor's while selecting, and else the page's.
+    pub(crate) fn cursor_line(&self) -> Option<(f64, f64)> {
+        if let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref()) {
+            return Some(layout.line_extent(selection.cursor.line));
         }
+        let (i, lines) = self.cursor().zip(self.words.as_deref())?;
+        Some((moves::top_of(&lines[i]), moves::foot_of(&lines[i])))
+    }
+
+    /// The cursor's line, marked as his `cursorlineopt=number` marks only
+    /// the number: a thin rule in the accent in the page's left margin,
+    /// as tall as the line's words, clear of the marks a list hangs there.
+    /// A window too narrow for that sets it half way into the room left of
+    /// the words, and one with no room there draws none.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "points and pixels as f32, as GL takes them, within a page's few hundred thousand"
+    )]
+    pub(crate) fn draw_cursor_line(&self, gl: &gl::Gl, screen: f32) {
+        let (false, Some(rule), Some((top, foot))) =
+            (baseline(), self.rule.as_ref(), self.cursor_line())
+        else {
+            return;
+        };
+        let px = self.px_per_pt();
+        let y = (top * px - self.offset).round();
+        let height = ((foot - top) * px).round();
+        if y + height < 0.0 || y > f64::from(screen) {
+            return;
+        }
+        let words = f64::from(self.page_x()) + self.width.spread_pt * px;
+        let width = (RULE_PX * self.scale).round().max(1.0);
+        let right = words - (RULE_FROM_WORDS_PT * px).min(words / 2.0);
+        if right < width {
+            return;
+        }
+        let x = (right - width).round();
+        gl.draw(rule, x as f32, y as f32, width as f32, height as f32);
     }
 
     /// The selection, and what a copy took while it flashes, on the

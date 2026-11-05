@@ -1,12 +1,12 @@
-//! Where vi's moves land on a page that shows no cursor at rest, kept apart
-//! from the window so they can be tested: paragraphs and headings, the
-//! lines in view H, M and L pick, the view zt, zz and zb place, a
-//! bracket's other end, the word * looks for, a source line's place, and
-//! the markdown files beside this one.
+//! Where vi's moves land on a page, kept apart from the window so they can
+//! be tested: the lines j and k go by, paragraphs and headings, the lines
+//! in view H, M and L pick, the view zt, zz and zb place, a bracket's
+//! other end, the word * looks for, a source line's place, and the
+//! markdown files beside this one.
 //!
-//! The cursor is a line of the page the reader keeps without drawing it,
-//! as Neovim keeps one: the view's top line until a key puts it elsewhere,
-//! and kept within the view as it scrolls, as Neovim's is.
+//! The cursor is a line of the page, as a help buffer's is: the view's top
+//! line until a key puts it elsewhere, and kept within the view as it
+//! scrolls, as Neovim's is. The window marks it with a rule in the margin.
 use std::path::{Path, PathBuf};
 
 use crate::place::Block;
@@ -127,6 +127,34 @@ pub fn cursor(lines: &[Line], top_pt: f64, foot_pt: f64, aim_pt: Option<f64>) ->
         (top_of(&lines[a]) - aim)
             .abs()
             .total_cmp(&(top_of(&lines[b]) - aim).abs())
+    })
+}
+
+/// j and k: the line `by` rows down from line `from`, or up for a negative
+/// `by`, stopping at the page's first and last rows, as Neovim's gj and gk
+/// go by the lines shown. Lines side by side on one baseline, a table's
+/// cells or a bullet and its item, are one row, whose line is the leftmost.
+pub fn line_by(lines: &[Line], from: usize, by: isize) -> usize {
+    let starts: Vec<usize> = (0..lines.len())
+        .filter(|&i| i == 0 || (lines[i].baseline_pt - lines[i - 1].baseline_pt).abs() >= SAME_PT)
+        .collect();
+    let Some(row) = starts.iter().rposition(|&start| start <= from) else {
+        return from;
+    };
+    let to = row.saturating_add_signed(by).min(starts.len() - 1);
+    starts[to]
+}
+
+/// The cursor's line once the view has moved without it, as Ctrl+E and
+/// Ctrl+F move it: the line `aim_pt` is the top of, while it shows between
+/// `top_pt` and `foot_pt`, and else the nearest line there, so the cursor
+/// keeps to the view as Neovim's keeps to it within its scrolloff.
+pub fn kept_in(lines: &[Line], top_pt: f64, foot_pt: f64, aim_pt: f64) -> Option<usize> {
+    let shown = in_view(lines, top_pt, foot_pt);
+    shown.iter().copied().min_by(|&a, &b| {
+        (top_of(&lines[a]) - aim_pt)
+            .abs()
+            .total_cmp(&(top_of(&lines[b]) - aim_pt).abs())
     })
 }
 
@@ -424,6 +452,39 @@ mod tests {
             Some(1),
             "left below"
         );
+    }
+
+    #[test]
+    fn j_and_k_go_by_the_rows_shown_and_stop_at_the_pages_ends() {
+        let (_, lines) = page();
+        assert_eq!(line_by(&lines, 0, 1), 1);
+        assert_eq!(line_by(&lines, 1, 3), 4);
+        assert_eq!(line_by(&lines, 3, -2), 1);
+        assert_eq!(line_by(&lines, 3, 9), 4, "past the last row is the last");
+        assert_eq!(line_by(&lines, 1, -9), 0, "before the first is the first");
+    }
+
+    #[test]
+    fn lines_on_one_baseline_are_one_row_for_j_and_k() {
+        let lines = vec![
+            line(20.0, "title"),
+            line(40.0, "\u{2022}"),
+            line(40.0, "an item"),
+            line(60.0, "after"),
+        ];
+        assert_eq!(line_by(&lines, 0, 1), 1, "the row's leftmost line");
+        assert_eq!(line_by(&lines, 1, 1), 3);
+        assert_eq!(line_by(&lines, 2, 1), 3, "from either of the row's lines");
+        assert_eq!(line_by(&lines, 3, -1), 1);
+    }
+
+    #[test]
+    fn the_cursor_kept_in_a_moved_view_is_the_nearest_line_there() {
+        let (_, lines) = page();
+        assert_eq!(kept_in(&lines, 30.0, 80.0, 10.0), Some(1), "left above");
+        assert_eq!(kept_in(&lines, 10.0, 60.0, 90.0), Some(1), "left below");
+        assert_eq!(kept_in(&lines, 10.0, 100.0, 50.0), Some(2), "still shown");
+        assert_eq!(kept_in(&lines, 200.0, 300.0, 50.0), None);
     }
 
     #[test]
