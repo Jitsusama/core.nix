@@ -1532,7 +1532,9 @@ Floating {
                     font.family: Theme.level.label.family
                     font.pointSize: Theme.level.label.pointSize
                     font.weight: Theme.level.label.weight
-                    font.capitalization: Font.AllUppercase
+                    font.capitalization: Theme.level.label.capitalization
+                    font.letterSpacing: Theme.level.label.letterSpacing
+                    font.features: Theme.level.label.features
                 }
 
                 Text {
