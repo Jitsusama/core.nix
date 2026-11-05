@@ -827,6 +827,7 @@ Item {
             y: (prompt.height + prompt.titleCapitals) / 2 - titleFace.ascent
 
             Repeater {
+                id: stepsShown
                 model: prompt.chips
 
                 Row {
@@ -834,6 +835,10 @@ Item {
 
                     required property var modelData
                     required property int index
+                    // Whether its words are drawn cut, and the room it
+                    // takes past them, for the launcher's report.
+                    readonly property bool cut: stepName.truncated
+                    readonly property real spare: stepName.width - stepName.implicitWidth
 
                     Text {
                         visible: step.index > 0
@@ -843,6 +848,7 @@ Item {
                     }
 
                     Text {
+                        id: stepName
                         width: prompt.fitted[step.index] ?? implicitWidth
                         text: step.modelData.text
                         // A path keeps both ends, where it starts and the
@@ -854,6 +860,18 @@ Item {
                 }
             }
         }
+    }
+
+    // How each of the path's steps is drawn, for the launcher's report: its
+    // words, whether they're cut, and the room past them before the next.
+    function pathDrawn(): var {
+        const drawn = [];
+        for (let at = 0; at < stepsShown.count; at += 1) {
+            const step = stepsShown.itemAt(at);
+            if (step)
+                drawn.push({ said: step.modelData.text, cut: step.cut, spare: step.spare });
+        }
+        return drawn;
     }
 
     // Whether the question asked is drawn whole, for the launcher's report.

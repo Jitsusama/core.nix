@@ -4279,6 +4279,9 @@ Scope {
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
             pathWhole: prompt.chipsWhole,
+            // How each step is drawn: its words, whether they're cut, and
+            // the room past them before the next step's mark.
+            pathDrawn: prompt.pathDrawn(),
             rows: root.matches.slice(0, 20).map(row => row.name),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
