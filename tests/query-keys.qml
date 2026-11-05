@@ -216,6 +216,12 @@ QtObject {
             [[-1, answer], [0, bare]]);
         holds("and none where there's none",
             Operators.taken(rows, { from: -1, to: 0 }, null).map(one => one.at), [0]);
+        // A row whose thing has gone stays in its place until a key, and
+        // there's nothing left to end or copy there, so it's never taken
+        // nor counted.
+        const leftBehind = [bare, { name: "Gone", gone: true }, bare];
+        holds("a row whose thing has gone is never taken",
+            Operators.taken(leftBehind, { from: 0, to: 2 }, null).map(one => one.at), [0, 2]);
         // What asks is the key language's to say, by each action's command
         // (Options.commands): what can't be undone asks once; what's
         // undoable acts at once; and a guarded one, as a window's Close,

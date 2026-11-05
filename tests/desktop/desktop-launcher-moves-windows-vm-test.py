@@ -449,20 +449,21 @@ def test_dd_and_dj_close_windows_once_asked_and_yy_copies_a_title(desktop: Deskt
         return endings & {window["id"] for window in desktop.windows()}
 
     retry(lambda _: len(left()) == len(endings) - 1, timeout=dt.timedelta(seconds=10))
-    # dj over the other two asks once, in Return's place, as Vim's
-    # ask_yesno does, answered once it's stood 300 ms; Escape says no,
-    # and the launcher stays.
-    machine.send_chars("gg")
+    # Its row stays in its place, gone, until a key changes what's found,
+    # and d never counts it. So d2j from it takes the other two and asks
+    # once, in Return's place, as Vim's ask_yesno does, answered once it's
+    # stood 300 ms; Escape says no, and the launcher stays.
+    desktop.launcher_until(lambda shown: shown["things"][0]["gone"])
     with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
-        machine.send_chars("dj")
-    assert desktop.showing()["operated"] == "dj Close these 2? (y/n)", desktop.showing()
+        machine.send_chars("d2j")
+    assert desktop.showing()["operated"] == "d2j Close these 2? (y/n)", desktop.showing()
     with desktop.told("answered no"):
         machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
     assert len(left()) == len(endings) - 1, desktop.windows()
-    # dj again, and y closes both.
+    # d2j again, and y closes both.
     with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
-        machine.send_chars("dj")
+        machine.send_chars("d2j")
     with desktop.told("ended 2"):
         machine.send_chars("y")
     retry(lambda _: not left(), timeout=dt.timedelta(seconds=10))
