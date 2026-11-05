@@ -1019,27 +1019,33 @@ Floating {
         }
         return best;
     }
-    // Where each of a key's chords starts along its name, each a run of its
-    // own, two runs of one thing the apart rung from each other, rather
-    // than a typed space that sat nearly as wide as the key from its saying
+    // A key's name as runs, { said, x }: each key of a chord a run of its
+    // own, the tie rung from the next, so Space Tab reads as one key, and
+    // chord from chord the apart rung, two runs of one thing, rather than
+    // typed spaces that sat nearly as wide as the key from its saying
     // (VKCF3Z, 2026-11-05).
-    function chordsFrom(chords) {
-        const from = [];
+    function runsOf(fact) {
+        const chords = fact?.keys ?? (fact?.chords ?? []).map(chord => [chord]);
+        const runs = [];
         let x = 0;
-        for (const chord of chords) {
-            from.push(x);
-            x += factFace.advanceWidth(chord) + Theme.space.rung.apart;
-        }
-        return from;
+        chords.forEach((keys, chord) => {
+            if (chord > 0)
+                x += Theme.space.rung.apart - Theme.space.rung.tie;
+            for (const said of keys) {
+                runs.push({ said, x });
+                x += factFace.advanceWidth(said) + Theme.space.rung.tie;
+            }
+        });
+        return runs;
     }
-    // How wide a fact's name is drawn: its chords and the room between, or
+    // How wide a fact's name is drawn: its runs and the room between, or
     // its label.
     function nameWidth(fact) {
-        const chords = fact?.chords ?? [];
-        if (chords.length === 0)
+        const runs = runsOf(fact);
+        if (runs.length === 0)
             return factFace.advanceWidth(fact?.label ?? "");
-        const last = chords.length - 1;
-        return chordsFrom(chords)[last] + factFace.advanceWidth(chords[last]);
+        const last = runs[runs.length - 1];
+        return last.x + factFace.advanceWidth(last.said);
     }
     // How many of its facts take more than a line, a name or a value
     // wrapped, for the launcher to report when asked: a key list's take one.
@@ -1687,9 +1693,8 @@ Floating {
                             // (VKCF3Z, 2026-11-04).
                             readonly property bool nameFits: drawer.nameWidth(modelData)
                                 <= drawer.labelsWide
-                            // A key's chords, each drawn as a run of its own.
-                            readonly property var chords: modelData.chords ?? []
-                            readonly property var chordsFrom: drawer.chordsFrom(chords)
+                            // A key's name, drawn as runs of its own.
+                            readonly property var runs: drawer.runsOf(modelData)
                             // Whether its value fits beside its name on one
                             // line, measured in the face it's drawn in: a
                             // laid-out text can't tell, since a word too wide
@@ -1742,30 +1747,29 @@ Floating {
                                 visible: !fact.heading
                                 width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
-                                // A key's first chord, or the whole name.
-                                plain: fact.chords.length > 0 ? fact.chords[0]
+                                // A key's first run, or the whole name.
+                                plain: fact.runs.length > 0 ? fact.runs[0].said
                                     : fact.modelData.label ?? ""
                                 leading: drawer.pitch
                                 ink: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
-                            // Every chord of a key's after its first.
+                            // Every run of a key's name after its first.
                             function laterChords() {
                                 return Array.from({ length: chordsShown.count },
                                     (_, at) => chordsShown.itemAt(at)).filter(text => text);
                             }
                             Repeater {
                                 id: chordsShown
-                                model: fact.heading ? [] : fact.chords.slice(1)
+                                model: fact.heading ? [] : fact.runs.slice(1)
 
                                 PageText {
-                                    required property string modelData
-                                    required property int index
+                                    required property var modelData
                                     sought: drawer.washing
-                                    x: fact.chordsFrom[index + 1] ?? 0
+                                    x: modelData.x
                                     y: fact.base - baselineOffset
-                                    plain: modelData
+                                    plain: modelData.said
                                     leading: drawer.pitch
                                     wraps: false
                                     ink: label.ink

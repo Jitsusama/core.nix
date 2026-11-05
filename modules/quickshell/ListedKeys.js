@@ -112,8 +112,16 @@ function face(key) {
 // apart, Space ?. Keys that do the same are two spaces apart, so a
 // sequence's space never reads as between two of them.
 function sequenceFace(keys) {
+    return sequenceParts(keys).join(" ");
+}
+
+// A sequence's keys as the drawer draws them, each a run of its own, the
+// tie rung apart, so Space Tab reads as one key; letters typed together,
+// as gg, stay one run, as they're typed.
+function sequenceParts(keys) {
     const sequence = Array.isArray(keys) ? keys : [keys];
-    return sequence.map(face).join(sequence.every(key => key.length === 1) ? "" : " ");
+    return sequence.every(key => key.length === 1) ? [sequence.map(face).join("")]
+        : sequence.map(face);
 }
 
 // Vim's own keys first, as his Neovim's help gives them, then those with
@@ -152,8 +160,11 @@ function keyLine(table, mode, line, words) {
         .sort((a, b) => a.rank - b.rank || a.at - b.at);
     const said = ranked.map(one => sequenceFace(one.key)).concat(line.also ?? []);
     // Its chords each a run of their own, which the drawer sets the apart
-    // rung from each other; the label joins them for what reads it whole.
-    return { label: said.join("  "), chords: said, value: words[line.name] ?? "" };
+    // rung from each other, and each chord's keys the tie rung; the label
+    // joins them for what reads it whole.
+    const keyed = ranked.map(one => sequenceParts(one.key))
+        .concat((line.also ?? []).map(also => [also]));
+    return { label: said.join("  "), chords: said, keys: keyed, value: words[line.name] ?? "" };
 }
 
 // Every line Space ? lists, as the drawer's facts, from QueryKeys' table:

@@ -1274,6 +1274,12 @@ QtObject {
             (list.find(line => line.value === "screen") ?? {}).chords, ["Ctrl+F", "Ctrl+B"]);
         holds("the list's sequence, one chord",
             (list.find(line => line.value === "last") ?? {}).chords, ["Space Tab"]);
+        // Each chord's keys runs of their own, which the drawer ties, and
+        // letters typed together one run, as they're typed.
+        holds("a chord's keys, each its own",
+            (list.find(line => line.value === "last") ?? {}).keys, [["Space", "Tab"]]);
+        holds("a sequence of letters, one run",
+            (list.find(line => line.value === "ends") ?? {}).keys, [["gg"], ["G"]]);
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");
