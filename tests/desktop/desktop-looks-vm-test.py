@@ -215,13 +215,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
         named = [word for word in foot if word["text"] in ("insert", "find", "normal")]
         assert not named, f"at {scale} the find's foot names a mode: {named}"
-        # The find's line holds only the find and how far it narrows, so kitty's chord is
-        # taught in the foot, by its keys and lowercase words, never on the line.
-        field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-        taught = [word["text"] for word in field if "next time" in word["text"]]
-        assert not taught, f"at {scale} the find's line teaches a chord: {taught}"
-        told = desktop.showing()["selected"]["told"]
-        assert any(text.endswith(" next time") for text in told), f"at {scale} the foot: {told}"
+        teaches_in_the_foot(desktop, scale)
         # In normal the field draws no caret and the foot names no mode, the
         # row's words where the find left them.
         desktop.normal()
@@ -257,6 +251,18 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     assert not unwashed, f"at {scale} rows found by name washed nothing: {unwashed}"
     desktop.photograph(f"launcher-find-washed-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def teaches_in_the_foot(desktop: Desktop, scale: str) -> None:
+    """See kitty's chord taught in the foot, by its keys and lowercase words, never on the line.
+
+    The find's line holds only the find and how far it narrows (VKCF3Z, 2026-11-05).
+    """
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    taught = [word["text"] for word in field if "next time" in word["text"]]
+    assert not taught, f"at {scale} the find's line teaches a chord: {taught}"
+    told = desktop.showing()["selected"]["told"]
+    assert any(text.endswith(" next time") for text in told), f"at {scale} the foot: {told}"
 
 
 def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
