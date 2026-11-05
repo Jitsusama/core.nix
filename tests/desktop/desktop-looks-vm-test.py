@@ -636,7 +636,8 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
 
     Gone into, the drawer holds the keys: its frame takes the accent and its cursor's line the
     rule in its left margin. Five lines down and four letters along, it's photographed with the
-    foot at the laptop's size, for a person to judge, and Ctrl+W h comes back.
+    foot at the laptop's size, for a person to judge, then with x's E21 and q's words where the
+    line and the foot were, and Ctrl+W h comes back.
     """
 
     def relisted() -> None:
@@ -657,6 +658,13 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
         assert drawn["keys"], f"at {scale} the drawer doesn't hold the keys: {drawn}"
         assert drawn["cursor"]["rule"]["width"] > 0, f"at {scale} no rule: {drawn['cursor']}"
         desktop.photograph(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
+        # A page can't be changed, so x says Vim's E21 where the line was, and q how to close.
+        pressed(desktop, "x")
+        desktop.launcher_until(lambda shown: shown["commandSaid"] == "E21: Cannot make changes")
+        desktop.photograph(f"launcher-drawer-refused-at-{scale.replace('.', '-')}")
+        pressed(desktop, "q")
+        desktop.launcher_until(lambda shown: shown["saying"] == ["q does nothing", ":q closes"])
+        desktop.photograph(f"launcher-drawer-quit-at-{scale.replace('.', '-')}")
         # Space ? in it lists the drawer's own keys there; the pair come apart leaves ? alone,
         # a search back, which Escape lets go.
         pressed_until(

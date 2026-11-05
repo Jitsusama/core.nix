@@ -668,8 +668,8 @@ QtObject {
             ["Ctrl+W h does nothing on the rows, nor Ctrl+W l in the drawer",
                 into.concat(["Ctrl+w", "l", "Ctrl+w", "h", "Ctrl+w", "h", "j"]),
                 ["normal", "drawer", "rows", "next"]],
-            ["and so does ZZ, as his Neovim closes a window, where q alone does nothing",
-                into.concat(["q", "Z", "Z"]), ["normal", "drawer", "rows"]],
+            ["and so does ZZ, as his Neovim closes a window, where q only says how",
+                into.concat(["q", "Z", "Z"]), ["normal", "drawer", "quitSaid", "rows"]],
             ["where Escape at rest does nothing", into.concat(["Escape", "j"]),
                 ["normal", "drawer", "next"]],
             ["Escape cancels a count, and the keys stay",
@@ -698,7 +698,7 @@ QtObject {
             [": opens the command line, whose :q comes back to the rows", into.concat([":"]),
                 ["normal", "drawer", "command"]],
             ["the rows' keys that aren't a page's do nothing in it",
-                into.concat(["Tab", "-", "Backspace", "i", "a", "u", "c", "c", "]", "b"]),
+                into.concat(["Tab", "-", "Backspace", "i", "a", "u", "]", "b"]),
                 ["normal", "drawer"]],
             ["Ctrl+W l does nothing more in it, nor Space and the right arrow",
                 into.concat(["Ctrl+w", "l", "Space", "Right"]), ["normal", "drawer"]],
@@ -860,6 +860,44 @@ QtObject {
         holds("nor where nothing's sought", Page.found(lines, "", 0, 0), null);
     }
 
+    // What would change the drawer, which a page can't be: Vim's E21, as
+    // his Neovim says it on a buffer that can't be modified (VKCF3Z's spec
+    // v2, The Reader: "d c p x say E21: Cannot make changes"). x, p and S
+    // say it at once; d and c wait for their motion first, as Vim's do, a
+    // count, a text object's i or a and a g going before it; Escape or
+    // Ctrl+C lets them go unsaid. q says how to close, as on the rows.
+    function drawerRefusals(holds) {
+        const into = ["Escape", "Ctrl+w", "l"];
+        // [what, the keys typed from going in, the acts done]
+        const doing = [
+            ["x says E21", ["x"], ["cannotChange"]],
+            ["and p and S", ["p", "S"], ["cannotChange", "cannotChange"]],
+            ["d waits for its motion", ["d"], []],
+            ["and says E21 once it comes", ["d", "j"], ["cannotChange"]],
+            ["as dd and cc do", ["d", "d", "c", "c"], ["cannotChange", "cannotChange"]],
+            ["a count goes before its motion", ["d", "3", "j"], ["cannotChange"]],
+            ["a text object waits for its letter", ["d", "i"], []],
+            ["and says it after", ["d", "i", "p", "c", "a", "w"],
+                ["cannotChange", "cannotChange"]],
+            ["as gg does", ["d", "g", "g"], ["cannotChange"]],
+            ["a key that's no motion is refused too", ["c", "w"], ["cannotChange"]],
+            ["Escape lets d go unsaid", ["d", "Escape", "j"], ["next"]],
+            ["and Ctrl+C lets c go", ["c", "Ctrl+c", "j"], ["next"]],
+            ["q says how to close", ["q"], ["quitSaid"]]
+        ];
+        for (const [what, keys, acts] of doing) {
+            const done = typed(into.concat(keys));
+            holds(`the drawer refuses: ${what}`, done.acts, ["normal", "drawer"].concat(acts));
+            holds(`the drawer refuses: ${what}, the keys staying in it`, done.mode, "page");
+        }
+        holds("the drawer refuses: d waiting is something begun",
+            Keys.pending(typed(into.concat(["d"])).standing), true);
+        holds("the drawer refuses: and each key means something, never not here",
+            typed(into.concat(["x", "d", "j", "q"])).idle, []);
+        for (const act of ["cannotChange", "quitSaid"])
+            holds(`the drawer refuses: ${act} is once a press`, Keys.repeats(act), false);
+    }
+
     // Visual in the drawer, as on a page (VKCF3Z's spec v2): v chooses
     // letters from the cursor's and V whole lines, each again ending it and
     // the other changing its kind; the page's moves extend it, o goes to its
@@ -893,8 +931,15 @@ QtObject {
                 ["select", "back", "next"], "page"],
             ["its search lands in it", ["v", "/", "a", "Return"], ["select", "seek"],
                 "pageVisual"],
-            ["d, x, c, p and q do nothing yet", ["v", "d", "x", "c", "p", "q", "j"],
-                ["select", "next"], "pageVisual"],
+            // A page can't be changed, so its operators say Vim's E21 over
+            // what's chosen and end it, as visual's d does on a buffer that
+            // can't be modified (VKCF3Z's spec v2, Operators).
+            ["d says E21 and lets it go", ["v", "d"], ["select", "cannotChange"], "page"],
+            ["and so do x, c and p", ["V", "x", "v", "c", "v", "p"],
+                ["selectLines", "cannotChange", "select", "cannotChange", "select",
+                    "cannotChange"], "page"],
+            ["q says how to close, choosing on", ["v", "q", "j"],
+                ["select", "quitSaid", "next"], "pageVisual"],
             ["and no way back to the rows is in it, the arrow nothing and h a move",
                 ["v", "Z", "Z", "Space", "Left", "h"], ["select", "left"], "pageVisual"],
             ["gv on the page brings the last back", ["v", "Escape", "g", "v"],
@@ -914,6 +959,8 @@ QtObject {
         for (const act of ["select", "selectLines", "otherEnd", "copy", "copyLines", "reselect",
             "back"])
             holds(`the drawer's visual: ${act} is once a press`, Keys.repeats(act), false);
+        holds("the drawer's visual: d and q mean something in it, never not here",
+            typed(into.concat(["v", "d", "v", "q"])).idle, []);
         holds("the drawer's visual: v on the rows is V, the rows' visual line",
             typed(["Escape", "v"]).mode, "visual");
         for (const mode of ["pageVisual", "pageVisualLine"])
@@ -1503,6 +1550,7 @@ QtObject {
         drawerPage(holds);
         drawerSearch(holds);
         drawerVisual(holds);
+        drawerRefusals(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

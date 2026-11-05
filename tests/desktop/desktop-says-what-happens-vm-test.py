@@ -330,8 +330,9 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
     There it waits until the keys go in and then takes the card's place, its title on one line,
     rather than squeezed beside it until a word breaks (VKCF3Z, 2026-11-05: "Depl/oy/log").
-    Then Space ? lists the drawer's own keys (listed_in_the_drawer), kept in this subtest so
-    the file holds to the pyramid's twenty (docs/testing.md).
+    Then Space ? lists the drawer's own keys (listed_in_the_drawer), and d c p x and q say why
+    they change nothing (refused_in_the_drawer), kept in this subtest so the file holds to the
+    pyramid's twenty (docs/testing.md).
     """
     page = InTheDrawer(desktop)
     came = page.into()
@@ -399,6 +400,41 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         page.back(back)
     desktop.close_launcher()
     listed_in_the_drawer(desktop)
+    refused_in_the_drawer(desktop)
+
+
+E21 = "E21: Cannot make changes"
+
+
+def refused_in_the_drawer(desktop: Desktop) -> None:
+    """In the drawer, d c p x say Vim's E21 and q says how to close, the keys staying there.
+
+    A page can't be changed (VKCF3Z's spec v2, the Reader): x, p and S say it at once, d and c
+    once their motion comes, and visual's d and x as its choice ends, each where the line was
+    and none as "not here", the cursor unmoved. q says what it says on the rows. Escape, a key
+    that says nothing, is pressed between, so each word is seen to come of its own key.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+    line = page.drawer()["cursor"]["line"]
+
+    def said(shown: Json) -> bool:
+        return bool(
+            shown["commandSaid"] == E21 and shown["mode"] == "page" and shown["saying"] == []
+        )
+
+    for keys in ("x", "p", "S", "d j", "c c", "v d", "V x"):
+        page.pressed_until(keys, said)
+        assert page.drawer()["cursor"]["line"] == line, (keys, page.drawer())
+        page.pressed_until("esc", lambda shown: shown["commandSaid"] == "")
+    page.pressed_until(
+        "q",
+        lambda shown: (
+            shown["saying"] == ["q does nothing", ":q closes"] and shown["mode"] == "page"
+        ),
+    )
+    page.back("ctrl-w h")
+    desktop.close_launcher()
 
 
 def listed_in_the_drawer(desktop: Desktop) -> None:
