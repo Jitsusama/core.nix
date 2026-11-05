@@ -511,14 +511,19 @@ QtObject {
     // verb's own, or the verb's for one of several made from it; a row that
     // is an act itself, as Lock, its own, and the step it asks first, as
     // Power Off's sure, its row's; one in a state, as Wi-Fi On, its state's,
-    // so the line says what runs, never a toggle; none for a key whose words
-    // name none.
+    // so the line says what runs, never a toggle; a row whose key never walks
+    // back to its words, as a display's Warmth, by the id it names them by;
+    // none for a key whose words name none.
     function holdWords() {
         const vocabulary = {
             "wifi:radio": { id: "wifi:radio", command: "set", argument: "nowifi",
                 states: { off: { argument: "wifi" } } },
             "verb:sound-port": { id: "verb:sound-port", command: "set",
                 argument: "port={port}" },
+            "displays:warmth": { id: "displays:warmth", command: "set", argument: "nowarmth",
+                states: { off: { argument: "warmth" } } },
+            "keyboards:lights:to": { id: "keyboards:lights:to", command: "set",
+                argument: "kbdlevel={n}" },
             "session:Lock": { id: "session:Lock", command: "lockscreen" },
             "session:Power Off": { id: "session:Power Off", command: "poweroff" },
             "session:quiet": { id: "session:quiet" }
@@ -533,6 +538,12 @@ QtObject {
         holds("a row that's an act names its own", named("session:Lock"), "lockscreen");
         holds("the step a row asks first names the row's", named("session:Power Off:sure"),
             "poweroff");
+        const warmth = state => CommandBinding.wordsFor({ key: "displays:eDP-1:warmth",
+            wordsId: "displays:warmth", wordState: state }, of).argument ?? "";
+        holds("a row names its words by their id", [warmth(""), warmth("off"),
+            CommandBinding.wordsFor({ key: "verb:keyboards-lights-2",
+                wordsId: "keyboards:lights:to" }, of).argument ?? ""],
+        ["nowarmth", "warmth", "kbdlevel={n}"]);
         holds("a row whose words name none has none",
             [named("session:quiet"), named("session:quiet:60"), named("")], ["", "", ""]);
     }

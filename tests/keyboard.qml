@@ -136,6 +136,10 @@ ShellRoot {
             const punk = keyboard.search("punk").rows;
             expect("a layer's keys by its name", punk.length > 20, `${punk.length} rows`);
 
+            // Each carries its layer, so the : line fills :set lock={layer}.
+            expect("a layer's act carries its layer", first("lock punk").fill?.layer === "Punk"
+                && first("let numb").fill?.layer === "Numb",
+                `${first("lock punk").fill?.layer}, ${first("let numb").fill?.layer}`);
             first("lock punk").run();
             expect("locking runs ergodox", Niri.spawned.join(" ") === "ergodox layer 1",
                 Niri.spawned.join(" "));
@@ -148,6 +152,9 @@ ShellRoot {
             expect("the Layer's choices run ergodox", runs(layer.verbs())
                 === "Let Numb Go: ergodox layer 0; Lock Punk On: ergodox layer 1",
                 runs(layer.verbs()));
+            expect("the Layer's choices carry their layer", layer.verbs()
+                .map(choice => choice.fill?.layer).join(", ") === "Numb, Punk",
+                layer.verbs().map(choice => choice.fill?.layer).join(", "));
             const lights = parts.find(part => part.name === "Light");
             expect("the board's Light, a setting", lights !== undefined
                 && lights.verb === "more", parts.map(part => part.name).join(", "));
