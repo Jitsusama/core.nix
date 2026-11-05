@@ -950,6 +950,8 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
             lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
         )
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == act)
+    # Each changes how the mail stands, so from the find Return lands on it first.
+    desktop.land()
     machine.send_key("ret")
     # The launcher stays where it was, its foot saying what became of it
     # once the program no longer holds it as wanting Joel.

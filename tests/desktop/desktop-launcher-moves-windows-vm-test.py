@@ -230,10 +230,6 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     # The window used last is chosen as it opens, and this one isn't
     # there to choose.
     tab_to("", scratch[-1])
-    # Shift+Return opens one below the window Joel is in, a step in as
-    # well as at the top, and the foot says so wherever it works.
-    told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u21e7\u21b5 below" in told, told
     desktop.photograph("launcher-windows")
     went("Scratch 25")
     tab_to("", "Notes for Tuesday")

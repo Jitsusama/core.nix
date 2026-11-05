@@ -49,10 +49,13 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
-        # Return steps in, as on every device, its use first, so Return
-        # twice plays sound through it.
+        # Return steps in, as on every device, a row that changes nothing
+        # first, so Return twice never moves the sound; Play Sound Through
+        # It, landed on from the find, then a second Return does.
         desktop.step_in("ret")
+        desktop.down_to("Play Sound Through It")
         desktop.launcher_until(sound_selected("Play Sound Through It"))
+        desktop.land()
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
@@ -149,6 +152,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.photograph("launcher-sound-volume")
     desktop.type_in("50", selecting="Volume to 50%")
     desktop.launcher_until(lambda shown: "-18.1 dB" in shown["footer"])
+    desktop.land()
     machine.send_key("ret")
     sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
     machine.wait_until_succeeds(desktop.in_session(sink), timeout=timedelta(seconds=10))
@@ -328,6 +332,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         now has what was typed cleared for the next; one that becomes its opposite is closed.
         """
         desktop.type_in(name.lower(), selecting=name)
+        desktop.land()
         machine.send_key("ret")
         if then:
             desktop.launcher_until(lambda shown: shown["footer"] == then)
@@ -529,6 +534,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.step_in(key)
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
         desktop.type_in(name.split()[0][:3].lower(), selecting=name)
+        desktop.land()
         machine.send_key("ret")
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
@@ -592,6 +598,7 @@ def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) 
     now_reads("Power Profile \u00b7 Power Saver")
     desktop.down_to("Power Profile")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "use")
+    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "powerprofilesctl get | grep -qx balanced", timeout=timedelta(seconds=10)
@@ -659,6 +666,7 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             desktop.type_in(str(percent))
         else:
             desktop.type_in(f"scale {percent}")
+        desktop.land()
         machine.send_key("ret")
 
         def scaled(_: bool, wanted: float = wanted) -> bool:  # As retry calls it.
@@ -1023,12 +1031,10 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     shown = desktop.showing()
     assert (shown["open"], shown["landed"]) == (True, ""), shown
-    # Return in normal does it.
-    machine.send_key("ret")
-    machine.wait_until_succeeds(
-        "journalctl -u wifid | grep -q 'left Lantern'", timeout=timedelta(seconds=60)
-    )
+    # Let go of, it's still joined, for the command line to disconnect it; Wi-Fi Off below
+    # is landed on and done by a second Return.
     desktop.close_launcher()
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # In normal, dd on the network ends it by disconnecting it, never by
     # forgetting it, and asks first; Escape says no, and it stays.
     desktop.as_account("qs ipc call launcher collection wifi")

@@ -97,7 +97,12 @@ QtObject {
             ["a spot to go to", { verb: "keep", stays: true, spot: "x", run: does }],
             ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
                 targets: opens }],
-            ["one gone", { verb: "disconnect", ends: "disconnects", gone: true, run: does }]
+            ["one gone", { verb: "disconnect", ends: "disconnects", gone: true, run: does }],
+            ["a question asked", { verb: "ask", changes: false, stays: true, run: does }],
+            ["a picker's mark, which only picks", { verb: "mark", changes: false, stays: true,
+                run: does }],
+            ["a place found again", { verb: "find", stays: true, run: does }],
+            ["a search tried again", { verb: "retry", stays: true, run: does }]
         ];
         for (const [what, row] of quietly)
             expect(`${what} changes nothing`, Catalogue.changesState(row), false);
