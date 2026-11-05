@@ -190,7 +190,9 @@ Provider {
             verb: Words.verb(key, state),
             name: Words.name(key, state),
             glyph: Words.glyph(key, state),
-            hue: "action"
+            hue: "action",
+            // Its words' state, so the : line names the command for it.
+            wordState: state
         }, Words.ending(key), fields));
     }
 

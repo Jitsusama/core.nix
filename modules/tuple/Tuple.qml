@@ -114,7 +114,9 @@ Singleton {
         const said = (key, state, fill) => ({
             key: key,
             verb: Words.verb(key, state),
-            name: Words.name(key, state, fill)
+            name: Words.name(key, state, fill),
+            // Its words' state, so the : line names the command for it.
+            wordState: state
         });
         const rows = [];
         if (ringing !== "" && !calling)

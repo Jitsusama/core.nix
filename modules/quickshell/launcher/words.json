@@ -1347,14 +1347,15 @@
     {
       "id": "verb:turn",
       "command": "set",
-      "argument": "desklight!",
+      "argument": "nodesklight",
       "in": "light",
       "name": "Turn It Off",
       "verb": "off",
       "states": {
         "off": {
           "name": "Turn It On",
-          "verb": "on"
+          "verb": "on",
+          "argument": "desklight"
         }
       }
     },
@@ -2882,24 +2883,32 @@
     },
     {
       "id": "keyboard:lights-off",
+      "command": "set",
+      "argument": "nokbdlight",
       "in": "keyboard:lights",
       "name": "Turn Off the Keyboard's Light",
       "verb": "turn off"
     },
     {
       "id": "keyboard:lights-on",
+      "command": "set",
+      "argument": "kbdlight",
       "in": "keyboard:lights",
       "name": "Turn on the Keyboard's Light",
       "verb": "turn on"
     },
     {
       "id": "keyboard:brighter",
+      "command": "set",
+      "argument": "kbdlevel+=1",
       "in": "keyboard:lights",
       "name": "Brighten the Keyboard's Light",
       "verb": "brighten"
     },
     {
       "id": "keyboard:dimmer",
+      "command": "set",
+      "argument": "kbdlevel-=1",
       "in": "keyboard:lights",
       "name": "Dim the Keyboard's Light",
       "verb": "dim"
@@ -4734,6 +4743,8 @@
     },
     {
       "id": "session:awake",
+      "command": "set",
+      "argument": "keepawake",
       "once": ["Caffeinate"],
       "name": "Keep Awake",
       "term": "Machine/Keep awake",
@@ -4742,12 +4753,15 @@
       "states": {
         "on": {
           "name": "Let It Sleep",
-          "verb": "stop"
+          "verb": "stop",
+          "argument": "nokeepawake"
         }
       }
     },
     {
       "id": "session:quiet",
+      "command": "set",
+      "argument": "dnd=60",
       "once": ["DND", "Quiet"],
       "name": "Do Not Disturb",
       "term": "Desktop/Do not disturb",
@@ -4756,24 +4770,31 @@
       "states": {
         "on": {
           "name": "Let Notices Show",
-          "verb": "stop"
+          "verb": "stop",
+          "argument": "nodnd"
         }
       }
     },
     {
       "id": "session:quiet:60",
+      "command": "set",
+      "argument": "dnd=60",
       "in": "session:quiet",
       "name": "For an Hour",
       "glyph": "quiet"
     },
     {
       "id": "session:quiet:0",
+      "command": "set",
+      "argument": "dnd",
       "in": "session:quiet",
       "name": "Until It's Ended",
       "glyph": "quiet"
     },
     {
       "id": "session:recording",
+      "command": "set",
+      "argument": "norecording",
       "name": "Stop Recording",
       "verb": "stop",
       "glyph": "recording"
@@ -4786,6 +4807,8 @@
     },
     {
       "id": "session:power:Power Saver",
+      "command": "set",
+      "argument": "power=saver",
       "of": "session:profile",
       "name": "Power Saver",
       "part": "Power Saver",
@@ -4794,6 +4817,8 @@
     },
     {
       "id": "session:power:Balanced Power",
+      "command": "set",
+      "argument": "power=balanced",
       "of": "session:profile",
       "name": "Balanced Power",
       "part": "Balanced",
@@ -4802,6 +4827,8 @@
     },
     {
       "id": "session:power:Performance",
+      "command": "set",
+      "argument": "power=performance",
       "of": "session:profile",
       "name": "Full Performance",
       "part": "Full Performance",
@@ -4908,12 +4935,13 @@
     {
       "id": "verb:wifi-trust",
       "command": "set",
-      "argument": "trust!",
+      "argument": "trust",
       "in": "wifi",
       "name": "Trust It",
       "states": {
         "trusted": {
-          "name": "Stop Trusting It"
+          "name": "Stop Trusting It",
+          "argument": "notrust"
         }
       }
     },
@@ -5880,7 +5908,7 @@
     {
       "id": "verb:program:mute",
       "command": "set",
-      "argument": "mute!",
+      "argument": "mute",
       "in": "program:sound",
       "name": "Muted",
       "verb": "mute",
@@ -5888,7 +5916,8 @@
       "states": {
         "muted": {
           "verb": "unmute",
-          "glyph": "silent"
+          "glyph": "silent",
+          "argument": "nomute"
         }
       }
     },
@@ -6483,11 +6512,14 @@
     },
     {
       "id": "tuple:mute",
+      "command": "set",
+      "argument": "nomic",
       "name": "Muted",
       "verb": "mute",
       "states": {
         "muted": {
-          "verb": "unmute"
+          "verb": "unmute",
+          "argument": "mic"
         }
       },
       "by": "tuple"
