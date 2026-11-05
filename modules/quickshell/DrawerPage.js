@@ -10,7 +10,9 @@
 // be, as Vim's curswant keeps the column j and k go back to; the view's top
 // and height, and `end`, the furthest its top goes; the pitch its body's
 // lines lie on, which keeps them on the card's rows; `off`, the lines kept
-// about the cursor, his scrolloff; `tops`, if it has them, the tops its
+// about the cursor, his scrolloff; `start`, its view's top at rest, and
+// `phase`, where on the page the pitch of its lines is counted from, both
+// the page's top unless it says; `tops`, if it has them, the tops its
 // view may scroll to (tops, below); and `xOf(line, letter)` and `letterAt(line, x)`, which ask the drawn lines
 // where a letter is and which letter is nearest a place.
 .pragma library
@@ -126,9 +128,11 @@ function cut(page, top) {
     return page.lines.some(line => top > line.top + 0.5 && top < line.top + line.height - 0.5);
 }
 
-// The tops a view may have: each on the pitch, so the drawer's lines stay
-// on the card's rows, that cuts no line (as cut judges), up to the first
-// at or past the page's end, so the last line shows whole too. One pass
+// The tops a view may have: its rest, then each on the pitch from the
+// page's phase, so the drawer's lines stay on the card's rows and each
+// scrolled to takes the head's baseline, that cuts no line (as cut
+// judges), up to the first at or past the page's end, so the last line
+// shows whole too. One pass
 // down the rows and the lines in step, carrying the furthest any line
 // begun above a row reaches: a row is cut just when that lies below it.
 // A page that brings its own, as the drawer's does, worked out once its
@@ -148,10 +152,15 @@ function tops(page) {
     for (const line of lines) {
         bottom = Math.max(bottom, line.top + line.height);
     }
+    const start = page.start ?? 0;
+    const phase = page.phase ?? 0;
+    // The first top on the pitch past the rest, from which the rest go on.
+    const past = phase + (Math.floor((start - phase) / page.pitch) + 1) * page.pitch;
     const all = [];
     let next = 0;
     let reach = -Infinity;
-    for (let top = 0; top <= Math.max(page.end, bottom); top += page.pitch) {
+    for (let top = start; top <= Math.max(page.end, bottom);
+        top = top === start ? past : top + page.pitch) {
         for (; next < lines.length && lines[next].top + 0.5 < top; next++) {
             reach = Math.max(reach, lines[next].top + lines[next].height - 0.5);
         }
@@ -162,7 +171,7 @@ function tops(page) {
             }
         }
     }
-    return all.length === 0 ? [0] : all;
+    return all.length === 0 ? [start] : all;
 }
 
 // A view's top on a whole line's: going down, the first at or past where
@@ -172,7 +181,7 @@ function onLine(top, page, down) {
     if (down) {
         return all.find(one => one >= top) ?? all[all.length - 1];
     }
-    return all.filter(one => one <= top).pop() ?? 0;
+    return all.filter(one => one <= top).pop() ?? all[0];
 }
 
 // The view's top so many lines on from where it is, or back, never past
@@ -201,7 +210,7 @@ function shown(line, top, page) {
 // there's more to scroll to. With `whole`, every line wholly in view.
 function inView(page, top, whole) {
     const room = margin(page);
-    const from = top + (whole || top <= 0 ? 0 : room);
+    const from = top + (whole || top <= (page.start ?? 0) ? 0 : room);
     const to = top + page.height - (whole || top >= page.end ? 0 : room);
     const held = [];
     page.lines.forEach((line, at) => {

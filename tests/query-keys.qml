@@ -1182,6 +1182,24 @@ QtObject {
         holds("a title two pixels past a pitch: Ctrl+E goes on past it",
             Page.moved("scrollDown", 0, page({ line: 6, top: 24 },
                 { lines: descended, end: 360 })).top, 96);
+        // A view resting below the page's top, as the drawer's does so a
+        // line scrolled to its top takes the eyebrow's baseline, and
+        // stepping on its body's pitch: its rest a stop, then the body's
+        // lines' tops, none a pitch partway through the eyebrow or title.
+        const headed = [{ top: 20, height: 18, length: 10 }, { top: 38, height: 36, length: 10 }]
+            .concat(Array.from({ length: 20 }, (_, at) => ({ top: 121 + at * 24, height: 23,
+                length: 10 })));
+        const onHeaded = from => page(from, { lines: headed, start: 16, phase: 121, end: 361 });
+        holds("a view resting below the top: its stops", Page.tops(onHeaded({})).slice(0, 4),
+            [16, 97, 121, 145]);
+        holds("a view resting below the top: Ctrl+E past the title whole",
+            Page.moved("scrollDown", 0, onHeaded({ line: 2, top: 16 })).top, 97);
+        holds("a view resting below the top: Ctrl+Y back to its rest",
+            Page.moved("scrollUp", 0, onHeaded({ line: 8, top: 97 })).top, 16);
+        holds("a view resting below the top: gg back to its rest",
+            Page.moved("first", 0, onHeaded({ line: 12, top: 145 })).top, 16);
+        holds("a view resting below the top: G at its end, on a stop",
+            Page.moved("last", 0, onHeaded({ top: 16 })).top, 361);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",

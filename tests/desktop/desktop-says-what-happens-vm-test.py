@@ -130,16 +130,26 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.close_launcher()
 
 
-# The drawer's line pitch, whose multiples its view's top lies on, so what it shows stays on the
-# card's lines (vm-desktop-looks measures them). Ctrl+E and Ctrl+Y scroll it a whole line, as
-# Vim's do, so past a title a pitch and a half tall they scroll two pitches.
+# The drawer's line pitch, which its view's tops past its rest lie on, so what it shows stays on
+# the card's lines (vm-desktop-looks measures them) and a line scrolled to the top takes the
+# eyebrow's baseline, its capitals the inset under the frame as the head's are (VKCF3Z,
+# 2026-11-05). Ctrl+E and Ctrl+Y scroll it a whole line, as Vim's do, so past a title a pitch and
+# a half tall they scroll two pitches.
 PITCH = 24
+# A box's rounding, which a baseline may be off its place by and still be on it.
+ROUNDING = 0.5
 
 
 def a_line_on(drawer: Json, past: int = 0) -> bool:
-    """Say whether the drawer is scrolled past a point to a whole line on the pitch."""
+    """Say whether the drawer is scrolled past a point to a whole line on the eyebrow's baseline.
+
+    The eyebrow scrolls with the rest, so where it rests is where it is now and how far the
+    drawer has scrolled; the words' lines take that baseline a whole number of pitches on.
+    """
     scrolled = int(drawer["scrolled"])
-    return scrolled > past and scrolled % PITCH == 0 and held(drawer)
+    lines = drawer["lines"]
+    off = (lines["words"] - lines["eyebrow"] - drawer["scrolled"]) % PITCH
+    return scrolled > past and min(off, PITCH - off) < ROUNDING and held(drawer)
 
 
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one

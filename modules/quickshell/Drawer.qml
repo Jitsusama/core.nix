@@ -259,9 +259,13 @@ Floating {
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
     // Whether it holds more than fits, so the foot says how to scroll it.
-    readonly property bool more: view.contentHeight > drawer.viewRoom + 1
-    // How far it's scrolled, for the launcher to report.
-    readonly property real scrolled: view.contentY
+    readonly property bool more: view.contentHeight > drawer.viewTop + drawer.viewRoom + 1
+    // How far it's scrolled from its rest, which its keys set and the
+    // launcher reports.
+    property real scrolled: 0
+    function scrollTo(top) {
+        scrolled = top - viewTop;
+    }
 
     // The drawer's line pitch: Figure's, two beats, for every line of the
     // plate, Note's runs too, so the plate keeps one grid and its lines
@@ -305,7 +309,7 @@ Floating {
     // preview and its lines' baselines. Worked out
     // only when asked, since nothing drawn depends on them.
     function baselines() {
-        const contentTop = Theme.border - view.contentY;
+        const contentTop = Theme.border + drawer.viewTop - view.contentY;
         const shown = item => item.visible ? contentTop + item.y + item.baselineOffset : null;
         const flowed = item => item.visible ? contentTop + flow.y + item.y + item.baselineOffset
             : null;
@@ -380,7 +384,7 @@ Floating {
     // its lines are laid or its end moves rather than for each key, which
     // on a long page would spend half a key's budget (DrawerPage.js).
     readonly property var wholeTops: Page.tops({ lines: laid, pitch: drawer.pitch,
-        end: Math.max(0, view.contentHeight - drawer.viewRoom) })
+        start: drawer.viewTop, phase: drawer.stops, end: drawer.viewEnd })
     property var cursor: ({ line: 0, letter: 0, want: 0 })
     // The search being typed in it, as the launcher's line holds it, and
     // the last one run, { pattern, forward }, which n and N go on with, as
@@ -600,7 +604,7 @@ Floating {
     function anew() {
         if (keys)
             Qt.callLater(() => {
-                view.contentY = 0;
+                scrolled = 0;
                 enter();
             });
     }
@@ -633,7 +637,8 @@ Floating {
             want: cursor.want,
             top: view.contentY,
             height: drawer.viewRoom,
-            end: Math.max(0, view.contentHeight - drawer.viewRoom),
+            start: drawer.viewTop,
+            end: drawer.viewEnd,
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -641,7 +646,7 @@ Floating {
             letterAt: (line, x) => letterAt(page[line], x)
         });
         cursor = { line: moved.line, letter: moved.letter, want: moved.want };
-        view.contentY = moved.top;
+        scrollTo(moved.top);
     }
     // A search run in it, from the cursor, the way it goes and a count on,
     // nothing sought seeking the last again, as Vim's / Return does; and n
@@ -673,7 +678,7 @@ Floating {
         if (landed === null)
             return { none: "E486", wrapped: "", pattern };
         cursor = { line: landed.line, letter: landed.letter, want: landed.want };
-        view.contentY = landed.top;
+        scrollTo(landed.top);
         return { none: "", wrapped: landed.wrapped, pattern };
     }
 
@@ -690,7 +695,8 @@ Floating {
             want: cursor.want,
             top: view.contentY,
             height: drawer.viewRoom,
-            end: Math.max(0, view.contentHeight - drawer.viewRoom),
+            start: drawer.viewTop,
+            end: drawer.viewEnd,
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
@@ -723,14 +729,15 @@ Floating {
         const line = Math.max(0, Math.min(at.line, laid.length - 1));
         const letter = Math.max(0, Math.min(at.letter, laid[line].length - 1));
         cursor = { line, letter, want: xOf(laid[line], letter) };
-        view.contentY = Page.shown(laid[line], view.contentY, {
+        scrollTo(Page.shown(laid[line], view.contentY, {
             lines: laid,
             height: drawer.viewRoom,
-            end: Math.max(0, view.contentHeight - drawer.viewRoom),
+            start: drawer.viewTop,
+            end: drawer.viewEnd,
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops
-        });
+        }));
     }
     // o: the cursor to where visual began, which becomes where it is, as
     // Vim's o goes to the selection's other end.
@@ -895,7 +902,7 @@ Floating {
     }
     // Each new thing it shows starts at its top; the same thing read anew,
     // as a row refreshes, stays where it was scrolled.
-    onTitleChanged: view.contentY = 0
+    onTitleChanged: scrolled = 0
 
     // The widest of its facts' names, which their values start beyond, so
     // the values share one edge: a name is never cut short, and a value
@@ -1119,7 +1126,7 @@ Floating {
                 <= Math.max(1, figures / 20));
     }
     // Where the last line it shows ends, down from its top.
-    readonly property real foot: Theme.border + view.height
+    readonly property real foot: Theme.border + drawer.viewTop + view.height
     // Between the names' column and the values', two columns, so the two
     // never read as one.
     readonly property real labelsGap: Theme.space.rung.groups
@@ -1162,7 +1169,26 @@ Floating {
     // that beat; its keys, gone into, bring up the rest (VKCF3Z,
     // 2026-11-05).
     readonly property real viewRoom: drawer.tall - 2 * Theme.border - Theme.space.rung.inset
-        + drawer.pitch / 2 - drawer.dropped
+        + drawer.pitch / 2 - drawer.dropped - drawer.viewTop
+    // Where the view begins, down from the frame's inside top: a line's
+    // top over the eyebrow's baseline, so a line scrolled to the view's
+    // top takes the eyebrow's baseline, its capitals the inset under the
+    // frame as the head's are, and the lines scrolled past hide whole
+    // above it, as the bottom hides them, the frame's room the same
+    // scrolled or not (VKCF3Z, 2026-11-05). At rest it shows its content
+    // from there, the head's, which begins below it, so nothing moves as
+    // the drawer comes.
+    readonly property real viewTop: drawer.fieldBase - Theme.border - drawer.pitch / 2
+        - drawer.dropped
+    // The top of the body's first line, from which the pitch its tops
+    // scroll to past the rest is counted, so each is a line's top.
+    readonly property real stops: drawer.bodyBase - Theme.border - drawer.pitch / 2
+        - drawer.dropped
+    // The furthest its top goes: its rest where everything fits, else the
+    // first of its stops whose view reaches the last line, so scrolled to
+    // its end its lines are still the card's.
+    readonly property real viewEnd: view.natural <= viewTop + viewRoom ? viewTop
+        : stops + Math.ceil((view.natural - viewRoom - stops) / pitch - rounding) * pitch
     // The top of every line's box it lays on the pitch past its title, down
     // the content: the facts', the moment's, the preview's and the words'.
     // Each a fact takes as { top, bottom }, all its lines, a heading held
@@ -1234,8 +1260,8 @@ Floating {
         const step = drawer.pitch + drawer.apartIn(drawer.anyWraps(factRows), false);
         // A thing's box ends half a pitch, less the drop, under its last
         // baseline, which stands a step over the slot's.
-        const short = ending(Math.min(top + viewRoom, top + moreBase - Theme.border - step
-            + drawer.pitch / 2 - drawer.dropped));
+        const short = ending(Math.min(top + viewRoom, top + moreBase - Theme.border - viewTop
+            - step + drawer.pitch / 2 - drawer.dropped));
         return hiddenPast(short);
     }
     readonly property real shownTo: shownAndHidden.shown
@@ -1284,17 +1310,17 @@ Floating {
 
     Flickable {
         id: view
+        y: drawer.viewTop
         width: parent.width
         height: drawer.shownTo
+        contentY: drawer.viewTop + drawer.scrolled
         clip: true
         interactive: false
         contentWidth: width
-        // Never ending between two lines, so scrolled to its end its lines
-        // are still the card's.
+        // Never ending between two lines (viewEnd).
         readonly property real natural: drawer.moment ? momentShown.ends : flow.y + flow.height
-        contentHeight: natural <= drawer.viewRoom ? natural
-            : drawer.viewRoom + Math.ceil((natural - drawer.viewRoom) / drawer.pitch)
-                * drawer.pitch
+        contentHeight: natural <= drawer.viewTop + drawer.viewRoom ? natural
+            : drawer.viewEnd + drawer.viewRoom
 
         Item {
             id: column
@@ -1614,8 +1640,8 @@ Floating {
                         .slice(0, Math.floor(room / drawer.pitch))
                     // The room it may take: what's left of the view once
                     // the name and the facts have theirs, a line apart.
-                    readonly property real room: Math.max(4 * drawer.pitch, drawer.viewRoom
-                        - flow.y - (titleBlock.visible ? titleBlock.height
+                    readonly property real room: Math.max(4 * drawer.pitch, drawer.viewTop
+                        + drawer.viewRoom - flow.y - (titleBlock.visible ? titleBlock.height
                         + drawer.pitch : 0) - (factsShown.visible ? factsShown.height
                         + drawer.pitch : 0) - drawer.pitch)
 
