@@ -7,37 +7,6 @@
 // then the surface's commands, then what every surface has.
 .pragma library
 
-// Each command's fixed short form and what it is, by its full name, as the
-// key language will say them (modules/keys/language.toml's [acts.<name>]
-// command, short, changes, undoable and range, reaching the shell as
-// Options.commands): until it does, they're said here, in the same shape.
-// A short form is fixed, never worked out from what else is listed, so
-// :disc never changes meaning as a command is added. Vim's own keep Vim's
-// (:help ex-cmd-index); a name Neovim gives another meaning isn't ours to
-// take, so forgetting is :forg (Vim's :fo is :fold).
-const standIn = {
-    quit: { short: "q", changes: false, undoable: true, range: false },
-    help: { short: "h", changes: false, undoable: true, range: false },
-    set: { short: "se", changes: true, undoable: true, range: false },
-    sort: { short: "sor", changes: false, undoable: true, range: true },
-    global: { short: "g", changes: true, undoable: true, range: true },
-    vglobal: { short: "v", changes: true, undoable: true, range: true },
-    delete: { short: "d", changes: true, undoable: true, range: true },
-    yank: { short: "y", changes: false, undoable: true, range: true },
-    undo: { short: "u", changes: true, undoable: true, range: false },
-    redo: { short: "red", changes: true, undoable: true, range: false },
-    nohlsearch: { short: "noh", changes: false, undoable: true, range: false },
-    edit: { short: "e", changes: false, undoable: true, range: false },
-    buffer: { short: "b", changes: false, undoable: true, range: false },
-    split: { short: "sp", changes: false, undoable: true, range: false },
-    move: { short: "m", changes: true, undoable: true, range: true },
-    history: { short: "his", changes: false, undoable: true, range: false },
-    close: { short: "clo", changes: true, undoable: false, range: true },
-    disconnect: { short: "disc", changes: true, undoable: true, range: true },
-    forget: { short: "forg", changes: true, undoable: false, range: true },
-    suspend: { short: "sus", changes: true, undoable: false, range: false }
-};
-
 // Vim's help notation: the shortest form a command takes outside the
 // brackets, the rest of its name inside, as :help writes disc[onnect].
 function notation(command, short) {
@@ -84,7 +53,11 @@ function listed(from) {
     const table = from.table ?? {};
     const said = from.said ?? {};
     const short = command => table[command]?.short ?? command;
-    const flags = command => table[command] ?? {};
+    // What asks first is what changes and can't be undone, the language
+    // leaving undoable out wherever nothing changes; a command it doesn't
+    // name asks nothing.
+    const asks = command => table[command]?.changes === true
+        && table[command]?.undoable !== true;
     const seen = new Set();
     const menu = [];
     // Each line's title is lowered once, as it's listed, a space before it,
@@ -100,7 +73,7 @@ function listed(from) {
     // An act takes a ! only where it would ask first, its ! saying don't.
     (from.acts ?? []).forEach((act, at) => {
         const command = commandOf(act);
-        const undoable = flags(command).undoable !== false;
+        const undoable = !asks(command);
         add({ command, short: short(command), title: String(act.name ?? ""),
             key: keyOf(act, at === 0), kind: "act", act, bang: !undoable, takes: false,
             undoable });

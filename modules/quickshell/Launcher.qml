@@ -2334,7 +2334,7 @@ Scope {
             things: on,
             go: opening?.go ?? null,
             menu: Commands.listed({ acts, surface: opening?.surface ?? [],
-                table: Commands.standIn, row: current + 1,
+                table: Options.commands, row: current + 1,
                 said: opening?.goes ? Object.assign({}, words, { row: opening.goes }) : words })
         };
     }
