@@ -329,7 +329,8 @@ Provider {
             part("address", server.address !== server.name ? server.address : ""),
             part("why", Keeping.why(server, said)),
             part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
-            part("poll", said.every.replace("{span}", Keeping.span(server.poll))),
+            // Its name already says it's an interval, so the span stands alone.
+            part("poll", Keeping.span(server.poll)),
             part("reach", Keeping.reach(server.reach, said)),
             part("last-sample", server.lastSample !== null && server.lastSample !== undefined
                 ? said.ago.replace("{span}", Keeping.span(server.lastSample)) : ""),

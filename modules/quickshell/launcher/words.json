@@ -2278,7 +2278,6 @@
         "why:combined": "combined with the chosen one",
         "why:chosen": "the clock is kept by it",
         "why:other": "for a reason chrony gives no name",
-        "every": "every {span}",
         "ago": "{span} ago",
         "reach": "{count} of the last 8",
         "within": "within {error}",
@@ -2331,7 +2330,7 @@
     {
       "id": "time:server:interval",
       "in": "time:server",
-      "name": "True Time Within"
+      "name": "Error Bounds"
     },
     {
       "id": "time:server:samples",
