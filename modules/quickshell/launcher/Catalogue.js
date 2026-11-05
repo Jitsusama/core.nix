@@ -80,15 +80,11 @@ function opens(row) {
         && !ends(row) && !disruptive(row);
 }
 
-// The verbs whose rows may change things but which the key language names
-// no command for yet (modules/keys/language.toml), whose rows alone are
-// guessed at from how they're made. The guess stands in for these verbs
-// only until VCSELW's language names them, and tests/catalogue.qml pins
-// them, so the list only shrinks.
-const guessed = ["brighten", "brighter", "choose", "connect", "dim", "dimmer", "expect",
-    "flash", "gather", "hold", "join", "leave", "lock", "log", "mute", "off", "on", "record",
-    "share", "sign", "sleep", "start", "stop", "take", "thaw", "tile", "turn", "unmute",
-    "unread", "unstar", "use"];
+// The commands the guess holds quiet, whatever the row: it only copies,
+// goes somewhere, finds, shows or holds more. The key language names none
+// of them yet (modules/keys/language.toml); once it does, its flag decides,
+// so tests/catalogue.qml pins the list, which only shrinks.
+const quiet = ["copy", "find", "go", "more", "see", "show"];
 
 // The command a row is named by, as the command line names its act
 // (Commands.js's actLine): the one its words give it (`said`), or else its
@@ -108,10 +104,11 @@ function named(said, verbal, table) {
 // Return and d agree on every row. Return from the find line
 // lands on such a row rather than doing it, so typing a name and Return
 // can only ever show it. A row may say so itself, whatever its command.
-// Where the language names no command for one of the guessed verbs, it's
-// guessed: it ends something or can't be taken back, or it's done and
-// keeps the launcher, as a network's join is; any other command it names
-// nothing for changes nothing.
+// Where the language names no command for the row, as for the many whose
+// command is read from their name, it's guessed until VCSELW's language
+// names it: it ends something or can't be taken back, or it's done and
+// keeps the launcher, as a network's join is, unless its command is one
+// the guess holds quiet.
 function changesState(row, command = {}) {
     // A row that says it changes nothing, whatever its verb, as Ask's
     // question or a file picker's mark, which only picks; and a figure,
@@ -129,11 +126,12 @@ function changesState(row, command = {}) {
     if (command.flags !== undefined) {
         return command.flags.changes === true;
     }
-    if (!guessed.includes(command.command ?? "")) {
-        return false;
+    if (ends(row) || disruptive(row)) {
+        return true;
     }
-    return ends(row) || disruptive(row) || (row.stays === true && typeof row.run === "function"
-        && !row.spot && !row.from && !(row.verbs && row.targets));
+    return row.stays === true && typeof row.run === "function"
+        && !quiet.includes(command.command ?? "") && !row.spot && !row.from
+        && !(row.verbs && row.targets);
 }
 
 // A step's rows with a quiet one first, where the first would change
@@ -146,11 +144,11 @@ function quietFirst(inside, naming) {
     if (inside.length < 2 || !changes(inside[0])) {
         return inside;
     }
-    const quiet = inside.findIndex(one => !changes(one));
-    if (quiet < 0) {
+    const still = inside.findIndex(one => !changes(one));
+    if (still < 0) {
         return inside;
     }
-    return [inside[quiet]].concat(inside.slice(0, quiet), inside.slice(quiet + 1));
+    return [inside[still]].concat(inside.slice(0, still), inside.slice(still + 1));
 }
 
 // Whether it's a place, which is opened, or an action, which is done: a
