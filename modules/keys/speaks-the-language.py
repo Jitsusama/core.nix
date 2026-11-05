@@ -11,13 +11,11 @@ Reads the language (language.toml), the key map every layer writes
 - a command, or a name between its short form and its whole one, that
   Neovim takes for another, or one of Neovim's own shortened otherwise;
 - an act that changes something with a key the find line reaches;
-- an arrow the leader doesn't begin, alone, held or in a sequence, in
-  normal or visual mode, where none does anything: an act a surface's
-  kinds hold taking one, or a modal layer of ours binding one, but for
-  his Neovim, kept as it is, and the layers that still keep theirs, a
-  list that may only shrink. An arrow
-  after the leader, as Space and the right arrow, overlays Vim's own keys
-  and is allowed;
+- an arrow in normal or visual mode that isn't its letter's motion: an
+  act a surface's kinds hold naming one, since its letter brings it, or
+  a modal layer of ours binding one held, in a sequence, or to anything
+  but its letter's act. An arrow after the leader, as Space and the
+  right arrow, overlays Vim's own keys and is allowed;
 - a mode, kind or field the language doesn't name, a command with no short
   form or one that doesn't begin it, an undoing of nothing, and a guard on
   an act that would never ask.
@@ -81,8 +79,9 @@ FIELDS = {
     "guarded",
     "range",
 }
-# The modes no arrow does anything in (Joel, 2026-11-05: "remove them and
-# rely only on vi right feeling things"), and the arrows.
+# The modes an arrow is its letter's motion in and nothing else (Joel,
+# 2026-11-05: "In normal mode, in a buffer, arrows move the cursor"), and
+# the arrows.
 LETTERED = {"normal", "visual"}
 ARROWS = {"up", "down", "left", "right"}
 # The leader, after which an arrow overlays Vim's own keys (Joel,
@@ -90,14 +89,7 @@ ARROWS = {"up", "down", "left", "right"}
 LEADER = "space"
 # The layers of ours with a normal mode, held to that.
 MODAL = {"inlyne", "mpv", "neovim", "reader", "swayimg", "zathura"}
-# His Neovim, kept as it is, bare arrows and all (Joel, 2026-11-05:
-# "neovim is a gold standard in general"). There an arrow is its letter.
-KEEPS_ITS_ARROWS = {"neovim"}
-# Those still binding a bare arrow in normal, each to come off as it drops
-# them. None does now: the reader's and the viewers' arrows move as their
-# letters, but no list of their keys names one. It may only shrink, since
-# one binding no arrow is refused.
-STILL_ARROWED: set[str] = set()
+# Each arrow and the letter whose motion it is.
 LETTERS = {"down": "j", "up": "k", "left": "h", "right": "l"}
 # Where Neovim's keys on the command line are bound, in the key map's words
 # (modules/neovim/home.nix, scopes).
@@ -173,16 +165,16 @@ def arrowed(keys: str) -> bool:
     return pressed[0] != LEADER and any(key.split("+")[-1] in ARROWS for key in pressed)
 
 
-def acts_of(language: dict[str, Any], *, kept: bool = False) -> Acts:
+def acts_of(language: dict[str, Any]) -> Acts:
     """Read each act's keys, spelled as the key map's, its modes and kinds.
 
-    Kept, for a layer still binding arrows, an act with a letter an arrow
-    is, in normal or visual mode, takes the arrow too.
+    An act with a letter an arrow is, in normal or visual mode, takes the
+    arrow too, as its motion.
     """
     acts = {}
     for name, act in language["acts"].items():
         keys = {spelled(key) for key in act.get("keys", [])}
-        if kept and modes_of(act) & LETTERED:
+        if modes_of(act) & LETTERED:
             keys |= {arrow for arrow, letter in LETTERS.items() if letter in keys}
         acts[name] = {"keys": keys, "modes": modes_of(act), "kinds": set(act["kinds"])}
     return acts
@@ -238,7 +230,7 @@ def shape_faults(language: dict[str, Any]) -> list[str]:
 
 
 def arrow_faults(language: dict[str, Any]) -> list[str]:
-    """Find an act of a surface's taking a bare arrow, where none does anything.
+    """Find an act of a surface's naming an arrow, which only its letter's motion takes.
 
     An act no kind holds is only a layer's, as his Neovim's splits are, and
     is held where the layer binds it.
@@ -249,24 +241,39 @@ def arrow_faults(language: dict[str, Any]) -> list[str]:
             continue
         for mode in sorted(modes_of(act) & LETTERED):
             faults += [
-                f"{name} takes {keys} in {mode} mode, where no arrow does anything"
+                f"{name} takes {keys} in {mode} mode, where an arrow is only its letter's motion"
                 for keys in sorted(spelled(key) for key in act.get("keys", []))
                 if arrowed(keys)
             ]
     return faults
 
 
-def arrow_bind_faults(layer: Layer) -> list[str]:
-    """Find an arrow a modal layer of ours binds in normal, or one kept that it doesn't."""
+def arrow_bind_faults(layer: Layer, acts: Acts) -> list[str]:
+    """Find an arrow a modal layer of ours binds in normal as anything but its letter's motion."""
     name = layer["name"]
-    if name not in MODAL or name in KEEPS_ITS_ARROWS:
+    if name not in MODAL:
         return []
-    arrows = [b["chord"] for b in layer["binds"] if b.get("when", "") == "" and arrowed(b["keys"])]
-    if name in STILL_ARROWED:
-        return [] if arrows else [f"{name} binds no arrow now, so take it off STILL_ARROWED"]
-    return [
-        f"{name}: {chord} is an arrow in normal mode, where none does anything" for chord in arrows
-    ]
+    faults = []
+    normal = [b for b in layer["binds"] if b.get("when", "") == ""]
+    for bind in normal:
+        if not arrowed(bind["keys"]):
+            continue
+        act = bind["act"]
+        letter = LETTERS.get(bind["keys"])
+        if letter and act in acts and letter in acts[act]["keys"]:
+            continue
+        # A program's own motion, as mpv's seeking: the arrow does just what
+        # the layer's letter does.
+        if letter and any(
+            b["keys"] == letter and b["act"] == act and b["does"] == bind["does"] for b in normal
+        ):
+            continue
+        given = f"to {act}" if act else "its own act"
+        faults.append(
+            f"{name}: {bind['chord']} gives an arrow {given}, where an arrow is only its"
+            " letter's motion"
+        )
+    return faults
 
 
 def find_faults(language: dict[str, Any]) -> list[str]:
@@ -380,12 +387,10 @@ def faults(
     found = shape_faults(language) + arrow_faults(language) + find_faults(language)
     found += command_faults(language, neovim)
     acts = acts_of(language)
-    kept = acts_of(language, kept=True)
     found += key_faults(acts)
     for layer in layers:
-        arrowed_still = layer["name"] in STILL_ARROWED | KEEPS_ITS_ARROWS
-        found += layer_faults(layer, kept if arrowed_still else acts, source)
-        found += arrow_bind_faults(layer)
+        found += layer_faults(layer, acts, source)
+        found += arrow_bind_faults(layer, acts)
     return found
 
 
