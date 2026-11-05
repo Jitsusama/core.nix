@@ -521,10 +521,15 @@ ShellRoot {
             // rows themselves narrow as it's typed, so it says nothing.
             typing.narrowed = "3 of 12";
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);
-            const typedAt = texts.find(t => t.text === "ne");
-            const counted = texts.find(t => t.text === "\u00b7 3 of 12");
+            // What's typed is the line's own input, so the count is held to
+            // standing past the path and its letters, well before the aside.
+            const path = texts.find(t => t.text === "Now");
+            const narrowing = texts.find(t => t.text === "\u00b7 3 of 12");
+            const aside = texts.find(t => t.text === "1 of 2");
             expect("a narrowed find says its count after what's typed, in normal",
-                typedAt !== undefined && counted !== undefined && counted.from >= typedAt.to,
+                path !== undefined && narrowing !== undefined && aside !== undefined
+                    && narrowing.from >= path.to + typing.letterWidth * 2
+                    && narrowing.to < aside.from,
                 said(texts));
             typing.mode = "find";
             texts = drawn(typing, []);

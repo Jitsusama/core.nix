@@ -5720,8 +5720,13 @@ Scope {
                         // selection is, once there's more than fits. The
                         // row says what it is, so this doesn't.
                         aside: foot.said !== "" ? foot.said
+                            : prompt.narrowSaid ? ""
                             : root.matches.length > root.rows && root.current >= 0
                                 ? `${root.current + 1} of ${root.matches.length}` : ""
+                        // A find narrowing the rows says how far, in normal.
+                        narrowed: root.typed !== "" && root.current >= 0
+                            && root.matches.length > 0
+                            ? `${root.current + 1} of ${root.matches.length}` : ""
                         // What's typed narrows a list, so the left arrow
                         // takes it away whole before it steps back out.
                         leftClears: true

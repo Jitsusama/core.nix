@@ -59,6 +59,12 @@ Item {
     property string hint
     // Said in muted type at the right end of the line.
     property string aside
+    // How far a find narrows the rows, as "3 of 12", said after what's
+    // typed in normal, so a list narrowed always says so; nothing on the
+    // find, where the rows narrow as it's typed (the vi-paradigm spec).
+    property string narrowed
+    readonly property bool narrowSaid: modal && mode === "normal" && narrowed !== ""
+        && input.text !== ""
     readonly property bool capitals: secret && Lights.caps
     readonly property string said: capitals ? "caps lock" : aside
     // How wide an aside is at Note, a pixel to spare, so what's measured to
@@ -1210,11 +1216,26 @@ Item {
             text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
                 : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
+                && !(input.text !== "" && prompt.narrowSaid)
             color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted
             font.family: hintText.level.family
             font.italic: hintText.level.italic
             font.pointSize: hintText.level.pointSize
             font.variableAxes: hintText.level.variableAxes
+        }
+
+        // The narrowed find's count, at Note after what's typed.
+        Text {
+            x: input.contentWidth + Theme.space.m
+            width: Math.max(0, input.width - x)
+            elide: Text.ElideRight
+            anchors.baseline: parent.baseline
+            visible: prompt.narrowSaid
+            text: `\u00b7 ${prompt.narrowed}`
+            color: Theme.muted
+            font.family: Theme.level.note.family
+            font.pointSize: Theme.level.note.pointSize
+            font.features: { "tnum": 1 }
         }
     }
 }
