@@ -44,10 +44,11 @@ function notation(command, short) {
     return `${shortest}[${command.slice(shortest.length)}]`;
 }
 
-// Whether a command never asks, whatever it changes: :set, a row's own
-// included, as Vim's :set never asks (2V74KO, 2026-11-05).
+// Whether a command never asks, whatever it changes: :set and :setl, a
+// row's own included, as Vim's :set and :setlocal never ask (2V74KO,
+// 2026-11-05).
 function neverAsks(command) {
-    return command === "set";
+    return command === "set" || command === "setlocal";
 }
 
 // What an act is named on the line: its verb in lowercase, the word on its
