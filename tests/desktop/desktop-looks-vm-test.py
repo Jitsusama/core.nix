@@ -155,6 +155,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} home's rows say nothing: {card}"
         )
         desktop.photograph(f"launcher-row-words-at-{scale.replace('.', '-')}")
+        # No key is named in a mode where it does nothing: in insert the arrows move the caret,
+        # so home's first row, a place, says Return alone, and in normal its arrow as well.
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        arrowed = [word["text"] for word in foot if set(word["text"]) & {"\u2192", "\u2190"}]
+        assert not arrowed, f"at {scale} insert's foot names an arrow: {arrowed}"
+        desktop.normal()
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        assert any("\u2192" in word["text"] for word in foot), f"at {scale} normal's foot: {foot}"
+        desktop.insert()
         desktop.type_in("kitty")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
         card = desktop.showing()["drawer"]["cardLines"]
@@ -162,7 +171,13 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
             f"at {scale} kitty's row says nothing: {card}"
         )
         desktop.photograph(f"launcher-found-words-at-{scale.replace('.', '-')}")
-        # In normal the caret is a block on the last letter and the foot names no mode, the
+        # The mode's word is the one word saying where his keys go, so it never gives up a
+        # letter; the facts before it give way first.
+        foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
+        mode = [word for word in foot if word["text"] == "insert"]
+        assert mode, f"at {scale} the foot names no mode in insert: {foot}"
+        assert not mode[0]["cut"], f"at {scale} insert's word is cut: {mode[0]}"
+        # In normal the field draws no caret and the foot names no mode, the
         # row's words where insert left them.
         desktop.normal()
         card = desktop.showing()["drawer"]["cardLines"]
@@ -193,6 +208,12 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["labelsWhole"], f"at {scale} a key's name is broken: {drawer}"
+    # Each key and what it does are at Note, as the reader's list sets them, so at 1.5 each
+    # fits on one line. At 2 the plate leaves about 17 letters beside the widest key, so a
+    # longer saying may take a second line, but it always stands beside its key.
+    assert drawer["factsUnder"] == 0, f"at {scale} {drawer['factsUnder']} under their keys"
+    if scale == "1.5":
+        assert drawer["factsWrapped"] == 0, f"at 1.5 {drawer['factsWrapped']} keys wrap: {drawer}"
     assert drawer["more"] or drawer["lines"]["facts"][-1] < drawer["foot"], drawer
     desktop.photograph(f"launcher-keys-at-{scale.replace('.', '-')}")
     desktop.machine.send_key("esc")

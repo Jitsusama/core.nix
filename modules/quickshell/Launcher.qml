@@ -1785,9 +1785,9 @@ Scope {
         if (!choice || choice.gone)
             return [];
         // One Return typed in insert leaves be says Return only where it
-        // steps in.
+        // steps in, and no arrow, since insert's arrows move the caret.
         if (guarded(choice))
-            return holdsMore(choice) ? [["\u21b5 \u2192", ""]] : [];
+            return holdsMore(choice) ? [["\u21b5", ""]] : [];
         // The arrows are said by their marks alone, which Joel knows: the
         // right arrow steps in and the left one steps back wherever they
         // work, so their words only took room from the marks beside them
@@ -1796,16 +1796,22 @@ Scope {
         // takes him.
         const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice);
+        // An arrow is named only in a mode where it steps: in insert they
+        // move the caret, so naming them there named keys that did nothing
+        // of what was said (Joel, 2026-11-04). A line that isn't modal
+        // steps with them at its ends, as it always has.
+        const into = !prompt.modal || QueryKeys.binds("into", "Right", prompt.mode);
+        const out = !prompt.modal || QueryKeys.binds("out", "Left", prompt.mode);
         // One with nothing to do yet (`still`), as the file chooser's Open
         // the Marked before anything is marked, says no Return at all
         // rather than a word Return wouldn't do (VKCF3Z, 2026-11-03).
         const keys = choice.still ? []
-            : [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
+            : [stepping ? [into ? "\u21b5 \u2192" : "\u21b5", more] : ["\u21b5", verbOf(choice)]];
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
-        if (!stepping && holdsMore(choice))
+        if (into && !stepping && holdsMore(choice))
             keys.push(["\u2192", ""]);
-        if (typed === "" && held.length > 0)
+        if (out && typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
         // The drawer's keys, only while it holds more than fits, keeping
         // their word, since Shift and the arrows aren't the arrows alone.
@@ -2273,7 +2279,7 @@ Scope {
     property bool listing: false
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
-        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "",
+        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "", keys: true,
             facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {}) };
     }
     onListingChanged: drawerSettled()
@@ -3865,9 +3871,11 @@ Scope {
             // headline, and the first and last rows wholly in view.
             current: root.current,
             inView: list.inView(),
-            // How wide its caret is drawn: a block or a bar. How lit it is
-            // as it blinks isn't said, since this is said on every change.
+            // How wide its caret is drawn, and whether it's drawn: not in
+            // normal. How lit it is as it blinks isn't said, since this is
+            // said on every change.
             caretWidth: root.hundredths(prompt.caretWidth),
+            caretShown: prompt.caretShown,
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
             // What the field asks while nothing's typed.
@@ -3977,6 +3985,8 @@ Scope {
                     lines: (drawerCard.preview.lines ?? []).length
                 },
                 labelsWhole: drawerCard.labelsWhole(),
+                factsWrapped: drawerCard.factsWrapped(),
+                factsUnder: drawerCard.factsUnder(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
@@ -5130,11 +5140,19 @@ Scope {
                             readonly property string said: counted !== "" ? counted
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
-                            // held whichever shows.
+                            // held whichever shows. A binding doesn't see
+                            // what a call reads, so it reads the face itself,
+                            // to be measured again in the theme's face once
+                            // that arrives: measured in the face before it,
+                            // insert showed as its last letters at scale 2.
                             readonly property real room: {
+                                void measure.font;
                                 const words = Object.values(Words.field.modes ?? {});
-                                return words.length === 0 ? 0 : keys.spacing
-                                    + Math.max(...words.map(word => measure.advanceWidth(word)));
+                                let widest = 0;
+                                for (const word of words)
+                                    widest = Math.max(widest, measure.advanceWidth(word));
+                                return words.length === 0 ? 0
+                                    : keys.spacing + Math.ceil(widest);
                             }
                             x: standing.x + standing.width + keys.spacing
                             width: Math.max(0, room - keys.spacing)
@@ -5142,7 +5160,9 @@ Scope {
                             visible: said !== ""
                             text: said
                             textFormat: Text.PlainText
-                            elide: Text.ElideLeft
+                            // A mode's word is never cut; a count or an ex
+                            // line longer than the room keeps its last letters.
+                            elide: counted !== "" ? Text.ElideLeft : Text.ElideNone
                             color: counted !== "" ? Theme.strong : Theme.accent
                             font: measure.font
                         }

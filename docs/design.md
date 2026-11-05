@@ -1786,10 +1786,11 @@ one table, `QueryKeys.js`.
   bottom" where it went round, and "not found" where no row holds it,
   the selection staying where it was, as Neovim says them. The
   notices' / searches the same way (`Search.js`).
-- **Where the keys go shows twice.** The caret is a bar a quarter of a
-  letter wide in insert and a block on a letter in normal, the letter in
-  the ground's colour, as his Neovim's guicursor draws them (`init.lua`).
-  It fades out and back in over 0.8 s each way after a key, and holds
+- **Where the keys go shows twice.** The caret is a bar a quarter of the
+  mono's letter wide in insert, as his Neovim's guicursor draws it
+  (`init.lua`), and the field draws none in normal, where the keys are on
+  the rows and the selection is where they go. It fades out and back in
+  over 0.8 s each way after a key, and holds
   steady 15 s after the last, as his kitty blinks a cursor, so a launcher
   left still draws nothing more (`jitsusama.quickshell.caret`). The foot
   names the mode in the accent, lowercase, only while it isn't normal
