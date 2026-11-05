@@ -51,6 +51,7 @@ import KeyTimes
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
 import "QueryKeys.js" as QueryKeys
+import "Search.js" as Search
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
@@ -1911,7 +1912,10 @@ Scope {
     // takes the room they need afresh (Prompt.qml's steady). Known by the
     // path, since a refresh makes the same steps again.
     readonly property string stepsTaken: held.map(step => steadyId(step.row)).join("/")
-    onStepsTakenChanged: prompt.forget()
+    onStepsTakenChanged: {
+        prompt.forget();
+        searchGone();
+    }
 
     // How many times the rows have been made, and how many rows drawn
     // afresh, for the check that a refresh redraws only what changed.
@@ -3051,6 +3055,129 @@ Scope {
         keyTimed(arrow, began, heard, pressed);
     }
 
+    // Normal's / and ?, typed on the query line, and n and N, as his Neovim
+    // searches a buffer (docs/design.md, Vi's Keys): each lands on a row
+    // whose words hold what's sought, from the selected row, going round
+    // past the last as wrapscan does, and nothing is filtered or moved.
+    // What's sought is literal, and found in either case unless it has a
+    // capital, as his ignorecase and smartcase have it (Search.js).
+    // The search last run, which n and N go on with, kept across openings
+    // as Neovim keeps it across buffers: "" until one is.
+    property var finding: ({ pattern: "", forward: true })
+    // What the rows' matches are washed for, as hlsearch marks them, ""
+    // for none: the search being typed, or else the last run, until the
+    // launcher steps to another place or closes.
+    property string washing: ""
+    // Where a search being typed began, and what was washed then: as
+    // incsearch does, each letter lands from there, and Escape puts both
+    // back.
+    property int searchFrom: 0
+    property string washedBefore: ""
+    // A search's word for the foot, [mark, word, colour], as Neovim says
+    // "Pattern not found" or where it went round, and the key it was said
+    // for (prompt.keysTaken), since it's said for that key alone.
+    property var searchSaid: null
+    property int searchSaidFor: -1
+    // The rows' words as a search reads them, made once for each list of
+    // rows rather than for each letter, and the list they were made for.
+    property var searchRows: null
+    property var searchRowsOf: null
+
+    // What a row shows, as a search reads it: its name, its count, its
+    // side and, at home, its kind, a line each so nothing is found across
+    // two of them. Lowered, its name is the one its ranking lowered
+    // already (Fuzzy.prepare), which is most of what lowering costs.
+    function searchedWords(row, lowered) {
+        const name = row.name ?? "";
+        const rest = [row.count ?? "", row.side ?? "", held.length === 0 ? kindOf(row) : ""]
+            .join("\n");
+        return lowered ? `${row.prepared?.folded ?? name.toLowerCase()}\n${rest.toLowerCase()}`
+            : `${name}\n${rest}`;
+    }
+
+    function searchable() {
+        if (searchRowsOf !== matches) {
+            searchRows = Search.searchable(matches.map(row => searchedWords(row, false)),
+                matches.map(row => searchedWords(row, true)));
+            searchRowsOf = matches;
+        }
+        return searchRows;
+    }
+
+    // Where a search lands: { at, wrapped }, or null where no row holds it.
+    function landing(pattern, forward, count, from) {
+        return Search.landing(Search.holding(searchable(), pattern), from, forward, count);
+    }
+
+    // Says a search's word for the key just taken.
+    function searchSays(mark, word) {
+        searchSaid = [mark, word, Theme.warning];
+        searchSaidFor = prompt.keysTaken;
+    }
+
+    // The search as the query line types it (Prompt.qml's searched).
+    function rowsSought(pattern, forward, count, how) {
+        searchNow();
+        const words = Words.field.search ?? {};
+        switch (how) {
+        case "begun":
+            searchFrom = current;
+            washedBefore = washing;
+            return;
+        case "typing": {
+            washing = pattern;
+            const landed = pattern === "" ? null : landing(pattern, forward, count, searchFrom);
+            arrowed(landed ? landed.at : searchFrom, forward ? "/" : "?");
+            return;
+        }
+        case "cancelled":
+            washing = washedBefore;
+            arrowed(searchFrom, "Escape");
+            return;
+        }
+        // Return with nothing typed runs the last search again, this way.
+        const sought = pattern !== "" ? pattern : finding.pattern;
+        if (sought === "") {
+            washing = washedBefore;
+            arrowed(searchFrom, "\u21b5");
+            searchSays(Theme.glyph.nothingFound, words.none ?? "");
+            return;
+        }
+        finding = { pattern: sought, forward };
+        searchOn(sought, forward, count, searchFrom, "\u21b5");
+    }
+
+    // n, or N the other way, from the selected row.
+    function searchAgain(act, count) {
+        if (finding.pattern === "") {
+            searchSays(Theme.glyph.nothingFound, (Words.field.search ?? {}).none ?? "");
+            return;
+        }
+        const forward = act === "searchNext" ? finding.forward : !finding.forward;
+        searchOn(finding.pattern, forward, count, current, QueryKeys.keyOf(act, "normal"));
+    }
+
+    // Lands a search, washing what it found, or leaves the selection where
+    // it was and says it found nothing, as Neovim does; a search that went
+    // round says so, by the key that took it there.
+    function searchOn(pattern, forward, count, from, key) {
+        const words = Words.field.search ?? {};
+        washing = pattern;
+        const landed = landing(pattern, forward, count, from);
+        arrowed(landed ? landed.at : from, key);
+        if (!landed)
+            searchSays(Theme.glyph.nothingFound, words.notFound ?? "");
+        else if (landed.wrapped)
+            searchSays(key, (forward ? words.fromTop : words.fromBottom) ?? "");
+    }
+
+    // A step to another place, or the launcher closing, ends what was
+    // washed and said; the search itself stays for n and N.
+    function searchGone() {
+        washing = "";
+        searchSaid = null;
+    }
+
     // Text typed faster than it's searched, as a program types it, reaches
     // the field in one turn of the event loop: wtype's eight letters came in
     // one (2026-11-02). Searched once a letter, a burst's last letter waited
@@ -3664,6 +3791,16 @@ Scope {
             counted: prompt.standing.count,
             begun: prompt.standing.typed.join(""),
             ex: prompt.standing.ex ?? null,
+            // A search: the one being typed, as the line says it with its
+            // / or ?, or null; the last run, which n and N go on with;
+            // what the rows are washed for; and the foot's word for it.
+            search: {
+                typing: prompt.searching === null ? null
+                    : (prompt.searching.forward ? "/" : "?") + prompt.searching.pattern,
+                last: root.finding.pattern,
+                washing: root.washing,
+                said: foot.searchWord
+            },
             // Which row is selected, counted from 0, -1 for an answer's
             // headline, and the first and last rows wholly in view.
             current: root.current,
@@ -3891,6 +4028,7 @@ Scope {
             partingLater.stop();
             fading = false;
             parting = "";
+            searchGone();
             footCatchUp();
             footReset();
             footStage = 0;
@@ -4309,6 +4447,8 @@ Scope {
                             trials.pressed("backs");
                             root.back();
                         }
+                        onSearched: (pattern, forward, count, how) =>
+                            root.rowsSought(pattern, forward, count, how)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
@@ -4341,6 +4481,10 @@ Scope {
                                 return;
                             case "previousFile":
                                 root.beside(-1);
+                                return;
+                            case "searchNext":
+                            case "searchPrevious":
+                                root.searchAgain(act, count);
                                 return;
                             }
                             const view = list.inView();
@@ -4785,10 +4929,18 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
+                        // A search's word, for the key that said it.
+                        readonly property string searchWord: root.searchSaid !== null
+                            && root.searchSaidFor === prompt.keysTaken ? root.searchSaid[1] : ""
                         // A parting word stands where Return was, its
-                        // mark in the success colour.
+                        // mark in the success colour, and a search's word
+                        // there too, for its key, as a search typed says
+                        // what Return does to it.
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
+                            : searchWord !== "" ? [root.searchSaid]
+                            : prompt.searching !== null
+                                ? [["\u21b5", (Words.field.search ?? {}).find ?? ""]]
                             : root.keysFor(choice)
                         // As the card last showed them, while it's closed
                         // (root.cardSeen).

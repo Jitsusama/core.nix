@@ -1,9 +1,11 @@
 // The notices' stack's keys, read from their one table in Qt's own
 // JavaScript engine, the one the shell runs it in. The
-// `the-notices-take-vi-keys` check copies modules/quickshell/NoticeKeys.js
-// beside this file and runs `qml -platform offscreen notice-keys.qml`.
+// `the-notices-take-vi-keys` check copies modules/quickshell/NoticeKeys.js,
+// and Search.js, which finds what the cards say, beside this file and runs
+// `qml -platform offscreen notice-keys.qml`.
 import QtQuick
 import "NoticeKeys.js" as Keys
+import "Search.js" as Search
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -108,12 +110,12 @@ QtObject {
         holds("Escape cancels it", searched(["a", "Escape"]).ends, "cancelled");
         holds("a named key types nothing", searched(["a", "Down"]).pattern, "a");
 
-        holds("lowercase finds either case", Keys.found("build", "Build log, build"),
+        holds("lowercase finds either case", Search.found("build", "Build log, build"),
             [[0, 5], [11, 16]]);
-        holds("a capital finds only itself", Keys.found("Build", "build Build"), [[6, 11]]);
-        holds("nothing sought finds nothing", Keys.found("", "build"), []);
+        holds("a capital finds only itself", Search.found("Build", "build Build"), [[6, 11]]);
+        holds("nothing sought finds nothing", Search.found("", "build"), []);
         holds("a match is washed, the rest escaped",
-            Keys.washed("a<b\nb", "b", { ink: "#fff", ground: "#000" }),
+            Search.washed("a<b\nb", "b", { ink: "#fff", ground: "#000" }),
             "a&lt;<span style=\"color:#fff;background-color:#000\">b</span><br>"
                 + "<span style=\"color:#fff;background-color:#000\">b</span>");
 
