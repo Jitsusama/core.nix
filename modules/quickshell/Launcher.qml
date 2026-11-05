@@ -6937,9 +6937,14 @@ Scope {
                         readonly property real returnAt: width - Theme.space.rung.inset - returnPlace
                         // How far in the keys may reach: as far as the
                         // widest of them has needed since the launcher
-                        // opened, so the left's room holds still too.
+                        // opened, so the left's room holds still too. The
+                        // keys are measured by their advances, as noteKeys
+                        // measures them, not by the row's laid-out width,
+                        // which lags to its next layout pass: opening from
+                        // normal, it still held normal's keys as the facts
+                        // were fitted, and the glance opened cut for good.
                         readonly property real keysFrom: width - Theme.space.rung.inset
-                            - Math.max(root.footKeysWidest, statusLine.keys.implicitWidth)
+                            - Math.max(root.footKeysWidest, root.keysWide(told))
                         // The room the left has, short of the keys and the
                         // mode's word, which keeps its room in every mode so
                         // the facts say the same whichever it is.
