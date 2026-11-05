@@ -1208,6 +1208,10 @@ QtObject {
             ["Ctrl+O and Ctrl+I go back and forward through the places stepped into",
                 ["Escape", "Ctrl+o", "Ctrl+i", "Tab"],
                 ["normal", "jumpBack", "jumpForward", "jumpForward"]],
+            // Ctrl+] goes to the row's own place, as Vim follows a tag: into
+            // the parts of a row whose Return opens it (VKCF3Z, 2026-11-05).
+            ["Ctrl+] follows the row to its own place", ["Escape", "Ctrl+]"],
+                ["normal", "follow"]],
             ["Space ? and F1 show every key here", ["Escape", "Space", "?", "F1"],
                 ["normal", "keys", "keys"]],
             ["Space w closes, as his leader closes a split", ["Escape", "Space", "w"],
@@ -1346,7 +1350,7 @@ QtObject {
             { count: "", typed: [] });
         // Space ? lists the keys by what each line says, its keys as the
         // desktop draws them, Vim's own where an act has them, and its arrow.
-        const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in", run: "run",
+        const lines = { rows: "rows", screen: "screen", up: "up", openIn: "open in", follow: "follow", run: "run",
             lastPlace: "last", jumps: "jumps", find: "find", keys: "keys", close: "close",
             numbers: "numbers", ends: "ends", nextRow: "next row", caret: "caret",
             word: "word", intoDrawer: "into the drawer", lines: "lines", along: "along",
@@ -1363,6 +1367,7 @@ QtObject {
             "Ctrl+F  Ctrl+B");
         holds("the list's way up, - alone, h and l stepping nowhere", keyed("up"), "-");
         holds("and normal's Return, which opens or goes in", keyed("open in"), "\u21b5");
+        holds("and Ctrl+], into what Return opens", keyed("follow"), "Ctrl+]");
         holds("the list's places stepped into, back and forward", keyed("jumps"),
             "Ctrl+O  Ctrl+I");
         holds("the list's fresh find", keyed("find"), "/  ?");
@@ -1488,8 +1493,8 @@ QtObject {
             "viewBottom", "halfDown", "halfUp", "pageDown", "pageUp"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         for (const act of ["run", "intoSaid", "outSaid", "out", "dismiss", "close", "quitSaid",
-            "lastPlace", "jumpBack", "jumpForward", "freshFind", "keys", "numbers", "insert",
-            "change", ""])
+            "lastPlace", "follow", "jumpBack", "jumpForward", "freshFind", "keys", "numbers",
+            "insert", "change", ""])
             holds(`${act || "a count"} is once a press`, Keys.repeats(act), false);
 
         // Twenty rows, the 5th to the 12th wholly in view, a screen of 8,
