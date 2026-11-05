@@ -76,12 +76,14 @@ function copied(actions) {
 }
 
 // The rows a span takes, each with its place, the row at -1 being an
-// answer's headline above them, where there's one.
+// answer's headline above them, where there's one. A row whose thing has
+// gone, which stays in its place until a key, is left out, since there's
+// nothing there to end or copy.
 function taken(rows, span, headline) {
     const these = [];
     for (let at = span.from; at <= span.to; at++) {
         const row = at === -1 ? headline : rows[at];
-        if (row) {
+        if (row && !row.gone) {
             these.push({ at, row });
         }
     }
