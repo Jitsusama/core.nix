@@ -222,12 +222,14 @@ Item {
     // The field's keys, said at its right edge (Joel, 2026-10-28: hints
     // "flush against the text feels wrong and they are not super obvious
     // what they mean"): what completes while a completion shows, and what
-    // clears what's typed (keysSaid says which, in each kind of line). Each
-    // has a place as wide as the widest it can
-    // say, kept whether it says anything or not, so nothing in the field
-    // moves as they come and go with each letter. They're set at the right
-    // edge, past the aside, so neither moves as the aside changes.
-    readonly property bool keyed: leftClears || modal
+    // clears what's typed (keysSaid says which). Each has a place as wide
+    // as the widest it can say, kept whether it says anything or not, so
+    // nothing in the field moves as they come and go with each letter.
+    // They're set at the right edge, past the aside, so neither moves as
+    // the aside changes. A modal line says none: it holds only the find and
+    // how far it narrows, its hints the foot's, by key and lowercase word
+    // (VKCF3Z, 2026-11-05).
+    readonly property bool keyed: leftClears && !modal
     // Whether their place is kept: only while one of them could be said,
     // something typed or something the left arrow took to put back. With
     // neither, no key shows until a letter is typed, so the aside ends at
@@ -235,13 +237,12 @@ Item {
     // empty place (Joel, 2026-11-04: "the text in being inset left from the
     // right edge of the launcher, it looks like shit"). The first letter
     // changes what the aside says anyway, so it moves over then, once.
-    // A modal line clears nothing to put back: normal's h steps out.
     // A question asked once takes no key of the field's, so none is said.
     // Nor do a prompt's words, which nothing clears or brings back. Where
     // even the keys alone would cut the path, they give way, since a key
     // Joel learns once never costs him where he is.
     readonly property bool keysHeld: keyed && asking === "" && !words && keysFit && (typed
-        || (!modal && input.text === "" && cleared !== ""))
+        || (input.text === "" && cleared !== ""))
     readonly property real keysBare: keySlots.reduce((sum, slot) => sum + slotWidth(slot, false),
         0) + (keySlots.length - 1) * fieldKeys.spacing
     readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.l - ledWidth
@@ -260,10 +261,8 @@ Item {
     readonly property string completeKey: modal
         ? prompt.drawn(QueryKeys.keyOf("complete", "find")) : "\u21e5"
     readonly property string clearKey: "\u2190"
-    readonly property var keySlots: modal
-        ? [[[completeKey, keyWords.complete ?? ""]]]
-        : [[[completeKey, keyWords.complete ?? ""]],
-            [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
+    readonly property var keySlots: [[[completeKey, keyWords.complete ?? ""]],
+        [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
     function slotWidth(slot, worded) {
         return Math.max(...slot.map(([key, word]) =>
             fieldKeys.advance(key, worded ? word : "")));
@@ -295,17 +294,14 @@ Item {
         return worded ? word ?? "" : "";
     }
 
-    // What the field says for its keys now: a modal line's one place says
-    // the find's Ctrl+Y while a completion shows; otherwise Tab while a
-    // completion shows, then the left arrow while it clears what's typed or
-    // the right while it puts back what the left took.
-    readonly property var keysSaid: modal
-        ? [typingNow && typed && ghost !== ""
-            ? [completeKey, keyWord(keyWords.complete)] : ["", ""]]
-        : [typed && ghost !== "" ? [completeKey, keyWord(keyWords.complete)] : ["", ""],
-            typed ? [clearKey, keyWord(keyWords.clear)]
-            : input.text === "" && cleared !== "" ? ["\u2192", keyWord(keyWords.restore)]
-            : ["", ""]]
+    // What the field says for its keys now: Tab while a completion shows,
+    // then the left arrow while it clears what's typed or the right while it
+    // puts back what the left took.
+    readonly property var keysSaid: [
+        typed && ghost !== "" ? [completeKey, keyWord(keyWords.complete)] : ["", ""],
+        typed ? [clearKey, keyWord(keyWords.clear)]
+        : input.text === "" && cleared !== "" ? ["\u2192", keyWord(keyWords.restore)]
+        : ["", ""]]
 
     // A key as the field draws it, from the table's name for it: an arrow
     // by its mark, and a letter with Ctrl as a chord is spelled.

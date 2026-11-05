@@ -1968,6 +1968,7 @@ Scope {
             keys.push(["\u2192", ""]);
         if (out && typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
+        keys.push(...findTaught(choice));
         // Where the line holds a prompt's words, it says how to get to
         // normal's keys and to the list of them, just before Return
         // (VKCF3Z, 2026-11-05).
@@ -1978,6 +1979,28 @@ Scope {
             keys.push(["Space ?", said.keys ?? ""]);
         }
         return keys;
+    }
+
+    // What the find teaches in the foot, by key and lowercase word, since
+    // its line holds only the find and how far it narrows (VKCF3Z,
+    // 2026-11-05): the key that takes the completion shown; less to type
+    // where what's typed is longer than it need be, worked out once, since
+    // each start of what's typed asks every pick; and a thing's chord,
+    // since its row says its kind where a chord would be. Only the
+    // selection's, as the foot says, so the rows' widths never ask it.
+    function findTaught(choice) {
+        if (!prompt.modal || prompt.mode !== "find" || choice !== selected)
+            return [];
+        const hints = Words.field.hints ?? {};
+        const taught = [];
+        if (typed !== "" && prompt.ghost !== "")
+            taught.push([prompt.completeKey, hints.complete ?? ""]);
+        const shorter = enough(choice);
+        if (shorter !== "")
+            taught.push([shorter, hints.enough ?? ""]);
+        else if (kindOf(choice) !== "" && (choice.chord ?? []).length > 0)
+            taught.push([chordText(choice.chord), hints.nextTime ?? ""]);
+        return taught;
     }
 
     // Normal's keys for a row: Return's act, l where it steps in, h where
@@ -6448,16 +6471,7 @@ Scope {
                                 return root.answer.missed === true ? "" : root.answer.note ?? "";
                             if (root.held.length > 0)
                                 return root.held[0].row.context ?? "";
-                            // What's typed is longer than it need be,
-                            // worked out once, since each start of what's
-                            // typed asks every pick.
-                            const shorter = root.enough(choice);
-                            if (shorter !== "")
-                                return `${shorter} is enough`;
-                            // A thing's row says its kind where a chord
-                            // would be, so its chord is taught here.
-                            return root.kindOf(choice) !== "" && (choice.chord ?? []).length > 0
-                                ? `next time ${root.chordText(choice.chord)}` : "";
+                            return "";
                         }
 
                         width: parent.width

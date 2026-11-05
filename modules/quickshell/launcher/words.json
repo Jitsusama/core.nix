@@ -6698,7 +6698,10 @@
       "keys": "keys",
       "notHere": "not here",
       "quit": "does nothing",
-      "quits": "closes"
+      "quits": "closes",
+      "complete": "complete",
+      "nextTime": "next time",
+      "enough": "is enough"
     },
     "listed": {
       "eyebrow": "Keys",
