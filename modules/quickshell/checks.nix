@@ -536,7 +536,8 @@ onLinux {
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place
-  # (tests/launcher-words.py), printing each word to settle.
+  # (tests/launcher-words.py), printing each word to settle; and its own
+  # file gives no key twice in one entry, which the account's copy hides.
   the-launcher-means-one-thing-a-word =
     let
       home = account graphical;
@@ -544,7 +545,8 @@ onLinux {
       words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
-      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${marks}
+      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${marks} \
+        ${./launcher/words.json}
       touch $out
     '';
 
