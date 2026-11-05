@@ -296,10 +296,10 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 FLASH_FRAMES = 8
 
 
-def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
+def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Y flashes the row it copies, and d's ask takes Return's place and moves nothing."""
+    """Y flashes the row it copies, and d's ask stands on the line, tinting what it covers."""
     machine = desktop.machine
     # A second window, so dj has two to close and asks once for both,
     # where one closes at once.
