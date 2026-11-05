@@ -3893,7 +3893,7 @@
     {
       "id": "verb:on:quiet:more",
       "command": "set",
-      "argument": "quiet",
+      "argument": "dnd+=60",
       "in": "on",
       "name": "An Hour More",
       "verb": "extend",

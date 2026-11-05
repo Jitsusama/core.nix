@@ -38,6 +38,13 @@ Singleton {
         Niri.spawn(["systemctl", "--user", "stop", "caffeinate-lid.service"]);
     }
 
+    // Keeps it awake from asleep or awake alike, only while the lid is open,
+    // as :set awake=open does.
+    function keepOpen() {
+        Niri.spawn(["systemctl", "--user", "start", "caffeinate.service"]);
+        open();
+    }
+
     function release() {
         Niri.spawn(["systemctl", "--user", "stop", "caffeinate.service"]);
     }
