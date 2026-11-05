@@ -10,12 +10,16 @@ argument, as :new . or :answer yes, which for :set is the whole word the
 row sets, since switches and levels are options, as :set nowifi and :set
 volume+=5; a bang, the other way, as :skip! goes back and :w! replaces;
 or a range of every row, %, as :%forg, only on an act that takes rows.
-Fails, naming each, on a verb with no command or one the language hasn't
-got, a :set with nothing to set, an argument with spaces around it, a
-range on an act that takes none, and two verbs on one row that the line
-can't tell apart, since two acts on a row differ by what follows the
-command, never by order (VKCF3Z's spec, The Command Line). And so does the check itself, should a
-rule stop refusing what it's there for, or refuse what sits beside it.
+A verb Return alone does, as Open the Marked on what's gathered, says so
+as the key language's do and names no command, since a command that
+lists, as :args, can't also open. Fails, naming each, on a verb with no
+command or one the language hasn't got, a :set with nothing to set, an
+argument with spaces around it, a range on an act that takes none, a
+verb Return alone does that names a command too, and two verbs on one
+row that the line can't tell apart, since two acts on a row differ by
+what follows the command, never by order (VKCF3Z's spec, The Command
+Line). And so does the check itself, should a rule stop refusing what
+it's there for, or refuse what sits beside it.
 """
 
 import json
@@ -116,6 +120,10 @@ REFUSED: list[tuple[str, list[Entry]]] = [
         [{"id": "verb:bad", "in": "x", "command": "set", "argument": "wifi", "range": "%"}],
     ),
     (
+        "a verb Return alone does naming a command",
+        [{"id": "verb:bad", "in": "x", "act": "do", "command": "forget"}],
+    ),
+    (
         "two verbs alike on a row",
         [
             {"id": "verb:one", "in": "x", "command": "forget"},
@@ -133,7 +141,8 @@ REFUSED: list[tuple[str, list[Entry]]] = [
 
 # What sits beside each rule's edge and isn't refused: one command on two
 # rows, or on two pieces of what's on; one told apart on a row by an
-# argument, a bang or every row; and a thing that isn't a verb.
+# argument, a bang or every row; one Return alone does, beside one with
+# no argument; and a thing that isn't a verb.
 ALLOWED: list[Entry] = [
     {"id": "verb:a", "in": "x", "command": "forget"},
     {"id": "verb:b", "in": "y", "command": "forget"},
@@ -142,6 +151,7 @@ ALLOWED: list[Entry] = [
     {"id": "verb:g", "in": "x", "command": "forget", "bang": True},
     {"id": "verb:e", "in": "x", "command": "set", "argument": "wifi"},
     {"id": "verb:f", "in": "x", "command": "set", "argument": "volume+=5"},
+    {"id": "verb:h", "in": "x", "act": "do"},
     {"id": "verb:on:waiting:go", "in": ON, "command": "forget"},
     {"id": "verb:on:playing:go", "in": ON, "command": "forget"},
     {"id": "thing:not-a-verb", "in": "x"},
