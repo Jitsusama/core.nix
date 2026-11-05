@@ -469,8 +469,11 @@ ShellRoot {
             expect("normal's caret rests on the last letter", typing.caret === 1,
                 `at ${typing.caret} of "${typing.text}"`);
             texts = drawn(typing, []).sort((a, b) => a.from - b.from);
-            expect("typed in normal, the launcher's field says the left arrow clears",
-                texts.length > 0 && texts[texts.length - 1].text.includes("clear"), said(texts));
+            // Normal's h steps out rather than clearing, so the field names
+            // no key of its own there; the foot says normal's.
+            expect("typed in normal, the launcher's field names no key",
+                texts.length > 0 && !texts.some(t => t.text.includes("\u2190")
+                    || t.text.includes("Ctrl+Y")), said(texts));
             typing.mode = "find";
             turns.begin();
         } catch (error) {
