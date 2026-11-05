@@ -4676,7 +4676,13 @@ Scope {
     // line of the head, its text an inset and a step in from each side; a
     // name is never broken across lines, and its time tells two apart.
     readonly property int drawerLeast: 288
-    readonly property real drawerGap: Theme.space.m
+    // Card and drawer are two frames that belong together, so they stand
+    // the frames rung apart, wider than the inset either holds its text
+    // in, and the pair the screen rung from the screen's edges, wider
+    // again, so they read as two frames rather than one box's seam
+    // (docs/design.md, The Ladder).
+    readonly property real drawerGap: Theme.space.rung.frames
+    readonly property real drawerMargin: Theme.space.rung.screen
     // The card's lines the drawer's are set on, down from its top: the
     // field's centre, the prompt an inset inside the frame, and the first
     // row's, below the field, its hairline and the list's inset.
@@ -4709,7 +4715,7 @@ Scope {
     }
     readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
     readonly property real drawerRoom: !screenHere ? 0
-        : screenHere.width - centred - width - drawerGap - Theme.space.xl
+        : screenHere.width - centred - width - drawerGap - drawerMargin
     // Whether the screen can't give the drawer its least beside the card
     // even with the card left of centre, as a 1080p screen at 2 can't.
     // There it isn't squeezed until a word breaks (VKCF3Z, 2026-11-05:
@@ -4717,15 +4723,15 @@ Scope {
     // place and width, as Vim's preview opens in the one window there is,
     // and gives it back as they come out.
     readonly property bool drawerOver: !!screenHere
-        && screenHere.width - width - drawerGap - 2 * Theme.space.xl < drawerLeast
+        && screenHere.width - width - drawerGap - 2 * drawerMargin < drawerLeast
     // Whether the keys are in the drawer, choosing in it or not.
     readonly property bool drawerHolds: QueryKeys.paged(prompt.mode)
     // The room beside the card the surface holds for the drawer.
     readonly property real drawerBeside: drawerOver ? 0 : drawerGap + drawerWidth
     readonly property real drawerWidth: !screenHere ? 0 : drawerOver ? width
         : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom) : drawerLeast
-    readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
-        Math.min(centred, screenHere.width - Theme.space.xl - drawerBeside - width))
+    readonly property real cardLeft: !screenHere ? 0 : Math.max(drawerMargin,
+        Math.min(centred, screenHere.width - drawerMargin - drawerBeside - width))
     // A quarter down; over a viewer low, its foot a twelfth of the screen
     // up, as the lock screen sits, so the picture or the video its line
     // acts on stays in view above it, as Vim's command line sits at the
