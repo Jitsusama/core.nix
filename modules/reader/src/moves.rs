@@ -51,8 +51,8 @@ fn starts_paragraph(blocks: &[Block], at: usize) -> bool {
     }
 }
 
-/// } and { for `times`, and ]] and [[ with `headings`: where the view's top
-/// goes, `times` paragraphs or headings on from `at_pt` or back. Past the
+/// } and { for `times`, and ]] and [[ with `headings`: where the cursor's
+/// line goes, `times` paragraphs or headings on from `at_pt` or back. Past the
 /// last one it's the page's end, and before the first its top, as vi's go
 /// to the file's ends.
 pub fn block_from(
@@ -103,7 +103,12 @@ pub fn block_from(
 /// The lines wholly in a view from `top_pt` to `foot_pt`, by their places
 /// among the page's.
 fn in_view(lines: &[Line], top_pt: f64, foot_pt: f64) -> Vec<usize> {
-    (0..lines.len())
+    // The lines come down the page by baseline, and a line whose top and
+    // foot are in view has its baseline there too, so only the view's own
+    // are looked at, however long the page: the window asks every frame.
+    let from = lines.partition_point(|line| line.baseline_pt < top_pt - SAME_PT);
+    let to = from + lines[from..].partition_point(|line| line.baseline_pt <= foot_pt);
+    (from..to)
         .filter(|&i| top_of(&lines[i]) >= top_pt - SAME_PT && foot_of(&lines[i]) <= foot_pt)
         .collect()
 }
@@ -135,14 +140,29 @@ pub fn cursor(lines: &[Line], top_pt: f64, foot_pt: f64, aim_pt: Option<f64>) ->
 /// go by the lines shown. Lines side by side on one baseline, a table's
 /// cells or a bullet and its item, are one row, whose line is the leftmost.
 pub fn line_by(lines: &[Line], from: usize, by: isize) -> usize {
-    let starts: Vec<usize> = (0..lines.len())
-        .filter(|&i| i == 0 || (lines[i].baseline_pt - lines[i - 1].baseline_pt).abs() >= SAME_PT)
-        .collect();
-    let Some(row) = starts.iter().rposition(|&start| start <= from) else {
+    let starts =
+        |i: usize| i == 0 || (lines[i].baseline_pt - lines[i - 1].baseline_pt).abs() >= SAME_PT;
+    if lines.is_empty() {
         return from;
-    };
-    let to = row.saturating_add_signed(by).min(starts.len() - 1);
-    starts[to]
+    }
+    // Walked out from `from` a row at a time, rather than every row of the
+    // page found first, so a step costs the lines it passes.
+    let mut row = (0..=from.min(lines.len() - 1))
+        .rev()
+        .find(|&i| starts(i))
+        .unwrap_or(0);
+    for _ in 0..by.unsigned_abs() {
+        let next = if by > 0 {
+            (row + 1..lines.len()).find(|&i| starts(i))
+        } else {
+            (0..row).rev().find(|&i| starts(i))
+        };
+        match next {
+            Some(next) => row = next,
+            None => break,
+        }
+    }
+    row
 }
 
 /// The cursor's line once the view has moved without it, as Ctrl+E and

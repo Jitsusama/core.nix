@@ -146,6 +146,42 @@ pub enum Act {
     Rest,
 }
 
+impl Act {
+    /// Whether a held key does it again, as a held j goes on down the
+    /// page: only what moves the view, the cursor or a selection's end,
+    /// so a held y copies once and a held v starts one selection.
+    pub fn repeats(self) -> bool {
+        matches!(
+            self,
+            Act::Down
+                | Act::Up
+                | Act::Left
+                | Act::Right
+                | Act::ScrollDown
+                | Act::ScrollUp
+                | Act::HalfDown
+                | Act::HalfUp
+                | Act::ScreenDown
+                | Act::ScreenUp
+                | Act::ParagraphOn
+                | Act::ParagraphBack
+                | Act::HeadingOn
+                | Act::HeadingBack
+                | Act::SameWordOn
+                | Act::SameWordBack
+                | Act::Next
+                | Act::Previous
+                | Act::JumpBack
+                | Act::JumpForward
+                | Act::WordOn
+                | Act::WordBack
+                | Act::WordEnd
+                | Act::ZoomIn
+                | Act::ZoomOut
+        )
+    }
+}
+
 /// Where a key works: at rest, while selecting, or both.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum In {
@@ -722,6 +758,18 @@ impl Machine {
         (act, count)
     }
 
+    /// Takes a key the keyboard repeats while it's held. Only an act that
+    /// moves goes on; a repeat neither starts a sequence nor ends one, so
+    /// a held y copies once, from its press, and leaves nothing waiting.
+    pub fn held(&mut self, key: Key, selecting: bool) -> Option<(Act, Option<u32>)> {
+        if self.count.is_some() || !self.pending.is_empty() {
+            return None;
+        }
+        let done = self.press(key, selecting).filter(|(act, _)| act.repeats());
+        self.reset();
+        done
+    }
+
     fn reset(&mut self) {
         self.count = None;
         self.pending.clear();
@@ -856,6 +904,26 @@ mod tests {
         text.chars()
             .filter_map(|c| machine.press(Char(c), selecting))
             .collect()
+    }
+
+    #[test]
+    fn a_held_key_goes_on_only_when_it_moves() {
+        let mut machine = Machine::default();
+        assert_eq!(machine.held(Char('j'), false), Some((Act::Down, None)));
+        assert_eq!(machine.held(Char('w'), true), Some((Act::WordOn, None)));
+        assert_eq!(typed(&mut machine, "yy"), [(Act::CopyPiece, None)]);
+        assert_eq!(machine.held(Char('y'), false), None, "a held y copies once");
+        assert_eq!(
+            typed(&mut machine, "j"),
+            [(Act::Down, None)],
+            "and leaves nothing waiting"
+        );
+        assert!(typed(&mut machine, "g").is_empty());
+        assert_eq!(machine.held(Char('g'), false), None, "nor ends a sequence");
+        assert_eq!(typed(&mut machine, "g"), [(Act::First, None)]);
+        assert_eq!(machine.held(Char('v'), false), None);
+        assert_eq!(machine.held(Char('5'), false), None);
+        assert_eq!(typed(&mut machine, "j"), [(Act::Down, None)]);
     }
 
     #[test]
