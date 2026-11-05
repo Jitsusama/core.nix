@@ -5550,6 +5550,10 @@ Scope {
                                 root.land(root.selected);
                             else if (act === "ran")
                                 root.run(root.selected, false);
+                            // A doubled Return is the landing's own press,
+                            // so the landing still says what a second does.
+                            else
+                                root.landedKeys = prompt.keysTaken;
                             root.returned = { act: act, pressed: pressed > 0 ? pressed : null,
                                 heard: heard, done: KeyTimes.now() };
                         }
