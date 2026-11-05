@@ -694,11 +694,11 @@ def left_lantern(desktop: Desktop) -> int:
 
 
 def disconnects_and_takes_back(desktop: Desktop) -> None:
-    """End Lantern by dd, unasked; Ctrl+R finds nothing to redo, and . asks to forget it.
+    """End Lantern by dd, unasked; Ctrl+R finds nothing to redo, and . nothing left to end.
 
     dd on a network disconnects it, never forgets it, and doesn't ask, since u joins it again;
-    the foot says so until the next key. Disconnected, its row's end is Forget, which can't be
-    undone, so . asks, and Escape keeps it. wifid joins it again for the steps after.
+    the foot says so until the next key. Disconnected, it has no end, since d never forgets a
+    network, so . doing dd again says so. wifid joins it again for the steps after.
     """
     machine = desktop.machine
 
@@ -724,12 +724,11 @@ def disconnects_and_takes_back(desktop: Desktop) -> None:
     )
     machine.send_key("ctrl-r")
     desktop.launcher_until(lambda shown: shown["operated"].endswith("Already at newest change"))
-    # Once the row says it's only saved, . ends it as that row ends.
+    # Once the row says it's only saved, . does dd again on it, which
+    # finds nothing to end.
     desktop.launcher_until(lantern_reads("saved"))
-    with desktop.told("ask ready"), desktop.told("asked Forget Lantern? (y/n)"):
-        machine.send_chars(".")
-    with desktop.told("answered no"):
-        machine.send_key("esc")
+    machine.send_chars(".")
+    desktop.launcher_until(lambda shown: shown["operated"].endswith("nothing to end"))
     desktop.close_launcher()
     wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
     machine.succeed(f'{wifi}.Join \'{{"name": "Lantern"}}\'')
