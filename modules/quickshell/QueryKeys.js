@@ -6,6 +6,7 @@
 // where letters type, and Escape gives normal, where nothing types.
 // Letters go by what they type, wherever they sit on the layout.
 .pragma library
+.import "LineEditing.js" as LineEditing
 
 // Each act, the mode it's done in and the keys that do it. A key is named as
 // the field names it (Prompt.qml, `named`): a modifier, then the letter it
@@ -202,14 +203,19 @@ function counted(count) {
     return count > 1 ? `.,.+${count - 1}` : count === 1 ? "." : "";
 }
 
-const printable = /^[!-~]$/;
+// The field names a Ctrl chord by its letter as typed, and the line's
+// editing (LineEditing.js) by the letter's capital, as Vim's help writes it.
+const ctrlLetter = /^Ctrl\+[a-z]$/;
 
 // A key typed in the drawer's search, held in how the keys stand as
 // `seek`, { pattern, forward }, while it's open, as Vim types / and ? on
 // its command line: Return runs it, with the count typed before the /,
 // and says what it sought, an empty pattern seeking the last again as
-// Vim's does; Escape lets it go, as Backspace does with nothing left; and
-// anything printable is typed, a page's keys among them, as a space is.
+// Vim's does; Escape or Ctrl+C lets it go, as Backspace or Ctrl+H does
+// with nothing left. Every other key edits it as the find line and the
+// command line are edited (LineEditing.js): Ctrl+W takes the word before,
+// Ctrl+U all of it, and anything printable is typed, a page's keys among
+// them, as a space is.
 function seekRead(standing, key) {
     const seek = standing.seek;
     const open = pattern => ({ act: "", count: 0,
@@ -219,16 +225,12 @@ function seekRead(standing, key) {
         return { act: "seek", count: standing.count === "" ? 0 : Number(standing.count),
             sought: seek, standing: rest(), ours: true };
     }
-    if (key === "Escape" || (key === "Backspace" && seek.pattern === "")) {
+    const chord = ctrlLetter.test(key) ? `Ctrl+${key.slice(-1).toUpperCase()}` : key;
+    const edited = LineEditing.edit(LineEditing.line(seek.pattern), chord, false);
+    if (key === "Escape" || chord === "Ctrl+C" || edited.act === "leave") {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
-    if (key === "Backspace") {
-        return open(seek.pattern.slice(0, -1));
-    }
-    if (key === "Space") {
-        return open(`${seek.pattern} `);
-    }
-    return open(printable.test(key) ? seek.pattern + key : seek.pattern);
+    return open(edited.line.text);
 }
 
 const digit = /^[0-9]$/;
