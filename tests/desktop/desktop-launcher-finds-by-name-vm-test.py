@@ -328,7 +328,8 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
     returned = desktop.showing()["returned"]
     assert returned["act"] == "ran", returned
     took = returned["done"] - returned["heard"]
-    print(f"Return opened kitty {took} ms after it was heard, pressed at {returned['pressed']}")
+    whole = returned["done"] - returned["pressed"]
+    print(f"Return opened kitty {whole:.1f} ms after it was pressed, {took:.1f} after heard")
     assert took < FRESH_RETURN_MS, returned
     machine.wait_until_succeeds(
         desktop.in_session(f"test $({windows}) -gt {kitties}"), timeout=dt.timedelta(seconds=60)
