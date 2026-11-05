@@ -1112,17 +1112,34 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     assert (desktop.showing()["sigil"], desktop.showing()["lead"] != "") == ("/", True)
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
-    # Disconnect It found and Return only lands on it, in normal, its side and the foot
-    # saying what a second Return does, until the next key.
+    # Disconnect It found never disconnects on Return, from the find or from normal: Return
+    # puts :disconnect on the command line, naming it at the foot's end, and a Return
+    # doubled with it does nothing more there (VKCF3Z's re-spec, 2026-11-05).
     desktop.type_in("disc", selecting="Disconnect It")
-    machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: (shown["mode"], shown["landed"]) == ("normal", "disconnect")
-    )
     told = desktop.showing()["selected"]["told"]
-    assert told[:1] == ["\u21b5 disconnect"], told
-    desktop.photograph("launcher-landed")
+    assert told[:1] == ["\u21b5 :disconnect"], told
+    desktop.press_at_once("ret ret")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "disconnect")
     desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    shown = desktop.showing()
+    assert (shown["returned"]["act"], shown["command"]["line"]) == ("lined", "disconnect"), shown
+    assert "disconnect Disconnect It" in shown["command"]["menu"], shown["command"]
+    desktop.photograph("launcher-lined")
+    # Let go of, back on the find, and from normal too Return only writes the line, while
+    # the row and the foot name d, which carries it at once.
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
+    desktop.normal()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("carried") == "d disconnect")
+    told = desktop.showing()["selected"]["told"]
+    assert told[0] == "\u21b5 :disconnect", told
+    assert "d disconnect" in told, told
+    assert not any(key.startswith(": ") for key in told), told
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "disconnect")
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # Shift, Ctrl and Alt with Return do nothing at all.
     for chord in ("shift-ret", "ctrl-ret", "alt-ret"):
@@ -1132,7 +1149,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     shown = desktop.showing()
     assert (shown["open"], shown["landed"]) == (True, ""), shown
     # Let go of, it's still joined, for the command line to disconnect it; Wi-Fi Off below
-    # is landed on and done by a second Return.
+    # goes to the line too, and a fresh Return there does it.
     desktop.close_launcher()
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # In normal, dd on the network ends it by disconnecting it, never by
@@ -1262,19 +1279,24 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.close_launcher()
     says_how_wi_fi_is_set(desktop)
-    # Turning Wi-Fi off is an action like any, found by name from the top,
-    # where Return lands on it, saying a second Return turns it off, and
-    # only that second Return does. Two Returns closer together than Joel
-    # presses two, as a key bounced, are the landing's one press doubled,
-    # so they only land too.
+    # Turning Wi-Fi off is an action like any, found by name from the top. It ends what
+    # Wi-Fi holds, so Return puts :set nowifi on the command line, the row naming the
+    # line rather than d, which carries none of it; two Returns closer together than
+    # Joel presses two, as a key bounced, are one press doubled, so they only write it.
+    # A fresh Return there turns it off.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("wifi off", selecting="Wi-Fi Off")
+    desktop.normal()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("carried") == ":set nowifi")
+    told = desktop.showing()["selected"]["told"]
+    assert told[0] == "\u21b5 :set nowifi", told
+    assert ": commands" in told, told
     desktop.press_at_once("ret ret")
-    desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "off"))
+    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "set nowifi")
     desktop.held_still(timedelta(seconds=2))
     machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
-    assert desktop.showing()["returned"]["act"] == "", desktop.showing()["returned"]
+    assert desktop.showing()["returned"]["act"] == "lined", desktop.showing()["returned"]
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
