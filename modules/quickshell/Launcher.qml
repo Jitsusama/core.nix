@@ -2092,11 +2092,30 @@ Scope {
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
     // under the selection. They open as wide as most rows need, Return's
-    // place as wide as "connect" and the keys as wide as a setting's with
-    // more behind it, so the first letter typed doesn't move them: grown only as
-    // rows came, Return moved in as soon as Joel typed, since home's rows
-    // say less than what a letter finds.
-    readonly property string footVerbRoom: "connect"
+    // place as wide as the widest Return word and the keys as wide as a
+    // setting's with more behind it, so the first letter typed doesn't move
+    // them: grown only as rows came, Return moved in as soon as Joel typed,
+    // since home's rows say less than what a letter finds.
+    readonly property string footVerbRoom: widestVerb(Words.all.things ?? [])
+
+    // The widest verb the words file names, in any of its states, as the
+    // foot draws it after Return (VKCF3Z, 2026-11-05: "Hold room at the
+    // far end for the widest Return word the words file names"). A room
+    // kept for "connect" alone let "\u21b5 brighten" move Return on the
+    // first letter; "connect", which a network's source says, stays the
+    // least. A source's own wider verb may still move it once.
+    function widestVerb(things) {
+        let widest = "connect";
+        for (const entry of things) {
+            const states = Object.values(entry.states ?? {});
+            for (const verb of [entry.verb].concat(states.map(state => state.verb))) {
+                if (typeof verb === "string"
+                    && keys.advance("\u21b5", verb) > keys.advance("\u21b5", widest))
+                    widest = verb;
+            }
+        }
+        return widest;
+    }
     // Return, then the widest key a row adds beside it on the find, where
     // the launcher opens: as wide as Shift+Return's "below" beside a mark.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom],
