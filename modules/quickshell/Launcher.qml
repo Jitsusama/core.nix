@@ -1927,8 +1927,8 @@ Scope {
             return [];
         // In visual, Return opens the selection's rows it can, by count.
         if (visual)
-            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row))
-                .length, Words.field.visual ?? {})]];
+            return [["\u21b5", Operators.opensSaid(visualRows().filter(row => Catalogue.opens(row,
+                commandNamed(row))).length, Words.field.visual ?? {})]];
         // The row landed on says the act a second Return does, in the
         // accent, since it's the one key that changes something now.
         if (choice === selected && landedOn(choice))
@@ -4002,7 +4002,7 @@ Scope {
         const place = held.length > 0 ? held[held.length - 1].row : null;
         if (place && typeof place.takes === "function" && place.takes(rows) === true)
             return;
-        const opening = rows.filter(row => Catalogue.opens(row));
+        const opening = rows.filter(row => Catalogue.opens(row, commandNamed(row)));
         const said = Operators.openedSaid(opening.length, rows.length,
             Words.field.visual ?? {});
         if (said !== "")

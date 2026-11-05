@@ -74,10 +74,12 @@ function ends(row) {
 // something, as one that stays to show its new state does (Joel,
 // 2026-10-26), nor one that ends or disrupts, nor a place, which Return
 // steps into, since Return in visual never changes anything (Y2YBTS's
-// yes, 2026-11-04).
-function opens(row) {
+// yes, 2026-11-04); and never one the key language says changes, given
+// the row's command as changesState is, so Return on one row and over a
+// selection agree.
+function opens(row, command = {}) {
     return typeof row.run === "function" && kindOf(row) === "action" && !row.stays
-        && !ends(row) && !disruptive(row);
+        && !ends(row) && !disruptive(row) && !changesState(row, command);
 }
 
 // The commands the guess holds quiet, whatever the row: it only copies,
