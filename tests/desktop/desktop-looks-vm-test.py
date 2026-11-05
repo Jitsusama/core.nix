@@ -316,8 +316,15 @@ def stands_in_the_mode_words_room(desktop: Desktop, typed: str, shot: str) -> No
 # for the screen to hold still, so the screen is taken as fast as QEMU
 # gives it, and the picture kept is the one furthest from the screen once
 # the flash has gone. Whether y flashed is held by what the launcher says;
-# the picture is for a person.
+# the picture is for a person, so where no frame caught it, as an answer's
+# ghost was missed at both scales on 2026-11-05, y copies again, up to
+# three times. A frame that missed it differs from the screen after by a
+# mean light under 0.005, and a row's flash caught by 1.1 (2026-11-05); a
+# ghost's covers a few letters, a tenth of a row, so a twentieth of a step
+# tells them apart.
 FLASH_FRAMES = 8
+FLASH_TRIES = 3
+FLASH_SEEN = 0.05
 
 
 def test_y_flashes_its_rows_and_ds_ask_stands_on_the_line(
@@ -393,13 +400,16 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     """Copy what's selected with yy, see `rows` flash, and keep the frame furthest from after."""
     machine = desktop.machine
     desktop.normal()
-    since = desktop.mark()
-    machine.send_chars("yy")
-    frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
-    desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
-    desktop.launcher_until(lambda shown: shown["flashing"] == [])
-    after = desktop.settled_screen(settled)
-    flashed = max(frames, key=partial(changed_from, after))
+    for _ in range(FLASH_TRIES):
+        since = desktop.mark()
+        machine.send_chars("yy")
+        frames = [desktop.screen_now() for _ in range(FLASH_FRAMES)]
+        desktop.reported("showing ", lambda said: json.loads(said).get("flashing") == rows, since)
+        desktop.launcher_until(lambda shown: shown["flashing"] == [])
+        after = desktop.settled_screen(settled)
+        flashed = max(frames, key=partial(changed_from, after))
+        if changed_from(after, flashed) > FLASH_SEEN:
+            break
     if desktop.values["photographs"]:
         flashed.save(machine.out_dir / f"{flash}.png")
     desktop.close_launcher()
