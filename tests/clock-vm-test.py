@@ -45,7 +45,7 @@ def syncing(driver: Driver, machines: dict[str, BaseMachine], silent: str) -> Ba
 
 
 def test_chrony_is_told_the_networks_server(syncing: BaseMachine, silent: str) -> None:
-    """chrony is told the network's server, as it's named, beside the machine's own."""
+    """Chrony is told the network's server, as it's named, beside the machine's own."""
     syncing.wait_until_succeeds(
         f"chronyc -n -c sources | cut -d, -f3 | grep -qx {silent}", timeout=HEARING
     )
@@ -62,4 +62,5 @@ def test_the_clock_sets_from_the_machines_own_server(syncing: BaseMachine, silen
     chosen = [line.split(",")[2] for line in sources if line.split(",")[1] == "*"]
     assert chosen == ["server"], sources
     unheard = [line for line in sources if line.split(",")[2] == silent]
-    assert unheard and unheard[0].split(",")[1] == "?", sources
+    assert unheard, sources
+    assert unheard[0].split(",")[1] == "?", sources

@@ -265,6 +265,7 @@
         camera = ./modules/camera/nixos.nix;
         cargo = ./modules/cargo/nixos.nix;
         chrome = ./modules/chrome/nixos.nix;
+        chrony = ./modules/chrony/nixos.nix;
         console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
         creative-pebble-x-plus = ./modules/creative-pebble-x-plus/nixos.nix;
@@ -331,7 +332,6 @@
         systemd = ./modules/systemd/nixos.nix;
         systemd-networkd = ./modules/systemd-networkd/nixos.nix;
         tcp = ./modules/tcp/nixos.nix;
-        timesyncd = ./modules/timesyncd/nixos.nix;
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
         unlisted = ./modules/unlisted/nixos.nix;

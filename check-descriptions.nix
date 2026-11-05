@@ -1896,7 +1896,7 @@
     the firmware's unreadable clock from taking rtc0
   '';
   the-surface-keeps-the-clock-its-firmware-starts-from = ''
-    the Surface Laptop 4 reads its controller's clock for the firmware's offset before timesyncd
+    the Surface Laptop 4 reads its controller's clock for the firmware's offset before chrony
     starts, through the device the controller's module gives, and sets that clock at shutdown and
     every hour
   '';
