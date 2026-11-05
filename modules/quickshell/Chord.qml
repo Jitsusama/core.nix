@@ -1,8 +1,10 @@
 // A chord, key by key as the desktop draws them (home.nix, keyFaces): a
 // key's own glyph where one exists, its name where none does, joined by +.
-// In a sequence a key pressed after the one before stands a space apart,
-// with no +. At Note and muted, since a chord says how and the row says
-// what.
+// In a sequence a key pressed after the one before stands apart from it
+// with no +. A chord is one token, so its parts are tied (docs/design.md,
+// Space, The Ladder): a + a tie from each key, and a key pressed after
+// another a tie from it, so "Space ?" reads as one chord and never as two
+// keys. At Note and muted, since a chord says how and the row says what.
 pragma ComponentBehavior: Bound
 import QtQuick
 
@@ -31,10 +33,11 @@ Flow {
             required property var modelData
             required property int index
 
-            // A part takes the room its glyph draws into, and each + keeps
-            // the same distance from both its keys.
+            // A part takes the room its glyph draws into past its advance,
+            // a tie's worth, and each + keeps the same distance from both
+            // its keys.
             leftPadding: index === 0 ? 0 : plus.width
-            rightPadding: modelData.wide ? Theme.space.xs : 0
+            rightPadding: modelData.wide ? Theme.space.rung.tie : 0
             text: modelData.text
             color: chord.colour
             font.family: chord.level.family
@@ -44,8 +47,8 @@ Flow {
             Text {
                 id: plus
                 visible: parent.index > 0
-                width: parent.modelData.after === true ? Theme.space.l
-                    : implicitWidth + 2 * Theme.space.s
+                width: parent.modelData.after === true ? Theme.space.rung.tie
+                    : implicitWidth + 2 * Theme.space.rung.tie
                 horizontalAlignment: Text.AlignHCenter
                 text: parent.modelData.after === true ? "" : "+"
                 color: chord.colour

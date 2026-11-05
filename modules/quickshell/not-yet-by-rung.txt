@@ -7,12 +7,10 @@ dictation/Speaking.qml
 greetd/greeter.qml
 quickshell/Askpass.qml
 quickshell/Choice.qml
-quickshell/Chord.qml
 quickshell/CommandLine.qml
 quickshell/CommandMenu.qml
 quickshell/Drawer.qml
 quickshell/HeldNotices.qml
-quickshell/KeyboardMap.qml
 quickshell/Launcher.qml
 quickshell/Lock.qml
 quickshell/Meter.qml

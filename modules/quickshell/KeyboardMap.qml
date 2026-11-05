@@ -21,9 +21,21 @@ PanelWindow {
 
     Counted { name: "keyboard map" }
 
-    // A key width, and the gap between keys.
-    readonly property int unit: Theme.space.xxxl
-    readonly property int gap: Theme.space.xs
+    // A key width, a row of four beats, and the gap between keys: the
+    // board is one thing and each key bounded by its own cap, so its keys
+    // are tied (docs/design.md, Space, The Ladder).
+    readonly property int unit: 4 * Theme.space.beat
+    readonly property int gap: Theme.space.rung.tie
+    readonly property int inset: Theme.space.rung.inset
+    // How tall Note's capitals stand, which the names and every cap are
+    // set by.
+    readonly property real capitals: noteFace.tightBoundingRect("H").height
+
+    FontMetrics {
+        id: noteFace
+        font.family: Theme.level.note.family
+        font.pointSize: Theme.level.note.pointSize
+    }
     readonly property var shown: KeyboardLayout.layers[KeyboardLayout.layer] ?? { name: "", keys: [] }
     readonly property var first: KeyboardLayout.layers[0] ?? { keys: [] }
     readonly property int across: Math.ceil(Math.max(0, ...shown.keys.map(key => key.x + key.w)))
@@ -32,8 +44,8 @@ PanelWindow {
     visible: KeyboardLayout.shown
     anchors.bottom: true
     implicitWidth: card.width + 2 * Theme.floating.reach
-    // An overlay's distance from the edge, below it.
-    implicitHeight: card.height + Theme.space.huge + Theme.floating.reach
+    // A floating frame's distance from the edge, below it.
+    implicitHeight: card.height + Theme.space.rung.screen + Theme.floating.reach
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     mask: card.area
@@ -58,20 +70,23 @@ PanelWindow {
         id: card
         x: Theme.floating.reach
         y: Theme.floating.reach
-        // The keys, less the gap the last leaves after it, an inset and a
-        // step from the frame on every side, as a launcher row's letters.
-        width: map.across * map.unit - map.gap + 2 * (Theme.inset + Theme.space.l)
-            + 2 * Theme.border
+        // The keys, less the gap the last leaves after it, the inset from
+        // the frame to the ink on every side: the names' capitals under its
+        // top, the keys' caps from its sides and bottom.
+        width: map.across * map.unit - map.gap + 2 * map.inset + 2 * Theme.border
 
-        Column {
-            x: Theme.inset + Theme.space.l
+        Item {
+            x: map.inset
             width: parent.width - 2 * x
-            topPadding: x
-            bottomPadding: x
-            spacing: Theme.space.l
+            implicitHeight: keys.y + keys.height + map.inset
 
+            // The layers' names, things on one line, a heading for the
+            // keys under it.
             Row {
-                spacing: Theme.space.xl
+                id: names
+                x: -noteFace.tightBoundingRect(KeyboardLayout.layers[0]?.name.charAt(0) ?? "").x
+                y: map.inset + map.capitals - noteFace.ascent
+                spacing: Theme.space.rung.items
 
                 Repeater {
                     model: KeyboardLayout.layers
@@ -91,7 +106,11 @@ PanelWindow {
                 }
             }
 
+            // The keys a beat under the names' baseline: nearer the names
+            // than the frame's room, further than key from key.
             Item {
+                id: keys
+                y: map.inset + map.capitals + Theme.space.beat
                 width: map.across * map.unit - map.gap
                 height: map.down * map.unit - map.gap
 
@@ -121,13 +140,21 @@ PanelWindow {
                         border.width: Theme.border
                         border.color: marked ? Theme.accent : "transparent"
 
-                        Column {
-                            anchors.centerIn: parent
-                            // What it holds belongs with its cap.
-                            spacing: Theme.space.xs
+                        // The cap, and what holding it does a line of Note
+                        // under it, as lines of one saying, the two centred
+                        // in the key by their ink: the cap's capitals' top
+                        // to the last line's baseline.
+                        Item {
+                            id: says
+                            anchors.fill: parent
+                            readonly property real inked: map.capitals
+                                + (key.holds !== "" ? Theme.level.note.pitch : 0)
+                            readonly property real capBaseline: (height - inked) / 2
+                                + map.capitals
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                y: says.capBaseline - noteFace.ascent
                                 text: key.cap
                                 color: !key.own ? Theme.muted : key.marked ? Theme.strong : Theme.text
                                 font.family: Theme.level.note.family
@@ -136,6 +163,7 @@ PanelWindow {
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                y: says.capBaseline + Theme.level.note.pitch - noteFace.ascent
                                 visible: key.holds !== ""
                                 text: key.holds
                                 color: Theme.muted
