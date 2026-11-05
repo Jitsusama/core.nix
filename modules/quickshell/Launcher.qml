@@ -3739,6 +3739,8 @@ Scope {
             // said on every change.
             caretWidth: root.hundredths(prompt.caretWidth),
             caretShown: prompt.caretShown,
+            // Whether the line has modes: not while it asks for a secret.
+            modal: prompt.modal,
             // How the field finishes what's typed, as " = 4" after a sum.
             completion: root.completion,
             // What the field asks while nothing's typed.
