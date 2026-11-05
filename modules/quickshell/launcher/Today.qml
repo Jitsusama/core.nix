@@ -225,14 +225,18 @@ Provider {
             return copyRow({ name: Words.name("today:calendars"), side: side,
                 copiesNothing: true, note: "", glyph: Theme.glyph.date });
         }
-        // From sunset, a calendar whose day begins then is on the day begun.
-        // It's reckoned with the day, so a plate open across sunset moves
-        // the next time Date is shown, and nothing waits on the sun.
-        const evening = reading.evening ?? null;
+        // From sunset, a calendar whose day begins then is on the day begun;
+        // before the day before's sunset, where it comes after midnight far
+        // north in summer, it's still on the day before's. It's reckoned
+        // with the day, so a plate open across sunset moves the next time
+        // Date is shown, and nothing waits on the sun.
+        const has = sunset => sunset !== null && sunset !== undefined;
+        const eve = reading.eve ?? null;
+        const unended = has(eve?.sunset) && now < eve.sunset;
+        const evening = unended ? eve : reading.evening ?? null;
         const begins = dayBegins(evening, now);
-        const begun = evening?.sunset !== null && evening?.sunset !== undefined
-            && now >= evening.sunset;
-        const onIt = calendar => !begun || !calendar.fromSunset ? calendar
+        const begun = !unended && has(evening?.sunset) && now >= evening.sunset;
+        const onIt = calendar => !calendar.fromSunset || !(begun || unended) ? calendar
             : evening.calendars.find(each => each.reckoning === calendar.reckoning) ?? calendar;
         return holderRow({
             key: "today:calendars",

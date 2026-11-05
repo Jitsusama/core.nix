@@ -180,6 +180,10 @@ const table = [
     { act: "viewMiddle", mode: "page", keys: ["M"] },
     { act: "viewBottom", mode: "page", keys: ["L"] },
     { act: "rows", mode: "page", keys: [["Space", "Left"], ["Z", "Z"], ["Space", "w"]] },
+    // The leader's list of keys is his everywhere (VKCF3Z), so the drawer
+    // lists its own; not while choosing, where Space leads nothing and ?
+    // searches back.
+    { act: "keys", mode: "page", keys: [["Space", "?"], "F1"] },
     // n and N go on to the search's next match, the way it went and the
     // other, each a move, so a held n repeats as j does; / and ? open the
     // search itself (seekRead).

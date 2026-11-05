@@ -77,6 +77,9 @@ pub struct Calendars {
     /// When the day ends for the calendars whose days begin at sunset,
     /// or none when it's asked from nowhere.
     pub evening: Option<Evening>,
+    /// When the day before ends for them, or none when it's asked from
+    /// nowhere: far enough north in summer, after the day's midnight.
+    pub eve: Option<Eve>,
 }
 
 /// The sunset that ends a day, and the dates that begin then.
@@ -89,6 +92,20 @@ pub struct Evening {
     pub sunset: Option<i64>,
     /// The calendars whose days begin at sunset, on the day that begins
     /// then: none on a day with no sunset, which keeps its civil date.
+    pub calendars: Vec<Calendar>,
+}
+
+/// The sunset that ends the day before, and the dates it ends, which are
+/// still now's until it comes where it comes after midnight.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Eve {
+    /// The sunset, in milliseconds since 1970 began in UTC, or none on a
+    /// day the sun doesn't set there.
+    pub sunset: Option<i64>,
+    /// The calendars whose days begin at sunset, on the day before's
+    /// date: none on a day with no sunset.
     pub calendars: Vec<Calendar>,
 }
 
@@ -108,33 +125,64 @@ pub fn on(day: &str, here: Option<(f64, f64)>) -> Option<Calendars> {
             Some((latitude, longitude)) => Some(evening(iso, latitude, longitude)?),
             None => None,
         },
+        eve: match here {
+            Some((latitude, longitude)) => Some(eve(iso, latitude, longitude)?),
+            None => None,
+        },
+    })
+}
+
+/// The day before's sunset at a place, and the Hebrew and Islamic dates
+/// until then: the day before's.
+fn eve(iso: Date<Iso>, latitude: f64, longitude: f64) -> Option<Eve> {
+    let before = Date::from_rata_die(iso.to_rata_die() - 1, Iso);
+    let Some(sunset) = sunset(before, latitude, longitude) else {
+        return Some(Eve {
+            sunset: None,
+            calendars: Vec::new(),
+        });
+    };
+    Some(Eve {
+        sunset: Some(sunset),
+        calendars: vec![hebrew(before)?, islamic(before)?],
     })
 }
 
 /// A day's sunset at a place, and the Hebrew and Islamic dates from then:
 /// the next civil day's.
 fn evening(iso: Date<Iso>, latitude: f64, longitude: f64) -> Option<Evening> {
-    let year = iso.year().extended_year();
-    let month = u32::from(iso.month().ordinal);
-    let date = u32::from(iso.day_of_month().0);
-    let Sunset::At(minutes) = sun::sets(year, month, date, latitude, longitude) else {
+    let Some(sunset) = sunset(iso, latitude, longitude) else {
         return Some(Evening {
             sunset: None,
             calendars: Vec::new(),
         });
     };
-    let days = iso.to_rata_die() - Date::try_new_iso(1970, 1, 1).ok()?.to_rata_die();
-    #[expect(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        reason = "days since 1970 and a day's milliseconds are far within what both hold whole"
-    )]
-    let sunset = ((days as f64 * sun::DAY + minutes) * 60_000.0).round() as i64;
     let next = Date::from_rata_die(iso.to_rata_die() + 1, Iso);
     Some(Evening {
         sunset: Some(sunset),
         calendars: vec![hebrew(next)?, islamic(next)?],
     })
+}
+
+/// The day 1970 began, which a sunset's milliseconds are counted from.
+const EPOCH: RataDie = RataDie::new(719_163);
+
+/// A day's sunset at a place, in milliseconds since 1970 began in UTC, or
+/// none on a day the sun doesn't set there.
+fn sunset(iso: Date<Iso>, latitude: f64, longitude: f64) -> Option<i64> {
+    let year = iso.year().extended_year();
+    let month = u32::from(iso.month().ordinal);
+    let date = u32::from(iso.day_of_month().0);
+    let Sunset::At(minutes) = sun::sets(year, month, date, latitude, longitude) else {
+        return None;
+    };
+    let days = iso.to_rata_die() - EPOCH;
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "days since 1970 and a day's milliseconds are far within what both hold whole"
+    )]
+    Some(((days as f64 * sun::DAY + minutes) * 60_000.0).round() as i64)
 }
 
 /// A date as one locale writes it, in the calendar its tag names. The tag
@@ -601,9 +649,33 @@ mod tests {
     }
 
     #[test]
+    fn a_sunset_after_midnight_ends_the_day_before_on_the_day() {
+        // Fairbanks' 21 June sunset is at 00:48 on the 22nd in Alaska's
+        // summer time, as NOAA's 2026 table has it: 08:48 UTC, after the
+        // 22nd's midnight there at 08:00 UTC. Until then the Hebrew and
+        // Islamic dates are still the 21st's.
+        let day = on("2026-06-22", Some((64.8378, -147.7164))).unwrap_or_else(|| panic!("no day"));
+        let eve = day.eve.unwrap_or_else(|| panic!("no eve"));
+        let sunset = eve.sunset.unwrap_or_else(|| panic!("no sunset"));
+        assert!((sunset - 1_782_118_080_000).abs() <= 60_000, "{sunset}");
+        assert!(
+            sunset > 1_782_115_200_000,
+            "{sunset} is before the 22nd's midnight there"
+        );
+        assert_eq!(
+            eve.calendars,
+            vec![
+                calendar("2026-06-21", Reckoning::Hebrew),
+                calendar("2026-06-21", Reckoning::Islamic)
+            ]
+        );
+    }
+
+    #[test]
     fn a_day_asked_from_nowhere_has_no_evening() {
         let day = on("2026-11-05", None).unwrap_or_else(|| panic!("no day"));
         assert_eq!(day.evening, None);
+        assert_eq!(day.eve, None);
     }
 
     /// The Hong Kong Observatory's English for each term, in TERMS' order.

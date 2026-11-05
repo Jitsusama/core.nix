@@ -87,5 +87,37 @@
         "fromSunset": true
       }
     ]
+  },
+  "eve": {
+    "sunset": 1793809666263,
+    "calendars": [
+      {
+        "reckoning": "hebrew",
+        "latin": "24 Heshvan 5787",
+        "native": "כ״ד בחשוון ה׳תשפ״ז",
+        "figures": [
+          { "id": "year", "latin": "5787", "native": "ה׳תשפ״ז", "day": null },
+          { "id": "month", "latin": "Heshvan", "native": "חשוון", "day": null },
+          { "id": "day", "latin": "24", "native": "כ״ד", "day": null },
+          { "id": "yearDays", "latin": "385", "native": "385", "day": null },
+          { "id": "months", "latin": "13", "native": "13", "day": null }
+        ],
+        "fromSunset": true
+      },
+      {
+        "reckoning": "islamic",
+        "latin": "24 Jumada I 1448 AH",
+        "native": "٢٤ جمادى الأولى ١٤٤٨\u00a0هـ",
+        "figures": [
+          { "id": "year", "latin": "1448 AH", "native": "١٤٤٨\u00a0هـ", "day": null },
+          { "id": "month", "latin": "Jumada I", "native": "جمادى الأولى", "day": null },
+          { "id": "day", "latin": "24", "native": "٢٤", "day": null },
+          { "id": "monthDays", "latin": "30", "native": "30", "day": null },
+          { "id": "yearDays", "latin": "355", "native": "355", "day": null },
+          { "id": "reckoning", "latin": "Umm al-Qura", "native": "Umm al-Qura", "day": null }
+        ],
+        "fromSunset": true
+      }
+    ]
   }
 }
