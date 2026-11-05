@@ -608,18 +608,23 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
 def walk_the_rows_acts(desktop: Desktop) -> None:
     """Press every act normal takes on a search's rows besides its moves, through niri.
 
-    l steps into a row and - out of it, as his oil's do; :12 goes to the 12th row, on the
-    command line in the find line's place, its menu saying where it goes, until its Return;
-    and q, ZZ and :q each close the launcher.
+    l steps into a row, and h, - and Backspace out of it, as his oil's do; :12 goes to the
+    12th row, on the command line in the find line's place, its menu saying where it goes,
+    until its Return; and ZZ and :q each close the launcher.
     """
     machine = desktop.machine
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.normal()
-    machine.send_chars("l")
-    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
-    machine.send_chars("-")
-    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "emoji")
+    for letters, named in [("h", []), ("-", []), ("", ["backspace"])]:
+        machine.send_chars("l")
+        desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
+        machine.send_chars(letters)
+        for key in named:
+            machine.send_key(key)
+        desktop.launcher_until(
+            lambda shown: (shown["held"], shown["typed"], shown["mode"]) == ([], "emoji", "normal")
+        )
     desktop.close_launcher()
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
@@ -638,7 +643,7 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
             shown["current"] == row - 1 and shown["command"] is None and shown["mode"] == "normal"
         )
     )
-    for keys in ["q", "ZZ", ":q\n"]:
+    for keys in ["ZZ", ":q\n"]:
         machine.send_chars(keys)
         desktop.launcher_until(lambda shown: not shown["open"])
         desktop.answer("s")
@@ -647,22 +652,35 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
 
 
 def walk_the_rows_unsearched(desktop: Desktop) -> None:
-    """Press / ? n N on a search's rows in normal, through niri, and see nothing change.
+    """Press / ? n N on a search's rows in normal, through niri: the find afresh, or not here.
 
     The find line is the list's one way to find (VKCF3Z's vi-paradigm spec, The Find Line), so
-    the rows have no search of their own: the selection, the mode and what's typed stay put.
+    the rows have no search of their own: / and ? go to the find, emptied, and n and N say
+    they mean nothing here, the selection and what's typed staying put.
     """
     machine = desktop.machine
+    for fresh in "/?":
+        desktop.answer("s")
+        desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS)
+        desktop.normal()
+        machine.send_chars(fresh)
+        desktop.launcher_until(lambda shown: (shown["mode"], shown["typed"]) == ("find", ""))
+        desktop.close_launcher()
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
     desktop.normal()
     machine.send_chars("j")
     desktop.launcher_until(lambda shown: shown["current"] == 1)
-    machine.send_chars("/?nN", delay=desktop_session.KEY_PACE)
+    for key in "nN":
+        machine.send_chars(key)
+        desktop.launcher_until(lambda shown: shown["saying"] == [f"{key} not here"])  # noqa: B023
     # A move after them shows every key before it was taken, and took nothing.
     machine.send_chars("j")
     desktop.launcher_until(
-        lambda shown: (shown["current"], shown["mode"], shown["typed"]) == (2, "normal", "s")
+        lambda shown: (
+            (shown["current"], shown["mode"], shown["typed"], shown["saying"])
+            == (2, "normal", "s", [])
+        )
     )
     desktop.close_launcher()
 
@@ -697,15 +715,72 @@ def walk_the_rows_washed(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+# How each hint's mark in the foot is pressed through niri, where it isn't a letter.
+HINT_PRESSES = {
+    "\u21b5": (["ret"], ""),
+    "Space ?": ([], " ?"),
+    "\u21e7\u2191\u2193": (["shift-down"], ""),
+}
+
+
+def standing(shown: dict[str, Any]) -> tuple[object, ...]:
+    """Say what a key in normal changes: where it is, what it lists and what it says."""
+    return (
+        shown["open"],
+        shown["mode"],
+        shown["held"],
+        shown["ex"],
+        shown.get("listing"),
+        shown["typed"],
+        shown["current"],
+    )
+
+
+def every_hint_changes(desktop: Desktop, depth: int) -> None:
+    """Press each hint normal's foot draws on Emoji's rows, at this depth, each afresh.
+
+    The foot's hints come from the table that handles the keys, so a hint that changes nothing
+    is a key the foot names wrongly. Each is pressed on a launcher opened anew, so what one
+    did can't stand in for the next.
+    """
+
+    def opened() -> list[str]:
+        desktop.answer("emoji")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+        desktop.normal()
+        for _ in range(depth):
+            desktop.machine.send_chars("l")
+        desktop.launcher_until(lambda shown: len(shown["held"]) == depth)
+        return cast("list[str]", desktop.showing()["selected"]["told"])
+
+    told = opened()
+    assert told[0].startswith("\u21b5 "), told
+    assert told[-1] == "Space ? keys", told
+    for at, hint in enumerate(told):
+        mark = hint.rsplit(" ", 1)[0]
+        keys, chars = HINT_PRESSES.get(mark, ([], mark))
+        if at > 0:
+            opened()
+        was = standing(desktop.showing())
+        for key in keys:
+            desktop.machine.send_key(key)
+        desktop.machine.send_chars(chars)
+        desktop.launcher_until(lambda shown: standing(shown) != was)  # noqa: B023
+        desktop.close_launcher()
+
+
 def walk_the_rows_keys(desktop: Desktop) -> None:
     """Press normal's places, Space ?, F1, Space w and Escape on a search's rows, through niri.
 
     Space Tab goes to the place used last and back, as his goes to the file used last; Ctrl+O
     and Tab, which is Ctrl+I, go back and forward through the places stepped into; Space ? and
     F1 list every key in the drawer until Escape or again; Space alone waits for a second key
-    and lets go; Space w closes the launcher, and Escape closes it from a step in.
+    and lets go; Space w closes the launcher, and Escape closes it from a step in. Every hint
+    the foot draws, at home and a step in, is first pressed and seen to do something.
     """
     machine = desktop.machine
+    every_hint_changes(desktop, 0)
+    every_hint_changes(desktop, 1)
     desktop.answer("emoji")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     desktop.normal()
