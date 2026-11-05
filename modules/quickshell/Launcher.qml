@@ -1963,14 +1963,17 @@ Scope {
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
     // one with the way it goes whole ("log out", "put back", whose first
-    // word alone says nothing), anything else by its first word.
+    // word alone says nothing), a verb with how many it takes whole (the
+    // file picker's "open 2", which said "open" while it would answer two
+    // gathered files), anything else by its first word.
     readonly property var phrasal: ["in", "out", "back"]
 
     function oneWord(verb) {
         const said = verb.split(" ");
         if (said[0] === "turn" && said.length > 1)
             return said[said.length - 1];
-        return said.length === 2 && phrasal.includes(said[1]) ? verb : said[0];
+        return said.length === 2 && (phrasal.includes(said[1]) || /^\d+$/.test(said[1]))
+            ? verb : said[0];
     }
 
     // A chord as words, for the foot: its keys joined by +, those pressed
