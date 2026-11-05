@@ -1588,6 +1588,31 @@ def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
     # A change is heard only once the shell has bound the speaker, which it says.
     desktop.reported("hears volume ", bool, "", timeout=timedelta(seconds=60))
 
+    # Where on the screen, in fractions of its height, dictation's frame and
+    # a meter above it fall at both scales, the middle half across.
+    under, over = (0.87, 0.94), (0.78, 0.84)
+
+    def band(rows: tuple[float, float]) -> bytes:
+        """Give the screen's middle half across between two fractions of its height."""
+        screen = desktop.screen_now()
+        width, height = screen.size
+        box = (width // 4, int(height * rows[0]), 3 * width // 4, int(height * rows[1]))
+        return screen.crop(box).tobytes()
+
+    def shot_once_in(name: str, rows: tuple[float, float], before: bytes) -> None:
+        """Photograph once the band shows something it didn't, or after three seconds.
+
+        While dictation listens, its clock and wave move, so the screen never holds still,
+        and a meter goes again in a second and a half; and niri can show dictation's first
+        frame a while after it's drawn. So the picture is taken once what it's of is on the
+        screen. One that never comes, as a meter hidden under dictation, is kept as it is.
+        """
+        deadline = time.monotonic() + 3
+        while band(rows) == before and time.monotonic() < deadline:
+            pass
+        if desktop.values["photographs"]:
+            machine.screenshot(name)
+
     def metered(level: str, name: str) -> None:
         machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
         with desktop.told("drawn volume"):
@@ -1600,13 +1625,16 @@ def test_a_meter_stands_over_dictation_rather_than_on_it_at_each_scale(
             at_scale(desktop, scale)
             machine.wait_until_fails(dictation, timeout=timedelta(seconds=15))
             since = desktop.mark()
-            # Once it's drawn, not once niri lists it: the first time, its
-            # layer is up a while before its card is on it.
+            before = band(under)
             with desktop.told("drawn dictation"):
                 desktop.as_account("dictation toggle")
             desktop.reported("says dictation listening", lambda rest: rest == "", since)
-            desktop.photograph(f"dictation-listening-at-{named}")
-            metered("0.5", f"meter-over-dictation-at-{named}")
+            shot_once_in(f"dictation-listening-at-{named}", under, before)
+            machine.wait_until_fails(volume, timeout=timedelta(seconds=10))
+            before = band(over)
+            with desktop.told("drawn volume"):
+                desktop.as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.5")
+            shot_once_in(f"meter-over-dictation-at-{named}", over, before)
             # Stopped, the stand-in types a moment and says it heard nothing.
             desktop.as_account("dictation toggle")
             desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)

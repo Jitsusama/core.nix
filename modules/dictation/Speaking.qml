@@ -149,12 +149,39 @@ PanelWindow {
 
     // The line's face, to measure its ink by: the glyph's, the words', the
     // time's and a capital's, since the room round the line is measured to
-    // the ink.
+    // the ink. Each is a TextMetrics, whose bounds follow the face, where a
+    // call on FontMetrics measures once, before the face has loaded, and a
+    // binding never asks again.
     FontMetrics {
         id: ink
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
         font.features: { "tnum": 1 }
+    }
+    TextMetrics {
+        id: capitalInk
+        font: ink.font
+        text: "H"
+    }
+    TextMetrics {
+        id: glyphInk
+        font: ink.font
+        text: mark.text
+    }
+    TextMetrics {
+        id: wordsInk
+        font: ink.font
+        text: root.words
+    }
+    TextMetrics {
+        id: clockInk
+        font: ink.font
+        text: "0:00"
+    }
+    TextMetrics {
+        id: countdownInk
+        font: ink.font
+        text: "5 s"
     }
 
     Floating {
@@ -170,13 +197,13 @@ PanelWindow {
         // apart, the time's figures tabular so it never shifts.
         Item {
             id: line
-            readonly property rect capital: ink.tightBoundingRect("H")
-            readonly property rect glyph: ink.tightBoundingRect(mark.text)
-            readonly property rect words: ink.tightBoundingRect(root.words)
+            readonly property rect capital: capitalInk.tightBoundingRect
+            readonly property rect glyph: glyphInk.tightBoundingRect
+            readonly property rect words: wordsInk.tightBoundingRect
             // The widest the time gets, a clock's or the seconds left's, so
             // the wave's length never moves.
-            readonly property rect clock: ink.tightBoundingRect("0:00")
-            readonly property rect countdown: ink.tightBoundingRect("5 s")
+            readonly property rect clock: clockInk.tightBoundingRect
+            readonly property rect countdown: countdownInk.tightBoundingRect
             readonly property real timeEnds: Math.max(clock.x + clock.width,
                 countdown.x + countdown.width)
             // Where the line's baseline rests: its capitals centred in it,

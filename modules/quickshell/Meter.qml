@@ -57,11 +57,29 @@ PanelWindow {
 
     // The line's face, to measure its ink by: the glyph's, the figure's and
     // a capital's, since the room round the line is measured to the ink.
+    // Each is a TextMetrics, whose bounds follow the face, where a call on
+    // FontMetrics measures once, before the face has loaded, and a binding
+    // never asks again.
     FontMetrics {
         id: ink
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
         font.features: { "tnum": 1 }
+    }
+    TextMetrics {
+        id: capitalInk
+        font: ink.font
+        text: "H"
+    }
+    TextMetrics {
+        id: markInk
+        font: ink.font
+        text: meter.glyph
+    }
+    TextMetrics {
+        id: widestInk
+        font: ink.font
+        text: meter.widestReading
     }
 
     Floating {
@@ -75,9 +93,9 @@ PanelWindow {
         // widest figure. Dictation's frame is the same (Speaking.qml).
         Item {
             id: line
-            readonly property rect capital: ink.tightBoundingRect("H")
-            readonly property rect mark: ink.tightBoundingRect(meter.glyph)
-            readonly property rect widest: ink.tightBoundingRect(meter.widestReading)
+            readonly property rect capital: capitalInk.tightBoundingRect
+            readonly property rect mark: markInk.tightBoundingRect
+            readonly property rect widest: widestInk.tightBoundingRect
             // Where the line's baseline rests: its capitals centred in it,
             // so what rounding its height leaves is shared above and below.
             readonly property real rests: (height + capital.height) / 2
