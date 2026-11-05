@@ -94,6 +94,26 @@ let
       ];
       says = "neovim: Space ? is its own (Something), but the language gives it to show-keys";
     }
+    # No arrow does anything in a modal layer's normal mode, and one kept
+    # for now comes off the list once it binds none.
+    {
+      layers = keyMap "a-modal-layer-binds-an-arrow" [
+        {
+          name = "swayimg";
+          binds = [ (bind "Down" "down" "") ];
+        }
+      ];
+      says = "swayimg: Down is an arrow in normal mode, where none does anything";
+    }
+    {
+      layers = keyMap "a-kept-layer-binds-none" [
+        {
+          name = "mpv";
+          binds = [ (bind "j" "j" "") ];
+        }
+      ];
+      says = "mpv binds no arrow now, so take it off STILL_ARROWED";
+    }
   ];
 
   # Each way the language itself can stray, as acts added to it, with what
@@ -180,9 +200,18 @@ let
         [acts.stray]
         keys = ["<Left>"]
         modes = ["visual"]
-        kinds = []
+        kinds = ["page"]
       '';
-      says = "stray takes left in visual mode, where an arrow is its letter";
+      says = "stray takes left in visual mode, where no arrow does anything";
+    }
+    {
+      name = "an-arrow-in-a-chord";
+      adds = ''
+        [acts.stray]
+        keys = ["<Space><Right>"]
+        kinds = ["list"]
+      '';
+      says = "stray takes space right in normal mode, where no arrow does anything";
     }
     {
       name = "a-mode-unnamed";
@@ -255,7 +284,10 @@ in
   # leaves out, or a chord bound to an act that isn't one of the act's keys
   # fails (speaks-the-language.py), as does a language whose commands
   # Neovim names otherwise, by what the machine's Neovim resolves each
-  # name to, read once as a file of its own. So the check can't pass by
+  # name to, read once as a file of its own. No arrow does anything in a
+  # surface's normal or visual mode, nor in a modal layer's normal but for
+  # those still keeping theirs, a list that may only shrink (Joel,
+  # 2026-11-05). So the check can't pass by
   # seeing nothing, each way of straying is shown to fail first, as is a
   # language that gives one key to two acts and the reader leaving out a
   # key it takes only while selecting.
