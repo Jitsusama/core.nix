@@ -218,6 +218,9 @@ Provider {
             // Its place's glyph, as Now's rows each wear theirs, rather
             // than its first row's.
             glyph: Theme.glyph.date,
+            // It's Date's, so Date knows when it's shown and asks for the
+            // day's calendars.
+            live: provider,
             rows: [
                 row("iso", Moment.iso(at)),
                 row("week", Moment.isoWeekDate(at), said("today:week", "week",
