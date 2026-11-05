@@ -252,10 +252,11 @@ class Shell:
         self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
     def close_launcher(self) -> None:
-        """Press Escape until the launcher closes, waiting on each step its Escape ladder takes.
+        """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
-        From the find the first gives normal, and the next closes it from any depth, after
-        letting the key list go if it's shown.
+        Escape gives normal from the find, lets the key list go if it's shown, and cancels a
+        count or a key begun, but never closes (Joel, 2026-11-05: "fuck escape quitting"), so
+        :q does, from any depth.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -265,6 +266,7 @@ class Shell:
                 len(shown["held"]),
                 shown.get("listing"),
                 shown.get("command") is not None,
+                shown["operator"] or shown["counted"] or shown["begun"],
             )
 
         def moved(was: tuple[object, ...], shown: Json) -> bool:
@@ -274,7 +276,12 @@ class Shell:
             was = where(self.showing())
             if not was[0]:
                 return
-            self.send_key("esc")
+            _, mode, _, listing, commanding, pending = was
+            if mode == "normal" and not (listing or commanding or pending):
+                self.send_chars(":q")
+                self.send_key("ret")
+            else:
+                self.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
