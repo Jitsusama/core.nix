@@ -3260,7 +3260,7 @@ Scope {
     }
 
     // A key while the ask stands, as Prompt.qml hands it over.
-    function answering(key) {
+    function answerAsk(key) {
         const ask = asked;
         if (ask === null)
             return;
@@ -3339,11 +3339,11 @@ Scope {
     // d and y over rows named rather than spanned, as the command line's
     // :d and :y with a range: d asks first unless `sure`, as :d! wouldn't,
     // and says "done", "asked" or "nothing".
-    function ending(rows, sure) {
+    function endRows(rows, sure) {
         return ended(takenOf(rows), "", sure);
     }
 
-    function copying(rows) {
+    function copyRows(rows) {
         yanked(takenOf(rows));
     }
 
@@ -4699,7 +4699,7 @@ Scope {
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
                         // The ask, while it stands, takes every key.
                         confirming: root.asked !== null
-                        onAnswered: key => root.answering(key)
+                        onAnswered: key => root.answerAsk(key)
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
