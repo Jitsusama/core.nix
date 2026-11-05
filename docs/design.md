@@ -49,9 +49,10 @@ one is answered for it in [the surfaces table][surfaces].
 7. **Modal, as vi is, and never hidden.** Every list and text box has vi's
    modes, each with one purpose ([Vi's Keys][vi]). A mode other than normal
    always shows that it's on, and Escape always leaves it.
-8. **One gesture per meaning.** j and k move, Return opens or confirms, -
-   goes up and Ctrl+O back, / finds, : names a command, and each layer has one
-   "what's here" key. Where vi has a key for it, the key is vi's.
+8. **One gesture per meaning.** j and k move, Return goes in or confirms
+   and - goes up, the only keys that step a level, Ctrl+O goes back, /
+   finds, : names a command, and each layer has one "what's here" key.
+   Where vi has a key for it, the key is vi's.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
 10. **The theme, whole.** Type, colour, glyphs, space and motion come from
@@ -67,7 +68,7 @@ A surface is done only when all of this is true, and nothing is shown to Joel
 for judging before it's been judged here first.
 
 - **Driven by keys.** Everything it does has been done with the keyboard
-  alone, from the chord that reaches it to Escape, and its check does it
+  alone, from the chord that reaches it to :q, and its check does it
   that way too.
 - **Designed first.** Its three tiers, the facts it owns, its collapse order,
   its palette entries and its keys are written in the surfaces table before
@@ -246,9 +247,10 @@ of each kind of line it sets, and a row's pitch is its height.
 - **Every interaction written before it's built.** **Check:** a table of
   every state and every key in it: what it does, what the screen does in
   answer, how long it takes against [Latency Budgets][budgets], and which of
-  the theme's motions carries it. A state Escape can't leave, a key with no
-  visible answer, or an answer that waits is a fault. So is a state with no
-  way out, where Escape does nothing on purpose and q doesn't close it.
+  the theme's motions carries it. A mode Escape can't leave, a key with no
+  visible answer, or an answer that waits is a fault. So is a surface with
+  no way out, which :q, ZZ and Space w don't close, and so is one Escape
+  closes.
 - **Felt, not just correct.** **Check:** each transition timed frame by
   frame at the panel's full refresh rate, from the program's own frame
   times or a screen recording stepped through a frame at a time, with no
@@ -529,7 +531,11 @@ The rest follows from the ladder:
 
 - **One baseline a line.** A line's pieces share one baseline, found by
   centring its largest level's capitals in the line; a smaller level takes that
-  baseline, never the centre of its own capitals.
+  baseline, never the centre of its own capitals. A note beside a head sits on
+  the head's baseline (Joel, 2026-11-05: "which? &etc. need to be baselined
+  with the text to their left"). A line that only sometimes holds its largest
+  level keeps that level's baseline when it doesn't, so nothing on it moves
+  as a place opens.
 - **Held room at the far end.** A place that keeps the widest room it's needed
   keeps it after its cluster's last item, never between items, so every gap is
   its rung: Return holds no room before it.
@@ -688,7 +694,7 @@ it share a column.
 (Ctrl, Alt, Esc, Tab, Space), and a letter as itself, joined by + with the
 same room on each side, all muted, even on the selected row. A chord sits at
 the right of its row, at least `space.xxl` from the name. Nothing says what
-Escape does, since it always leaves.
+Escape does, since it only ever leaves a mode.
 
 **A row says what it is.** A thing's row (a program, a window, a pi
 session, a network, a device, a copy) says its kind at its right edge, muted:
@@ -1673,7 +1679,7 @@ comes along, and what to do.
   | W            | close the one in focus                   | the window     | the tab           | the split           |
   | Space        | find anything here                       | the launcher   | the scrollback    | anything            |
   | ?            | what's here: every key, by what it does  | every layer's  | the terminal's    | Neovim's            |
-  | Escape       | cancel, and close what floats            | everywhere     | everywhere        | everywhere          |
+  | Escape       | cancel and leave a mode, never close     | everywhere     | everywhere        | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
@@ -1817,7 +1823,7 @@ disagree with this section, this section is the design.
 | the gallery, a PDF, a video | a buffer whose lines are pictures, pages and seconds |
 | a question, the lock, the greeter, a Wi-Fi password | `inputsecret()`: a secret, with no modes |
 | a reply, a new name, a save name | a prompt buffer |
-| the launcher, held notices, which-key, a menu | popups, which Vim closes on Escape |
+| the launcher, held notices, which-key, a menu | popups, closed by :q, never by Escape |
 
 The launcher is oil rather than netrw or Telescope. netrw's keys are
 one-letter shortcuts that aren't Vim's, and Telescope's pickers are right
@@ -1846,9 +1852,11 @@ the cursor. A list shows relative numbers in a gutter at Note, muted, the
 cursor row's own absolute and in text, as his `number`, `relativenumber`
 and `cursorlineopt=number` draw them; Space u l switches them to absolute.
 The gutter's room is kept in every mode, three digits wide with the numbers
-right-aligned, and the field stands in from the card's edge with the rows,
-so `/` stays over the glyphs; on the find and command lines the gutter is
-empty, so nothing moves sideways as the mode changes.
+right-aligned, and on the find and command lines the gutter is empty, so
+nothing moves sideways as the mode changes. The find line, the command line
+and the head start at the card's inset, over the numbers, as Vim's / and :
+lines start at column 0 left of its number column: the gutter is the list's,
+and the lines are the card's. A picker's ask keeps its room that way.
 While a find narrows the rows, the find line keeps it after a muted `/`,
 with its count: "/slack · 3 of 12".
 
@@ -1876,11 +1884,20 @@ with its count: "/slack · 3 of 12".
 - **Operators and visual:** d y c, dd yy cc, ., u Ctrl+R, v V and gv.
 - **Marks,** where a place lasts: m and a letter sets one, ' and the letter
   goes back, and '' goes back to the last jump.
-- **Escape** cancels a count, a pending operator, a waiting key, which-key
-  or the menu. At rest it closes a popup, as Vim closes one and his Neovim
-  closes its floats: the launcher, held notices. In a window (the reader,
-  the drawer, a viewer) it does nothing at rest, and it never goes up a
-  level, which is -'s.
+- **Only Return and - step a level,** on every surface (Joel, 2026-11-05:
+  "enter and - should be the only level stepping keys in anything,
+  right?"). Ctrl+O and Ctrl+I walk the jump list, which is history rather
+  than a level; Ctrl+W moves between windows; Ctrl+] and Ctrl+T follow a
+  link and come back.
+- **Escape** does what Vim's does: it cancels a count, a pending operator
+  or a waiting key, and leaves insert, visual, the find line or the command
+  line, closing which-key or the menu with them. At rest it does nothing,
+  on every surface: it never closes or quits anything of ours, the
+  launcher, notices, the drawer, the picker and the viewers included, and
+  never goes up a level (Joel, 2026-11-05: "fuck escape quitting").
+  Closing is :q, ZZ or Space w alone. Escape still leaves a secret's field
+  for its row, and takes mpv and swayimg out of full screen or a slideshow,
+  since neither closes anything.
 - **q does nothing.** There are no macros, since recording is a mode no one
   sees. The foot says "q does nothing · :q closes" until the next key, as
   every key with no meaning on a surface says "not here", never silent.
@@ -2082,8 +2099,9 @@ fits whole on the laptop's plate.
 **On each surface:**
 
 - **The launcher** opens on the find line, the first row chosen, so the
-  fast path is Super+Space, letters and Return, as before. Escape at rest,
-  :q, ZZ and Space w close it. Its commands are its rows' verbs, :e with
+  fast path is Super+Space, letters and Return, as before. :q, ZZ and
+  Space w close it, and Escape at rest does nothing. Its commands are its
+  rows' verbs, :e with
   places as paths (`:e Machine/Power`), :b for a window, :sp, :m to a
   workspace, :sort, :set and the session's (:lockscreen, :sus, :logout,
   :reboot,
@@ -2097,7 +2115,7 @@ fits whole on the laptop's plate.
   (A to Z), :sort changed (newest first) and :sort size (largest first),
   with :sort! the other way, are kept across asks; :e, :cd, :set hidden
   and :mkdir go with them, ]b [b to the folders beside, gx to a file's own
-  program.
+  program. :q cancels the dialog, and Escape never does.
 - **The notices,** held on Super+N, are the quickfix list: a line a card,
   the sender's glyph, who, the first words and the time, the cursor card
   whole under its line, the newest first. / finds among them; its acts are
@@ -2106,7 +2124,8 @@ fits whole on the laptop's plate.
   read sent at once, and the foot says "d read" where the sender offers a
   read and "d forget" where it doesn't; :forg forgets a card unread, :reply
   writes one, and :g/Slack/d takes all of one sender's. `:e Notices` opens
-  their history. Escape at rest, :q, ZZ, Space w and Super+N let them go.
+  their history. :q, ZZ, Space w and Super+N let them go, and Escape at
+  rest does nothing.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
   lights only the number, and a block only in visual, which starts on the
@@ -2129,8 +2148,9 @@ fits whole on the laptop's plate.
   (`:d`, `:y`, `:rotate`, `:{n}`, `:q`); zathura keeps its own, which is
   Vim's already.
 
-**His Neovim is held to the same bar:** q closes none of its windows, and
-Escape and :q close its floats, as ours.
+**His Neovim is held to the same bar:** q closes none of its windows, and :q
+closes its floats. Its Escape stays as he set it, since his own editor
+changes only through his config (Joel, 2026-11-05).
 
 **The Departures.** Each key here that doesn't do what Vim's does, and why:
 
