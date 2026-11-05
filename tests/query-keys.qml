@@ -254,21 +254,21 @@ QtObject {
         const asking = { ask: "{ends} {name}? (y/n)", asks: "{what}? (y/n)",
             part: "{ends} {count} {kind}", ends: "end", thing: "thing", and: "and",
             many: { copy: "copies" } };
-        const window = name => ({ ends: "close", name, kind: "window" });
+        const closing = name => ({ ends: "close", name, kind: "window" });
         const copied = { ends: "forget", name: "84", kind: "copy" };
         holds("the ask names the one row it ends",
-            Confirm.question([window("Notes")], asking), "Close Notes? (y/n)");
-        holds("and counts more by their kind", Confirm.question([window("Notes"),
-            window("Mail")], asking), "Close 2 windows? (y/n)");
-        holds("and each verb with its own, the first first", Confirm.question([window("Notes"),
-            copied, window("Mail")], asking), "Close 2 windows and forget 1 copy? (y/n)");
-        holds("three by commas, the last by and", Confirm.question([window("Notes"), copied,
+            Confirm.question([closing("Notes")], asking), "Close Notes? (y/n)");
+        holds("and counts more by their kind", Confirm.question([closing("Notes"),
+            closing("Mail")], asking), "Close 2 windows? (y/n)");
+        holds("and each verb with its own, the first first", Confirm.question([closing("Notes"),
+            copied, closing("Mail")], asking), "Close 2 windows and forget 1 copy? (y/n)");
+        holds("three by commas, the last by and", Confirm.question([closing("Notes"), copied,
             { ends: "quit", name: "Firefox", kind: "program" }, copied], asking),
         "Close 1 window, forget 2 copies and quit 1 program? (y/n)");
         holds("a row with no kind is a thing", Confirm.question([{ ends: "close", name: "a" },
             { ends: "close", name: "b" }], asking), "Close 2 things? (y/n)");
         holds("and one with no verb takes the word for ending", Confirm.question([
-            { name: "a", kind: "window" }, window("b")], asking),
+            { name: "a", kind: "window" }, closing("b")], asking),
         "End 1 window and close 1 window? (y/n)");
         // Only y answers yes, and only after the ask has stood 300 ms, so
         // a key typed on from what asked can't answer it; any other no.
