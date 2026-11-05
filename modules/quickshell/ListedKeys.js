@@ -66,6 +66,7 @@ const page = [
     { name: "seekOn", acts: ["seekNext", "seekPrevious"] },
     { name: "select", acts: ["select", "selectLines"] },
     { name: "reselect", acts: ["reselect"] },
+    { name: "keys", acts: ["keys"] },
     { name: "back", acts: ["rows"], firsts: true, also: [":q"] }
 ];
 
@@ -145,8 +146,10 @@ function keyLine(table, mode, line, words) {
 // Every line Space ? lists, as the drawer's facts, from QueryKeys' table:
 // each mode's heading, from `modes`, then its lines, the keys as the name,
 // muted, since a chord says how, and what they do, from `words`, as the
-// value.
-function keyList(table, words, modes) {
-    return [].concat(...sections.map(section => [{ heading: modes[section.mode] ?? "" }]
+// value. Listed from the drawer, `only` names the sections it lists, its
+// own, since the rows' keys do nothing while its keys are in it.
+function keyList(table, words, modes, only = null) {
+    const listed = sections.filter(section => only === null || only.includes(section.mode));
+    return [].concat(...listed.map(section => [{ heading: modes[section.mode] ?? "" }]
         .concat(section.lines.map(line => keyLine(table, section.mode, line, words)))));
 }

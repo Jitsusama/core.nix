@@ -2362,13 +2362,37 @@ Scope {
 
     // Every key here, as normal's Space ? lists them in the drawer, in
     // place of what the selected row has, until Space ? again or Escape.
+    // Pressed in the drawer, it lists the drawer's own keys there, the
+    // keys staying in it, until Space ? again or the way back to the rows
+    // (VKCF3Z), which puts that list away as :pclose puts a window away.
     property bool listing: false
+    property bool listedInDrawer: false
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
-        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "", keys: true,
-            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {}) };
+        const only = listedInDrawer ? ["page", "pageVisual"] : null;
+        return { eyebrow: words.eyebrow ?? "",
+            title: (listedInDrawer ? words.drawerTitle : words.title) ?? "", keys: true,
+            facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {},
+                only) };
     }
     onListingChanged: drawerSettled()
+    // The whole list, listed from the rows before going in, gives way to
+    // the drawer's rather than going.
+    function listInDrawer() {
+        const shown = listing && listedInDrawer;
+        listedInDrawer = !shown;
+        listing = !shown;
+        drawerCard.anew();
+    }
+    Connections {
+        target: prompt
+        function onModeChanged() {
+            if (!QueryKeys.paged(prompt.mode) && root.listedInDrawer) {
+                root.listing = false;
+                root.listedInDrawer = false;
+            }
+        }
+    }
 
     // The command line, the : line (CommandLine.qml), while it's open:
     // { from, range, things, go, menu, options }, the mode : was pressed
@@ -4492,6 +4516,8 @@ Scope {
             takesAnswer: prompt.asking !== "" && root.askTaking,
             questionWhole: prompt.askedWhole,
             placeSays: root.placeSays,
+            // What the mode word's room says: a mode, a count, a search.
+            modeSays: modeWord.visible ? modeWord.said : "",
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
@@ -4672,6 +4698,9 @@ Scope {
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
+                // Whether the view's top cuts a line partway, which it never
+                // should, as Vim's topline is always a whole line.
+                cut: drawerCard.topCut(),
                 // Whether it holds the keys, and its cursor while it does:
                 // its line, of how many, the letter along it, the words
                 // the line says and where the line is, down from the
@@ -4695,7 +4724,9 @@ Scope {
                     typing: drawerCard.seeking,
                     last: drawerCard.lastSought ? drawerCard.lastSought.pattern : "",
                     washing: drawerCard.washing,
-                    landing: drawerCard.landing
+                    landing: drawerCard.landing,
+                    // Which match of how many, [at, of], as the foot counts.
+                    found: drawerCard.found ? [drawerCard.found.at, drawerCard.found.of] : null
                 },
                 // Its visual: what it chooses by, "letters" or "lines", or
                 // ""; each line it takes, [line, from, to]; how many the
@@ -4706,7 +4737,11 @@ Scope {
                     taken: drawerCard.taken.map(one => [one.line, one.from, one.to]),
                     count: drawerCard.chosenCount,
                     copied: drawerCard.copied,
-                    flashing: drawerCard.choosing === "" && drawerCard.flashing.length > 0
+                    flashing: drawerCard.choosing === "" && drawerCard.flashing.length > 0,
+                    // V's bands as drawn, each { x, width, top, height } in
+                    // the letters' column, and that column's width.
+                    bands: drawerCard.bandsDrawn(),
+                    measure: Math.round(drawerCard.measure)
                 },
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),
                 cardWidth: Math.round(card.width),
@@ -4832,6 +4867,7 @@ Scope {
             homeDepth = 0;
             lastPlace = null;
             listing = false;
+            listedInDrawer = false;
             prompt.forget();
             often = picks.counts();
             spotsLater.stop();
@@ -5313,6 +5349,8 @@ Scope {
                                     drawerCard.reselect();
                                 else if (act === "copy" || act === "copyLines")
                                     Quickshell.clipboardText = drawerCard.copy(act === "copyLines");
+                                else if (act === "keys")
+                                    root.listInDrawer();
                                 else
                                     drawerCard.go(act, count);
                                 return;
@@ -6026,13 +6064,23 @@ Scope {
                         // one, each in the strong ink of what's typed, their
                         // last letters where they're longer than the room.
                         // The command line says its own, in the line's place.
+                        // A search counts its match of how many after it, as
+                        // his Neovim's search count does, while it's typed
+                        // and while the cursor stands on one it found.
                         Text {
                             id: modeWord
 
-                            readonly property string counted: prompt.standing.seek
-                                ? `${prompt.standing.seek.forward ? "/" : "?"}`
-                                    + prompt.standing.seek.pattern
-                                : prompt.standing.count
+                            readonly property var found: drawerCard.found
+                            readonly property string ofAll: found === null ? ""
+                                : " \u00b7 " + String(Words.field.found ?? "")
+                                    .replace("{at}", found.at).replace("{all}", found.of)
+                            readonly property var sought: prompt.standing.seek
+                                ?? (prompt.mode === "page" && found !== null
+                                    ? drawerCard.lastSought : null)
+                            readonly property string counted: prompt.standing.count !== ""
+                                && !prompt.standing.seek ? prompt.standing.count
+                                : sought ? `${sought.forward ? "/" : "?"}${sought.pattern}${ofAll}`
+                                : ""
                             // A line with no modes, as a secret's, names none,
                             // and nor does the command line, as his status line
                             // shows none for it, whatever mode : came from (a
@@ -6242,6 +6290,7 @@ Scope {
             keys: QueryKeys.paged(prompt.mode)
             // The search being typed on the line, washed as it's typed.
             seeking: prompt.standing.seek ? prompt.standing.seek.pattern : ""
+            seekingForward: !prompt.standing.seek || prompt.standing.seek.forward
             // Visual in it, by its kind, and y's flash, as long as the rows'.
             choosing: prompt.mode === "pageVisual" ? "letters"
                 : prompt.mode === "pageVisualLine" ? "lines" : ""
