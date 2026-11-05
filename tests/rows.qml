@@ -208,6 +208,13 @@ ShellRoot {
                 chips: [{ text: "Now" }]
                 hint: "which?"
             }
+            // A foot's keys: a chord of two, a key and its word, and Return
+            // in a place held wider than what it says.
+            KeyHints {
+                id: footHints
+                keys: [[":", "commands"], ["Space ?", "keys"], ["\u21b5", "open"]]
+                widths: [0, 0, 200]
+            }
         }
     }
 
@@ -418,7 +425,32 @@ ShellRoot {
                 counted >= 0 && counted < texts.length - 1
                     && texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
             expect("typed in insert, the launcher's field says Ctrl+Y completes",
-                texts.length > 0 && texts[texts.length - 1].text.includes("Ctrl+Y"), said(texts));
+                texts.length > 1 && texts[texts.length - 2].text === "Ctrl+Y", said(texts));
+            // A key stands a mark from its word, nearer than one hint is
+            // to the next, so the two read as one hint (docs/design.md,
+            // The Ladder).
+            // Each gap in the keys is its rung (docs/design.md, The Ladder):
+            // a chord's keys tie, a key stands a mark from its word, a hint
+            // an item from the next, and a place held wider keeps its room
+            // after its word, never before its key, so "Space ? keys" reads
+            // as a chord and its word, and Return as one hint among them.
+            const hints = drawn(footHints, []).sort((a, b) => a.from - b.from);
+            const gap = (from, to) => {
+                const left = hints.find(t => t.text === from);
+                const right = hints.find(t => t.text === to);
+                return left && right ? right.from - left.to : NaN;
+            };
+            const rungs = [["Space", "?", Theme.space.rung.tie],
+                ["?", "keys", Theme.space.rung.mark], [":", "commands", Theme.space.rung.mark],
+                ["commands", "Space", Theme.space.rung.items],
+                ["keys", "\u21b5", Theme.space.rung.items]];
+            for (const [from, to, rung] of rungs)
+                expect(`the keys' ${from} and ${to} stand ${rung} apart`,
+                    Math.abs(gap(from, to) - rung) < 1, said(hints));
+            expect("a key and its word are measured as they're drawn",
+                Math.abs(footHints.advance("Space ?", "keys")
+                    - (hints.find(t => t.text === "keys").to
+                        - hints.find(t => t.text === "Space").from)) < 1, said(hints));
             // Insert's caret is a bar a quarter of a letter wide, as his
             // Neovim's guicursor draws it. In normal the keys are on the
             // rows, so the field draws no caret at all: a block there sat

@@ -269,7 +269,7 @@ Item {
             [[clearKey, keyWords.clear ?? ""], ["\u2192", keyWords.restore ?? ""]]]
     function slotWidth(slot, worded) {
         return Math.max(...slot.map(([key, word]) =>
-            noteFace.advanceWidth(worded && word !== "" ? `${key} ${word}` : key)));
+            fieldKeys.advance(key, worded ? word : "")));
     }
     readonly property var keysWorded: keySlots.map(slot => slotWidth(slot, true))
     readonly property real keysWordedWidth: keysWorded.reduce((sum, wide) => sum + wide, 0)

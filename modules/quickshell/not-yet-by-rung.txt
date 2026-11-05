@@ -13,7 +13,6 @@ quickshell/CommandMenu.qml
 quickshell/Drawer.qml
 quickshell/HeldNotices.qml
 quickshell/KeyboardMap.qml
-quickshell/KeyHints.qml
 quickshell/Launcher.qml
 quickshell/Lock.qml
 quickshell/Meter.qml
