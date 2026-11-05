@@ -778,16 +778,14 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-    desktop.as_account(
-        "gdbus monitor --session --dest org.freedesktop.Notifications"
-        " > /tmp/replied 2>&1 < /dev/null &"
-    )
+    # notify-send offers no inline reply, so the notice is asked for on the bus itself, with
+    # systemd's busctl, and what the shell answers is watched there too.
+    desktop.as_account("stdbuf -oL busctl --user monitor > /tmp/replied 2>&1 < /dev/null &")
     with desktop.told("shows card Thread with Bo"):
         desktop.as_account(
-            "gdbus call --session --dest org.freedesktop.Notifications"
-            " --object-path /org/freedesktop/Notifications"
-            " --method org.freedesktop.Notifications.Notify Chat 0 '' 'Thread with Bo'"
-            " 'lunch?' \"['inline-reply', 'Reply']\" '{}' 60000"
+            "busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications"
+            " org.freedesktop.Notifications Notify susssasa{sv}i"
+            " Chat 0 '' 'Thread with Bo' 'lunch?' 2 inline-reply Reply 0 60000"
         )
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
