@@ -5997,6 +5997,9 @@ Scope {
                                 : pending !== "" ? pending
                                 : !prompt.modal || root.commanding !== null ? ""
                                 : prompt.mode === "normal" && root.placeSays !== "" ? root.placeSays
+                                : root.visual ? Operators.visualSaid(
+                                    (Words.field.modes ?? {}).visual ?? "", root.visualSpan,
+                                    Words.field.visual ?? {})
                                 : (Words.field.modes ?? {})[prompt.mode] ?? ""
                             // The widest of the modes' words and its gap,
                             // held whichever shows. A binding doesn't see
@@ -6015,7 +6018,8 @@ Scope {
                                 // What the place says widens it while it says
                                 // it, so it's read whole.
                                 let widest = Math.max(modes.visual === undefined ? 0
-                                    : measure.advanceWidth(`${modes.visual} \u00b7 999`),
+                                    : measure.advanceWidth(Operators.visualSaid(modes.visual,
+                                        { from: 1, to: 999 }, Words.field.visual ?? {})),
                                 root.placeSays === "" ? 0 : measure.advanceWidth(root.placeSays));
                                 for (const word of words)
                                     widest = Math.max(widest, measure.advanceWidth(word));
