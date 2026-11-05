@@ -601,6 +601,14 @@
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
     once, and not its harmless taints
   '';
+  key-counts-keeps-no-order = ''
+    key-counts keeps a total of presses and holds for each keyboard, layer, modifiers and key and
+    nothing more, the same file whatever order the keys came in, a key held until it repeats
+    counting one hold, and a restart carrying on from the file
+  '';
+  key-counts-passes-clippy = ''
+    clippy finds nothing in key-counts or its tests
+  '';
   keys-speak-the-language = ''
     every surface naming its kinds has each act they hold, by the key language's keys, binds no
     key the language gives to another act and no act by a key not its own, in each mode its acts
