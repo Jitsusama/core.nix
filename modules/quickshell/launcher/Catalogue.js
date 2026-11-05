@@ -81,8 +81,8 @@ function opens(row) {
 }
 
 // What a row's verb says it does that changes nothing: it only shows,
-// copies or goes somewhere.
-const QUIET = new Set(["copy", "show", "see", "more", "open", "go"]);
+// copies, goes somewhere or looks again.
+const QUIET = new Set(["copy", "show", "see", "more", "open", "go", "find", "search", "retry"]);
 
 // Whether doing it changes how things stand (the vi-paradigm spec's Return):
 // it ends something or can't be taken back, as a disconnect, a lock or a
@@ -93,7 +93,9 @@ const QUIET = new Set(["copy", "show", "see", "more", "open", "go"]);
 // for the key language's own flag until the launcher reads its acts from
 // there.
 function changesState(row) {
-    if (!row || row.gone) {
+    // A row that says it changes nothing, whatever its verb, as Ask's
+    // question or a file picker's mark, which only picks.
+    if (!row || row.gone || row.changes === false) {
         return false;
     }
     if (row.changes === true || ends(row) || disruptive(row)) {

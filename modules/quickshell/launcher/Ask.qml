@@ -109,6 +109,8 @@ Provider {
             headline: Words.name("ask"),
             verb: Words.verb("ask"),
             copy: "",
+            // Asking only shows an answer, so Return asks at once.
+            changes: false,
             stays: true,
             run: () => provider.pose(question),
             rows: talkOn(question, "").concat([onward(question, "")]),
@@ -149,10 +151,12 @@ Provider {
             hue: failed ? "alert" : "voice"
         }, again ? {
             verb: Words.verb("ask"),
+            changes: false,
             stays: true,
             run: () => provider.pose(question)
         } : stage === "asking" || stage === "answering" ? {
             // Return while it's still answering leaves it answering.
+            changes: false,
             stays: true,
             run: () => {}
         } : {});

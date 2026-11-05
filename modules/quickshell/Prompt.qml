@@ -237,9 +237,16 @@ Item {
     // A modal line says no key for putting back what was cleared, since
     // normal's u is vi's own way back.
     // A question asked once takes no key of the field's, so none is said.
-    // Nor do a prompt's words, which nothing clears or brings back.
-    readonly property bool keysHeld: keyed && asking === "" && !words && (typed
+    // Nor do a prompt's words, which nothing clears or brings back. Where
+    // even the keys alone would cut the path, they give way, since a key
+    // Joel learns once never costs him where he is.
+    readonly property bool keysHeld: keyed && asking === "" && !words && keysFit && (typed
         || (!modal && input.text === "" && cleared !== ""))
+    readonly property real keysBare: keySlots.reduce((sum, slot) => sum + slotWidth(slot, false),
+        0) + (keySlots.length - 1) * fieldKeys.spacing
+    readonly property bool keysFit: chips.length === 0 || width - 2 * Theme.space.l - ledWidth
+        - Theme.space.m - pathWanted - Math.max(typingRoom, typedWanted) - Theme.space.xl
+        >= keysBare + Theme.space.xl
     // Their words take a third of the launcher's field, so they're said only
     // where everything else the field says leaves room for them: the path,
     // what's typed with its completion, and the aside, each whole. Where

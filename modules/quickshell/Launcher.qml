@@ -1844,9 +1844,17 @@ Scope {
     // what a second Return does (Joel, 2026-11-04: "it is quite dangerous
     // how in insert mode i can type in a name of a wifi network and then
     // hitting enter disconnects from it"). Normal's Return does it.
+    // One that asks for words first asks, as Join by Code does, and one in
+    // a step that asked to be sure is done, since stepping in was the
+    // second press.
     function lands(choice) {
         return !!choice && prompt.modal && prompt.mode === "find" && changesState(choice)
-            && !stepsIn(choice) && !stepsThing(choice);
+            && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !sureOf();
+    }
+
+    // Whether the step Joel is in asks him to be sure, as Power Off's does.
+    function sureOf() {
+        return held.length > 0 && !!held[held.length - 1].row?.confirm;
     }
 
     // What the last Return did ("ran", "landed", "entered", "gave", or ""
@@ -3000,17 +3008,18 @@ Scope {
     }
 
     // What a step into a row holds: its own rows, then a thing's parts
-    // after what can be done to it. Inside a thing whose own act changes
-    // something, as a network, which Return steps into rather than doing,
-    // the first is never one that changes anything, so a Return that steps
-    // in and a second after it only ever show (Catalogue.js's quietFirst).
-    // Anywhere else its own order stands: a setting's act still leads its
-    // step, and an answer's levels its copy. Null where it holds nothing.
+    // after what can be done to it. Inside a thing, as a network or a
+    // device, the first is never one that changes anything, so a Return
+    // that steps in and a second after it only ever show (Catalogue.js's
+    // quietFirst). Anywhere else its own order stands: a setting's act
+    // still leads its step, and an answer's levels its copy (VKCF3Z's
+    // order). Null where it holds nothing.
     function inside(row, things) {
         const own = stepRows(row, things);
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        return into && things && kindOf(row) !== "" && changesState(row)
+        const kind = kindOf(row);
+        return into && things && kind !== "" && kind !== "answer"
             ? Catalogue.quietFirst(into) : into;
     }
 
