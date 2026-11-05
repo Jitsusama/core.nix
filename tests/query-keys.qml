@@ -248,16 +248,28 @@ QtObject {
             Operators.asks([Object.assign({ undo: run }, close)], commands), false);
         // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
-        const asking = { ask: "{ends} {name}? (y/n)", asks: "{ends} these {count}? (y/n)",
-            ends: "end" };
+        // It names the one row it ends, and more by their count and kind,
+        // each verb with its own, so Joel needn't look to see what they are
+        // (VKCF3Z, 2026-11-05).
+        const asking = { ask: "{ends} {name}? (y/n)", asks: "{what}? (y/n)",
+            part: "{ends} {count} {kind}", ends: "end", thing: "thing", and: "and",
+            many: { copy: "copies" } };
+        const window = name => ({ ends: "close", name, kind: "window" });
+        const copied = { ends: "forget", name: "84", kind: "copy" };
         holds("the ask names the one row it ends",
-            Confirm.question([{ ends: "close", name: "Notes" }], asking), "Close Notes? (y/n)");
-        holds("and counts more, by the verb they share", Confirm.question([
-            { ends: "close", name: "Notes" }, { ends: "close", name: "Mail" }], asking),
-            "Close these 2? (y/n)");
-        holds("or by the word for any where they differ", Confirm.question([
-            { ends: "close", name: "Notes" }, { ends: "quit", name: "Firefox" }], asking),
-            "End these 2? (y/n)");
+            Confirm.question([window("Notes")], asking), "Close Notes? (y/n)");
+        holds("and counts more by their kind", Confirm.question([window("Notes"),
+            window("Mail")], asking), "Close 2 windows? (y/n)");
+        holds("and each verb with its own, the first first", Confirm.question([window("Notes"),
+            copied, window("Mail")], asking), "Close 2 windows and forget 1 copy? (y/n)");
+        holds("three by commas, the last by and", Confirm.question([window("Notes"), copied,
+            { ends: "quit", name: "Firefox", kind: "program" }, copied], asking),
+        "Close 1 window, forget 2 copies and quit 1 program? (y/n)");
+        holds("a row with no kind is a thing", Confirm.question([{ ends: "close", name: "a" },
+            { ends: "close", name: "b" }], asking), "Close 2 things? (y/n)");
+        holds("and one with no verb takes the word for ending", Confirm.question([
+            { name: "a", kind: "window" }, window("b")], asking),
+        "End 1 window and close 1 window? (y/n)");
         // Only y answers yes, and only after the ask has stood 300 ms, so
         // a key typed on from what asked can't answer it; any other no.
         const ask = Confirm.asked("Close Notes? (y/n)", run, run, 1000);

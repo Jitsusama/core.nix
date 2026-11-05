@@ -331,30 +331,24 @@ def test_y_flashes_its_rows_and_ds_ask_stands_in_returns_place(
         machine.send_chars("gg")
         desktop.launcher_until(lambda shown: shown["current"] == 0)
         before = desktop.showing()
-        with desktop.told("ask ready"), desktop.told("asked Close these 2? (y/n)"):
+        with desktop.told("ask ready"), desktop.told("asked Close 2 windows? (y/n)"):
             machine.send_chars("dj")
-        # The ask stands alone in the keys' place, ending where Return
-        # ends, wider than Return's word, so it reaches into the room the
-        # other keys left, and how things stand gives way around it as
-        # the foot's facts give way to any keys: a fact's figure before
-        # its glyph, the last first, never a word cut, and all of them
-        # whole once the ask goes.
+        # The ask stands on the line, in the find's place, as every ask
+        # does, said whole, and tints the rows it covers as visual does.
+        # The foot keeps how things stand, whole (a minute turning keeps
+        # its length), and its keys stay put.
         shown = desktop.showing()
-        facts = before["glance"].split("  ")
-        kept = shown["glance"].split("  ")
-        assert len(kept) <= len(facts), f"at {scale} the ask added a fact: {kept} of {facts}"
-        for said, fact in zip(kept, facts, strict=False):
-            assert said == fact or fact.startswith(f"{said} "), (
-                f"at {scale} the ask cut a fact: {kept} of {facts}"
-            )
-        assert shown["operated"] == "dj Close these 2? (y/n)", shown
+        assert shown["question"] == "Close 2 windows? (y/n)", shown
+        assert shown["questionWhole"], f"at {scale} the ask was cut: {shown}"
+        assert shown["tinted"] == [0, 1], shown
+        assert len(shown["glance"]) == len(before["glance"]), f"at {scale} the foot gave way"
         desktop.photograph(f"launcher-asks-at-{named}")
         with desktop.told("answered no"):
             machine.send_key("esc")
-        desktop.launcher_until(lambda shown: shown["open"] and shown["operated"] == "")
+        desktop.launcher_until(lambda shown: shown["open"] and shown["question"] == "")
         after_ask = desktop.showing()
         assert after_ask["keysAt"] == before["keysAt"], f"at {scale} the keys moved"
-        assert len(after_ask["glance"].split("  ")) == len(facts), f"at {scale} {after_ask}"
+        assert after_ask["tinted"] == [], f"at {scale} {after_ask}"
         desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {wednesday['id']}")
 
