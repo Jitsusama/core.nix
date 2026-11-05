@@ -42,8 +42,10 @@ const table = [
     // to the last; H M L to the top, middle and bottom row in view; Ctrl+D
     // and Ctrl+U half a screen, Ctrl+F and Ctrl+B, as Page Down and Page
     // Up, a screen (moved, below).
-    { act: "next", mode: "normal", keys: ["j"] },
-    { act: "previous", mode: "normal", keys: ["k"] },
+    // In normal, in a buffer, the arrows move the cursor as their letters
+    // do (Joel, 2026-11-05 12:1x), listed after them so no hint names one.
+    { act: "next", mode: "normal", keys: ["j", "Down"] },
+    { act: "previous", mode: "normal", keys: ["k", "Up"] },
     { act: "first", mode: "normal", keys: [["g", "g"]] },
     { act: "last", mode: "normal", keys: ["G"] },
     { act: "viewTop", mode: "normal", keys: ["H"] },
@@ -134,8 +136,8 @@ const table = [
     // h and l move the caret a letter, as Vim's do, rather than stepping
     // out of the place and into the row, and so do \u2190 and \u2192, each its
     // letter in normal; - and Backspace still step out.
-    { act: "letterBack", mode: "words", keys: ["h"] },
-    { act: "letterNext", mode: "words", keys: ["l"] },
+    { act: "letterBack", mode: "words", keys: ["h", "Left"] },
+    { act: "letterNext", mode: "words", keys: ["l", "Right"] },
     { act: "wordNext", mode: "words", keys: ["w"] },
     { act: "wordBack", mode: "words", keys: ["b"] },
     { act: "wordEnd", mode: "words", keys: ["e"] },

@@ -85,6 +85,7 @@ QtObject {
                 ["Escape", "d", "j", "d", "k"], ["normal", "ending next", "ending previous"]],
             ["an arrow is its letter's motion, d Down as dj", ["Escape", "d", "Down", "d", "Up"],
                 ["normal", "ending next", "ending previous"]],
+            ["3 Down goes three, as 3j", ["Escape", "3", "Down"], ["normal", "3 next"]],
             ["a count after d goes with its motion", ["Escape", "d", "3", "j"],
                 ["normal", "ending 3 next"]],
             ["and one before it too, multiplied", ["Escape", "2", "d", "3", "j"],
@@ -1105,8 +1106,7 @@ QtObject {
             ["a colon after letters on the find is the field's to type", ["s", ":", "Return"],
                 ["run"]],
             ["normal's Down and Up are j and k, with counts (Joel, 2026-11-05 12:1x)",
-                ["Escape", "Down", "Up", "j", "k", "3", "Down"],
-                ["normal", "next", "previous", "next", "previous", "3 next"]],
+                ["Escape", "Down", "Up", "j", "k"], ["normal", "next", "previous", "next", "previous"]],
             ["Space Tab goes to the place used last", ["Escape", "Space", "Tab"],
                 ["normal", "lastPlace"]],
             // Tab is Ctrl+I, as a terminal can't tell them apart: forward
@@ -1353,7 +1353,8 @@ QtObject {
         holds("nor with Shift, in a sequence or on the drawer's page", Keys.table
             .filter(one => ["normal", "visual", "words", "page", "pageVisual"]
                 .includes(one.mode))
-            .filter(one => one.keys.some(keys => !led(keys) && [].concat(keys).some(arrowed)))
+            .filter(one => one.keys.some(keys => !led(keys) && (Array.isArray(keys)
+                ? keys.some(arrowed) : keys.startsWith("Shift+") && arrowed(keys))))
             .map(one => one.act), []);
         holds("normal's section names no arrow alone",
             sections.Normal.filter(key => arrows.map(Listed.face).includes(key)), []);
