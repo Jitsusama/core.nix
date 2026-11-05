@@ -417,6 +417,17 @@ function hints(mode, has, words) {
         .map(placed => placed.one);
 }
 
+// Each of the key language's five modes in three capitals, as the foot's
+// start names it (Joel, 2026-11-05: "the mode should be 3 letters, in
+// caps, and in a place where they are more obvious and not lost with other
+// things"). A reply's normal, the key list and an operator waiting are
+// normal, as Vim's status line names them.
+const marks = { normal: "NOR", find: "FND", command: "CMD", insert: "INS", visual: "VIS" };
+
+function mark(mode) {
+    return marks[mode] ?? marks.normal;
+}
+
 // Where a list scrolled in a room is, as Neovim's ruler says it: All when
 // the room shows it all, Top and Bot at its ends, and otherwise how far
 // through it is, as what's above against all that doesn't show.
