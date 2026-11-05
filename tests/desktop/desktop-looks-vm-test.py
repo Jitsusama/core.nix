@@ -1192,6 +1192,18 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.down_to("a.md")
             desktop.launcher_until(partial(selected_is, name="a.md", told="\u21b5 open"))
             desktop.photograph(f"file-picker-nothing-gathered-at-{said}")
+            # V takes rows, tinted, and the foot says how many Return opens.
+            machine.send_chars("Vj")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["mode"] == "visual"
+                    and len(shown["tinted"]) == len(["a.md", "b.md"])
+                    and selected_is(shown, name="b.md", told="\u21b5 open 2")
+                )
+            )
+            desktop.photograph(f"file-picker-visual-at-{said}")
+            desktop.normal()
+            desktop.down_to("a.md")
             ran(desktop, "arga")
             desktop.down_to("more")
             desktop.step_in()
