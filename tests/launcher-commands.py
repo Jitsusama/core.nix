@@ -8,8 +8,8 @@ begins verb:, says its command by its whole name, one an act in the
 language has, and what follows it on the line where it needs more: an
 argument, as :new . or :answer yes, which for :set is the whole word the
 row sets, since switches and levels are options, as :set nowifi and :set
-volume+=5; or a range of every row, %, as :%forg, only on an act that
-takes rows. Fails, naming each, on a verb with no command or one the
+volume+=5; a bang, the other way, as :skip! goes back and :w! replaces;
+or a range of every row, %, as :%forg, only on an act that takes rows. Fails, naming each, on a verb with no command or one the
 language hasn't got, a :set with nothing to set, an argument with spaces
 around it, a range on an act that takes none, and two verbs on one row
 that the line can't tell apart, since
@@ -56,7 +56,8 @@ def line_of(verb: Entry) -> str:
     """Write the line a verb's command makes, as it's typed after the colon."""
     command = verb["command"]
     rest = [verb["argument"]] if "argument" in verb else []
-    return " ".join([verb.get("range", "") + command, *rest])
+    bang = "!" if verb.get("bang") else ""
+    return " ".join([verb.get("range", "") + command + bang, *rest])
 
 
 def strays(verb: Entry, commands: Commands) -> list[str]:
@@ -132,12 +133,13 @@ REFUSED: list[tuple[str, list[Entry]]] = [
 
 # What sits beside each rule's edge and isn't refused: one command on two
 # rows, or on two pieces of what's on; one told apart on a row by an
-# argument or every row; and a thing that isn't a verb.
+# argument, a bang or every row; and a thing that isn't a verb.
 ALLOWED: list[Entry] = [
     {"id": "verb:a", "in": "x", "command": "forget"},
     {"id": "verb:b", "in": "y", "command": "forget"},
     {"id": "verb:c", "in": "x", "command": "forget", "argument": "seen"},
     {"id": "verb:d", "in": "x", "command": "forget", "range": "%"},
+    {"id": "verb:g", "in": "x", "command": "forget", "bang": True},
     {"id": "verb:e", "in": "x", "command": "set", "argument": "wifi"},
     {"id": "verb:f", "in": "x", "command": "set", "argument": "volume+=5"},
     {"id": "verb:on:waiting:go", "in": ON, "command": "forget"},
