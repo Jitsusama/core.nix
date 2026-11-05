@@ -491,9 +491,8 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
 ) -> None:
     """V j counts two in the mode word, and a window arriving waits as "1 new" in the foot.
 
-    It's shown in Super+Tab's windows, since a typed search said again finds only what it
-    found, and the arrival is opened aside, as another session's is, so it isn't the window
-    Joel is in, which the list leaves out.
+    It's shown in Super+Tab's windows, which is all of them, since a typed search said again
+    finds only what it found.
     """
     machine = desktop.machine
     desktop.notes_window()
@@ -509,7 +508,7 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         desktop.normal()
         machine.send_chars("ggVj")
         desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
-        arriving = desktop.opened_aside(f"Notes for the shot at {named}")
+        arriving = desktop.opened(f"Notes for the shot at {named}")
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
         )

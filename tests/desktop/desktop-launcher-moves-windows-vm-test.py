@@ -638,8 +638,7 @@ def waits_behind_what_is_chosen(desktop: Desktop) -> None:
     """Open a window while Super+Tab's rows are chosen: it waits as 1 new, then comes in last.
 
     A typed search said again finds only what it found, so a new window
-    arrives in the windows list, which is all of them, opened aside so it
-    isn't the one Joel is in, which the list leaves out.
+    arrives in the windows list, which is all of them.
     """
     machine = desktop.machine
     machine.send_key("meta_l-tab")
@@ -649,11 +648,18 @@ def waits_behind_what_is_chosen(desktop: Desktop) -> None:
     machine.send_chars("V")
     desktop.launcher_until(lambda shown: shown["mode"] == "visual")
     before = desktop.showing()["rows"]
-    arriving = desktop.opened_aside(ARRIVING)
+    arriving = desktop.opened(ARRIVING)
     desktop.launcher_until(lambda shown: shown["waiting"] == 1 and shown["rows"] == before)
+    # The row that comes in is the one the list now holds that it didn't:
+    # niri may make the new window the one Joel is in, which gives back
+    # the one he was, so it's known by the order kept, not its name.
     machine.send_key("esc")
     desktop.launcher_until(
-        lambda shown: shown["waiting"] == 0 and shown["rows"] == [*before, ARRIVING]
+        lambda shown: (
+            shown["waiting"] == 0
+            and len(shown["rows"]) == len(before) + 1
+            and shown["rows"][: len(before)] == before
+        )
     )
     desktop.close_launcher()
     desktop.close(arriving)
