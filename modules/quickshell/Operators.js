@@ -278,6 +278,13 @@ function selection(from, at) {
 
 // What the foot says Return does over a selection: open its rows, by
 // their count, as "open 3".
+// Visual's mode word, counting the rows chosen (`span`, as selection gives
+// it), as the spec's "visual line · 3".
+function visualSaid(mode, span, words) {
+    return (words.counted ?? "{mode}").replace("{mode}", mode)
+        .replace("{count}", String(span.to - span.from + 1));
+}
+
 function opensSaid(count, words) {
     return (words.opens ?? "").replace("{count}", String(count));
 }

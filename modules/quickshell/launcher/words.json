@@ -6589,6 +6589,7 @@
       "copies": "copy"
     },
     "visual": {
+      "counted": "{mode} \u00b7 {count}",
       "opens": "open {count}",
       "opened": "{open} of {count} open"
     },
