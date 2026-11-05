@@ -73,6 +73,12 @@ Floating {
     readonly property var facts: shown ? (shown.facts ?? [])
         .filter(fact => fact && String(fact.value ?? "") !== title) : []
     readonly property string body: shown ? shown.body ?? "" : ""
+    // Whether it lists keys (`keys: true`), as Space ? does: each chord is
+    // the name and what it does the value, both at Note, the chord in the
+    // text's ink and its words muted, as the reader's key list sets them, so
+    // a line fits on one. At Figure, in the mono, most wrapped (VKCF3Z,
+    // 2026-11-04).
+    readonly property bool listsKeys: shown ? shown.keys === true : false
     readonly property string picture: shown ? shown.picture ?? "" : ""
     readonly property var preview: shown ? shown.preview ?? null : null
     // Whether it's the moment's plate, home's Now's.
@@ -233,14 +239,34 @@ Floating {
     }
     FontMetrics {
         id: valueFace
-        font.family: Theme.level.figure.family
-        font.pointSize: Theme.level.figure.pointSize
+        font.family: drawer.listsKeys ? Theme.level.note.family : Theme.level.figure.family
+        font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
+            : Theme.level.figure.pointSize
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
-    readonly property real labelsWide: Math.min(
-        column.width - labelsGap - valueFace.advanceWidth("00000000"),
-        Math.ceil(Math.max(0, ...allFacts.map(fact => factFace.advanceWidth(fact.label ?? "")))))
+    // A binding doesn't see what a call reads, so it reads both faces, to be
+    // measured again as a key list's face comes and goes.
+    readonly property real labelsWide: {
+        void valueFace.font;
+        void factFace.font;
+        let widest = 0;
+        for (const fact of allFacts)
+            widest = Math.max(widest, factFace.advanceWidth(fact.label ?? ""));
+        return Math.min(column.width - labelsGap - valueFace.advanceWidth("00000000"),
+            Math.ceil(widest));
+    }
+    // How many of its facts take more than a line, a name or a value
+    // wrapped, for the launcher to report when asked: a key list's take one.
+    function factsWrapped() {
+        let wrapped = 0;
+        for (let at = 0; at < factRows.count; at++) {
+            const row = factRows.itemAt(at);
+            if (row && !row.heading && row.height > drawer.pitch + 0.5)
+                wrapped += 1;
+        }
+        return wrapped;
+    }
     // Whether every name fits its column on one line, for the launcher to
     // report when asked.
     function labelsWhole() {
@@ -684,7 +710,7 @@ Floating {
                                 wrapMode: Text.Wrap
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: drawer.pitch
-                                color: Theme.muted
+                                color: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
@@ -704,10 +730,13 @@ Floating {
                                 wrapMode: Text.Wrap
                                 lineHeightMode: Text.FixedHeight
                                 lineHeight: drawer.pitch
-                                color: fact.known ? Theme.text : Theme.muted
-                                font.family: Theme.level.figure.family
-                                font.pointSize: Theme.level.figure.pointSize
-                                font.features: Theme.level.figure.features
+                                color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
+                                font.family: drawer.listsKeys ? Theme.level.note.family
+                                    : Theme.level.figure.family
+                                font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
+                                    : Theme.level.figure.pointSize
+                                font.features: drawer.listsKeys ? ({})
+                                    : Theme.level.figure.features
                             }
                         }
                     }

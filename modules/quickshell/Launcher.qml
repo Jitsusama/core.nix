@@ -2279,7 +2279,7 @@ Scope {
     property bool listing: false
     readonly property var listedPlate: {
         const words = Words.field.listed ?? {};
-        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "",
+        return { eyebrow: words.eyebrow ?? "", title: words.title ?? "", keys: true,
             facts: ListedKeys.keyList(QueryKeys.table, words.lines ?? {}, words.modes ?? {}) };
     }
     onListingChanged: drawerSettled()
@@ -3985,6 +3985,7 @@ Scope {
                     lines: (drawerCard.preview.lines ?? []).length
                 },
                 labelsWhole: drawerCard.labelsWhole(),
+                factsWrapped: drawerCard.factsWrapped(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
