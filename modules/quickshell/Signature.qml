@@ -15,18 +15,42 @@ Item {
     property string name
     property string side
 
-    readonly property rect capital: face.tightBoundingRect("H")
-    readonly property rect marked: face.tightBoundingRect(mark)
-    readonly property rect named: face.tightBoundingRect(name)
-    readonly property rect sided: face.tightBoundingRect(side)
+    readonly property rect capital: capitalInk.tightBoundingRect
+    readonly property rect marked: markInk.tightBoundingRect
+    readonly property rect named: nameInk.tightBoundingRect
+    readonly property rect sided: sideInk.tightBoundingRect
 
     implicitHeight: capital.height
 
+    // The face, and where each part's ink starts and ends in it. Each is a
+    // TextMetrics, whose bounds follow the face, where a call on FontMetrics
+    // measures once, before the face has loaded, and a binding never asks
+    // again.
     FontMetrics {
         id: face
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
         font.weight: Theme.level.note.weight
+    }
+    TextMetrics {
+        id: capitalInk
+        font: face.font
+        text: "H"
+    }
+    TextMetrics {
+        id: markInk
+        font: face.font
+        text: signature.mark
+    }
+    TextMetrics {
+        id: nameInk
+        font: face.font
+        text: signature.name
+    }
+    TextMetrics {
+        id: sideInk
+        font: face.font
+        text: signature.side
     }
 
     Text {
