@@ -945,6 +945,7 @@ def photograph_the_calendars(desktop: Desktop) -> None:
         drawer = desktop.showing()["drawer"]
         assert drawer["labelsWhole"], f"a {calendar} fact's name is broken: {drawer}"
         assert drawer["besideOnOneLine"], f"a {calendar} value wraps beside its name: {drawer}"
+        assert drawer["digitsStandAsFigures"], f"{calendar} digits stand smaller: {drawer}"
         desktop.photograph(f"launcher-date-{calendar.lower()}")
         desktop.close_launcher()
 

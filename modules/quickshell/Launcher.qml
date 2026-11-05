@@ -4396,6 +4396,8 @@ Scope {
                 valuesWhole: drawerCard.valuesWhole(),
                 // Whether every value beside its name takes one line there.
                 besideOnOneLine: drawerCard.besideOnOneLine(),
+                // Whether a script's own digits stand as tall as figures.
+                digitsStandAsFigures: drawerCard.digitsStandAsFigures(),
                 foot: root.hundredths(drawerCard.foot),
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),

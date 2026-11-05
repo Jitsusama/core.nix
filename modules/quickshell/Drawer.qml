@@ -558,6 +558,11 @@ Floating {
             : Theme.level.figure.pointSize
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
     }
+    // The digits of a script that has its own, which a value may be
+    // written in beside the figures' (VKCF3Z, 2026-11-05).
+    readonly property var scriptDigits: ({
+        arabic: "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+    })
     // A value in Latin letters on a script's plate (`latin: true`), as a
     // count or a day is, at Figure in the theme's own face, since the
     // script's cut draws Latin in another's.
@@ -636,6 +641,17 @@ Floating {
     // to report when asked.
     function besideOnOneLine() {
         return drawnRows().every(row => row.oneLineBeside);
+    }
+    // Whether every value in its script's own digits has them stand as
+    // tall as the figures' do, to a twentieth, so one column reads at one
+    // size, for the launcher to report when asked.
+    function digitsStandAsFigures() {
+        const digits = scriptDigits[script] ?? "";
+        const figures = latinFace.tightBoundingRect("0123456789").height;
+        const own = value => digits.split("").some(digit => String(value).includes(digit));
+        return drawnRows().every(row => !row.known || !own(row.modelData.value)
+            || Math.abs(faceOf(row.modelData).tightBoundingRect(digits).height - figures)
+                <= figures / 20);
     }
     // Where the last line it shows ends, down from its top.
     readonly property real foot: Theme.border + view.height
