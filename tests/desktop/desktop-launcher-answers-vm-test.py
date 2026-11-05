@@ -1368,7 +1368,10 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
 
 
 def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: Desktop) -> None:
-    """The screen's warmth follows its Brightness, says how it stands, and Return switches it."""
+    """The screen's warmth follows its Brightness, says how it stands, and Return switches it.
+
+    :set warmth? says how it stands and :set warmth switches it too.
+    """
     machine = desktop.machine
     note = "/run/user/1000/backlight-warmth"
 
@@ -1415,6 +1418,15 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
     # It stays to show the change, which comes as the daemon says it.
     warmth({"kelvin": 6500, "followsTheRoom": False})
     desktop.launcher_until(warmth_selected("off", "on", "6500 K, the screen's own white"))
+    # :set warmth? says so as the row does, and :set warmth tells the daemon as Return does.
+    machine.send_chars(":set warmth?\n")
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None and shown["commandSaid"] == "nowarmth"
+    )
+    machine.send_chars(":set warmth\n")
+    machine.wait_until_succeeds(
+        "grep -q 'BOOLEAN true' /tmp/warmth-heard", timeout=dt.timedelta(seconds=10)
+    )
     # Where nothing warms the screen, the daemon leaves {}, and the Warmth
     # goes: kept in its place while stepped in, as any part that goes is.
     warmth({})
