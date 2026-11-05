@@ -416,7 +416,7 @@ QtObject {
     // they're put back are what u takes back, and the foot says so.
     function changes(holds) {
         holds("Ctrl+R does again what u took back, and . the last change",
-            typed(["Escape", "Ctrl+r", "3", "."]).acts, ["normal", "redoChange", "3 again"]);
+            typed(["Escape", "Ctrl+r", "3", "."]).counted, ["normal", "redoChange", "3 again"]);
         for (const act of ["redoChange", "again"])
             holds(`${act} is once a press`, Keys.repeats(act), false);
         const dd = { count: 2, motion: null };
