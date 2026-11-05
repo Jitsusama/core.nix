@@ -441,7 +441,7 @@ end
 
 -- q closes nothing, as in all his programs, and says what does.
 local function inert()
-  swayimg.text.status = 'q does nothing · ZZ closes'
+  swayimg.text.status = 'q does nothing · :q closes'
 end
 
 -- What each key with an act does. The arrows go that way, to the previous
@@ -470,11 +470,12 @@ local acts = {
   trash = trash,
   restore = restore,
   escape = escape,
-  turn_left = function()
-    swayimg.viewer.rotate(270)
-  end,
-  turn_right = function()
-    swayimg.viewer.rotate(90)
+  -- The launcher's command line, over the picture, given this swayimg's
+  -- process for swayimg-command to carry what's chosen back to it.
+  command_line = function()
+    if pid then
+      os.execute('launcher-say command-line swayimg ' .. pid .. ' >/dev/null 2>&1 &')
+    end
   end,
   close = quit,
   inert = inert,
@@ -495,7 +496,11 @@ local commands = {
     swayimg.viewer.rotate(tonumber(rest) or 90)
   end,
   ['goto'] = function(mode, rest)
-    nth(mode, tonumber(rest))
+    if rest == '$' then
+      end_or_nth('last')(mode)
+    elseif tonumber(rest) then
+      nth(mode, tonumber(rest))
+    end
   end,
   quit = quit,
 }

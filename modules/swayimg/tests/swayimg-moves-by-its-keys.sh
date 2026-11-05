@@ -214,6 +214,32 @@ asks() {
 asks
 asks -k space
 
+# : asks the launcher for its command line over this swayimg, by its
+# process, which swayimg-command carries what's chosen back to. A keyboard
+# sends : as colon with Shift held.
+rm -f "$ASKED"
+wtype -M shift -k colon -m shift
+for _ in $(seq 100); do
+  if grep -qx "command-line swayimg $viewer" "$ASKED" 2>/dev/null; then break; fi
+  sleep 0.1
+done
+grep -qx "command-line swayimg $viewer" "$ASKED" 2>/dev/null \
+  || { echo ": asked the launcher for $(cat "$ASKED" 2>/dev/null || echo nothing)"; exit 1; }
+
+# [ and ] alone do nothing, since turning is :rotate: the tall picture is
+# still as tall, as :y copies it.
+wtype '['
+sleep 1
+rm -f copied
+swayimg-command "$viewer" yank
+copied "[ then :y"
+size=$(od -An -tu1 -j16 -N8 copied | tr -s ' ' ' ')
+if [ "$size" != " 0 0 0 4 0 0 7 208" ]; then
+  echo "[ alone turned the picture, to$size"
+  exit 1
+fi
+rm copied
+
 # On a picture larger than the window, Down moves it and Up back, and j and
 # k as far.
 press End z-tall.pgm
