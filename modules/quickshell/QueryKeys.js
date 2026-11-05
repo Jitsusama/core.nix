@@ -33,9 +33,8 @@ const table = [
     { act: "next", mode: "line", keys: ["Down", "Tab", "Ctrl+n"] },
     { act: "previous", mode: "line", keys: ["Up", "Shift+Tab", "Ctrl+p"] },
     { act: "complete", mode: "line", keys: ["Ctrl+y"] },
-    // Escape and Ctrl+C leave the line for normal, the rows as they were
-    // found, since on a list the find is what the list is, not a move to
-    // undo (the vi-paradigm spec's departure 5).
+    // Escape and Ctrl+C leave the line for normal, the rows as found: on a
+    // list the find is what the list is (the vi-paradigm spec's departure 5).
     { act: "normal", mode: "line", keys: ["Escape", "Ctrl+c"] },
 
     // Normal, over the rows as a buffer: Vim's moves, each taking a count
@@ -141,12 +140,10 @@ const table = [
     { act: "changeWord", mode: "words", keys: [["c", "w"]] },
     { act: "undo", mode: "words", keys: ["u"] },
 
-    // Every mode: Return opens the row or steps into it, as everywhere of
-    // ours; with Shift, Ctrl or Alt it does nothing (the vi-paradigm
-    // spec's Return). Page Up and Page Down page the rows.
-    // Shift and the arrows do nothing: the drawer is gone into with Space
-    // and the right arrow and moved through there, as an arrow is its
-    // letter and has no act of its own (VKCF3Z's spec v2, The Arrows).
+    // Every mode: Return opens the row or steps into it, and with Shift,
+    // Ctrl or Alt does nothing (the vi-paradigm spec's Return); Page Up and
+    // Page Down page the rows. Shift and the arrows do nothing: an arrow is
+    // its letter (VKCF3Z's spec v2, The Arrows).
     { act: "run", mode: "both", keys: ["Return", "Enter"] },
     { act: "pageUp", mode: "both", keys: ["PageUp"] },
     { act: "pageDown", mode: "both", keys: ["PageDown"] },
@@ -306,13 +303,8 @@ function chosen(mode) {
     return mode === "pageVisual" || mode === "pageVisualLine";
 }
 
-// Whether a line is typed in, a key the table doesn't name the field's.
-function typedIn(mode) {
-    return mode === "find" || mode === "insert";
-}
-
 // Whether a row's keys are a mode's: "line" is the find's and insert's,
-// "both" every mode's. Choosing on the page, by letters or lines, has
+// where letters type, "both" every mode's. Choosing on the page, by letters or lines, has
 // pageVisual's rows and the page's moves; visual on the rows has normal's
 // moves besides its own, since every move extends it.
 function inMode(row, mode) {
@@ -326,7 +318,7 @@ function inMode(row, mode) {
     if (mode === "visual" && row.mode === "object") {
         return true;
     }
-    return row.mode === mode || (row.mode === "line" && typedIn(mode)) || row.mode === "both";
+    return row.mode === mode || (row.mode === "line" && !still(mode)) || row.mode === "both";
 }
 
 // The rows a mode reads, in the order it reads them: in normal on a line
