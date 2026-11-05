@@ -678,33 +678,28 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     assert "polish() loop" not in log, "a notice's layout never settles"
     # Super+N takes the stack as its lines, which wait while it holds the
     # keys, the cursor on the card in front, the older; the newer is line
-    # 1. Tab is no key of normal's, and says so, and Backspace is h, out
-    # of nothing. :forg lets the older go unread, the cursor going on to
-    # the newer, and l steps into its acts,
-    # forgetting it first, since it opens nothing, then
-    # what it offers, as a launcher row's are (launcher/Notice.js); j
-    # chooses the next and h steps back, and Return does the one
-    # chosen, with a token to come forward, and gives the keys back.
+    # 1. Tab is no key of normal's, nor Backspace, h or l, and each says so: a card's acts are
+    # commands, never a row stepped into (Joel, 2026-11-05: "where in vi does that step into
+    # shit?"). :forg lets the older go unread, the cursor going on to the newer, whose card
+    # lists what it offers as commands under its words, and : puts them first in the menu;
+    # Tab chooses it and Return does it, with a token to come forward, giving the keys back.
     desktop.listen()
     with desktop.told("keys notices"), desktop.told("notice cursor Lunch"):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
-    with desktop.told("notice says not here"):
-        machine.send_key("tab")
-    machine.send_key("backspace")
-    with desktop.told("notice forgets 1"), desktop.told("notice cursor Recording saved"):
+    for key in ["tab", "backspace", "h", "l"]:
+        with desktop.told("notice says not here"):
+            machine.send_key(key)
+    with (
+        desktop.told("notice forgets 1"),
+        desktop.told("notice cursor Recording saved"),
+        desktop.told("notice offers :play"),
+    ):
         machine.send_chars(":forg\n", delay=KEY_PACE)
-    with desktop.told("notice verb Forget It"):
-        machine.send_key("l")
-    with desktop.told("notice verb Play it"):
-        machine.send_key("j")
     desktop.photograph("notices-held-verbs")
-    with desktop.told("notice back"):
-        machine.send_key("h")
-    with desktop.told("notice verb Forget It"):
-        machine.send_key("l")
-    with desktop.told("notice verb Play it"):
-        machine.send_key("j")
+    with desktop.told("notice menu chose play"):
+        machine.send_chars(":", delay=KEY_PACE)
+        machine.send_key("tab")
     with desktop.told("lets notices go"):
         machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
@@ -730,16 +725,10 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         desktop.as_account("notify-send --expire-time=60000 'Build log' 'all green'")
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    # It offers nothing and opens nothing, so forgetting it leads its
-    # acts, then whether it's read, the stack's own, and copying what it
-    # said last (launcher/Notice.js), which keeps the keys.
-    with desktop.told("notice verb Forget It"):
-        machine.send_key("l")
-    for verb in ["Read", "Forget Them All", "All the Notices", "Copy What It Said"]:
-        with desktop.told(f"notice verb {verb}"):
-            machine.send_key("j")
+    # It offers nothing, so its card lists no command, and :y copies what it said, keeping
+    # the keys.
     with desktop.told("copied card Build log"):
-        machine.send_key("ret")
+        machine.send_chars(":y\n", delay=KEY_PACE)
     assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
     # yy copies it too, as Vim yanks a line.
     desktop.as_account("wl-copy nothing")
@@ -873,8 +862,8 @@ def test_a_click_on_a_notice_opens_what_its_about_with_a_token_to_come_forward(
 def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desktop) -> None:
     """A notice is signed by the name Joel knows what sent it by, never its program's.
 
-    Its pictures at both of Joel's scales, alone, held and stepped into, are look 3's notice
-    (2026-11-03), for a person to measure its room by.
+    Its pictures at both of Joel's scales, alone and held with its acts listed as commands, are
+    look 3's notice (2026-11-03), for a person to measure its room by.
     """
     machine = desktop.machine
     for scale in JOELS_SCALES:
@@ -894,14 +883,9 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
         # the name ends and its kind begins.
         named = scale.replace(".", "-")
         desktop.photograph(f"notice-at-{named}")
-        with desktop.told("keys notices"):
+        with desktop.told("keys notices"), desktop.told("notice offers :pause"):
             machine.send_key("meta_l-n")
         desktop.photograph(f"notice-held-at-{named}")
-        with desktop.told("notice verb Open"):
-            machine.send_key("l")
-        desktop.photograph(f"notice-stepped-at-{named}")
-        with desktop.told("notice back"):
-            machine.send_key("esc")
         with desktop.told("lets notices go"):
             machine.send_key("esc")
         desktop.as_account("qs ipc call notices putAway")
@@ -961,10 +945,10 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
-def test_a_notices_l_holds_what_return_does_on_its_card_and_in_the_launcher(
+def test_a_notices_commands_are_what_its_launcher_row_holds(
     desktop: Desktop,
 ) -> None:
-    """A notice's l holds what Return does first, on its card and in the launcher."""
+    """A notice's commands, on its card and in its menu, are what its launcher row holds."""
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.listen()
@@ -973,17 +957,19 @@ def test_a_notices_l_holds_what_return_does_on_its_card_and_in_the_launcher(
             "notify-send --expire-time=60000 --action=default=Open --action=play='Play it'"
             " 'Thread with Ana' 'see it' > /tmp/answer 2>&1 < /dev/null &"
         )
-    with desktop.told("keys notices"):
+    # Its card lists what it offers, and : its menu with Return's Open first, then Play it.
+    with desktop.told("keys notices"), desktop.told("notice offers :play"):
         machine.send_key("meta_l-n")
-    with desktop.told("notice verb Open"):
-        machine.send_key("l")
-    with desktop.told("notice verb Play it"):
-        machine.send_key("j")
-    with desktop.told("notice back"):
-        machine.send_key("h")
+    with desktop.told("notice menu chose open"):
+        machine.send_chars(":", delay=KEY_PACE)
+        machine.send_key("tab")
+    with desktop.told("notice menu chose play"):
+        machine.send_key("tab")
+    with desktop.told("notice mode normal"):
+        machine.send_key("esc")
     # :e Notices hands on to the history, which opens on its first row,
-    # the newest notice, as every place opens on its first; l steps into
-    # its acts from normal mode, and they hold the same.
+    # the newest notice, as every place opens on its first; its acts there
+    # hold the same.
     desktop.notices_history()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
