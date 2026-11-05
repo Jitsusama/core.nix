@@ -14,6 +14,8 @@
 // on; find is the / line narrowing the cards; command is the : line;
 // insert writes a reply's words, and prompt is normal over them.
 const moving = ["normal", "visual", "pending"];
+// Scrolling moves the view, which no operator takes.
+const scrolling = ["normal", "visual"];
 
 // Each act, its keys, the modes it's done in (normal unless it says), and
 // its kind: a motion moves the cursor, or says what an operator acts on; an
@@ -25,10 +27,11 @@ const moving = ["normal", "visual", "pending"];
 // the foot gives it, and `does` what Space ? says it does, in a few words.
 const table = [
     // Moving through the cards, the newest on line 1, as Vim moves through
-    // lines; no arrow does anything in normal, as Joel asked (2026-11-05:
-    // "remove them and rely only on vi right feeling things").
-    { act: "down", keys: ["j"], modes: moving, kind: "motion", does: "down a card" },
-    { act: "up", keys: ["k"], modes: moving, kind: "motion", does: "up a card" },
+    // lines; an arrow is its letter's motion and nothing else, never named
+    // (Joel, 2026-11-05: "In normal mode, in a buffer, arrows move the
+    // cursor").
+    { act: "down", keys: ["j", "Down"], modes: moving, kind: "motion", does: "down a card" },
+    { act: "up", keys: ["k", "Up"], modes: moving, kind: "motion", does: "up a card" },
     { act: "first", keys: [["g", "g"]], modes: moving, kind: "motion", does: "newest, or {n}th" },
     { act: "last", keys: ["G"], modes: moving, kind: "motion", does: "oldest, or {n}th" },
     { act: "viewTop", keys: ["H"], modes: moving, kind: "motion", does: "the view's top" },
@@ -41,6 +44,13 @@ const table = [
     { act: "halfUp", keys: ["Ctrl+U"], modes: moving, kind: "motion", does: "half a view back" },
     { act: "viewDown", keys: ["Ctrl+F"], modes: moving, kind: "motion", does: "a view on" },
     { act: "viewUp", keys: ["Ctrl+B"], modes: moving, kind: "motion", does: "a view back" },
+    // Scrolling the view, the cursor kept in it, as Vim's (Joel, 2026-11-05:
+    // "I can't scroll up and down in a notices list now").
+    { act: "lineDown", keys: ["Ctrl+E"], modes: scrolling, does: "scroll a line on" },
+    { act: "lineUp", keys: ["Ctrl+Y"], modes: scrolling, does: "scroll a line back" },
+    { act: "viewCentre", keys: [["z", "z"]], modes: scrolling, does: "line to the middle" },
+    { act: "viewAtTop", keys: [["z", "t"]], modes: scrolling, does: "line to the top" },
+    { act: "viewAtBottom", keys: [["z", "b"]], modes: scrolling, does: "line to the foot" },
 
     // Into the cursor card's acts and out, as his oil's l and h; Backspace
     // and - are h, as in Vim.
@@ -121,8 +131,8 @@ const table = [
         does: "normal over them" },
     { act: "insert", keys: ["i", "a"], modes: ["prompt"], does: "insert, or after" },
     { act: "insertEnds", keys: ["I", "A"], modes: ["prompt"], does: "insert at an end" },
-    { act: "left", keys: ["h", "Backspace"], modes: ["prompt"], does: "a letter left" },
-    { act: "right", keys: ["l"], modes: ["prompt"], does: "a letter right" },
+    { act: "left", keys: ["h", "Left", "Backspace"], modes: ["prompt"], does: "a letter left" },
+    { act: "right", keys: ["l", "Right"], modes: ["prompt"], does: "a letter right" },
     { act: "lineStart", keys: ["0", "Home"], modes: ["prompt"], does: "the line's start" },
     { act: "lineEnd", keys: ["$", "End"], modes: ["prompt"], does: "the line's end" },
     { act: "wordOn", keys: ["w"], modes: ["prompt"], does: "the next word" },
@@ -356,6 +366,8 @@ const groups = [
 // name lowercase, as the foot says them.
 // Faces as the launcher's foot draws them (ListedKeys.js).
 const faces = { Return: "\u21b5", Enter: "\u21b5", Escape: "Esc" };
+// Each arrow and the letter whose motion it is.
+const arrowLetters = { Down: "j", Up: "k", Left: "h", Right: "l" };
 
 // One key or sequence as the foot and the list say it: a sequence's keys
 // a space apart, or none where it's two letters, as dd.
@@ -380,7 +392,9 @@ function keyList() {
             const keys = table.filter(one => one.act === row.act
                 && groups.find(other => other.modes.some(mode => inMode(one, mode))) === group)
                 .reduce((all, one) => all.concat(one.keys), []);
-            const said = keys.map(spoken).filter((one, at, all) => all.indexOf(one) === at);
+            // An arrow beside its letter is never named, the letter is.
+            const named = key => !(key in arrowLetters && keys.includes(arrowLetters[key]));
+            const said = keys.filter(named).map(spoken).filter((one, at, all) => all.indexOf(one) === at);
             out.push({ heading: "", keys: said.slice(0, 2).join(" "),
                 does: row.does, act: row.act });
         }
