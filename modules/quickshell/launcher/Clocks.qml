@@ -348,8 +348,11 @@ Provider {
         const parts = serverParts(server);
         const name = server.name || server.address;
         const sampled = server.lastSample !== null && server.lastSample !== undefined;
+        // Known by its address, since the launcher keeps a selection by its
+        // row's key as the reading changes; what it is says it's a server.
         return thingRow({
-            key: "time:server",
+            key: `time-server:${server.address}`,
+            is: "time:server",
             name: name,
             side: sampled ? Keeping.seconds(server.offset, true) : "",
             note: Keeping.standing(server, serversSaid),
