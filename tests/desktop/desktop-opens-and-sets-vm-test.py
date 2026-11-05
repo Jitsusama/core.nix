@@ -776,6 +776,25 @@ def commands_a_network(desktop: Desktop) -> None:
         "journalctl -u wifid | grep -q 'left Lantern, as asked'", timeout=timedelta(seconds=30)
     )
     desktop.launcher_until(lambda shown: shown["command"] is None)
+    lists_earlier_lines(desktop)
+
+
+def lists_earlier_lines(desktop: Desktop) -> None:
+    """List the lines the command line ran by :his, newest first, and let it go."""
+    machine = desktop.machine
+    if not desktop.showing()["open"]:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.normal()
+    machine.send_chars(":his\n")
+    desktop.launcher_until(
+        lambda shown: (
+            [one.strip() for one in (shown["command"] or {}).get("menu", [])[:2]]
+            == ["his", "g/Lant/disc"]
+        )
+    )
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["command"] is None)
     if desktop.showing()["open"]:
         desktop.close_launcher()
 
