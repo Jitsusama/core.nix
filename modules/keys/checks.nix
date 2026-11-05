@@ -214,6 +214,28 @@ let
       says = "stray can be undone, but changes nothing";
     }
     {
+      name = "a-guard-on-an-undoing";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        changes = true
+        undoable = true
+        guarded = true
+      '';
+      says = "stray guards itself, but it never asks, since it can be undone";
+    }
+    {
+      name = "a-guard-on-nothing";
+      adds = ''
+        [acts.stray]
+        keys = ["<C-x>"]
+        kinds = []
+        guarded = true
+      '';
+      says = "stray guards itself, but it never asks, since it changes nothing";
+    }
+    {
       name = "a-field-unknown";
       adds = ''
         [acts.stray]

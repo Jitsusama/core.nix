@@ -54,6 +54,7 @@ let
       inherit (about) short;
       changes = about.changes or false;
       undoable = about.undoable or false;
+      guarded = about.guarded or false;
       range = about.range or false;
     }
   ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
