@@ -2641,6 +2641,7 @@ onLinux {
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${./QueryKeys.js} QueryKeys.js
+      cp ${./LineEditing.js} LineEditing.js
       cp ${./Editing.js} Editing.js
       cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
@@ -3083,6 +3084,8 @@ onLinux {
       cp ${./Editing.js} Editing.js
       cp ${./ListedKeys.js} ListedKeys.js
       cp ${./DrawerPage.js} DrawerPage.js
+      cp ${./Search.js} Search.js
+      cp ${./LineEditing.js} LineEditing.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

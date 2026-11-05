@@ -6618,12 +6618,18 @@
   ],
   "field": {
     "modes": {
-      "insert": "insert"
+      "insert": "insert",
+      "pageVisual": "visual",
+      "pageVisualLine": "visual line"
     },
     "keys": {
       "complete": "complete",
       "clear": "clear",
       "restore": "restore"
+    },
+    "drawer": {
+      "back": "back",
+      "keys": "keys"
     },
     "listed": {
       "eyebrow": "Keys",
@@ -6631,7 +6637,8 @@
       "modes": {
         "normal": "Normal",
         "insert": "Insert",
-        "page": "Drawer"
+        "page": "Drawer",
+        "pageVisual": "Choosing"
       },
       "lines": {
         "nextRow": "The next row",
@@ -6661,6 +6668,12 @@
         "lines": "Down and up a line",
         "along": "Along the line",
         "scroll": "Scroll a line",
+        "seek": "Search it",
+        "seekOn": "The next match",
+        "select": "Choose words",
+        "reselect": "The last choice",
+        "otherEnd": "Its other end",
+        "copy": "Copy as markdown",
         "back": "Back to the rows",
         "keys": "These keys",
         "close": "Close"

@@ -14,6 +14,7 @@ it as it found it.
 from __future__ import annotations
 
 import json
+import time
 from datetime import timedelta
 from functools import partial
 from itertools import pairwise
@@ -22,11 +23,13 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import LAUNCHER_OPEN
+from PIL import ImageChops
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
+    from PIL import Image
     from test_driver.machine import BaseMachine
 
 # Joel's scales.
@@ -58,6 +61,15 @@ HALF_A_PIXEL = 0.5
 HELD_MS = 20
 TRIES = 3
 TRIED = timedelta(seconds=10)
+# y's flash lasts Joel's 200 ms (language.toml's yank-flash), so the screen is taken this many
+# times at once after it, and a picture is the flash where it differs, by this many pixels
+# changed by more than this much light, from both the choice before it and the page after.
+# Enough pictures after the screen first changes, one after the other, to span the flash's
+# 200 ms.
+FLASH_SHOTS = 5
+FLASHED = 200
+CHANGED = 40
+NEVER_FLASHED = "no picture caught y's flash"
 
 
 @pytest.fixture(scope="module")
@@ -345,6 +357,114 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
             lambda: None,
         )
         closed_from_the_list(desktop)
+
+
+def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Search the key list's drawer, choose in it and copy, photographing each at both scales.
+
+    What's typed after / is washed as it's typed; v chooses letters and V lines, the mode word
+    counting them, "visual line \u00b7 3"; and y flashes what it took. Each is kept for a person
+    to judge: the wash and the choice change fill and colour, never weight.
+    """
+
+    def relisted() -> None:
+        closed_from_the_list(desktop)
+        listed_keys(desktop)
+
+    for scale in at_each_scale:
+        named = scale.replace(".", "-")
+        at_scale(desktop, scale)
+        listed_keys(desktop)
+        pressed_until(
+            desktop, "spc right", lambda shown: shown["drawer"]["cursor"] is not None, relisted
+        )
+        pressed(desktop, "slash d o w n")
+        desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "down")
+        desktop.photograph(f"launcher-drawer-washed-at-{named}")
+        pressed(desktop, "ret")
+        desktop.launcher_until(partial(landed_on, "Down"))
+        pressed(desktop, "v l l l l")
+        desktop.launcher_until(partial(chose, "letters", 5))
+        desktop.photograph(f"launcher-drawer-letters-at-{named}")
+        pressed(desktop, "esc shift-v j j")
+        desktop.launcher_until(partial(chose, "lines", 3))
+        desktop.photograph(f"launcher-drawer-lines-at-{named}")
+        caught_flash(desktop, f"launcher-drawer-flash-at-{named}")
+        pressed_until(
+            desktop,
+            "spc left",
+            lambda shown: shown["mode"] == "normal" and not shown["drawer"]["keys"],
+            lambda: None,
+        )
+        closed_from_the_list(desktop)
+
+
+def landed_on(word: str, shown: Json) -> bool:
+    """Say whether the drawer's cursor stands on the word's first letter.
+
+    The report's words join a line's parts with a space its letters don't count, so the cursor's
+    letter is read from what it's on rather than as a place in them.
+    """
+    cursor = shown["drawer"]["cursor"]
+    return cursor is not None and cursor["on"] == word[0] and word in str(cursor["says"])
+
+
+def chose(by: str, count: int, shown: Json) -> bool:
+    """Say whether the drawer's visual has chosen so many, by letters or by lines."""
+    chosen = shown["drawer"]["chosen"]
+    return bool(chosen["by"] == by and chosen["count"] == count)
+
+
+def caught_flash(desktop: Desktop, name: str) -> None:
+    """Copy what's chosen with y, keeping a picture of its flash in the gallery.
+
+    The flash is shorter than a picture held still, and a loaded builder has taken over a third
+    of a second to show a key at all, so the screen is taken over and over from y until it first
+    changes from the choice, then at once a few times more. A shot that differs from both the
+    choice before and the page after is the flash. One that missed it chooses the same three
+    lines again and copies them again.
+    """
+    seen = []
+    for tried in range(TRIES):
+        if tried:
+            pressed(desktop, "shift-v j j")
+            desktop.launcher_until(partial(chose, "lines", 3))
+        desktop.held_still()
+        choice = desktop.screen_now()
+        pressed(desktop, "y")
+        pressed_at = time.monotonic()
+        first = desktop.screen_now()
+        while (
+            changed(first, choice) < FLASHED
+            and time.monotonic() - pressed_at < TRIED.total_seconds()
+        ):
+            first = desktop.screen_now()
+        shots = [(first, time.monotonic() - pressed_at)] + [
+            (desktop.screen_now(), time.monotonic() - pressed_at) for _ in range(FLASH_SHOTS)
+        ]
+        desktop.launcher_until(
+            lambda shown: shown["mode"] == "page" and not shown["drawer"]["chosen"]["flashing"]
+        )
+        # The screen follows the shell late, so the page is taken once it's done drawing.
+        desktop.held_still()
+        page = desktop.screen_now()
+        for shot, after in shots:
+            before, since = changed(shot, choice), changed(shot, page)
+            if before >= FLASHED and since >= FLASHED:
+                if desktop.values["photographs"]:
+                    shot.save(desktop.machine.out_dir / f"{name}.png")
+                return
+            seen.append(f"{after * 1000:.0f} ms: {before} from the choice, {since} from the page")
+    missed = f"{NEVER_FLASHED}; each picture after y: {'; '.join(seen)}"
+    raise AssertionError(missed)
+
+
+def changed(one: Image.Image, other: Image.Image) -> int:
+    """Count the pixels two pictures of the screen differ at by more than a little light."""
+    difference = ImageChops.difference(one, other).convert("L")
+    return difference.point(lambda light: 255 if light > CHANGED else 0).histogram()[255]
 
 
 def pressed(desktop: Desktop, keys: str) -> None:

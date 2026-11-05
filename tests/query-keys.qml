@@ -1,8 +1,8 @@
 // The launcher's field's keys in its two modes, read from their one
 // table in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-query-field-takes-vi-modes` check copies
-// modules/quickshell/QueryKeys.js, Editing.js, ListedKeys.js and
-// DrawerPage.js beside this file and runs `qml -platform offscreen query-keys.qml`.
+// modules/quickshell/QueryKeys.js, Editing.js, ListedKeys.js, DrawerPage.js,
+// Search.js and LineEditing.js beside this file and runs `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
 import "ListedKeys.js" as Listed
@@ -30,12 +30,13 @@ QtObject {
     // insert: each act done, the mode it's left in, and whether the last key
     // was the line's rather than the field's to type.
     // Each act done is said with the count typed before it, as "3 next",
-    // in `counted`.
+    // in `counted`, and each search run with what it sought, in `sought`.
     function typed(keys) {
         let standing = Keys.rest();
         let mode = "insert";
         const acts = [];
         const counted = [];
+        const sought = [];
         let ours = false;
         for (const key of keys) {
             const read = Keys.read(standing, key, mode);
@@ -46,8 +47,10 @@ QtObject {
                 acts.push(read.act);
                 counted.push(read.count > 0 ? `${read.count} ${read.act}` : read.act);
             }
+            if (read.sought)
+                sought.push(read.sought);
         }
-        return { acts, counted, ours, mode, standing };
+        return { acts, counted, sought, ours, mode, standing };
     }
 
     // The keys typed from a line's opening in insert, on a prompt's words.
@@ -233,6 +236,187 @@ QtObject {
             holds(`the drawer: ${act} repeats while held`, Keys.repeats(act), true);
         for (const act of ["drawer", "rows"])
             holds(`the drawer: ${act} is once a press`, Keys.repeats(act), false);
+    }
+
+    // The drawer's search, as Vim searches a page (VKCF3Z's spec v2, The
+    // Reader): / and ? type what to seek on the line, as : types a
+    // command there, and Return runs it, putting the cursor where it
+    // lands; n and N go on to the next match the way it went and the
+    // other. It moves the cursor and narrows nothing, so it's a page's
+    // search, never the rows' find.
+    function drawerSearch(holds) {
+        const into = ["Escape", "Space", "Right"];
+        // [what, the keys typed from going in, the acts done, what's sought]
+        const doing = [
+            ["/ seeks forward and Return runs it", ["/", "d", "e", "Return"], ["seek"],
+                [{ pattern: "de", forward: true }]],
+            ["? seeks back", ["?", "d", "Return"], ["seek"],
+                [{ pattern: "d", forward: false }]],
+            ["a page's keys typed in a search are the search's",
+                ["/", "j", "q", "G", ":", "n", "Return"], ["seek"],
+                [{ pattern: "jqG:n", forward: true }]],
+            ["Space types a space", ["/", "a", "Space", "b", "Return"], ["seek"],
+                [{ pattern: "a b", forward: true }]],
+            ["Backspace takes the last letter", ["/", "a", "b", "Backspace", "Return"],
+                ["seek"], [{ pattern: "a", forward: true }]],
+            ["Escape lets it go, the keys staying in the drawer", ["/", "a", "Escape", "j"],
+                ["next"], []],
+            ["and so does Backspace with nothing left", ["/", "Backspace", "j"], ["next"],
+                []],
+            // Vim's command line, as the find line and the command line edit
+            // theirs (LineEditing.js).
+            ["and so does Ctrl+C, as Vim's cancels", ["/", "a", "Ctrl+c", "j"], ["next"],
+                []],
+            ["Ctrl+W takes the word before",
+                ["/", "a", "Space", "b", "c", "Ctrl+w", "d", "Return"], ["seek"],
+                [{ pattern: "a d", forward: true }]],
+            ["Ctrl+U takes all of it", ["/", "a", "b", "Ctrl+u", "c", "Return"], ["seek"],
+                [{ pattern: "c", forward: true }]],
+            ["Ctrl+H takes the last letter", ["/", "a", "b", "Ctrl+h", "Return"], ["seek"],
+                [{ pattern: "a", forward: true }]],
+            ["and lets it go with nothing left", ["/", "Ctrl+h", "j"], ["next"], []],
+            ["n and N go on to the next match, either way", ["n", "N"],
+                ["seekNext", "seekPrevious"], []]
+        ];
+        for (const [what, keys, acts, sought] of doing) {
+            const done = typed(into.concat(keys));
+            holds(`the drawer's search: ${what}`, done.acts, ["normal", "drawer"].concat(acts));
+            holds(`the drawer's search: ${what}, seeking`, done.sought, sought);
+        }
+        holds("the drawer's search: a count goes before / and n",
+            typed(into.concat(["2", "/", "x", "Return", "3", "n", "4", "N"])).counted,
+            ["normal", "drawer", "2 seek", "3 seekNext", "4 seekPrevious"]);
+        holds("the drawer's search: while typed, the line holds it",
+            typed(into.concat(["?", "a", "b"])).standing.seek, { pattern: "ab", forward: false });
+        holds("the drawer's search: a letter in it is its own",
+            typed(into.concat(["/", "x"])).ours, true);
+        holds("the drawer's search: and it leaves the keys in the drawer",
+            typed(into.concat(["/", "x", "Return"])).mode, "page");
+        for (const act of ["seekNext", "seekPrevious"])
+            holds(`the drawer's search: ${act} repeats while held`, Keys.repeats(act), true);
+        holds("the drawer's search: seek is once a press", Keys.repeats("seek"), false);
+        holds("the drawer's search: / on the rows is no page's search",
+            typed(["Escape", "/", "x", "Return"]).acts.includes("seek"), false);
+
+        // Where a search lands (DrawerPage.sought): lines of the pitch, the
+        // view ten of them, and the cursor's line and letter. [what, from
+        // line, from letter, pattern, forward, count, [line, letter,
+        // wrapped]], or null where it's found nowhere.
+        const texts = ["Deploy log", "line 1 of the deploy", "line 2 of the Deploy",
+            "nothing here"].concat(Array.from({ length: 16 }, (_, at) => `filler ${at}`));
+        const lines = texts.map((text, at) => ({ top: at * 24, height: 24, length: text.length,
+            text }));
+        const page = (line, letter) => ({
+            lines, line, letter, want: letter * 10, top: 0, height: 240, end: 240, pitch: 24,
+            off: 4, xOf: (at, along) => along * 10,
+            letterAt: (at, x) => Math.round(x / 10)
+        });
+        const landings = [
+            ["the next match after the cursor", 0, 0, "deploy", true, 0, [1, 14, false]],
+            ["a count goes on that many", 0, 0, "deploy", true, 2, [2, 14, false]],
+            ["past the last, round to the first", 0, 0, "deploy", true, 3, [0, 0, true]],
+            ["a capital finds only itself", 0, 0, "Deploy", true, 0, [2, 14, false]],
+            ["on the cursor's own line, further along", 1, 0, "the", true, 0, [1, 10, false]],
+            ["never where the cursor stands", 1, 10, "the", true, 0, [2, 10, false]],
+            ["? the one before", 1, 14, "the", false, 0, [1, 10, false]],
+            ["? from the first, round to the last", 0, 0, "deploy", false, 0, [2, 14, true]],
+            ["a space is a letter like any", 0, 0, "1 of", true, 0, [1, 5, false]]
+        ];
+        const where = landed => landed === null ? null
+            : [landed.line, landed.letter, landed.wrapped];
+        for (const [what, line, letter, pattern, forward, count, want] of landings)
+            holds(`the drawer's search lands: ${what}`,
+                where(Page.sought(page(line, letter), pattern, forward, count)), want);
+        holds("the drawer's search lands nowhere it isn't",
+            Page.sought(page(0, 0), "zzz", true, 0), null);
+        holds("or for nothing sought", Page.sought(page(0, 0), "", true, 0), null);
+        const far = Page.sought(page(0, 0), "filler 8", true, 0);
+        holds("the view follows it, keeping four lines below", [far.line, far.top], [12, 168]);
+        holds("and its letter is where it wants to be", far.want, 0);
+    }
+
+    // Visual in the drawer, as on a page (VKCF3Z's spec v2): v chooses
+    // letters from the cursor's and V whole lines, each again ending it and
+    // the other changing its kind; the page's moves extend it, o goes to its
+    // other end, y copies it and Escape lets it go, each back on the page;
+    // and gv on the page brings the last back.
+    function drawerVisual(holds) {
+        const into = ["Escape", "Space", "Right"];
+        // [what, the keys typed from going in, the acts done, the mode left in]
+        const doing = [
+            ["v chooses letters", ["v"], ["select"], "pageVisual"],
+            ["V chooses lines", ["V"], ["selectLines"], "pageVisualLine"],
+            ["v again ends it", ["v", "v"], ["select", "select"], "page"],
+            ["V again ends it", ["V", "V"], ["selectLines", "selectLines"], "page"],
+            ["V in letters takes lines", ["v", "V"], ["select", "selectLines"],
+                "pageVisualLine"],
+            ["v in lines takes letters", ["V", "v"], ["selectLines", "select"], "pageVisual"],
+            ["the page's moves extend it", ["v", "j", "l", "G", "g", "g", "Ctrl+d", "n"],
+                ["select", "next", "right", "last", "first", "halfDown", "seekNext"],
+                "pageVisual"],
+            ["and the lines'", ["V", "k", "Ctrl+e", "N"],
+                ["selectLines", "previous", "scrollDown", "seekPrevious"], "pageVisualLine"],
+            ["o goes to its other end", ["v", "o"], ["select", "otherEnd"], "pageVisual"],
+            ["y copies it and goes back to the page", ["v", "y"], ["select", "copy"], "page"],
+            // Y copies the lines it's on however it chooses, as Vim's v_Y.
+            ["Y copies its whole lines", ["V", "Y"], ["selectLines", "copyLines"], "page"],
+            ["and by letters too", ["v", "Y"], ["select", "copyLines"], "page"],
+            ["Escape lets it go", ["V", "Escape"], ["selectLines", "back"], "page"],
+            ["and Ctrl+C", ["v", "Ctrl+c"], ["select", "back"], "page"],
+            ["Escape lets a count go first", ["v", "3", "Escape"], ["select"], "pageVisual"],
+            ["and on the page after does nothing", ["v", "Escape", "Escape", "j"],
+                ["select", "back", "next"], "page"],
+            ["its search lands in it", ["v", "/", "a", "Return"], ["select", "seek"],
+                "pageVisual"],
+            ["d, x, c, p and q do nothing yet", ["v", "d", "x", "c", "p", "q", "j"],
+                ["select", "next"], "pageVisual"],
+            ["and no way back to the rows is in it, the arrow only a move",
+                ["v", "Z", "Z", "Space", "Left"], ["select", "left"], "pageVisual"],
+            ["gv on the page brings the last back", ["v", "Escape", "g", "v"],
+                ["select", "back", "reselect"], "page"]
+        ];
+        for (const [what, keys, acts, mode] of doing) {
+            const done = typed(into.concat(keys));
+            holds(`the drawer's visual: ${what}`, done.acts, ["normal", "drawer"].concat(acts));
+            holds(`the drawer's visual: ${what}, in its mode`, done.mode, mode);
+        }
+        holds("the drawer's visual: a count goes before a move in it",
+            typed(into.concat(["v", "3", "j"])).counted, ["normal", "drawer", "select", "3 next"]);
+        holds("the drawer's visual: a key that does nothing in it is its own",
+            typed(into.concat(["v", "d"])).ours, true);
+        holds("the drawer's visual: : in it opens the command line, whose :q goes back",
+            typed(into.concat(["V", ":"])).acts, ["normal", "drawer", "selectLines", "command"]);
+        for (const act of ["select", "selectLines", "otherEnd", "copy", "copyLines", "reselect",
+            "back"])
+            holds(`the drawer's visual: ${act} is once a press`, Keys.repeats(act), false);
+        holds("the drawer's visual: v on the rows chooses nothing here",
+            typed(["Escape", "v"]).mode, "normal");
+        for (const mode of ["pageVisual", "pageVisualLine"])
+            holds(`the drawer's visual: ${mode} is the drawer's`, Keys.paged(mode), true);
+        holds("the drawer's visual: the page is the drawer's", Keys.paged("page"), true);
+        holds("the drawer's visual: normal isn't", Keys.paged("normal"), false);
+
+        // What visual takes (DrawerPage.chosen), from where it began to the
+        // cursor, either way round, on lines ten letters long but the 3rd,
+        // empty: [what, began, cursor, kind, each line's [line, from, to]],
+        // `to` past the last letter taken, since the cursor's own is.
+        const lengths = [10, 10, 0, 10, 10].map(length => ({ length }));
+        const chose = [
+            ["letters along one line", [1, 2], [1, 5], "letters", [[1, 2, 6]]],
+            ["and back along it", [1, 5], [1, 2], "letters", [[1, 2, 6]]],
+            ["one letter, where it began", [1, 4], [1, 4], "letters", [[1, 4, 5]]],
+            ["letters down three lines, the empty one whole", [1, 3], [3, 1], "letters",
+                [[1, 3, 10], [2, 0, 0], [3, 0, 2]]],
+            ["and up them", [3, 1], [1, 3], "letters", [[1, 3, 10], [2, 0, 0], [3, 0, 2]]],
+            ["whole lines, from either end", [3, 4], [1, 7], "lines",
+                [[1, 0, 10], [2, 0, 0], [3, 0, 10]]],
+            ["one whole line", [4, 9], [4, 0], "lines", [[4, 0, 10]]]
+        ];
+        for (const [what, began, at, kind, want] of chose) {
+            const got = Page.chosen({ line: began[0], letter: began[1] },
+                { line: at[0], letter: at[1] }, kind, lengths);
+            holds(`visual takes ${what}`, got.map(one => [one.line, one.from, one.to]), want);
+        }
     }
 
     // Where the drawer's keys take its cursor and its view (DrawerPage.js),
@@ -466,8 +650,11 @@ QtObject {
         const lines = { rows: "rows", screen: "screen", inOut: "in and out", run: "run",
             lastPlace: "last", keys: "keys", close: "close", ends: "ends",
             nextRow: "next row", caret: "caret", word: "word", intoDrawer: "into the drawer",
-            lines: "lines", along: "along", scroll: "scroll", back: "back" };
-        const modes = { normal: "Normal", insert: "Insert", page: "Drawer" };
+            lines: "lines", along: "along", scroll: "scroll", back: "back",
+            seek: "seek", seekOn: "seek on", select: "select", reselect: "reselect",
+            otherEnd: "other end", copy: "copy" };
+        const modes = { normal: "Normal", insert: "Insert", page: "Drawer",
+            pageVisual: "Choosing" };
         const list = Listed.keyList(Keys.table, lines, modes);
         const keyed = value => (list.find(line => line.value === value) ?? {}).label;
         holds("the list's rows, the arrows after Vim's", keyed("rows"),
@@ -491,6 +678,14 @@ QtObject {
         holds("the drawer's scroll by a line", keyed("scroll"), "Ctrl+E  Ctrl+Y");
         holds("the drawer's way back, Space with the arrow and :q", keyed("back"),
             "Space \u2190  :q");
+        holds("the drawer's search, either way", keyed("seek"), "/  ?");
+        holds("and on to its next match, either way", keyed("seek on"), "n  N");
+        holds("the drawer's visual, by letters and lines", keyed("select"), "v  V");
+        holds("and the last brought back", keyed("reselect"), "gv");
+        holds("choosing, its other end", keyed("other end"), "o");
+        holds("and copying it", keyed("copy"), "y  Y");
+        holds("choosing has a section of its own",
+            list.some(line => line.heading === "Choosing"), true);
         // Each mode's section, by its heading: the keys each line names, as
         // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
         const sections = {};
@@ -505,7 +700,7 @@ QtObject {
         });
         holds("the list's sections, normal's where it's opened first",
             list.filter(line => line.heading !== undefined).map(line => line.heading),
-            ["Normal", "Insert", "Drawer"]);
+            ["Normal", "Insert", "Drawer", "Choosing"]);
         holds("the drawer's moves, as normal's on the rows",
             ["gg  G", "H  M  L", "Ctrl+D  Ctrl+U", "Ctrl+F  Ctrl+B", "3j  12G"]
                 .filter(keys => !sections.Drawer.includes(keys.split("  ")[0])), []);
@@ -630,6 +825,8 @@ QtObject {
         editing(holds);
         drawerKeys(holds);
         drawerPage(holds);
+        drawerSearch(holds);
+        drawerVisual(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

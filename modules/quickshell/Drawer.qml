@@ -66,6 +66,11 @@ Floating {
         // markup, as a StyledText reads it.
         property string plain
         property bool styled: false
+        // What the drawer's search seeks, each place it's found in plain
+        // words washed as his Neovim's Search draws a match, set by each
+        // use, since an inline component can't see the drawer; a styled
+        // text keeps its own markup.
+        property string sought
         // How tall each of its lines is, the plate's pitch or a step of it,
         // or 0 for the face's own, as a line set alone by its baseline is.
         required property real leading
@@ -81,10 +86,32 @@ Floating {
         // moved through, twice a Text's time to make one.
         property bool reading: false
         readonly property TextEdit reader: readerLoader.item
+        // Its letters' colour. While the reader is made it draws every
+        // letter and the Text none, so each letter is drawn once: a chosen,
+        // washed or flashed letter drawn over the Text's own would add
+        // their antialiased edges together and look heavier than its
+        // neighbours, where a selection changes only fill and colour.
+        property color ink: Theme.text
 
-        text: plain
+        // Search's wash, strong ink on raised, as the held notices wash what
+        // they find (Notifications.qml), drawn by the reader on the Text's
+        // letters, which a search, only ever run in the drawer, has.
+        readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
+        // Whether its share of what the drawer's visual chose is flashing,
+        // which its reader draws (below). Set by the drawer's paint(), since
+        // an inline component can't see it.
+        property bool flashed: false
+        // What a copy as markdown puts before it: a title's #, a heading's ##.
+        property string marked: ""
+
+        // A styled text's own colours, which no ink hides, go while the
+        // reader draws its letters; colours move no letter.
+        text: reader && styled ? plain.replace(/ color="[^"]*"/g, "") : plain
         textFormat: styled ? Text.StyledText : Text.PlainText
-        wrapMode: elides || !wraps ? Text.NoWrap : Text.Wrap
+        color: reader ? "transparent" : ink
+        // Broken only at spaces, as a page is: a drawer too narrow for a
+        // word lets it run past the edge rather than split it (VKCF3Z).
+        wrapMode: elides || !wraps ? Text.NoWrap : Text.WordWrap
         elide: elides ? Text.ElideRight : Text.ElideNone
         lineHeightMode: leading > 0 ? Text.FixedHeight : Text.ProportionalHeight
         lineHeight: leading > 0 ? leading : 1
@@ -104,22 +131,38 @@ Floating {
                 readonly property string said: words.elides
                     ? cut.elidedText(words.plain, Qt.ElideRight, words.width) : words.plain
 
-                // Its letters on the Text's, the row's markup keeping its
-                // words and losing its colours, which the Text draws.
+                // Its letters where the Text's were, in their ink and the
+                // row's markup's colours, with what a search washes on its
+                // own ground.
                 y: words.baselineOffset - drop - baselineOffset
                 width: words.width
                 readOnly: true
                 selectByMouse: false
                 activeFocusOnPress: false
-                color: "transparent"
+                color: words.ink
+                // Its share of what visual chose, drawn as Qt draws a
+                // selection: on the selection's ground in its own ink as his
+                // Neovim's Visual is, or the accent's under the accent's ink
+                // while y flashes it, as his on_yank does. Only fill and
+                // colour change, never weight.
+                persistentSelection: true
+                selectionColor: words.flashed ? Theme.accent
+                    : Qt.alpha(Theme.selection, Theme.floating.selection)
+                selectedTextColor: words.flashed ? Theme.on_accent : words.ink
                 font: words.font
+                // Set as its Text is, so a right-to-left script's letters
+                // are drawn where they were laid, not at the far edge.
+                horizontalAlignment: words.horizontalAlignment
                 textFormat: TextEdit.RichText
-                wrapMode: words.wrapMode === Text.Wrap ? TextEdit.Wrap : TextEdit.NoWrap
+                wrapMode: words.wrapMode === Text.WordWrap ? TextEdit.WordWrap : TextEdit.NoWrap
                 text: `<div style="white-space:pre-wrap`
                     + (words.leading > 0
                         ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
-                    + `">${words.styled ? said.replace(/ color="[^"]*"/g, "")
-                        : Search.escaped(said)}</div>`
+                    // A match in a styled text lands the cursor but isn't
+                    // washed, since washing inside markup isn't done.
+                    + `">${words.styled ? said
+                        : words.sought !== "" ? Search.washed(said, words.sought, words.wash)
+                            : Search.escaped(said)}</div>`
 
                 FontMetrics {
                     id: cut
@@ -299,13 +342,61 @@ Floating {
     // line it wants to be, which j and k go back to.
     property var laid: []
     property var cursor: ({ line: 0, letter: 0, want: 0 })
+    // The search being typed in it, as the launcher's line holds it, and
+    // the last one run, { pattern, forward }, which n and N go on with, as
+    // Vim keeps its last search; and whether the last run went round an
+    // end or found nothing, for the launcher to report. What's washed is
+    // what's being typed, as his incsearch shows it, else the last search
+    // while the keys are in it, as his hlsearch keeps it.
+    property string seeking: ""
+    property var lastSought: null
+    property string landing: ""
+    readonly property string washing: seeking !== "" ? seeking
+        : keys && lastSought ? lastSought.pattern : ""
     onKeysChanged: {
         if (keys) {
             enter();
         } else {
             for (const text of texts())
                 text.reading = false;
+            // What the last search found goes with it, so a drawer gone
+            // back into never says it went round before anything's sought.
+            lastSought = null;
+            landing = "";
         }
+    }
+    // Visual, as on a page: what it chooses by, "letters" or "lines", or
+    // "" while it chooses nothing, which the launcher sets from its mode;
+    // where it began, the cursor being its other end; and the last chosen,
+    // { began, at, by }, for gv, let go as the keys go in again. What's
+    // taken is each line's letters (DrawerPage.chosen), or while y flashes
+    // what it copied, those it took, for the key timing's yank-flash.
+    property string choosing: ""
+    property string choseBy: ""
+    property var began: null
+    property var lastChosen: null
+    property int flashFor: 200
+    property var flashing: []
+    property string copied: ""
+    readonly property var taken: choosing !== "" && began !== null && began.line < laid.length
+        && cursor.line < laid.length ? Page.chosen(began, cursor, choosing, laid) : flashing
+    onChoosingChanged: {
+        if (choosing !== "" && began === null)
+            began = { line: cursor.line, letter: cursor.letter };
+        else if (choosing === "" && began !== null) {
+            lastChosen = { began, at: { line: cursor.line, letter: cursor.letter }, by: choseBy };
+            began = null;
+        }
+        if (choosing !== "")
+            choseBy = choosing;
+        // y's flash is drawn once it's let go, though what it took stays.
+        paint();
+    }
+    onTakenChanged: paint()
+    Timer {
+        id: flash
+        interval: drawer.flashFor
+        onTriggered: drawer.flashing = []
     }
     onShownChanged: relay()
     onWidthChanged: relay()
@@ -418,6 +509,8 @@ Floating {
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
     function enter() {
+        lastChosen = null;
+        began = choosing !== "" ? began : null;
         laid = lines();
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = view.contentY;
@@ -459,11 +552,156 @@ Floating {
         cursor = { line: moved.line, letter: moved.letter, want: moved.want };
         view.contentY = moved.top;
     }
+    // A search run in it, from the cursor, the way it goes and a count on,
+    // nothing sought seeking the last again, as Vim's / Return does; and n
+    // and N going on with the last, its way and the other. The cursor goes
+    // to the match's first letter and the view follows it; `landing` says
+    // "wrapped" where it went round an end, as Vim says it hit the bottom,
+    // and "missing" where it's found nowhere, the cursor staying.
+    function seek(pattern, forward, count) {
+        const sought = pattern !== "" ? { pattern, forward }
+            : lastSought ? { pattern: lastSought.pattern, forward } : null;
+        if (!sought)
+            return;
+        lastSought = sought;
+        land(sought.pattern, forward, count);
+    }
+    function seekOn(act, count) {
+        if (lastSought)
+            land(lastSought.pattern, act === "seekNext" ? lastSought.forward
+                : !lastSought.forward, count);
+    }
+    function land(pattern, forward, count) {
+        const page = laid.map(line => Object.assign({}, line, { text: line.parts.map(part =>
+            part.words.getText(part.from, part.from + part.length)).join("") }));
+        const landed = Page.sought({
+            lines: page,
+            line: cursor.line,
+            letter: cursor.letter,
+            want: cursor.want,
+            top: view.contentY,
+            height: view.height,
+            end: Math.max(0, view.contentHeight - view.height),
+            pitch: drawer.pitch,
+            off: drawer.scrolloff,
+            xOf: (line, letter) => xOf(page[line], letter),
+            letterAt: (line, x) => letterAt(page[line], x)
+        }, pattern, forward, count);
+        landing = landed === null ? "missing" : landed.wrapped ? "wrapped" : "";
+        if (landed === null)
+            return;
+        cursor = { line: landed.line, letter: landed.letter, want: landed.want };
+        view.contentY = landed.top;
+    }
+
+    // The cursor put at a place, wanting its letter's place across, and the
+    // view following it as a move's does.
+    function standOn(at) {
+        const line = Math.max(0, Math.min(at.line, laid.length - 1));
+        const letter = Math.max(0, Math.min(at.letter, laid[line].length - 1));
+        cursor = { line, letter, want: xOf(laid[line], letter) };
+        view.contentY = Page.shown(laid[line], view.contentY, {
+            lines: laid,
+            height: view.height,
+            end: Math.max(0, view.contentHeight - view.height),
+            pitch: drawer.pitch,
+            off: drawer.scrolloff
+        });
+    }
+    // o: the cursor to where visual began, which becomes where it is, as
+    // Vim's o goes to the selection's other end.
+    function otherEnd() {
+        if (began === null || laid.length === 0)
+            return;
+        const was = { line: cursor.line, letter: cursor.letter };
+        standOn(began);
+        began = was;
+    }
+    // gv: the last chosen again, from where it began to where it ended,
+    // the launcher choosing by its kind once this has stood the cursor.
+    function reselect() {
+        if (lastChosen === null || laid.length === 0)
+            return;
+        began = lastChosen.began;
+        standOn(lastChosen.at);
+    }
+    // y: what's chosen as markdown, each text's letters in turn, a title
+    // taken from its start after its # and a heading after its ##, those
+    // sharing a line a space apart and the rest a line each; flashed, and
+    // given back for the launcher to put on the clipboard. The cursor goes
+    // to its start, as Vim's y leaves it, once gv has what it chose.
+    function copy(lines = false) {
+        const took = lines && began !== null ? Page.chosen(began, cursor, "lines", laid) : taken;
+        const spans = spansOf(took);
+        copied = spans.map((span, at) => (at === 0 ? ""
+            : spans[at - 1].last === span.line ? " " : "\n")
+            + (span.start === 0 ? span.text.marked : "")
+            + span.words.getText(span.start, span.end).replace(/[\u2028\u2029]/g, "\n")
+                .replace(/\u200b/g, "")).join("");
+        flashing = took;
+        flash.restart();
+        if (began !== null) {
+            const at = { line: cursor.line, letter: cursor.letter };
+            lastChosen = { began, at, by: choosing };
+            const first = took.length > 0 ? { line: took[0].line, letter: took[0].from } : at;
+            began = null;
+            standOn(first);
+        }
+        return copied;
+    }
+    // Each text's share of what's taken, in order down the drawer: where it
+    // starts and ends in that text, and the first and last lines it's on.
+    function spansOf(chosen) {
+        const spans = [];
+        for (const one of chosen) {
+            let left = 0;
+            for (const part of laid[one.line]?.parts ?? []) {
+                const from = Math.max(one.from, left);
+                const to = Math.min(one.to, left + part.length);
+                left += part.length;
+                if (to <= from)
+                    continue;
+                const start = part.from + from - (left - part.length);
+                const end = start + to - from;
+                const span = spans.find(found => found.words === part.words);
+                if (span) {
+                    span.start = Math.min(span.start, start);
+                    span.end = Math.max(span.end, end);
+                    span.last = one.line;
+                } else {
+                    spans.push({ text: part.text, words: part.words, start, end,
+                        line: one.line, last: one.line });
+                }
+            }
+        }
+        return spans;
+    }
+    // What's taken drawn on its texts, each selecting its share, and every
+    // other text selecting nothing.
+    function paint() {
+        const spans = spansOf(taken);
+        const flashed = choosing === "" && flashing.length > 0;
+        for (const line of laid)
+            for (const part of line.parts) {
+                const span = spans.find(found => found.words === part.words);
+                part.text.flashed = flashed;
+                if (span)
+                    part.words.select(span.start, span.end);
+                else
+                    part.words.deselect();
+            }
+    }
+    // How many visual has chosen, for the mode word to count: lines where
+    // it takes more than one or takes them whole, else letters, as Vim's
+    // showcmd counts a selection.
+    readonly property int chosenCount: choosing === "" || taken.length === 0 ? 0
+        : choosing === "lines" || taken.length > 1 ? taken.length
+        : taken[0].to - taken[0].from
 
     // Where the cursor stands, in the content's terms: the letter as Qt
     // laid it, as wide as it is, or a space's width on an empty line or
-    // past a line's end. The rule is drawn beside its line's height, and
-    // visual's block will be drawn on the letter.
+    // past a line's end, with its baseline and face. The rule is drawn
+    // beside its line's height, and visual's block on the letter.
     readonly property var block: {
         if (!keys || laid.length === 0)
             return null;
@@ -482,6 +720,8 @@ Floating {
             width: after.y === box.y && after.x > box.x ? after.x - box.x : box.height / 2,
             height: box.height,
             letter,
+            base: found.part.base,
+            font: words.font,
             line: cursor.line,
             said: line.parts.map(part => part.words.getText(part.from, part.from
                 + part.length)).join(" ")
@@ -767,19 +1007,41 @@ Floating {
                 height: drawer.block?.height ?? 0
                 color: Theme.accent
             }
+            // Visual's block, on the cursor's letter while it chooses, as his
+            // Neovim shows its cursor only there: the accent under the letter
+            // in the ground's ink, steady as the rule is.
+            Rectangle {
+                id: blockShown
+                z: 1
+                visible: drawer.block !== null && drawer.choosing !== ""
+                x: drawer.block?.x ?? 0
+                y: drawer.block?.y ?? 0
+                width: drawer.block?.width ?? 0
+                height: drawer.block?.height ?? 0
+                color: Theme.accent
+
+                Text {
+                    y: (drawer.block?.base ?? 0) - (drawer.block?.y ?? 0) - baselineOffset
+                    text: drawer.block?.letter ?? ""
+                    textFormat: Text.PlainText
+                    color: Theme.background
+                    font: drawer.block?.font ?? titleText.font
+                }
+            }
 
             // When or where, in capitals over the plate, on the field's
             // centre: a label, set apart by case and tracking rather than
             // size alone, so it reads as one before the name.
             PageText {
                 id: eyebrowText
+                sought: drawer.washing
                 width: parent.width
                 y: drawer.fieldLine - Theme.border + drawer.eyebrowDropped - baselineOffset
                 visible: drawer.eyebrow !== ""
                 plain: drawer.eyebrow
                 leading: 0
                 elides: true
-                color: Theme.muted
+                ink: Theme.muted
                 font.family: Theme.level.label.family
                 font.pointSize: Theme.level.label.pointSize
                 font.weight: Theme.level.label.weight
@@ -804,13 +1066,14 @@ Floating {
                 // row, the first.
                 PageText {
                     id: timeText
+                    sought: drawer.washing
                     readonly property real base: (drawer.lineOf(0) ?? drawer.rowLine)
                         + timeFace.tightBoundingRect("H").height / 2
                     y: base - Theme.border - baselineOffset
                     plain: Moment.clock(clock.date)
                     leading: 0
                     wraps: false
-                    color: Theme.strong
+                    ink: Theme.strong
                     font.family: Theme.level.display.family
                     font.pointSize: Theme.level.display.pointSize
                     font.weight: Theme.level.display.weight
@@ -822,6 +1085,7 @@ Floating {
                 // time's baseline: upright, since italic is only the voice.
                 PageText {
                     id: secondsText
+                    sought: drawer.washing
                     x: timeText.x + timeText.contentWidth + Theme.space.s
                     width: parent.width - x
                     y: timeText.base - Theme.border - baselineOffset
@@ -829,7 +1093,7 @@ Floating {
                         .replace("{seconds}", String(clock.date.getSeconds()))
                     leading: 0
                     elides: true
-                    color: Theme.muted
+                    ink: Theme.muted
                     font.family: Theme.level.note.family
                     font.pointSize: Theme.level.note.pointSize
                     font.features: { "tnum": 1 }
@@ -839,6 +1103,7 @@ Floating {
                 // its row's baseline.
                 PageText {
                     id: sayText
+                    sought: drawer.washing
                     readonly property real base: drawer.rowBase(drawer.momentLines.say ?? -1,
                         timeText.base)
                     width: parent.width
@@ -847,7 +1112,7 @@ Floating {
                     plain: drawer.shown?.say ?? ""
                     leading: 0
                     elides: true
-                    color: Theme.text
+                    ink: Theme.text
                     font.family: Theme.level.voice.family
                     font.italic: Theme.level.voice.italic
                     font.pointSize: Theme.level.voice.pointSize
@@ -917,11 +1182,12 @@ Floating {
 
                                 PageText {
                                     id: factName
+                                    sought: drawer.washing
                                     width: drawer.labelsWide
                                     y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                                     plain: momentFact.modelData.label ?? ""
                                     leading: drawer.pitch
-                                    color: Theme.muted
+                                    ink: Theme.muted
                                     font.family: Theme.level.note.family
                                     font.pointSize: Theme.level.note.pointSize
                                 }
@@ -934,7 +1200,7 @@ Floating {
                                     plain: drawer.qualified(momentFact.modelData)
                                     styled: true
                                     leading: drawer.pitch
-                                    color: Theme.text
+                                    ink: Theme.text
                                     font.family: Theme.level.figure.family
                                     font.pointSize: Theme.level.figure.pointSize
                                     font.features: Theme.level.figure.features
@@ -970,6 +1236,8 @@ Floating {
 
                     PageText {
                         id: titleText
+                        sought: drawer.washing
+                        marked: "# "
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         // A name with no space, as a server's or a path,
@@ -980,7 +1248,7 @@ Floating {
                         // A right-to-left title starts under its eyebrow
                         // too, rather than at the plate's far edge.
                         horizontalAlignment: Text.AlignLeft
-                        color: Theme.level.title.colour
+                        ink: Theme.level.title.colour
                         font.family: drawer.script === "" ? Theme.level.title.family
                             : Theme.script.serif[drawer.script]
                         font.pointSize: Theme.level.title.pointSize * drawer.scriptGrown
@@ -1092,9 +1360,10 @@ Floating {
                                 y: index * drawer.pitch + drawer.pitch / 2 + drawer.dropped
                                     - baselineOffset
                                 plain: modelData
+                                sought: drawer.washing
                                 leading: 0
                                 elides: true
-                                color: drawer.preview?.quiet === true ? Theme.muted : Theme.text
+                                ink: drawer.preview?.quiet === true ? Theme.muted : Theme.text
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
@@ -1169,13 +1438,15 @@ Floating {
 
                             PageText {
                                 id: headingText
+                                sought: drawer.washing
+                                marked: "## "
                                 width: parent.width
                                 y: fact.base - baselineOffset
                                 visible: fact.heading
                                 plain: fact.modelData.heading ?? ""
                                 leading: 0
                                 elides: true
-                                color: Theme.muted
+                                ink: Theme.muted
                                 font.family: Theme.level.label.family
                                 font.pointSize: Theme.level.label.pointSize
                                 font.weight: Theme.level.label.weight
@@ -1192,18 +1463,19 @@ Floating {
                                 width: fact.width - drawer.labelsWide - drawer.labelsGap
                                 text: value.plain
                                 textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
+                                wrapMode: Text.WordWrap
                                 font: value.font
                             }
 
                             PageText {
                                 id: label
+                                sought: drawer.washing
                                 visible: !fact.heading
                                 width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
                                 plain: fact.modelData.label ?? ""
                                 leading: drawer.pitch
-                                color: drawer.listsKeys ? Theme.text : Theme.muted
+                                ink: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
                             }
@@ -1213,6 +1485,7 @@ Floating {
                             // at, a long one breaking onto the pitch.
                             PageText {
                                 id: value
+                                sought: drawer.washing
                                 visible: !fact.heading
                                 x: fact.valueFrom
                                 width: parent.width - x
@@ -1220,7 +1493,7 @@ Floating {
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
                                 plain: fact.known ? drawer.unbroken(fact.modelData.value) : "\u2026"
                                 leading: drawer.pitch
-                                color: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
+                                ink: fact.known && !drawer.listsKeys ? Theme.text : Theme.muted
                                 font: drawer.faceOf(fact.modelData).font
                                 // A right-to-left script's words start at the
                                 // column too, as every other value's do,
@@ -1242,12 +1515,13 @@ Floating {
 
                     PageText {
                         id: bodyText
+                        sought: drawer.washing
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         plain: drawer.body
                         styled: drawer.shown?.styled === true
                         leading: drawer.pitch
-                        color: Theme.text
+                        ink: Theme.text
                         // Prose, such as a notice's, at Words, as its card
                         // reads it and the reader sets its text. The rest,
                         // lines another program wrote, at Figure.
