@@ -219,7 +219,7 @@ QtObject {
         holds("an ending action with no undo asks once", Operators.asks([close]), true);
         holds("one that's put back doesn't",
             Operators.asks([Object.assign({ undo: run }, close)]), false);
-        // The ask, as Vim's confirm() asks: what it would end, by name for
+        // The ask, as Vim's ask_yesno asks: what it would end, by name for
         // one row and by count for more, its verb the one they share.
         const asking = { ask: "{ends} {name}? (y/n)", asks: "{ends} these {count}? (y/n)",
             ends: "end" };

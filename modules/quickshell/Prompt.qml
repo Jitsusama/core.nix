@@ -85,11 +85,14 @@ Item {
     property bool modal: false
     // The mode it's in: "insert" or "normal". It opens in insert (take()).
     property string mode: "insert"
+    // How many keys the line has taken, a press each, so a word said for
+    // one key, as d's "nothing to end", goes with the next.
+    property int keysTaken: 0
     // The keys of a sequence begun in normal, as cc's first c, and a count
     // typed before a move.
     property var standing: QueryKeys.rest()
     // Whether an ask stands (Launcher.qml's askOnce), which takes every
-    // key as its answer, as Vim's confirm() does, until one answers it.
+    // key as its answer, as Vim's ask_yesno does, until one answers it.
     property bool confirming: false
     signal answered(string key)
     // How long a sequence begun waits for its next key before it's let go,
@@ -405,6 +408,7 @@ Item {
             event.accepted = true;
             return;
         }
+        keysTaken++;
         standing = read.standing;
         if (key !== "" && read.act !== "restore" && read.act !== "out")
             cleared = "";
