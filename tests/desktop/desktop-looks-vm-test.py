@@ -171,7 +171,7 @@ def lists_every_key(desktop: Desktop, scale: str) -> None:
         lambda shown: (
             shown["listing"]
             and shown["drawer"]["out"] is True
-            and shown["drawer"]["title"] == "The rows in normal"
+            and shown["drawer"]["title"] == "The Rows in Normal Mode"
         )
     )
     drawer = plate_shown(desktop, scale)

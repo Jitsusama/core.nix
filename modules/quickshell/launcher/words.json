@@ -6090,7 +6090,7 @@
     },
     "listed": {
       "eyebrow": "Keys",
-      "title": "The rows in normal",
+      "title": "The Rows in Normal Mode",
       "lines": {
         "rows": "Down and up",
         "ends": "The first and last",
@@ -6100,7 +6100,7 @@
         "count": "So many times",
         "row": "To that row",
         "search": "Search down and up",
-        "found": "The next found and before",
+        "found": "The next match and the one before",
         "inOut": "Into it and out",
         "run": "Do it",
         "lastPlace": "The place used last",
