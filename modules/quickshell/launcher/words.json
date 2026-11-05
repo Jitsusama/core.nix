@@ -4944,7 +4944,7 @@
     },
     {
       "id": "verb:wifi-trust",
-      "command": "set",
+      "command": "setlocal",
       "argument": "trust",
       "in": "wifi",
       "name": "Trust It",

@@ -275,6 +275,19 @@ Provider {
             side: joined ? "connected" : network.known ? "saved" : "",
             note: note,
             network: network.name,
+            // Its own option, which :setl sets as Vim's :setlocal sets a
+            // buffer's: whether it's trusted, as its Trust It row turns it,
+            // on a network saved here and not declared.
+            options: network.known && !network.declared ? {
+                trust: {
+                    kind: "switch",
+                    now: () => network.trusted,
+                    set: to => {
+                        Wifi.trust(network.name, to);
+                        return "";
+                    }
+                }
+            } : undefined,
             state: () => provider.said(network, note),
             // Joining or leaving keeps the launcher, which says how it went;
             // signing in opens the page, so it closes.
