@@ -10,8 +10,9 @@
 // offers Read, which is sent at once, and then forgotten), y copies what it
 // said, u brings cards back. V chooses several for d or y, / finds among
 // them, narrowing the lines as it's typed, and : is the command line, with
-// a menu of every command it takes (Ex.js reads it). Escape at rest, :q,
-// ZZ, Space w and Super+N let them go, and q says it does nothing.
+// a menu of every command it takes (Ex.js reads it). :q, ZZ, Space w and
+// Super+N let them go; Escape at rest does nothing, as Vim's, and q says
+// it does nothing.
 //
 // Each line is the sender's glyph, who or what at Name, its first words at
 // Words and when at Note, after a gutter of relative numbers, as Joel's
@@ -855,6 +856,12 @@ Floating {
     function normal(key, repeated) {
         const read = NoticeKeys.read(standing, key, mode, { repeated, now: Date.now() });
         standing = read.standing;
+        // Escape puts the key list away, as Vim's cancels which-key; at
+        // rest it does nothing, so the table reads it as nothing.
+        if (listing && key === "Escape") {
+            listing = false;
+            return;
+        }
         if (read.act === "" || read.act === "pending") {
             if (read.act === "pending")
                 Report.say(`notice pending ${standing.operator}`);
@@ -990,12 +997,12 @@ Floating {
             relative = !relative;
             Report.say(`notice numbers ${relative ? "relative" : "absolute"}`);
             break;
+        // Escape ends visual, and never lets the notices go (Joel,
+        // 2026-11-05: "fuck escape quitting").
         case "back":
             if (mode === "visual") {
                 lastSelection = { anchorId, cursorId };
                 mode = "normal";
-            } else {
-                stack.holding = false;
             }
             break;
         default:

@@ -18,6 +18,9 @@ Reads the language (language.toml), the key map every layer writes
   a modal layer of ours binding one held, in a sequence, or to anything
   but its letter's act. An arrow after the leader, as Space and the
   right arrow, overlays Vim's own keys and is allowed;
+- Escape given to any act but stepping back, or a layer of ours whose
+  own Escape closes or quits, since Escape does what Vim's does and
+  closing is :q, ZZ or Space w alone;
 - a mode, kind or field the language doesn't name, a command with no short
   form or one that doesn't begin it, an undoing of nothing, and a guard on
   an act that would never ask.
@@ -32,6 +35,7 @@ Usage: speaks-the-language.py LANGUAGE KEYS SOURCE NEOVIM_COMMANDS
 """
 
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -95,6 +99,13 @@ LEADER = "space"
 MODAL = {"inlyne", "mpv", "neovim", "reader", "swayimg", "zathura"}
 # Each arrow and the letter whose motion it is.
 LETTERS = {"down": "j", "up": "k", "left": "h", "right": "l"}
+# The one act Escape is, as Vim's: it cancels what's begun and leaves a
+# mode, and otherwise does nothing (Joel, 2026-11-05: "fuck escape
+# quitting").
+ESCAPE = "escape"
+STEPS_BACK = "back"
+# What a layer's own chord says when it closes or quits.
+CLOSING = re.compile(r"\b(close|closes|quit|quits|exit|exits)\b", re.IGNORECASE)
 # Where Neovim's keys on the command line are bound, in the key map's words
 # (modules/neovim/home.nix, scopes).
 COMMAND_LINE = "on the command line"
@@ -312,6 +323,30 @@ def return_faults(language: dict[str, Any]) -> list[str]:
     return faults
 
 
+def escape_faults(language: dict[str, Any], layers: list[Layer], source: str) -> list[str]:
+    """Find Escape given to any act but stepping back, or a layer's own Escape that closes.
+
+    A layer's Escape bound to one of the language's acts is held by the
+    bind's own check, which only back's keys pass; this holds what a layer
+    binds by its own words. His Neovim keeps its own.
+    """
+    faults = [
+        f"{name} takes escape, where Escape only steps back, as Vim's does"
+        for name, act in language["acts"].items()
+        if name != STEPS_BACK and ESCAPE in {spelled(key) for key in act.get("keys", [])}
+    ]
+    for layer in layers:
+        if layer["name"] == source:
+            continue
+        faults += [
+            f'{layer["name"]}: {bind["chord"]} does "{bind["does"]}", where Escape never'
+            " closes or quits"
+            for bind in layer["binds"]
+            if bind["keys"] == ESCAPE and not bind["act"] and CLOSING.search(bind["does"])
+        ]
+    return faults
+
+
 def find_faults(language: dict[str, Any]) -> list[str]:
     """Find an act that changes something with a key the find line reaches."""
     return [
@@ -422,6 +457,7 @@ def faults(
     """Find every way the language or the key map strays."""
     found = shape_faults(language) + arrow_faults(language) + find_faults(language)
     found += return_faults(language)
+    found += escape_faults(language, layers, source)
     found += command_faults(language, neovim)
     acts = acts_of(language)
     found += key_faults(acts)

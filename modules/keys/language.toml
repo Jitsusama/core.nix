@@ -652,11 +652,12 @@ kinds = ["list", "page"]
 # Escape takes one step back, as Vim's: from insert, visual, the find line
 # or the command line to normal, the rows left as found and the command
 # line's covering put back; in normal it cancels a count, a pending
-# operator, a waiting key, which-key or the menu. At rest it closes a popup,
-# as the launcher and held notices are, and nothing else: never a window,
-# never a step out. On a secret it cancels, or clears the line where there's
-# no cancelling, as at the lock. On a page it cancels a selection, a count
-# or a line, and at rest does nothing.
+# operator, a waiting key, which-key or the menu. At rest it does nothing,
+# as Vim's: it never closes or quits anything of ours, a popup included,
+# and never steps out (Joel, 2026-11-05: "fuck escape quitting"); :q, ZZ
+# and Space w close. On a secret it cancels, back to what asked, or clears
+# the line where there's no cancelling, as at the lock. On a page it
+# cancels a selection, a count or a line.
 [acts.back]
 keys = ["<Esc>"]
 modes = ["normal", "insert", "visual", "find", "command"]

@@ -93,13 +93,13 @@ const table = [
     { act: "command", keys: [":"], hint: "commands", does: "every command" },
     { act: "command", keys: [":"], modes: ["visual"], hint: "commands", does: "commands on them" },
 
-    // Letting go, as Vim closes a popup; q records nothing, and says so.
+    // Letting go, as Vim closes a window, never by Escape; q records
+    // nothing, and says so.
     { act: "close", keys: [["Z", "Z"], ["Space", "w"]], does: "let them go" },
     { act: "quiet", keys: ["q"] },
     { act: "keys", keys: [["Space", "?"], "F1"], modes: ["normal", "visual"], hint: "keys",
         does: "these keys" },
     { act: "numbers", keys: [["Space", "u", "l"]], does: "relative numbers" },
-    { act: "back", keys: ["Escape"], does: "let them go" },
     { act: "back", keys: ["Escape"], modes: ["visual"], does: "stop choosing" },
     // While Space ? lists these, the foot says how to move through them
     // and how to leave; the moves are normal's, so these only hint.
@@ -218,7 +218,10 @@ function read(stood, key, mode, press) {
 function reading(stood, key, mode, now) {
     const pending = stood.operator !== "";
     const counted = stood.count !== "";
-    if (key === "Escape" && (counted || stood.typed.length > 0 || pending)) {
+    // Escape cancels what's begun, and at rest in normal does nothing, as
+    // Vim's: it never lets the notices go (Joel, 2026-11-05: "fuck escape
+    // quitting"), which :q, ZZ, Space w and Super+N do.
+    if (key === "Escape" && (counted || stood.typed.length > 0 || pending || mode === "normal")) {
         return { act: "", count: 0, standing: rest(), ours: true };
     }
     // A count before a motion, an operator or after one, as 5j, 3dd and d3j;
