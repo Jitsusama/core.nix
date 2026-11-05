@@ -32,6 +32,7 @@ QtObject {
     function run() {
         const opens = () => [];
         const does = () => {};
+        const names = rows => rows.map(row => row.name).join(", ");
         // What each is.
         expect("a place", Catalogue.kindOf({ category: {}, verbs: opens }), "place");
         expect("a collection", Catalogue.kindOf({ opens: "windows", verbs: opens }), "place");
@@ -72,6 +73,45 @@ QtObject {
         expect("nor a lock", Catalogue.opens({ verb: "lock", run: does }), false);
         expect("nor a place", Catalogue.opens({ verb: "more", run: does }), false);
         expect("nor a row with nothing to run", Catalogue.opens({ verb: "open" }), false);
+        // What Return from the find lands on rather than doing: whatever
+        // changes how things stand, and never what only shows or opens.
+        const changing = [
+            ["an ending action", { verb: "forget", act: "ending", ends: "forgets", run: does }],
+            ["a disconnect", { verb: "disconnect", ends: "disconnects", run: does }],
+            ["a lock", { verb: "lock", run: does }],
+            ["a turning off", { verb: "turn off", stays: true, run: does }],
+            ["a setting's switch", { verb: "keep", stays: true, run: does }],
+            ["a network's join", { verb: "connect", stays: true, run: does, verbs: opens }],
+            ["one asked to be sure of", { verb: "reboot", confirm: true, run: does }],
+            ["a setting's act, closing", { verb: "hold", changes: true, run: does }]
+        ];
+        for (const [what, row] of changing)
+            expect(`${what} changes how things stand`, Catalogue.changesState(row), true);
+        const quietly = [
+            ["a program", { verb: "open", run: does }],
+            ["a window", { verb: "go", run: does, verbs: opens }],
+            ["a copy", { verb: "copy", stays: true, run: does }],
+            ["a See It", { verb: "see", stays: true, run: does }],
+            ["a place", { category: {}, verbs: opens }],
+            ["a spot to go to", { verb: "keep", stays: true, spot: "x", run: does }],
+            ["a verb wanting targets", { verb: "more", stays: true, run: does, verbs: opens,
+                targets: opens }],
+            ["one gone", { verb: "disconnect", ends: "disconnects", gone: true, run: does }]
+        ];
+        for (const [what, row] of quietly)
+            expect(`${what} changes nothing`, Catalogue.changesState(row), false);
+        // The first row inside a thing never changes anything.
+        const seen = { name: "See It", verb: "see", run: does };
+        const cut = { name: "Disconnect It", verb: "disconnect", ends: "disconnects",
+            run: does };
+        const forget = { name: "Forget It", verb: "forget", act: "ending", run: does };
+        expect("a disconnect first goes after the first quiet row",
+            names(Catalogue.quietFirst([cut, forget, seen, { name: "Copy", verb: "copy",
+                run: does }])), "See It, Disconnect It, Forget It, Copy");
+        expect("a quiet first row stays first", names(Catalogue.quietFirst([seen, cut])),
+            "See It, Disconnect It");
+        expect("rows that all change something keep their order",
+            names(Catalogue.quietFirst([cut, forget])), "Disconnect It, Forget It");
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
             false);
@@ -117,7 +157,6 @@ QtObject {
             words: "Talk", in: "", disruptive: false, says: "listening",
             args: [{ name: "words", words: "what to say?" }] });
         // A step into a row leads with what Return does, unless it's there.
-        const names = rows => rows.map(row => row.name).join(", ");
         let opened = 0;
         const notice = { name: "Build done", verb: "open", glyph: "n", run: () => {
             opened += 1;
@@ -172,6 +211,7 @@ QtObject {
         const closing = Catalogue.closingFirst(awake, []);
         expect("a setting holding nothing holds its act", [names(closing), closing[0].stays],
             ["Keep", false]);
+        expect("which changes what the setting did", Catalogue.changesState(closing[0]), true);
         closing[0].run();
         expect("which does what Return does", kept, 1);
         const quiet = { name: "Do Not Disturb", verb: "hold", stays: true, run: does };

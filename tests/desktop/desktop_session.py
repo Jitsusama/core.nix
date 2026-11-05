@@ -111,6 +111,8 @@ CAP_SYS_NICE = 23
 
 # The launcher's surface is always listed, so whether it's open is what it says of itself.
 LAUNCHER_OPEN = """qs ipc call launcher showing | grep -q '"open":true'"""
+# The modes the launcher's line types in: the find, and insert while a row asks for words.
+TYPING = ("find", "insert")
 # The window the launcher's window subtests find by its title.
 NOTES = "Notes for Tuesday"
 
@@ -510,21 +512,22 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.wait_until_fails(self.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     def normal(self) -> None:
-        """Put the launcher's query line in normal mode, by Escape from insert, and wait for it."""
+        """Put the launcher's line in normal mode, by Escape from the find, and wait for it."""
         if self.showing()["mode"] == "normal":
             return
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal")
 
-    def insert(self) -> None:
-        """Put the launcher's query line in insert mode, by A from normal, and wait for it.
+    def on_find(self) -> None:
+        """Put the launcher's line back to typing, by A from normal, and wait for it.
 
-        A puts the caret at the end of what's typed, so what's typed next goes after it.
+        It types on the find, or in insert while a row asks for words, as a password. A puts
+        the caret at the end of what's typed, so what's typed next goes after it.
         """
-        if self.showing()["mode"] == "insert":
+        if self.showing()["mode"] in TYPING:
             return
         self.machine.send_chars("A")
-        self.launcher_until(lambda shown: shown["mode"] == "insert")
+        self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
     def notices_history(self) -> None:
         """From the held notices, open every notice in the launcher, as :e Notices does."""
@@ -564,11 +567,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     def type_in(self, text: str, selecting: str = "") -> None:
         """Type into the launcher, and wait until it holds every letter with Return's row settled.
 
-        In normal mode it goes into insert first, at the end of what's typed. An answer still
+        In normal mode it goes back to typing first, at the end of what's typed. An answer still
         being looked up closes the launcher without copying. A row that comes from something
         found later, such as a window or a copy, can be named to wait for too.
         """
-        self.insert()
+        self.on_find()
         self.machine.send_chars(text, delay=KEY_PACE)
 
         def holds(shown: Json) -> object:

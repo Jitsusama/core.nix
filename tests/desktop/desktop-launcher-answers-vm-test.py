@@ -299,9 +299,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
     # A path this long leaves no room for the field's words for its keys,
-    # so a letter typed in insert, then normal, brings the left arrow's key
+    # so a letter typed on the find, then normal, brings the left arrow's key
     # alone, and the path is never cut to make room for them.
-    desktop.insert()
+    desktop.on_find()
     machine.send_chars("l")
     desktop.launcher_until(lambda shown: shown["typed"] == "l")
     desktop.normal()

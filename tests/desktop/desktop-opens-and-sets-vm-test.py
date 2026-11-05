@@ -905,6 +905,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["asking"] and shown["modal"] is False)
     foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
     assert not any(word["text"] == "insert" for word in foot), foot
+    # Its padlock leads the line, never the find's /.
+    assert desktop.showing()["sigil"] != "/", desktop.showing()
     machine.send_chars("not the pass")
     desktop.launcher_until(lambda shown: shown["caret"] == len("not the pass"))
     machine.send_key("ctrl-h")
@@ -987,17 +989,45 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(window), timeout=timedelta(seconds=60))
     machine.succeed(f'{described} | grep -qF \'"reach":"online"\'')
-    # Its name typed and Return, in insert, never disconnects it: Return
-    # steps in, to what can be done to it, and it stays connected (Joel,
-    # 2026-11-04: "it is quite dangerous").
+    # Its name typed and Return, on the find, never disconnects it: Return
+    # steps in, to what can be done to it, onto a row that changes nothing,
+    # and it stays connected (Joel, 2026-11-04: "it is quite dangerous").
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
-    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    desktop.launcher_until(lambda shown: shown["mode"] == "find")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["open"] and "Disconnect It" in shown["rows"])
+    first = desktop.showing()["selected"]["name"]
+    assert first not in ("Disconnect It", "Forget It"), desktop.showing()["rows"]
+    # The network's glyph follows the find's /, leading the path.
+    assert (desktop.showing()["sigil"], desktop.showing()["lead"] != "") == ("/", True)
     desktop.held_still(timedelta(seconds=3))
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Disconnect It found and Return only lands on it, in normal, its side and the foot
+    # saying what a second Return does, until the next key.
+    desktop.type_in("disc", selecting="Disconnect It")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["mode"], shown["landed"]) == ("normal", "disconnect")
+    )
+    told = desktop.showing()["selected"]["told"]
+    assert told[:1] == ["\u21b5 disconnect"], told
+    desktop.photograph("launcher-landed")
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Shift, Ctrl and Alt with Return do nothing at all.
+    for chord in ("shift-ret", "ctrl-ret", "alt-ret"):
+        machine.send_key(chord)
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    shown = desktop.showing()
+    assert (shown["open"], shown["landed"]) == (True, ""), shown
+    # Return in normal does it.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "journalctl -u wifid | grep -q 'left Lantern'", timeout=timedelta(seconds=60)
+    )
     desktop.close_launcher()
     # In normal, dd on the network ends it by disconnecting it, never by
     # forgetting it, and asks first; Escape says no, and it stays.
@@ -1045,8 +1075,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
-    # Joined, its Return typed in insert steps in too, rather than
-    # disconnecting it, so the foot says Return alone: insert's arrows
+    # Joined, its Return typed on the find steps in too, rather than
+    # disconnecting it, so the foot says Return alone: the find's arrows
     # move the caret, so no arrow is named there.
     told = desktop.showing()["selected"]["told"]
     assert told[:1] == ["\u21b5"], told
@@ -1122,10 +1152,16 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     )
     desktop.close_launcher()
     says_how_wi_fi_is_set(desktop)
-    # Turning Wi-Fi off is an action like any, found by name from the top.
+    # Turning Wi-Fi off is an action like any, found by name from the top,
+    # where Return lands on it, saying a second Return turns it off, and
+    # only that second Return does.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("wifi off")
+    desktop.type_in("wifi off", selecting="Wi-Fi Off")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["landed"]) == ("normal", "turn off"))
+    desktop.held_still(timedelta(seconds=2))
+    machine.succeed("rfkill list wifi | grep -q 'Soft blocked: no'")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)

@@ -29,6 +29,9 @@ if TYPE_CHECKING:
 
 # Enough rows for a screen's moves to go a screen and more: the launcher shows eight at once.
 MANY_ROWS = 20
+# How long a program's Return may take from the launcher hearing it to handing it on: less than
+# the 300 ms a doubled Return is waited out (Options.keyTiming.wait), so none is.
+FRESH_RETURN_MS = 300
 
 
 @pytest.fixture(scope="module")
@@ -52,19 +55,20 @@ def field_key(field: list[Json], mark: str, word: str) -> Json:
 
 
 def the_modes_look_as_vims(desktop: Desktop) -> None:
-    """See the line in insert, then in normal by Escape, then in insert again by A.
+    """See the line on the find, then in normal by Escape, then on the find again by A.
 
-    It starts and ends with "batt" typed, in insert, the caret at its end.
+    It starts and ends with "batt" typed, on the find, the caret at its end.
     """
     machine = desktop.machine
-    # The line opens in insert, as Neovim's command line does, the foot
-    # naming the mode after how things stand and the caret a bar a
-    # quarter of a letter wide.
+    # The line opens on the find, Vim's / line, led by its / in the accent,
+    # the foot naming no mode, since a line is no mode of Vim's own, and
+    # the caret a bar a quarter of a letter wide.
+    shown = desktop.showing()
+    assert (shown["mode"], shown["sigil"], shown["sigilHue"]) == ("find", "/", "accent"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     field = laid["field"]
-    mode = next(word for word in laid["foot"] if word["text"] == "insert")
-    rest = {(word["text"], word["x"]) for word in laid["foot"] if word is not mode}
-    assert min(x for _, x in rest) < mode["x"], laid["foot"]
+    assert not any(word["text"] in ("insert", "find") for word in laid["foot"]), laid["foot"]
+    rest = {(word["text"], word["x"]) for word in laid["foot"]}
     complete = field_key(field, "Ctrl+Y", "complete")
     # It isn't flush against what's typed, and it's the field's one key in
     # insert: clearing is normal's.
@@ -80,25 +84,28 @@ def the_modes_look_as_vims(desktop: Desktop) -> None:
     # until the step ends; A goes back.
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
-    assert desktop.showing()["caretShown"] is False, desktop.showing()
+    shown = desktop.showing()
+    assert shown["caretShown"] is False, shown
+    # The / stays, muted, since normal's keys are on the rows.
+    assert (shown["sigil"], shown["sigilHue"]) == ("/", "muted"), shown
     laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
     held = {(word["text"], word["x"]) for word in laid["foot"]}
     assert rest <= held, (rest, laid["foot"])
     assert all("\u2192" in text for text, _ in held - rest), (rest, laid["foot"])
     assert field_key(laid["field"], "\u2190", "clear")["x"] == complete["x"], laid["field"]
     machine.send_chars("A")
-    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("insert", 4))
+    desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("find", 4))
 
 
 def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
-    """Press every key the query line's insert and normal take, from "batt" typed to "battery".
+    """Press every key the line's find and normal take, from "batt" typed to "battery".
 
     It starts with "batt" typed and the battery's answer selected, and ends with Ctrl+Y having
-    completed it, in insert, as Joel would press them through niri.
+    completed it, on the find, as Joel would press them through niri.
     """
     machine = desktop.machine
     the_modes_look_as_vims(desktop)
-    # Insert's keys are Vim's, through niri as Joel presses them
+    # The find's keys are Vim's, through niri as Joel presses them
     # (QueryKeys.js holds the rest): the caret moves by the arrows, Home
     # and End, Backspace, Ctrl+W and Ctrl+U delete before it, and the
     # rows' keys are his completion menu's.
@@ -142,13 +149,13 @@ def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
             and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
         )
     )
-    # i a I A go into insert at the caret, after it, at the start and at
-    # the end, each Escape back putting the caret one left; cc and S clear
-    # the line into insert.
+    # i a I A go back to the find at the caret, after it, at the start and
+    # at the end, each Escape back putting the caret one left; cc and S
+    # clear the line onto the find.
     for into, caret, after in [("i", 3, 2), ("a", 3, 2), ("I", 0, 0), ("A", 4, None)]:
         machine.send_chars(into)
         desktop.launcher_until(
-            lambda shown: (shown["mode"], shown["caret"]) == ("insert", caret)  # noqa: B023
+            lambda shown: (shown["mode"], shown["caret"]) == ("find", caret)  # noqa: B023
         )
         if after is not None:
             machine.send_key("esc")
@@ -159,7 +166,7 @@ def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
         machine.send_key("esc")
         desktop.launcher_until(lambda shown: shown["mode"] == "normal")
         machine.send_chars(change)
-        desktop.launcher_until(lambda shown: (shown["mode"], shown["typed"]) == ("insert", ""))
+        desktop.launcher_until(lambda shown: (shown["mode"], shown["typed"]) == ("find", ""))
         machine.send_chars("batt")
         holds("batt", 4)
     desktop.launcher_until(
@@ -217,8 +224,8 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     for query in picked_in_a_week + surveyed + audited:
-        # Each query is typed in insert, and the left arrow clears it in normal.
-        desktop.insert()
+        # Each query is typed on the find, and the left arrow clears it in normal.
+        desktop.on_find()
         machine.send_chars(query)
         shown = settled_on(query)
         things: list[Json] = shown["things"]
@@ -309,6 +316,24 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
         )
     )
     desktop.close_launcher()
+    # A program's name and one fresh Return opens it, with no press more and no wait: the
+    # Return is done as it's heard, in far less than the while a doubled Return is waited
+    # out, and the window comes.
+    windows = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
+    kitties = int(desktop.as_account(windows))
+    desktop.answer("kitty")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:kitty")
+    machine.send_key("ret")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    returned = desktop.showing()["returned"]
+    assert returned["act"] == "ran", returned
+    took = returned["done"] - returned["heard"]
+    print(f"Return opened kitty {took} ms after it was heard, pressed at {returned['pressed']}")
+    assert took < FRESH_RETURN_MS, returned
+    machine.wait_until_succeeds(
+        desktop.in_session(f"test $({windows}) -gt {kitties}"), timeout=dt.timedelta(seconds=60)
+    )
+    desktop.as_account("niri msg action close-window")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

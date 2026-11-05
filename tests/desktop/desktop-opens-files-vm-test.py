@@ -291,7 +291,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     go_beside(desktop, held)
     open_own(desktop, chose)
     commands_open(desktop, held)
-    desktop.insert()
+    desktop.on_find()
     machine.send_chars("plan")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
     machine.send_key("ret")
