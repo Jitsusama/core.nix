@@ -601,6 +601,11 @@ ShellRoot {
             same("Return on one reads it", Notices.marked.join(" "), "3");
             same("and goes to its window, as the collection's does", acted(),
                 '[{"FocusWindow":{"id":11}}]');
+            // Ctrl+] on a notice goes to its sender where it lives, as Vim
+            // follows a tag, by the program's row among Programs.
+            same("Ctrl+] follows each to the program that sent it",
+                sent.map(row => row.follows).join(" "), "program:tester program:tester");
+            same("which is that program's own row", program("tester").key, "program:tester");
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
