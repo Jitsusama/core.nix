@@ -575,6 +575,12 @@ QtObject {
                 ["normal", "drawer"]],
             ["Space then the right arrow does nothing more in it",
                 into.concat(["Space", "Right"]), ["normal", "drawer"]],
+            // Space ? is his leader's list of keys everywhere (VKCF3Z), so
+            // in the drawer it lists the drawer's, and F1 with it.
+            ["Space ? and F1 list its keys", into.concat(["Space", "?", "F1"]),
+                ["normal", "drawer", "keys", "keys"]],
+            ["but not while choosing, where ? searches back",
+                into.concat(["v", "Space", "?"]), ["normal", "drawer", "select"]],
             ["Space then the left arrow does nothing on the rows",
                 ["Escape", "Space", "Left", "j"], ["normal", "next"]],
             ["Space then anything else lets Space go", ["Escape", "Space", "j", "j"],
@@ -588,6 +594,8 @@ QtObject {
             { count: "", typed: ["Space"] });
         holds("the drawer: Space in insert is the field's to type", typed(["Space"]).ours, false);
         holds("the drawer: its keys are the page's", typed(into).mode, "page");
+        holds("the drawer: and they stay the page's as its keys are listed",
+            typed(into.concat(["Space", "?"])).mode, "page");
         holds("the drawer: and the rows' again once back",
             typed(into.concat(["Space", "Left"])).mode, "normal");
         holds("the drawer: a letter in it is its own, typing nothing",
@@ -708,6 +716,21 @@ QtObject {
         const far = Page.sought(page(0, 0), "filler 8", true, 0);
         holds("the view follows it, keeping four lines below", [far.line, far.top], [12, 168]);
         holds("and its letter is where it wants to be", far.want, 0);
+        // Which match it lands on, of how many, as the foot counts them
+        // ("/deploy \u00b7 2 of 3"), going round too.
+        const counted = landed => [landed.at, landed.of];
+        holds("the drawer's search counts the match it lands on",
+            counted(Page.sought(page(0, 0), "deploy", true, 0)), [2, 3]);
+        holds("and counts round past the last",
+            counted(Page.sought(page(0, 0), "deploy", true, 3)), [1, 3]);
+        holds("and back", counted(Page.sought(page(0, 0), "deploy", false, 0)), [3, 3]);
+        // Where the cursor stands on a match, which of them it is, else null.
+        holds("the cursor on a match says which", Page.found(lines, "deploy", 2, 14),
+            { at: 3, of: 3 });
+        holds("the title's own counts first", Page.found(lines, "deploy", 0, 0),
+            { at: 1, of: 3 });
+        holds("the cursor off a match says none", Page.found(lines, "deploy", 1, 0), null);
+        holds("nor where nothing's sought", Page.found(lines, "", 0, 0), null);
     }
 
     // Visual in the drawer, as on a page (VKCF3Z's spec v2): v chooses
@@ -890,6 +913,41 @@ QtObject {
         holds("the view comes down to show a line below it",
             Page.shown(lines[12], 0, page({})), 216);
         holds("and up to show one above", Page.shown(lines[2], 288, page({})), 0);
+
+        // A page whose eyebrow and title aren't a pitch tall, as a plate's
+        // are: the view's top is always on a whole line, as Vim's topline is,
+        // never a pitch partway through the title (VKCF3Z, 2026-11-05), here
+        // 48. The body's lines lie on the pitch a pixel short of it, as the
+        // drawer lays them.
+        const titled = [{ top: 4, height: 16, length: 10 }, { top: 28, height: 40, length: 10 }]
+            .concat(Array.from({ length: 20 }, (_, at) => ({ top: 72 + at * 24, height: 23,
+                length: 10 })));
+        const onTitled = from => page(from, { lines: titled, end: 336 });
+        const titledMoves = [
+            ["5j from the title, down to the first body line", { line: 1 }, "next", 5,
+                [6, 0, 0, 72]],
+            ["k up to the title shows it whole", { line: 6, top: 96 }, "previous", 0,
+                [5, 0, 0, 24]]
+        ];
+        for (const [what, from, act, count, want] of titledMoves)
+            holds(`a titled page: ${what}`, where(Page.moved(act, count, onTitled(from))), want);
+        holds("a titled page: Ctrl+E puts the title at the top",
+            Page.moved("scrollDown", 0, onTitled({ line: 6, top: 0 })).top, 24);
+        holds("a titled page: and again the first body line, past the title whole",
+            Page.moved("scrollDown", 0, onTitled({ line: 6, top: 24 })).top, 72);
+        holds("a titled page: Ctrl+Y back to the title",
+            Page.moved("scrollUp", 0, onTitled({ line: 12, top: 72 })).top, 24);
+        holds("a titled page: G stops at the end, on a line",
+            Page.moved("last", 0, onTitled({})).top, 336);
+        // A title whose descenders reach two pixels past a pitch, as the
+        // drawer's did at 2 (scrolled 96, the title's box ending at 98):
+        // that pitch would show their tips, so the view goes on past it.
+        const descended = [{ top: 4, height: 16, length: 10 },
+            { top: 28, height: 46, length: 10 }].concat(Array.from({ length: 20 },
+            (_, at) => ({ top: 96 + at * 24, height: 23, length: 10 })));
+        holds("a title two pixels past a pitch: Ctrl+E goes on past it",
+            Page.moved("scrollDown", 0, page({ line: 6, top: 24 },
+                { lines: descended, end: 360 })).top, 96);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",
@@ -1063,6 +1121,17 @@ QtObject {
         holds("and copying it", keyed("copy"), "y  Y");
         holds("choosing has a section of its own",
             list.some(line => line.heading === "Choosing"), true);
+        // Listed from the drawer, only the drawer's keys: its page's and
+        // choosing's, its own Space ? among them.
+        const drawn = Listed.keyList(Keys.table, lines, modes, ["page", "pageVisual"]);
+        holds("the drawer's list, its sections alone",
+            drawn.filter(line => line.heading !== undefined).map(line => line.heading),
+            ["Drawer", "Choosing"]);
+        holds("and its own list of keys among them",
+            drawn.filter(line => line.value === "keys").map(line => line.label),
+            ["Space ?  F1"]);
+        holds("and the rows' not", drawn.some(line => line.value === "into the drawer"),
+            false);
         // Each mode's section, by its heading: the keys each line names, as
         // a list, two spaces apart, so \u21e7+\u2193 is never read as \u2193.
         const sections = {};

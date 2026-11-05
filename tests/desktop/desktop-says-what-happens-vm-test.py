@@ -124,14 +124,21 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.close_launcher()
 
 
-# The drawer's line pitch, which Ctrl+E and Ctrl+Y scroll it by, so what it shows stays on the
-# card's lines (vm-desktop-looks measures them).
+# The drawer's line pitch, whose multiples its view's top lies on, so what it shows stays on the
+# card's lines (vm-desktop-looks measures them). Ctrl+E and Ctrl+Y scroll it a whole line, as
+# Vim's do, so past a title a pitch and a half tall they scroll two pitches.
 PITCH = 24
-# How far three Ctrl+E scroll it.
-SCROLLED = 3 * PITCH
+
+
+def a_line_on(drawer: Json, past: int = 0) -> bool:
+    """Say whether the drawer is scrolled past a point to a whole line on the pitch."""
+    scrolled = int(drawer["scrolled"])
+    return scrolled > past and scrolled % PITCH == 0 and held(drawer)
+
+
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
-WAITING = frozenset({"spc right", "spc left", "Z Z", "g g", "g v"})
+WAITING = frozenset({"spc right", "spc left", "spc ?", "Z Z", "g g", "g v"})
 TRIES = 3
 TRIED = timedelta(seconds=10)
 
@@ -271,17 +278,21 @@ class InTheDrawer:
 
 
 def held(drawer: Json) -> bool:
-    """Say whether the drawer's cursor is wholly inside its view."""
+    """Say whether the drawer's cursor is wholly inside its view, whose top cuts no line.
+
+    Vim's topline is always a whole line, so a view scrolled to a pitch partway through the
+    title shows it as slivers (VKCF3Z, 2026-11-05).
+    """
     top, height = int(drawer["cursor"]["top"]), int(drawer["cursor"]["height"])
-    return top >= 0 and top + height <= int(drawer["height"])
+    return top >= 0 and top + height <= int(drawer["height"]) and not drawer["cut"]
 
 
 def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Desktop) -> None:
     """A notice's drawer says who sent it and when, and gone into, its keys scroll it.
 
     The foot names no Shift with the arrows, which scroll nothing now: Space and the right arrow
-    go in, three Ctrl+E scroll it three of its lines, and Space and the left arrow come back,
-    the selection where it was.
+    go in, three Ctrl+E scroll it three of its lines, each whole, and Space and the left arrow
+    come back, the selection where it was.
     """
     page = InTheDrawer(desktop)
     drawer = page.drawer()
@@ -292,8 +303,10 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     desktop.photograph("launcher-plate")
     title = drawer["lines"]["title"]
     page.into()
-    scrolled = page.until("ctrl-e ctrl-e ctrl-e", lambda drawer: drawer["scrolled"] == SCROLLED)
-    assert round(title - scrolled["lines"]["title"]) == SCROLLED, scrolled
+    one = int(page.until("ctrl-e", a_line_on)["scrolled"])
+    two = int(page.until("ctrl-e", lambda drawer: a_line_on(drawer, one))["scrolled"])
+    scrolled = page.until("ctrl-e", lambda drawer: a_line_on(drawer, two))
+    assert round(title - scrolled["lines"]["title"]) == scrolled["scrolled"], scrolled
     page.back("spc left")
     desktop.close_launcher()
 
@@ -338,14 +351,17 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     the frames by: this screen is small enough that at 2 the card leaves the drawer no room.
     There it waits until the keys go in and then takes the card's place, its title on one line,
     rather than squeezed beside it until a word breaks (VKCF3Z, 2026-11-05: "Depl/oy/log").
+    Then Space ? lists the drawer's own keys (listed_in_the_drawer), kept in this subtest so
+    the file holds to the pyramid's twenty (docs/testing.md).
     """
     page = InTheDrawer(desktop)
     came = page.into()
     assert came["says"] == page.TITLE, came
     assert came["letter"] == 0, came
-    # The foot names the way back, not the row's Return, which does nothing in the drawer.
+    # The foot names the way back and the drawer's keys, not the row's Return, which does
+    # nothing in the drawer.
     told = desktop.showing()["selected"]["told"]
-    assert told == ["Space \u2190 back"], f"in the drawer the foot says {told}"
+    assert told == ["Space \u2190 back", "Space ? keys"], f"in the drawer the foot says {told}"
     assert came["on"] == page.TITLE[0], came
     rule = came["rule"]
     assert rule["top"] == came["top"], came
@@ -368,7 +384,11 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
         def five_down(drawer: Json, below: int = int(at["line"]) + 5) -> bool:
             return bool(drawer["cursor"]["line"] == below)
 
-        page.until("5 j", five_down)
+        down = page.until("5 j", five_down)
+        # The title scrolled away whole, and the foot names no Return, which does nothing here.
+        assert held(down), f"at {scale} five down cuts a line: {down}"
+        told = desktop.showing()["selected"]["told"]
+        assert told == ["Space \u2190 back", "Space ? keys"], f"at {scale} the foot says {told}"
         # Four along, or the line's last letter where a narrow drawer wraps it shorter.
         page.until(
             "l l l l",
@@ -388,6 +408,44 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     for keys in (": q ret", "spc left"):
         page.into()
         page.back(keys)
+    desktop.close_launcher()
+    listed_in_the_drawer(desktop)
+
+
+def listed_in_the_drawer(desktop: Desktop) -> None:
+    """In the drawer, Space ? lists the drawer's own keys in it, the keys staying there.
+
+    The cursor stands on the list's title, and j moves down it. Space ? again gives the row's
+    drawer back, and Space with the left arrow, bringing the keys back to the rows, puts the
+    list away with them.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+
+    def listed(shown: Json) -> bool:
+        cursor = shown["drawer"]["cursor"]
+        return bool(
+            shown["listing"]
+            and shown["mode"] == "page"
+            and cursor is not None
+            and cursor["says"] == "The Drawer's Keys"
+        )
+
+    # The pair come apart leaves ? alone, which begins a search back, so Escape lets it go.
+    def unsought() -> None:
+        page.press("esc")
+
+    page.pressed_until("spc ?", listed, unsought)
+    line = page.drawer()["cursor"]["line"]
+    page.until("j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    page.pressed_until(
+        "spc ?",
+        lambda shown: not shown["listing"] and shown["drawer"]["title"] == page.TITLE,
+        unsought,
+    )
+    page.pressed_until("spc ?", listed, unsought)
+    page.back("spc left")
+    assert not desktop.showing()["listing"], desktop.showing()
     desktop.close_launcher()
 
 
@@ -414,7 +472,7 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     assert held(last), last
     assert last["cursor"]["says"] == page.LAST, last
     page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0 and drawer["scrolled"] == 0)
-    page.until("ctrl-e", lambda drawer: drawer["scrolled"] == PITCH and held(drawer))
+    page.until("ctrl-e", a_line_on)
     page.until("ctrl-y", lambda drawer: drawer["scrolled"] == 0)
     half = page.until("ctrl-d", lambda drawer: drawer["scrolled"] > 0 and held(drawer))
     page.until("ctrl-u", lambda drawer: drawer["scrolled"] == 0)
@@ -453,13 +511,16 @@ def searched_as_vim_does(desktop: Desktop) -> None:
     nothing typed seeks the last back; a capital asks for one, and the search goes round past
     the last line to the title. Escape lets one being typed go, the keys staying in the drawer,
     as Backspace does with nothing left; Ctrl+W takes the word before and Ctrl+C lets it go,
-    as on Vim's command line. Its pictures at both of Joel's scales show the matches
+    as on Vim's command line. The foot counts the match it would land on, and the one the
+    cursor stands on, of how many. Its pictures at both of Joel's scales show the matches
     washed, for a person to judge the wash by.
     """
     page = InTheDrawer(desktop)
     page.into()
     page.press("/ l i n e spc 3 0")
     desktop.launcher_until(lambda shown: shown["drawer"]["search"]["washing"] == "line 30")
+    typed = desktop.showing()["modeSays"]
+    assert typed == "/line 30 \u00b7 1 of 1", f"typing, the foot says {typed}"
     found = page.until("ret", lambda drawer: drawer["cursor"]["says"].startswith("line 30 "))
     assert found["cursor"]["letter"] == 0, found
     assert found["scrolled"] > 0, found
@@ -469,6 +530,7 @@ def searched_as_vim_does(desktop: Desktop) -> None:
         "last": "line 30",
         "washing": "line 30",
         "landing": "",
+        "found": [1, 1],
     }, found
 
     def on(line: int) -> Callable[[Json], bool]:
@@ -478,8 +540,17 @@ def searched_as_vim_does(desktop: Desktop) -> None:
         )
 
     # Its own line's deploy is after the cursor, on its first letter.
-    page.until("/ d e p l o y ret", on(30))
+    landed = page.until("/ d e p l o y ret", on(30))
+    at, of = landed["search"]["found"]
+    # The next is counted one on, of as many, until the cursor leaves a match.
     page.until("n", on(31))
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["found"] == [at + 1, of])
+    counted = desktop.showing()["modeSays"]
+    assert counted == f"/deploy \u00b7 {at + 1} of {of}", f"on a match, the foot says {counted}"
+    # A letter on, it stands on none, and the foot counts nothing.
+    page.until("l", lambda drawer: drawer["search"]["found"] is None)
+    desktop.launcher_until(lambda shown: shown["modeSays"] == "")
+    page.until("h", on(31))
     page.until("shift-n", on(30))
     page.until("3 n", on(33))
     page.until("? ret", on(32))
@@ -526,7 +597,8 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     The moves extend what's chosen, and it's counted as the mode word counts it; y puts it on
     the clipboard as markdown, the title after its #, and goes back to the page with the
     cursor at its start, the flash it gives what it took ending; o goes to its other end,
-    Escape lets it go, and gv brings it back. Its pictures at both of Joel's scales show
+    Escape lets it go, and gv brings it back. V grounds each line whole, a band across the
+    measure, where v grounds only the letters. Its pictures at both of Joel's scales show
     letters chosen over two lines, for a person to judge the selection's ground and the block.
     """
     page = InTheDrawer(desktop)
@@ -537,6 +609,8 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
 
     came = page.until("v", chose("letters", 1))
     assert came["chosen"]["taken"] == [[title, 0, 1]], came
+    # Letters are grounded as they're chosen, with no band.
+    assert came["chosen"]["bands"] == [], came
     # Choosing, the foot names Escape, which lets the choice go and leaves the keys in.
     told = desktop.showing()["selected"]["told"]
     assert told == ["Esc back"], f"in visual the foot says {told}"
@@ -555,7 +629,12 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     assert back["cursor"]["letter"] == 0, back
     # Lines below the title, so what's copied holds no "log" to be found ahead of the notice
     # when the launcher next looks for its title.
-    page.until("j shift-v j", chose("lines", 2))
+    # V grounds whole lines, each one band across the measure that meets the next.
+    lines = page.until("j shift-v j", chose("lines", 2))["chosen"]
+    measure = lines["measure"]
+    assert [(band["x"], band["width"]) for band in lines["bands"]] == [(0, measure)] * 2, lines
+    upper, lower = lines["bands"]
+    assert upper["top"] + upper["height"] == lower["top"], lines
     page.until("o", lambda drawer: drawer["cursor"]["line"] == title + 1)
     page.pressed_until(
         "esc", lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["by"] == ""

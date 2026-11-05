@@ -6629,6 +6629,7 @@
     }
   ],
   "field": {
+    "found": "{at} of {all}",
     "modes": {
       "insert": "insert",
       "visual": "visual line",
@@ -6647,6 +6648,7 @@
     "listed": {
       "eyebrow": "Keys",
       "title": "The Launcher's Keys",
+      "drawerTitle": "The Drawer's Keys",
       "modes": {
         "normal": "Normal",
         "insert": "Insert",

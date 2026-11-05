@@ -508,6 +508,15 @@ def test_space_right_goes_into_the_drawer_its_rule_on_the_cursors_line(
         assert drawn["keys"], f"at {scale} the drawer doesn't hold the keys: {drawn}"
         assert drawn["cursor"]["rule"]["width"] > 0, f"at {scale} no rule: {drawn['cursor']}"
         desktop.photograph(f"launcher-drawer-in-at-{scale.replace('.', '-')}")
+        # Space ? in it lists the drawer's own keys there; the pair come apart leaves ? alone,
+        # a search back, which Escape lets go.
+        pressed_until(
+            desktop,
+            "spc shift-0x35",
+            lambda shown: shown["drawer"]["title"] == "The Drawer's Keys",
+            lambda: pressed(desktop, "esc"),
+        )
+        desktop.photograph(f"launcher-drawer-listed-at-{scale.replace('.', '-')}")
         # The arrow alone moves the cursor a letter, which leaves nothing to put back.
         pressed_until(
             desktop,

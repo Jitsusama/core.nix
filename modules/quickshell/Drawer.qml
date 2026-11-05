@@ -101,6 +101,10 @@ Floating {
         // which its reader draws (below). Set by the drawer's paint(), since
         // an inline component can't see it.
         property bool flashed: false
+        // Whether what's chosen is whole lines, which the drawer grounds as
+        // bands across the measure, so its reader grounds none of its own
+        // under them; set by paint() as flashed is.
+        property bool banded: false
         // What a copy as markdown puts before it: a title's #, a heading's ##.
         property string marked: ""
 
@@ -146,7 +150,8 @@ Floating {
                 // while y flashes it, as his on_yank does. Only fill and
                 // colour change, never weight.
                 persistentSelection: true
-                selectionColor: words.flashed ? Theme.accent
+                selectionColor: words.banded ? "transparent"
+                    : words.flashed ? Theme.accent
                     : Qt.alpha(Theme.selection, Theme.floating.selection)
                 selectedTextColor: words.flashed ? Theme.on_accent : words.ink
                 font: words.font
@@ -341,6 +346,11 @@ Floating {
     // the cursor: its line, its letter along it, and how far along the
     // line it wants to be, which j and k go back to.
     property var laid: []
+    // The tops its view may scroll to, none cutting a line, worked out once
+    // its lines are laid or its end moves rather than for each key, which
+    // on a long page would spend half a key's budget (DrawerPage.js).
+    readonly property var wholeTops: Page.tops({ lines: laid, pitch: drawer.pitch,
+        end: Math.max(0, view.contentHeight - view.height) })
     property var cursor: ({ line: 0, letter: 0, want: 0 })
     // The search being typed in it, as the launcher's line holds it, and
     // the last one run, { pattern, forward }, which n and N go on with, as
@@ -349,6 +359,7 @@ Floating {
     // what's being typed, as his incsearch shows it, else the last search
     // while the keys are in it, as his hlsearch keeps it.
     property string seeking: ""
+    property bool seekingForward: true
     property var lastSought: null
     property string landing: ""
     readonly property string washing: seeking !== "" ? seeking
@@ -377,6 +388,7 @@ Floating {
     property var lastChosen: null
     property int flashFor: 200
     property var flashing: []
+    property string flashedBy: ""
     property string copied: ""
     readonly property var taken: choosing !== "" && began !== null && began.line < laid.length
         && cursor.line < laid.length ? Page.chosen(began, cursor, choosing, laid) : flashing
@@ -393,6 +405,40 @@ Floating {
         paint();
     }
     onTakenChanged: paint()
+    // Whole lines chosen, or flashing once copied, are grounded as V's are
+    // in his Neovim: a band for each across the measure, reaching down to
+    // the next so the gap between a key and its words, or between two
+    // texts, is grounded too, where v grounds only the letters it takes
+    // (VKCF3Z, 2026-11-05). Each is { top, height } in the content.
+    // How wide its letters' column is, which a band spans.
+    readonly property real measure: column.width
+    // Each band as drawn, { x, width, top, height } in the column, rounded
+    // so one ending where the next begins says so, for the launcher to
+    // report.
+    function bandsDrawn() {
+        const drawn = [];
+        for (let at = 0; at < bandsShown.count; at++) {
+            const band = bandsShown.itemAt(at);
+            if (!band)
+                continue;
+            const top = Math.round(band.y);
+            drawn.push({ x: Math.round(band.x), width: Math.round(band.width), top,
+                height: Math.round(band.y + band.height) - top });
+        }
+        return drawn;
+    }
+    readonly property bool banded: choosing === "lines"
+        || (choosing === "" && flashing.length > 0 && flashedBy === "lines")
+    readonly property var bands: {
+        if (!banded)
+            return [];
+        const lines = taken.filter(one => one.line < laid.length).map(one => laid[one.line]);
+        return lines.map((line, at) => ({
+            top: line.top,
+            height: (at + 1 < lines.length ? lines[at + 1].top : line.top + line.height)
+                - line.top
+        }));
+    }
     Timer {
         id: flash
         interval: drawer.flashFor
@@ -519,6 +565,15 @@ Floating {
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
         cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
     }
+    // Another page shown while it holds the keys, as its list of keys is:
+    // read from its top once Qt has laid it out, as a window opened on it.
+    function anew() {
+        if (keys)
+            Qt.callLater(() => {
+                view.contentY = 0;
+                enter();
+            });
+    }
     // Laid out anew while it holds the keys, as a fact's value comes or the
     // row refreshes: the lines read again once Qt has laid them out, the
     // cursor kept on its line and letter where they still are.
@@ -546,6 +601,7 @@ Floating {
             end: Math.max(0, view.contentHeight - view.height),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
+            tops: wholeTops,
             xOf: (line, letter) => xOf(page[line], letter),
             letterAt: (line, x) => letterAt(page[line], x)
         });
@@ -572,10 +628,22 @@ Floating {
                 : !lastSought.forward, count);
     }
     function land(pattern, forward, count) {
-        const page = laid.map(line => Object.assign({}, line, { text: line.parts.map(part =>
-            part.words.getText(part.from, part.from + part.length)).join("") }));
-        const landed = Page.sought({
-            lines: page,
+        const landed = Page.sought(paged(), pattern, forward, count);
+        landing = landed === null ? "missing" : landed.wrapped ? "wrapped" : "";
+        if (landed === null)
+            return;
+        cursor = { line: landed.line, letter: landed.letter, want: landed.want };
+        view.contentY = landed.top;
+    }
+
+    // Its lines as a search reads them, each with its letters as shown.
+    readonly property var lettered: laid.map(line => Object.assign({}, line, {
+        text: line.parts.map(part => part.words.getText(part.from, part.from + part.length))
+            .join("") }))
+    // The page as DrawerPage moves on it, from the cursor and the view.
+    function paged() {
+        return {
+            lines: lettered,
             line: cursor.line,
             letter: cursor.letter,
             want: cursor.want,
@@ -584,14 +652,28 @@ Floating {
             end: Math.max(0, view.contentHeight - view.height),
             pitch: drawer.pitch,
             off: drawer.scrolloff,
-            xOf: (line, letter) => xOf(page[line], letter),
-            letterAt: (line, x) => letterAt(page[line], x)
-        }, pattern, forward, count);
-        landing = landed === null ? "missing" : landed.wrapped ? "wrapped" : "";
-        if (landed === null)
-            return;
-        cursor = { line: landed.line, letter: landed.letter, want: landed.want };
-        view.contentY = landed.top;
+            tops: wholeTops,
+            xOf: (line, letter) => xOf(lettered[line], letter),
+            letterAt: (line, x) => letterAt(lettered[line], x)
+        };
+    }
+    // Which match of how many, { at, of }, for the foot to count as his
+    // Neovim's search count does: while one's typed the one it would land
+    // on, and after the one the cursor stands on, or null off every match
+    // (VKCF3Z, 2026-11-05: "/down \u00b7 1 of 3").
+    readonly property var found: {
+        if (!keys || washing === "" || laid.length === 0)
+            return null;
+        if (seeking === "")
+            return Page.found(lettered, washing, cursor.line, cursor.letter);
+        const landed = Page.sought(paged(), seeking, seekingForward, 1);
+        return landed === null ? null : { at: landed.at, of: landed.of };
+    }
+
+    // Whether the view's top cuts one of its lines partway, for the
+    // launcher to report; only lines laid while it holds the keys count.
+    function topCut() {
+        return keys && Page.cut({ lines: laid, pitch: drawer.pitch }, view.contentY);
     }
 
     // The cursor put at a place, wanting its letter's place across, and the
@@ -605,7 +687,8 @@ Floating {
             height: view.height,
             end: Math.max(0, view.contentHeight - view.height),
             pitch: drawer.pitch,
-            off: drawer.scrolloff
+            off: drawer.scrolloff,
+            tops: wholeTops
         });
     }
     // o: the cursor to where visual began, which becomes where it is, as
@@ -638,6 +721,7 @@ Floating {
             + (span.start === 0 ? span.text.marked : "")
             + span.words.getText(span.start, span.end).replace(/[\u2028\u2029]/g, "\n")
                 .replace(/\u200b/g, "")).join("");
+        flashedBy = lines || choosing === "lines" ? "lines" : "letters";
         flashing = took;
         flash.restart();
         if (began !== null) {
@@ -685,6 +769,7 @@ Floating {
             for (const part of line.parts) {
                 const span = spans.find(found => found.words === part.words);
                 part.text.flashed = flashed;
+                part.text.banded = banded;
                 if (span)
                     part.words.select(span.start, span.end);
                 else
@@ -1003,6 +1088,22 @@ Floating {
             width: view.width - 2 * x
             height: flow.y + flow.height + Theme.inset + Theme.space.l
 
+            // V's bands, under the letters: the selection's ground while it
+            // chooses, and the accent while y flashes them, as his Neovim's
+            // Visual and on_yank are; the letters keep their own ink.
+            Repeater {
+                id: bandsShown
+                model: drawer.bands
+                delegate: Rectangle {
+                    required property var modelData
+                    z: -1
+                    y: modelData.top
+                    width: column.width
+                    height: modelData.height
+                    color: drawer.choosing === "" ? Theme.accent
+                        : Qt.alpha(Theme.selection, Theme.floating.selection)
+                }
+            }
             // The cursor's line while it holds the keys: one rule in the
             // accent, as thick as the frame, halfway across the margin
             // between the frame and the letters, as tall as the line. It
