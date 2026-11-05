@@ -159,7 +159,8 @@ function startsItself(row, command = {}) {
 // (:meet, :share), goes to the line the same way, the spec's other rule
 // for Return (VKCF3Z, 2026-11-05). A thing holding acts of its own (a meeting, a window, a network) opens
 // on Return as ever, its ending d's among its acts, so a meeting still
-// joins its call from ten minutes before it starts, though :meet ends.
+// joins its call from ten minutes before it starts, though :meet starts
+// something (startsItself).
 function endsSomething(row, command = {}, off = false) {
     if (!row || row.gone || row.figure === true || typeof row.given === "function") {
         return false;
