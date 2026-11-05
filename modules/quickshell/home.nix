@@ -112,6 +112,7 @@ let
     "Editing.js"
     "SetWords.js"
     "Ex.js"
+    "CommandBinding.js"
     "ListedKeys.js"
     "Search.js"
     "KeyHints.qml"

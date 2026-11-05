@@ -9,6 +9,7 @@
 import QtQuick
 import "Commands.js" as Commands
 import "SetWords.js" as SetWords
+import "CommandBinding.js" as CommandBinding
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -535,7 +536,7 @@ QtObject {
         const at = { names: ["Slack", "kitty", "Slack Huddle", "Files", "slack notes"],
             cursor: 1, marks: { "<": 2, ">": 3 } };
         const bound = typed => {
-            const read = Commands.bound(Commands.ran(typed, menu), at);
+            const read = CommandBinding.bound(Commands.ran(typed, menu), at);
             return read.error ?? read.rows;
         };
         holds("no range binds the cursor row, a range the rows it names",
@@ -553,10 +554,12 @@ QtObject {
         const worded = Commands.listed({ acts: [{ key: "wifi:leave", name: "Leave It" }],
             table: commands, said, called: act => wordsOf[act.key] ?? {} });
         holds("each thing's own act is found by the line's words, else command and title",
-            [Commands.actFor(worded[0], [{ key: "x" }, { key: "wifi:leave", name: "Leave" }],
+            [CommandBinding.actFor(worded[0],
+                [{ key: "x" }, { key: "wifi:leave", name: "Leave" }],
                 act => wordsOf[act.key] ?? {})?.name,
-                Commands.actFor(Commands.ran("disc", menu).entry, network(), () => ({}))?.name,
-                Commands.actFor(Commands.ran("disc", menu).entry,
+                CommandBinding.actFor(Commands.ran("disc", menu).entry, network(),
+                    () => ({}))?.name,
+                CommandBinding.actFor(Commands.ran("disc", menu).entry,
                     [{ name: "See It", verb: "see" }], () => ({}))],
             ["Leave", "Disconnect It", undefined]);
         holdEarlier();

@@ -3020,7 +3020,8 @@ onLinux {
   # row's acts first, narrows as it's typed, chooses as his cmp does and
   # runs exactly what's typed, with Vim's ranges and :g, and reads :set as
   # Vim does, as tests/command-line.qml holds Commands.js and SetWords.js
-  # to, with the Ex.js they read ranges by.
+  # to, with the Ex.js they read ranges by and CommandBinding.js, which
+  # binds a line to things.
   the-command-line-lists-every-command =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3030,6 +3031,7 @@ onLinux {
       cp ${./Commands.js} Commands.js
       cp ${./SetWords.js} SetWords.js
       cp ${./Ex.js} Ex.js
+      cp ${./CommandBinding.js} CommandBinding.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

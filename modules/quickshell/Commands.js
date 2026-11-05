@@ -82,11 +82,6 @@ function listed(from) {
     const table = from.table ?? {};
     const said = from.said ?? {};
     const short = command => table[command]?.short ?? command;
-    // What asks first is what changes and can't be undone, the language
-    // leaving undoable out wherever nothing changes; a command it doesn't
-    // name asks nothing.
-    const asks = command => table[command]?.changes === true
-        && table[command]?.undoable !== true;
     const seen = new Set();
     const menu = [];
     // Each line's title is lowered once, as it's listed, a space before it,
@@ -108,30 +103,11 @@ function listed(from) {
         add({ command: line, short: line, title: "", key: "", kind: "earlier", line,
             bang: false, takes: false, undoable: true });
     }
-    // An act is named by the command its words give it, with the argument
-    // telling it from another of that name, or else by its verb; it takes
-    // a ! only where it would ask first, its ! saying don't. A guarded one
-    // asks nothing on one thing, only once on more, so takes ! too. One its
-    // words give a bang of its own is banged: the bang is its line's, as
-    // :skip! goes back. One its words give every row is the line's with %,
-    // as :%forg, which forgets them all. An act takes a range where the
-    // language says it takes rows.
-    (from.acts ?? []).forEach((act, at) => {
-        const words = filled(from.called ? from.called(act) : {}, act, from.thing);
-        const command = words.command ?? commandOf(act);
-        const undoable = !asks(command);
-        const banged = words.bang === true;
-        add({ command, argument: String(words.argument ?? ""), short: short(command),
-            title: String(act.name ?? ""), key: keyOf(act, at === 0), kind: "act", act,
-            bang: banged || !undoable, banged, takes: false, undoable,
-            guarded: table[command]?.guarded === true, ranged: table[command]?.range === true,
-            every: words.range === "%", named: String(words.id ?? "") });
-    });
+    for (const [at, act] of (from.acts ?? []).entries()) {
+        add(actLine(act, at === 0, from));
+    }
     for (const own of from.surface ?? []) {
-        add({ command: own.command, short: own.short ?? short(own.command),
-            title: own.title ?? "", key: own.key ?? "", kind: "surface", own,
-            bang: own.bang !== false, takes: true, undoable: own.undoable !== false,
-            ranged: own.ranged === true });
+        add(surfaceLine(own, short));
     }
     add({ command: "quit", short: short("quit"), title: said.quit ?? "", key: "ZZ",
         kind: "quit", bang: true, takes: false, undoable: true });
@@ -144,6 +120,38 @@ function listed(from) {
     add({ command: "{n}", short: "{n}", title: said.row ?? "", key: "", kind: "row",
         bang: false, takes: false, undoable: true, row: from.row ?? 1 });
     return menu;
+}
+
+// An act's line. It's named by the command its words give it, with the
+// argument telling it from another of that name, or else by its verb. What
+// asks first is what changes and can't be undone, the language leaving
+// undoable out wherever nothing changes, and a command it doesn't name asks
+// nothing; an act takes a ! only where it would ask, its ! saying don't. A
+// guarded one asks nothing on one thing, only once on more, so takes ! too.
+// One its words give a bang of its own is banged: the bang is its line's,
+// as :skip! goes back. One its words give every row is the line's with %,
+// as :%forg, which forgets them all. An act takes a range where the
+// language says it takes rows.
+function actLine(act, first, from) {
+    const words = filled(from.called?.(act) ?? {}, act, from.thing);
+    const command = words.command ?? commandOf(act);
+    const flags = from.table?.[command] ?? {};
+    const undoable = !(flags.changes === true && flags.undoable !== true);
+    const banged = words.bang === true;
+    return { command, argument: String(words.argument ?? ""), short: flags.short ?? command,
+        title: String(act.name ?? ""), key: keyOf(act, first), kind: "act", act,
+        bang: banged || !undoable, banged, takes: false, undoable,
+        guarded: flags.guarded === true, ranged: flags.range === true,
+        every: words.range === "%", named: String(words.id ?? "") };
+}
+
+// A surface's own command's line, as a viewer's :rotate: it takes what
+// follows it, and a ! and a range where it says so.
+function surfaceLine(own, short) {
+    return { command: own.command, short: own.short ?? short(own.command),
+        title: own.title ?? "", key: own.key ?? "", kind: "surface", own,
+        bang: own.bang !== false, takes: true, undoable: own.undoable !== false,
+        ranged: own.ranged === true };
 }
 
 // What's typed, read as Vim's command line reads it: the colons and spaces
@@ -159,12 +167,12 @@ const number = /^[0-9]+$/;
 // A time, as a player goes to one: :12:30, or :1:02:03.
 const time = /^[0-9]+(:[0-9]+){1,2}$/;
 const named = /^([A-Za-z]+|\$|[0-9]+)(!?)(\s*)([\s\S]*)$/;
-const row = /^([0-9]+|\$)\s*$/;
+const rowAlone = /^([0-9]+|\$)\s*$/;
 const spacesAhead = /^\s*/;
 
 function parts(typed) {
     const said = typed.replace(leading, "");
-    const read = row.test(said) || time.test(said.trim()) ? { range: null, taken: 0 }
+    const read = rowAlone.test(said) || time.test(said.trim()) ? { range: null, taken: 0 }
         : Ex.rangeOf(said);
     const line = said.slice(read.taken).replace(spacesAhead, "");
     const ranging = said.slice(0, said.length - line.length);
@@ -375,42 +383,6 @@ function remembered(earlier, line) {
         return earlier;
     }
     return earlier.filter(one => one !== said).concat([said]).slice(-kept);
-}
-
-// The rows a line Return read names (ran), as indexes from 0, given where
-// things stood as : was pressed, `at` = { names, cursor, marks }: the
-// cursor row with no range, a range's rows (Ex.resolve), and of those,
-// for :g, the rows whose names hold its pattern, or for :v the rest. A
-// pattern with no capital ignores case, as Vim's smartcase has it.
-// { rows } or { error } in Vim's words.
-const capital = /[A-Z]/;
-
-function bound(read, at) {
-    const range = read.range ?? null;
-    const rows = Ex.resolve(range, { cursor: at.cursor, count: at.names.length,
-        marks: at.marks });
-    if (rows.error !== undefined || !read.global) {
-        return rows;
-    }
-    const { pattern, invert } = read.global;
-    const cased = capital.test(pattern);
-    const wanted = cased ? pattern : pattern.toLowerCase();
-    const holds = row => {
-        const name = String(at.names[row] ?? "");
-        return (cased ? name : name.toLowerCase()).includes(wanted);
-    };
-    return { rows: rows.rows.filter(row => holds(row) !== invert) };
-}
-
-// The act a line names among a thing's acts, so a line bound to several
-// runs each one's own: by its words' id (words.json) where the line's act
-// has words, else by its command and title; undefined where it has none.
-function actFor(entry, acts, called) {
-    if (entry.named) {
-        return acts.find(act => (called(act)?.id ?? "") === entry.named);
-    }
-    return acts.find(act => commandOf(act) === entry.command
-        && String(act.name ?? "") === entry.title);
 }
 
 // :g/pat/cmd and :v/pat/cmd, read as Ex.js reads them, then the command
