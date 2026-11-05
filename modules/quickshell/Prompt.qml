@@ -772,8 +772,11 @@ Item {
         void titleFace.font;
         const room = Math.max(0, end - Theme.space.l - glyphWidth - typingRoom - pathGap);
         const stretch = titleStretch;
+        // A step's whole words as their Text draws them, and words given
+        // way as the face measures them, stretched as the title's axes do.
+        const whole = new Map(chips.map((chip, at) => [chip.text, chipsWanted[at]]));
         return Reading.crumbs(chips.map(chip => ({ text: chip.text, yields: chip.yields === true })),
-            room, text => Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
+            room, text => whole.get(text) ?? Math.ceil(titleFace.advanceWidth(text) * stretch) + 1,
             betweenDrawn.implicitWidth);
     }
     // How much wider the title's axes draw its letters than its face's
