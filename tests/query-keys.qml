@@ -470,6 +470,8 @@ QtObject {
                 ["Escape", "]", "b", "[", "b"], ["normal", "nextFile", "previousFile"]],
             ["gx opens the row's file in its own program", ["Escape", "g", "x"],
                 ["normal", "openOwn"]],
+            ["@: runs the last command line again", ["Escape", "@", ":"],
+                ["normal", "commandAgain"]],
             ["Escape cancels a c waiting for its second", ["Escape", "c", "Escape", "c"],
                 ["normal"]],
             ["a key that ends nothing lets c go", ["Escape", "c", "x", "c"], ["normal"]],
