@@ -287,7 +287,7 @@ QtObject {
         const options = {
             wifi: { kind: "switch", takes: true },
             bluetooth: { kind: "switch" },
-            quiet: { kind: "switch" },
+            dnd: { kind: "switch", takes: "number", least: 1 },
             mute: { kind: "switch" },
             volume: { kind: "number", least: 0, most: 100 },
             brightness: { kind: "number", least: 0, most: 100 },
@@ -365,7 +365,7 @@ QtObject {
                 choices: () => ["Home-5G", "Cafe Wifi"] }),
             volume: Object.assign({}, options.volume, { now: () => 40 }),
             mute: Object.assign({}, options.mute, { now: () => false }),
-            quiet: Object.assign({}, options.quiet, { now: () => true }),
+            dnd: Object.assign({}, options.dnd, { now: () => true }),
             bluetooth: Object.assign({}, options.bluetooth, { now: () => true }),
             brightness: Object.assign({}, options.brightness, { now: () => 60 }),
             background: Object.assign({}, options.background, { now: () => "dark" })
@@ -376,7 +376,7 @@ QtObject {
             .map(line => [line.command, line.title]);
         holds(":set and a space lists every option and where it stands", listedAs("set "), [
             ["background", "background=dark"], ["bluetooth", "bluetooth"],
-            ["brightness", "brightness=60"], ["mute", "nomute"], ["quiet", "quiet"],
+            ["brightness", "brightness=60"], ["dnd", "dnd"], ["mute", "nomute"],
             ["volume", "volume=40"], ["wifi", "wifi=Home-5G"]
         ]);
         holds("typing narrows them", listedAs("set b").map(line => line[0]),
@@ -488,8 +488,8 @@ QtObject {
 
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",
-            [SetWords.shown("quiet", true, options.quiet),
-                SetWords.shown("quiet", false, options.quiet)], ["quiet", "noquiet"]);
+            [SetWords.shown("dnd", true, options.dnd),
+                SetWords.shown("dnd", false, options.dnd)], ["dnd", "nodnd"]);
         holds("a network joined says its name", SetWords.shown("wifi", "Home-5G", options.wifi),
             "wifi=Home-5G");
         holds("a number and a choice say theirs",
@@ -497,6 +497,7 @@ QtObject {
                 SetWords.shown("background", "dark", options.background)],
             ["volume=40", "background=dark"]);
 
+        holdMinutes(options);
         holdRanges();
 
         for (const failure of failures)
@@ -582,6 +583,35 @@ QtObject {
             ["Leave", "Disconnect It", undefined]);
         holdEarlier();
         holdAsking();
+    }
+
+    // A switch that takes minutes, as Do Not Disturb's dnd does (VKCF3Z,
+    // 2026-11-05): dnd holds notices until it's ended, dnd=60 for an hour,
+    // dnd+=60 an hour more, and nodnd ends it; held for some minutes, it
+    // says how many are left.
+    function holdMinutes(options) {
+        const first = arg => (SetWords.setting(arg, options).changes ?? [])[0] ?? null;
+        const toward = (arg, now) => {
+            const change = first(arg);
+            return change === null ? null : SetWords.toward(change, now, options[change.option]);
+        };
+        holds(":set dnd=60 holds it an hour, dnd+=60 an hour more",
+            [first("dnd=60"), first("dnd+=60")],
+            [{ option: "dnd", how: "set", value: 60 }, { option: "dnd", how: "add", value: 60 }]);
+        holds("its minutes are a number", SetWords.setting("dnd=soon", options),
+            { error: "E521: Number required after =: dnd=soon" });
+        holds("of one minute at least", SetWords.setting("dnd=0", options),
+            { error: "E474: Invalid argument: dnd=0" });
+        holds("an hour more is added to the minutes left", toward("dnd+=60", 30), { to: 90 });
+        holds("held until it's ended, it stays so; off, it holds for that long",
+            [toward("dnd+=60", true), toward("dnd+=60", false)], [{ to: true }, { to: 60 }]);
+        holds("an hour less never ends it, nor holds what's off",
+            [toward("dnd-=60", 30), toward("dnd-=60", true), toward("dnd-=60", false)],
+            [{ to: 1 }, { to: true }, { to: false }]);
+        holds("nodnd and dnd! end it, whatever's left", [toward("nodnd", 30), toward("dnd!", 30)],
+            [{ to: false }, { to: false }]);
+        holds("held for some minutes, it says how many are left",
+            SetWords.shown("dnd", 45, options.dnd), "dnd=45");
     }
 
     // What a line asks before it runs, once, by the rule d asks by
