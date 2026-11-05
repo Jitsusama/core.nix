@@ -421,14 +421,23 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         state.say(&format!("held, starting nothing: {why}"));
         return Ok(Round::Idle);
     }
-    let head = world.head()?;
+    let (passed, seen) = state.heads();
+    // A round cut short, as every switch that changes the net cuts one,
+    // takes up the head it began on, whose runs are recorded. At main's
+    // newest head each test would run again, for hours, and on 5 November
+    // three switches in a row cut the round before its search for a bad
+    // merge began.
+    let head = match state.under_way() {
+        Some(began) if passed.as_deref() != Some(began.as_str()) => began,
+        _ => world.head()?,
+    };
     clear_if_reverted(world, state)?;
     let hold = state.hold();
-    let (passed, seen) = state.heads();
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
         return Ok(Round::Idle);
     }
+    state.begin(&head)?;
     state.say(&format!("comparing {} with {}", short(&base), short(&head)));
     let changed = world.changed(&base, &head)?;
     find_broken(world, state, &changed, &base, &head)?;
@@ -841,6 +850,50 @@ mod tests {
             2,
             "a head already passed runs nothing again"
         );
+    }
+
+    #[test]
+    fn a_round_cut_short_takes_up_the_head_it_began_on() {
+        let state = state("taken-up");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h1").unwrap();
+        let world = Stand {
+            head: "h2".into(),
+            merges: names("h1"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        };
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h1".into())
+        );
+        assert_eq!(world.built(), vec![("h1".into(), "vm-a".into())]);
+        assert_eq!(
+            state.under_way(),
+            None,
+            "a finished round is under way no longer"
+        );
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h2".into())
+        );
+    }
+
+    #[test]
+    fn a_round_begun_is_written_down_until_it_ends() {
+        let state = state("begun");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[UNSENT; SENDS as usize]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Unfinished("h".into())
+        );
+        assert_eq!(state.under_way(), Some("h".into()));
     }
 
     #[test]
