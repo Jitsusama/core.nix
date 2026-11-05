@@ -674,7 +674,10 @@ Floating {
                             // lines takes the plate's whole width on the
                             // line under it, so it never reads a word a line
                             // (VKCF3Z, 2026-11-04).
+                            // A key list's sayings stay beside their keys,
+                            // so each key heads its own (VKCF3Z, 2026-11-04).
                             readonly property bool under: beside.lineCount > 2
+                                && !drawer.listsKeys
                             readonly property real valueFrom: under ? 0
                                 : drawer.labelsWide + drawer.labelsGap
 
