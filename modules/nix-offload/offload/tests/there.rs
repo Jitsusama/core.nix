@@ -1272,6 +1272,82 @@ fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     assert!(!listed.contains(".git/"), "{listed}");
 }
 
+// Nearby machines are sent a tree's files as they stand, one after
+// another, so one sent after the tree moved would build files no commit
+// it was asked at holds.
+#[test]
+fn a_nearby_machine_builds_nothing_of_a_tree_that_moved_since_the_run_began() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    // The first machine's build edits the tree, once.
+    let moving = NEARBY_SSH.replace(
+        "cat >> \"$here/received\"",
+        "case \"$2\" in *'nix build'*) [ -f \"$here/move\" ] && rm \"$here/move\" && \
+         echo '# moved' >> \"$MOVES\" ;; esac\ncat >> \"$here/received\"",
+    );
+    for (name, script) in [("ssh", moving.as_str()), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    fs::write(bin.join("move"), "").unwrap();
+    let config = folder.path().join("gitconfig");
+    fs::write(&config, "[user]\n  name = t\n  email = t@t\n").unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    git(&tree, &config, &["init", "-q"]);
+    fs::write(tree.join("flake.nix"), "{ }").unwrap();
+    git(&tree, &config, &["add", "."]);
+    git(&tree, &config, &["commit", "-qm", "one"]);
+    let listening = [(); 2].map(|()| std::net::TcpListener::bind("127.0.0.1:0").unwrap());
+    let nearby = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&nearby).unwrap();
+    fs::write(
+        nearby.join("nearby"),
+        format!(
+            "{} mac aarch64-darwin\n{} intel x86_64-darwin\n",
+            listening[0].local_addr().unwrap(),
+            listening[1].local_addr().unwrap()
+        ),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .arg("there")
+        .arg(&tree)
+        .args(["checks.aarch64-darwin.a", "checks.x86_64-darwin.a"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("MOVES", tree.join("flake.nix"))
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        !bin.join("move").exists(),
+        "the first machine built: {said}"
+    );
+    assert_ne!(ran.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("moved on from the commit this run began at"),
+        "{said}"
+    );
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert_eq!(
+        given.matches("nix build").count(),
+        1,
+        "only the first built: {given}"
+    );
+}
+
 /// git in `tree`, with a config of the test's own, giving its answer.
 fn git(tree: &Path, config: &Path, arguments: &[&str]) -> String {
     let output = Command::new("git")
@@ -1427,6 +1503,82 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
         within_far(&unpushed.there()),
         format!("nix build --no-link -L 'github:o/r/{head}#checks.x.a'"),
         "a clean tree GitHub has goes by its commit"
+    );
+}
+
+// A run-subtests waited 50 minutes for a builder on 5 November while its
+// branch moved on, built the new commit, and was kept as passed at the
+// one it began at, which a later run there then took as done.
+#[test]
+fn a_tree_is_built_at_the_commit_it_was_at_when_asked_however_long_it_waits() {
+    let unpushed = Unpushed::new();
+    let Unpushed {
+        folder,
+        bin,
+        config,
+        tree,
+        offload,
+        head,
+        ..
+    } = &unpushed;
+    let git = |arguments: &[&str]| unpushed.git(arguments);
+    git(&["checkout", "-q", "--", "flake.nix"]);
+    git(&["update-ref", "refs/remotes/origin/main", head]);
+    // A lender runs and is lending, but no builder stands yet.
+    fs::remove_file(offload.join("store")).unwrap();
+    fs::write(offload.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(offload.join("lending"), "").unwrap();
+    let said = folder.path().join("said");
+    let mut run = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", &tree.to_string_lossy(), "checks.x.a"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .env("GIT_CONFIG_GLOBAL", config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .stderr(fs::File::create(&said).unwrap())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let asking =
+        || fs::read_dir(offload.join("wanted")).is_ok_and(|mut wanted| wanted.next().is_some());
+    while !asking() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "it never asked for a builder"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // The branch moves on while it waits; then a builder stands.
+    fs::write(tree.join("flake.nix"), "{ outputs = _: { y = 2; }; }").unwrap();
+    git(&["commit", "-q", "-am", "later"]);
+    let later = git(&["rev-parse", "HEAD"]);
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = loop {
+        if let Some(ran) = run.try_wait().unwrap() {
+            break ran;
+        }
+        assert!(std::time::Instant::now() < deadline, "it never finished");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    let said = fs::read_to_string(&said).unwrap();
+    assert!(ran.success(), "{said}");
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    let command = given.lines().nth(1).unwrap();
+    assert!(
+        !command.contains(&later),
+        "it built the later commit: {command}"
+    );
+    assert_eq!(
+        within_far(command),
+        format!("nix build --no-link -L 'github:o/r/{head}#checks.x.a'"),
+        "{said}"
     );
 }
 

@@ -415,6 +415,12 @@ fn there(arguments: &[String]) -> ExitCode {
         eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
         return ExitCode::from(64);
     };
+    let scratch = env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-there");
+    // Pinned before anything waits, so what's built and kept as passed is
+    // the commit it was asked at, however far its branch moves meanwhile.
+    let asked = asked.pinned(&scratch);
     let journal = state().join("nix-offload/there.jsonl");
     let kept = Kept::of(&asked);
     let Some(asked) = kept.unpassed(asked, &journal) else {
@@ -424,9 +430,6 @@ fn there(arguments: &[String]) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
-    let scratch = env::var_os("XDG_RUNTIME_DIR")
-        .map_or_else(env::temp_dir, PathBuf::from)
-        .join("nix-offload-there");
     let nearby = fs::read_to_string(config().join("nix-offload/nearby"))
         .map(|text| there::nearby(&text))
         .unwrap_or_default();
@@ -791,7 +794,7 @@ fn changed_there(arguments: &[String]) -> ExitCode {
     let Ok(folder) = env::current_dir() else {
         return not_taken("this folder can't be read");
     };
-    let source = match there::source(&folder, &scratch) {
+    let source = match there::source(&folder, &scratch, None) {
         Ok(source) => source,
         Err(why) => return not_taken(&why),
     };
