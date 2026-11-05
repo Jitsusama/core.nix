@@ -519,6 +519,9 @@ The rest follows from the ladder:
   above the bottom edge. Inside, a band meets the next across a hairline with
   what a row leaves round its centred capitals, so a foot comes out a little
   taller than a row, and the room round the whole frame stays equal.
+- **A stroke isn't a space.** A meter's bar, a wave's bars and the room in a
+  texture are counted in hairlines, `4 * Theme.border`, never named by a rung,
+  and each says in a comment that it's a stroke or a texture.
 
 - **One baseline a line.** A line's pieces share one baseline, found by
   centring its largest level's capitals in the line; a smaller level takes that
