@@ -2264,7 +2264,8 @@
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the
-    keys and the pointer, bring what they're about forward, and sit inside the window under them
+    keys and the pointer, bring what they're about forward, and sit inside the window under them,
+    and the launcher's drawer of one takes the keys, which move through it as Vim's do
   '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
