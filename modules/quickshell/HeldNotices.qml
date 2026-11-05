@@ -1102,7 +1102,7 @@ Floating {
 
     // The mode, at the foot's start in three capitals (NoticeKeys.mark).
     readonly property string modeMark: NoticeKeys.mark(mode)
-    onModeMarkChanged: Report.say(`notice shows ${modeMark}`)
+    onModeMarkChanged: Report.say(`notice shows ${held.modeMark}`)
 
     // What the mode is doing, in the room kept for its widest beside the
     // facts: how many visual has chosen, a count being typed, or an
@@ -1666,7 +1666,7 @@ Floating {
             // mark is three of the mono's capitals, so one's width is all
             // of theirs, and nothing beside it moves as the mode changes.
             Text {
-                id: modeMark
+                id: markText
                 x: held.ink
                 anchors.verticalCenter: parent.verticalCenter
                 text: held.modeMark
@@ -1680,7 +1680,7 @@ Floating {
             }
 
             // Where the facts start: past the mark and a step.
-            readonly property real factsAt: modeMark.x + modeMark.implicitWidth + Theme.space.l
+            readonly property real factsAt: markText.x + markText.implicitWidth + Theme.space.l
 
             Text {
                 id: facts
