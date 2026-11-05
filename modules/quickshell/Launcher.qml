@@ -3347,10 +3347,10 @@ Scope {
     property var askedOver: []
 
     // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, or as the
-    // launcher closes, `over` the places of the rows it covers, or none.
-    function askOnce(question, yes, no, over) {
+    // launcher closes, `covering` the places of the rows it covers, or none.
+    function askOnce(question, yes, no, covering) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
-        askedOver = over ?? [];
+        askedOver = covering ?? [];
         askReady.restart();
         Report.say(`asked ${question}`);
     }
