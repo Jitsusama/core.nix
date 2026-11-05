@@ -49,6 +49,7 @@ import KeyTimes
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
+import "Commands.js" as Commands
 import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "QueryKeys.js" as QueryKeys
@@ -2280,6 +2281,124 @@ Scope {
     }
     onListingChanged: drawerSettled()
 
+    // The command line, the : line (CommandLine.qml), while it's open:
+    // { from, range, things, menu }, the mode : was pressed in, which
+    // Escape gives back, the range typed before it, the rows its acts act
+    // on, bound as : was pressed so a row arriving can't shift them, and
+    // its menu (Commands.js). Null while it's shut, so nothing of it is
+    // made until : is typed.
+    property var commanding: null
+    // What Return on the line said went wrong, as Vim's command line says
+    // E492, standing in the line's place for the key that ran it alone.
+    property string commandSaid: ""
+    property int commandSaidFor: -1
+    readonly property bool commandSays: commandSaid !== ""
+        && commandSaidFor === prompt.keysTaken
+
+    // What the cursor row's acts are, as a step into it lists them,
+    // Return's first (stepRows), or the row alone where it's an act
+    // itself, as one inside a thing is. Only acts are listed, never the
+    // places and parts a step in also holds.
+    function actsOf(row) {
+        if (!row || row.gone)
+            return [];
+        const things = asThing(row, held.length === 0 || collecting);
+        if (things && row.verbs) {
+            return (stepRows(row, true) ?? [])
+                .filter(one => !one.gone && Catalogue.kindOf(one) === "action");
+        }
+        return Catalogue.kindOf(row) === "action" ? [row] : [];
+    }
+
+    // Opens the command line over the rows, as : in normal does, or V4's
+    // visual with its selection: { range, things, surface, go }, things
+    // the rows the acts act on, the cursor row where none are given;
+    // surface a surface's own commands (Commands.listed), as a viewer's
+    // :rotate; and go what :{n} and :$ do, where it isn't the rows'.
+    function commandLine(opening) {
+        const row = selected;
+        const things = opening?.things ?? (row ? [row] : []);
+        const one = things.length === 1 ? things[0] : null;
+        const acts = one ? actsOf(one) : [];
+        // An act on the cursor row acts on the thing it's inside.
+        const on = one && acts.length === 1 && acts[0] === one && held.length > 0
+            ? [held[held.length - 1].row] : things;
+        const words = Words.field.command ?? {};
+        commanding = {
+            from: prompt.mode,
+            range: opening?.range ?? "",
+            things: on,
+            go: opening?.go ?? null,
+            menu: Commands.listed({ acts, surface: opening?.surface ?? [],
+                table: Commands.standIn, said: words, row: current + 1 })
+        };
+    }
+
+    // The line let go, the keys back to the find line in the mode it was
+    // in, or in normal.
+    function commandLeft(to) {
+        commanding = null;
+        prompt.resume(to);
+    }
+
+    // What the drawer says while a line of the menu is chosen: what it
+    // acts on, "on Home-5G".
+    function commandPlate(line) {
+        if (!line || !commanding || (line.kind !== "act" && line.kind !== "surface"))
+            return null;
+        const names = commanding.things.map(thing => thing.name ?? "").filter(name => name);
+        if (names.length === 0)
+            return null;
+        const on = ((Words.field.command ?? {}).on ?? "on {things}")
+            .replace("{things}", names.join(", "));
+        return { title: line.title, body: on };
+    }
+
+    // Return on the line: exactly what's typed, as Commands.ran read it.
+    function commandRan(read) {
+        const opened = commanding;
+        commandLeft("normal");
+        if (read.error !== undefined) {
+            if (read.error !== "") {
+                commandSaid = read.error;
+                commandSaidFor = prompt.keysTaken;
+            }
+            return;
+        }
+        if (read.go !== undefined && opened.go) {
+            opened.go(read.go);
+            return;
+        }
+        if (read.go !== undefined) {
+            const last = matches.length - 1;
+            arrowed(read.go === "$" ? last : Math.max(0, Math.min(read.go - 1, last)), ":");
+            return;
+        }
+        const entry = read.entry;
+        switch (entry.kind) {
+        case "quit":
+            open = false;
+            return;
+        case "help":
+            listing = true;
+            return;
+        case "surface":
+            entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
+                things: opened.things, count: opened.things.length });
+            return;
+        }
+        // An act that asks for a target or for words is stepped into, as
+        // Return on it would, from inside the thing it belongs to.
+        const act = entry.act;
+        const thing = opened.things[0];
+        if ((act.targets || act.given) && act !== thing && enter(thing)) {
+            const step = held[held.length - 1];
+            run(step.rows.find(one => one.key === act.key) ?? act, false);
+            return;
+        }
+        run(act, false);
+    }
+
     // Where the launcher is now, for a step into something to keep.
     function here() {
         const row = selected;
@@ -3616,7 +3735,8 @@ Scope {
     // What the selected row has for the drawer, or null: typed to nothing,
     // nothing is selected, and it has none.
     readonly property var drawerWanted: !open ? null : listing ? listedPlate
-        : selected ? drawerOf(selected) : null
+        : commandPlate(commandLoader.item?.chosenLine ?? null)
+            ?? (selected ? drawerOf(selected) : null)
     property bool drawerOut: false
     property var drawerShows: null
     onDrawerWantedChanged: {
@@ -3725,7 +3845,17 @@ Scope {
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
             begun: prompt.standing.typed.join(""),
-            ex: prompt.standing.ex ?? null,
+            // The command line, while it's open: what it holds, the line
+            // chosen, and each line its menu shows, as its command and
+            // title; and what Return on it said went wrong, for that key.
+            command: !commandLoader.item ? null : {
+                line: commandLoader.item.text,
+                caret: commandLoader.item.caret,
+                chosen: commandLoader.item.choosing.at,
+                menu: commandLoader.item.shown.map(line => `${line.command} ${line.title}`),
+                from: root.commanding?.from ?? ""
+            },
+            commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
             // there's a place used last for Tab to go back to.
             listing: root.listing,
@@ -4287,6 +4417,11 @@ Scope {
 
                     Prompt {
                         id: prompt
+                        // The command line takes its place while it's
+                        // open, and what it said went wrong for a key
+                        // after; hidden by its light, so its focus stays.
+                        opacity: root.commanding === null && !root.commandSays ? 1 : 0
+                        onCommanded: range => root.commandLine({ range })
                         steady: true
                         // Neovim's command line, opening in insert, but for
                         // a secret, which has no modes, as Vim's
@@ -4452,6 +4587,61 @@ Scope {
                             root.arrowed(to, timedAs[act] ?? QueryKeys.keyOf(act, "normal"));
                         }
                     }
+
+                    // The command line, in the find line's place while
+                    // : is open, made only then.
+                    Loader {
+                        id: commandLoader
+                        x: Theme.inset
+                        y: Theme.inset
+                        width: parent.width - 2 * Theme.inset
+                        height: prompt.height
+                        active: root.commanding !== null
+                        onLoaded: item.take()
+
+                        sourceComponent: CommandLine {
+                            menu: root.commanding?.menu ?? []
+                            onRan: read => root.commandRan(read)
+                            onLetGo: how => root.commandLeft(how === "dropped"
+                                ? root.commanding?.from ?? "normal" : "normal")
+                        }
+                    }
+
+                    // What Return on the command line said went wrong,
+                    // in its place for the next key alone, as Vim's
+                    // command line says E492: the failed mark in the
+                    // alert, its words in text on the names' column.
+                    Item {
+                        x: Theme.inset
+                        y: Theme.inset
+                        width: parent.width - 2 * Theme.inset
+                        height: prompt.height
+                        visible: root.commandSays
+
+                        Text {
+                            x: Theme.space.l
+                            anchors.baseline: commandSaidText.baseline
+                            text: Theme.glyph.failed
+                            color: Theme.alert
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                        }
+
+                        Text {
+                            id: commandSaidText
+                            x: Theme.space.l + Theme.space.xxl
+                            width: parent.width - x - Theme.space.l
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.commandSaid
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: Theme.text
+                            font.family: Theme.level.figure.family
+                            font.pointSize: Theme.level.figure.pointSize
+                            font.weight: Theme.level.figure.weight
+                            font.features: Theme.level.figure.features
+                        }
+                    }
                 }
 
                 // What it reaches, split from what's typed by a hairline.
@@ -4474,10 +4664,34 @@ Scope {
                         width: parent.width
                         height: root.tall
 
+                        // The command line's menu rises over the rows'
+                        // bottom, so the cursor row stays in view above
+                        // it, made only while : is open.
+                        Loader {
+                            id: commandMenu
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: item ? item.implicitHeight : 0
+                            active: root.commanding !== null
+                            z: 1
+                            onHeightChanged: {
+                                if (root.current >= 0)
+                                    Qt.callLater(() => list.positionViewAtIndex(root.current,
+                                        ListView.Contain));
+                            }
+
+                            sourceComponent: CommandMenu {
+                                all: root.commanding?.menu ?? []
+                                lines: commandLoader.item?.shown ?? []
+                                chosen: commandLoader.item?.choosing.at ?? -1
+                            }
+                        }
+
                         ListView {
                             id: list
 
                             anchors.fill: parent
+                            anchors.bottomMargin: commandMenu.height
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
                             // says it, so their graphs stand in one column that
@@ -4981,15 +5195,13 @@ Scope {
                         // moving anything else.
                         // In normal, a count typed before a move stands in
                         // its place until the move, as Neovim's showcmd
-                        // shows it, and an ex line after its colon until
-                        // its Return, as Neovim's command line does, both
-                        // in the strong ink of what's typed, their last
-                        // letters where they're longer than the room.
+                        // shows it, in the strong ink of what's typed, its
+                        // last figures where it's longer than the room. The
+                        // command line says its own, in the line's place.
                         Text {
                             id: modeWord
 
-                            readonly property string counted: prompt.standing.ex !== undefined
-                                ? `:${prompt.standing.ex}` : prompt.standing.count
+                            readonly property string counted: prompt.standing.count
                             // A line with no modes, as a secret's, names none.
                             readonly property string said: counted !== "" ? counted
                                 : !prompt.modal ? ""

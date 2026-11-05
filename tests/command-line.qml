@@ -184,21 +184,39 @@ QtObject {
         holds("an act that asks takes !, which doesn't", ran("forg!"), "forget!");
         holds("a surface's command takes what follows it", ran("sort name"), "sort name");
 
+        // Ctrl+W deletes the word before the caret, as Vim's command line's.
+        holds("Ctrl+W takes the word before the caret", [Commands.wordStart("set volume", 10),
+            Commands.wordStart("set volume+=", 12), Commands.wordStart("q  ", 3)], [4, 10, 0]);
+
         // Each key's work is a fraction of the 4 ms a key has, here over a
-        // menu of 400 commands.
+        // menu of 400 commands, timed as the fastest of twenty batches of
+        // fifty, since a check shares its machine: a slower batch is its
+        // other work or the collector, not the line's own cost. The menu is
+        // listed once, as : opens it, and narrowed and read on every key.
         const many = [];
         for (let at = 0; at < 400; at++)
             many.push({ command: `cmd${at}`, short: `cmd${at}`, title: `Command ${at}`, key: "",
                 run: () => {} });
+        const timed = work => {
+            let fastest = Infinity;
+            for (let batch = 0; batch < 20; batch++) {
+                const began = Date.now();
+                for (let at = 0; at < 50; at++)
+                    work();
+                fastest = Math.min(fastest, (Date.now() - began) / 50);
+            }
+            return fastest;
+        };
+        const listing = timed(() => menuOf(network(), many));
         const big = menuOf(network(), many);
-        const began = Date.now();
-        for (let round2 = 0; round2 < 20; round2++) {
+        const keyed = timed(() => {
             Commands.narrowed(big, "cmd3");
             Commands.ran("cmd399", big);
-        }
-        const each = (Date.now() - began) / 20;
-        if (each > 2)
-            failures.push(`narrowing and running 400 commands took ${each} ms a key, over 2`);
+        });
+        console.log(`400 commands listed in ${listing.toFixed(3)} ms, narrowed and read in`
+            + ` ${keyed.toFixed(3)} ms`);
+        holds("400 commands listed, narrowed and read in half a key's 4 ms",
+            listing + keyed < 2, true);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
