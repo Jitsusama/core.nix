@@ -79,6 +79,8 @@ PACE = timedelta(milliseconds=400)
 KEPT = 300
 # How long the last key may take to reach its frame before the test says it never did.
 REACHING = timedelta(seconds=30)
+# How long freezing or thawing the load may take before the test says it couldn't.
+FREEZING = timedelta(minutes=3)
 
 
 @pytest.fixture(scope="module")
@@ -184,8 +186,11 @@ class Timing:
     def load(self, *, on: bool) -> None:
         """Let the machine's load run, or freeze it where it stands, which takes no time back."""
         verb = "thaw" if on else "freeze"
-        self.desktop.as_account(f"systemctl --user {verb} stress-jobs")
-        self.desktop.machine.succeed(f"systemctl {verb} stress-build")
+        # A builder stalling the VM held a freeze for 50 s on 5 November, past the 25 s systemctl
+        # waits for its answer by default, though the unit froze. FREEZING is longer than that.
+        wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
+        self.desktop.as_account(f"{wait} systemctl --user {verb} stress-jobs")
+        self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
 
     def waiting(self) -> float:
