@@ -26,6 +26,7 @@
 // vocabulary's (launcher/words.json, Words.qml).
 import qs
 import QtQuick
+import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 
 Provider {
@@ -410,8 +411,8 @@ Provider {
                 : Theme.glyph.rain,
             graph: { shape: "bar", values: [hour.chance / percent], warn: false },
             thing: true,
-            drawer: () => drawerOf(words("at", { day: Qt.formatDate(dateOf(hour.date),
-                "dddd d MMMM"), clock: hour.clock }), above ?? rain, "weather", figures)
+            drawer: () => drawerOf(words("at", { day: Moment.eyebrow(dateOf(hour.date)),
+                clock: hour.clock }), above ?? rain, "weather", figures)
         }, () => figureRows("weather", figures));
     }
 
@@ -525,8 +526,7 @@ Provider {
                     { chance: share(chance) }) : "",
                 glyph: glyph(daily.weather_code[i], true),
                 thing: true,
-                drawer: () => drawerOf(Qt.formatDate(dateOf(day), "dddd d MMMM"), side,
-                    "weather:day", own)
+                drawer: () => drawerOf(Moment.eyebrow(dateOf(day)), side, "weather:day", own)
             }, () => figureRows("weather:day", own).concat(hours.filter(hour => hour.date === day)
                 .map(hour => hourThing(hour)))));
         }
