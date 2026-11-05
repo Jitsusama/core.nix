@@ -328,9 +328,11 @@ function nameOf(pressed) {
         return "";
     }
     // Alt is named beside a key that types nothing, so Alt+Return is
-    // never Return; a letter it shifts on the layout goes by what it
-    // typed.
-    return (pressed.control ? "Ctrl+" : "") + (pressed.alt && !letter ? "Alt+" : "")
+    // never Return, and beside a letter it typed as the key's own, so
+    // Alt+d is Vim's M-d and never d; a letter it shifts to another on the
+    // layout goes by what it typed.
+    const own = bare && pressed.letter !== "" && pressed.text.toLowerCase() === pressed.letter;
+    return (pressed.control ? "Ctrl+" : "") + (pressed.alt && (!letter || own) ? "Alt+" : "")
         + (pressed.shift && !bare ? "Shift+" : "") + name;
 }
 
