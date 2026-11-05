@@ -145,10 +145,7 @@ onLinux {
     in
     holds "niri-centres-a-window-alone"
       "niri's layout block in config.kdl no longer says always-center-single-column, so a window alone sits against the screen's left edge."
-      (
-        lib.length after == 2
-        && lib.elem "    always-center-single-column" (lib.splitString "\n" layout)
-      );
+      (lib.length after == 2 && lib.elem "    always-center-single-column" (lib.splitString "\n" layout));
 
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
