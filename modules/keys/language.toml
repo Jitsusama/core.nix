@@ -243,10 +243,18 @@ modes = ["normal", "visual"]
 kinds = ["page"]
 
 # The link on the line here, or the file it names, as Ctrl+] follows a tag
-# and gf opens the file under the cursor.
+# and gf opens the file under the cursor; on a list, the cursor row in the
+# place it lives, as a row found from home, a Now row or a notice's sender
+# lives in another, the cursor landing on it there.
 [acts.follow-link]
 keys = ["<C-]>"]
-kinds = ["page"]
+kinds = ["page", "list"]
+
+# Back through the places Ctrl+] went to, as Vim's Ctrl+T pops its tag
+# stack; with none, it says E73: Tag stack empty.
+[acts.tag-back]
+keys = ["<C-t>"]
+kinds = ["list"]
 
 [acts.follow-file]
 keys = ["gf"]

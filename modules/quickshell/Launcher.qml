@@ -2651,26 +2651,11 @@ Scope {
         tagsBack = was.tags;
         lastPlace = moved ? left : was.last;
     }
-    // Ctrl+] goes to the row's own place, as Vim follows a tag: for a row
-    // that opens on Return, as a mail, a program or a session do, into the
-    // place listing its parts, which nothing else reaches (VKCF3Z,
-    // 2026-11-05). The place left goes on the tags' way back, as Vim's tag
-    // stack keeps it, and on the jump list, as any place left does; Ctrl+T
-    // reads it back (#1905). A row holding nothing says so.
-    property var tagsBack: []
     // Whether Ctrl+] goes into a row's own parts. A notice's acts are
     // commands under its card's words, not parts (VKCF3Z, 2026-11-05), so
     // Ctrl+] leaves it to where it lives instead.
     function holdsParts(row) {
         return holdsMore(row) && kindOf(row) !== "notice";
-    }
-    function follow(row) {
-        const left = { held: held, here: here() };
-        if (row && !row.gone && followed(row)) {
-            tagsBack = tagsBack.concat([left]);
-            return;
-        }
-        say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
     }
     // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
     // lost (Joel's rule): a found act into its program, a row into its
@@ -2698,11 +2683,80 @@ Scope {
         }
         return enter(row);
     }
+
     function toLastPlace() {
         if (lastPlace === null)
             return;
         const to = lastPlace;
         traces.began("lastPlace", { from: held.length, to: to.held.length });
+        held = to.held;
+        restart(to.here.typed);
+        reselect(to.here);
+    }
+
+    // The places Ctrl+] left, as Vim's tag stack, which Ctrl+T comes back
+    // through. Let go as the launcher opens, with the jumps.
+    property var tagsBack: []
+
+    // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
+    // 2026-11-05): first wherever followed() takes it, as the old step in
+    // by l did, so a row that holds more goes into its parts, as the
+    // foot's Ctrl+] in says, a notice's acts among them. A row with no
+    // parts living in another place, as a Now row or one found from home,
+    // goes to that place, onto it there. A row Return takes elsewhere, a
+    // spot or a program's act found from home, keeps where it lives; any
+    // other is walked for from home (Catalogue.js's livesAt). The place
+    // left goes on the tags' way back, as Vim's tag stack keeps it, and
+    // once on the jump list, as a tag is one jump in Vim, not one a step.
+    // A row with none says so.
+    function follow(row) {
+        const live = row && !row.gone ? row : null;
+        const came = { held: held, here: here() };
+        if (live && followed(live)) {
+            tagsBack = tagsBack.concat([came]);
+            return;
+        }
+        const spot = live ? followedTo(live) : null;
+        if (spot === null) {
+            say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
+            return;
+        }
+        traces.began("follow", { from: held.length, to: spot.trail.length });
+        jumping = true;
+        try {
+            goTo(spot);
+        } finally {
+            jumping = false;
+        }
+        tagsBack = tagsBack.concat([came]);
+        jumpsBack = jumpsBack.concat([came]);
+        jumpsAhead = [];
+        lastPlace = came;
+    }
+
+    // Where Ctrl+] goes from a row, by steady ids, or null where it lives
+    // nowhere but here.
+    function followedTo(row) {
+        const own = row.trail !== undefined ? { trail: row.trail, spot: row.spot } : row.inside;
+        const path = own ? own.trail.concat([own.spot])
+            : Catalogue.livesAt(home(), steadyId(row), {
+                idOf: one => steadyId(one),
+                holds: (one, above) => catalogueHolds(one,
+                    above === null || collects({ row: above }))
+            })?.map(one => steadyId(one)) ?? null;
+        return Catalogue.followed(path, held.map(step => steadyId(step.row)));
+    }
+
+    // Ctrl+T: back to the place Ctrl+] left last, as it was left, as Vim's
+    // pops its tag stack; with none, Vim's E73, the rows staying put.
+    function tagBack() {
+        if (tagsBack.length === 0) {
+            say([[(Words.field.hints ?? {}).E73 ?? "", ""]]);
+            return;
+        }
+        const to = tagsBack[tagsBack.length - 1];
+        tagsBack = tagsBack.slice(0, -1);
+        traces.began("tagBack", { from: held.length, to: to.held.length });
         held = to.held;
         restart(to.here.typed);
         reselect(to.here);
@@ -5231,6 +5285,8 @@ Scope {
                 .map(key => root.saidKey(key)) : [],
             // The places Ctrl+O and Ctrl+I go back and forward through.
             jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
+            // And those Ctrl+] left, which Ctrl+T comes back through.
+            tags: root.tagsBack.length,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.
@@ -6249,6 +6305,9 @@ Scope {
                                 return;
                             case "follow":
                                 root.follow(root.matches[root.current] ?? null);
+                                return;
+                            case "tagBack":
+                                root.tagBack();
                                 return;
                             // h and l on a row say Vim's way out and in,
                             // and Backspace as h, read as the one beside
