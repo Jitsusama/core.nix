@@ -366,7 +366,9 @@ def shows_the_command_line(desktop: Desktop, scale: str) -> None:
 def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
     """Find Keep Awake and Return, which lands on it in normal, and photograph it there.
 
-    Its side and the foot say what a second Return does, in the accent, and nothing is done.
+    Its side and the foot say what a second Return does, in the accent, and nothing is done. A
+    landing is normal, so its foot keeps normal's command line and key list before Return, its
+    shape never changing; only the accent marks it (VKCF3Z, 2026-11-05).
     """
     machine = desktop.machine
     desktop.on_find()
@@ -378,6 +380,7 @@ def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
     shown = desktop.showing()
     told = shown["selected"]["told"]
     assert told[:1] == [f"\u21b5 {shown['landed']}"], f"at {scale} the landed foot says {told}"
+    assert told[-2:] == [": commands", "Space ? keys"], f"at {scale} the landed foot: {told}"
     desktop.photograph(f"launcher-landed-at-{scale.replace('.', '-')}")
 
 
