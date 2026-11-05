@@ -143,6 +143,10 @@ ShellRoot {
     // as the launcher says a day, and a count in its words.
     function asReckoned() {
         const date = today.answer("date");
+        // Date knows it's shown, and so asks for its calendars, by finding
+        // itself in the answer or a step held in it.
+        expect("the date says it's Date's, so it's known shown", date.live === today,
+            String(date.live));
         const held = date.rows.find(row => row.name === Words.name("today:calendars"));
         expect("Date holds Calendars", held !== undefined && typeof held.verbs === "function",
             JSON.stringify(held));
