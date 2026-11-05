@@ -59,6 +59,10 @@ Singleton {
         reading = reply.parameters;
     }
 
+    // A refusal is said once the loader has made its Socket, never while
+    // it makes it: a Unix socket refuses within connectToServer, and the
+    // loader turned off before its item is made keeps the item anyway, so
+    // the refused Socket would stand and the next day asked never connect.
     LazyLoader {
         active: root.waiting
 
@@ -73,10 +77,10 @@ Singleton {
                     }) + "\u0000");
                     flush();
                 } else {
-                    root.unanswered();
+                    Qt.callLater(root.unanswered);
                 }
             }
-            onError: root.unanswered()
+            onError: Qt.callLater(root.unanswered)
             parser: SplitParser {
                 splitMarker: "\u0000"
                 onRead: data => root.heard(data)
