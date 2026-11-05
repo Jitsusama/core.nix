@@ -203,6 +203,42 @@ let
       '';
       says = "stray changes things, but the find line reaches it by ctrl+x";
     }
+    # An act that ends, takes away or reaches someone never runs on Return
+    # (VKCF3Z's spec, Return), and h, l and Backspace mean nothing on a
+    # list (Joel, 2026-11-05: "where in vi does that step into shit?").
+    {
+      name = "an-end-that-changes-nothing";
+      adds = ''
+        [acts.stray]
+        command = "strayone"
+        short = "stray"
+        kinds = []
+        ends = true
+      '';
+      says = "stray ends something, but changes nothing";
+    }
+    {
+      name = "an-end-on-return";
+      adds = ''
+        [acts.stray]
+        keys = ["<CR>"]
+        modes = ["visual"]
+        kinds = []
+        changes = true
+        ends = true
+      '';
+      says = "stray ends something, but Return reaches it by enter in visual mode";
+    }
+    {
+      name = "a-letter-stepping-in";
+      adds = ''
+        [acts.stray]
+        keys = ["l"]
+        modes = ["visual"]
+        kinds = ["list"]
+      '';
+      says = "stray takes l on a list, where h, l and Backspace mean nothing";
+    }
     {
       name = "an-arrow-of-its-own";
       adds = ''

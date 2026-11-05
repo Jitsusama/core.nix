@@ -10,7 +10,9 @@ Reads the language (language.toml), the key map every layer writes
 - two acts given one key in one mode, or one name on the command line;
 - a command, or a name between its short form and its whole one, that
   Neovim takes for another, or one of Neovim's own shortened otherwise;
-- an act that changes something with a key the find line reaches;
+- an act that changes something with a key the find line reaches, one
+  that ends something with Return in any mode, and a list's act taking
+  h, l or Backspace, which step into and out of nothing;
 - an arrow in normal or visual mode that isn't its letter's motion: an
   act a surface's kinds hold naming one, since its letter brings it, or
   a modal layer of ours binding one held, in a sequence, or to anything
@@ -78,6 +80,7 @@ FIELDS = {
     "undoable",
     "guarded",
     "range",
+    "ends",
 }
 # The modes an arrow is its letter's motion in and nothing else (Joel,
 # 2026-11-05: "In normal mode, in a buffer, arrows move the cursor"), and
@@ -221,6 +224,8 @@ def shape_faults(language: dict[str, Any]) -> list[str]:
         ]
         if act.get("undoable") and not act.get("changes"):
             faults.append(f"{name} can be undone, but changes nothing")
+        if act.get("ends") and not act.get("changes"):
+            faults.append(f"{name} ends something, but changes nothing")
         if act.get("guarded"):
             if not act.get("changes"):
                 faults.append(f"{name} guards itself, but it never asks, since it changes nothing")
@@ -273,6 +278,32 @@ def arrow_bind_faults(layer: Layer, acts: Acts) -> list[str]:
             f"{name}: {bind['chord']} gives an arrow {given}, where an arrow is only its"
             " letter's motion"
         )
+    return faults
+
+
+def return_faults(language: dict[str, Any]) -> list[str]:
+    """Find an act that ends something given Return, or a list's act taking h, l or Backspace.
+
+    What ends, takes away or reaches someone runs only from d or the
+    command line, never from Return in any mode; and nothing on a list
+    steps in or out by h, l or Backspace, which Vim's lists never do.
+    """
+    faults = []
+    for name, act in language["acts"].items():
+        keys = sorted(spelled(key) for key in act.get("keys", []))
+        if act.get("ends"):
+            faults += [
+                f"{name} ends something, but Return reaches it by {key} in {mode} mode"
+                for key in keys
+                if key.split(" ")[-1] == "enter"
+                for mode in sorted(modes_of(act))
+            ]
+        if "list" in act["kinds"]:
+            faults += [
+                f"{name} takes {key} on a list, where h, l and Backspace mean nothing"
+                for key in keys
+                if key in {"h", "l", "backspace"} and modes_of(act) & LETTERED
+            ]
     return faults
 
 
@@ -385,6 +416,7 @@ def faults(
 ) -> list[str]:
     """Find every way the language or the key map strays."""
     found = shape_faults(language) + arrow_faults(language) + find_faults(language)
+    found += return_faults(language)
     found += command_faults(language, neovim)
     acts = acts_of(language)
     found += key_faults(acts)
