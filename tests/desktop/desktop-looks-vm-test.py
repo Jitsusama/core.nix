@@ -403,13 +403,15 @@ def flashes_as_yy_copies(desktop: Desktop, rows: list[int], flash: str, settled:
     photographs = desktop.values["photographs"]
     if photographs:
         # The output named, as Joel's recorder names it (Recorder.qml), since
-        # with more than one wf-recorder asks which.
+        # with more than one wf-recorder asks which; and every frame taken,
+        # damaged or not (-D), since on a still screen it waited for a frame
+        # to end on once told to stop, and never ended.
         output = (
             "niri msg --json focused-output"
             ' | grep -o \'"name":"[^"]*"\' | head -1 | cut -d\'"\' -f4'
         )
         desktop.as_account(
-            f'rm -f {RECORDING}; setsid -f wf-recorder -y --output "$({output})"'
+            f'rm -f {RECORDING}; setsid -f wf-recorder -y -D --output "$({output})"'
             f" --file {RECORDING} </dev/null >{RECORDED} 2>&1"
         )
         # It says the region it records once it has begun; the file stays
