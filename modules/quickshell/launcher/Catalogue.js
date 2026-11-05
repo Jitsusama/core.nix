@@ -147,6 +147,30 @@ function startsItself(row, command = {}) {
     return !!row && row.verbs !== undefined && command.flags?.starts === true;
 }
 
+// Whether doing it ends, takes away or reaches someone, so no Return runs
+// it from any mode: Return writes its command on the : line instead, and a
+// fresh Return there runs it (VKCF3Z's re-spec after Joel's 11:4x, "where
+// in vi does that step into shit?"). The key language's ends flag on the
+// row's command decides, as `command` names it (named); :set's flag is the
+// command's whatever its value, so its no form, which turns something off
+// (`off`, as SetWords reads the row's value), ends too. Where the language
+// names no command for it, an ending act, as words.json marks one, ends.
+// A thing holding acts of its own (a meeting, a window, a network) opens
+// on Return as ever, its ending d's among its acts, so a meeting still
+// joins its call from ten minutes before it starts, though :meet ends.
+function endsSomething(row, command = {}, off = false) {
+    if (!row || row.gone || row.figure === true || typeof row.given === "function") {
+        return false;
+    }
+    if (row.verbs || row.targets || row.nested || row.category) {
+        return false;
+    }
+    if (command.flags !== undefined) {
+        return command.flags.ends === true || off;
+    }
+    return ends(row) || off;
+}
+
 // A step's rows with a quiet one first, where the first would change
 // something: the first row inside a thing never changes state (See It,
 // Copy, a part), so a Return that steps in and a second Return after it

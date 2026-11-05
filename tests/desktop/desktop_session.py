@@ -542,6 +542,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         fresh = "qs ipc call launcher showing | grep -qF '\"landedFresh\":false'"
         self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
 
+    def line(self, written: str) -> None:
+        """Press Return on a row that ends something, and wait for its command on the : line.
+
+        Return on it, from the find or normal, only writes its command there, so a test presses
+        Return again for it to be done, once a Return no longer comes so soon after the writing
+        that the launcher takes it for the same press doubled.
+        """
+        self.machine.send_key("ret")
+        self.launcher_until(lambda shown: (shown["command"] or {}).get("line") == written)
+        fresh = "qs ipc call launcher showing | grep -qF '\"linedFresh\":false'"
+        self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
+
     def on_find(self) -> None:
         """Put the launcher's line back to typing, by A from normal, and wait for it.
 

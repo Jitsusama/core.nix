@@ -1869,7 +1869,8 @@ Scope {
     function lands(choice) {
         return !!choice && prompt.modal && prompt.mode === "find" && changesState(choice)
             && !stepsIn(choice) && !stepsThing(choice) && !choice.given && !choice.sure
-            && !sureOf() && !Catalogue.startsItself(choice, commandNamed(choice));
+            && !sureOf() && !Catalogue.startsItself(choice, commandNamed(choice))
+            && !endsSomething(choice);
     }
 
     // Whether the step Joel is in asks him to be sure, as Power Off's does.
@@ -1877,7 +1878,55 @@ Scope {
         return held.length > 0 && !!held[held.length - 1].row?.confirm;
     }
 
-    // What the last Return did ("ran", "landed", "entered", "gave", or ""
+    // Whether a row's act ends, takes away or reaches someone, which no
+    // Return runs from any mode (Catalogue.js's endsSomething): the key
+    // language's ends flag on its command, or :set's no form for an option
+    // whose off ends what it holds (its `ends`, Provider.qml), as Wi-Fi
+    // Off's :set nowifi drops the network, where :set nomic ends nothing.
+    function endsSomething(choice) {
+        if (!choice || !prompt.modal)
+            return false;
+        const named = commandNamed(choice);
+        const set = named.command === "set"
+            ? SetWords.setOne(String(commandWords(choice).argument ?? ""), setOptions) : null;
+        const off = set?.how === "off" && setOptions[set.option]?.ends === true;
+        return Catalogue.endsSomething(choice, named, off);
+    }
+
+    // The line Return writes for a row that ends something, as the menu
+    // would write its act chosen: "disconnect", "set nowifi".
+    function endsLine(choice) {
+        const thing = held.length > 0 ? held[held.length - 1].row : choice;
+        return Commands.written(Commands.actLine(choice, true, { called: commandWords,
+            table: Options.commands, thing }), "");
+    }
+
+    // What an ending row's side names for the key that carries it: d with
+    // its verb where the row is d's own ending act (Operators.endingOf), else
+    // the line Return writes, ":disconnect" (VKCF3Z, 2026-11-05).
+    function carriedBy(choice) {
+        if (!endsSomething(choice))
+            return "";
+        if (Operators.endingOf(choice, []) === choice) {
+            const key = Object.keys(Operators.operators)
+                .find(one => Operators.operators[one] === "ending") ?? "";
+            return `${key} ${verbOf(choice)}`;
+        }
+        return `:${endsLine(choice)}`;
+    }
+
+    // When Return last wrote an ending row's line, so a Return doubled
+    // with it, a key bounced, doesn't run the line it opened.
+    property real linedAt: 0
+
+    // Return on a row that ends something: its command written on the :
+    // line, the menu naming what it acts on, for a fresh Return to run.
+    function lineFor(choice) {
+        commandLine({ typed: endsLine(choice) });
+        linedAt = Date.now();
+    }
+
+    // What the last Return did ("ran", "landed", "entered", "gave", "lined", or ""
     // for one doubled), and when it was pressed, heard and done, in
     // milliseconds of the monotonic clock, so a test sees that a name and
     // one Return opens with no wait between.
@@ -1951,6 +2000,11 @@ Scope {
             return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent],
                 [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]];
         }
+        // A row that ends something names the line Return writes at the
+        // right end, where Return always is, and before it the key that
+        // carries it at once (VKCF3Z, 2026-11-05).
+        if (endsSomething(choice))
+            return endingKeys(choice);
         // One Return lands on from the find says Return with no act, since
         // Return there does nothing of its own, and no arrow, since the
         // find's arrows move the caret.
@@ -2013,6 +2067,24 @@ Scope {
         else if (kindOf(choice) !== "" && (choice.chord ?? []).length > 0)
             taught.push([chordText(choice.chord), hints.nextTime ?? ""]);
         return taught;
+    }
+
+    // An ending row's keys: Return and the line it writes, "\u21b5 :disconnect";
+    // on the find, how to get to normal's keys; in normal, - up where a step
+    // is held, d with its verb where d carries it, else the command line,
+    // and the key list.
+    function endingKeys(choice) {
+        const hints = Words.field.hints ?? {};
+        const keys = [["\u21b5", `:${endsLine(choice)}`]];
+        if (prompt.mode !== "normal")
+            return keys.concat(findTaught(choice));
+        if (held.length > 0)
+            keys.push([hintKey("out"), hints.up ?? ""]);
+        const carried = carriedBy(choice);
+        keys.push(carried.startsWith(":") ? [":", hints.commands ?? ""]
+            : [carried.slice(0, carried.indexOf(" ")), carried.slice(carried.indexOf(" ") + 1)]);
+        keys.push([hintKey("keys"), hints.keys ?? ""]);
+        return keys;
     }
 
     // Normal's keys for a row: Return's act, which goes in where it steps
@@ -2948,6 +3020,9 @@ Scope {
         commanding = {
             from: prompt.mode,
             range: opening?.range ?? "",
+            // What it opens with written in, as Return on a row that ends
+            // something writes its command.
+            typed: opening?.typed ?? "",
             things: on,
             // The rows as they stood, which a range binds to things.
             rows: matches.slice(),
@@ -3210,6 +3285,10 @@ Scope {
     // From the drawer, :q closes its window, the keys back on the rows, as
     // his Neovim's :q closes a split, and :{n} stays in it.
     function commandRan(read) {
+        // A Return doubled with the one that wrote an ending row's line is
+        // that one press, so it runs nothing; only a fresh Return does.
+        if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
+            return;
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5321,6 +5400,9 @@ Scope {
             // and whether a Return now would come too soon after it.
             landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
             landedFresh: root.landedJustNow(),
+            // Whether a Return now would still be the one that wrote an
+            // ending row's line, so a test waits it out before running it.
+            linedFresh: Date.now() - root.linedAt < Options.keyTiming.wait,
             returned: root.returned,
             // What the foot says for a key in place of the keys, as q's words
             // or "not here", in the foot's order, until the next key.
@@ -5456,6 +5538,8 @@ Scope {
                 drawer: row.drawer ?? null,
                 // The keys the foot says for it, each a mark and its word.
                 told: root.keysFor(row).map(key => root.saidKey(key)),
+                // The key its side names where it ends something.
+                carried: root.carriedBy(row),
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },
@@ -6189,7 +6273,9 @@ Scope {
                         // act changes something is stepped into; from the
                         // find, a row that changes something is landed on,
                         // leaving the line for normal; anything else opens
-                        // or is done, so a name and one Return opens it.
+                        // or is done, so a name and one Return opens it;
+                        // and one that ends something, from either, only
+                        // writes its command on the : line.
                         onAccepted: {
                             const heard = KeyTimes.now();
                             const pressed = KeyTimes.pressed();
@@ -6197,11 +6283,14 @@ Scope {
                             trials.pressed("returns");
                             const act = root.asking ? "gave" : root.landedJustNow() ? ""
                                 : root.stepsThing(root.selected) ? "entered"
+                                : root.endsSomething(root.selected) ? "lined"
                                 : root.lands(root.selected) ? "landed" : "ran";
                             if (act === "gave")
                                 root.give();
                             else if (act === "entered")
                                 root.enter(root.selected);
+                            else if (act === "lined")
+                                root.lineFor(root.selected);
                             else if (act === "landed")
                                 root.land(root.selected);
                             else if (act === "ran")
@@ -6483,7 +6572,8 @@ Scope {
                                 id: commandLoader
                                 anchors.fill: parent
                                 active: root.commanding !== null
-                                onLoaded: item.take(root.commanding?.range ?? "")
+                                onLoaded: item.take(root.commanding?.range ?? "",
+                                    root.commanding?.typed ?? "")
 
                                 sourceComponent: CommandLine {
                                     menu: root.commanding?.menu ?? []
@@ -6984,6 +7074,7 @@ Scope {
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
+                                    carried: selected ? root.carriedBy(entry.modelData) : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).

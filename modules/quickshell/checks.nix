@@ -759,7 +759,7 @@ onLinux {
     let
       qt = pkgs.qt6.qtdeclarative;
       # The key language's commands by their whole names, each with whether
-      # it changes things and whether it starts something, as the shell's
+      # it changes things and whether it ends or starts something, as the shell's
       # Options.commands holds them.
       named =
         lib.filterAttrs (_: about: about ? command)
@@ -770,6 +770,7 @@ onLinux {
             _: about:
             lib.nameValuePair about.command {
               changes = about.changes or false;
+              ends = about.ends or false;
               starts = about.starts or false;
             }
           ) named

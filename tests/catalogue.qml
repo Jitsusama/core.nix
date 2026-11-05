@@ -211,6 +211,8 @@ QtObject {
             ["a window's Close It, by :close", { verb: "close", command: "close", run: does }],
             ["a reply", { verb: "reply", command: "reply", run: does }],
             ["the session's Power Off", { verb: "off", command: "poweroff", run: does }],
+            ["Join the Call in the Clipboard, by :meet", { verb: "join", command: "meet",
+                run: does }],
             // Where the language names no command for it, an ending act, as
             // words.json marks one, still ends.
             ["an ending act whose command isn't named", { verb: "zap", act: "ending",
@@ -225,6 +227,12 @@ QtObject {
             ["a copy", { verb: "copy", command: "yank", run: does }],
             ["a window moved", { verb: "move", run: does }],
             ["a place", { category: {}, verbs: opens }],
+            // A thing holding acts of its own opens on Return, its ending
+            // among its acts for d, so a meeting joins its call from ten
+            // minutes before it starts, Joel's own rule, though its
+            // command is :meet.
+            ["a meeting, holding its acts", { verb: "join", command: "meet", verbs: opens,
+                run: does }],
             ["one gone", { verb: "disconnect", command: "disconnect", gone: true, run: does }],
             ["a row asking its words first", { verb: "disconnect", command: "disconnect",
                 given: does, run: does }]

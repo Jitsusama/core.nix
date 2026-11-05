@@ -57,11 +57,13 @@ Item {
         + Theme.space.rung.mark
 
     // Takes the keys, as : opens it, with the range it opens on written in,
-    // as a count's .,.+2 or visual's '<,'>.
-    function take(range) {
+    // as a count's .,.+2 or visual's '<,'>, and after it the command it
+    // opens with, as Return on a row that ends something writes its own.
+    function take(range, typed) {
         input.forceActiveFocus();
-        if (range !== "")
-            write(Commands.typing(range));
+        const line = `${range}${typed ?? ""}`;
+        if (line !== "")
+            write(Commands.typing(line));
     }
 
     function write(choosing) {
