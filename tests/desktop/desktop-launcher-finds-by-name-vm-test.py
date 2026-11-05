@@ -555,6 +555,66 @@ def arrows_move_as_letters(desktop: Desktop) -> None:
         desktop.launcher_until(lambda shown: shown["saying"] == [])
 
 
+def walk_the_gutter(desktop: Desktop) -> None:
+    """See normal's gutter number a long list from its first row, and Space u l switch it.
+
+    The cursor row's number is absolute and the rest count from it, as his Neovim's
+    relativenumber does, made a number a row in view however long the list; Space u l numbers
+    each row as it is and back; the narrowed find says its count after what's typed; and on
+    the find the gutter is empty again, in the same room.
+    """
+    machine = desktop.machine
+
+    def numbered(first: list[str], relative: bool) -> Json:
+        desktop.launcher_until(
+            lambda shown: (
+                shown["gutter"]["shown"]
+                and shown["gutter"]["relative"] == relative
+                and shown["gutter"]["numbers"][: len(first)] == first
+            )
+        )
+        return desktop.showing()
+
+    shown = numbered(["1", "1", "2", "3"], relative=True)
+    gutter = shown["gutter"]
+    assert gutter["cursor"] == "1", gutter
+    # A number a slot in view, not a row of the list's.
+    assert len(gutter["numbers"]) <= gutter["made"] < shown["count"], (gutter, shown["count"])
+    made = gutter["made"]
+    print(f"the gutter made {made} numbers for a list of {shown['count']} rows")
+    machine.send_chars("j")
+    assert numbered(["1", "2", "1", "2"], relative=True)["gutter"]["cursor"] == "2"
+    machine.send_chars("G")
+    desktop.launcher_until(lambda shown: shown["current"] == shown["count"] - 1)
+    gutter = desktop.showing()["gutter"]
+    assert gutter["cursor"] == str(desktop.showing()["count"]), gutter
+    assert gutter["made"] == made, f"the gutter made {gutter['made']} numbers, then {made}"
+    machine.send_chars("gg")
+    numbered(["1", "1"], relative=True)
+    machine.send_chars(" ul")
+    numbered(["1", "2", "3"], relative=False)
+    desktop.photograph("launcher-gutter-absolute")
+    machine.send_chars(" ul")
+    numbered(["1", "1", "2"], relative=True)
+    desktop.photograph("launcher-gutter")
+    # The find narrows the list, which normal says after it, in the field.
+    count = desktop.showing()["count"]
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    assert any(word["text"] == f"\u00b7 1 of {count}" for word in field), field
+    # On the find it empties, its room kept, and normal numbers it again.
+    room = desktop.showing()["gutter"]["room"]
+    machine.send_chars("A")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["mode"] == "find"
+            and (shown["gutter"]["shown"], shown["gutter"]["made"]) == (False, 0)
+            and shown["gutter"]["room"] == room
+        )
+    )
+    desktop.normal()
+    numbered(["1", "1"], relative=True)
+
+
 def walk_the_rows_moves(desktop: Desktop) -> None:
     """Press every move normal takes through a search's rows, as Joel would through niri.
 
@@ -565,6 +625,10 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
     machine = desktop.machine
     desktop.answer("s")
     desktop.launcher_until(lambda shown: shown["count"] >= MANY_ROWS and shown["current"] == 0)
+    # On the find the gutter keeps its room and makes no number.
+    gutter = desktop.showing()["gutter"]
+    assert (gutter["shown"], gutter["numbers"], gutter["made"]) == (False, [], 0), gutter
+    assert gutter["room"] > 0, gutter
     desktop.normal()
     last = desktop.showing()["count"] - 1
 
@@ -586,6 +650,7 @@ def walk_the_rows_moves(desktop: Desktop) -> None:
         press(keys)
         at(row)
     arrows_move_as_letters(desktop)
+    walk_the_gutter(desktop)
     # A count stands in the mode word's place in the foot until its move, which goes that
     # many, and before G names the row.
     machine.send_chars("3")

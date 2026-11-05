@@ -242,6 +242,15 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         assert words_on_their_names(card, scale, serif) > 0, (
             f"at {scale} kitty's row says nothing in normal: {card}"
         )
+        # Normal numbers the rows in its gutter, the cursor row's absolute, and says the find's
+        # count after it, whole.
+        shown = desktop.showing()
+        assert shown["gutter"]["shown"], f"at {scale} normal's gutter: {shown['gutter']}"
+        assert shown["gutter"]["cursor"] == str(shown["current"] + 1), shown["gutter"]
+        field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+        narrowing = [word for word in field if word["text"].startswith("\u00b7 ")]
+        assert narrowing, f"at {scale} the narrowed find says no count: {field}"
+        assert not narrowing[0]["cut"], f"at {scale} the narrowed count is cut: {narrowing}"
         desktop.photograph(f"launcher-found-normal-at-{scale.replace('.', '-')}")
         says_until_the_next_key(desktop, scale)
         # A count typed stands where insert's word was until its move, as showcmd shows it.
