@@ -894,6 +894,24 @@ kinds = ["list"]
 changes = true
 guarded = true
 
+# A call left, and the screen shared in it: Leave the Call and Share the
+# Screen in the Call. One ends the call and the other shows the screen to
+# everyone in it, and neither can be taken back, so Return never runs
+# them. The leave-call act, since [acts.leave] is Ctrl+C on a line.
+[acts.leave-call]
+ends = true
+command = "leave"
+short = "lea"
+kinds = ["list"]
+changes = true
+
+[acts.share]
+ends = true
+command = "share"
+short = "sha"
+kinds = ["list"]
+changes = true
+
 [acts.pause]
 command = "pause"
 short = "pau"
@@ -1101,6 +1119,16 @@ undoable = true
 ends = true
 command = "install"
 short = "inst"
+kinds = ["list"]
+changes = true
+
+# A ZSA board flashed with this machine's build, which takes it out of use
+# while it's written, as an install does a device: Flash the Keyboard. An
+# act, not an option, since what it leaves behind isn't a setting.
+[acts.flash]
+ends = true
+command = "flash"
+short = "fla"
 kinds = ["list"]
 changes = true
 
