@@ -229,6 +229,31 @@ let
       '';
       says = "stray ends something, but Return reaches it by enter in visual mode";
     }
+    # Nor does one that calls someone or starts something new, as :meet
+    # and :share do (VKCF3Z, 2026-11-05).
+    {
+      name = "a-start-that-changes-nothing";
+      adds = ''
+        [acts.stray]
+        command = "strayone"
+        short = "stray"
+        kinds = []
+        starts = true
+      '';
+      says = "stray starts something, but changes nothing";
+    }
+    {
+      name = "a-start-on-return";
+      adds = ''
+        [acts.stray]
+        keys = ["<CR>"]
+        modes = ["visual"]
+        kinds = []
+        changes = true
+        starts = true
+      '';
+      says = "stray starts something, but Return reaches it by enter in visual mode";
+    }
     {
       name = "a-letter-stepping-in";
       adds = ''
