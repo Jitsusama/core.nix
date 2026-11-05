@@ -292,9 +292,11 @@ Item {
 
     // Takes the keys back from whatever else in its window had them, as it
     // opens, with no change or half-pressed key left from before, and a
-    // modal line opens on the find, so typing finds at once.
+    // modal line opens on the find, so typing finds at once. That find is
+    // a fresh /, going down, whatever way the last one opened went.
     function take() {
         changes = [];
+        findsBack = false;
         standing = QueryKeys.rest();
         mode = typingMode;
         input.forceActiveFocus();
