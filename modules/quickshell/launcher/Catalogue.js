@@ -155,7 +155,9 @@ function startsItself(row, command = {}) {
 // command's whatever its value, so its no form, which turns something off
 // (`off`, as SetWords reads the row's value), ends too. Where the language
 // names no command for it, an ending act, as words.json marks one, ends.
-// A thing holding acts of its own (a meeting, a window, a network) opens
+// What calls someone or starts something new, the language's starts flag
+// (:meet, :share), goes to the line the same way, the spec's other rule
+// for Return (VKCF3Z, 2026-11-05). A thing holding acts of its own (a meeting, a window, a network) opens
 // on Return as ever, its ending d's among its acts, so a meeting still
 // joins its call from ten minutes before it starts, though :meet ends.
 function endsSomething(row, command = {}, off = false) {
@@ -166,7 +168,7 @@ function endsSomething(row, command = {}, off = false) {
         return false;
     }
     if (command.flags !== undefined) {
-        return command.flags.ends === true || off;
+        return command.flags.ends === true || command.flags.starts === true || off;
     }
     return ends(row) || off;
 }
