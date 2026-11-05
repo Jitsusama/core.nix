@@ -613,7 +613,7 @@ def test_visual_counts_its_rows_and_what_arrives_waits_in_the_foot(
         )
         desktop.normal()
         machine.send_chars("ggVj")
-        desktop.launcher_until(lambda shown: shown["modeWord"] == "visual line \u00b7 2")
+        desktop.launcher_until(lambda shown: shown["modeWord"] == "2 chosen")
         arriving = desktop.opened(f"Notes for the shot at {named}")
         desktop.launcher_until(
             lambda shown: shown["waiting"] == 1 and shown["glance"].endswith("1 new")
@@ -682,7 +682,7 @@ def test_the_drawers_search_and_visual_are_photographed_at_each_scale(
     """Search the key list's drawer, choose in it and copy, photographing each at both scales.
 
     What's typed after / is washed as it's typed; v chooses letters and V lines, the mode word
-    counting them, "visual line \u00b7 3"; and y flashes what it took. Each is kept for a person
+    counting them, "3 chosen"; and y flashes what it took. Each is kept for a person
     to judge: the wash and the choice change fill and colour, never weight.
     """
 
@@ -1239,6 +1239,7 @@ def test_a_save_is_named_on_the_line_and_a_name_taken_asks_once(
                     shown["typed"] == "a.md"
                     and shown["caret"] == 1
                     and shown["mode"] == "insert"
+                    and shown["modeMark"] == "INS"
                     and shown["current"] == -1
                     and (shown["selected"] or {}).get("name") == "a.md"
                     and "a.md" not in shown["rows"]
@@ -1297,7 +1298,7 @@ def test_the_file_picker_gathers_files_and_says_what_return_opens(
             desktop.launcher_until(
                 lambda shown: (
                     shown["mode"] == "visual"
-                    and shown["modeWord"] == "visual line \u00b7 2"
+                    and shown["modeWord"] == "2 chosen"
                     and len(shown["tinted"]) == len(["a.md", "b.md"])
                     and selected_is(shown, name="b.md", told="\u21b5 open 2")
                 )
