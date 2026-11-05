@@ -86,6 +86,9 @@ Floating {
         // would give each plate a QTextDocument a text as the rows are
         // moved through, twice a Text's time to make one.
         property bool reading: false
+        // Whether its reader is made to count what it holds past a line,
+        // as the drawer's words cut at its foot are, by paragraph.
+        property bool counting: false
         readonly property TextEdit reader: readerLoader.item
         // Its letters' colour. While the reader is made it draws every
         // letter and the Text none, so each letter is drawn once: a chosen,
@@ -123,7 +126,7 @@ Floating {
 
         Loader {
             id: readerLoader
-            active: words.reading
+            active: words.reading || words.counting
             sourceComponent: TextEdit {
                 // How far below its top Qt sets its first line's letters: a
                 // fixed line keeps its spare room above its letters, which a
@@ -1167,9 +1170,12 @@ Floating {
     // and the words, which run on as reading does.
     function lineSpans() {
         const spans = [];
-        const run = (top, count) => {
+        // A line of the words says which it is, since they're counted by
+        // paragraph, not line.
+        const run = (top, count, words) => {
             for (let at = 0; at < count; at++)
-                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch });
+                spans.push({ top: top + at * drawer.pitch, bottom: top + (at + 1) * drawer.pitch,
+                    line: words ? at : -1 });
         };
         let heading = null;
         for (let at = 0; at < factRows.count; at++) {
@@ -1191,7 +1197,7 @@ Floating {
         if (previewLines.visible)
             run(flow.y + previewBox.y, previewBox.lines.length);
         if (wordsBox.visible)
-            run(flow.y + wordsBox.y, bodyText.lineCount);
+            run(flow.y + wordsBox.y, bodyText.lineCount, true);
         return spans;
     }
     // Where the view ends: at its room, or where a thing would run past it,
@@ -1213,22 +1219,43 @@ Floating {
         const ending = end => Math.min(end, ...spans.filter(span => span.top < end - 0.5
             && span.bottom > end + 0.5).map(span => span.top > top + 0.5 ? span.top
                 : span.top + Math.floor((end - span.top + 0.5) / drawer.pitch) * drawer.pitch));
-        const hiddenPast = end => spans.filter(span => span.bottom > end + 0.5).length;
+        const past = end => spans.filter(span => span.bottom > end + 0.5);
+        // Each thing past the end but the words' lines, and the first of
+        // those, from which the words' paragraphs are counted.
+        const hiddenPast = end => {
+            const hidden = past(end);
+            const words = hidden.filter(span => span.line >= 0);
+            return { shown: end - top, hidden: hidden.length - words.length,
+                wordsFrom: words.length > 0 ? words[0].line : -1 };
+        };
         const whole = ending(top + viewRoom);
-        if (hiddenPast(whole) === 0)
-            return { shown: whole - top, hidden: 0 };
+        if (past(whole).length === 0)
+            return { shown: whole - top, hidden: 0, wordsFrom: -1 };
         const step = drawer.pitch + drawer.apartIn(drawer.anyWraps(factRows), false);
         // A thing's box ends half a pitch, less the drop, under its last
         // baseline, which stands a step over the slot's.
         const short = ending(Math.min(top + viewRoom, top + moreBase - Theme.border - step
             + drawer.pitch / 2 - drawer.dropped));
-        return { shown: short - top, hidden: hiddenPast(short) };
+        return hiddenPast(short);
     }
     readonly property real shownTo: shownAndHidden.shown
-    // How many things it hides below, counted whole, and what its last
-    // slot says of them: in the drawer's own keys, how to go in and read
-    // them, which go once the keys are in.
-    readonly property int hiddenBelow: shownAndHidden.hidden
+    // How many things it hides below, and what its last slot says of
+    // them: in the drawer's own keys, how to go in and read them, which
+    // go once the keys are in. Each fact is one and each paragraph of its
+    // words, a heading none, never a line (VKCF3Z, 2026-11-05: "16 more"
+    // counting lines reads as wrong). The words' reader says which letters
+    // the first hidden line holds, from which the paragraphs left are
+    // counted, the one it cuts among them.
+    readonly property int hiddenBelow: {
+        const from = shownAndHidden.wordsFrom;
+        const reader = bodyText.reader;
+        if (from < 0 || !reader)
+            return shownAndHidden.hidden;
+        const at = reader.positionAt(0, reader.drop + from * bodyText.leading + 1);
+        const paragraphs = reader.getText(at, reader.length).split(/[\n\u2029]/)
+            .filter(paragraph => paragraph.trim() !== "");
+        return shownAndHidden.hidden + paragraphs.length;
+    }
     readonly property string moreSays: hiddenBelow === 0 ? ""
         : `${hiddenBelow} more` + (drawer.keys ? "" : " \u00b7 Ctrl+W l")
 
@@ -1853,6 +1880,7 @@ Floating {
                     PageText {
                         id: bodyText
                         sought: drawer.washing
+                        counting: drawer.shownAndHidden.wordsFrom >= 0
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
                         plain: drawer.body
