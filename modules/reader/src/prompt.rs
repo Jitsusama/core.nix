@@ -978,43 +978,6 @@ mod tests {
         }
     }
 
-    /// What a set page draws, in points from its top left: each run of
-    /// text as its left, baseline, advance and capitals' height, and each
-    /// rectangle as its left, top, width and height.
-    fn drawn(
-        frame: &typst::layout::Frame,
-        (dx, dy): (f64, f64),
-        texts: &mut Vec<[f64; 4]>,
-        rects: &mut Vec<[f64; 4]>,
-    ) {
-        for (place, item) in frame.items() {
-            let (x, y) = (dx + place.x.to_pt(), dy + place.y.to_pt());
-            match item {
-                typst::layout::FrameItem::Text(text) => texts.push([
-                    x,
-                    y,
-                    text.width().to_pt(),
-                    text.font.metrics().cap_height.at(text.size).to_pt(),
-                ]),
-                typst::layout::FrameItem::Shape(shape, _) => {
-                    if let typst::visualize::Geometry::Rect(size) = shape.geometry {
-                        rects.push([x, y, size.x.to_pt(), size.y.to_pt()]);
-                    }
-                }
-                typst::layout::FrameItem::Group(group) => drawn(
-                    &group.frame,
-                    (
-                        x + group.transform.tx.to_pt(),
-                        y + group.transform.ty.to_pt(),
-                    ),
-                    texts,
-                    rects,
-                ),
-                _ => {}
-            }
-        }
-    }
-
     /// A list over the page, set at each of Joel's scales, against the
     /// ladder: a hairline of whole device pixels the window across at its
     /// top, a beat of room inside it and at its foot, its rows two beats
