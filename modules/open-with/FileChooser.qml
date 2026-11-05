@@ -681,6 +681,14 @@ Provider {
     // Gathers the files of the rows given, as :arga adds them to Vim's
     // argument list, in the order given, each once; a row that isn't a
     // file is passed over.
+    // What :arga runs on: the files among the rows the line acts on, or,
+    // where none of them is one, as when the line stands for the folder,
+    // the cursor row's.
+    function gatherOr(things, cursor) {
+        const files = things.filter(row => typeof row?.gathers === "string");
+        gather(files.length > 0 ? files : [cursor]);
+    }
+
     function gather(rows) {
         const ids = rows.filter(row => typeof row?.gathers === "string").map(row => row.gathers);
         const fresh = ids.filter((id, at) => !provider.marked.includes(id)
@@ -1470,8 +1478,7 @@ Provider {
             rows.push(titled("argadd", {
                 short: "arga",
                 ranged: true,
-                run: call => provider.gather((call.things ?? []).length > 0 ? call.things
-                    : [launcher.selected])
+                run: call => provider.gatherOr(call.things ?? [], launcher.selected)
             }), titled("args", { short: "ar", run: () => launcher.enter(provider.gatheredPlace()) }));
         return rows;
     }

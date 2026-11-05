@@ -700,8 +700,9 @@ ShellRoot {
             JSON.stringify(chooser.marked) === JSON.stringify([`${notes}/a.md`,
                 `${home}/elsewhere/old.md`]), JSON.stringify(chooser.marked));
         launcher.selected = a;
-        arga.run(called(""));
-        expect("with no range, the cursor row's, each once", chooser.marked.length === 2,
+        arga.run(Object.assign(called(""), { things: [launcher.held[launcher.held.length - 1].row] }));
+        expect("with no range, the line standing for the folder, the cursor row's, each once",
+            chooser.marked.length === 2,
             JSON.stringify(chooser.marked));
         expect("a file gathered wears the mark in an act's hue, and Return says how many it opens",
             a.glyph !== plain && a.hue === "action" && a.verb === "open 2"
