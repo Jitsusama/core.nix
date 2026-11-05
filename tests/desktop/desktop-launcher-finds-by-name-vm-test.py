@@ -239,7 +239,8 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     for query in picked_in_a_week + surveyed + audited:
-        # Each query is typed on the find, and h clears it in normal.
+        # Each query is typed on the find, and Ctrl+U clears it there, as on
+        # Vim's / line.
         desktop.on_find()
         machine.send_chars(query)
         shown = settled_on(query)
@@ -257,8 +258,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
             desktop.as_account("qs ipc call launcher toggle")
             desktop.launcher_ready()
         else:
-            desktop.normal()
-            machine.send_key("h")
+            machine.send_key("ctrl-u")
     desktop.close_launcher()
     assert listed_twice == [], "a thing was listed twice"
     # Most of those find something, so the rows were looked at.

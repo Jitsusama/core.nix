@@ -338,7 +338,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
         if then:
             desktop.launcher_until(lambda shown: shown["footer"] == then)
             desktop.normal()
-            machine.send_key("h")
+            machine.send_chars("cc")
             desktop.launcher_until(lambda shown: shown["typed"] == "")
         else:
             desktop.launcher_until(lambda shown: becomes in shown["rows"])
@@ -1147,13 +1147,13 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
-    # h steps out with the word put back, and again takes
-    # the word.
+    # h steps out with the word put back, and cc takes the word, onto the
+    # find.
     machine.send_key("h")
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == office and shown["typed"] == "signal"
     )
-    machine.send_key("h")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     desktop.photograph("launcher-wifi-detail")
     # The Speed holds each way and the retries, l into it.
@@ -1162,7 +1162,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
     machine.send_key("h")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
-    machine.send_key("h")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them; the figure's
@@ -1250,18 +1250,17 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.photograph("launcher-addresses-wifi")
     desktop.normal()
     machine.send_key("h")
-    machine.send_key("h")
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi"
     )
-    machine.send_key("h")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
     # l opens the VPN's, which has no hardware address, and
     # the old word for it finds nothing.
     desktop.type_in("tunnel")
     desktop.launcher_until(lambda shown: "VPN" not in shown["rows"])
     desktop.normal()
-    machine.send_key("h")
+    machine.send_chars("cc")
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
     desktop.type_in("vpn", selecting="VPN")
     desktop.step_in()
