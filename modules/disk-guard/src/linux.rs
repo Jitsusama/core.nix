@@ -251,10 +251,11 @@ fn commit_now(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
     )
 }
 
-/// `syncfs`, or nothing where it isn't offered: Nix's build sandbox answers
-/// it with ENOSYS, and a scenario settling there failed its pass whenever a
-/// Btrfs commit took past its second. Unsettled, the frees show at the
-/// filesystem's next commit instead.
+/// `syncfs`, or nothing where it isn't offered: a seccomp filter may answer
+/// it with ENOSYS, as core's build daemon did until 4 November, and a
+/// scenario settling there failed its pass whenever a Btrfs commit took
+/// past its second. Unsettled, the frees show at the filesystem's next
+/// commit instead.
 fn sync_filesystem(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
     match rustix::fs::syncfs(fd) {
         Err(rustix::io::Errno::NOSYS) => Ok(()),

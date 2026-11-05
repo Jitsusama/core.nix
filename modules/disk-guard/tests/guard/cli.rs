@@ -236,6 +236,38 @@ fn status_says_what_a_second_version_guard_says_in_words() {
     assert!(!out.contains("~/d.log"), "three at most: {out}");
 }
 
+// The holders were only in the JSON, so asking the guard in words what
+// held the disk answered with what it had cleared, never what it hadn't.
+#[test]
+fn status_says_what_holds_the_most_in_words() {
+    let machine = Machine::new();
+    let at = wall() - 5.0;
+    let holder = |says: &str| format!(r#"{{ "bytes": 1, "says": "{says}" }}"#);
+    write_file(
+        &machine.env.status,
+        &format!(
+            r#"{{ "version": 2, "heartbeat": {at}, "filesystems": [],
+                 "holders_at": {at}, "holders": [ {}, {}, {}, {} ] }}"#,
+            holder("The worktree a holds 40.0 GiB; a build is using it (process 7)."),
+            holder("~/b holds 20.0 GiB, of which 2.0 GiB can be cleared now."),
+            holder("~/c holds 10.0 GiB."),
+            holder("~/d holds 5.0 GiB."),
+        ),
+    );
+    let (code, out, _) = machine.run("status");
+    assert_eq!(code, 0);
+    let said = [
+        "  holds the most:",
+        "    The worktree a holds 40.0 GiB; a build is using it (process 7).",
+        "    ~/b holds 20.0 GiB, of which 2.0 GiB can be cleared now.",
+        "    ~/c holds 10.0 GiB.",
+        "",
+    ]
+    .join("\n");
+    assert!(out.contains(&said), "{out}");
+    assert!(!out.contains("~/d"), "three at most: {out}");
+}
+
 #[test]
 fn each_platform_keeps_the_guard_where_it_keeps_such_things() {
     use std::path::PathBuf;

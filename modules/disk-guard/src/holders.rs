@@ -238,11 +238,11 @@ pub struct Offered {
 }
 
 /// The biggest holders, and any that grew fast, from what was measured,
-/// what the last survey offered, the trees it kept for their use, and how
-/// much each grew in the last day.
+/// what the last survey offered, none before the first, the trees it kept
+/// for their use, and how much each grew in the last day.
 pub fn holders(
     measured: &[(Place, u64)],
-    offered: &[Offered],
+    offered: Option<&[Offered]>,
     kept: &[(PathBuf, Use)],
     grew: &Grown,
     home: Option<&Path>,
@@ -251,6 +251,7 @@ pub fn holders(
     // with what's offered and worded: the status is built three times a
     // step, every five seconds, and doing it for every place measured
     // held 40% of a core on 29 October.
+    let surveyed = offered.is_some();
     let mut sized: Vec<&(Place, u64)> = measured.iter().filter(|(_, bytes)| *bytes > 0).collect();
     sized.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
     sized
@@ -264,6 +265,7 @@ pub fn holders(
         })
         .map(|(_, (place, bytes))| {
             let inside: Vec<&Offered> = offered
+                .unwrap_or_default()
                 .iter()
                 .filter(|offer| offer.path.starts_with(&place.path))
                 .collect();
@@ -273,7 +275,11 @@ pub fn holders(
                 .map(|offer| offer.size)
                 .sum();
             let offered: u64 = inside.iter().map(|offer| offer.size).sum();
-            let why = (offered == 0).then(|| why(place, kept));
+            let why = match offered {
+                _ if !surveyed => Some(UNSURVEYED.to_owned()),
+                0 => Some(why(place, kept)),
+                _ => None,
+            };
             let mut holder = Holder {
                 path: place.path.clone(),
                 bytes: *bytes,
@@ -344,6 +350,10 @@ fn held(holder: &Holder, home: Option<&Path>) -> String {
         ),
     }
 }
+
+/// Why a holder measured before the guard's first survey can't say how
+/// much of it the guard clears.
+const UNSURVEYED: &str = "the guard hasn't yet looked at what of it it could clear";
 
 /// Why the guard may clear none of a place.
 fn why(place: &Place, kept: &[(PathBuf, Use)]) -> String {
