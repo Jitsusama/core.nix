@@ -320,7 +320,7 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     """Ctrl+W l takes the keys into the drawer, and Ctrl+W h gives them back, as in Vim.
 
     Ctrl+W w goes either way, ZZ and :q come back too, and his Neovim's Space and an arrow
-    overlay them; a bare arrow does nothing.
+    overlay them; a bare arrow inside is its letter's move (arrows_move_in_the_drawer).
 
     Its frame takes the accent the card's gives up, and the cursor stands on the title's first
     letter with nothing scrolled, its line marked by a rule in the margin left of the letters.
@@ -381,12 +381,12 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     desktop.launcher_until(lambda shown: shown["counted"] == "3")
     page.press("esc")
     desktop.launcher_until(lambda shown: shown["counted"] == "" and shown["mode"] == "page")
-    # Escape at rest and q alone leave the keys where they are, and so do the bare arrows,
-    # which do nothing in the drawer (Joel, 2026-11-05: "remove them and rely only on vi right
-    # feeling things"): j still moves the cursor, one line.
+    # Escape at rest and q alone leave the keys where they are: j still moves the cursor, one
+    # line.
     line, letter = page.drawer()["cursor"]["line"], page.drawer()["cursor"]["letter"]
-    came = page.until("esc q down left j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    came = page.until("esc q j", lambda drawer: drawer["cursor"]["line"] == line + 1)
     assert came["cursor"]["letter"] == min(letter, len(came["cursor"]["says"]) - 1), came
+    arrows_move_in_the_drawer(page)
     page.back("Z Z")
     # Vim's window keys go in and come back: Ctrl+W l in and h out, Ctrl+W w either way, and
     # his Neovim's Space and an arrow over them (Joel: "leader stuff can overlay default stuff").
@@ -401,6 +401,20 @@ def test_space_right_takes_the_keys_into_a_drawer_and_space_left_brings_them_bac
     desktop.close_launcher()
     listed_in_the_drawer(desktop)
     refused_in_the_drawer(desktop)
+
+
+def arrows_move_in_the_drawer(page: InTheDrawer) -> None:
+    """In the drawer, each arrow is its letter's move, a count before it too, as in a buffer.
+
+    Down and Up go a line as j and k do, and Right and Left a letter as l and h (Joel,
+    2026-11-05: "In normal mode, in a buffer, arrows move the cursor").
+    """
+    line = int(page.drawer()["cursor"]["line"])
+    page.until("2 down up", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    at = page.drawer()["cursor"]
+    right = min(int(at["letter"]) + 1, len(at["says"]) - 1)
+    page.until("right", lambda drawer: drawer["cursor"]["letter"] == right)
+    page.until("left", lambda drawer: drawer["cursor"]["letter"] == max(right - 1, 0))
 
 
 E21 = "E21: Cannot make changes"

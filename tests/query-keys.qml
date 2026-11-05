@@ -645,10 +645,11 @@ QtObject {
     // The drawer as a window: Vim's window keys go into it from the rows,
     // where its keys are a page's in normal, Ctrl+W l to the window right,
     // and Ctrl+W h, ZZ or :q come back, Ctrl+W w going either way. No arrow
-    // does anything in or out of it (Joel, 2026-11-05: "remove them and
-    // rely only on vi right feeling things"). q alone does nothing there,
-    // as Joel asked of every modal surface, and Escape at rest does nothing
-    // in a window (2026-11-04, VKCF3Z's spec v2).
+    // goes in or out of it; inside, each is its letter's move and nothing
+    // else, as in a buffer (Joel, 2026-11-05: "In normal mode, in a buffer,
+    // arrows move the cursor"). q alone only says how to close there, as
+    // Joel asked of every modal surface, and Escape at rest does nothing in
+    // a window (2026-11-04, VKCF3Z's spec v2).
     function drawerKeys(holds) {
         const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from the opening, the acts done]
@@ -676,10 +677,12 @@ QtObject {
                 into.concat(["3", "Escape", "Escape", "j"]), ["normal", "drawer", "next"]],
             ["and a g waiting", into.concat(["g", "Escape", "Escape", "j"]),
                 ["normal", "drawer", "next"]],
-            ["j k move its cursor a line, the arrows nothing",
-                into.concat(["j", "k", "Down", "Up"]), ["normal", "drawer", "next", "previous"]],
-            ["h l move it along its line, the arrows nothing",
-                into.concat(["h", "l", "Left", "Right"]), ["normal", "drawer", "left", "right"]],
+            ["j k move its cursor a line, and Down and Up as they do",
+                into.concat(["j", "k", "Down", "Up"]),
+                ["normal", "drawer", "next", "previous", "next", "previous"]],
+            ["h l move it along its line, and Left and Right as they do",
+                into.concat(["h", "l", "Left", "Right"]),
+                ["normal", "drawer", "left", "right", "left", "right"]],
             ["Ctrl+E and Ctrl+Y scroll it a line", into.concat(["Ctrl+e", "Ctrl+y"]),
                 ["normal", "drawer", "scrollDown", "scrollUp"]],
             ["Ctrl+D Ctrl+U go half its view, Ctrl+F Ctrl+B and the page keys a view",
@@ -733,6 +736,9 @@ QtObject {
                 ["normal", "drawer", "3 next", "2 previous"]],
             ["and that many letters", into.concat(["4", "l", "2", "h"]),
                 ["normal", "drawer", "4 right", "2 left"]],
+            ["an arrow takes a count, as its letter does",
+                into.concat(["3", "Down", "2", "Right"]),
+                ["normal", "drawer", "3 next", "2 right"]],
             ["a count before G names the line", into.concat(["1", "2", "G"]),
                 ["normal", "drawer", "12 last"]],
             ["a count before the scrolls", into.concat(["2", "Ctrl+e", "3", "Ctrl+d"]),
@@ -919,6 +925,9 @@ QtObject {
                 "pageVisual"],
             ["and the lines'", ["V", "k", "Ctrl+e", "N"],
                 ["selectLines", "previous", "scrollDown", "seekPrevious"], "pageVisualLine"],
+            ["and the arrows, as their letters", ["v", "Down", "Left", "V", "Up", "Right"],
+                ["select", "next", "left", "selectLines", "previous", "right"],
+                "pageVisualLine"],
             ["o goes to its other end", ["v", "o"], ["select", "otherEnd"], "pageVisual"],
             ["y copies it and goes back to the page", ["v", "y"], ["select", "copy"], "page"],
             // Y copies the lines it's on however it chooses, as Vim's v_Y.
@@ -940,8 +949,9 @@ QtObject {
                     "cannotChange"], "page"],
             ["q says how to close, choosing on", ["v", "q", "j"],
                 ["select", "quitSaid", "next"], "pageVisual"],
-            ["and no way back to the rows is in it, the arrow nothing and h a move",
-                ["v", "Z", "Z", "Space", "Left", "h"], ["select", "left"], "pageVisual"],
+            ["and no way back to the rows is in it, Space nothing and the arrow a move",
+                ["v", "Z", "Z", "Space", "Left", "h"], ["select", "left", "left"],
+                "pageVisual"],
             ["gv on the page brings the last back", ["v", "Escape", "g", "v"],
                 ["select", "back", "reselect"], "page"]
         ];
@@ -952,6 +962,9 @@ QtObject {
         }
         holds("the drawer's visual: a count goes before a move in it",
             typed(into.concat(["v", "3", "j"])).counted, ["normal", "drawer", "select", "3 next"]);
+        holds("the drawer's visual: and before an arrow",
+            typed(into.concat(["v", "2", "Up"])).counted,
+            ["normal", "drawer", "select", "2 previous"]);
         holds("the drawer's visual: a key that does nothing in it is its own",
             typed(into.concat(["v", "d"])).ours, true);
         holds("the drawer's visual: : in it opens the command line, whose :q goes back",
@@ -1420,25 +1433,28 @@ QtObject {
         // beside its letter, as its motion, and the list names it never.
         const arrows = ["Up", "Down", "Left", "Right"];
         const letterOf = { Down: "j", Up: "k", Left: "h", Right: "l" };
-        const motions = ["next", "previous", "letterBack", "letterNext"];
-        holds("an arrow alone is only its letter's motion", Keys.table
-            .filter(one => ["normal", "visual", "words"].includes(one.mode))
+        const motions = ["next", "previous", "letterBack", "letterNext", "left", "right"];
+        holds("an arrow alone is only its letter's motion, the drawer's page's too", Keys.table
+            .filter(one => ["normal", "visual", "words", "page", "pageVisual"]
+                .includes(one.mode))
             .filter(one => one.keys.some(key => arrows.includes(key)
                 && (!motions.includes(one.act) || !one.keys.includes(letterOf[key]))))
             .map(one => one.act), []);
         // Nor with Shift, nor as any key of a sequence, as the key language's
-        // own check refuses (#1865), which can't see this table; nor in the
-        // drawer's page and its visual, gone to Ctrl+W (#1866). A chord his
+        // own check refuses (#1865), which can't see this table, the drawer's
+        // page and its visual among them. A chord his
         // leader begins, as his Neovim's Space and an arrow, may overlay
         // Vim's own keys (Joel, 5 November): only those may hold an arrow.
         const arrowed = key => arrows.some(arrow => key === arrow || key === `Shift+${arrow}`);
         const led = keys => Array.isArray(keys) && keys[0] === "Space";
-        holds("nor with Shift, in a sequence or on the drawer's page", Keys.table
+        holds("nor with Shift or in a sequence, the drawer's page's too", Keys.table
             .filter(one => ["normal", "visual", "words", "page", "pageVisual"]
                 .includes(one.mode))
             .filter(one => one.keys.some(keys => !led(keys) && (Array.isArray(keys)
                 ? keys.some(arrowed) : keys.startsWith("Shift+") && arrowed(keys))))
             .map(one => one.act), []);
+        holds("and its sections name no arrow", sections.Drawer.concat(sections.Choosing)
+            .filter(key => arrows.map(Listed.face).includes(key)), []);
         holds("normal's section names no arrow alone",
             sections.Normal.filter(key => arrows.map(Listed.face).includes(key)), []);
         // The narrowest plate's names sit whole at 16 figures; 14 leaves a
