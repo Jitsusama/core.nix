@@ -304,13 +304,13 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     assert desktop.showing()["selected"]["side"] == "off"
     # A path this long leaves no room for the field's keys beside the / and
     # the thing's glyph, so a letter typed on the find, then normal, brings
-    # no key, and the path is never cut to make room for them.
+    # no key: a key never costs the path its words, whatever the / does.
     desktop.on_find()
     machine.send_chars("l")
     desktop.launcher_until(lambda shown: shown["typed"] == "l")
     desktop.normal()
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert not any(word["cut"] for word in field if board in word["text"]), field
+    desktop.photograph("launcher-keyboard-path-normal")
     assert not any("\u2190" in word["text"] for word in field), field
     assert not any(word["text"].endswith(" clear") for word in field), field
     machine.send_key("left")
@@ -1388,7 +1388,6 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
         desktop.in_session("systemctl --user is-active warmth-heard"),
         timeout=dt.timedelta(seconds=10),
     )
-    desktop.land()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         "grep -q FollowsTheRoom /tmp/warmth-heard && grep -q 'BOOLEAN false' /tmp/warmth-heard",

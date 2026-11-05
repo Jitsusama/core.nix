@@ -522,10 +522,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Press Return on a row that changes how things stand, from the find, and wait.
 
         Return there only lands on it, in normal, the row saying what a second Return does,
-        so a test presses Return again for it to be done.
+        so a test presses Return again for it to be done, once a Return no longer comes so soon
+        after the landing that the launcher takes it for the same press doubled.
         """
         self.machine.send_key("ret")
         self.launcher_until(lambda shown: shown["mode"] == "normal" and shown["landed"] != "")
+        fresh = "qs ipc call launcher showing | grep -qF '\"landedFresh\":false'"
+        self.machine.wait_until_succeeds(self.in_session(fresh), timeout=timedelta(seconds=5))
 
     def on_find(self) -> None:
         """Put the launcher's line back to typing, by A from normal, and wait for it.

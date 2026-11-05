@@ -49,11 +49,9 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
-        # Return steps in, as on every device, a row that changes nothing
-        # first, so Return twice never moves the sound; Play Sound Through
-        # It, landed on from the find, then a second Return does.
+        # Return steps in, as on every device, its use first; from the find
+        # Return lands on it, and a second plays sound through it.
         desktop.step_in("ret")
-        desktop.down_to("Play Sound Through It")
         desktop.launcher_until(sound_selected("Play Sound Through It"))
         desktop.land()
         machine.send_key("ret")
