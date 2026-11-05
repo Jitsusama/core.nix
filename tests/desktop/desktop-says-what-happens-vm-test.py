@@ -10,6 +10,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import shlex
@@ -158,9 +159,11 @@ class InTheDrawer:
         """Send the notice, and open the launcher on its row."""
         self.desktop = desktop
         machine = desktop.machine
-        # A subtest that failed with the launcher open leaves it closed for this one.
+        # A subtest that failed with the launcher open, or at another scale, leaves it closed
+        # and at 1 for this one.
         if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
             desktop.close_launcher()
+        desktop.as_account("niri msg output winit scale 1")
         body = "\n".join(f"line {at} of the deploy went by" for at in range(1, 41))
         desktop.as_account(f"notify-send {shlex.quote(self.TITLE)} {shlex.quote(body)}")
         machine.wait_until_fails(
@@ -423,6 +426,76 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
             drawer["cursor"]["line"] == lines[-1] - 1 and drawer["scrolled"] == half["scrolled"]
         ),
     )
+    page.back("spc left")
+    desktop.close_launcher()
+
+
+def test_in_a_drawer_slash_and_question_put_its_cursor_where_they_land(desktop: Desktop) -> None:
+    """In the drawer, / and ? type what to seek, and Return puts the cursor where it's found.
+
+    What's typed is washed as it's typed; Return puts the cursor on its first letter and the
+    view follows; n goes on to the next, N back to the one before, and a count as many; ? with
+    nothing typed seeks the last back; a capital asks for one, and the search goes round past
+    the last line to the title. Escape lets one being typed go, the keys staying in the drawer,
+    as Backspace does with nothing left. Its pictures at both of Joel's scales show the matches
+    washed, for a person to judge the wash by.
+    """
+    page = InTheDrawer(desktop)
+    page.into()
+    page.press("/ l i n e spc 3 0")
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["washing"] == "line 30")
+    found = page.until("ret", lambda drawer: drawer["cursor"]["says"].startswith("line 30 "))
+    assert found["cursor"]["letter"] == 0, found
+    assert found["scrolled"] > 0, found
+    assert held(found), found
+    assert found["search"] == {
+        "typing": "",
+        "last": "line 30",
+        "washing": "line 30",
+        "landing": "",
+    }, found
+
+    def on(line: int) -> Callable[[Json], bool]:
+        said = f"line {line} of the "
+        return lambda drawer: (
+            drawer["cursor"]["says"].startswith(said) and drawer["cursor"]["letter"] == len(said)
+        )
+
+    # Its own line's deploy is after the cursor, on its first letter.
+    page.until("/ d e p l o y ret", on(30))
+    page.until("n", on(31))
+    page.until("shift-n", on(30))
+    page.until("3 n", on(33))
+    page.until("? ret", on(32))
+    # Smartcase: only the title holds a capital, so the search goes round to it.
+    came = page.until("/ shift-d e p l o y ret", lambda drawer: drawer["cursor"]["line"] == 1)
+    assert came["cursor"]["says"] == page.TITLE, came
+    assert came["search"]["landing"] == "wrapped", came
+    # A search let go moves nothing, and the keys stay: j moves from where it stood.
+    page.press("/ z z")
+    desktop.launcher_until(lambda shown: shown["drawer"]["search"]["typing"] == "zz")
+    line = page.drawer()["cursor"]["line"]
+    page.until("esc j", lambda drawer: drawer["cursor"]["line"] == line + 1)
+    page.until("? backspace j", lambda drawer: drawer["cursor"]["line"] == line + 2)
+
+    # The cursor stands on the title's own Deploy, so the first line's deploy comes next,
+    # without going round: where a narrow drawer breaks that line, it's on a line of its own.
+    def first(title: int, drawer: Json) -> bool:
+        cursor = drawer["cursor"]
+        return bool(
+            cursor["line"] > title
+            and str(cursor["says"])[cursor["letter"] :].startswith("deploy")
+            and drawer["search"]["landing"] == ""
+        )
+
+    for scale in (*JOELS_SCALES, "1"):
+        desktop.close_launcher()
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        page.open()
+        # The title's line, which is the first where no eyebrow is shown.
+        at = int(page.into()["line"])
+        page.until("/ d e p l o y ret", functools.partial(first, at))
+        desktop.photograph(f"launcher-drawer-search-at-{scale.replace('.', '-')}")
     page.back("spc left")
     desktop.close_launcher()
 
