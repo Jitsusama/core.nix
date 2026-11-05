@@ -1268,6 +1268,12 @@ QtObject {
         holds("the list's fresh find", keyed("find"), "/  ?");
         holds("the list's Return, once", keyed("run"), "\u21b5");
         holds("the list's place used last", keyed("last"), "Space Tab");
+        // Each chord a run of its own, which the drawer sets apart, a
+        // sequence's keys staying in one.
+        holds("the list's chords, each its own",
+            (list.find(line => line.value === "screen") ?? {}).chords, ["Ctrl+F", "Ctrl+B"]);
+        holds("the list's sequence, one chord",
+            (list.find(line => line.value === "last") ?? {}).chords, ["Space Tab"]);
         holds("the list's own keys", keyed("keys"), "Space ?  F1");
         holds("the list's closing, :q among them and q not", keyed("close"), "ZZ  :q");
         holds("the list's d, over the row and as far as a motion", keyed("ending"), "dd  dj");

@@ -978,15 +978,15 @@ Floating {
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
-    // A binding doesn't see what a call reads, so it reads both faces, to be
-    // measured again as a key list's face comes and goes.
     // The names' column ends at a name, the widest of those that keep their
     // values beside them, chosen so the most do: a column as wide as the
     // widest name pushed half a narrow plate's values under their names,
     // its two columns lost (VKCF3Z, 2026-11-05). A name wider goes on its
     // own line, its value under it, as one too wide always has. A key
     // list's sayings stay beside every key, and the moment's beside every
-    // name, so the column is never narrower than the widest of those.
+    // name, so the column is never narrower than the widest of those. A
+    // binding doesn't see what a call reads, so it reads every face, to be
+    // measured again as a key list's face comes and goes.
     readonly property real labelsWide: {
         void valueFace.font;
         void factFace.font;
@@ -996,7 +996,7 @@ Floating {
         const most = room - valueFace.advanceWidth("00000000");
         const named = allFacts.filter(fact => fact && fact.heading === undefined)
             .map(fact => ({
-                name: Math.ceil(factFace.advanceWidth(fact.label ?? "")),
+                name: Math.ceil(nameWidth(fact)),
                 value: fact.value === null || fact.value === undefined ? 0
                     : faceOf(fact).advanceWidth(unbroken(fact.value))
             }));
@@ -1018,6 +1018,28 @@ Floating {
             }
         }
         return best;
+    }
+    // Where each of a key's chords starts along its name, each a run of its
+    // own, two runs of one thing the apart rung from each other, rather
+    // than a typed space that sat nearly as wide as the key from its saying
+    // (VKCF3Z, 2026-11-05).
+    function chordsFrom(chords) {
+        const from = [];
+        let x = 0;
+        for (const chord of chords) {
+            from.push(x);
+            x += factFace.advanceWidth(chord) + Theme.space.rung.apart;
+        }
+        return from;
+    }
+    // How wide a fact's name is drawn: its chords and the room between, or
+    // its label.
+    function nameWidth(fact) {
+        const chords = fact?.chords ?? [];
+        if (chords.length === 0)
+            return factFace.advanceWidth(fact?.label ?? "");
+        const last = chords.length - 1;
+        return chordsFrom(chords)[last] + factFace.advanceWidth(chords[last]);
     }
     // How many of its facts take more than a line, a name or a value
     // wrapped, for the launcher to report when asked: a key list's take one.
@@ -1056,7 +1078,7 @@ Floating {
     // report when asked.
     function labelsWhole() {
         const moment = [].concat(...groups.map(group => group.facts));
-        return moment.every(fact => factFace.advanceWidth(fact.label ?? "") <= labelsWide)
+        return moment.every(fact => nameWidth(fact) <= labelsWide)
             && drawnRows().every(row => row.nameWhole);
     }
     // Whether every value drawn keeps each of its words whole, none so
@@ -1619,7 +1641,8 @@ Floating {
                         function texts() {
                             return [].concat(...Array.from({ length: count }, (_, at) => {
                                 const row = itemAt(at);
-                                return row ? [row.over, row.name, row.value] : [];
+                                return row ? [row.over, row.name, ...row.laterChords(), row.value]
+                                    : [];
                             }));
                         }
 
@@ -1662,8 +1685,11 @@ Floating {
                             // A key list's sayings stay beside their keys,
                             // however many lines, so each key heads its own
                             // (VKCF3Z, 2026-11-04).
-                            readonly property bool nameFits: factFace.advanceWidth(
-                                modelData.label ?? "") <= drawer.labelsWide
+                            readonly property bool nameFits: drawer.nameWidth(modelData)
+                                <= drawer.labelsWide
+                            // A key's chords, each drawn as a run of its own.
+                            readonly property var chords: modelData.chords ?? []
+                            readonly property var chordsFrom: drawer.chordsFrom(chords)
                             // Whether its value fits beside its name on one
                             // line, measured in the face it's drawn in: a
                             // laid-out text can't tell, since a word too wide
@@ -1716,11 +1742,35 @@ Floating {
                                 visible: !fact.heading
                                 width: fact.under ? fact.width : drawer.labelsWide
                                 y: fact.base - baselineOffset
-                                plain: fact.modelData.label ?? ""
+                                // A key's first chord, or the whole name.
+                                plain: fact.chords.length > 0 ? fact.chords[0]
+                                    : fact.modelData.label ?? ""
                                 leading: drawer.pitch
                                 ink: drawer.listsKeys ? Theme.text : Theme.muted
                                 font.family: Theme.level.note.family
                                 font.pointSize: Theme.level.note.pointSize
+                            }
+                            // Every chord of a key's after its first.
+                            function laterChords() {
+                                return Array.from({ length: chordsShown.count },
+                                    (_, at) => chordsShown.itemAt(at)).filter(text => text);
+                            }
+                            Repeater {
+                                id: chordsShown
+                                model: fact.heading ? [] : fact.chords.slice(1)
+
+                                PageText {
+                                    required property string modelData
+                                    required property int index
+                                    sought: drawer.washing
+                                    x: fact.chordsFrom[index + 1] ?? 0
+                                    y: fact.base - baselineOffset
+                                    plain: modelData
+                                    leading: drawer.pitch
+                                    wraps: false
+                                    ink: label.ink
+                                    font: label.font
+                                }
                             }
 
                             // Its figure, or a placeholder while it's

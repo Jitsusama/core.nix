@@ -151,7 +151,9 @@ function keyLine(table, mode, line, words) {
     const ranked = keys.map((key, at) => ({ key, at, rank: rank(key) }))
         .sort((a, b) => a.rank - b.rank || a.at - b.at);
     const said = ranked.map(one => sequenceFace(one.key)).concat(line.also ?? []);
-    return { label: said.join("  "), value: words[line.name] ?? "" };
+    // Its chords each a run of their own, which the drawer sets the apart
+    // rung from each other; the label joins them for what reads it whole.
+    return { label: said.join("  "), chords: said, value: words[line.name] ?? "" };
 }
 
 // Every line Space ? lists, as the drawer's facts, from QueryKeys' table:
