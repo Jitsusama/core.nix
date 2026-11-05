@@ -34,14 +34,16 @@ function bound(read, at) {
 
 // What a line asks before it runs, once, by the rule d asks by
 // (Operators.asks), so d, the line and the menu are one, given the acts
-// found among the `all` things it's bound to, whether a ! was typed, and
-// the language's commands (Options.commands): "some" where only some have
+// found among the things it's bound to, how the line stands, { all, bang },
+// `all` how many things and `bang` whether a ! was typed, and the
+// language's commands (Options.commands): "some" where only some have
 // it, ! or not, so a range never acts on fewer than it named unasked; else,
 // where the language says it changes and d would ask, as it does unless
 // each act says how it's put back (its undo) or it's guarded and alone,
 // "one" or "many", unless the ! says don't; else nothing. None having it
 // says so.
-function asking(entry, acts, all, bang, commands) {
+function asking(entry, acts, line, commands) {
+    const { all, bang } = line;
     const found = acts.length;
     if (found === 0) {
         return { ask: "", none: true };

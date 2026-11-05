@@ -2840,7 +2840,7 @@ Scope {
     function commandAsked(entry, found, all, bang) {
         const words = Words.field.command ?? {};
         const acts = found.map(one => one.act);
-        const asked = CommandBinding.asking(entry, acts, all, bang, Options.commands ?? {});
+        const asked = CommandBinding.asking(entry, acts, { all, bang }, Options.commands ?? {});
         const fill = template => {
             const said = String(template ?? "").replace(/\{command\}/g, entry.command)
                 .replace("{some}", acts.length).replace("{all}", all);

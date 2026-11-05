@@ -596,7 +596,7 @@ QtObject {
         const entry = typed => Commands.ran(typed, menu).entry;
         const acts = (count, act) => Array.from({ length: count }, () => act ?? {});
         const asking = (typed, count, all, bang, act) =>
-            CommandBinding.asking(entry(typed), acts(count, act), all, bang, commands);
+            CommandBinding.asking(entry(typed), acts(count, act), { all, bang }, commands);
         const back = { undo: () => {} };
         holds("an act that changes asks, the language's undoable or not, on one or many",
             [asking("disc", 1, 1, false), asking("disc", 3, 3, false)],
@@ -610,8 +610,8 @@ QtObject {
             [{ ask: "one" }, { ask: "many" }, { ask: "" }]);
         const guarded = { command: "close", undoable: false, guarded: true };
         holds("a guarded one asks only over more than one",
-            [CommandBinding.asking(guarded, acts(1), 1, false, commands),
-                CommandBinding.asking(guarded, acts(2), 2, false, commands)],
+            [CommandBinding.asking(guarded, acts(1), { all: 1, bang: false }, commands),
+                CommandBinding.asking(guarded, acts(2), { all: 2, bang: false }, commands)],
             [{ ask: "" }, { ask: "many" }]);
         holds("what changes nothing asks nothing", asking("see", 3, 3, false), { ask: "" });
         holds("where only some have it, it asks once, naming how many, ! or not",
